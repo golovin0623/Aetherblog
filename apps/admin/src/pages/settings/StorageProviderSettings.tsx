@@ -174,17 +174,17 @@ export default function StorageProviderSettings() {
   return (
     <div>
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2 mb-1">
-            <Cloud className="w-5 h-5 text-[var(--text-muted)]" />
-            存储管理
+            <Cloud className="w-5 h-5 text-[var(--text-muted)] shrink-0" />
+            <span>存储管理</span>
           </h2>
-          <p className="text-sm text-[var(--text-muted)]">
+          <p className="text-sm text-[var(--text-muted)] leading-relaxed">
             配置本地、S3、COS、OSS、MinIO、R2 等存储后端;set-default 后新文件自动入云。
           </p>
         </div>
-        <Button onClick={() => setCreating(true)} className="gap-2">
+        <Button onClick={() => setCreating(true)} className="gap-2 w-full sm:w-auto shrink-0">
           <Plus className="w-4 h-4" /> 添加存储提供商
         </Button>
       </div>
@@ -281,14 +281,14 @@ function ProviderCard({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="surface-leaf surface-admin-item rounded-2xl p-5"
+      className="surface-leaf surface-admin-item rounded-2xl p-4 sm:p-5"
       data-interactive
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <TypeIcon className="w-5 h-5 text-primary" />
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">{provider.name}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <TypeIcon className="w-5 h-5 text-primary shrink-0" />
+            <h3 className="text-base font-semibold text-[var(--text-primary)] break-all">{provider.name}</h3>
             <span className="px-2 py-0.5 bg-primary/15 text-primary text-xs font-medium rounded-full font-mono">
               {provider.providerType}
             </span>
@@ -303,22 +303,24 @@ function ProviderCard({
               </span>
             )}
           </div>
-          <p className="text-sm text-[var(--text-secondary)] mt-2">{summary}</p>
+          <p className="text-sm text-[var(--text-secondary)] mt-2 break-all">{summary}</p>
           <p className="text-xs text-[var(--text-muted)] mt-1">优先级: {provider.priority}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 -mx-1 sm:mx-0 self-start">
           <button
             onClick={onTest}
             disabled={testing}
-            className="p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
             title="测试连接"
+            aria-label="测试连接"
           >
             <TestTube className="w-4 h-4" />
           </button>
           <button
             onClick={onEdit}
-            className="p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors touch-manipulation"
             title="编辑配置"
+            aria-label="编辑配置"
           >
             <Edit3 className="w-4 h-4" />
           </button>
@@ -326,8 +328,9 @@ function ProviderCard({
             <button
               onClick={onSetDefault}
               disabled={busySetDefault}
-              className="p-2 text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success/10 rounded-lg transition-colors disabled:opacity-50"
+              className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success/10 active:bg-status-success/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
               title="设为默认"
+              aria-label="设为默认"
             >
               <Check className="w-4 h-4" />
             </button>
@@ -335,8 +338,9 @@ function ProviderCard({
           <button
             onClick={onDelete}
             disabled={provider.isDefault || busyDelete}
-            className="p-2 text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger/10 active:bg-status-danger/15 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
             title={provider.isDefault ? '默认 provider 不可删除,请先切换' : '删除'}
+            aria-label="删除"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -466,20 +470,20 @@ function ProviderDialog({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
         onClick={(e) => e.stopPropagation()}
-        className="surface-overlay rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="surface-overlay rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 max-w-2xl w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto"
       >
-        <h3 className="text-xl font-bold text-[var(--text-primary)] mb-1">
+        <h3 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] mb-1">
           {mode === 'edit' ? '编辑存储提供商' : '添加存储提供商'}
         </h3>
-        <p className="text-xs text-[var(--text-muted)] mb-5">
+        <p className="text-xs text-[var(--text-muted)] mb-4 sm:mb-5 leading-relaxed">
           {mode === 'edit' ? (
             <>密钥字段已脱敏显示（如 <code className="font-mono">AB****CD12</code>）。<strong>留原值不动密钥不会被覆盖</strong>;改密钥请直接清空再粘贴新明文。</>
           ) : (
@@ -529,8 +533,8 @@ function ProviderDialog({
           )}
 
           {/* 开关 + 优先级 */}
-          <div className="flex items-center gap-6 pt-1">
-            <label className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={isEnabled} onChange={(e) => setIsEnabled(e.target.checked)} className="w-4 h-4" />
               <span className="text-sm text-[var(--text-secondary)]">启用</span>
             </label>
@@ -546,12 +550,12 @@ function ProviderDialog({
           </div>
 
           {/* 操作按钮 */}
-          <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" disabled={isPending} className="flex-1">
-              {isPending ? '处理中...' : mode === 'edit' ? '保存修改' : '创建'}
-            </Button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pt-2">
             <Button type="button" onClick={onClose} variant="secondary" className="flex-1">
               取消
+            </Button>
+            <Button type="submit" disabled={isPending} className="flex-1">
+              {isPending ? '处理中...' : mode === 'edit' ? '保存修改' : '创建'}
             </Button>
           </div>
         </form>
@@ -589,15 +593,15 @@ function AutoBackupToggle() {
   });
 
   return (
-    <div className="surface-leaf surface-admin-item rounded-xl p-4 mb-4 flex items-center justify-between">
-      <div className="flex-1">
+    <div className="surface-leaf surface-admin-item rounded-xl p-4 mb-4 flex items-start gap-3 sm:items-center sm:justify-between">
+      <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-[var(--text-primary)]">自动后台备份</p>
-        <p className="text-xs text-[var(--text-muted)] mt-1">
-          打开后,worker 会按周期(默认 10s 拣一批)自动把未与默认 provider 同步的文件备份到云。<br/>
+        <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+          打开后,worker 会按周期(默认 10s 拣一批)自动把未与默认 provider 同步的文件备份到云。
           关闭时仅响应"立即备份"按钮 — 适合首次切云时人工触发,避免意外费用。
         </p>
       </div>
-      <div className="ml-4 shrink-0 inline-flex items-center gap-2">
+      <div className="shrink-0 inline-flex items-center gap-2">
         {setMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" />}
         <Toggle
           checked={enabled}
@@ -666,7 +670,7 @@ function S3Fields({
 
   return (
     <div className="space-y-3 p-4 bg-[var(--bg-input)]/30 rounded-lg border border-[var(--border-subtle)]">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">bucket *</label>
           <input
@@ -724,7 +728,7 @@ function S3Fields({
       </div>
 
       {/* 凭证 */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">accessKeyId *</label>
           <input
@@ -750,7 +754,7 @@ function S3Fields({
       </div>
 
       {/* 图床路径与自定义域名 */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">path (对象路径前缀)</label>
           <input

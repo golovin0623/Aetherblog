@@ -115,9 +115,9 @@ export function StepPreview({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* 总体汇总 */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4">
         <SummaryCard label="将新建文章" value={counts.willCreatePosts} />
         <SummaryCard label="将覆盖" value={counts.willOverwritePosts} />
         <SummaryCard label="将跳过重复" value={counts.willSkipDuplicates} />
@@ -131,8 +131,8 @@ export function StepPreview({
       {state.analysis.unsupported.length > 0 && (
         <section className="rounded-xl surface-leaf p-4">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[var(--text-muted)]">
-            <AlertTriangle className="h-4 w-4" />
-            备份含以下数据但不会导入
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>备份含以下数据但不会导入</span>
           </div>
           <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
             {state.analysis.unsupported.map((u) => (
@@ -144,24 +144,26 @@ export function StepPreview({
 
       {/* 文章计划表 */}
       <section className="overflow-hidden rounded-2xl surface-leaf">
-        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-3 text-xs uppercase tracking-wide text-[var(--text-muted)]">
+        <div className="flex flex-col gap-2 border-b border-[var(--border-subtle)] px-4 sm:px-5 py-3 text-xs uppercase tracking-wide text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
           <span>文章计划 ({state.analysis.articlePlans.length})</span>
           <div className="flex gap-2">
             <button
               onClick={() => toggleAll(true)}
-              className="rounded-lg bg-[var(--bg-secondary)] px-3 py-1 text-[var(--text-primary)]"
+              className="flex-1 sm:flex-none rounded-lg bg-[var(--bg-secondary)] px-3 py-1.5 sm:py-1 text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
             >
               全选可导入
             </button>
             <button
               onClick={() => toggleAll(false)}
-              className="rounded-lg bg-[var(--bg-secondary)] px-3 py-1 text-[var(--text-primary)]"
+              className="flex-1 sm:flex-none rounded-lg bg-[var(--bg-secondary)] px-3 py-1.5 sm:py-1 text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
             >
               全不选
             </button>
           </div>
         </div>
-        <div className="max-h-[50vh] overflow-auto">
+
+        {/* 桌面端表格 */}
+        <div className="hidden sm:block max-h-[50vh] overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-[var(--bg-card)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
               <tr>
@@ -202,25 +204,59 @@ export function StepPreview({
             </tbody>
           </table>
         </div>
+
+        {/* 移动端卡片列表 */}
+        <div className="sm:hidden max-h-[55vh] overflow-auto divide-y divide-[var(--border-subtle)]">
+          {state.analysis.articlePlans.map((p) => {
+            const selectable =
+              p.action === 'create' || p.action === 'overwrite' || p.action === 'rename';
+            const numericId = parseNumericSourceId(p.sourceId);
+            return (
+              <label
+                key={p.sourceKey}
+                className={`flex items-start gap-3 px-4 py-3 ${selectable ? 'active:bg-[var(--bg-secondary)]/40' : 'opacity-70'} touch-manipulation`}
+              >
+                <input
+                  type="checkbox"
+                  disabled={!selectable}
+                  checked={selectedInternal.has(p.sourceKey)}
+                  onChange={() => toggleOne(p.sourceKey, numericId)}
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-[var(--text-primary)] break-all">{p.title}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-muted)]">
+                    <span className="font-mono">#{p.sourceId}</span>
+                    {p.slug && <span className="truncate max-w-[60%]">{p.slug}</span>}
+                    {p.category && <span>· {p.category}</span>}
+                  </div>
+                  <div className="mt-2">
+                    <ActionBadge action={p.action} reason={p.reason} />
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
       </section>
 
       {/* 分类/标签 create vs reuse */}
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-3 sm:gap-4 sm:grid-cols-2">
         <EntityPlanList title="分类" plans={state.analysis.categoryPlans} />
         <EntityPlanList title="标签" plans={state.analysis.tagPlans} />
       </section>
 
-      <div className="flex justify-between">
+      <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-between sm:gap-0">
         <button
           onClick={onBack}
-          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-2.5 text-sm text-[var(--text-primary)]"
+          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
         >
           上一步
         </button>
         <button
           onClick={onNext}
           disabled={counts.importableArticles === 0}
-          className="rounded-xl bg-[var(--aurora-1)] px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-xl bg-[var(--aurora-1)] px-6 py-3 sm:py-2.5 text-sm font-medium text-white disabled:opacity-50 active:scale-[0.98] transition-transform touch-manipulation"
         >
           开始导入 ({counts.importableArticles})
         </button>
@@ -322,9 +358,9 @@ function ActionBadge({ action, reason }: { action: ArticleAction; reason?: strin
 
 function SummaryCard({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className={`rounded-xl p-4 ${highlight ? 'surface-raised' : 'bg-[var(--bg-secondary)]'}`}>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
-      <div className="mt-1 font-display text-3xl tnum text-[var(--text-primary)]">{value}</div>
+    <div className={`rounded-xl p-3 sm:p-4 ${highlight ? 'surface-raised' : 'bg-[var(--bg-secondary)]'}`}>
+      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-[var(--text-muted)] truncate">{label}</div>
+      <div className="mt-1 font-display text-2xl sm:text-3xl tnum text-[var(--text-primary)]">{value}</div>
     </div>
   );
 }

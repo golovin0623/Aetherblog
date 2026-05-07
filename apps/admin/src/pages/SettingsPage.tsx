@@ -419,7 +419,7 @@ export default function SettingsPage() {
             transition={{ duration: 0.2 }}
             className={cn(
               "rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]",
-              activeTab !== 'migration' && activeTab !== 'storage' && "p-6 space-y-6"
+              activeTab !== 'migration' && activeTab !== 'storage' && "p-4 sm:p-6 space-y-6"
             )}
           >
             {activeTab === 'migration' ? (
@@ -428,7 +428,7 @@ export default function SettingsPage() {
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
               }>
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <MigrationPage />
                 </div>
               </Suspense>
@@ -438,7 +438,7 @@ export default function SettingsPage() {
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
               }>
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <StorageProviderSettings />
                 </div>
               </Suspense>

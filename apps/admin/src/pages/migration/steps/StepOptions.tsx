@@ -13,10 +13,10 @@ interface Props {
 export function StepOptions({ state, onChange, onBack, onNext }: Props) {
   const o = state.options;
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl surface-leaf p-6">
+    <div className="space-y-5 sm:space-y-6">
+      <section className="rounded-2xl surface-leaf p-4 sm:p-6">
         <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">冲突策略</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-3 sm:mt-4 grid gap-2.5 sm:gap-3 sm:grid-cols-3">
           <StrategyCard
             active={o.conflictStrategy === 'skip'}
             title="Skip"
@@ -38,9 +38,9 @@ export function StepOptions({ state, onChange, onBack, onNext }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl surface-leaf p-6">
+      <section className="rounded-2xl surface-leaf p-4 sm:p-6">
         <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">开关</h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-3 sm:mt-4 grid gap-3 sm:gap-4 sm:grid-cols-2">
           <ToggleRow
             label="保留 createdAt / updatedAt"
             desc="关闭则导入时全部取 NOW()。"
@@ -74,16 +74,16 @@ export function StepOptions({ state, onChange, onBack, onNext }: Props) {
         </div>
       </section>
 
-      <div className="flex justify-between">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2.5 sm:gap-0">
         <button
           onClick={onBack}
-          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-2.5 text-sm text-[var(--text-primary)]"
+          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
         >
           上一步
         </button>
         <button
           onClick={onNext}
-          className="rounded-xl bg-[var(--aurora-1)] px-6 py-2.5 text-sm font-medium text-white"
+          className="rounded-xl bg-[var(--aurora-1)] px-6 py-3 sm:py-2.5 text-sm font-medium text-white active:scale-[0.98] transition-transform touch-manipulation"
         >
           下一步：预览分析
         </button>
@@ -106,13 +106,13 @@ function StrategyCard({
   return (
     <button
       onClick={onClick}
-      className={`rounded-xl border p-4 text-left transition ${
+      className={`rounded-xl border p-3.5 sm:p-4 text-left transition active:scale-[0.99] touch-manipulation ${
         active
           ? 'border-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'
           : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] hover:border-[var(--aurora-1)]/50'
       }`}
     >
-      <div className="font-display text-lg text-[var(--text-primary)]">{title}</div>
+      <div className="font-display text-base sm:text-lg text-[var(--text-primary)]">{title}</div>
       <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">{desc}</div>
     </button>
   );
@@ -130,12 +130,14 @@ function ToggleRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-xl bg-[var(--bg-secondary)] px-4 py-3">
-      <div>
+    <div className="flex items-start justify-between gap-3 sm:gap-4 rounded-xl bg-[var(--bg-secondary)] px-3.5 sm:px-4 py-3">
+      <div className="min-w-0 flex-1">
         <div className="text-sm text-[var(--text-primary)]">{label}</div>
-        <div className="mt-0.5 text-xs text-[var(--text-muted)]">{desc}</div>
+        <div className="mt-0.5 text-xs text-[var(--text-muted)] leading-relaxed">{desc}</div>
       </div>
-      <Toggle checked={checked} onChange={onChange} />
+      <div className="shrink-0 pt-0.5">
+        <Toggle checked={checked} onChange={onChange} />
+      </div>
     </div>
   );
 }

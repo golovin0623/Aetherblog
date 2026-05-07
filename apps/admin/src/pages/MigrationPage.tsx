@@ -14,10 +14,10 @@ export default function MigrationPage() {
   const { state } = wiz;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <header>
-        <h1 className="font-display text-3xl text-[var(--text-primary)]">数据迁移 · VanBlog</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
+        <h1 className="font-display text-2xl sm:text-3xl text-[var(--text-primary)]">数据迁移 · VanBlog</h1>
+        <p className="mt-1 text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
           五步向导：上传备份 JSON → 配置选项 → 预览计划 → 流式执行 → 查看结果。
           迁移幂等，重复运行会按 source_key 跳过已导入文章。
         </p>
@@ -81,14 +81,14 @@ const STEP_ORDER: WizardStep[] = ['upload', 'options', 'preview', 'execute', 'su
 function Stepper({ current }: { current: WizardStep }) {
   const idx = STEP_ORDER.indexOf(current);
   return (
-    <div className="flex items-center gap-2 overflow-x-auto pb-2">
+    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 -mx-1 px-1">
       {STEP_ORDER.map((s, i) => {
         const active = i === idx;
         const done = i < idx;
         return (
-          <div key={s} className="flex items-center gap-2">
+          <div key={s} className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm tnum ${
+              className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full border text-xs sm:text-sm tnum shrink-0 ${
                 active
                   ? 'border-[var(--aurora-1)] bg-[var(--aurora-1)] text-white'
                   : done
@@ -99,15 +99,17 @@ function Stepper({ current }: { current: WizardStep }) {
               {i + 1}
             </div>
             <span
-              className={`text-xs uppercase tracking-wide ${
-                active ? 'text-[var(--aurora-1)]' : 'text-[var(--text-muted)]'
+              className={`text-[10px] sm:text-xs uppercase tracking-wide whitespace-nowrap ${
+                active
+                  ? 'text-[var(--aurora-1)] font-medium'
+                  : 'text-[var(--text-muted)] hidden sm:inline'
               }`}
             >
               {STEP_LABELS[s]}
             </span>
             {i < STEP_ORDER.length - 1 && (
               <div
-                className={`h-px w-6 ${
+                className={`h-px w-3 sm:w-6 shrink-0 ${
                   done ? 'bg-[var(--aurora-1)]' : 'bg-[var(--border-subtle)]'
                 }`}
               />

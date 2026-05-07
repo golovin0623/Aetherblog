@@ -74,15 +74,15 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
   const phaseOrder = ['categories', 'tags', 'articles', 'post_tags'];
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl surface-raised p-6">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="rounded-2xl surface-raised p-4 sm:p-6">
         <div className="flex items-center gap-3">
           {state.executing ? (
-            <Loader2 className="h-5 w-5 animate-spin text-[var(--aurora-1)]" />
+            <Loader2 className="h-5 w-5 animate-spin text-[var(--aurora-1)] shrink-0" />
           ) : (
-            <Zap className="h-5 w-5 text-[var(--aurora-1)]" />
+            <Zap className="h-5 w-5 text-[var(--aurora-1)] shrink-0" />
           )}
-          <h3 className="font-display text-xl text-[var(--text-primary)]">
+          <h3 className="font-display text-lg sm:text-xl text-[var(--text-primary)] break-all">
             {state.fatalError
               ? '出现致命错误'
               : state.summary
@@ -130,23 +130,23 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
       </div>
 
       {/* 滚动日志 */}
-      <div className="rounded-2xl surface-leaf p-4">
+      <div className="rounded-2xl surface-leaf p-3 sm:p-4">
         <div className="mb-2 text-xs uppercase tracking-wide text-[var(--text-muted)]">
           最近事件 (保留末尾 80 条)
         </div>
-        <div className="max-h-64 overflow-auto rounded-xl bg-[var(--bg-secondary)] p-3 font-mono text-xs">
+        <div className="max-h-56 sm:max-h-64 overflow-auto rounded-xl bg-[var(--bg-secondary)] p-2.5 sm:p-3 font-mono text-[11px] sm:text-xs">
           {state.recentItems.length === 0 && (
             <div className="text-[var(--text-muted)]">—</div>
           )}
           {state.recentItems.map((it, idx) => (
-            <div key={idx} className="flex gap-2 py-0.5">
-              <span className="text-[var(--text-muted)]">[{it.kind}]</span>
-              <span className="text-[var(--aurora-1)]">{it.action}</span>
+            <div key={idx} className="flex gap-1.5 sm:gap-2 py-0.5">
+              <span className="text-[var(--text-muted)] shrink-0">[{it.kind}]</span>
+              <span className="text-[var(--aurora-1)] shrink-0">{it.action}</span>
               <span className="flex-1 truncate text-[var(--text-primary)]">
                 {it.title || it.sourceId}
               </span>
-              {it.postId && <span className="text-[var(--text-muted)]">#{it.postId}</span>}
-              {it.error && <span className="text-red-300">{it.error}</span>}
+              {it.postId && <span className="text-[var(--text-muted)] shrink-0">#{it.postId}</span>}
+              {it.error && <span className="text-red-300 truncate min-w-0">{it.error}</span>}
             </div>
           ))}
         </div>
