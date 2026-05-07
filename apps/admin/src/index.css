@@ -137,6 +137,95 @@
 }
 
 /* ============================================================
+   AetherHub · 流式 / 思考态视觉
+   仿 LobeHub / Claude Code 的"克制呼吸感"——
+   typing dots / 气泡边沿 aurora / think 块光带 / 流式光标
+   ============================================================ */
+
+@keyframes hub-dot-pulse {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.45; }
+  50% { transform: translateY(-2px) scale(1.18); opacity: 1; }
+}
+.aetherhub-workspace .hub-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: hub-dot-pulse 1.35s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes hub-bubble-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 18%, transparent),
+      0 6px 28px -10px color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 32%, transparent),
+      0 10px 36px -10px color-mix(in oklch, var(--aurora-1) 38%, transparent);
+  }
+}
+.aetherhub-workspace .hub-bubble-pending {
+  animation: hub-bubble-glow 3.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+@keyframes hub-think-shimmer {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.aetherhub-workspace .hub-think-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 1.5px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 80%, transparent) 50%,
+    transparent 100%
+  );
+  animation: hub-think-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes hub-caret-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.05; }
+}
+.aetherhub-workspace .hub-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: hub-caret-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes hub-breath-dot {
+  0%, 100% { opacity: 0.55; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.12); }
+}
+.aetherhub-workspace .hub-breath-dot {
+  animation: hub-breath-dot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-dot,
+  .aetherhub-workspace .hub-bubble-pending,
+  .aetherhub-workspace .hub-think-shimmer,
+  .aetherhub-workspace .hub-caret,
+  .aetherhub-workspace .hub-breath-dot {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
    Focus Mode —— ⌘. 专注写作模式:隐藏侧栏/顶栏,最大化编辑区
    ============================================================ */
 :root[data-focus-mode="true"] aside,

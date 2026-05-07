@@ -17,8 +17,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
   Bot,
+  Brain,
   Check,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   CircleHelp,
   Copy,
@@ -32,7 +34,9 @@ import {
   Sparkles,
   Square,
   Trash2,
+  User as UserIcon,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { AetherMark } from '@aetherblog/ui';
 import { MarkdownPreview } from '@aetherblog/editor';
@@ -982,74 +986,283 @@ function EmptyState({
 }
 
 function MessageRow({ message }: { message: AgentMessage }) {
-  const [thinkOpen, setThinkOpen] = useState(false);
   const isUser = message.role === 'user';
+  // 流式中尚未收到正文 token —— 显示 typing dots
+  const showTypingDots = !isUser && !!message.pending && !message.content && !message.error;
+  // 流式中且已有正文 —— 气泡边沿走 aurora 呼吸
+  const isStreaming = !isUser && !!message.pending && !!message.content;
+  // think 还在进行（首 token 未到）
+  const thinkStreaming = !!message.pending && !message.firstTokenAt;
+
   return (
-    <div className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}>
-      {!isUser && (
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-active)] text-[var(--hub-accent)]">
-          <Sparkles className="h-4 w-4" />
-        </div>
+    <motion.article
+      layout="position"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(
+        'group/msg relative flex max-w-3xl gap-3 mx-auto',
+        isUser ? 'flex-row-reverse' : 'flex-row',
       )}
-      <div className={cn('min-w-0 max-w-[88%]', isUser ? 'text-right' : 'text-left')}>
-        {isUser ? (
-          <div className="inline-block rounded-2xl bg-[var(--hub-active)] px-4 py-2.5 text-left text-sm text-[var(--ink-primary)] whitespace-pre-wrap">
-            {message.content}
-          </div>
-        ) : (
-          <div className="surface-leaf inline-block !rounded-2xl px-4 py-3 text-left text-sm">
-            {message.think && (
-              <button
-                type="button"
-                onClick={() => setThinkOpen((v) => !v)}
-                className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-[var(--hub-control)] px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
-              >
-                {thinkOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                思考过程
-              </button>
-            )}
-            {thinkOpen && message.think && (
-              <pre className="mb-3 whitespace-pre-wrap rounded-lg bg-[var(--hub-control)] px-3 py-2 text-[11px] text-[var(--ink-muted)]">
-                {message.think}
-              </pre>
-            )}
-            {message.content ? (
-              <MarkdownPreview content={message.content} className="text-sm leading-relaxed" />
-            ) : message.pending ? (
-              <span className="inline-flex items-center gap-2 text-[var(--ink-muted)]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                思考中…
-              </span>
-            ) : null}
-            {message.error && (
-              <div className="mt-2 rounded-lg bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] px-3 py-2 text-[var(--fs-caption)] text-[var(--signal-danger)]">
-                {message.error}
-              </div>
-            )}
-            {message.sources && message.sources.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {message.sources.map((s) => (
-                  <span
-                    key={s.slug}
-                    className="rounded-md bg-[var(--hub-control)] px-2 py-0.5 text-[11px] text-[var(--ink-muted)]"
-                  >
-                    {s.title}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+      aria-label={isUser ? '用户消息' : 'Agent 回复'}
+    >
+      <div
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px]',
+          isUser
+            ? 'border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]'
+            : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]',
         )}
+        aria-hidden="true"
+      >
+        {isUser ? <UserIcon className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+      </div>
+
+      <div className={cn('min-w-0 flex-1', isUser ? 'flex flex-col items-end' : '')}>
+        {/* 元信息 + 状态行 */}
         <div
           className={cn(
-            'mt-1 text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)] tnum',
-            isUser ? 'text-right' : 'text-left',
+            'mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]',
+            isUser ? 'flex-row-reverse' : '',
           )}
         >
-          {formatDate(new Date(message.createdAt), 'HH:mm:ss')}
+          <span>{isUser ? 'YOU' : 'AGENT'}</span>
+          <span aria-hidden="true">·</span>
+          <span className="tnum">{formatDate(new Date(message.createdAt), 'HH:mm')}</span>
+          {!isUser && <ThinkingMeta message={message} />}
         </div>
+
+        {/* think 块 —— 仅 assistant 有 */}
+        {!isUser && message.think && (
+          <ThinkingBlock think={message.think} streaming={thinkStreaming} />
+        )}
+
+        {/* 主体气泡 */}
+        <div
+          className={cn(
+            'inline-block max-w-full rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed break-words',
+            isUser
+              ? 'whitespace-pre-wrap border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)]'
+              : message.error
+                ? 'whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--ink-primary)]'
+                : isStreaming
+                  ? 'surface-leaf hub-bubble-pending border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
+                  : 'surface-leaf border border-[var(--hub-border)] text-[var(--ink-primary)]',
+          )}
+        >
+          {isUser || message.error ? (
+            <>
+              {message.content || (message.error ? '' : ' ')}
+              {message.error && (
+                <div className="mt-2 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                  ERROR · {message.error}
+                </div>
+              )}
+            </>
+          ) : showTypingDots ? (
+            <TypingDots />
+          ) : message.pending ? (
+            <span className="inline-flex w-full flex-col">
+              <MarkdownPreview content={message.content} className="text-[14.5px] leading-relaxed" />
+              <span
+                className="hub-caret text-[var(--aurora-1)]"
+                aria-hidden="true"
+                style={{ marginTop: '-1.05em' }}
+              />
+            </span>
+          ) : (
+            <MarkdownPreview content={message.content} className="text-[14.5px] leading-relaxed" />
+          )}
+        </div>
+
+        {message.sources && message.sources.length > 0 && (
+          <div className="mt-3 max-w-full">
+            <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]">
+              § Sources
+            </div>
+            <ul className="flex flex-wrap gap-1.5">
+              {message.sources.map((s) => (
+                <li key={s.slug + s.title}>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-2.5 py-1 text-[11.5px] text-[var(--ink-secondary)]">
+                    {s.title || s.slug}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
+    </motion.article>
+  );
+}
+
+/**
+ * ThinkingBlock —— Codex 级思考块
+ * 收起态：单行 pill（左侧呼吸光带 + Brain + "正在思考"/"已深度思考" + 字数 + tail 摘要）
+ * 展开态：可滚动 think 文本框，流式中自动 stick-to-bottom
+ */
+function ThinkingBlock({ think, streaming }: { think: string; streaming: boolean }) {
+  const [open, setOpen] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !streaming) return;
+    const el = previewRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [open, streaming, think]);
+
+  const charCount = think.length;
+  const tail = useMemo(() => {
+    const trimmed = think.replace(/\s+$/, '');
+    if (trimmed.length <= 36) return trimmed;
+    return `…${trimmed.slice(-36)}`;
+  }, [think]);
+
+  return (
+    <div className="relative mb-2.5 max-w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          'group/think relative flex w-full items-center gap-2 overflow-hidden rounded-xl border px-3 py-2 text-left transition-colors',
+          streaming
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)]'
+            : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+        )}
+      >
+        {streaming && (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
+          >
+            <span className="hub-think-shimmer" />
+          </span>
+        )}
+        <Brain
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]',
+          )}
+        />
+        <span
+          className={cn(
+            'shrink-0 font-mono text-[10.5px] uppercase tracking-[0.22em]',
+            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]',
+          )}
+        >
+          {streaming ? '正在思考' : '已深度思考'}
+        </span>
+        <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)]">
+          ·
+        </span>
+        <span className="shrink-0 font-mono text-[10.5px] tnum text-[var(--ink-muted)]">
+          {charCount} chars
+        </span>
+        {!open && tail && (
+          <span className="ml-1.5 hidden min-w-0 truncate text-[12px] italic text-[var(--ink-muted)] opacity-85 sm:inline">
+            {tail}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-[var(--ink-muted)]">
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="think-body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div
+              ref={previewRef}
+              className="mt-2 max-h-[260px] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3"
+            >
+              <pre className="whitespace-pre-wrap break-words font-sans text-[12.5px] leading-relaxed text-[var(--ink-secondary)]">
+                {think}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * ThinkingMeta —— inline 状态行：
+ *   pending && !firstToken → "正在思考 · X.Xs" + 呼吸点
+ *   pending && firstToken  → "正在生成 · X.Xs"
+ *   !pending && finishedAt → "已深度思考 · X.Xs"
+ *   error                  → "已中断 · X.Xs"
+ */
+function ThinkingMeta({ message }: { message: AgentMessage }) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!message.pending) return;
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [message.pending]);
+
+  if (!message.startedAt) return null;
+  const isStreaming = !!message.pending;
+  const endTs = isStreaming ? now : (message.finishedAt ?? message.startedAt);
+  const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
+  const elapsedStr = `${elapsed.toFixed(1)}s`;
+
+  let label: string;
+  if (isStreaming && !message.firstTokenAt) label = '正在思考';
+  else if (isStreaming) label = '正在生成';
+  else if (message.error) label = '已中断';
+  else label = '已深度思考';
+
+  return (
+    <>
+      <span aria-hidden="true">·</span>
+      <span
+        className={cn(
+          'inline-flex items-center gap-1',
+          isStreaming && 'text-[var(--aurora-1)]',
+        )}
+      >
+        {isStreaming && (
+          <span
+            aria-hidden="true"
+            className="hub-breath-dot inline-block h-1 w-1 rounded-full bg-current"
+          />
+        )}
+        {label}
+        <span aria-hidden="true">·</span>
+        <span className="tnum">{elapsedStr}</span>
+      </span>
+    </>
+  );
+}
+
+/**
+ * TypingDots —— 三点 typing 指示器（漂浮 + 缩放 + 透明度复合呼吸）
+ */
+function TypingDots() {
+  return (
+    <span className="relative inline-flex items-center gap-1.5 px-0.5 py-1 text-[var(--aurora-1)]">
+      <span
+        aria-hidden="true"
+        className="absolute -inset-3 rounded-full opacity-60 blur-md"
+        style={{
+          background:
+            'radial-gradient(closest-side, color-mix(in oklch, var(--aurora-1) 30%, transparent), transparent)',
+        }}
+      />
+      <span className="hub-dot relative" />
+      <span className="hub-dot relative" style={{ animationDelay: '0.16s' }} />
+      <span className="hub-dot relative" style={{ animationDelay: '0.32s' }} />
+    </span>
   );
 }
 
