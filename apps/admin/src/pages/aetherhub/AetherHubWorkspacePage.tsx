@@ -1,138 +1,69 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ButtonHTMLAttributes, ElementType, ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type {
+  ButtonHTMLAttributes,
+  ChangeEvent,
+  ElementType,
+  KeyboardEvent,
+  ReactNode,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
-  BookOpen,
-  CalendarDays,
+  Bot,
+  Check,
   ChevronDown,
   ChevronUp,
   CircleHelp,
-  Clock,
-  Cloud,
-  Code2,
   Copy,
-  Database,
-  Diamond,
-  FileText,
-  Folder,
   LayoutGrid,
-  Mail,
-  MessageSquare,
-  Mic,
+  Loader2,
   MoreHorizontal,
-  PenLine,
-  Pin,
+  Pencil,
   Plus,
   RefreshCcw,
   Settings,
-  Share2,
   Sparkles,
+  Square,
   Trash2,
-  Upload,
-  Users,
-  Workflow,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AetherMark } from '@aetherblog/ui';
+import { MarkdownPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
 import { getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
-
-type WorkspaceMode = 'chat' | 'cowork' | 'code';
-
-const modeItems: Array<{
-  id: WorkspaceMode;
-  label: string;
-  icon: ElementType;
-}> = [
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'cowork', label: 'Cowork', icon: Users },
-  { id: 'code', label: 'Code', icon: Code2 },
-];
-
-const projectNavItems = [
-  { label: '项目', icon: Folder },
-  { label: '知识库 / Artifacts', icon: FileText },
-  { label: '插件市场', icon: LayoutGrid },
-  { label: '自动化', icon: Clock },
-  { label: '设置', icon: Settings },
-];
-
-const conversationGroups = [
-  {
-    label: '今天',
-    items: [
-      { title: '在 AetherBlog 中构建什么?', time: '22:42', active: true },
-      { title: '修复 S3 连接失败', time: '18:36' },
-      { title: 'PR 552 审查建议', time: '16:21' },
-      { title: '部署 webhook 报错排查', time: '21:15' },
-    ],
-  },
-  {
-    label: '昨天',
-    items: [
-      { title: '生成产品需求文档', time: '14:08' },
-      { title: '优化登录页性能', time: '19:05' },
-    ],
-  },
-  {
-    label: '更早',
-    items: [
-      { title: '分析用户反馈数据', time: '03/12' },
-      { title: '数据库设计评审', time: '03/11' },
-    ],
-  },
-];
-
-const connectorCards: Array<{
-  title: string;
-  description: string;
-  icon: ElementType;
-  tone: string;
-}> = [
-  {
-    title: '连接 Slack',
-    description: '从频道和讨论中获取最新信息',
-    icon: MessageSquare,
-    tone: 'from-[#36C5F0] via-[#2EB67D] to-[#ECB22E]',
-  },
-  {
-    title: '连接 Gmail',
-    description: '总结邮件和重要对话',
-    icon: Mail,
-    tone: 'from-[#EA4335] via-[#FBBC04] to-[#34A853]',
-  },
-  {
-    title: '连接 Google Drive',
-    description: '访问你的文档和文件',
-    icon: Cloud,
-    tone: 'from-[#4285F4] via-[#34A853] to-[#FBBC04]',
-  },
-  {
-    title: '连接 日历',
-    description: '查看日程并管理时间',
-    icon: CalendarDays,
-    tone: 'from-[#4285F4] via-[#7BAAF7] to-[#34A853]',
-  },
-];
+import {
+  type AgentMessage,
+  type AgentSession,
+  type ChatStreamRequest,
+  createEmptySession,
+  deriveSessionTitle,
+  groupSessionsByRecency,
+  loadSessions,
+  modelLabel,
+  newMessageId,
+  saveSessions,
+  streamAgentChat,
+  useAgentModels,
+} from '@/services/agent';
 
 const promptChips = [
   '总结 AetherBlog 项目的整体结构',
   '帮我修复最近的构建错误',
-  '分析 PR 552 的代码变更',
   '生成部署检查清单',
-];
-
-const resources = [
-  { name: 'AetherBlog PRD.md', type: '文档', size: '12KB', icon: FileText },
-  { name: 'auth.ts', type: 'TypeScript', size: '8KB', icon: Code2 },
-  { name: 'schema.prisma', type: 'Prisma', size: '6KB', icon: Database },
+  '解释 pgvector 半自动调优策略',
 ];
 
 interface CurrentUser {
+  id: string;
   nickname: string;
   initial: string;
   avatarUrl: string | null;
@@ -147,128 +78,388 @@ function pickGreeting(hour: number): string {
 
 export default function AetherHubWorkspacePage() {
   const navigate = useNavigate();
-  const [activeMode, setActiveMode] = useState<WorkspaceMode>('chat');
-  const activeModeMeta = useMemo(
-    () => modeItems.find((item) => item.id === activeMode) ?? modeItems[0],
-    [activeMode],
-  );
-
   const user = useAuthStore((state) => state.user);
+
   const currentUser = useMemo<CurrentUser>(() => {
     const nickname = user?.nickname?.trim() || '管理员';
-    const initial = Array.from(nickname)[0]?.toUpperCase() ?? 'A';
     return {
+      id: user?.id ?? 'anon',
       nickname,
-      initial,
+      initial: Array.from(nickname)[0]?.toUpperCase() ?? 'A',
       avatarUrl: user?.avatar ? getMediaUrl(user.avatar) : null,
     };
-  }, [user?.nickname, user?.avatar]);
+  }, [user?.id, user?.nickname, user?.avatar]);
 
-  // 会话元信息使用渲染时的本地时间，避免静态字符串永远停留在某个历史时刻。
-  const [conversationCreatedAt] = useState(() => new Date());
+  // ----- 会话状态：localStorage 持久化，每个 user 独立 namespace。 -----
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const list = loadSessions(currentUser.id);
+    if (list.length === 0) {
+      const fresh = createEmptySession('chat');
+      setSessions([fresh]);
+      setActiveId(fresh.id);
+    } else {
+      setSessions(list);
+      setActiveId(list.sort((a, b) => b.updatedAt - a.updatedAt)[0].id);
+    }
+    setHydrated(true);
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveSessions(currentUser.id, sessions);
+  }, [hydrated, currentUser.id, sessions]);
+
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeId) ?? null,
+    [sessions, activeId],
+  );
+
+  // ----- Greeting tick：跨过整点时切换 -----
   const [greeting, setGreeting] = useState(() => pickGreeting(new Date().getHours()));
   useEffect(() => {
-    const tick = () => setGreeting(pickGreeting(new Date().getHours()));
-    const id = window.setInterval(tick, 60_000);
+    const id = window.setInterval(
+      () => setGreeting(pickGreeting(new Date().getHours())),
+      60_000,
+    );
     return () => window.clearInterval(id);
   }, []);
 
+  // ----- 模型清单 -----
+  const modelsState = useAgentModels(true);
+
+  // ----- Composer 状态 -----
+  const [composer, setComposer] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const updateSession = useCallback(
+    (id: string, updater: (s: AgentSession) => AgentSession) => {
+      setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
+    },
+    [],
+  );
+
+  const handleNewSession = useCallback(() => {
+    if (streaming) {
+      toast.info('请先停止当前回答再新建对话');
+      return;
+    }
+    const fresh = createEmptySession('chat');
+    setSessions((prev) => [fresh, ...prev]);
+    setActiveId(fresh.id);
+    setComposer('');
+  }, [streaming]);
+
+  const handleSelectSession = useCallback(
+    (id: string) => {
+      if (streaming) {
+        toast.info('正在生成回答，请稍候或先停止');
+        return;
+      }
+      setActiveId(id);
+    },
+    [streaming],
+  );
+
+  const handleDeleteSession = useCallback(
+    (id: string) => {
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        if (next.length === 0) {
+          const fresh = createEmptySession('chat');
+          setActiveId(fresh.id);
+          return [fresh];
+        }
+        if (id === activeId) {
+          setActiveId(next.sort((a, b) => b.updatedAt - a.updatedAt)[0].id);
+        }
+        return next;
+      });
+      toast.success('对话已删除');
+    },
+    [activeId],
+  );
+
+  const handleSetModel = useCallback(
+    (modelId: string | null, providerCode: string | null) => {
+      if (!activeSession) return;
+      updateSession(activeSession.id, (s) => ({
+        ...s,
+        modelId,
+        providerCode,
+        updatedAt: Date.now(),
+      }));
+    },
+    [activeSession, updateSession],
+  );
+
+  const handleAbort = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+  }, []);
+
+  const handleSend = useCallback(
+    async (rawText: string) => {
+      const text = rawText.trim();
+      if (!text || streaming || !activeSession) return;
+
+      const now = Date.now();
+      const userMsg: AgentMessage = {
+        id: newMessageId(),
+        role: 'user',
+        content: text,
+        createdAt: now,
+      };
+      const assistantId = newMessageId();
+      const assistantMsg: AgentMessage = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        createdAt: now,
+        startedAt: now,
+        pending: true,
+      };
+
+      const isFirstMessage = activeSession.messages.length === 0;
+      const sessionId = activeSession.id;
+      const modelId = activeSession.modelId ?? null;
+      const providerCode = activeSession.providerCode ?? null;
+      const historyForRequest = [...activeSession.messages, userMsg].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      updateSession(sessionId, (s) => ({
+        ...s,
+        messages: [...s.messages, userMsg, assistantMsg],
+        title: isFirstMessage ? deriveSessionTitle(text) : s.title,
+        updatedAt: now,
+      }));
+      setComposer('');
+      setStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const patchAssistant = (patch: Partial<AgentMessage>) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id !== sessionId
+              ? s
+              : {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id === assistantId ? { ...m, ...patch } : m,
+                  ),
+                  updatedAt: Date.now(),
+                },
+          ),
+        );
+      };
+
+      const req: ChatStreamRequest = {
+        sessionId,
+        mode: 'chat',
+        messages: historyForRequest,
+        modelId,
+        providerCode,
+      };
+
+      try {
+        await streamAgentChat(
+          req,
+          {
+            onDelta: (chunk) => {
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id !== sessionId
+                    ? s
+                    : {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== assistantId) return m;
+                          return {
+                            ...m,
+                            content: m.content + chunk,
+                            firstTokenAt: m.firstTokenAt ?? Date.now(),
+                          };
+                        }),
+                        updatedAt: Date.now(),
+                      },
+                ),
+              );
+            },
+            onThink: (chunk) => {
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id !== sessionId
+                    ? s
+                    : {
+                        ...s,
+                        messages: s.messages.map((m) =>
+                          m.id === assistantId
+                            ? { ...m, think: (m.think ?? '') + chunk }
+                            : m,
+                        ),
+                      },
+                ),
+              );
+            },
+            onSources: (sources) => patchAssistant({ sources }),
+            onDone: () =>
+              patchAssistant({ pending: false, finishedAt: Date.now() }),
+            onError: (message) =>
+              patchAssistant({ pending: false, error: message, finishedAt: Date.now() }),
+          },
+          controller.signal,
+        );
+      } catch (err) {
+        if ((err as { name?: string })?.name !== 'AbortError') {
+          patchAssistant({
+            pending: false,
+            error: err instanceof Error ? err.message : '请求失败',
+            finishedAt: Date.now(),
+          });
+        }
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+        setStreaming(false);
+      }
+    },
+    [streaming, activeSession, updateSession],
+  );
+
   return (
     <div className="aetherhub-workspace h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
-      <div className="relative h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)] lg:m-0 xl:m-0">
+      <div className="relative h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)]">
         <div className="aurora-layer opacity-70" data-animated="true" aria-hidden="true" />
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'var(--hub-canvas-overlay)',
-          }}
+          style={{ background: 'var(--hub-canvas-overlay)' }}
           aria-hidden="true"
         />
 
         <div className="relative z-10 grid h-dvh max-h-dvh min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
           <WorkspaceSidebar
-            activeMode={activeMode}
-            onModeChange={setActiveMode}
-            onBack={() => navigate('/dashboard')}
             currentUser={currentUser}
+            sessions={sessions}
+            activeId={activeId}
+            streaming={streaming}
+            onBack={() => navigate('/dashboard')}
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+            onDeleteSession={handleDeleteSession}
           />
 
           <section className="flex h-dvh max-h-dvh min-w-0 flex-col border-x border-[var(--hub-border)]">
             <TopBar
-              activeMode={activeModeMeta}
-              onBack={() => navigate('/dashboard')}
               currentUser={currentUser}
+              activeSession={activeSession}
+              modelsState={modelsState}
+              streaming={streaming}
+              onSetModel={handleSetModel}
+              onBack={() => navigate('/dashboard')}
+              onNewSession={handleNewSession}
             />
-            <MobileModeSwitch activeMode={activeMode} onModeChange={setActiveMode} />
+
             <WorkspaceCanvas
-              activeMode={activeModeMeta}
               greeting={greeting}
               nickname={currentUser.nickname}
+              activeSession={activeSession}
+              modelsState={modelsState}
+              streaming={streaming}
+              composer={composer}
+              onComposerChange={setComposer}
+              onSend={handleSend}
+              onAbort={handleAbort}
+              onSetModel={handleSetModel}
+              onPickPrompt={(text) => setComposer(text)}
             />
           </section>
 
-          <ContextPanel createdAt={conversationCreatedAt} />
+          <ContextPanel
+            session={activeSession}
+            modelsState={modelsState}
+            onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
+            onClearMessages={() => {
+              if (!activeSession) return;
+              if (streaming) {
+                toast.info('请先停止当前回答');
+                return;
+              }
+              updateSession(activeSession.id, (s) => ({
+                ...s,
+                messages: [],
+                title: '新对话',
+                updatedAt: Date.now(),
+              }));
+              toast.success('已清空当前对话');
+            }}
+          />
         </div>
       </div>
     </div>
   );
 }
 
+// =============================================================================
+// 侧栏 —— 会话列表 + 新建按钮 + 用户信息
+// =============================================================================
+
 function WorkspaceSidebar({
-  activeMode,
-  onModeChange,
-  onBack,
   currentUser,
+  sessions,
+  activeId,
+  streaming,
+  onBack,
+  onNewSession,
+  onSelectSession,
+  onDeleteSession,
 }: {
-  activeMode: WorkspaceMode;
-  onModeChange: (mode: WorkspaceMode) => void;
-  onBack: () => void;
   currentUser: CurrentUser;
+  sessions: AgentSession[];
+  activeId: string | null;
+  streaming: boolean;
+  onBack: () => void;
+  onNewSession: () => void;
+  onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
 }) {
+  const groups = useMemo(() => groupSessionsByRecency(sessions), [sessions]);
+  const navigate = useNavigate();
+
   return (
     <aside className="hidden h-dvh max-h-dvh min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-5 py-4 backdrop-blur-2xl lg:flex">
-      <div className="mb-7 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-          <span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
-          <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-        </div>
+      <div className="mb-6 flex items-center justify-between">
         <button
           type="button"
           onClick={onBack}
           aria-label="返回管理后台"
-          className="grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
           <LayoutGrid className="h-4 w-4" />
+          <span className="text-sm">控制台</span>
         </button>
-      </div>
-
-      <div className="mb-4 grid grid-cols-3 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1">
-        {modeItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeMode === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onModeChange(item.id)}
-              className={cn(
-                'inline-flex h-10 items-center justify-center gap-2 rounded-lg text-[var(--fs-caption)] transition-all',
-                isActive
-                  ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)] shadow-[0_8px_24px_-18px_var(--aurora-1)]'
-                  : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        <span className="font-display text-sm tracking-[0.16em] text-[var(--ink-muted)]">
+          AetherHub
+        </span>
       </div>
 
       <button
         type="button"
-        className="mb-4 flex h-11 w-full items-center justify-between rounded-xl px-4 text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-[0.99]"
+        onClick={onNewSession}
+        disabled={streaming}
+        className={cn(
+          'mb-4 flex h-11 w-full items-center justify-between rounded-xl px-4 text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-[0.99]',
+          streaming && 'cursor-not-allowed opacity-60',
+        )}
       >
         <span className="inline-flex items-center gap-3 text-sm font-medium">
           <Plus className="h-4 w-4" />
@@ -277,52 +468,26 @@ function WorkspaceSidebar({
         <span className="rounded-md bg-white/16 px-1.5 py-0.5 font-mono text-[11px]">⌘ K</span>
       </button>
 
-      <nav className="space-y-1 border-b border-[var(--hub-border)] pb-5">
-        {projectNavItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.label}
-              type="button"
-              className="flex h-9 w-full items-center gap-3 rounded-lg px-2 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="min-h-0 flex-1 overflow-y-auto py-4">
-        <div className="mb-3">
-          <div className="mb-1 px-2 text-[var(--fs-caption)] text-[var(--ink-muted)]">Pinned</div>
-          <button
-            type="button"
-            className="flex h-9 w-full items-center gap-3 rounded-lg px-2 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-          >
-            <Pin className="h-4 w-4" />
-            AetherBlog 项目概览
-          </button>
-        </div>
-
-        {conversationGroups.map((group) => (
+      <div className="min-h-0 flex-1 overflow-y-auto py-2">
+        {sessions.length === 0 && (
+          <div className="px-2 py-6 text-center text-[var(--fs-caption)] text-[var(--ink-muted)]">
+            暂无会话，从上方「新建对话」开始
+          </div>
+        )}
+        {groups.map((group) => (
           <div key={group.label} className="mb-4">
-            <div className="mb-1 px-2 text-[var(--fs-caption)] text-[var(--ink-muted)]">{group.label}</div>
+            <div className="mb-1 px-2 text-[var(--fs-caption)] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+              {group.label}
+            </div>
             <div className="space-y-1">
-              {group.items.map((item) => (
-                <button
-                  key={`${group.label}-${item.title}`}
-                  type="button"
-                  className={cn(
-                    'group flex h-9 w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-sm transition-colors',
-                    item.active
-                      ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
-                      : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
-                  )}
-                >
-                  <span className="min-w-0 truncate">{item.title}</span>
-                  <span className="shrink-0 text-[var(--fs-caption)] text-[var(--ink-muted)]">{item.time}</span>
-                </button>
+              {group.sessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  session={session}
+                  active={session.id === activeId}
+                  onSelect={() => onSelectSession(session.id)}
+                  onDelete={() => onDeleteSession(session.id)}
+                />
               ))}
             </div>
           </div>
@@ -332,10 +497,11 @@ function WorkspaceSidebar({
       <div className="border-t border-[var(--hub-border)] pt-4">
         <button
           type="button"
+          onClick={() => navigate('/dashboard')}
           className="mb-3 flex h-9 w-full items-center gap-3 rounded-lg px-2 text-sm text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
-          <LayoutGrid className="h-4 w-4" />
-          查看全部对话
+          <Settings className="h-4 w-4" />
+          其他设置
         </button>
         <div className="flex items-center gap-3">
           {currentUser.avatarUrl ? (
@@ -353,34 +519,90 @@ function WorkspaceSidebar({
             <div className="truncate text-sm font-medium text-[var(--ink-primary)]">
               {currentUser.nickname}
             </div>
-            <div className="mt-0.5 inline-flex rounded-md bg-[var(--hub-control)] px-1.5 py-0.5 text-[11px] text-[var(--ink-muted)]">
-              Max Plan
+            <div className="mt-0.5 inline-flex rounded-md bg-[var(--hub-control)] px-1.5 py-0.5 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+              在线
             </div>
           </div>
-          <button
-            type="button"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-            aria-label="账户设置"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
         </div>
       </div>
     </aside>
   );
 }
 
-function TopBar({
-  activeMode,
-  onBack,
-  currentUser,
+function SessionRow({
+  session,
+  active,
+  onSelect,
+  onDelete,
 }: {
-  activeMode: { label: string; icon: ElementType };
-  onBack: () => void;
-  currentUser: CurrentUser;
+  session: AgentSession;
+  active: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
 }) {
-  const ActiveIcon = activeMode.icon;
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  return (
+    <div
+      className={cn(
+        'group relative flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm transition-colors',
+        active
+          ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+          : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+      >
+        <span className="min-w-0 truncate">{session.title || '新对话'}</span>
+        <span className="shrink-0 text-[var(--fs-caption)] tnum text-[var(--ink-muted)]">
+          {formatRelativeShort(session.updatedAt)}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (confirmDelete) onDelete();
+          else setConfirmDelete(true);
+        }}
+        onBlur={() => setConfirmDelete(false)}
+        title={confirmDelete ? '再次点击确认删除' : '删除对话'}
+        aria-label="删除对话"
+        className={cn(
+          'grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)]',
+          confirmDelete
+            ? 'text-[var(--signal-danger)] opacity-100'
+            : 'opacity-0 group-hover:opacity-100 hover:text-[var(--signal-danger)]',
+        )}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
+// =============================================================================
+// 顶栏 —— 会话标题 + 模型选择 + 用户头像
+// =============================================================================
+
+function TopBar({
+  currentUser,
+  activeSession,
+  modelsState,
+  streaming,
+  onSetModel,
+  onBack,
+  onNewSession,
+}: {
+  currentUser: CurrentUser;
+  activeSession: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  streaming: boolean;
+  onSetModel: (modelId: string | null, providerCode: string | null) => void;
+  onBack: () => void;
+  onNewSession: () => void;
+}) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[68px] md:px-7">
       <div className="flex min-w-0 items-center gap-3">
@@ -396,41 +618,46 @@ function TopBar({
           <AetherMark size={30} />
         </span>
         <div className="min-w-0">
-          <button
-            type="button"
-            className="flex max-w-[220px] items-center gap-2 truncate text-sm font-semibold text-[var(--ink-primary)]"
-          >
-            <span className="truncate">AetherBlog</span>
-            <ChevronDown className="h-4 w-4 text-[var(--ink-muted)]" />
-          </button>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)] lg:hidden">
-            <ActiveIcon className="h-3.5 w-3.5" />
-            {activeMode.label}
+          <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+            {activeSession?.title || 'AetherHub'}
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
+            {streaming ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                正在生成回答
+              </>
+            ) : (
+              <>
+                <span className="grid h-2.5 w-2.5 place-items-center rounded-full bg-[color-mix(in_oklch,var(--signal-success)_22%,transparent)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal-success)]" />
+                </span>
+                就绪
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="hidden items-center gap-2 text-sm text-[var(--ink-secondary)] md:flex">
-        <span className="grid h-4 w-4 place-items-center rounded-full bg-[color-mix(in_oklch,var(--signal-success)_20%,transparent)]">
-          <span className="h-2 w-2 rounded-full bg-[var(--signal-success)]" />
-        </span>
-        服务运行正常
-      </div>
-
       <div className="flex items-center gap-2">
-        <HeaderButton className="hidden sm:inline-flex">
-          <Upload className="h-4 w-4" />
-          导入
-        </HeaderButton>
-        <IconButton label="应用" className="hidden sm:grid">
-          <LayoutGrid className="h-4 w-4" />
-        </IconButton>
+        <ModelPickerButton
+          activeSession={activeSession}
+          modelsState={modelsState}
+          disabled={streaming}
+          onSetModel={onSetModel}
+        />
         <button
           type="button"
-          className="hidden h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)] sm:inline-flex"
+          onClick={onNewSession}
+          disabled={streaming}
+          aria-label="新建对话"
+          title="新建对话"
+          className={cn(
+            'grid h-9 w-9 place-items-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
+            streaming && 'cursor-not-allowed opacity-60',
+          )}
         >
-          <Diamond className="h-4 w-4" />
-          升级
+          <Plus className="h-4 w-4" />
         </button>
         {currentUser.avatarUrl ? (
           <img
@@ -451,172 +678,488 @@ function TopBar({
   );
 }
 
-function MobileModeSwitch({
-  activeMode,
-  onModeChange,
+// =============================================================================
+// 模型选择
+// =============================================================================
+
+function ModelPickerButton({
+  activeSession,
+  modelsState,
+  disabled,
+  onSetModel,
 }: {
-  activeMode: WorkspaceMode;
-  onModeChange: (mode: WorkspaceMode) => void;
+  activeSession: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  disabled: boolean;
+  onSetModel: (modelId: string | null, providerCode: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof items>();
+    for (const item of items) {
+      const key = item.providerCode;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return Array.from(map.entries());
+  }, [items]);
+
+  const currentLabel = useMemo(() => {
+    if (!activeSession?.modelId) return '自动路由';
+    const found = items.find(
+      (m) => m.modelId === activeSession.modelId && m.providerCode === activeSession.providerCode,
+    );
+    return found ? modelLabel(found) : activeSession.modelId;
+  }, [activeSession?.modelId, activeSession?.providerCode, items]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'inline-flex h-9 max-w-[200px] items-center gap-2 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)]',
+          disabled && 'cursor-not-allowed opacity-60',
+        )}
+      >
+        <Bot className="h-4 w-4 text-[var(--ink-secondary)]" />
+        <span className="truncate">{currentLabel}</span>
+        <ChevronDown className="h-4 w-4 text-[var(--ink-muted)]" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 w-[280px] max-h-[420px] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[var(--hub-card-shadow)] backdrop-blur-2xl">
+          <button
+            type="button"
+            onClick={() => {
+              onSetModel(null, null);
+              setOpen(false);
+            }}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+              !activeSession?.modelId
+                ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+            )}
+          >
+            <Sparkles className="h-4 w-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">自动路由</div>
+              <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                按任务路由策略自动选模型
+              </div>
+            </div>
+            {!activeSession?.modelId && <Check className="h-4 w-4 shrink-0" />}
+          </button>
+
+          {modelsState.status === 'loading' && (
+            <div className="px-3 py-4 text-center text-[var(--fs-caption)] text-[var(--ink-muted)]">
+              <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+              加载模型清单…
+            </div>
+          )}
+
+          {modelsState.status === 'error' && (
+            <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+              加载失败：{modelsState.message}
+            </div>
+          )}
+
+          {modelsState.status === 'ready' && grouped.length === 0 && (
+            <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--ink-muted)]">
+              没有已启用的模型，去 AI 配置页添加
+            </div>
+          )}
+
+          {grouped.map(([providerCode, list]) => (
+            <div key={providerCode} className="mt-2">
+              <div className="px-3 pb-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                {list[0]?.providerName || providerCode}
+              </div>
+              {list.map((m) => {
+                const selected =
+                  activeSession?.modelId === m.modelId &&
+                  activeSession?.providerCode === m.providerCode;
+                return (
+                  <button
+                    key={`${m.providerCode}:${m.modelId}`}
+                    type="button"
+                    onClick={() => {
+                      onSetModel(m.modelId, m.providerCode);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                      selected
+                        ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                        : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium">{modelLabel(m)}</span>
+                        {m.isDefault && (
+                          <span className="shrink-0 rounded-md bg-[var(--hub-control)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                            默认
+                          </span>
+                        )}
+                      </div>
+                      {m.contextWindow && (
+                        <div className="text-[var(--fs-caption)] tnum text-[var(--ink-muted)]">
+                          上下文 {Math.round(m.contextWindow / 1000)}K
+                        </div>
+                      )}
+                    </div>
+                    {selected && <Check className="h-4 w-4 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// 主区 —— 空态欢迎 / 消息流 + 输入框
+// =============================================================================
+
+function WorkspaceCanvas({
+  greeting,
+  nickname,
+  activeSession,
+  modelsState,
+  streaming,
+  composer,
+  onComposerChange,
+  onSend,
+  onAbort,
+  onSetModel,
+  onPickPrompt,
+}: {
+  greeting: string;
+  nickname: string;
+  activeSession: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  streaming: boolean;
+  composer: string;
+  onComposerChange: (value: string) => void;
+  onSend: (text: string) => void;
+  onAbort: () => void;
+  onSetModel: (modelId: string | null, providerCode: string | null) => void;
+  onPickPrompt: (text: string) => void;
+}) {
+  const isEmpty = !activeSession || activeSession.messages.length === 0;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const messages = activeSession?.messages ?? [];
+
+  // 流式过程中保持滚到底
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages, streaming]);
+
+  return (
+    <main className="flex min-h-0 flex-1 flex-col">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 md:px-8 md:pt-12">
+        <div className="mx-auto w-full max-w-[820px]">
+          {isEmpty ? (
+            <EmptyState
+              greeting={greeting}
+              nickname={nickname}
+              onPickPrompt={onPickPrompt}
+            />
+          ) : (
+            <div className="flex flex-col gap-6 pb-6">
+              {messages.map((m) => (
+                <MessageRow key={m.id} message={m} />
+              ))}
+              {streaming && messages[messages.length - 1]?.role === 'assistant' && (
+                <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                  按下 ⏹ 可随时停止
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Composer
+        value={composer}
+        onChange={onComposerChange}
+        onSend={onSend}
+        onAbort={onAbort}
+        streaming={streaming}
+        modelsState={modelsState}
+        activeSession={activeSession}
+        onSetModel={onSetModel}
+      />
+    </main>
+  );
+}
+
+function EmptyState({
+  greeting,
+  nickname,
+  onPickPrompt,
+}: {
+  greeting: string;
+  nickname: string;
+  onPickPrompt: (text: string) => void;
 }) {
   return (
-    <div className="border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-4 py-2.5 lg:hidden">
-      <div className="grid grid-cols-3 gap-1 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1">
-        {modeItems.map((item) => {
-          const Icon = item.icon;
-          const active = activeMode === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onModeChange(item.id)}
-              className={cn(
-                'flex h-10 items-center justify-center gap-2 rounded-xl text-[13px] transition-colors',
-                active
-                  ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)] shadow-[0_8px_22px_-18px_var(--aurora-1)]'
-                  : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)]',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </button>
-          );
-        })}
+    <div className="flex flex-col items-center pt-4 pb-8 text-center md:pt-12">
+      <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-[var(--hub-active)] text-[var(--hub-accent)]">
+        <Sparkles className="h-7 w-7" />
+      </div>
+      <h1 className="font-display text-[clamp(1.85rem,8vw,3.25rem)] leading-tight text-[var(--ink-primary)] md:leading-none">
+        {greeting}，{nickname}
+      </h1>
+      <p className="mt-3 text-sm text-[var(--ink-secondary)] md:text-[var(--fs-lede)]">
+        有什么可以帮你构建的？输入问题或点选下方建议开始。
+      </p>
+
+      <div className="mt-8 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:gap-3">
+        {promptChips.map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => onPickPrompt(chip)}
+            className="surface-leaf rounded-xl px-4 py-3 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+            data-interactive
+          >
+            <span className="line-clamp-2">{chip}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-function WorkspaceCanvas({
-  activeMode,
-  greeting,
-  nickname,
-}: {
-  activeMode: { label: string; icon: ElementType };
-  greeting: string;
-  nickname: string;
-}) {
-  const ActiveIcon = activeMode.icon;
-
+function MessageRow({ message }: { message: AgentMessage }) {
+  const [thinkOpen, setThinkOpen] = useState(false);
+  const isUser = message.role === 'user';
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6 md:px-8 md:pb-10 md:pt-16">
-      <div className="mx-auto flex w-full max-w-[860px] flex-col items-stretch md:items-center">
-        <div className="mb-5 flex flex-col items-center text-center md:mb-8">
-          <div className="mb-3 inline-flex items-center gap-3 md:mb-5 md:gap-4">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[var(--hub-active)] text-[var(--hub-accent)] md:h-12 md:w-12">
-              <Sparkles className="h-6 w-6 md:h-7 md:w-7" />
-            </div>
-            <h1 className="font-display text-[clamp(1.85rem,8vw,3.25rem)] leading-tight tracking-normal text-[var(--ink-primary)] md:leading-none">
-              {greeting}，{nickname}
-            </h1>
-          </div>
-          <p className="text-sm text-[var(--ink-secondary)] md:text-[var(--fs-lede)]">有什么可以帮你构建的?</p>
+    <div className={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}>
+      {!isUser && (
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-active)] text-[var(--hub-accent)]">
+          <Sparkles className="h-4 w-4" />
         </div>
-
-        <div className="surface-overlay w-full !rounded-[28px] p-4 md:!rounded-[24px] md:p-5">
-          <div className="min-h-[78px] text-[15px] text-[var(--ink-muted)] md:min-h-[86px] md:text-[var(--fs-body)]">
-            询问 Codex、使用 @ 引用或 / 选择技能
+      )}
+      <div className={cn('min-w-0 max-w-[88%]', isUser ? 'text-right' : 'text-left')}>
+        {isUser ? (
+          <div className="inline-block rounded-2xl bg-[var(--hub-active)] px-4 py-2.5 text-left text-sm text-[var(--ink-primary)] whitespace-pre-wrap">
+            {message.content}
           </div>
-          <div className="flex items-end justify-between gap-3">
-            <button
-              type="button"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--hub-border)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:h-11 md:w-11"
-              aria-label="添加上下文"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-            <div className="flex min-w-0 items-center gap-1.5 md:gap-2">
+        ) : (
+          <div className="surface-leaf inline-block !rounded-2xl px-4 py-3 text-left text-sm">
+            {message.think && (
               <button
                 type="button"
-                className="hidden items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] sm:inline-flex"
+                onClick={() => setThinkOpen((v) => !v)}
+                className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-[var(--hub-control)] px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
               >
-                <ActiveIcon className="h-4 w-4" />
-                {activeMode.label} 模式
+                {thinkOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                思考过程
               </button>
-              <button
-                type="button"
-                className="flex min-w-0 max-w-[46vw] items-center gap-1.5 rounded-lg px-2 py-2 text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] sm:max-w-none sm:gap-2 sm:px-2.5"
-              >
-                <span className="truncate">Claude 3.7 Sonnet</span>
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              <IconButton label="语音输入">
-                <Mic className="h-4 w-4" />
-              </IconButton>
-              <button
-                type="button"
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-95 md:h-11 md:w-11"
-                aria-label="发送"
-              >
-                <ArrowUp className="h-5 w-5" />
-              </button>
-            </div>
+            )}
+            {thinkOpen && message.think && (
+              <pre className="mb-3 whitespace-pre-wrap rounded-lg bg-[var(--hub-control)] px-3 py-2 text-[11px] text-[var(--ink-muted)]">
+                {message.think}
+              </pre>
+            )}
+            {message.content ? (
+              <MarkdownPreview content={message.content} className="text-sm leading-relaxed" />
+            ) : message.pending ? (
+              <span className="inline-flex items-center gap-2 text-[var(--ink-muted)]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                思考中…
+              </span>
+            ) : null}
+            {message.error && (
+              <div className="mt-2 rounded-lg bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] px-3 py-2 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+                {message.error}
+              </div>
+            )}
+            {message.sources && message.sources.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {message.sources.map((s) => (
+                  <span
+                    key={s.slug}
+                    className="rounded-md bg-[var(--hub-control)] px-2 py-0.5 text-[11px] text-[var(--ink-muted)]"
+                  >
+                    {s.title}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
+        )}
+        <div
+          className={cn(
+            'mt-1 text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)] tnum',
+            isUser ? 'text-right' : 'text-left',
+          )}
+        >
+          {formatDate(new Date(message.createdAt), 'HH:mm:ss')}
         </div>
-
-        <div className="-mx-4 mt-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:mt-6 sm:w-full sm:justify-center sm:overflow-visible sm:px-0">
-          <QuickMode icon={PenLine} label="写作" />
-          <QuickMode icon={BookOpen} label="学习" />
-          <QuickMode icon={Code2} label="代码" />
-          <QuickMode icon={Workflow} label="生活" />
-          <QuickMode icon={Cloud} label="从云盘" />
-        </div>
-
-        <section className="mt-8 w-full md:mt-12">
-          <div className="mb-4 text-sm font-medium text-[var(--ink-primary)]">为你准备</div>
-          <div className="flex snap-x gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible xl:grid-cols-4">
-            {connectorCards.map((card) => (
-              <ConnectorCard key={card.title} {...card} />
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-8 w-full md:mt-12">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="text-sm font-medium text-[var(--ink-primary)]">建议</div>
-            <button
-              type="button"
-              className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--hub-border)] text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              aria-label="刷新建议"
-            >
-              <RefreshCcw className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:gap-3 md:overflow-visible md:px-0">
-            {promptChips.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                className="shrink-0 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] px-4 py-2 text-sm text-[var(--ink-secondary)] transition-colors hover:border-[var(--hub-border-strong)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-        </section>
       </div>
-    </main>
+    </div>
   );
 }
 
-const PLACEHOLDER_CONVERSATION_ID = 'conv_abc123def456';
+// =============================================================================
+// Composer —— 输入框 + 发送 / 停止
+// =============================================================================
 
-function ContextPanel({ createdAt }: { createdAt: Date }) {
-  const createdAtLabel = useMemo(
-    () => formatDate(createdAt, 'yyyy-MM-dd HH:mm:ss'),
-    [createdAt],
-  );
+function Composer({
+  value,
+  onChange,
+  onSend,
+  onAbort,
+  streaming,
+  activeSession,
+  modelsState,
+  onSetModel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: (text: string) => void;
+  onAbort: () => void;
+  streaming: boolean;
+  activeSession: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  onSetModel: (modelId: string | null, providerCode: string | null) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const handleCopyId = async () => {
-    try {
-      await navigator.clipboard.writeText(PLACEHOLDER_CONVERSATION_ID);
-      toast.success('对话 ID 已复制');
-    } catch {
-      toast.error('复制失败,请手动选中复制');
+  const autosize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, []);
+
+  useEffect(() => {
+    autosize();
+  }, [autosize, value]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (!streaming) onSend(value);
     }
   };
 
-  const handleNotImplemented = (label: string) => {
-    toast.info(`${label}：功能开发中`);
+  const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
+  };
+
+  return (
+    <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 md:px-8">
+      <div className="mx-auto w-full max-w-[820px]">
+        <div className="surface-overlay !rounded-3xl p-3 md:p-4">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            disabled={streaming}
+            placeholder="输入问题，回车发送 · Shift + 回车换行"
+            className="block w-full resize-none bg-transparent px-1 py-2 text-[15px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none disabled:opacity-60 md:text-[var(--fs-body)]"
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <ModelPickerButton
+              activeSession={activeSession}
+              modelsState={modelsState}
+              disabled={streaming}
+              onSetModel={onSetModel}
+            />
+            {streaming ? (
+              <button
+                type="button"
+                onClick={onAbort}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)] md:h-11 md:w-11"
+                aria-label="停止生成"
+                title="停止生成"
+              >
+                <Square className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSend(value)}
+                disabled={!value.trim()}
+                className={cn(
+                  'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-95 md:h-11 md:w-11',
+                  !value.trim() && 'cursor-not-allowed opacity-50',
+                )}
+                aria-label="发送"
+                title="发送（Enter）"
+              >
+                <ArrowUp className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// 右侧上下文面板 —— 当前会话元信息
+// =============================================================================
+
+function ContextPanel({
+  session,
+  modelsState,
+  onDeleteSession,
+  onClearMessages,
+}: {
+  session: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  onDeleteSession: () => void;
+  onClearMessages: () => void;
+}) {
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const modelDisplay = useMemo(() => {
+    if (!session?.modelId) return '自动路由';
+    const found = items.find(
+      (m) => m.modelId === session.modelId && m.providerCode === session.providerCode,
+    );
+    return found ? modelLabel(found) : session.modelId;
+  }, [session?.modelId, session?.providerCode, items]);
+
+  const messageCount = session?.messages.length ?? 0;
+  const userMessageCount = session?.messages.filter((m) => m.role === 'user').length ?? 0;
+
+  const handleCopyId = async () => {
+    if (!session) return;
+    try {
+      await navigator.clipboard.writeText(session.id);
+      toast.success('对话 ID 已复制');
+    } catch {
+      toast.error('复制失败，请手动选中复制');
+    }
   };
 
   return (
@@ -635,24 +1178,31 @@ function ContextPanel({ createdAt }: { createdAt: Date }) {
 
       <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">对话信息</h3>
-        <MetadataRow label="对话 ID" value={PLACEHOLDER_CONVERSATION_ID} mono />
-        <MetadataRow label="创建时间" value={createdAtLabel} mono />
-        <MetadataRow label="模型" value="Claude 3.7 Sonnet" />
-        <MetadataRow label="消息数" value="2" mono />
+        <MetadataRow label="对话 ID" value={session?.id ?? '—'} mono />
         <MetadataRow
-          label="状态"
-          value={
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-[var(--signal-success)]" />
-              进行中
-            </span>
-          }
+          label="创建时间"
+          value={session ? formatDate(new Date(session.createdAt), 'yyyy-MM-dd HH:mm:ss') : '—'}
+          mono
         />
-        <MetadataRow label="上下文窗口" value="128K" mono />
+        <MetadataRow
+          label="最近活动"
+          value={session ? formatDate(new Date(session.updatedAt), 'yyyy-MM-dd HH:mm:ss') : '—'}
+          mono
+        />
+        <MetadataRow label="模型" value={modelDisplay} />
+        <MetadataRow
+          label="消息数"
+          value={`${messageCount} / 用户 ${userMessageCount}`}
+          mono
+        />
         <button
           type="button"
           onClick={handleCopyId}
-          className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[var(--hub-border)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          disabled={!session}
+          className={cn(
+            'mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[var(--hub-border)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+            !session && 'cursor-not-allowed opacity-60',
+          )}
         >
           <Copy className="h-4 w-4" />
           复制 ID
@@ -660,53 +1210,24 @@ function ContextPanel({ createdAt }: { createdAt: Date }) {
       </PanelCard>
 
       <PanelCard>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-[var(--ink-primary)]">资源和上下文</h3>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-[var(--hub-control)] px-2 py-0.5 font-mono text-[11px] text-[var(--ink-secondary)]">
-              3
-            </span>
-            <Plus className="h-4 w-4 text-[var(--ink-secondary)]" />
-          </div>
-        </div>
-        <div className="space-y-3">
-          {resources.map((resource) => {
-            const Icon = resource.icon;
-            return (
-              <div key={resource.name} className="flex items-center gap-3 text-sm">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[var(--hub-control)] text-[var(--ink-secondary)]">
-                  <Icon className="h-3.5 w-3.5" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[var(--ink-primary)]">{resource.name}</span>
-                <span className="shrink-0 text-[var(--fs-caption)] text-[var(--ink-muted)]">
-                  {resource.type} · {resource.size}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="mt-5 flex w-full items-center justify-center gap-2 text-sm text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
-        >
-          查看更多
-          <ArrowUp className="h-3.5 w-3.5 rotate-45" />
-        </button>
-      </PanelCard>
-
-      <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <ActionButton icon={Upload} onClick={() => handleNotImplemented('导出对话')}>
-            导出对话
+        <div className="grid grid-cols-1 gap-3">
+          <ActionButton icon={Pencil} onClick={() => toast.info('对话重命名功能开发中')}>
+            重命名对话
           </ActionButton>
-          <ActionButton icon={Share2} onClick={() => handleNotImplemented('分享对话')}>
-            分享对话
+          <ActionButton
+            icon={RefreshCcw}
+            onClick={onClearMessages}
+            disabled={!session || session.messages.length === 0}
+          >
+            清空当前对话
           </ActionButton>
-          <ActionButton icon={Trash2} onClick={() => handleNotImplemented('清空对话')}>
-            清空对话
-          </ActionButton>
-          <ActionButton icon={Trash2} danger onClick={() => handleNotImplemented('删除对话')}>
+          <ActionButton
+            icon={Trash2}
+            danger
+            onClick={onDeleteSession}
+            disabled={!session}
+          >
             删除对话
           </ActionButton>
         </div>
@@ -717,75 +1238,12 @@ function ContextPanel({ createdAt }: { createdAt: Date }) {
           type="button"
           className="grid h-11 w-11 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
           aria-label="帮助"
+          title="对话快捷操作仅本地生效，跨设备同步开发中"
         >
           <CircleHelp className="h-5 w-5" />
         </button>
       </div>
     </aside>
-  );
-}
-
-function ConnectorCard({
-  title,
-  description,
-  icon: Icon,
-  tone,
-}: {
-  title: string;
-  description: string;
-  icon: ElementType;
-  tone: string;
-}) {
-  return (
-    <article className="surface-leaf group min-h-[160px] min-w-[76vw] max-w-[320px] snap-start !rounded-xl p-4 md:min-h-[180px] md:min-w-0 md:max-w-none" data-interactive>
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className={cn('grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br text-white shadow-lg', tone)}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <button
-          type="button"
-          className="text-[var(--ink-muted)] opacity-80 transition-opacity hover:text-[var(--ink-primary)] group-hover:opacity-100"
-          aria-label="关闭建议"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <h3 className="mb-2 text-sm font-semibold text-[var(--ink-primary)]">{title}</h3>
-      <p className="min-h-[44px] text-sm leading-relaxed text-[var(--ink-secondary)]">{description}</p>
-      <button
-        type="button"
-        className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-[var(--hub-accent-text)]"
-      >
-        连接
-        <ArrowUp className="h-3.5 w-3.5 rotate-45" />
-      </button>
-    </article>
-  );
-}
-
-function QuickMode({ icon: Icon, label }: { icon: ElementType; label: string }) {
-  return (
-    <button
-      type="button"
-      className="inline-flex h-10 min-w-[104px] shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] px-4 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)] md:h-11 md:min-w-0 md:px-5"
-    >
-      <Icon className="h-4 w-4 text-[var(--ink-secondary)]" />
-      {label}
-    </button>
-  );
-}
-
-function HeaderButton({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'h-9 items-center gap-2 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)]',
-        className,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -847,7 +1305,14 @@ type ActionButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children
   danger?: boolean;
 };
 
-function ActionButton({ icon: Icon, children, danger, className, type, ...rest }: ActionButtonProps) {
+function ActionButton({
+  icon: Icon,
+  children,
+  danger,
+  className,
+  type,
+  ...rest
+}: ActionButtonProps) {
   return (
     <button
       type={type ?? 'button'}
@@ -855,8 +1320,8 @@ function ActionButton({ icon: Icon, children, danger, className, type, ...rest }
       className={cn(
         'flex h-11 items-center justify-center gap-2 rounded-lg border text-sm transition-colors',
         danger
-          ? 'border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)]'
-          : 'border-[var(--hub-border)] text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+          ? 'border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] disabled:opacity-50'
+          : 'border-[var(--hub-border)] text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)] disabled:opacity-50',
         className,
       )}
     >
@@ -864,4 +1329,21 @@ function ActionButton({ icon: Icon, children, danger, className, type, ...rest }
       {children}
     </button>
   );
+}
+
+// =============================================================================
+// 工具函数
+// =============================================================================
+
+function formatRelativeShort(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  const d = new Date(timestamp);
+  const sameDay =
+    new Date(now).toDateString() === d.toDateString();
+  if (sameDay) return formatDate(d, 'HH:mm');
+  return formatDate(d, 'MM-dd');
 }
