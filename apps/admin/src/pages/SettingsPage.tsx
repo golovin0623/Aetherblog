@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import { useFontPreview } from '@/contexts/FontPreviewContext';
+import { Toggle } from '@aetherblog/ui';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 // 存储管理 tab — Phase 2: 入口落在 /settings 顶层 tab 而非新页面,与现有 migration tab 同套机制
@@ -480,23 +481,20 @@ export default function SettingsPage() {
                           className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none font-mono"
                         />
                       ) : field.type === 'boolean' ? (
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => handleInputChange(field.key, !formData[field.key])}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors relative",
-                              formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-[var(--bg-input)]"
-                            )}
-                          >
-                            <motion.div
-                              animate={{ x: formData[field.key] === 'true' || formData[field.key] === true ? 20 : 2 }}
-                              className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
-                            />
-                          </button>
-                          <span className="text-sm text-[var(--text-muted)]">
-                            {formData[field.key] === 'true' || formData[field.key] === true ? '已开启' : '已关闭'}
-                          </span>
-                        </div>
+                        (() => {
+                          const isOn = formData[field.key] === 'true' || formData[field.key] === true;
+                          return (
+                            <div className="flex items-center gap-3">
+                              <Toggle
+                                checked={isOn}
+                                onChange={(next) => handleInputChange(field.key, next)}
+                              />
+                              <span className="text-sm text-[var(--text-muted)]">
+                                {isOn ? '已开启' : '已关闭'}
+                              </span>
+                            </div>
+                          );
+                        })()
                       ) : field.type === 'color' ? (
                         <div className="flex items-center gap-3">
                           <input
