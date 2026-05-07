@@ -206,10 +206,11 @@ func TestAiHandler_RecordProviderProxyActivity_WritesAuditOnSuccess(t *testing.T
 	}
 }
 
-// TestAiHandler_RecordProviderProxyActivity_MarksFailedOn4xx 验证：
-// 写操作返回 4xx 时,审计记录的 Status=FAILED, 但 Description 仍记下真实
-// 状态码,不被默认值掩盖。
-func TestAiHandler_RecordProviderProxyActivity_MarksFailedOn4xx(t *testing.T) {
+// TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx 验证：
+// 写操作返回 4xx 时,审计记录的 Status=WARNING (符合 chk_activity_event_status
+// 白名单 INFO/SUCCESS/WARNING/ERROR; 早期版本曾误用 "FAILED" 直接被 CHECK 拒绝),
+// Description 仍记下真实状态码,不被默认值掩盖。
+func TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx(t *testing.T) {
 	rec := &fakeRecorder{}
 	h := &AiHandler{activitySvc: rec}
 	e := handlertest.NewEcho()
@@ -224,11 +225,55 @@ func TestAiHandler_RecordProviderProxyActivity_MarksFailedOn4xx(t *testing.T) {
 		t.Fatalf("expected 1 event, got %d", len(rec.events))
 	}
 	got := rec.events[0]
-	if got.Status == nil || *got.Status != "FAILED" {
-		t.Errorf("expected Status=FAILED, got %v", got.Status)
+	if got.Status == nil || *got.Status != "WARNING" {
+		t.Errorf("expected Status=WARNING, got %v", got.Status)
 	}
 	if got.Description == nil || !strings.Contains(*got.Description, "HTTP 401") {
 		t.Errorf("Description should contain HTTP 401, got %v", got.Description)
+	}
+}
+
+// TestAiHandler_RecordProviderProxyActivity_MarksErrorOn5xx 验证：
+// 5xx 服务端错误归为 ERROR,与 4xx 客户端错误的 WARNING 区分,让 admin
+// 在前端筛选「错误」时能聚焦到上游 / 系统层故障。
+func TestAiHandler_RecordProviderProxyActivity_MarksErrorOn5xx(t *testing.T) {
+	rec := &fakeRecorder{}
+	h := &AiHandler{activitySvc: rec}
+	e := handlertest.NewEcho()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/providers/credentials/1", nil)
+	resp := httptest.NewRecorder()
+	c := e.NewContext(req, resp)
+	c.Response().Status = http.StatusBadGateway
+
+	h.recordProviderProxyActivity(c, http.MethodPut, "/credentials/1")
+
+	if len(rec.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(rec.events))
+	}
+	got := rec.events[0]
+	if got.Status == nil || *got.Status != "ERROR" {
+		t.Errorf("expected Status=ERROR for 5xx, got %v", got.Status)
+	}
+}
+
+// TestStatusFromHTTP 锁定 HTTP→activity status 的映射,任何后续改动都必须
+// 同步更新此处与 chk_activity_event_status 白名单。
+func TestStatusFromHTTP(t *testing.T) {
+	cases := []struct {
+		http int
+		want string
+	}{
+		{http.StatusOK, "SUCCESS"},
+		{http.StatusCreated, "SUCCESS"},
+		{http.StatusBadRequest, "WARNING"},
+		{http.StatusUnauthorized, "WARNING"},
+		{http.StatusInternalServerError, "ERROR"},
+		{http.StatusBadGateway, "ERROR"},
+	}
+	for _, tc := range cases {
+		if got := statusFromHTTP(tc.http); got != tc.want {
+			t.Errorf("statusFromHTTP(%d) = %q, want %q", tc.http, got, tc.want)
+		}
 	}
 }
 

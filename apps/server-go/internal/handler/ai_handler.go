@@ -172,11 +172,26 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	return err
 }
 
-// recordProviderProxyActivity 把一次 /providers/* 写操作写入 activity_events，
-// 失败仅 log.Warn 不阻塞主代理流程。Description 同时记下子路径与 HTTP
-// 状态码，方便事后定位"管理员 X 在 T 时间向 /providers/credentials/Y 发了 PUT
-// 失败 HTTP 401"这种细节。
-func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath string) {
+// statusFromHTTP 把 HTTP 响应状态码映射到 activity_events.status 枚举
+// (INFO/SUCCESS/WARNING/ERROR)。注意必须严格遵守 chk_activity_event_status，
+// 早期版本曾使用 "FAILED" 直接被 CHECK 拒绝、审计静默丢失；这里把 4xx 归为
+// WARNING(客户端错误，多为参数 / 鉴权问题)，5xx 归为 ERROR (上游 / 系统错误)，
+// 让 admin 在前端筛选「警告 / 错误」时能区分严重程度。
+func statusFromHTTP(httpStatus int) string {
+	switch {
+	case httpStatus >= 500:
+		return "ERROR"
+	case httpStatus >= 400:
+		return "WARNING"
+	default:
+		return "SUCCESS"
+	}
+}
+
+// recordAIEvent 是所有 AI 子模块写审计的统一入口。任意 nil 字段安全省略。
+// 成功插入失败仅 log.Warn 不阻塞主响应路径，让审计写入永远不会成为 LLM 路径
+// 的故障源。所有 AI 类事件在此处统一打 EventCategory="ai"。
+func (h *AiHandler) recordAIEvent(ctx context.Context, c echo.Context, eventType, title, description string, httpStatus int) {
 	if h.activitySvc == nil {
 		return
 	}
@@ -186,56 +201,106 @@ func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath 
 	}
 	ip := c.RealIP()
 	evtCat := "ai"
-	respStatus := c.Response().Status
-	statusText := "SUCCESS"
-	if respStatus >= 400 {
-		statusText = "FAILED"
+	statusText := statusFromHTTP(httpStatus)
+	var descPtr *string
+	if description != "" {
+		descPtr = &description
 	}
-	desc := fmt.Sprintf("%s /providers%s → HTTP %d", method, subPath, respStatus)
 	evt := &model.ActivityEvent{
-		EventType:     "ai.provider_proxy_write",
+		EventType:     eventType,
 		EventCategory: &evtCat,
-		Title:         fmt.Sprintf("AI 提供商代理 %s %s", method, subPath),
-		Description:   &desc,
+		Title:         title,
+		Description:   descPtr,
 		UserID:        userID,
 		IP:            &ip,
 		Status:        &statusText,
 	}
-	if err := h.activitySvc.Create(c.Request().Context(), evt); err != nil {
-		log.Warn().Err(err).Msg("record AI provider proxy activity failed")
+	if err := h.activitySvc.Create(ctx, evt); err != nil {
+		log.Warn().Err(err).Str("eventType", eventType).Msg("record AI activity failed")
 	}
+}
+
+// recordProviderProxyActivity 把一次 /providers/* 写操作写入 activity_events，
+// 失败仅 log.Warn 不阻塞主代理流程。Description 同时记下子路径与 HTTP
+// 状态码，方便事后定位"管理员 X 在 T 时间向 /providers/credentials/Y 发了 PUT
+// 失败 HTTP 401"这种细节。
+func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath string) {
+	respStatus := c.Response().Status
+	desc := fmt.Sprintf("%s /providers%s → HTTP %d", method, subPath, respStatus)
+	title := fmt.Sprintf("AI 提供商代理 %s %s", method, subPath)
+	h.recordAIEvent(c.Request().Context(), c, "ai.provider_proxy_write", title, desc, respStatus)
 }
 
 // --- 同步 AI 生成接口 ---
 
+// generationTaskLabels 把内部 task code 映射成给运维 / 管理员看的中文标题，
+// 让 activity_events 列表里的「AI 生成 - 摘要 / 标签 / ...」一眼就能识别出
+// 是哪个面板触发的调用。Source of truth：与前端 ActivitiesPage eventTypeOptions.ai
+// 对齐 (`ai.generation.<task>`)。
+var generationTaskLabels = map[string]string{
+	"summary":   "摘要",
+	"tags":      "标签",
+	"titles":    "标题建议",
+	"polish":    "文章润色",
+	"outline":   "大纲",
+	"translate": "翻译",
+}
+
+// runGeneration 是六个同步 AI 生成端点的共用骨架：
+//   - 先把客户端请求体大小记下来 (Content-Length)，用作 Description 一行流水；
+//   - 走 proxySyncRequest 转发给 ai-service；
+//   - 不论成功或失败都写一条 ai.generation.<task> 审计，让管理员能在
+//     Activities 页面按「AI」分类筛选出每次 LLM 调用。
+//
+// 不打 metadata JSONB —— 当前 ActivityRepo / 前端没有展示 metadata，多写了
+// 也只是字节占用，等需要时再开。
+func (h *AiHandler) runGeneration(c echo.Context, task, path string) error {
+	contentLen := c.Request().ContentLength
+	err := h.proxySyncPost(c, path)
+	respStatus := c.Response().Status
+	taskLabel := generationTaskLabels[task]
+	if taskLabel == "" {
+		taskLabel = task
+	}
+	desc := fmt.Sprintf("POST %s · 请求体 %d B · → HTTP %d", path, contentLen, respStatus)
+	h.recordAIEvent(
+		c.Request().Context(), c,
+		"ai.generation."+task,
+		"AI 生成 - "+taskLabel,
+		desc,
+		respStatus,
+	)
+	return err
+}
+
 // Summary 处理 POST /ai/summary 请求，代理至 AI 服务生成文章摘要。
 func (h *AiHandler) Summary(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/summary")
+	return h.runGeneration(c, "summary", "/api/v1/ai/summary")
 }
 
 // Tags 处理 POST /ai/tags 请求，代理至 AI 服务生成文章标签。
 func (h *AiHandler) Tags(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/tags")
+	return h.runGeneration(c, "tags", "/api/v1/ai/tags")
 }
 
 // Titles 处理 POST /ai/titles 请求，代理至 AI 服务生成文章标题建议。
 func (h *AiHandler) Titles(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/titles")
+	return h.runGeneration(c, "titles", "/api/v1/ai/titles")
 }
 
 // Polish 处理 POST /ai/polish 请求，代理至 AI 服务进行文章润色。
 func (h *AiHandler) Polish(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/polish")
+	return h.runGeneration(c, "polish", "/api/v1/ai/polish")
 }
 
 // Outline 处理 POST /ai/outline 请求，代理至 AI 服务生成文章大纲。
 func (h *AiHandler) Outline(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/outline")
+	return h.runGeneration(c, "outline", "/api/v1/ai/outline")
 }
 
 // Translate 处理 POST /ai/translate 请求，代理至 AI 服务进行翻译。
 func (h *AiHandler) Translate(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/translate")
+	return h.runGeneration(c, "translate", "/api/v1/ai/translate")
 }
 
 // --- SSE 流式接口 ---
@@ -254,13 +319,23 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 		proxyHeaders(c),
 	)
 	if err != nil {
+		// 客户端 / 上游连接层错误：不知道 HTTP 状态码，按 503 落审计 (Status=ERROR)。
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式)", "POST /api/v1/ai/summary/stream · 上游连接失败", http.StatusServiceUnavailable)
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
 
 	if statusCode != http.StatusOK {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式)", fmt.Sprintf("POST /api/v1/ai/summary/stream · 上游 HTTP %d", statusCode), statusCode)
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
+
+	// 上游已 200，准备开流。这里就把成功事件写下；后续 SSE 行级转发若中途
+	// 异常会留 log.Warn，不再补审计 —— 否则一次会话最多 2 条 ai 事件，列表噪声大。
+	h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+		"AI 生成 - 摘要(流式)", "POST /api/v1/ai/summary/stream · 流式开始", http.StatusOK)
 
 	// 设置 SSE 响应头
 	w := c.Response()
@@ -326,13 +401,20 @@ func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 		proxyHeaders(c),
 	)
 	if err != nil {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式 GET)", "GET /ai/summary/stream · 上游连接失败", http.StatusServiceUnavailable)
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
 
 	if statusCode != http.StatusOK {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式 GET)", fmt.Sprintf("GET /ai/summary/stream · 上游 HTTP %d", statusCode), statusCode)
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
+
+	h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+		"AI 生成 - 摘要(流式 GET)", "GET /ai/summary/stream · 流式开始", http.StatusOK)
 
 	// 设置 SSE 响应头
 	w := c.Response()
@@ -403,7 +485,12 @@ func (h *AiHandler) GetPrompt(c echo.Context) error {
 // UpdatePrompt 处理 PUT /ai/prompts/:taskType 请求，更新指定任务类型的提示词。
 func (h *AiHandler) UpdatePrompt(c echo.Context) error {
 	taskType := c.Param("taskType")
-	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/prompts/"+taskType)
+	err := h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/prompts/"+taskType)
+	respStatus := c.Response().Status
+	desc := fmt.Sprintf("PUT /ai/prompts/%s → HTTP %d", taskType, respStatus)
+	h.recordAIEvent(c.Request().Context(), c, "ai.prompt_update",
+		"AI 提示词更新: "+taskType, desc, respStatus)
+	return err
 }
 
 // --- 任务 CRUD ---
@@ -415,19 +502,31 @@ func (h *AiHandler) ListTasks(c echo.Context) error {
 
 // CreateTask 处理 POST /ai/tasks 请求，创建新的 AI 任务配置。
 func (h *AiHandler) CreateTask(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/admin/ai/tasks")
+	err := h.proxySyncPost(c, "/api/v1/admin/ai/tasks")
+	respStatus := c.Response().Status
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_create",
+		"AI 任务创建", fmt.Sprintf("POST /ai/tasks → HTTP %d", respStatus), respStatus)
+	return err
 }
 
 // UpdateTask 处理 PUT /ai/tasks/:code 请求，更新指定 code 的 AI 任务配置。
 func (h *AiHandler) UpdateTask(c echo.Context) error {
 	code := c.Param("code")
-	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/tasks/"+code)
+	err := h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/tasks/"+code)
+	respStatus := c.Response().Status
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_update",
+		"AI 任务更新: "+code, fmt.Sprintf("PUT /ai/tasks/%s → HTTP %d", code, respStatus), respStatus)
+	return err
 }
 
 // DeleteTask 处理 DELETE /ai/tasks/:code 请求，删除指定 code 的 AI 任务配置。
 func (h *AiHandler) DeleteTask(c echo.Context) error {
 	code := c.Param("code")
-	return h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
+	err := h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
+	respStatus := c.Response().Status
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_delete",
+		"AI 任务删除: "+code, fmt.Sprintf("DELETE /ai/tasks/%s → HTTP %d", code, respStatus), respStatus)
+	return err
 }
 
 // --- SSE 事件验证 ---

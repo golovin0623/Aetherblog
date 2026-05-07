@@ -44,6 +44,7 @@
 | Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `ai_handler` | `/v1/admin/ai/*` | 9 个业务端点（summary / tags / titles / polish / outline / translate + stream 变体 + health） + 7 个配置端点（prompts + tasks CRUD） + provider 透传（`Any /*`） |
+| `agent_handler` | `/v1/agent/*` | 4 路由（`POST chat` SSE、`GET models`、`GET articles`、`GET tags`），任意已登录用户可访问；写 `ai.agent_chat` 审计 |
 
 ### 站点配置与统计
 

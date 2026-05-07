@@ -529,7 +529,7 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 | `storage_providers` | 云存储提供商配置 |
 | `permissions` | 文件夹 ACL 权限记录 |
 | `shared_items` | 分享链接（含令牌 / 过期时间） |
-| `activity_events` | 操作活动事件流 |
+| `activity_events` | 操作活动事件流（`event_category` ∈ {post, comment, user, system, friend, media, ai, security}；AI 写入事件含 `ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*` / `ai.provider_proxy_write`） |
 
 ---
 

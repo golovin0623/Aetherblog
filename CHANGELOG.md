@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🪛 补全 AI 模块 activity_events 埋点 + 修复两条 CHECK constraint 漏写 (2026-05-07, branch claude/add-ai-activity-logging-bc4fb)
+
+**背景：** 活动记录页 `/activities?category=AI` 一直空白 —— admin 后台早就有六个 AI 生成端点 (summary/tags/titles/polish/outline/translate)、Agent 工作台 chat、提示词更新、AI 任务 CRUD,但只有 `/providers/*` 写操作有审计 (`ai.provider_proxy_write`),其它路径完全失声。同时排查 ai_handler 现有审计代码时发现两条 CHECK 约束 silently dropping records:`ai_handler.recordProviderProxyActivity` 4xx 时写入 `Status="FAILED"` 而 `chk_activity_event_status` 只允许 `INFO/SUCCESS/WARNING/ERROR`;`auth_handler.RotateJWTSecret` 写入 `EventCategory="security"` 而 `chk_activity_event_category` 只放 7 类 (post/comment/user/system/friend/media/ai)。两个 INSERT 在生产环境都会被 PostgreSQL 拒绝,Go 代码 `_ = h.activitySvc.Create(...)` / `if err := ...; err != nil { log.Warn() }` 把错误吞进 stderr,前端就一直看不到任何 security / AI failure 记录。
+
+**Added — Migration `000046_activity_event_category_security.up.sql`:**
+- 把 `event_category` 白名单扩展到 8 类:新增 `'security'` (与现有前端 `categoryConfig.security` 对齐),让 `security.jwt_rotate` 类事件能落库。
+- down migration 提示运维:若已有 `security` 行需先迁/清理再回滚,否则 CHECK 重建会失败。
+
+**Added — Backend AI 审计埋点 (`apps/server-go/internal/handler/ai_handler.go`):**
+- 新增统一入口 `recordAIEvent(ctx, c, eventType, title, desc, httpStatus)`,所有 AI 子事件用同一类别 `ai`、同一状态映射 `statusFromHTTP` (2xx→SUCCESS, 4xx→WARNING, 5xx→ERROR)。`recordProviderProxyActivity` 改为薄包装,顺手把旧 `FAILED` bug 修了。
+- 六个同步 AI 生成端点共用 `runGeneration(c, task, path)` 骨架,每次调用写 `ai.generation.<task>` (summary/tags/titles/polish/outline/translate),Description 含请求体大小 + 上游 HTTP 状态。
+- SSE 摘要流 (`SummaryStream` / `SummaryStreamGET`) 写 `ai.generation.summary_stream`:流开始 / 上游连接失败 / 上游非 2xx 各落一条,流式中途异常仍走 `log.Warn` 不补审计 (避免一次会话 2+ 条 ai 事件把列表灌爆)。
+- `UpdatePrompt` → `ai.prompt_update`,`CreateTask/UpdateTask/DeleteTask` → `ai.task_create/update/delete`。`ai.provider_proxy_write` 兼容保留,Status 现在合规可以真正落库。
+
+**Added — Backend Agent chat 审计 (`apps/server-go/internal/handler/agent_handler.go`):**
+- `NewAgentHandler` 多接一个 `activityRecorder` 参数,server.go wire 时传入 `activitySvc`。
+- 新增 `recordChatActivity`:每次 `POST /api/v1/agent/chat` 写一条 `ai.agent_chat`,Description 含请求体大小、上游 HTTP 状态、人类可读说明 (e.g. `"流式开始"`、`"上游连接失败"`)。仅在每次会话开始/失败写 1 条,不在 SSE 行级 callback 写 —— 一次问答动辄几十条 think/delta/sources,过细只会让 admin 看不见信号。
+- 与 `ai_handler.statusFromHTTP` 共享 status 映射逻辑。
+
+**Changed — Frontend `apps/admin/src/pages/activities/ActivitiesPage.tsx`:**
+- `eventTypeOptions.ai` 由空数组扩展为 13 个事件类型条目,与后端 `ai.*` 完全对齐:6 个生成、1 个流式、1 个 agent chat、1 个提示词、3 个任务、1 个 provider proxy。选中 AI 分类后二级 Select 立刻可用。
+
+**Tests (`ai_handler_test.go`):**
+- 旧 `MarksFailedOn4xx` 改名 `MarksWarningOn4xx` (`Status=WARNING`,锁死与 CHECK 约束一致);
+- 新增 `MarksErrorOn5xx` (5xx → ERROR);
+- 新增 `TestStatusFromHTTP` 表驱动测试,任何后续改动都必须同步白名单。
+
+**Why not log every single SSE event:** 摘要 / agent chat 流单次会话最多产出几十条 SSE delta,如果每条都写 activity_events 一周就能把表灌到几百万行,既看不见信号也会拖慢 admin Activities 页查询。当前策略是 "每次调用 1 条审计 (开始/上游失败选其一)",成本恒定、可观测性够用。需要详细 token / 耗时 metrics 的场景应当在 ai-service 自己的 metrics pipeline 里做,不应该塞进 audit log。
+
+---
+
 ### 🩹 修复 VULN-056 升级后 ai-service `InvalidToken` + 新增 message 编辑/重试/复制 (2026-05-05, branch claude/fix-credential-decryption-GuiJk)
 
 **背景:** VULN-056 把 AI 凭证加密 key 从 `_legacy_jwt_derived_key(JWT_SECRET) = urlsafe_b64encode(sha256(JWT_SECRET))` 切换到独立的 `AI_CREDENTIAL_ENCRYPTION_KEYS`。已部署的 instance 升级后 `start.sh::bootstrap_env()` 会自动 **生成全新的 Fernet key** 并写进 `.env`,而 `ai_credentials.api_key_encrypted` 列里仍是旧的 JWT 派生 key 加密的密文 —— MultiFernet 全员都解不开,`/api/v1/agent/chat` 直接 500、admin 凭证页显示"未配置凭证"、agent 路由探针记录空错误消息的 `InvalidToken`。`apps/ai-service/scripts/rotate_credentials.py` 是为这种情况设计的迁移工具,但用户得手动把 legacy key 拼到 `AI_CREDENTIAL_ENCRYPTION_KEYS` 末尾再跑脚本,体验断裂。同一个 PR 顺手补上 agent workspace 的 message 操作 —— `MessageBubble` 之前对 user 消息没有任何按钮,assistant 消息只在 `!pending && content` 时才出现复制,error 状态也无重试入口,与 ChatGPT / Claude / LobeChat 的常态相去甚远。
