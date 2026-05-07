@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -12,10 +13,12 @@ import type {
   ElementType,
   KeyboardEvent,
   ReactNode,
+  RefObject,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
+  AtSign,
   Bot,
   Brain,
   Check,
@@ -24,17 +27,23 @@ import {
   ChevronUp,
   CircleHelp,
   Copy,
+  FileText,
   LayoutGrid,
   Loader2,
+  Moon,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCcw,
+  Search,
   Settings,
+  SlashSquare,
   Sparkles,
   Square,
+  Sun,
   Trash2,
   User as UserIcon,
+  X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -42,14 +51,19 @@ import { AetherMark } from '@aetherblog/ui';
 import { MarkdownPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
+import { useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
 import {
+  type AgentArticle,
   type AgentMessage,
   type AgentSession,
   type ChatStreamRequest,
+  type SlashCommand,
+  SLASH_COMMANDS,
   createEmptySession,
   deriveSessionTitle,
+  filterSlashCommands,
   groupSessionsByRecency,
   loadSessions,
   modelLabel,
@@ -57,6 +71,7 @@ import {
   saveSessions,
   streamAgentChat,
   useAgentModels,
+  useArticleSearch,
 } from '@/services/agent';
 
 const promptChips = [
@@ -139,6 +154,11 @@ export default function AetherHubWorkspacePage() {
   const [composer, setComposer] = useState('');
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // @ 选中的文章（每条会话独立维护，简化起见放当前会话级别 state，切换会话时清空）
+  const [selectedArticles, setSelectedArticles] = useState<AgentArticle[]>([]);
+  useEffect(() => {
+    setSelectedArticles([]);
+  }, [activeId]);
 
   const updateSession = useCallback(
     (id: string, updater: (s: AgentSession) => AgentSession) => {
@@ -272,6 +292,7 @@ export default function AetherHubWorkspacePage() {
         messages: historyForRequest,
         modelId,
         providerCode,
+        articleIds: selectedArticles.length > 0 ? selectedArticles.map((a) => a.id) : null,
       };
 
       try {
@@ -337,7 +358,59 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession],
+    [streaming, activeSession, updateSession, selectedArticles],
+  );
+
+  // ----- 斜杠命令 -----
+  const handleSlashCommand = useCallback(
+    (cmd: SlashCommand) => {
+      if (cmd.kind === 'remote') {
+        setComposer(cmd.template ?? cmd.command);
+        return;
+      }
+      switch (cmd.command) {
+        case '/clear':
+          if (!activeSession) return;
+          if (streaming) {
+            toast.info('请先停止当前回答');
+            return;
+          }
+          updateSession(activeSession.id, (s) => ({
+            ...s,
+            messages: [],
+            title: '新对话',
+            updatedAt: Date.now(),
+          }));
+          setSelectedArticles([]);
+          toast.success('已清空当前对话');
+          return;
+        case '/new':
+          handleNewSession();
+          return;
+        case '/regen': {
+          if (!activeSession || streaming) return;
+          const msgs = activeSession.messages;
+          const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
+          if (!lastUser) {
+            toast.info('当前对话没有可重发的用户消息');
+            return;
+          }
+          // 把最后一条 user 之后的消息全部砍掉，再重新发
+          const trimmed = msgs.slice(0, msgs.findIndex((m) => m.id === lastUser.id) + 1).slice(0, -1);
+          updateSession(activeSession.id, (s) => ({
+            ...s,
+            messages: trimmed,
+            updatedAt: Date.now(),
+          }));
+          // 让下一帧再触发 send，确保 trimmed state 落地
+          window.setTimeout(() => handleSend(lastUser.content), 30);
+          return;
+        }
+        default:
+          toast.info(`命令 ${cmd.command} 暂未实现`);
+      }
+    },
+    [activeSession, streaming, updateSession, handleNewSession, handleSend],
   );
 
   return (
@@ -385,6 +458,16 @@ export default function AetherHubWorkspacePage() {
               onAbort={handleAbort}
               onSetModel={handleSetModel}
               onPickPrompt={(text) => setComposer(text)}
+              selectedArticles={selectedArticles}
+              onPickArticle={(article) =>
+                setSelectedArticles((prev) =>
+                  prev.find((a) => a.id === article.id) ? prev : [...prev, article],
+                )
+              }
+              onRemoveArticle={(id) =>
+                setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
+              }
+              onSlashCommand={handleSlashCommand}
             />
           </section>
 
@@ -607,6 +690,8 @@ function TopBar({
   onBack: () => void;
   onNewSession: () => void;
 }) {
+  const { isDark, toggleThemeWithAnimation } = useTheme();
+
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[68px] md:px-7">
       <div className="flex min-w-0 items-center gap-3">
@@ -650,6 +735,15 @@ function TopBar({
           disabled={streaming}
           onSetModel={onSetModel}
         />
+        <button
+          type="button"
+          onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
+          aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+          title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+          className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+        >
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
         <button
           type="button"
           onClick={onNewSession}
@@ -883,6 +977,10 @@ function WorkspaceCanvas({
   onAbort,
   onSetModel,
   onPickPrompt,
+  selectedArticles,
+  onPickArticle,
+  onRemoveArticle,
+  onSlashCommand,
 }: {
   greeting: string;
   nickname: string;
@@ -895,6 +993,10 @@ function WorkspaceCanvas({
   onAbort: () => void;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
   onPickPrompt: (text: string) => void;
+  selectedArticles: AgentArticle[];
+  onPickArticle: (article: AgentArticle) => void;
+  onRemoveArticle: (id: number) => void;
+  onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const isEmpty = !activeSession || activeSession.messages.length === 0;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -942,6 +1044,10 @@ function WorkspaceCanvas({
         modelsState={modelsState}
         activeSession={activeSession}
         onSetModel={onSetModel}
+        selectedArticles={selectedArticles}
+        onPickArticle={onPickArticle}
+        onRemoveArticle={onRemoveArticle}
+        onSlashCommand={onSlashCommand}
       />
     </main>
   );
@@ -1279,6 +1385,10 @@ function Composer({
   activeSession,
   modelsState,
   onSetModel,
+  selectedArticles,
+  onPickArticle,
+  onRemoveArticle,
+  onSlashCommand,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -1288,8 +1398,16 @@ function Composer({
   activeSession: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
+  selectedArticles: AgentArticle[];
+  onPickArticle: (article: AgentArticle) => void;
+  onRemoveArticle: (id: number) => void;
+  onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const atBtnRef = useRef<HTMLButtonElement | null>(null);
+  const slashBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [picker, setPicker] = useState<'article' | 'slash' | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const autosize = useCallback(() => {
     const el = textareaRef.current;
@@ -1313,38 +1431,112 @@ function Composer({
     onChange(e.target.value);
   };
 
+  const togglePicker = (k: 'article' | 'slash') => {
+    setPicker((cur) => (cur === k ? null : k));
+  };
+
   return (
     <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 md:px-8">
-      <div className="mx-auto w-full max-w-[820px]">
-        <div className="surface-overlay !rounded-3xl p-3 md:p-4">
+      <div className="relative mx-auto w-full max-w-[820px]">
+        {/* mentions chips —— @ 选中的文章 */}
+        {selectedArticles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="已引用文章">
+            {selectedArticles.map((a) => (
+              <span
+                key={`art-${a.id}`}
+                className="inline-flex max-w-[18rem] items-center gap-1 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-2 py-1 text-[11.5px] text-[var(--aurora-1)]"
+              >
+                <AtSign className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="truncate" title={a.title}>
+                  {a.title}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveArticle(a.id)}
+                  className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full hover:bg-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]"
+                  aria-label={`移除引用 ${a.title}`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div
+          className={cn(
+            'rounded-3xl bg-[var(--hub-panel-strong)] p-3 transition-[box-shadow,border-color] duration-300 md:p-4',
+            'border',
+            focused
+              ? 'border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] shadow-[0_10px_32px_-12px_color-mix(in_oklch,var(--aurora-1)_38%,transparent),0_0_0_4px_color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+              : 'border-[var(--hub-border)] shadow-[0_4px_18px_-12px_rgba(0,0,0,0.25)]',
+          )}
+        >
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             rows={1}
             disabled={streaming}
-            placeholder="输入问题，回车发送 · Shift + 回车换行"
-            className="block w-full resize-none bg-transparent px-1 py-2 text-[15px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none disabled:opacity-60 md:text-[var(--fs-body)]"
+            placeholder="提问、创建或开始任务。@ 引用文章 · / 调用命令"
+            spellCheck={false}
+            autoComplete="off"
+            className={cn(
+              'block w-full resize-none bg-transparent px-1 py-1.5 text-[15px] leading-[1.55] text-[var(--ink-primary)]',
+              'placeholder:text-[var(--ink-muted)] placeholder:opacity-70',
+              'border-0 outline-none focus:border-0 focus:outline-none focus:ring-0',
+              'disabled:opacity-60 md:text-[var(--fs-body)]',
+            )}
+            style={{ boxShadow: 'none' }}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <ModelPickerButton
-              activeSession={activeSession}
-              modelsState={modelsState}
-              disabled={streaming}
-              onSetModel={onSetModel}
-              placement="top"
-              align="start"
-            />
+            <div className="flex min-w-0 items-center gap-1">
+              <ModelPickerButton
+                activeSession={activeSession}
+                modelsState={modelsState}
+                disabled={streaming}
+                onSetModel={onSetModel}
+                placement="top"
+                align="start"
+              />
+              <span
+                aria-hidden="true"
+                className="mx-1 hidden h-4 w-px bg-[var(--hub-border)] sm:inline-block"
+              />
+              <ToolButton
+                ref={atBtnRef}
+                title="引用文章 (@)"
+                active={picker === 'article'}
+                onClick={() => togglePicker('article')}
+              >
+                <AtSign className="h-3.5 w-3.5" />
+              </ToolButton>
+              <ToolButton
+                ref={slashBtnRef}
+                title="斜杠命令 (/)"
+                active={picker === 'slash'}
+                onClick={() => togglePicker('slash')}
+              >
+                <SlashSquare className="h-3.5 w-3.5" />
+              </ToolButton>
+              <span className="ml-1.5 hidden truncate font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] lg:inline">
+                Enter 发送 · Shift+Enter 换行
+              </span>
+            </div>
+
             {streaming ? (
               <button
                 type="button"
                 onClick={onAbort}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)] md:h-11 md:w-11"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)] px-3 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95"
                 aria-label="停止生成"
                 title="停止生成"
               >
-                <Square className="h-4 w-4" />
+                <Square className="h-3 w-3 fill-current" />
+                停止
               </button>
             ) : (
               <button
@@ -1362,9 +1554,303 @@ function Composer({
               </button>
             )}
           </div>
+
+          <ArticlePicker
+            open={picker === 'article'}
+            anchorRef={atBtnRef}
+            selectedIds={new Set(selectedArticles.map((a) => a.id))}
+            onClose={() => setPicker(null)}
+            onPick={(a) => onPickArticle(a)}
+          />
+          <SlashPicker
+            open={picker === 'slash'}
+            anchorRef={slashBtnRef}
+            onClose={() => setPicker(null)}
+            onPick={(cmd) => {
+              setPicker(null);
+              onSlashCommand(cmd);
+            }}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+const ToolButton = forwardRef<
+  HTMLButtonElement,
+  {
+    children: ReactNode;
+    title: string;
+    active?: boolean;
+    onClick?: () => void;
+  }
+>(function ToolButton({ children, title, active, onClick }, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 active:scale-95',
+        active
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
+          : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]',
+      )}
+    >
+      {children}
+    </button>
+  );
+});
+
+// =============================================================================
+// PickerPopover —— 通用弹层
+// =============================================================================
+
+function PickerPopover({
+  open,
+  onClose,
+  anchorRef,
+  ariaLabel,
+  className,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  ariaLabel: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t)) return;
+      if (anchorRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose, anchorRef]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          ref={wrapRef}
+          role="dialog"
+          aria-modal="false"
+          aria-label={ariaLabel}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 6 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className={cn(
+            'absolute bottom-full left-0 z-40 mb-2 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl',
+            className,
+          )}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// =============================================================================
+// ArticlePicker —— @ 选文章
+// =============================================================================
+
+function ArticlePicker({
+  open,
+  onClose,
+  anchorRef,
+  selectedIds,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  selectedIds: Set<number>;
+  onPick: (article: AgentArticle) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { items, loading, error } = useArticleSearch(query, open);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  return (
+    <PickerPopover
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      ariaLabel="引用文章"
+      className="w-[360px]"
+    >
+      <div className="border-b border-[var(--hub-border)] p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索文章…"
+            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <div className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+          § Articles
+        </div>
+      </div>
+      <div className="max-h-[320px] overflow-y-auto py-1">
+        {loading && (
+          <div className="px-3 py-4 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            <Loader2 className="mx-auto mb-1 h-3.5 w-3.5 animate-spin" />
+            搜索中…
+          </div>
+        )}
+        {error && !loading && (
+          <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+            {error}
+          </div>
+        )}
+        {!loading && !error && items.length === 0 && (
+          <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            没有找到匹配的文章
+          </div>
+        )}
+        {items.map((article) => {
+          const selected = selectedIds.has(article.id);
+          return (
+            <button
+              key={article.id}
+              type="button"
+              onClick={() => onPick(article)}
+              disabled={selected}
+              className={cn(
+                'flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors',
+                selected
+                  ? 'cursor-default text-[var(--aurora-1)]'
+                  : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+              )}
+            >
+              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" />
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-1 text-[13px]">{article.title}</div>
+                {article.summary && (
+                  <div className="mt-0.5 line-clamp-1 text-[11.5px] text-[var(--ink-muted)]">
+                    {article.summary}
+                  </div>
+                )}
+              </div>
+              {selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+    </PickerPopover>
+  );
+}
+
+// =============================================================================
+// SlashPicker —— / 选命令
+// =============================================================================
+
+function SlashPicker({
+  open,
+  onClose,
+  anchorRef,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  onPick: (cmd: SlashCommand) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const visible = useMemo(() => filterSlashCommands(query), [query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  return (
+    <PickerPopover
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      ariaLabel="选择命令"
+      className="w-[320px]"
+    >
+      <div className="border-b border-[var(--hub-border)] p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索命令…"
+            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <div className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+          § Commands · {SLASH_COMMANDS.length}
+        </div>
+      </div>
+      <div className="max-h-[320px] overflow-y-auto py-1">
+        {visible.length === 0 && (
+          <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            没有匹配的命令
+          </div>
+        )}
+        {visible.map((cmd) => (
+          <button
+            key={cmd.command}
+            type="button"
+            onClick={() => onPick(cmd)}
+            className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          >
+            <SlashSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" />
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-[12.5px] tracking-[-0.01em]">{cmd.command}</div>
+              <div className="mt-0.5 text-[11.5px] leading-snug text-[var(--ink-muted)]">
+                {cmd.description}
+              </div>
+            </div>
+            <span className="mt-0.5 shrink-0 font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+              {cmd.kind === 'local' ? '本地' : '模板'}
+            </span>
+          </button>
+        ))}
+      </div>
+    </PickerPopover>
   );
 }
 
