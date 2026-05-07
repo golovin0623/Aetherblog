@@ -23,6 +23,7 @@ import {
   Brain,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   CircleHelp,
@@ -159,6 +160,9 @@ export default function AetherHubWorkspacePage() {
   useEffect(() => {
     setSelectedArticles([]);
   }, [activeId]);
+
+  // ----- 右侧上下文面板：收起 / 展开 -----
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
 
   const updateSession = useCallback(
     (id: string, updater: (s: AgentSession) => AgentSession) => {
@@ -414,8 +418,8 @@ export default function AetherHubWorkspacePage() {
   );
 
   return (
-    <div className="aetherhub-workspace h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
-      <div className="relative h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)]">
+    <div className="aetherhub-workspace fixed inset-0 flex flex-col overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
+      <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--bg-void)]">
         <div className="aurora-layer opacity-70" data-animated="true" aria-hidden="true" />
         <div
           className="absolute inset-0 pointer-events-none"
@@ -423,7 +427,15 @@ export default function AetherHubWorkspacePage() {
           aria-hidden="true"
         />
 
-        <div className="relative z-10 grid h-dvh max-h-dvh min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <div
+          className={cn(
+            'relative z-10 grid h-full min-h-0 w-full grid-cols-1 overflow-hidden',
+            'lg:grid-cols-[320px_minmax(0,1fr)]',
+            panelCollapsed
+              ? 'xl:grid-cols-[320px_minmax(0,1fr)]'
+              : 'xl:grid-cols-[320px_minmax(0,1fr)_320px]',
+          )}
+        >
           <WorkspaceSidebar
             currentUser={currentUser}
             sessions={sessions}
@@ -435,7 +447,7 @@ export default function AetherHubWorkspacePage() {
             onDeleteSession={handleDeleteSession}
           />
 
-          <section className="flex h-dvh max-h-dvh min-w-0 flex-col border-x border-[var(--hub-border)]">
+          <section className="flex h-full min-h-0 min-w-0 flex-col border-x border-[var(--hub-border)]">
             <TopBar
               currentUser={currentUser}
               activeSession={activeSession}
@@ -474,6 +486,8 @@ export default function AetherHubWorkspacePage() {
           <ContextPanel
             session={activeSession}
             modelsState={modelsState}
+            collapsed={panelCollapsed}
+            onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
             onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
             onClearMessages={() => {
               if (!activeSession) return;
@@ -523,7 +537,7 @@ function WorkspaceSidebar({
   const navigate = useNavigate();
 
   return (
-    <aside className="hidden h-dvh max-h-dvh min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-5 py-4 backdrop-blur-2xl lg:flex">
+    <aside className="hidden h-full min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-5 py-4 backdrop-blur-2xl lg:flex">
       <div className="mb-6 flex items-center justify-between">
         <button
           type="button"
@@ -693,32 +707,32 @@ function TopBar({
   const { isDark, toggleThemeWithAnimation } = useTheme();
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[68px] md:px-7">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[60px] md:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
           onClick={onBack}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] lg:hidden"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] lg:hidden"
           aria-label="返回管理后台"
         >
           <LayoutGrid className="h-4 w-4" />
         </button>
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center">
-          <AetherMark size={30} />
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center md:h-9 md:w-9">
+          <AetherMark size={28} />
         </span>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold text-[var(--ink-primary)] md:text-sm">
             {activeSession?.title || 'AetherHub'}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-[var(--ink-muted)]">
             {streaming ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                正在生成回答
+                <Loader2 className="h-3 w-3 animate-spin text-[var(--aurora-1)]" />
+                <span className="text-[var(--aurora-1)]">正在生成</span>
               </>
             ) : (
               <>
-                <span className="grid h-2.5 w-2.5 place-items-center rounded-full bg-[color-mix(in_oklch,var(--signal-success)_22%,transparent)]">
+                <span className="grid h-2 w-2 place-items-center rounded-full bg-[color-mix(in_oklch,var(--signal-success)_22%,transparent)]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal-success)]" />
                 </span>
                 就绪
@@ -728,19 +742,22 @@ function TopBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <ModelPickerButton
-          activeSession={activeSession}
-          modelsState={modelsState}
-          disabled={streaming}
-          onSetModel={onSetModel}
-        />
+      <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+        {/* 桌面端：模型选择器在 TopBar；移动端：只在 Composer 出现，避免挤标题 */}
+        <div className="hidden md:block">
+          <ModelPickerButton
+            activeSession={activeSession}
+            modelsState={modelsState}
+            disabled={streaming}
+            onSetModel={onSetModel}
+          />
+        </div>
         <button
           type="button"
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
           title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
-          className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          className="grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
@@ -751,7 +768,7 @@ function TopBar({
           aria-label="新建对话"
           title="新建对话"
           className={cn(
-            'grid h-9 w-9 place-items-center rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
+            'grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
             streaming && 'cursor-not-allowed opacity-60',
           )}
         >
@@ -761,11 +778,11 @@ function TopBar({
           <img
             src={currentUser.avatarUrl}
             alt={currentUser.nickname}
-            className="ml-1 h-9 w-9 rounded-full object-cover"
+            className="h-8 w-8 rounded-full object-cover md:h-9 md:w-9"
           />
         ) : (
           <div
-            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_72%,var(--bg-raised))] text-sm font-semibold text-[var(--hub-on-accent)]"
+            className="grid h-8 w-8 place-items-center rounded-full bg-[var(--aurora-1)] text-[12px] font-semibold text-[var(--hub-on-accent)] md:h-9 md:w-9 md:text-sm"
             aria-label={currentUser.nickname}
           >
             {currentUser.initial}
@@ -1092,6 +1109,7 @@ function EmptyState({
 }
 
 function MessageRow({ message }: { message: AgentMessage }) {
+  const { isDark } = useTheme();
   const isUser = message.role === 'user';
   // 流式中尚未收到正文 token —— 显示 typing dots
   const showTypingDots = !isUser && !!message.pending && !message.content && !message.error;
@@ -1169,7 +1187,11 @@ function MessageRow({ message }: { message: AgentMessage }) {
             <TypingDots />
           ) : message.pending ? (
             <span className="inline-flex w-full flex-col">
-              <MarkdownPreview content={message.content} className="text-[14.5px] leading-relaxed" />
+              <MarkdownPreview
+              content={message.content}
+              theme={isDark ? 'dark' : 'light'}
+              className="text-[14.5px] leading-relaxed"
+            />
               <span
                 className="hub-caret text-[var(--aurora-1)]"
                 aria-hidden="true"
@@ -1177,7 +1199,11 @@ function MessageRow({ message }: { message: AgentMessage }) {
               />
             </span>
           ) : (
-            <MarkdownPreview content={message.content} className="text-[14.5px] leading-relaxed" />
+            <MarkdownPreview
+              content={message.content}
+              theme={isDark ? 'dark' : 'light'}
+              className="text-[14.5px] leading-relaxed"
+            />
           )}
         </div>
 
@@ -1436,7 +1462,7 @@ function Composer({
   };
 
   return (
-    <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 md:px-8">
+    <div className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 md:px-8 md:pb-4 md:pt-3">
       <div className="relative mx-auto w-full max-w-[820px]">
         {/* mentions chips —— @ 选中的文章 */}
         {selectedArticles.length > 0 && (
@@ -1861,11 +1887,15 @@ function SlashPicker({
 function ContextPanel({
   session,
   modelsState,
+  collapsed,
+  onToggleCollapsed,
   onDeleteSession,
   onClearMessages,
 }: {
   session: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   onDeleteSession: () => void;
   onClearMessages: () => void;
 }) {
@@ -1891,13 +1921,34 @@ function ContextPanel({
     }
   };
 
+  if (collapsed) {
+    // 收起态：渲染一个浮动的展开按钮（绝对定位到右上），不再占用 grid 列
+    return (
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-label="展开当前对话面板"
+        title="展开当前对话面板"
+        className="fixed right-4 top-[72px] z-20 hidden h-10 w-10 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] text-[var(--ink-secondary)] shadow-[var(--hub-card-shadow)] backdrop-blur-2xl transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] xl:grid"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+    );
+  }
+
   return (
-    <aside className="hidden h-dvh max-h-dvh min-h-0 flex-col gap-4 border-l border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 backdrop-blur-2xl xl:flex">
-      <div className="flex items-center justify-between px-2 pb-1 pt-7">
+    <motion.aside
+      initial={{ x: 24, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 24, opacity: 0 }}
+      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+      className="hidden h-full min-h-0 flex-col gap-4 border-l border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 backdrop-blur-2xl xl:flex"
+    >
+      <div className="flex items-center justify-between px-2 pb-1 pt-3">
         <h2 className="text-sm font-semibold text-[var(--ink-primary)]">当前对话</h2>
         <div className="flex items-center gap-2">
-          <IconButton label="收起">
-            <ChevronUp className="h-4 w-4" />
+          <IconButton label="收起" onClick={onToggleCollapsed}>
+            <ChevronRight className="h-4 w-4" />
           </IconButton>
           <IconButton label="更多">
             <MoreHorizontal className="h-4 w-4" />
@@ -1972,7 +2023,7 @@ function ContextPanel({
           <CircleHelp className="h-5 w-5" />
         </button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -1980,14 +2031,17 @@ function IconButton({
   children,
   label,
   className,
+  onClick,
 }: {
   children: ReactNode;
   label: string;
   className?: string;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       aria-label={label}
       title={label}
       className={cn(
