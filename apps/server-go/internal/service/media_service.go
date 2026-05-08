@@ -104,11 +104,23 @@ var allowedMimeTypes = map[string]bool{
 //   - storeCache: 解析过的非 LOCAL Storage 实例缓存(避免每次上传都重建 S3 client)。
 //     key=providerID, 失效条件: 配置 update / delete (调用方需调 InvalidateProvider 清缓存)。
 //
+// folderLookup 抽出 *FolderRepo.FindByID 的能力,允许测试注入 mock。
+type folderLookup interface {
+	FindByID(ctx context.Context, id int64) (*model.MediaFolder, error)
+}
+
+// permLookup 抽出 *PermissionRepo.HasWriteAccess 的能力。
+type permLookup interface {
+	HasWriteAccess(ctx context.Context, folderID int64, userID int64) (bool, error)
+}
+
 // 旧的 (repo, store, uploadDir) 构造已被替换 — server.go 必须传 providerRepo。
 type MediaService struct {
 	repo         *repository.MediaRepo
 	localStore   storage.Storage
 	providerRepo *repository.StorageProviderRepo
+	folderLookup folderLookup // 可空;为空时跳过 folder 权限校验
+	permLookup   permLookup   // 可空;为空时跳过 folder_permissions 查询
 	uploadDir    string
 
 	storeCache   map[int64]storage.Storage
@@ -120,6 +132,9 @@ type MediaService struct {
 //   - localStore: 兜底用本地存储(始终存在)。
 //   - providerRepo: storage_providers 仓储,用于按 default / 按 ID 解析后端。
 //   - uploadDir: 本地上传根目录。
+//
+// 可选权限依赖通过 SetFolderAccess 注入(server.go),让 MediaService 在 Upload/Move
+// 时校验目标文件夹的 owner 与显式授权。
 func NewMediaService(repo *repository.MediaRepo, localStore storage.Storage, providerRepo *repository.StorageProviderRepo, uploadDir string) *MediaService {
 	return &MediaService{
 		repo:         repo,
@@ -128,6 +143,59 @@ func NewMediaService(repo *repository.MediaRepo, localStore storage.Storage, pro
 		uploadDir:    uploadDir,
 		storeCache:   make(map[int64]storage.Storage),
 	}
+}
+
+// SetFolderAccess 注入文件夹权限校验依赖。
+// 调用方:server.go 在所有依赖 wire 完成后调用一次。
+//
+// @ref 云储存优化批次 2 — 媒体上传 folder 权限校验
+func (s *MediaService) SetFolderAccess(folderRepo folderLookup, permRepo permLookup) {
+	s.folderLookup = folderRepo
+	s.permLookup = permRepo
+}
+
+// assertFolderWritable 验证 uploaderID 是否有权写入目标文件夹。
+// 放行规则(自上而下短路):
+//  1. folderID 为空 → 放行(根目录)
+//  2. 依赖未注入(folderLookup/permLookup == nil) → 放行(向后兼容,server.go 必须显式 SetFolderAccess 才启用)
+//  3. folder 不存在 → 拒绝(防止前端伪造 ID)
+//  4. folder.OwnerID 为空(系统文件夹) → 放行
+//  5. uploaderID 等于 folder.OwnerID → 放行
+//  6. uploaderID 在 folder_permissions 有 write/admin 权限且未过期 → 放行
+//  7. 否则拒绝
+//
+// 注意:visibility=public 的文件夹也走步骤 6,因为"公开可读"和"任何人可写"是不同语义。
+func (s *MediaService) assertFolderWritable(ctx context.Context, folderID *int64, uploaderID *int64) error {
+	if folderID == nil {
+		return nil
+	}
+	if s.folderLookup == nil || s.permLookup == nil {
+		return nil
+	}
+	folder, err := s.folderLookup.FindByID(ctx, *folderID)
+	if err != nil {
+		return fmt.Errorf("folder lookup failed: %w", err)
+	}
+	if folder == nil {
+		return errors.New("目标文件夹不存在")
+	}
+	if folder.OwnerID == nil {
+		return nil
+	}
+	if uploaderID != nil && *uploaderID == *folder.OwnerID {
+		return nil
+	}
+	if uploaderID == nil {
+		return errors.New("无权写入该文件夹")
+	}
+	ok, err := s.permLookup.HasWriteAccess(ctx, *folderID, *uploaderID)
+	if err != nil {
+		return fmt.Errorf("permission lookup failed: %w", err)
+	}
+	if !ok {
+		return errors.New("无权写入该文件夹")
+	}
+	return nil
 }
 
 // InvalidateProvider 清除指定 provider 的 storage 解析缓存。
@@ -216,6 +284,12 @@ func (s *MediaService) resolveStoreForMedia(ctx context.Context, m *model.MediaF
 //
 // 错误场景: 文件打开失败、存储上传失败、数据库记录创建失败。
 func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, uploaderID *int64, folderID *int64) (*dto.MediaFileVO, error) {
+	// folder 权限校验:在打开文件前,任何对私有文件夹的越权写都会被拒。
+	// @ref 云储存优化批次 2 — 防 VULN: 早期实现允许任意 admin 写入他人私有文件夹
+	if err := s.assertFolderWritable(ctx, folderID, uploaderID); err != nil {
+		return nil, err
+	}
+
 	f, err := fh.Open()
 	if err != nil {
 		return nil, err

@@ -68,3 +68,23 @@ func (r *PermissionRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM folder_permissions WHERE id=$1`, id)
 	return err
 }
+
+// HasWriteAccess 判断指定用户对指定文件夹是否拥有 write 或 admin 级别权限,且权限未过期。
+// 仅查 folder_permissions 表;owner / 系统文件夹的放行规则由 service 层叠加判断。
+//
+// @ref 云储存优化批次 2 — 媒体上传 folder 权限校验
+func (r *PermissionRepo) HasWriteAccess(ctx context.Context, folderID int64, userID int64) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `
+		SELECT EXISTS (
+			SELECT 1 FROM folder_permissions
+			 WHERE folder_id=$1
+			   AND user_id=$2
+			   AND permission_level IN ('write','admin')
+			   AND (expires_at IS NULL OR expires_at > NOW())
+		)`, folderID, userID)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}

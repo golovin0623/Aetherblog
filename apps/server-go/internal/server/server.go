@@ -292,6 +292,9 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	}
 	// Phase 1: MediaService 改造 — 注入 providerRepo 让 Upload/Delete 按 default provider 走对应后端。
 	mediaSvc := service.NewMediaService(mediaRepo, localStore, storageProviderRepo, s.Config.Upload.Path)
+	// 批次 2: 注入 folder_permissions 校验依赖,Upload 时拦截越权写入私有文件夹
+	permissionRepo := repository.NewPermissionRepo(s.DB)
+	mediaSvc.SetFolderAccess(folderRepo, permissionRepo)
 	folderSvc := service.NewFolderService(folderRepo)
 	// StorageProviderService 持有 mediaSvc 引用以便在 Update/Delete 后清缓存
 	storageProviderSvc := service.NewStorageProviderService(storageProviderRepo, mediaSvc)
@@ -315,7 +318,6 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 媒体高级功能：标签、权限、分享、版本管理
 	mediaTagRepo := repository.NewMediaTagRepo(s.DB)
 	handler.NewMediaTagHandler(service.NewMediaTagService(mediaTagRepo), mediaSvc).Mount(admin.Group("/media"))
-	permissionRepo := repository.NewPermissionRepo(s.DB)
 	handler.NewPermissionHandler(service.NewPermissionService(permissionRepo), folderSvc).Mount(admin.Group("/media"))
 	shareRepo := repository.NewShareRepo(s.DB)
 	handler.NewShareHandler(service.NewShareService(shareRepo), mediaSvc).Mount(admin.Group("/media"))

@@ -62,6 +62,64 @@ func TestMergeProviderConfigJSON_KeepsOldWhenFieldMissing(t *testing.T) {
 	}
 }
 
+// 批次 2 新增:深合并必须把非 secret 字段(region / endpoint / urlPrefix 等)在前端 partial PUT
+// 时从旧值继承。不然 admin 改个 bucket 就会把 region 配置抹掉。
+func TestMergeProviderConfigJSON_DeepMergeNonSecretField(t *testing.T) {
+	old := `{"bucket":"b","region":"cn-hangzhou","endpoint":"https://oss-cn-hangzhou.aliyuncs.com","accessKeyId":"AKIAOLD","secretAccessKey":"super-secret-old"}`
+	// 前端只改 bucket,其他字段未提交
+	new := `{"bucket":"new-bucket","accessKeyId":"AK****OLD","secretAccessKey":"su****old"}`
+	merged, err := mergeProviderConfigJSON(old, new)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	var got map[string]any
+	json.Unmarshal([]byte(merged), &got)
+	if got["bucket"] != "new-bucket" {
+		t.Errorf("bucket should be updated, got: %v", got["bucket"])
+	}
+	if got["region"] != "cn-hangzhou" {
+		t.Errorf("region must be preserved on partial PUT, got: %v", got["region"])
+	}
+	if got["endpoint"] != "https://oss-cn-hangzhou.aliyuncs.com" {
+		t.Errorf("endpoint must be preserved on partial PUT, got: %v", got["endpoint"])
+	}
+}
+
+// 批次 2 新增:嵌套 map(如 options:{addressingStyle, virtualHost})一层合并 ——
+// 前端只改 options.virtualHost,addressingStyle 不能被擦掉。
+func TestMergeProviderConfigJSON_DeepMergeNestedOptions(t *testing.T) {
+	old := `{"bucket":"b","options":{"addressingStyle":"virtual","virtualHost":"old.example.com"}}`
+	new := `{"bucket":"b","options":{"virtualHost":"new.example.com"}}`
+	merged, err := mergeProviderConfigJSON(old, new)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	var got map[string]any
+	json.Unmarshal([]byte(merged), &got)
+	opts, ok := got["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("options not a map: %T", got["options"])
+	}
+	if opts["addressingStyle"] != "virtual" {
+		t.Errorf("nested addressingStyle should be preserved, got: %v", opts["addressingStyle"])
+	}
+	if opts["virtualHost"] != "new.example.com" {
+		t.Errorf("nested virtualHost should be updated, got: %v", opts["virtualHost"])
+	}
+}
+
+// 批次 2 新增:双方都明确写了同一个非 secret 字段时,新值覆盖。
+func TestMergeProviderConfigJSON_OverwriteWhenBothPresent(t *testing.T) {
+	old := `{"region":"cn-hangzhou","bucket":"b"}`
+	new := `{"region":"cn-shanghai","bucket":"b"}`
+	merged, _ := mergeProviderConfigJSON(old, new)
+	var got map[string]any
+	json.Unmarshal([]byte(merged), &got)
+	if got["region"] != "cn-shanghai" {
+		t.Errorf("explicit new region should overwrite, got: %v", got["region"])
+	}
+}
+
 func TestIsRedactedValue(t *testing.T) {
 	cases := []struct {
 		v    string

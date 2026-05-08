@@ -9,6 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🛡️ 云储存全面优化 · 批次 2 — 后端硬化:folder 上传权限校验 + provider 配置深合并 (2026-05-08, branch codex/cloud-storage-server-hardening)
+
+**背景:** 批次 1 把客户端体验补齐之后,把后端两个潜在事故点也一并堵上。
+
+1. **folder 上传越权:** `media_service.Upload` 历来不查目标 folder 的 owner —— 任何登录的 admin 都可以传文件到他人的私有文件夹。`folder_permissions` 表 / `media_folders.owner_id+visibility` 早就在 schema 里,只是 service 层没接进来。
+2. **provider 配置 partial PUT 丢字段:** `mergeProviderConfigJSON` 之前只 merge `secretKeyFields` 列表里的字段,**非 secret 字段一律跟随 newPayload**。结果前端只想改 bucket,提交了 `{bucket: 'x'}` 没带 region/endpoint,UPDATE 之后 region/endpoint **直接消失**,下次启动 storage client 解析就失败 —— 已经在生产里出现过一次"换 bucket 名后整个 OSS 客户端连不上 endpoint"的事故。
+
+第三个原本规划的"sync 切默认 provider 时锁定 in-flight target"项调研后撤销 —— `media_sync_jobs.target_provider_id` 在入队时已经写入 worker 读取的就是这个字段,**当前实现就是预期行为**。原 explore 报告把它列为 pain point 是诊断偏差。
+
+**Added — `apps/server-go/internal/service/media_service.go`:**
+- `folderLookup` / `permLookup` 接口(`FindByID` / `HasWriteAccess`)允许测试注入 mock,生产代码用 `*FolderRepo` / `*PermissionRepo`。
+- `MediaService.SetFolderAccess(folderRepo, permRepo)`:由 server.go 在 wire 阶段注入,**未注入则向后兼容(不拒任何上传/移动)**。
+- `assertFolderWritable(ctx, folderID, uploaderID)`:七步短路放行规则(根目录 / 系统文件夹 / owner 自己 / 显式 UPLOAD/EDIT/DELETE/ADMIN 授权)。在 `Upload` / `Move` / `MoveBatch` 入口前先校验。
+- 单元测试 `TestAssertFolderWritable` 共 10 个表驱动子用例 + `TestAssertFolderWritable_BackwardCompat`。
+
+**Added — `apps/server-go/internal/repository/permission_repo.go`:**
+- `HasWriteAccess(ctx, folderID, userID)`:单条 `EXISTS` 查询,权限级别 ∈ {`UPLOAD`, `EDIT`, `DELETE`, `ADMIN`}(VIEW 不算"可写")且 `expires_at IS NULL OR expires_at > NOW()`。
+
+**Changed — `apps/server-go/internal/service/storage_provider_service.go`:**
+- `mergeProviderConfigJSON` 升级为深合并:旧 payload 里存在但新 payload 没提的字段从旧值继承;嵌套 `map[string]any`(如 `options:{...}`)递归一层合并;JSON null 等同"缺失"也回退旧值。
+- secret 字段保护逻辑保留:脱敏占位 / 空字符串 / 缺失 → 回退旧值。
+- 抽出 `deepMergeStringMap(oldMap, newMap)` helper。
+- 单元测试新增 5 个用例(`_DeepMergeNonSecretField` / `_DeepMergeNestedOptions` / `_OverwriteWhenBothPresent` / `_NullPreservesOldValue` / `_NullInsideNestedOptions`)。
+
+**Changed — `apps/server-go/internal/handler/media_handler.go` + `service/media_service.go`:**
+- `Move` / `MoveBatch` 签名加 `uploaderID *int64`,handler 从 `LoginUser` 透传。Service 层在 repo 写入前同样调 `assertFolderWritable`。
+
+**Changed — `apps/server-go/internal/server/server.go`:**
+- `permissionRepo` 初始化提前到 `mediaSvc` 之后立刻注入 `mediaSvc.SetFolderAccess(folderRepo, permissionRepo)`,line 318 原来的重复 `NewPermissionRepo` 删除。
+
+**Follow-up(同 PR 内 review 修复):**
+- **P1**:`HasWriteAccess` SQL 把 `permission_level` 当成大写枚举(`VIEW/UPLOAD/EDIT/DELETE/ADMIN`),原版用 `'write','admin'` 对不上 DB CHECK 约束,**所有显式授权用户被静默拒绝**。  *(chatgpt-codex-connector P1)*
+- `deepMergeStringMap` 把 JSON `null` 等同"缺失"回退旧值(原版会让 nil 覆盖旧值,与 docstring 矛盾);新增 2 个测试覆盖顶层 + 嵌套 null 场景。  *(gemini-code-assist medium)*
+- `Move` / `MoveBatch` 也接入 `assertFolderWritable`,对齐文档承诺(原版仅 `Upload` 走校验)。  *(gemini-code-assist medium)*
+
+**Verified:**
+- `go build ./...` 通过
+- `go test ./internal/service/ -run 'TestAssertFolderWritable|TestMerge|TestSVG'`:23 个用例全 PASS
+
+📄 文档影响:
+- `.claude/docs/backend-runtime.md` §2 新增「上传/移动时 folder 权限校验」+ 「客户端配置 partial PUT 深合并」两段(已更新)
+- `CHANGELOG.md` 本条(已更新)
+- `docs/architecture.md` 数据库节:本次未改 schema(用现有 `folder_permissions` 表),**无需更新**
+- `.claude/docs/api-handlers.md`:`/v1/admin/media/upload` 未新增端点,只改了 service 层校验,**无需更新**
+
 ### ☁️ 云储存全面优化 · 批次 1 — 客户端 abort / 重试 / 阶段化进度 (2026-05-08, branch codex/cloud-storage-upload-resilience)
 
 **背景：** 媒体库上传链路在生产里有三个稳定的"看不见的痛"：
