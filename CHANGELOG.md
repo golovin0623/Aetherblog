@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ☁️ 云储存全面优化 · 批次 1 — 客户端 abort / 重试 / 阶段化进度 (2026-05-08, branch codex/cloud-storage-upload-resilience)
+
+**背景：** 媒体库上传链路在生产里有三个稳定的"看不见的痛"：
+
+1. **取消是真空。** 用户拖了一个 80 MB 的视频上去，发现要重选，没有 UI 也没有 API 能取消 in-flight，只能让浏览器吃完、再去回收站删；
+2. **重试靠人。** 服务端 sync_jobs 有自动重试（max 3 次），但客户端 `mediaService.upload` 一次失败就抛错，连 502/网络抖动都直接弹 toast，让用户手动点重试按钮；
+3. **进度是错位的。** UploadProgress 100% 之后还要静默等 1-3 秒才切 `success`（缩略图 + 入云），用户看到 100% 后转圈以为卡死。
+
+这一次只动客户端，不动 handler/service，把这三个洞补上。
+
+**Added — `apps/admin/src/services/mediaService.ts`:**
+- `UploadOptions = { folderId?, signal?, maxRetries?, onAttempt? }`：第三参数从 `folderId: number` 平滑升级；老签名 `upload(file, onProgress, folderIdNumber)` **仍然工作**（TS 协变接受第二参数缩减）。
+- `UploadProgressFn = (percent, phase) => void`：`phase: 'uploading' | 'processing'`，0-99% 是字节上行 / 字节发完后切 `processing` 99% / 响应到达 100%。
+- `uploadWithRetry`：默认 3 次重试，250→500→1000ms 指数退避 + ±20% 抖动。仅对 *无响应 / 5xx / 408 / 425 / 429* 重试，4xx 和 abort 不重试。
+- `UploadAbortedError` + `isUploadAborted(err)`：调用方据此判定 abort 路径（不弹错误 toast、不写 logger.error），同时 `axios.isCancel` 也被识别。
+- `uploadEdited` 同步升级，跟 `upload` 共享 retry/abort/phase 内核。
+- `uploadBatch` 串行调用 `upload`，每个文件独立重试。
+
+**Added — `apps/admin/src/pages/MediaPage.tsx`:**
+- `UploadingFile` 加 `controller: AbortController | null` / `attempt` / `folderId`，`status` 扩展为 `queued | uploading | processing | success | error | aborted`。
+- `startUpload(id, file, folderId)` 抽出来，被首次上传与重试复用；`onAttempt` 回调把"第 N 次尝试"打到 UI。
+- `handleCancelUpload`：进行中→`abort()`、终态→从列表移除（合并按钮语义，X 始终可点）。
+- `handleRetryUpload` / `handleCancelAll` / `handleClearCompleted` 三个新动作，挂到 `UploadProgress`。
+
+**Added — `apps/admin/src/pages/media/components/UploadProgress.tsx`:**
+- 头部新增「一键取消所有进行中（Ban）」/「清除已结束（X）」/「最小化（ChevronUp）」三个按钮组。
+- 行级支持 `aborted` 灰色文案 + `已取消` / 重试中文案 `第 N 次尝试…`。
+- 失败 / 中止行右侧出现 `RefreshCw` 重试按钮，进行中行右侧的 X 切换语义为「取消」。
+- 折叠态进度环颜色：`hasFailed → 红 / 进行中 → 紫 / 全成功 → 绿`，活动结束时 pathLength 直接吸到 1（避免循环动画）。
+
+**Why not full resumable upload yet:** 那一项落在批次 4（client-side multipart presign + chunk），会动 backend 的签名端点。本批次零后端改动，纯客户端体验补齐，PR 风险面小、可独立 ship。
+
+📄 文档影响：
+- `.claude/docs/backend-runtime.md` §2 新增「客户端上传韧性」表格（已更新）
+- `CHANGELOG.md` 本条（已更新）
+- `docs/architecture.md` API 节 / 数据库节：本次未涉及，**无需更新**
+- `.claude/docs/api-handlers.md`：本次未新增端点，**无需更新**
+
 ### 🪛 补全 AI 模块 activity_events 埋点 + 修复两条 CHECK constraint 漏写 (2026-05-07, branch claude/add-ai-activity-logging-bc4fb)
 
 **背景：** 活动记录页 `/activities?category=AI` 一直空白 —— admin 后台早就有六个 AI 生成端点 (summary/tags/titles/polish/outline/translate)、Agent 工作台 chat、提示词更新、AI 任务 CRUD,但只有 `/providers/*` 写操作有审计 (`ai.provider_proxy_write`),其它路径完全失声。同时排查 ai_handler 现有审计代码时发现两条 CHECK 约束 silently dropping records:`ai_handler.recordProviderProxyActivity` 4xx 时写入 `Status="FAILED"` 而 `chk_activity_event_status` 只允许 `INFO/SUCCESS/WARNING/ERROR`;`auth_handler.RotateJWTSecret` 写入 `EventCategory="security"` 而 `chk_activity_event_category` 只放 7 类 (post/comment/user/system/friend/media/ai)。两个 INSERT 在生产环境都会被 PostgreSQL 拒绝,Go 代码 `_ = h.activitySvc.Create(...)` / `if err := ...; err != nil { log.Warn() }` 把错误吞进 stderr,前端就一直看不到任何 security / AI failure 记录。

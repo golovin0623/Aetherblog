@@ -39,7 +39,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks';
-import { mediaService, MediaListParams, MediaType, getMediaUrl } from '@/services/mediaService';
+import { mediaService, MediaListParams, MediaType, getMediaUrl, isUploadAborted } from '@/services/mediaService';
 import { folderService } from '@/services/folderService';
 import { MediaGrid } from './media/components/MediaGrid';
 import { MediaList } from './media/components/MediaList';
@@ -76,7 +76,13 @@ interface UploadingFile {
   progress: number;
   id: string;
   error?: string;
-  status: 'uploading' | 'processing' | 'success' | 'error';
+  status: 'queued' | 'uploading' | 'processing' | 'success' | 'error' | 'aborted';
+  /** AbortController —— uploading/queued/processing 时为活动 controller; 成功/失败/取消后置 null */
+  controller?: AbortController | null;
+  /** 当前重试次数(2 = 第 1 次重试中) */
+  attempt?: number;
+  /** 目标文件夹 ID(用于 retry 时复用) */
+  folderId?: number;
 }
 
 const typeOptions: { value: FilterType; label: string; icon: any }[] = [
@@ -290,55 +296,132 @@ export default function MediaPage() {
     },
   });
 
+  // 单文件上传执行体 —— 同时被首次上传与重试调用
+  const startUpload = useCallback(
+    (uploadId: string, file: File, folderId?: number) => {
+      const controller = new AbortController();
+      setUploadingFiles((prev) =>
+        prev.map((f) =>
+          f.id === uploadId
+            ? { ...f, status: 'uploading', progress: 0, error: undefined, controller, attempt: 1, folderId }
+            : f
+        )
+      );
+
+      mediaService
+        .upload(file, (percent, phase) => {
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadId && (f.status === 'uploading' || f.status === 'processing')
+                ? { ...f, progress: percent, status: phase }
+                : f
+            )
+          );
+        }, {
+          folderId,
+          signal: controller.signal,
+          onAttempt: (attempt) => {
+            setUploadingFiles((prev) =>
+              prev.map((f) => (f.id === uploadId ? { ...f, attempt, status: 'uploading', progress: 0 } : f))
+            );
+          },
+        })
+        .then(() => {
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadId ? { ...f, status: 'success', progress: 100, controller: null } : f
+            )
+          );
+          // 成功项淡出 —— 1.2s 后移除
+          setTimeout(() => {
+            setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadId));
+          }, 1200);
+          queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+        })
+        .catch((error: unknown) => {
+          if (isUploadAborted(error)) {
+            setUploadingFiles((prev) =>
+              prev.map((f) =>
+                f.id === uploadId ? { ...f, status: 'aborted', controller: null, error: '已取消' } : f
+              )
+            );
+            return;
+          }
+          const anyErr = error as { response?: { data?: { msg?: string; message?: string } }; message?: string };
+          const errorMessage =
+            anyErr.response?.data?.msg || anyErr.response?.data?.message || anyErr.message || '上传失败';
+          logger.error('Upload failed:', error);
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadId ? { ...f, status: 'error', error: errorMessage, controller: null } : f
+            )
+          );
+          toast.error(`${file.name}: ${errorMessage}`);
+        });
+    },
+    [queryClient]
+  );
+
   const handleUpload = useCallback(
-    async (files: FileList | File[]) => {
+    (files: FileList | File[]) => {
       const fileArray = Array.from(files);
-      const newFiles: UploadingFile[] = fileArray.map((file) => ({
+      const queued: UploadingFile[] = fileArray.map((file) => ({
         file,
         progress: 0,
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        status: 'uploading' as const,
+        status: 'queued' as const,
+        folderId: currentFolderId,
       }));
+      setUploadingFiles((prev) => [...prev, ...queued]);
+      queued.forEach((q) => startUpload(q.id, q.file, currentFolderId));
+    },
+    [currentFolderId, startUpload]
+  );
 
-      setUploadingFiles((prev) => [...prev, ...newFiles]);
+  const handleCancelUpload = useCallback((id: string) => {
+    setUploadingFiles((prev) => {
+      const target = prev.find((f) => f.id === id);
+      if (!target) return prev;
+      // 进行中:abort + 标 aborted(让 catch 来切状态)
+      if (target.status === 'uploading' || target.status === 'processing' || target.status === 'queued') {
+        target.controller?.abort();
+        return prev; // catch 分支会把 status 改成 aborted
+      }
+      // 终态(success/error/aborted):直接从列表移除
+      return prev.filter((f) => f.id !== id);
+    });
+  }, []);
 
-      newFiles.forEach(async (uploadFile) => {
-        try {
-          // @ref Phase 1: 上传到当前选中的文件夹
-          await mediaService.upload(uploadFile.file, (progress: number) => {
-            setUploadingFiles((prev) =>
-              prev.map((f) => {
-                if (f.id !== uploadFile.id) return f;
-                // 当进度达到 100% 时，切换到 'processing' 状态
-                if (progress >= 100) {
-                  return { ...f, progress: 100, status: 'processing' as const };
-                }
-                return { ...f, progress, status: 'uploading' as const };
-              })
-            );
-          }, currentFolderId);
-          // 服务器返回成功响应，标记为成功并延迟移除
-          setUploadingFiles((prev) =>
-            prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'success' as const } : f)
-          );
-          // 延迟 1 秒后移除成功项，让用户看到成功状态
-          setTimeout(() => {
-            setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadFile.id));
-          }, 1000);
-          queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
-        } catch (error: any) {
-          const errorMessage = error.response?.data?.msg || error.response?.data?.message || '上传失败';
-          logger.error('Upload failed:', error);
-          setUploadingFiles((prev) =>
-            prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'error' as const, error: errorMessage } : f)
-          );
-          // 显示错误提示
-          toast.error(`${uploadFile.file.name}: ${errorMessage}`);
-        }
+  const handleRetryUpload = useCallback(
+    (id: string) => {
+      setUploadingFiles((prev) => {
+        const target = prev.find((f) => f.id === id);
+        if (!target) return prev;
+        if (target.status !== 'error' && target.status !== 'aborted') return prev;
+        // 异步触发,避免在 setState 内调副作用
+        queueMicrotask(() => startUpload(id, target.file, target.folderId));
+        return prev;
       });
     },
-    [queryClient, currentFolderId]
+    [startUpload]
   );
+
+  const handleCancelAll = useCallback(() => {
+    setUploadingFiles((prev) => {
+      prev.forEach((f) => {
+        if (f.controller && (f.status === 'uploading' || f.status === 'processing' || f.status === 'queued')) {
+          f.controller.abort();
+        }
+      });
+      return prev;
+    });
+  }, []);
+
+  const handleClearCompleted = useCallback(() => {
+    setUploadingFiles((prev) =>
+      prev.filter((f) => f.status === 'uploading' || f.status === 'processing' || f.status === 'queued')
+    );
+  }, []);
 
   const onDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -794,7 +877,10 @@ export default function MediaPage() {
       {uploadingFiles.length > 0 && (
         <UploadProgress
           files={uploadingFiles}
-          onCancel={(id) => setUploadingFiles((prev) => prev.filter((f) => f.id !== id))}
+          onCancel={handleCancelUpload}
+          onRetry={handleRetryUpload}
+          onCancelAll={handleCancelAll}
+          onClearCompleted={handleClearCompleted}
         />
       )}
 

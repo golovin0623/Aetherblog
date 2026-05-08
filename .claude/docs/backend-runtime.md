@@ -108,6 +108,29 @@ admin 侧栏「云端浏览」→ `CloudExplorerPage`：
 
 `SyncService` 全程不读到内存：reader 直接桥接源 → 目标。
 
+### 客户端上传韧性（admin 媒体库 / 编辑器粘贴 / 头像 / 站点 logo）
+
+| 能力 | 实现位置 |
+| --- | --- |
+| `AbortController.signal` 单文件取消 | `mediaService.upload(file, onProgress, { signal })` |
+| 网络瞬时错误自动重试 | `uploadWithRetry`：默认 3 次，250ms / 500ms / 1000ms 指数退避 + ±20% 抖动 |
+| 重试触发条件 | 无响应 / 5xx / 408 / 425 / 429。**4xx（其他）和 abort 不重试** |
+| 阶段化进度 | `(percent, phase)` —— `'uploading'` 0-99% / `'processing'` 99% (字节发完等响应) → 100% (响应已返回) |
+| UI 重试按钮 | 错误 / 中止状态行末出现 `RefreshCw` |
+| 一键取消所有 | `UploadProgress` 头部 `Ban` 图标，仅活动文件存在时出现 |
+
+调用方约定：
+
+- **新签名：** `upload(file, (percent, phase) => {}, { folderId, signal, maxRetries, onAttempt })`
+- **老签名仍兼容：** `upload(file, percent => {}, folderIdNumber)`（TS 协变接受第二参数缩减）
+- **判定取消：** `import { isUploadAborted } from '@/services/mediaService'` —— 区别于 error 状态（不要给 abort 弹 toast）
+
+文件入口：
+
+- 服务：`apps/admin/src/services/mediaService.ts` (`UploadOptions` / `UploadAbortedError` / `isUploadAborted`)
+- 媒体页：`apps/admin/src/pages/MediaPage.tsx` (`startUpload` / `handleCancelUpload` / `handleRetryUpload` / `handleCancelAll`)
+- 浮窗：`apps/admin/src/pages/media/components/UploadProgress.tsx` (`status: queued | uploading | processing | success | error | aborted`)
+
 ### `UploadContent` 修复（历史 bug）
 
 历史实现：handler 写死 `localStore` 且 `SetVersionDeps` 从未被调用 —— 在 S3 模式下完全不可用。

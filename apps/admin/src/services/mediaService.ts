@@ -1,5 +1,5 @@
 import api from './api';
-import axios from 'axios';
+import axios, { type AxiosError, type AxiosProgressEvent } from 'axios';
 import { R, PageResult } from '@/types';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
@@ -48,6 +48,148 @@ export interface StorageStats {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+/**
+ * 上传阶段:
+ * - uploading: 字节正在上行(0-99%)
+ * - processing: 已发送完最后一字节,正在等待后端入库 / 缩略图 / 同步队列响应(显示 99-100%)
+ *
+ * @ref 云储存优化批次 1 — 客户端阶段化进度
+ */
+export type UploadPhase = 'uploading' | 'processing';
+export type UploadProgressFn = (percent: number, phase: UploadPhase) => void;
+
+export interface UploadOptions {
+  /** Phase 1: 文件夹 ID */
+  folderId?: number;
+  /** AbortController.signal —— 单文件取消 */
+  signal?: AbortSignal;
+  /** 网络瞬时错误自动重试次数(含首次,默认 3) */
+  maxRetries?: number;
+  /**
+   * 每次重试前回调。
+   * @param attempt 即将开始的尝试次数,从 2 起(2 = 第一次重试)
+   * @param lastError 上一次失败的错误对象
+   */
+  onAttempt?: (attempt: number, lastError: unknown) => void;
+}
+
+const DEFAULT_MAX_RETRIES = 3;
+
+/**
+ * 上传被显式取消(AbortController.abort)时抛出。
+ * 调用方应区别对待:不要自动重试,UI 标记为 aborted 而非 error。
+ */
+export class UploadAbortedError extends Error {
+  constructor(public readonly cause?: unknown) {
+    super('上传已取消');
+    this.name = 'UploadAbortedError';
+  }
+}
+
+/** 判断错误是否由 AbortController 触发 */
+export function isUploadAborted(err: unknown): boolean {
+  if (err instanceof UploadAbortedError) return true;
+  if (axios.isCancel(err)) return true;
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'ERR_CANCELED') return true;
+  }
+  return false;
+}
+
+function isRetriableError(err: unknown): boolean {
+  if (isUploadAborted(err)) return false;
+  if (!axios.isAxiosError(err)) return true;
+  const ax = err as AxiosError;
+  if (!ax.response) return true;
+  const status = ax.response.status;
+  if (status === 408 || status === 425 || status === 429) return true;
+  if (status >= 500 && status < 600) return true;
+  return false;
+}
+
+function backoffMs(attempt: number): number {
+  const base = 250 * Math.pow(2, attempt - 1);
+  const jitter = base * (Math.random() * 0.4 - 0.2);
+  return Math.max(120, Math.round(base + jitter));
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadAbortedError(signal.reason));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new UploadAbortedError(signal?.reason));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+interface UploadOnceConfig {
+  url: string;
+  formData: FormData;
+  onProgress?: UploadProgressFn;
+  signal?: AbortSignal;
+}
+
+async function uploadOnce<T>({ url, formData, onProgress, signal }: UploadOnceConfig): Promise<T> {
+  let lastEmittedPercent = -1;
+  const response = await axios.post<R<T>>(url, formData, {
+    withCredentials: true,
+    signal,
+    onUploadProgress: (event: AxiosProgressEvent) => {
+      if (!onProgress) return;
+      if (!event.total || event.total === 0) {
+        if (event.loaded > 0) onProgress(99, 'processing');
+        return;
+      }
+      const ratio = Math.min(1, event.loaded / event.total);
+      const percent = Math.min(99, Math.round(ratio * 100));
+      const phase: UploadPhase = ratio >= 1 ? 'processing' : 'uploading';
+      // 上传阶段去抖:percent 没变就不回调
+      if (phase === 'uploading' && percent === lastEmittedPercent) return;
+      lastEmittedPercent = percent;
+      onProgress(percent, phase);
+    },
+  });
+  // 响应到达 = 处理完成,推一次 100% processing
+  onProgress?.(100, 'processing');
+  return response.data.data;
+}
+
+async function uploadWithRetry<T>(config: UploadOnceConfig, options?: UploadOptions): Promise<T> {
+  const maxRetries = Math.max(1, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await uploadOnce<T>(config);
+    } catch (err) {
+      lastErr = err;
+      if (isUploadAborted(err)) {
+        throw err instanceof UploadAbortedError ? err : new UploadAbortedError(err);
+      }
+      if (attempt >= maxRetries || !isRetriableError(err)) throw err;
+      const wait = backoffMs(attempt);
+      options?.onAttempt?.(attempt + 1, err);
+      await sleep(wait, options?.signal);
+    }
+  }
+  throw lastErr;
+}
+
+function normalizeUploadOptions(input?: UploadOptions | number): UploadOptions {
+  if (typeof input === 'number') return { folderId: input };
+  return input ?? {};
+}
 
 /**
  * 获取媒体文件的完整 URL。
@@ -99,50 +241,57 @@ export const mediaService = {
   },
 
   /**
-   * 上传文件（支持进度回调）
-   * @param file 文件
-   * @param onProgress 进度回调
-   * @param folderId 文件夹ID (可选)
+   * 上传文件。
+   *
+   * 兼容老签名 upload(file, percent => {}, folderIdNumber);
+   * 新签名 upload(file, (percent, phase) => {}, { folderId, signal, maxRetries, onAttempt }).
+   *
+   * 行为:
+   * - 网络瞬时错误(无响应 / 5xx / 408/425/429)自动重试 maxRetries 次,指数退避 + 抖动
+   * - 4xx(非 408/425/429)与 abort 不重试
+   * - signal abort 抛 UploadAbortedError(isUploadAborted 判别)
+   * - onProgress 在网络上行阶段持续 0-99%,字节发完后切 'processing' 99%,响应到达 100%
+   *
+   * @ref 云储存优化批次 1 — 客户端 abort/retry/phase
    */
   upload: async (
     file: File,
-    onProgress?: (percent: number) => void,
-    folderId?: number
+    onProgress?: UploadProgressFn,
+    optionsOrFolderId?: UploadOptions | number
   ): Promise<MediaItem> => {
+    const options = normalizeUploadOptions(optionsOrFolderId);
     const formData = new FormData();
     formData.append('file', file);
-    if (folderId !== undefined) {
-      formData.append('folderId', folderId.toString());
+    if (options.folderId !== undefined) {
+      formData.append('folderId', options.folderId.toString());
     }
-
-    const response = await axios.post<R<MediaItem>>(
-      `${API_BASE_URL}/v1/admin/media/upload`,
-      formData,
+    return uploadWithRetry<MediaItem>(
       {
-        withCredentials: true,
-        onUploadProgress: (event) => {
-          if (event.total && onProgress) {
-            const percent = Math.round((event.loaded * 100) / event.total);
-            onProgress(percent);
-          }
-        },
-      }
+        url: `${API_BASE_URL}/v1/admin/media/upload`,
+        formData,
+        onProgress,
+        signal: options.signal,
+      },
+      options
     );
-    return response.data.data;
   },
 
   /**
-   * 批量上传
+   * 批量上传(串行,逐个走自动重试)。
+   * 单文件失败不影响后续 —— 抛出会中断,但 abort 会贯穿所有后续。
    */
   uploadBatch: async (
     files: File[],
-    onProgress?: (fileIndex: number, percent: number) => void
+    onProgress?: (fileIndex: number, percent: number, phase: UploadPhase) => void,
+    options?: UploadOptions
   ): Promise<MediaItem[]> => {
     const results: MediaItem[] = [];
     for (let i = 0; i < files.length; i++) {
-      const result = await mediaService.upload(files[i], (percent) => {
-        onProgress?.(i, percent);
-      });
+      const result = await mediaService.upload(
+        files[i],
+        (percent, phase) => onProgress?.(i, percent, phase),
+        options
+      );
       results.push(result);
     }
     return results;
@@ -200,17 +349,24 @@ export const mediaService = {
   },
 
   /**
-   * 上传编辑后的图片内容
+   * 上传编辑后的图片内容(替换源文件,自动写入新版本)。
+   * 与 upload 共用 retry/abort 机制。
    */
-  uploadEdited: async (id: number, formData: FormData): Promise<MediaItem> => {
-    const response = await axios.post<R<MediaItem>>(
-      `${API_BASE_URL}/v1/admin/media/${id}/content`,
-      formData,
+  uploadEdited: async (
+    id: number,
+    formData: FormData,
+    onProgress?: UploadProgressFn,
+    options?: UploadOptions
+  ): Promise<MediaItem> => {
+    return uploadWithRetry<MediaItem>(
       {
-        withCredentials: true,
-      }
+        url: `${API_BASE_URL}/v1/admin/media/${id}/content`,
+        formData,
+        onProgress,
+        signal: options?.signal,
+      },
+      options
     );
-    return response.data.data;
   },
 
   // ========== 回收站相关接口 ==========
