@@ -484,14 +484,13 @@ export default function ActivitiesPage() {
         <AnimatePresence initial={false}>
           {activeFilterCount > 0 && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+              animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
+              exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
               transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
             >
-              <div className="pt-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              <div className="pt-3 pb-0.5 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
+                <span className="tnum text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                   已应用 {activeFilterCount}
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">

@@ -713,13 +713,12 @@ export default function PostsPage() {
       <AnimatePresence initial={false}>
         {activeFilterCount > 0 && (
           <motion.div
-            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-            animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
-            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            initial={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 12, transitionEnd: { overflow: 'visible' } }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
             transition={heightTransition}
-            className="overflow-hidden"
           >
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap py-0.5">
               <span className="tnum text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                 已应用 {activeFilterCount}
               </span>
