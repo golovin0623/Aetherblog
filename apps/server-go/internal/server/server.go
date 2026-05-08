@@ -228,6 +228,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 这样用户把 REDIS_HOST 指向自管的 redis-server / 外部 IP 时,容器监控
 	// 面板也能显示它的 CPU/内存/状态,而不是仅按 aetherblog-* 前缀过滤。
 	containerMonitorSvc := service.NewContainerMonitorService(
+		s.Config.Monitor.DockerEndpoint,
 		service.LinkedTarget{Host: s.Config.Redis.Host, Port: s.Config.Redis.Port, ImageHint: "redis"},
 		service.LinkedTarget{Host: s.Config.Database.Host, Port: s.Config.Database.Port, ImageHint: "postgres"},
 	)

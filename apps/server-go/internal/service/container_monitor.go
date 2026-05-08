@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,13 +22,15 @@ var validContainerID = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 // ContainerOverview 汇总所有 Docker 容器的状态概览信息。
 type ContainerOverview struct {
-	Containers        []ContainerInfo `json:"containers"`        // 各容器详情列表
-	TotalContainers   int             `json:"totalContainers"`   // 容器总数
-	RunningContainers int             `json:"runningContainers"` // 运行中的容器数
-	TotalMemoryUsed   int64           `json:"totalMemoryUsed"`   // 所有容器内存使用总量（字节）
-	TotalMemoryLimit  int64           `json:"totalMemoryLimit"`  // 所有容器内存限额总量（字节）
-	AvgCpuPercent     float64         `json:"avgCpuPercent"`     // 所有容器的平均 CPU 使用率（%）
-	DockerAvailable   bool            `json:"dockerAvailable"`   // Docker daemon 是否可达
+	Containers        []ContainerInfo `json:"containers"`             // 各容器详情列表
+	TotalContainers   int             `json:"totalContainers"`        // 容器总数
+	RunningContainers int             `json:"runningContainers"`      // 运行中的容器数
+	TotalMemoryUsed   int64           `json:"totalMemoryUsed"`        // 所有容器内存使用总量（字节）
+	TotalMemoryLimit  int64           `json:"totalMemoryLimit"`       // 所有容器内存限额总量（字节）
+	AvgCpuPercent     float64         `json:"avgCpuPercent"`          // 所有容器的平均 CPU 使用率（%）
+	DockerAvailable   bool            `json:"dockerAvailable"`        // Docker daemon 是否可达
+	ErrorMessage      string          `json:"errorMessage,omitempty"` // Docker 不可达时的具体原因（如 socket 不存在 / 代理无响应）
+	Source            string          `json:"source,omitempty"`       // 数据来源描述（如 "unix:///var/run/docker.sock" 或代理 URL），便于排错
 }
 
 // ContainerInfo 表示单个 Docker 容器的运行时信息。
@@ -52,11 +56,16 @@ type LinkedTarget struct {
 	ImageHint string // 期望容器镜像包含的关键字(如 "redis" / "postgres"),降低误匹配风险
 }
 
-// ContainerMonitorService 通过 Docker Unix Socket API 提供容器监控功能。
+// ContainerMonitorService 通过 Docker Engine API 提供容器监控功能。
+// 支持两种连接方式：本地 Unix socket（默认 /var/run/docker.sock）或 HTTP(S) 代理 URL
+// （如 tecnativa/docker-socket-proxy），由 endpoint 决定。
 // 内置缓存机制：缓存有效期内直接返回上次结果，避免频繁请求 Docker daemon。
 // 使用 singleflight 防止缓存过期瞬间的并发击穿。
 type ContainerMonitorService struct {
-	client *http.Client
+	client   *http.Client
+	endpoint string // 描述性字符串，例如 "unix:///var/run/docker.sock" 或 "http://docker-socket-proxy:2375"
+	baseURL  string // HTTP 请求 URL 前缀（unix 模式下固定为 "http://docker"）
+	socketOK func() error // 启动前快速探测 endpoint 是否可达；返回非 nil 即视为不可用
 
 	cacheMu    sync.RWMutex
 	cachedData *ContainerOverview
@@ -68,23 +77,77 @@ type ContainerMonitorService struct {
 }
 
 // NewContainerMonitorService 创建 ContainerMonitorService 实例。
-// 通过 Unix Socket（/var/run/docker.sock）连接 Docker daemon，请求超时为 5 秒。
-// 结果缓存 3 秒，防止多客户端并发请求时重复访问 Docker API。
-// linkedTargets 允许把"非 aetherblog 项目但实际被连接的"容器也纳入监控。
-func NewContainerMonitorService(linkedTargets ...LinkedTarget) *ContainerMonitorService {
-	return &ContainerMonitorService{
-		client: &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-					// 所有 HTTP 请求均通过 Docker Unix Socket 路由
-					return net.Dial("unix", "/var/run/docker.sock")
-				},
-			},
-			Timeout: 5 * time.Second,
-		},
+//
+// dockerEndpoint 控制连接目标：
+//   - "" 或以 "unix://" / "/" 开头 —— 视为 Unix socket 路径，默认 /var/run/docker.sock。
+//   - "http://" / "https://" 开头 —— 视为 docker-socket-proxy 等 HTTP 代理 URL。
+//
+// 推荐生产部署：front Docker daemon with tecnativa/docker-socket-proxy 限制为
+// /containers/json + /containers/*/stats 只读访问，再把 URL 设给本服务。
+// 详见 docs/deployment.md "容器监控" 节。
+//
+// linkedTargets 允许把"非 aetherblog 项目但实际被连接的"容器（如外部 Redis/Postgres）
+// 也纳入监控。
+func NewContainerMonitorService(dockerEndpoint string, linkedTargets ...LinkedTarget) *ContainerMonitorService {
+	svc := &ContainerMonitorService{
 		cacheTTL:      3 * time.Second,
 		linkedTargets: linkedTargets,
 	}
+
+	// 协议判定：HTTP(S) 走代理；其他一律按 Unix socket 处理
+	if strings.HasPrefix(dockerEndpoint, "http://") || strings.HasPrefix(dockerEndpoint, "https://") {
+		// 代理模式：剥掉尾部斜杠避免拼接出 //containers
+		base := strings.TrimRight(dockerEndpoint, "/")
+		// baseURL 必须保留 userinfo —— 真正的 HTTP 请求要带凭据；
+		// endpoint 用于 UI 展示,任何凭据都得 redact 掉,避免随 ContainerOverview.Source
+		// 漏给浏览器(管理员的 DevTools / 截图都会泄露)。
+		displayEndpoint := base
+		if u, err := url.Parse(base); err == nil {
+			displayEndpoint = u.Redacted()
+		}
+		svc.endpoint = displayEndpoint
+		svc.baseURL = base
+		svc.client = &http.Client{Timeout: 5 * time.Second}
+		svc.socketOK = func() error {
+			// 代理可达性探测：能解析 URL 即视为已配置；实际连通性由请求阶段返回的错误反映。
+			if _, err := url.Parse(base); err != nil {
+				return fmt.Errorf("invalid DOCKER_SOCKET_PROXY_URL %q: %w", displayEndpoint, err)
+			}
+			return nil
+		}
+		return svc
+	}
+
+	socketPath := strings.TrimPrefix(dockerEndpoint, "unix://")
+	if socketPath == "" {
+		socketPath = "/var/run/docker.sock"
+	}
+	svc.endpoint = "unix://" + socketPath
+	svc.baseURL = "http://docker"
+	dialer := &net.Dialer{}
+	svc.client = &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				// 走 Dialer.DialContext 让上层请求 ctx 的超时/取消能传到 unix dial 阶段;
+				// 直接 net.Dial 会忽略 ctx,长时间挂起的请求无法被中断。
+				return dialer.DialContext(ctx, "unix", socketPath)
+			},
+		},
+		Timeout: 5 * time.Second,
+	}
+	svc.socketOK = func() error {
+		// 直接 stat 一下 socket 文件 —— 不存在或不是 socket 时给出可读的错误，
+		// 比让 fetchContainers 撞到 dial unix 的底层错误更友好。
+		info, err := os.Stat(socketPath)
+		if err != nil {
+			return fmt.Errorf("docker socket unavailable at %s: %w", socketPath, err)
+		}
+		if info.Mode()&os.ModeSocket == 0 {
+			return fmt.Errorf("docker socket path %s exists but is not a unix socket", socketPath)
+		}
+		return nil
+	}
+	return svc
 }
 
 // matchesLinkedTarget 判断一个容器是否是配置里声明的外部依赖。
@@ -169,28 +232,46 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 	overview := ContainerOverview{
 		Containers: []ContainerInfo{},
+		Source:     s.endpoint,
+	}
+
+	// 端点预检：socket 文件不存在 / 代理 URL 非法时立刻给出可读错误,
+	// 避免 UI 只看到一句"Docker API 不可用"而无从下手。
+	if s.socketOK != nil {
+		if err := s.socketOK(); err != nil {
+			overview.ErrorMessage = err.Error()
+			return overview
+		}
 	}
 
 	// 有 linkedTargets 时必须拉全量 —— 外部容器(如用户自管的 redis-server)
 	// 没有 com.docker.compose.project 标签,server-side label filter 会漏掉。
 	// 没有 linkedTargets 时优先用 label 过滤省带宽。
-	url := "http://docker/containers/json?all=true"
+	listURL := s.baseURL + "/containers/json?all=true"
+	filteredURL := listURL
 	if len(s.linkedTargets) == 0 {
-		url += `&filters={"label":["com.docker.compose.project"]}`
+		filteredURL += `&filters={"label":["com.docker.compose.project"]}`
 	}
-	resp, err := s.client.Get(url)
+	resp, err := s.client.Get(filteredURL)
 	if err != nil {
 		// 回退：不带 label 过滤，获取全部容器后在本地过滤
-		resp, err = s.client.Get("http://docker/containers/json?all=true")
+		resp, err = s.client.Get(listURL)
 		if err != nil {
-			return overview // Docker 不可用，返回空概览
+			overview.ErrorMessage = fmt.Sprintf("docker API request failed: %v", err)
+			return overview
 		}
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		overview.ErrorMessage = fmt.Sprintf("docker API returned HTTP %d", resp.StatusCode)
+		return overview
+	}
 	overview.DockerAvailable = true
 
 	var containers []dockerContainer
 	if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
+		overview.DockerAvailable = false
+		overview.ErrorMessage = fmt.Sprintf("docker API returned malformed JSON: %v", err)
 		return overview
 	}
 
@@ -286,7 +367,7 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 		return "", fmt.Errorf("invalid container ID")
 	}
 
-	resp, err := s.client.Get(fmt.Sprintf("http://docker/containers/%s/logs?stdout=true&stderr=true&tail=%d", containerID, tail))
+	resp, err := s.client.Get(fmt.Sprintf("%s/containers/%s/logs?stdout=true&stderr=true&tail=%d", s.baseURL, containerID, tail))
 	if err != nil {
 		return "", fmt.Errorf("docker API error: %w", err)
 	}
@@ -355,7 +436,7 @@ type dockerMemoryStats struct {
 // fillContainerStats 通过 Docker API 获取单个容器的实时 CPU 和内存统计数据，并填充到 info 中。
 // CPU 使用率计算公式：Δ容器CPU / Δ系统CPU * CPU核数 * 100。
 func (s *ContainerMonitorService) fillContainerStats(fullID string, info *ContainerInfo) {
-	resp, err := s.client.Get(fmt.Sprintf("http://docker/containers/%s/stats?stream=false", fullID))
+	resp, err := s.client.Get(fmt.Sprintf("%s/containers/%s/stats?stream=false", s.baseURL, fullID))
 	if err != nil {
 		return
 	}
