@@ -33,6 +33,9 @@ import {
   saveSessions,
 } from '../lib/agentSessions';
 import type { StreamAnimationMode } from '../lib/smooth';
+
+/** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
+type DisplayMode = 'bubble' | 'engraved';
 import { streamAgentChat } from '../lib/agentChatStream';
 import {
   type AgentArticle,
@@ -112,16 +115,23 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const composerRef = useRef<ComposerHandle>(null);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  // ---- 渲染偏好（流式吐字模式 / 字体大小），localStorage 持久化 ----
+  // ---- 渲染偏好（显示模式 / 流式吐字模式 / 字体大小），localStorage 持久化 ----
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('bubble');
   const [streamAnimation, setStreamAnimation] = useState<StreamAnimationMode>('smooth');
   const [fontSize, setFontSize] = useState<number>(14.5);
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const dm = window.localStorage.getItem('aetherblog.agent.displayMode');
+    if (dm === 'bubble' || dm === 'engraved') setDisplayMode(dm);
     const sa = window.localStorage.getItem('aetherblog.agent.streamAnimation');
     if (sa === 'none' || sa === 'fade' || sa === 'smooth') setStreamAnimation(sa);
     const fs = Number(window.localStorage.getItem('aetherblog.agent.fontSize'));
     if (Number.isFinite(fs) && fs >= 12 && fs <= 18) setFontSize(fs);
   }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.agent.displayMode', displayMode);
+  }, [displayMode]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('aetherblog.agent.streamAnimation', streamAnimation);
@@ -889,6 +899,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             </button>
             <div className="hidden sm:flex items-center gap-1 pl-1 ml-1 border-l border-[var(--ink-subtle)]/15">
               <RenderingPreferencesButton
+                displayMode={displayMode}
+                onSetDisplayMode={setDisplayMode}
                 streamAnimation={streamAnimation}
                 onSetStreamAnimation={setStreamAnimation}
                 fontSize={fontSize}
@@ -899,6 +911,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             {/* 移动端：把渲染偏好挂在 + 旁边，避免顶栏拥挤 */}
             <div className="sm:hidden inline-flex">
               <RenderingPreferencesButton
+                displayMode={displayMode}
+                onSetDisplayMode={setDisplayMode}
                 streamAnimation={streamAnimation}
                 onSetStreamAnimation={setStreamAnimation}
                 fontSize={fontSize}
@@ -958,6 +972,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                     key={m.id}
                     message={m}
                     busy={busy}
+                    displayMode={displayMode}
                     streamAnimation={streamAnimation}
                     fontSize={fontSize}
                     onEdit={handleEditUserMessage}
@@ -1158,11 +1173,15 @@ function EmptyState({
  * localStorage 持久化由父组件负责。
  */
 function RenderingPreferencesButton({
+  displayMode,
+  onSetDisplayMode,
   streamAnimation,
   onSetStreamAnimation,
   fontSize,
   onSetFontSize,
 }: {
+  displayMode: DisplayMode;
+  onSetDisplayMode: (m: DisplayMode) => void;
   streamAnimation: StreamAnimationMode;
   onSetStreamAnimation: (m: StreamAnimationMode) => void;
   fontSize: number;
@@ -1210,6 +1229,48 @@ function RenderingPreferencesButton({
             aria-label="渲染偏好"
             className="absolute right-0 top-full mt-2 w-[280px] rounded-xl border border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-40 p-3"
           >
+            {/* 显示模式 */}
+            <div className="mb-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">显示模式</span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  LAYOUT
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { value: 'bubble', label: '气泡', hint: '彩色卡片承载' },
+                    { value: 'engraved', label: '版书', hint: '文字浮印纸面' },
+                  ] as const
+                ).map((opt) => {
+                  const active = opt.value === displayMode;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => onSetDisplayMode(opt.value)}
+                      aria-pressed={active}
+                      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-all ${
+                        active
+                          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+                          : 'border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]'
+                      }`}
+                    >
+                      <span
+                        className={`text-[12.5px] font-medium ${
+                          active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]'
+                        }`}
+                      >
+                        {opt.label}
+                      </span>
+                      <span className="text-[10.5px] text-[var(--ink-muted)]">{opt.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* 过渡动画 */}
             <div className="mb-3">
               <div className="mb-1.5 flex items-center justify-between">

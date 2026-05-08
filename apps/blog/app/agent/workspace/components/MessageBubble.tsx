@@ -9,6 +9,9 @@ import type { AgentMessage } from '../../lib/agentSessions';
 import { normalizeCjkInlineMarkdown } from '../../lib/cjkMarkdown';
 import { useSmoothStream, type StreamAnimationMode } from '../../lib/smooth';
 
+/** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
+export type DisplayMode = 'bubble' | 'engraved';
+
 interface Props {
   message: AgentMessage;
   /** 用户点击「编辑」—— 仅 user 消息可见；onEdit 把消息回填到 composer
@@ -20,6 +23,8 @@ interface Props {
   /** 是否处于全局 streaming busy 状态 —— 此时 edit/retry 应禁用，避免与
    *  另一条进行中的 stream 抢同一会话状态机。 */
   busy?: boolean;
+  /** 显示模式 —— 气泡（默认）或版书（浮印纸面）。 */
+  displayMode?: DisplayMode;
   /** 流式吐字模式 —— none / fade / smooth；默认 smooth。 */
   streamAnimation?: StreamAnimationMode;
   /** 字体大小（px），默认 14.5 与文章正文同档。 */
@@ -43,6 +48,7 @@ function MessageBubbleBase({
   onEdit,
   onRetry,
   busy,
+  displayMode = 'bubble',
   streamAnimation = 'smooth',
   fontSize,
 }: Props) {
@@ -90,6 +96,189 @@ function MessageBubbleBase({
   // 流式中且已有正文 —— bubble 边沿走呼吸 aurora，让"正在生成"的状态可视化
   const isStreaming = !isUser && message.pending && !!message.content;
 
+  // 共用的 hover 操作行（复制 / 编辑 / 重试）—— bubble 与 engraved 模式各自挂一份，
+  // 视觉位置不同但逻辑一致。
+  const hoverActions = (
+    <div
+      className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
+        isUser && displayMode === 'bubble' ? 'flex-row-reverse' : ''
+      }`}
+    >
+      {!!message.content && (
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="复制消息"
+          title="复制"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3" /> 已复制
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" /> 复制
+            </>
+          )}
+        </button>
+      )}
+      {canEditUser && (
+        <button
+          type="button"
+          onClick={() => onEdit?.(message)}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="编辑这条消息"
+          title="编辑（将截断后续对话）"
+        >
+          <Pencil className="w-3 h-3" /> 编辑
+        </button>
+      )}
+      {canRetryAssistant && (
+        <button
+          type="button"
+          onClick={() => onRetry?.(message)}
+          className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
+          aria-label="重试这条回复"
+          title="重新生成"
+        >
+          <RefreshCcw className="w-3 h-3" /> 重试
+        </button>
+      )}
+    </div>
+  );
+
+  // 共用的 sources 列表
+  const sourcesList =
+    !isUser && message.sources && message.sources.length > 0 ? (
+      <div className="mt-3 max-w-full">
+        <div className="font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mb-1.5">
+          § Sources
+        </div>
+        <ul className="flex flex-wrap gap-1.5">
+          {message.sources.map((s) => (
+            <li key={s.slug + s.title}>
+              <a
+                href={`/posts/${s.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 text-[11.5px] text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] hover:border-[var(--aurora-1)]/40 transition-colors"
+              >
+                {s.title || s.slug}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  // ============== 版书模式（engraved）==============
+  // identity 行变成居中浮动分隔标识，正文以浮印质感渲染在画布上 ——
+  // 设计灵感来自宋版书的栏标 + 文章详情页的 .reading-column。
+  if (displayMode === 'engraved') {
+    return (
+      <motion.article
+        layout="position"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        className="group/msg relative max-w-3xl mx-auto"
+        aria-label={isUser ? '用户消息' : 'Agent 回复'}
+      >
+        {/* 居中浮动 identity 行：左右两条渐隐 hairline */}
+        <div className="my-5 flex items-center gap-3 px-1">
+          <span
+            aria-hidden="true"
+            className="h-px flex-1 bg-gradient-to-r from-transparent to-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
+          />
+          <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--ink-muted)]">
+            <span
+              className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${
+                isUser
+                  ? 'bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-primary)]'
+                  : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+              }`}
+              aria-hidden="true"
+            >
+              {isUser ? <User className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+            </span>
+            {isUser ? 'YOU' : 'AGENT'}
+            <span aria-hidden="true">·</span>
+            <span className="tabular-nums normal-case tracking-[0.14em]" suppressHydrationWarning>
+              {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+            {!isUser && <ThinkingMeta message={message} />}
+            {hoverActions}
+          </span>
+          <span
+            aria-hidden="true"
+            className="h-px flex-1 bg-gradient-to-l from-transparent to-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
+          />
+        </div>
+
+        {/* think 块（仅 assistant） */}
+        {!isUser && message.think && (
+          <div className="mb-3">
+            <ThinkingBlock
+              think={message.think}
+              streaming={!!message.pending && !message.firstTokenAt}
+            />
+          </div>
+        )}
+
+        {/* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */}
+        <div
+          className="agent-engraved-text break-words"
+          style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
+        >
+          {isUser || message.error ? (
+            <div className="whitespace-pre-wrap leading-relaxed">
+              {message.content}
+              {message.error && (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                    ERROR · {message.error}
+                  </span>
+                  {canRetryAssistant && (
+                    <button
+                      type="button"
+                      onClick={() => onRetry?.(message)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                      aria-label="重新生成回复"
+                    >
+                      <RefreshCcw className="w-3 h-3" /> 重试
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : showTypingDots ? (
+            <TypingDots />
+          ) : message.pending ? (
+            <div
+              className={`agent-engraved-streaming agent-stream-fade${
+                streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
+              }`}
+            >
+              <StreamMarkdown content={renderableContent} />
+              <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
+            </div>
+          ) : (
+            <div className="agent-md agent-engraved-md">
+              <MarkdownRenderer content={finalContent} />
+            </div>
+          )}
+        </div>
+
+        {sourcesList}
+      </motion.article>
+    );
+  }
+
+  // ============== 气泡模式（bubble，默认）==============
   return (
     <motion.article
       layout="position"
@@ -462,7 +651,8 @@ function areEqual(a: Props, b: Props) {
   const mb = b.message;
   // busy 翻转直接影响按钮可点性（disabled / hidden），必须穿透 memo 重渲。
   if (a.busy !== b.busy) return false;
-  // 设置变化（吐字模式 / 字号）也要穿透：用户切档时即时生效。
+  // 设置变化（显示模式 / 吐字模式 / 字号）也要穿透：用户切档时即时生效。
+  if (a.displayMode !== b.displayMode) return false;
   if (a.streamAnimation !== b.streamAnimation) return false;
   if (a.fontSize !== b.fontSize) return false;
   // 父级用 useCallback 稳定 onEdit / onRetry —— 它们的引用不变就视为等价；
