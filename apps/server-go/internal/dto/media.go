@@ -118,15 +118,63 @@ type StorageProviderVO struct {
 	CreatedAt    *time.Time `json:"createdAt"`    // 创建时间
 }
 
+// StorageProviderTypes 是 storage_providers 支持的全部 provider 类型枚举,
+// 与 StorageProviderRequest.ProviderType 的 `oneof` validate tag 必须保持一致。
+//
+// 添加新 provider 类型时记得 **同时** 改两处:本 slice + DTO struct 上的
+// `validate:"required,oneof=..."`(go validator tag 不接受运行期 slice,只能字面量)。
+var StorageProviderTypes = []string{"LOCAL", "S3", "MINIO", "OSS", "COS", "R2"}
+
+// IsValidStorageProviderType 判定字符串是否落在 StorageProviderTypes 集合内。
+func IsValidStorageProviderType(t string) bool {
+	for _, v := range StorageProviderTypes {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
 // StorageProviderRequest 是创建或更新存储提供商配置的请求体 DTO。
 //
 // Phase 1 R2 一致性: ProviderType 枚举加入 R2,与 factory.go 现有支持对齐。
+//
+// NOTE: ProviderType 的 `oneof` 列表必须与 StorageProviderTypes 保持同步。
 type StorageProviderRequest struct {
 	Name         string `json:"name"         validate:"required,max=100"`                            // 存储提供商名称，最多 100 个字符（必填）
 	ProviderType string `json:"providerType" validate:"required,oneof=LOCAL S3 MINIO OSS COS R2"`   // 提供商类型（必填，枚举值：LOCAL/S3/MINIO/OSS/COS/R2）
 	ConfigJSON   string `json:"configJson"   validate:"required"`                                  // 提供商配置的 JSON 字符串（必填）
 	IsEnabled    bool   `json:"isEnabled"`                                                         // 是否启用
 	Priority     int    `json:"priority"`                                                          // 优先级
+}
+
+// StorageProviderExportItem 是导出文件中的单条 provider 记录。
+// configJson 是**明文**(含 accessKey/secretKey),便于跨实例迁移。
+type StorageProviderExportItem struct {
+	Name         string `json:"name"`
+	ProviderType string `json:"providerType"`
+	ConfigJSON   string `json:"configJson"`
+	IsDefault    bool   `json:"isDefault"`
+	IsEnabled    bool   `json:"isEnabled"`
+	Priority     int    `json:"priority"`
+}
+
+// StorageProviderExportPayload 是 GET /export 的响应 / POST /import 的请求 body。
+//
+// 安全提示:导出文件包含**明文密钥**,在前端会给出醒目警告。
+// 用户负责妥善保管该文件,避免提交到代码仓库或公开分享。
+type StorageProviderExportPayload struct {
+	Version    int                         `json:"version"`              // 当前固定 1,后续 schema 演进时累加
+	ExportedAt time.Time                   `json:"exportedAt"`           // 导出时间(UTC)
+	Providers  []StorageProviderExportItem `json:"providers"`            // 导出的 provider 列表
+}
+
+// StorageProviderImportResult 是 POST /import 的响应,统计每条记录的处理结果。
+type StorageProviderImportResult struct {
+	Imported     int      `json:"imported"`              // 实际新建的条数
+	SkippedNames []string `json:"skippedNames,omitempty"` // 因同名已存在而跳过的 name 列表
+	FailedNames  []string `json:"failedNames,omitempty"`  // 因校验/写库失败而跳过的 name 列表
+	DefaultSet   string   `json:"defaultSet,omitempty"`   // 若导入中有 isDefault=true 的项,这里返回它的 name
 }
 
 // --- 媒体标签 ---

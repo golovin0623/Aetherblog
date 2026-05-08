@@ -118,7 +118,49 @@ export const storageProviderService = {
   deleteObjects: async (providerId: number, keys: string[]): Promise<R<{ deleted: number; refusedKeys?: string[] }>> => {
     return api.delete(`/v1/admin/storage/providers/${providerId}/objects`, { data: { keys } });
   },
+
+  // ========== 配置导入 / 导出 ==========
+
+  /**
+   * 导出所有 storage provider 配置(含明文密钥)。
+   *
+   * SECURITY:返回 payload 包含 accessKey/secretKey 明文,UI 触发前必须给用户警告。
+   */
+  exportConfig: async (): Promise<R<StorageProviderExportPayload>> => {
+    return api.get('/v1/admin/storage/providers/export');
+  },
+
+  /**
+   * 导入 storage provider 配置。同名 provider 会被跳过,不覆盖已有配置。
+   * 若 payload 中有 isDefault=true 项且实际新建,则自动切换为默认 provider。
+   */
+  importConfig: async (payload: StorageProviderExportPayload): Promise<R<StorageProviderImportResult>> => {
+    return api.post('/v1/admin/storage/providers/import', payload);
+  },
 };
+
+// 配置导入/导出类型
+export interface StorageProviderExportItem {
+  name: string;
+  providerType: StorageProviderType;
+  configJson: string;
+  isDefault: boolean;
+  isEnabled: boolean;
+  priority: number;
+}
+
+export interface StorageProviderExportPayload {
+  version: number;
+  exportedAt: string;
+  providers: StorageProviderExportItem[];
+}
+
+export interface StorageProviderImportResult {
+  imported: number;
+  skippedNames?: string[];
+  failedNames?: string[];
+  defaultSet?: string;
+}
 
 // Phase 5 类型
 export interface ListObjectsResult {
