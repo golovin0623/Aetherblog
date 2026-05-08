@@ -114,6 +114,56 @@ def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
     return provider_code, model_id
 
 
+# OpenAI 的 reasoning 系列 (gpt-5 全家 / o1 / o3 / o4-mini) 在 Chat Completions
+# 接口上 **拒绝任何非 1 的 temperature**，发出去会被 LiteLLM 直接 raise
+# ``UnsupportedParamsError: ... Only temperature=1 is supported.``。线上事故：
+# 任务路由配的 summary 模型是 gpt-5-codex，但 ``ai_task_routing.config`` 缺省
+# 会回退到 0.7 (见 _resolve_route)，于是每次"生成"都炸。
+#
+# 这里采用 denylist + 前缀匹配——一次 list 匹配所有变体 (gpt-5 / gpt-5-mini /
+# gpt-5-nano / gpt-5-codex / gpt-5.1 / o1 / o1-mini / o3 / o3-mini / o4-mini)，
+# 命中即把 temperature 整个剔掉，让上游用各自默认值；不强行写 1.0 是为了
+# 兼容 gpt-5.1 在 reasoning_effort='none' 下能接受任意 temperature 的特例。
+_TEMPERATURE_LOCKED_MODEL_PREFIXES: tuple[str, ...] = (
+    "gpt-5",
+    "o1",
+    "o3",
+    "o4-mini",
+)
+
+
+def _model_locks_temperature(model: str | None) -> bool:
+    """判定给定 ``model`` 是否属于 ``temperature`` 强制锁定家族。
+
+    ``model`` 是已经过 ``_prefix_model_for_litellm`` 处理后的 LiteLLM 形态，
+    可能含 ``openai/`` / ``azure/`` 前缀，也可能是裸模型名。
+    """
+    if not model:
+        return False
+    _, model_id = _normalize_model_parts(model)
+    bare = (model_id or model or "").lower()
+    return any(bare.startswith(p) for p in _TEMPERATURE_LOCKED_MODEL_PREFIXES)
+
+
+def _completion_kwargs(
+    *,
+    model: str,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> dict[str, Any]:
+    """构造 ``acompletion`` 的可选 kwargs，按模型家族剔除不兼容参数。
+
+    单一职责：所有 ``acompletion(...)`` / ``aembedding(...)`` 调用前都从
+    这里拿参数字典，避免把 model-specific 兼容判断散落在各 call site。
+    """
+    kwargs: dict[str, Any] = {}
+    if temperature is not None and not _model_locks_temperature(model):
+        kwargs["temperature"] = temperature
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    return kwargs
+
+
 class LlmRouter:
     """
     支持动态配置的 LLM Router。
@@ -359,7 +409,7 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
-        allow_override: bool = False,
+        allow_override: bool = True,
     ) -> dict[str, str | float | None]:
         resolved = await self._resolve_route(
             model_alias=model_alias,
@@ -386,7 +436,7 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
-        allow_override: bool = False,
+        allow_override: bool = True,
     ) -> str:
         resolved = await self._resolve_route(
             model_alias=model_alias,
@@ -650,9 +700,19 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
-        allow_override: bool = False,
+        allow_override: bool = True,
     ) -> str:
-        """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。"""
+        """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。
+
+        ``allow_override`` 历史默认是 False，意味着即便调用方传了 ``model_id``
+        也会被静默忽略 —— 等价于 admin 后台 ModelPicker 是装饰品，挑了
+        Claude Opus 仍然落到 ``ai_task_routing`` 配置的 gpt-5。该默认值是
+        当年为收紧 agent.py 的 ``X-Internal-Service`` 鉴权路径设的；ai.py
+        / search.py 这条管理员真实 JWT 链路并不需要这道闸 —— ``_resolve_override``
+        本身已要求"模型在 provider_registry 启用 + user 持有该 provider 凭证"，
+        足以构成访问控制。这里把默认翻成 True，让 ``model_id`` 一旦传入就被
+        尊重；agent.py 另起 ``_resolve_for_agent`` 不走 chat()，不受影响。
+        """
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
@@ -689,8 +749,11 @@ class LlmRouter:
                 messages=messages,
                 api_key=resolved.api_key,
                 api_base=resolved.api_base,
-                temperature=resolved.temperature,
-                max_tokens=resolved.max_tokens,
+                **_completion_kwargs(
+                    model=resolved.model,
+                    temperature=resolved.temperature,
+                    max_tokens=resolved.max_tokens,
+                ),
             )
             content = response.choices[0].message.content
             logger.info(
@@ -741,8 +804,11 @@ class LlmRouter:
                         messages=messages,
                         api_key=fallback_routing.credential.api_key,
                         api_base=fallback_routing.credential.base_url,
-                        temperature=resolved.temperature,
-                        max_tokens=resolved.max_tokens,
+                        **_completion_kwargs(
+                            model=fallback_model,
+                            temperature=resolved.temperature,
+                            max_tokens=resolved.max_tokens,
+                        ),
                     )
                     return response.choices[0].message.content or ""
             raise
@@ -808,7 +874,7 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
-        allow_override: bool = False,
+        allow_override: bool = True,
     ) -> AsyncGenerator[str, None]:
         """流式返回 chat completion 响应，支持动态 prompt 渲染。
 
@@ -857,9 +923,12 @@ class LlmRouter:
                 messages=messages,
                 api_key=resolved.api_key,
                 api_base=resolved.api_base,
-                temperature=resolved.temperature,
-                max_tokens=resolved.max_tokens,
                 stream=True,
+                **_completion_kwargs(
+                    model=resolved.model,
+                    temperature=resolved.temperature,
+                    max_tokens=resolved.max_tokens,
+                ),
             )
             async for part in stream:
                 delta = part.choices[0].delta
@@ -913,9 +982,12 @@ class LlmRouter:
                 messages=messages,
                 api_key=fallback_routing.credential.api_key,
                 api_base=fallback_routing.credential.base_url,
-                temperature=resolved.temperature,
-                max_tokens=resolved.max_tokens,
                 stream=True,
+                **_completion_kwargs(
+                    model=fallback_model,
+                    temperature=resolved.temperature,
+                    max_tokens=resolved.max_tokens,
+                ),
             )
             async for part in fallback_stream:
                 delta = part.choices[0].delta
