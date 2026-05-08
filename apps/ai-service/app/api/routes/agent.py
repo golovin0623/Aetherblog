@@ -41,7 +41,7 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.schemas.common import ApiResponse
-from app.services.llm_router import NON_CHAT_MODEL_TYPES, LlmRouter
+from app.services.llm_router import NON_CHAT_MODEL_TYPES, LlmRouter, _completion_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -572,9 +572,12 @@ async def agent_chat(
                 messages=chat_messages,
                 api_key=resolved.api_key,
                 api_base=resolved.api_base,
-                temperature=resolved.temperature,
-                max_tokens=resolved.max_tokens,
                 stream=True,
+                **_completion_kwargs(
+                    model=resolved.model,
+                    temperature=resolved.temperature,
+                    max_tokens=resolved.max_tokens,
+                ),
             )
             async for part in stream:
                 delta = part.choices[0].delta

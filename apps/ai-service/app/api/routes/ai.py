@@ -590,6 +590,16 @@ async def _resolve_model_context(
     model_id: str | None,
     provider_code: str | None,
 ) -> tuple[str, dict[str, str | float | None]]:
+    """解析当前请求最终落到哪个模型上。
+
+    依赖 ``LlmRouter.resolve_usage_context`` 的 ``allow_override=True`` 默认 ——
+    这些 admin 创作端点（summary/polish/titles/...）走的是
+    ``Depends(rate_limit) → require_user`` 的真实 JWT 链路，``_resolve_override``
+    内部还会做一次"该模型在 provider_registry 启用 + admin 有该 provider 凭证"
+    的双闸控制。任何静默忽略 ``model_id`` 的回退路径都会让 ModelPicker 在 UI
+    上变成装饰品（挑了 Claude 仍然落到 task routing 配的 gpt-5），这是事故
+    报告里被反复点名的 UX bug。
+    """
     usage_context = await llm.resolve_usage_context(
         task_type,
         user_id=user_id,

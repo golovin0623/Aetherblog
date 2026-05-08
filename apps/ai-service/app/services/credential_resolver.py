@@ -13,12 +13,27 @@ from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
-from cryptography.fernet import Fernet, MultiFernet
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from app.core.config import get_settings
 from app.utils.provider_urls import normalize_api_base
 
 logger = logging.getLogger("ai-service")
+
+
+class CredentialDecryptionError(RuntimeError):
+    """Fernet 解密失败的可读包装。
+
+    向调用方 / 终端用户传达的核心信息：
+      * 类名 ``CredentialDecryptionError`` 比 ``InvalidToken`` 自描述强得多，
+        前端兜底渲染 ``ERROR · {error_type}`` 时能看出"是凭证解密炸了"。
+      * 异常 ``str()`` 给出可立即操作的修复指引（环境变量 / 轮换脚本），
+        线上事故现场不必再翻 ai-service 源码就能 self-diagnose。
+
+    根因永远是部署机的 ``AI_CREDENTIAL_ENCRYPTION_KEYS`` 与最初加密这条
+    凭证的 key 不一致，详见 docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md
+    与 scripts/rotate_credentials.py。
+    """
 
 
 def _encode_json(value: Any) -> Any:
@@ -97,8 +112,23 @@ class CredentialResolver:
         return self._fernet.encrypt(api_key.encode()).decode()
 
     def decrypt_api_key(self, encrypted: str) -> str:
-        """从存储中解密 API key（依次尝试所有已配置的 key）。"""
-        return self._fernet.decrypt(encrypted.encode()).decode()
+        """从存储中解密 API key（依次尝试所有已配置的 key）。
+
+        所有已配置 key 都解不开时，把底层的 ``cryptography.fernet.InvalidToken``
+        换成 ``CredentialDecryptionError`` 抛出。原异常无 message，FastAPI 的
+        ``unhandled_exception_handler`` 会回 ``"InvalidToken"`` 给前端，前端
+        用户 / 运维都看不出怎么修；这层包装把"加密 key 不匹配 → 改环境变量
+        或跑轮换脚本"这条修复路径直接写进 message，部署事故能秒诊。
+        """
+        try:
+            return self._fernet.decrypt(encrypted.encode()).decode()
+        except InvalidToken as exc:
+            raise CredentialDecryptionError(
+                "AI 凭证解密失败：当前 AI_CREDENTIAL_ENCRYPTION_KEYS 与该凭证"
+                "加密时使用的 key 不匹配。请确认部署环境变量与最初保存凭证时"
+                "一致；如已轮换主 key，请把旧 key 也加入逗号分隔的 keys 列表，"
+                "或运行 scripts/rotate_credentials.py 重新加密历史凭证。"
+            ) from exc
 
     def reencrypt_api_key(self, encrypted: str) -> str:
         """用任一已配置 key 解密，再用第一个 key 重新加密。
