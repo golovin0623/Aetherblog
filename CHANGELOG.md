@@ -54,6 +54,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/architecture.md` 数据库节:本次未改 schema(用现有 `folder_permissions` 表),**无需更新**
 - `.claude/docs/api-handlers.md`:`/v1/admin/media/upload` 未新增端点,只改了 service 层校验,**无需更新**
 
+### ✨ 云储存全面优化 · 批次 3a — Cloudflare R2 endpoint 自动拼装 (2026-05-08, branch codex/cloud-storage-extras)
+
+**背景:** R2 配置一直卡在 "endpoint placeholder 是 `https://<account-id>.r2.cloudflarestorage.com`" —— 用户复制粘贴 + 把 `<account-id>` 占位符当字符串保存,落库后 Storage adapter 解析时才发现是个无效 URL,需要重开配置改一遍才能跑通。
+
+**Added — `apps/admin/src/pages/settings/StorageProviderSettings.tsx`:**
+- `extractR2AccountId(endpoint)` / `buildR2Endpoint(accountId)`:基于固定正则 `/^https?:\/\/([a-f0-9]{32})\.r2\.cloudflarestorage\.com\/?$/i` 双向同步。
+- `R2AccountIdField` 组件:仅 R2 模式渲染。用户在 "Cloudflare Account ID" 输入框输入 32 位 hex 后,自动写回 `cfg.endpoint`,顺手把空 region 设为 `auto`。已有非标 endpoint(自定义 worker / 透明代理)显示警告但不阻塞。
+- 保留 endpoint 输入框可手填 —— 高级用户(自定义域名)路径不被破坏。
+
+**Removed:**
+- R2 的 endpoint preset 按钮(原本会把 `https://<account-id>...` 直接填到输入框)—— 用专门的 accountId 输入框取代。
+
+**Test plan(浏览器):**
+- 新建 R2 provider:填 accountId → endpoint 自动出现且 region 默认 auto
+- 编辑现有 R2 provider:accountId 反向解析自 endpoint,无需重新输入
+- 自定义 worker URL:直接手填 endpoint,警告条出现但保存仍然可行
+
+📄 文档影响:
+- `CHANGELOG.md` 本条
+- `.claude/docs/backend-runtime.md`:本次纯前端 UI,不涉及运行时机制,**无需更新**
+
 ### ☁️ 云储存全面优化 · 批次 1 — 客户端 abort / 重试 / 阶段化进度 (2026-05-08, branch codex/cloud-storage-upload-resilience)
 
 **背景：** 媒体库上传链路在生产里有三个稳定的"看不见的痛"：
