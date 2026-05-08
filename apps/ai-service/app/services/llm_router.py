@@ -141,7 +141,7 @@ def _model_locks_temperature(model: str | None) -> bool:
     if not model:
         return False
     _, model_id = _normalize_model_parts(model)
-    bare = (model_id or model or "").lower()
+    bare = (model_id or "").lower()
     return any(bare.startswith(p) for p in _TEMPERATURE_LOCKED_MODEL_PREFIXES)
 
 
@@ -153,8 +153,9 @@ def _completion_kwargs(
 ) -> dict[str, Any]:
     """构造 ``acompletion`` 的可选 kwargs，按模型家族剔除不兼容参数。
 
-    单一职责：所有 ``acompletion(...)`` / ``aembedding(...)`` 调用前都从
-    这里拿参数字典，避免把 model-specific 兼容判断散落在各 call site。
+    单一职责：所有 ``acompletion(...)`` 调用前都从这里拿参数字典，避免把
+    model-specific 兼容判断散落在各 call site。``aembedding`` 不传 temperature，
+    与本函数无关，需要类似裁剪时另开。
     """
     kwargs: dict[str, Any] = {}
     if temperature is not None and not _model_locks_temperature(model):
