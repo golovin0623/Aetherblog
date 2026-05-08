@@ -94,10 +94,22 @@ admin 侧栏「云端浏览」→ `CloudExplorerPage`：
 
 ### Secret 加密机制
 
-- `storage_providers.config_json` 在 Repo 层用 **Fernet（复用 `AI_CREDENTIAL_ENCRYPTION_KEYS`）** 加密
+- `storage_providers.config_json` 在 Repo 层用 **Fernet** 加密
 - 落库格式 `enc:v1:gAAAA...`
 - 启动时自动迁移 legacy 明文行 (`MigrateLegacyToEncrypted`)
 - Python ai-service 与 Go 端**二进制兼容**：MultiFernet 轮换语义、urlsafe-base64 padding 容错
+
+#### 密钥来源优先级（批次 3b — Fernet 拆分）
+
+`storage_provider_repo` 走 `cryptkey.DefaultForStorage()`,解析顺序:
+
+1. `STORAGE_ENCRYPTION_KEYS`（专用,推荐生产环境单独轮换）
+2. `AI_CREDENTIAL_ENCRYPTION_KEYS`（fallback,老部署不必动 env 即可继续工作）
+3. 都为空 → `enabled=false`,Encrypt/Decrypt 透传（开发模式）
+
+启动期会打印 `storage encryption keystore initialized source=... enabled=...`,运维一眼可读出走的是哪个 env。
+
+`Default()`（AI 那个）保留独立路径,`storage` 改用 `DefaultForStorage()` 仅是给运维一个**可选的解耦点**。两个 env 用同一个值时行为与历史完全一致。
 
 ### 大文件流式 multipart
 

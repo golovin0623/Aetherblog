@@ -28,9 +28,12 @@ type StorageProviderRepo struct {
 
 // NewStorageProviderRepo 创建一个由指定数据库连接支撑的 StorageProviderRepo 实例。
 //
-// keystore 默认从 cryptkey.Default() 读取(进程级单例);测试可注入定制。
+// keystore 默认从 cryptkey.DefaultForStorage() 读取 —— 优先使用 STORAGE_ENCRYPTION_KEYS,
+// 缺失时 fallback 到 AI_CREDENTIAL_ENCRYPTION_KEYS 保持向后兼容。测试可注入定制。
+//
+// @ref 云储存优化批次 3b — Fernet 密钥拆分
 func NewStorageProviderRepo(db *sqlx.DB) *StorageProviderRepo {
-	return &StorageProviderRepo{db: db, keystore: cryptkey.Default()}
+	return &StorageProviderRepo{db: db, keystore: cryptkey.DefaultForStorage()}
 }
 
 // NewStorageProviderRepoWithKeystore 显式传入 keystore,主要供测试。

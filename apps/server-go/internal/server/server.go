@@ -20,6 +20,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/config"
 	"github.com/golovin0623/aetherblog-server/internal/handler"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/cryptkey"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
@@ -283,8 +284,14 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	mediaRepo := repository.NewMediaRepo(s.DB)
 	folderRepo := repository.NewFolderRepo(s.DB)
 	storageProviderRepo := repository.NewStorageProviderRepo(s.DB)
+	// 批次 3b:打印 storage 加密密钥来源 —— 让运维一眼看到走的是 STORAGE_ENCRYPTION_KEYS
+	// 还是 fallback 到了 AI_CREDENTIAL_ENCRYPTION_KEYS。两个 env 都缺时这条日志走 dev 模式。
+	log.Info().
+		Str("source", cryptkey.StorageKeystoreSource()).
+		Bool("enabled", cryptkey.DefaultForStorage().Enabled()).
+		Msg("storage encryption keystore initialized")
 	// 启动时自动把 legacy 明文 storage_providers.config_json 加密重写
-	// (AI_CREDENTIAL_ENCRYPTION_KEYS 未配置时这是 no-op,所以 dev 环境不受影响)。
+	// (storage 密钥未配置时这是 no-op,所以 dev 环境不受影响)。
 	if migrated, total, err := storageProviderRepo.MigrateLegacyToEncrypted(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("storage_providers legacy encryption migration failed")
 	} else if migrated > 0 {

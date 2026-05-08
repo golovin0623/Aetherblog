@@ -117,6 +117,56 @@ func TestKeystore_DisabledIsTransparent(t *testing.T) {
 	}
 }
 
+// 批次 3b:NewKeystoreFromFallbackEnv 优先用 primary;空时回落 fallback;
+// 都空 → enabled=false。
+func TestKeystoreFallback_PrimaryWins(t *testing.T) {
+	primaryKey := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	fallbackKey := "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA="
+	t.Setenv("STORAGE_ENCRYPTION_KEYS", primaryKey)
+	t.Setenv("AI_CREDENTIAL_ENCRYPTION_KEYS", fallbackKey)
+	ks, src, err := NewKeystoreFromFallbackEnv("STORAGE_ENCRYPTION_KEYS", "AI_CREDENTIAL_ENCRYPTION_KEYS")
+	if err != nil {
+		t.Fatalf("fallback init: %v", err)
+	}
+	if src != "STORAGE_ENCRYPTION_KEYS" {
+		t.Errorf("source should be STORAGE_ENCRYPTION_KEYS when both set, got %q", src)
+	}
+	if !ks.Enabled() {
+		t.Error("keystore should be enabled when primary set")
+	}
+}
+
+func TestKeystoreFallback_UsesFallbackWhenPrimaryMissing(t *testing.T) {
+	fallbackKey := "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA="
+	t.Setenv("STORAGE_ENCRYPTION_KEYS", "")
+	t.Setenv("AI_CREDENTIAL_ENCRYPTION_KEYS", fallbackKey)
+	ks, src, err := NewKeystoreFromFallbackEnv("STORAGE_ENCRYPTION_KEYS", "AI_CREDENTIAL_ENCRYPTION_KEYS")
+	if err != nil {
+		t.Fatalf("fallback init: %v", err)
+	}
+	if src != "AI_CREDENTIAL_ENCRYPTION_KEYS" {
+		t.Errorf("source should fall back to AI_CREDENTIAL_ENCRYPTION_KEYS, got %q", src)
+	}
+	if !ks.Enabled() {
+		t.Error("keystore should be enabled via fallback")
+	}
+}
+
+func TestKeystoreFallback_BothMissingDisabledMode(t *testing.T) {
+	t.Setenv("STORAGE_ENCRYPTION_KEYS", "")
+	t.Setenv("AI_CREDENTIAL_ENCRYPTION_KEYS", "")
+	ks, src, err := NewKeystoreFromFallbackEnv("STORAGE_ENCRYPTION_KEYS", "AI_CREDENTIAL_ENCRYPTION_KEYS")
+	if err != nil {
+		t.Fatalf("fallback init: %v", err)
+	}
+	if src != "AI_CREDENTIAL_ENCRYPTION_KEYS" {
+		t.Errorf("source name should still report fallback name, got %q", src)
+	}
+	if ks.Enabled() {
+		t.Error("keystore should be disabled when both env empty (dev mode)")
+	}
+}
+
 // TestKeystore_EnabledRoundTrip 正常加密往返,带 enc:v1: 前缀。
 func TestKeystore_EnabledRoundTrip(t *testing.T) {
 	t.Setenv("AI_CREDENTIAL_ENCRYPTION_KEYS", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")

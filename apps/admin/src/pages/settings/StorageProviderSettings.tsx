@@ -53,7 +53,8 @@ const ENDPOINT_PRESETS: Partial<Record<StorageProviderType, EndpointPreset[]>> =
     { label: '深圳 (oss-cn-shenzhen)', value: 'https://oss-cn-shenzhen.aliyuncs.com' },
   ],
   R2: [
-    { label: 'Cloudflare R2', value: 'https://<account-id>.r2.cloudflarestorage.com', needsAccountId: true },
+    // R2 不再显示 endpoint preset 按钮 —— 用专门的 accountId 输入框驱动 endpoint 拼装,
+    // 避免用户复制带 "<account-id>" 字面量的 URL 直接落库。见 R2AccountIdField。
   ],
   MINIO: [
     { label: '本地默认 (localhost:9000)', value: 'http://localhost:9000', allowPrivateEndpoint: true },
@@ -67,6 +68,26 @@ const DEFAULT_REGIONS: Partial<Record<StorageProviderType, string>> = {
   OSS: 'cn-hangzhou',
   R2: 'auto',
 };
+
+/**
+ * R2 endpoint 的标准形态:`https://{32 位十六进制 accountId}.r2.cloudflarestorage.com`。
+ * 反向解析与正向构造都用这个常量,避免双源不一致。
+ *
+ * @ref 云储存优化批次 3a — Cloudflare account ID 一键填 endpoint
+ */
+const R2_ACCOUNT_ENDPOINT_RE = /^https?:\/\/([a-f0-9]{32})\.r2\.cloudflarestorage\.com\/?$/i;
+
+function extractR2AccountId(endpoint: string): string {
+  if (!endpoint) return '';
+  const m = endpoint.match(R2_ACCOUNT_ENDPOINT_RE);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function buildR2Endpoint(accountId: string): string {
+  const trimmed = accountId.trim().toLowerCase();
+  if (!trimmed) return '';
+  return `https://${trimmed}.r2.cloudflarestorage.com`;
+}
 
 /**
  * S3 兼容配置(LOCAL 之外的统一形状)
@@ -665,7 +686,7 @@ function S3Fields({
       : providerType === 'OSS'
         ? 'https://oss-cn-shanghai.aliyuncs.com'
         : providerType === 'R2'
-          ? 'https://<account-id>.r2.cloudflarestorage.com'
+          ? '上方填入 account ID 后自动拼接,如自定义 worker 域名可手填'
           : 'https://example.com';
 
   return (
@@ -692,6 +713,11 @@ function S3Fields({
           />
         </div>
       </div>
+
+      {/* R2:Cloudflare Account ID → 自动拼接 endpoint */}
+      {providerType === 'R2' && (
+        <R2AccountIdField cfg={cfg} onChange={onChange} />
+      )}
 
       {/* endpoint + 预设 */}
       <div>
@@ -835,6 +861,68 @@ function S3Fields({
           <span className="text-sm text-[var(--text-secondary)]">allowPrivateEndpoint</span>
           <span className="text-xs text-[var(--text-muted)]">(允许 localhost/内网 endpoint)</span>
         </label>
+      )}
+    </div>
+  );
+}
+
+/**
+ * R2AccountIdField:R2 模式专用的 Cloudflare Account ID 输入框,自动驱动 endpoint 拼装。
+ *
+ * 双向同步规则:
+ * - accountId 反向解析自 cfg.endpoint(`https://{32 位 hex}.r2.cloudflarestorage.com`)
+ * - 用户编辑 accountId → 自动重写 cfg.endpoint;若 region 为空则一并填入 'auto'
+ * - cfg.endpoint 已是非标 URL(自定义 worker / 透明代理) → accountId 显示空,不影响 endpoint
+ *
+ * @ref 云储存优化批次 3a — 消除"复制 <account-id> 字面量到 endpoint" 卡点
+ */
+function R2AccountIdField({
+  cfg,
+  onChange,
+}: {
+  cfg: S3LikeConfig;
+  onChange: (v: S3LikeConfig) => void;
+}) {
+  const accountId = extractR2AccountId(cfg.endpoint);
+  // 已是非标 endpoint(空 / 自定义 worker / 等)→ 显示警告,但不阻塞用户继续手填 endpoint
+  const endpointHasValue = cfg.endpoint.trim() !== '';
+  const endpointParsed = endpointHasValue && accountId !== '';
+  const endpointUnparsed = endpointHasValue && !endpointParsed;
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+        Cloudflare Account ID *
+        <span className="ml-2 text-[var(--text-muted)] font-normal">
+          (自动拼接 endpoint;Cloudflare Dashboard → R2 → 右上角"Use R2 with APIs")
+        </span>
+      </label>
+      <input
+        type="text"
+        value={accountId}
+        onChange={(e) => {
+          const next = e.target.value.trim();
+          onChange({
+            ...cfg,
+            endpoint: buildR2Endpoint(next),
+            // R2 默认 region = 'auto' —— 用户不必再手填
+            region: cfg.region || 'auto',
+          });
+        }}
+        placeholder="1234567890abcdef1234567890abcdef"
+        className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {endpointParsed && (
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+          endpoint 已自动设置:<span className="font-mono text-status-success">{cfg.endpoint}</span>
+        </p>
+      )}
+      {endpointUnparsed && (
+        <p className="mt-1 text-[11px] text-status-warning">
+          检测到非标 endpoint(自定义 worker / 透明代理);保持手填即可,此输入框不影响。
+        </p>
       )}
     </div>
   );
