@@ -26,7 +26,8 @@ import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const AI_DASHBOARD_PAGE_SIZE = 20;
+const AI_DASHBOARD_DEFAULT_PAGE_SIZE = 10;
+const AI_DASHBOARD_PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
 
 const EMPTY_AI_DASHBOARD: AiDashboardData = {
   rangeDays: 30,
@@ -48,7 +49,7 @@ const EMPTY_AI_DASHBOARD: AiDashboardData = {
   records: {
     list: [],
     pageNum: 1,
-    pageSize: AI_DASHBOARD_PAGE_SIZE,
+    pageSize: AI_DASHBOARD_DEFAULT_PAGE_SIZE,
     total: 0,
     pages: 0,
   },
@@ -77,6 +78,7 @@ export default function DashboardPage() {
   const [aiData, setAiData] = useState<AiDashboardData>(EMPTY_AI_DASHBOARD);
   const [aiDays, setAiDays] = useState<7 | 30 | 90>(30);
   const [aiPage, setAiPage] = useState(1);
+  const [aiPageSize, setAiPageSize] = useState<number>(AI_DASHBOARD_DEFAULT_PAGE_SIZE);
   const [aiTaskType, setAiTaskType] = useState('');
   const [aiModelId, setAiModelId] = useState('');
   const [aiKeyword, setAiKeyword] = useState('');
@@ -167,7 +169,7 @@ export default function DashboardPage() {
         const response = await analyticsService.getAiDashboard({
           days: aiDays,
           pageNum: aiPage,
-          pageSize: AI_DASHBOARD_PAGE_SIZE,
+          pageSize: aiPageSize,
           taskType: aiTaskType || undefined,
           modelId: aiModelId || undefined,
           success,
@@ -198,7 +200,7 @@ export default function DashboardPage() {
     };
 
     fetchAiDashboard();
-  }, [aiDays, aiPage, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword, aiReloadTick]);
+  }, [aiDays, aiPage, aiPageSize, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword, aiReloadTick]);
 
   // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
@@ -605,8 +607,8 @@ export default function DashboardPage() {
         <AiUsageRecordsTable
           records={aiRecords}
           loading={aiLoading}
-          page={aiData.records?.pageNum || aiPage}
-          pageSize={aiData.records?.pageSize || AI_DASHBOARD_PAGE_SIZE}
+          page={aiPage}
+          pageSize={aiPageSize}
           total={aiData.records?.total || 0}
           onPageChange={(nextPage) => {
             if (nextPage < 1) {
@@ -617,6 +619,11 @@ export default function DashboardPage() {
               return;
             }
             setAiPage(nextPage);
+          }}
+          pageSizeOptions={AI_DASHBOARD_PAGE_SIZE_OPTIONS}
+          onPageSizeChange={(nextSize) => {
+            setAiPageSize(nextSize);
+            setAiPage(1);
           }}
           modelOptions={aiModelOptions}
           taskOptions={aiTaskOptions}
