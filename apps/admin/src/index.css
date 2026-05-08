@@ -50,68 +50,39 @@
   box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.65);
 }
 
-/* AetherHub workspace keeps the global Codex system intact while giving the
-   workspace screen its own single-light-source palette and mobile surfaces. */
+/* AetherHub workspace —— 复合 token 全部基于 Codex 全局变量派生：
+ * - aurora-1..4 走 packages/ui/src/styles/tokens.css 的 OKLCH 派生（aurora-1
+ *   = primary 锚点，2/3/4 = h+18°/+36°/+60° 同色系邻近，由 --color-primary
+ *   驱动）。本页**不**硬编码 hue，主题切换 / 站点 primary 调整即时生效。
+ * - ink-* / bg-* 同样走 tokens.css 的 light/dark 自动翻转，避免亮色模式下
+ *   出现"灰白底 + 灰白字"的低对比度问题。 */
 .aetherhub-workspace {
   --hub-accent: var(--aurora-1);
   --hub-accent-2: var(--aurora-3);
-  --hub-accent-text: color-mix(in oklch, var(--aurora-1) 84%, var(--ink-primary));
+  --hub-accent-text: var(--aurora-1);
   --hub-active: color-mix(in oklch, var(--aurora-1) 14%, transparent);
-  --hub-border: rgb(from var(--ink-primary) r g b / 0.08);
-  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 22%, transparent);
-  --hub-control: rgb(from var(--bg-leaf) r g b / 0.70);
-  --hub-control-hover: color-mix(in oklch, var(--aurora-1) 8%, var(--bg-leaf));
+  --hub-border: rgb(from var(--ink-primary) r g b / 0.10);
+  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 26%, transparent);
+  --hub-control: rgb(from var(--ink-primary) r g b / 0.04);
+  --hub-control-hover: rgb(from var(--ink-primary) r g b / 0.07);
   --hub-gradient: linear-gradient(135deg, var(--aurora-1), var(--aurora-3));
-  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.74);
-  --hub-panel-strong: rgb(from var(--bg-leaf) r g b / 0.78);
+  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.78);
+  --hub-panel-strong: var(--bg-leaf);
   --hub-on-accent: var(--bg-void);
   --hub-soft: color-mix(in oklch, var(--aurora-1) 9%, transparent);
-  --hub-card-shadow: 0 16px 44px -34px color-mix(in oklch, var(--aurora-1) 32%, black);
-  --hub-accent-shadow: 0 16px 40px -22px var(--aurora-1);
+  --hub-card-shadow: 0 16px 44px -34px color-mix(in oklch, var(--aurora-1) 28%, black);
+  --hub-accent-shadow: 0 16px 36px -22px color-mix(in oklch, var(--aurora-1) 60%, transparent);
   --hub-canvas-overlay:
     linear-gradient(180deg,
-      rgb(from var(--bg-void) r g b / 0.50),
+      rgb(from var(--bg-void) r g b / 0.55),
       rgb(from var(--bg-void) r g b / 0.96));
 }
 
 :root.light .aetherhub-workspace {
-  --color-primary: oklch(0.66 0.18 46);
-  --color-accent: oklch(0.72 0.14 64);
-  --aurora-1: oklch(0.66 0.18 46);
-  --aurora-2: oklch(0.68 0.166 64);
-  --aurora-3: oklch(0.71 0.148 82);
-  --aurora-4: oklch(0.74 0.122 106);
-  --hub-accent-text: color-mix(in oklch, var(--aurora-1) 88%, var(--ink-primary));
-  --hub-border: rgb(from var(--ink-primary) r g b / 0.075);
-  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 26%, transparent);
-  --hub-control: rgb(from var(--bg-leaf) r g b / 0.78);
-  --hub-control-hover: color-mix(in oklch, var(--aurora-1) 7%, #ffffff);
-  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.82);
-  --hub-panel-strong: rgb(from var(--bg-leaf) r g b / 0.88);
   --hub-on-accent: #ffffff;
-  --hub-card-shadow: 0 18px 48px -34px rgba(128, 74, 24, 0.28);
-  --hub-accent-shadow: 0 16px 34px -20px color-mix(in oklch, var(--aurora-1) 55%, transparent);
-  --hub-canvas-overlay:
-    linear-gradient(180deg,
-      rgb(from var(--bg-void) r g b / 0.78),
-      rgb(from var(--bg-void) r g b / 0.98));
-}
-
-:root.dark .aetherhub-workspace {
-  --color-primary: #818cf8;
-  --color-accent: #a78bfa;
-  --aurora-1: oklch(0.72 0.150 270);
-  --aurora-2: oklch(0.74 0.138 288);
-  --aurora-3: oklch(0.77 0.123 306);
-  --aurora-4: oklch(0.80 0.102 330);
-  --hub-border: rgba(255, 255, 255, 0.08);
-  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 24%, transparent);
-  --hub-control: rgba(255, 255, 255, 0.035);
-  --hub-control-hover: rgba(255, 255, 255, 0.06);
-  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.74);
-  --hub-panel-strong: rgb(from var(--bg-raised) r g b / 0.66);
-  --hub-on-accent: var(--bg-void);
-  --hub-card-shadow: 0 24px 80px -50px var(--aurora-1);
+  --hub-control: rgb(from var(--ink-primary) r g b / 0.045);
+  --hub-control-hover: rgb(from var(--ink-primary) r g b / 0.075);
+  --hub-card-shadow: 0 18px 48px -34px rgb(from var(--ink-primary) r g b / 0.25);
 }
 
 .aetherhub-workspace .surface-leaf {
@@ -121,19 +92,380 @@
 }
 
 .aetherhub-workspace .surface-overlay {
+  background: var(--hub-panel-strong);
   border-color: var(--hub-border-strong);
   box-shadow:
-    0 1px 0 inset rgb(from var(--bg-leaf) r g b / 0.20),
+    0 1px 0 inset rgb(from var(--ink-primary) r g b / 0.04),
     var(--hub-card-shadow),
     0 0 0 1px color-mix(in oklch, var(--aurora-1) 12%, transparent);
 }
 
-:root.light .aetherhub-workspace .surface-overlay {
-  background: rgb(from var(--bg-leaf) r g b / 0.86);
+/* ============================================================
+   AetherHub · 流式 / 思考态视觉
+   仿 LobeHub / Claude Code 的"克制呼吸感"——
+   typing dots / 气泡边沿 aurora / think 块光带 / 流式光标
+   ============================================================ */
+
+@keyframes hub-dot-pulse {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.45; }
+  50% { transform: translateY(-2px) scale(1.18); opacity: 1; }
+}
+.aetherhub-workspace .hub-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: hub-dot-pulse 1.35s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
 }
 
-:root.dark .aetherhub-workspace .surface-overlay {
-  background: rgb(from var(--bg-raised) r g b / 0.68);
+@keyframes hub-bubble-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 18%, transparent),
+      0 6px 28px -10px color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 32%, transparent),
+      0 10px 36px -10px color-mix(in oklch, var(--aurora-1) 38%, transparent);
+  }
+}
+.aetherhub-workspace .hub-bubble-pending {
+  animation: hub-bubble-glow 3.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+@keyframes hub-think-shimmer {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.aetherhub-workspace .hub-think-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 1.5px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 80%, transparent) 50%,
+    transparent 100%
+  );
+  animation: hub-think-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes hub-caret-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.05; }
+}
+.aetherhub-workspace .hub-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: hub-caret-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes hub-breath-dot {
+  0%, 100% { opacity: 0.55; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.12); }
+}
+.aetherhub-workspace .hub-breath-dot {
+  animation: hub-breath-dot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-dot,
+  .aetherhub-workspace .hub-bubble-pending,
+  .aetherhub-workspace .hub-think-shimmer,
+  .aetherhub-workspace .hub-caret,
+  .aetherhub-workspace .hub-breath-dot {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   AetherHub · 版书模式 (engraved)
+   把对话从"塑料 SaaS 气泡"切到"宋版书 / Apple-grade 文章详情":
+   - 内容浮印在纸面而非贴在纸上 —— text-shadow 复合营造"凸起"质感
+   - 排版阶梯对齐 .markdown-body / 文章详情页（Fraunces 标题 + 正文阅读列）
+   - 块级元素（pre / blockquote / hr）用 surface-leaf 而非裸边框
+   ============================================================ */
+
+.aetherhub-workspace .hub-engraved-text {
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1, 'ss01' 1;
+  letter-spacing: 0.005em;
+}
+
+/* 防御性规则 —— 把任何遗漏的 .drop-cap / .markdown-body 类首字下沉
+   关掉。chat 上下文里每条消息都从首字开始，不能让首字膨胀成 3.6em。
+   blog globals.css 在文章详情里会启用，admin 这边一律压下。 */
+.aetherhub-workspace p:first-of-type::first-letter,
+.aetherhub-workspace .markdown-preview > p:first-of-type::first-letter,
+.aetherhub-workspace .markdown-preview p:first-of-type::first-letter,
+.aetherhub-workspace .hub-engraved-md p:first-of-type::first-letter {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+  font-style: inherit !important;
+  line-height: inherit !important;
+  float: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  background: none !important;
+  text-shadow: inherit !important;
+  -webkit-background-clip: initial !important;
+          background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  initial-letter: normal !important;
+  -webkit-initial-letter: normal !important;
+}
+
+/* 浮印 / 凸起效果 ——
+   白底用上明下暗一线的极轻投影，让字像从纸面抬起 0.5px；
+   深色底改成"上沿微反光、下沿微沉影"，体感是从板上凸起。 */
+:root.light .aetherhub-workspace .hub-engraved-text {
+  text-shadow:
+    0 0.5px 0 color-mix(in oklch, var(--bg-leaf) 60%, white),
+    0 1.4px 0.8px color-mix(in oklch, var(--ink-primary) 6%, transparent);
+}
+
+:root.dark .aetherhub-workspace .hub-engraved-text {
+  text-shadow:
+    0 -0.4px 0 color-mix(in oklch, var(--aurora-1) 5%, transparent),
+    0 1px 1.6px color-mix(in oklch, var(--bg-void) 70%, transparent);
+}
+
+.aetherhub-workspace .hub-engraved-streaming {
+  position: relative;
+}
+.aetherhub-workspace .hub-engraved-streaming::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 0.4em;
+  bottom: 0.4em;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 60%, transparent) 50%,
+    transparent 100%
+  );
+  animation: hub-think-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+}
+
+/* MarkdownPreview 内部样式覆写 —— 让流式 markdown 在版书模式下看起来像
+   文章详情页（packages/editor 的默认 className 是 .markdown-body 衍生）。 */
+.aetherhub-workspace .hub-engraved-md > div,
+.aetherhub-workspace .hub-engraved-md .markdown-body {
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: var(--ink-primary);
+}
+
+.aetherhub-workspace .hub-engraved-md h1,
+.aetherhub-workspace .hub-engraved-md h2,
+.aetherhub-workspace .hub-engraved-md h3,
+.aetherhub-workspace .hub-engraved-md h4 {
+  font-family: var(--font-display, var(--font-serif, ui-serif));
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--ink-primary);
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  text-wrap: balance;
+}
+.aetherhub-workspace .hub-engraved-md h1 { font-size: 1.5rem; }
+.aetherhub-workspace .hub-engraved-md h2 { font-size: 1.28rem; }
+.aetherhub-workspace .hub-engraved-md h3 { font-size: 1.12rem; }
+.aetherhub-workspace .hub-engraved-md h4 { font-size: 1.02rem; }
+.aetherhub-workspace .hub-engraved-md h2::before {
+  content: '§ ';
+  color: color-mix(in oklch, var(--aurora-1) 80%, transparent);
+  font-weight: 400;
+}
+
+.aetherhub-workspace .hub-engraved-md p {
+  margin: 0.75em 0;
+}
+
+.aetherhub-workspace .hub-engraved-md ul,
+.aetherhub-workspace .hub-engraved-md ol {
+  margin: 0.65em 0;
+  padding-left: 1.4em;
+}
+.aetherhub-workspace .hub-engraved-md li {
+  margin: 0.3em 0;
+}
+.aetherhub-workspace .hub-engraved-md ul > li::marker {
+  color: color-mix(in oklch, var(--aurora-1) 65%, transparent);
+}
+
+.aetherhub-workspace .hub-engraved-md blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 35%, transparent);
+  background: color-mix(in oklch, var(--ink-primary) 3%, transparent);
+  font-style: italic;
+  color: var(--ink-secondary);
+  border-radius: 0 8px 8px 0;
+}
+
+.aetherhub-workspace .hub-engraved-md code:not(pre code) {
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
+  color: color-mix(in oklch, var(--aurora-1) 90%, var(--ink-primary));
+  font-size: 0.9em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  /* 单行 code 不参与版书 text-shadow，避免和 mono 字宽冲突 */
+  text-shadow: none;
+}
+
+.aetherhub-workspace .hub-engraved-md pre {
+  margin: 1em 0;
+  padding: 0.95em 1.1em;
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--ink-primary) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-primary) 8%, transparent);
+  overflow-x: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  text-shadow: none;
+}
+.aetherhub-workspace .hub-engraved-md pre code {
+  font-family: inherit;
+  text-shadow: none;
+}
+
+.aetherhub-workspace .hub-engraved-md hr {
+  margin: 2em auto;
+  border: none;
+  height: 1px;
+  width: 80%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklch, var(--ink-primary) 18%, transparent),
+    transparent
+  );
+}
+
+.aetherhub-workspace .hub-engraved-md a {
+  color: var(--aurora-1);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--aurora-1) 45%, transparent);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 0.18s ease;
+}
+.aetherhub-workspace .hub-engraved-md a:hover {
+  text-decoration-color: var(--aurora-1);
+}
+
+.aetherhub-workspace .hub-engraved-md table {
+  margin: 1em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  text-shadow: none;
+}
+.aetherhub-workspace .hub-engraved-md th,
+.aetherhub-workspace .hub-engraved-md td {
+  padding: 0.55em 0.8em;
+  border-bottom: 1px solid color-mix(in oklch, var(--ink-primary) 8%, transparent);
+  text-align: left;
+}
+.aetherhub-workspace .hub-engraved-md th {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-engraved-streaming::before { animation: none !important; }
+}
+
+/* ============================================================
+   流式吐字过渡 —— LobeHub 风格：速率节流由 useSmoothStream 控；
+   这里只负责给"匀速吐出来的字"叠一层视觉柔化（fade 模式有过渡，
+   smooth 模式无过渡，让节流本身完成观感差异）。
+   ============================================================ */
+.aetherhub-workspace .hub-stream-fade {
+  /* none / smooth：直接渲染，不叠 transition */
+  transition: none;
+}
+
+.aetherhub-workspace .hub-stream-fade--fade {
+  /* fade 模式：随 content 增长，整段做轻微的 opacity 与 translateY 复合
+     渐入。与 useSmoothStream(80 chars/s) 协同，让单个字符弹出时有个 "纸面浮起"
+     的极轻动效。 */
+  animation: hub-stream-fade-tween 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes hub-stream-fade-tween {
+  from { opacity: 0.78; transform: translateY(0.5px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-stream-fade--fade { animation: none !important; }
+}
+
+/* 字体大小 range slider —— 与气泡 / 版书 segmented control 同款克制视觉 */
+.aetherhub-workspace .hub-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--aurora-1) 0%,
+    var(--aurora-1) calc((var(--hub-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) calc((var(--hub-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.aetherhub-workspace .hub-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  transition: transform 0.16s ease;
+  cursor: grab;
+}
+.aetherhub-workspace .hub-range::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+  cursor: grabbing;
+}
+.aetherhub-workspace .hub-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  cursor: grab;
 }
 
 /* ============================================================

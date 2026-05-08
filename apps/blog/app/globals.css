@@ -780,6 +780,186 @@ body {
 }
 
 /* ----------------------------------------
+ · Agent · 流式吐字"淡入"模式
+ 与 useSmoothStream(rawContent, pending, 'fade') 协同 ——
+ hook 把模型 SSE 节流成 ~80 chars/s 的匀速 typewriter；这里给容器叠
+ 0.32s ease-out-quint 的 opacity + translateY 复合渐入。'none' 与
+ 'smooth' 模式不挂这个动画，让节流本身完成观感差异。
+ ---------------------------------------- */
+@keyframes agent-stream-fade-tween {
+  from { opacity: 0.78; transform: translateY(0.5px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+.agent-stream-fade--fade {
+  animation: agent-stream-fade-tween 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-stream-fade--fade { animation: none !important; }
+}
+
+/* ----------------------------------------
+ · Agent · 版书模式（engraved）
+ 把对话从"塑料 SaaS 气泡"切到"宋版书 / Apple-grade 文章详情"质感：
+   - 没有气泡背景，文字直接落在画布上
+   - text-shadow 让每个字看起来是"从纸面浮起 0.5px"，不是平贴
+   - markdown 排版升级到与文章详情同档（标题用 Fraunces，h2 自带 §，
+     列表 marker 染 aurora，blockquote 走 italic + aurora 左 stripe）
+ ---------------------------------------- */
+.agent-engraved-text {
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1, 'ss01' 1;
+  letter-spacing: 0.005em;
+  line-height: 1.85;
+  color: var(--ink-primary);
+}
+
+/* 浮印 / 凸起效果 ——
+   亮色：上明下暗，字从纸面抬起 0.5px；
+   暗色：上沿微反光，下沿微沉影。 */
+:root.light .agent-engraved-text,
+:root.light .agent-engraved-md {
+  text-shadow:
+    0 0.5px 0 color-mix(in oklch, var(--bg-leaf) 60%, white),
+    0 1.4px 0.8px color-mix(in oklch, var(--ink-primary) 6%, transparent);
+}
+:root.dark .agent-engraved-text,
+:root.dark .agent-engraved-md {
+  text-shadow:
+    0 -0.4px 0 color-mix(in oklch, var(--aurora-1) 5%, transparent),
+    0 1px 1.6px color-mix(in oklch, var(--bg-void) 70%, transparent);
+}
+
+/* 流式中：内容左侧 2px aurora shimmer 上下流动 —— 比 hub-bubble-pending
+   更克制（版书是纸面，不该让 box-shadow 漂出来）。 */
+.agent-engraved-streaming {
+  position: relative;
+}
+.agent-engraved-streaming::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 0.4em;
+  bottom: 0.4em;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 60%, transparent) 50%,
+    transparent 100%
+  );
+  animation: agent-think-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-engraved-streaming::before { animation: none !important; }
+}
+
+/* MarkdownRenderer 内部样式覆写 —— 让完成态消息看起来像 /posts/[slug] 文章
+   详情，而不是被 .agent-md 压扁的 chat 排版。 */
+.agent-engraved-md .markdown-body {
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-size: inherit;
+  line-height: 1.85;
+}
+.agent-engraved-md .markdown-body h1,
+.agent-engraved-md .markdown-body h2,
+.agent-engraved-md .markdown-body h3,
+.agent-engraved-md .markdown-body h4 {
+  font-family: var(--font-display, var(--font-serif, ui-serif));
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--ink-primary);
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  text-wrap: balance;
+}
+.agent-engraved-md .markdown-body h1 { font-size: 1.5rem; }
+.agent-engraved-md .markdown-body h2 { font-size: 1.28rem; }
+.agent-engraved-md .markdown-body h3 { font-size: 1.12rem; }
+.agent-engraved-md .markdown-body h4 { font-size: 1.02rem; }
+.agent-engraved-md .markdown-body h2::before {
+  content: '§ ';
+  color: color-mix(in oklch, var(--aurora-1) 80%, transparent);
+  font-weight: 400;
+}
+.agent-engraved-md .markdown-body p { margin: 0.75em 0; }
+.agent-engraved-md .markdown-body ul,
+.agent-engraved-md .markdown-body ol { margin: 0.65em 0; padding-left: 1.4em; }
+.agent-engraved-md .markdown-body li { margin: 0.3em 0; }
+.agent-engraved-md .markdown-body ul > li::marker {
+  color: color-mix(in oklch, var(--aurora-1) 65%, transparent);
+}
+.agent-engraved-md .markdown-body blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 35%, transparent);
+  background: color-mix(in oklch, var(--ink-primary) 3%, transparent);
+  font-style: italic;
+  color: var(--ink-secondary);
+  border-radius: 0 8px 8px 0;
+  text-shadow: none;
+}
+.agent-engraved-md .markdown-body code:not(pre code) {
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
+  color: color-mix(in oklch, var(--aurora-1) 90%, var(--ink-primary));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+  text-shadow: none;
+}
+.agent-engraved-md .markdown-body pre,
+.agent-engraved-md .markdown-body .code-block-wrapper {
+  margin: 1em 0;
+  border-radius: 12px;
+  overflow-x: auto;
+  text-shadow: none;
+}
+.agent-engraved-md .markdown-body pre code,
+.agent-engraved-md .markdown-body .code-block-content code {
+  text-shadow: none;
+}
+.agent-engraved-md .markdown-body hr {
+  margin: 2em auto;
+  border: none;
+  height: 1px;
+  width: 80%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklch, var(--ink-primary) 18%, transparent),
+    transparent
+  );
+}
+
+/* ----------------------------------------
+ · Agent · chat 上下文里禁用 drop-cap
+ .markdown-body > p:first-of-type::first-letter 是文章详情页的设计，
+ chat 每条消息从首字开始，3.6em 浮印首字会让阅读体感断片。
+ .agent-md 是 MessageBubble 在 chat 容器外覆的 wrapper，整段消息都被它包住。
+ ---------------------------------------- */
+.agent-md .markdown-body > p:first-of-type::first-letter,
+.agent-md p:first-of-type::first-letter {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+  font-style: inherit !important;
+  line-height: inherit !important;
+  float: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  background: none !important;
+  text-shadow: inherit !important;
+  -webkit-background-clip: initial !important;
+          background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  initial-letter: normal !important;
+  -webkit-initial-letter: normal !important;
+}
+
+/* ----------------------------------------
  · Agent · 工作台滚动条统一打磨
  ----------------------------------------
  默认浏览器滚动条（尤其 macOS Chrome）在 surface-leaf 玻璃卡里
