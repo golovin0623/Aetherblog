@@ -95,9 +95,14 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
     [sortedData],
   );
 
+  // ref: 移动端 min-h-[360px] 让 ResponsiveContainer 拿不到 definite height, BarChart
+  // 在 height="100%" 下渲染为空。改用根据 bar 数量推导的定值高度: 头部/轴/边距固定 ~110px,
+  // 每个任务类型再追加 44px, 兜底 360px (零数据态也保持视觉占位)。
+  const chartHeight = Math.max(360, sortedData.length * 44 + 110);
+
   if (loading) {
     return (
-      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px]">
         <div className="h-6 w-44 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => (
@@ -115,7 +120,10 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
   const hasData = sortedData.length > 0 && totalCost > 0;
 
   return (
-    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px] flex flex-col">
+    <div
+      className="surface-leaf surface-dashboard-card p-6 rounded-xl flex flex-col"
+      style={{ height: `${chartHeight}px` }}
+    >
       <div className="flex items-baseline justify-between mb-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">任务费用分布</h3>
         <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] font-mono">
