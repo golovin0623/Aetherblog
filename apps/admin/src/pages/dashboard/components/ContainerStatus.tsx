@@ -50,6 +50,7 @@ interface ContainerOverview {
   avgCpuPercent: number;
   dockerAvailable: boolean;
   errorMessage?: string;
+  source?: string;
 }
 
 // ========== 工具函数 ==========
@@ -316,7 +317,8 @@ export function ContainerStatus({
           <button
             onClick={handleRefresh}
             disabled={isRefreshing || (loading && !data)}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+            aria-label="刷新容器列表"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
@@ -348,10 +350,23 @@ export function ContainerStatus({
             </div>
           ))
         ) : !data?.dockerAvailable ? (
-          // 错误状态
-          <div className="flex flex-col items-center justify-center text-[var(--text-muted)] h-full">
+          // 错误状态 —— 把后端给的具体原因 + 端点透出来,避免用户只看到一句"不可用"无从下手
+          <div className="flex flex-col items-center justify-center text-center text-[var(--text-muted)] h-full px-6">
             <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
-            <span className="text-sm">Docker API 不可用</span>
+            <span className="text-sm text-[var(--text-secondary)]">Docker API 不可用</span>
+            {data?.errorMessage ? (
+              <span className="mt-2 text-[11px] font-mono text-[var(--text-muted)] break-all max-w-full">
+                {data.errorMessage}
+              </span>
+            ) : null}
+            {data?.source ? (
+              <span className="mt-1 text-[10px] font-mono text-[var(--text-muted)] opacity-70 break-all">
+                endpoint: {data.source}
+              </span>
+            ) : null}
+            <span className="mt-3 text-[10px] text-[var(--text-muted)] opacity-80 leading-relaxed max-w-[220px]">
+              生产环境推荐通过 <code className="font-mono">DOCKER_SOCKET_PROXY_URL</code> 指向 docker-socket-proxy。
+            </span>
           </div>
         ) : (
           // 实际容器列表

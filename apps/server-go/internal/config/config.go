@@ -31,6 +31,21 @@ type Config struct {
 	Log      LogConfig      `koanf:"log"`            // 日志输出路径及最低级别
 	AI       AIConfig       `koanf:"ai"`             // 外部 FastAPI AI 服务配置
 	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch 节点地址列表
+	Monitor  MonitorConfig  `koanf:"monitor"`        // 系统监控（容器/Docker）连接配置
+}
+
+// MonitorConfig 控制系统监控模块如何访问 Docker Engine API。
+//
+// DockerEndpoint 接受三种形式：
+//   - 空字符串 → 默认 /var/run/docker.sock（Linux 主机直连）。
+//   - 以 "unix://" 或 "/" 开头 → 视为 Unix socket 路径（如 macOS Docker Desktop
+//     需要写明 unix:///Users/<user>/.docker/run/docker.sock）。
+//   - "http(s)://" 开头 → 视为 docker-socket-proxy URL；推荐生产用 tecnativa/
+//     docker-socket-proxy 限制只读 /containers/json + /containers/*/stats。
+//
+// 详见 docs/deployment.md "容器监控" 节。
+type MonitorConfig struct {
+	DockerEndpoint string `koanf:"docker_endpoint"` // Docker Engine API 端点；空 = /var/run/docker.sock
 }
 
 // ServerConfig 存储 HTTP 服务器的绑定配置。
@@ -209,6 +224,10 @@ func Load(path string) (*Config, error) {
 			return "redis.password"
 		case "POSTGRES_PASSWORD":
 			return "database.password"
+		case "DOCKER_SOCKET_PROXY_URL", "DOCKER_ENDPOINT":
+			// 兼容 .env.example 里历史文档化的 DOCKER_SOCKET_PROXY_URL 命名,
+			// 同时接受更通用的 DOCKER_ENDPOINT（也支持 unix:// 路径）。
+			return "monitor.docker_endpoint"
 		default:
 			return ""
 		}
@@ -254,7 +273,7 @@ func envKeyToKoanf(key string) string {
 	// 已知的顶层配置节
 	prefixes := []string{
 		"server", "database", "redis", "jwt", "auth",
-		"cors", "upload", "media", "log", "ai", "elasticsearch",
+		"cors", "upload", "media", "log", "ai", "elasticsearch", "monitor",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(key, p+"_") {
@@ -333,6 +352,9 @@ func defaultConfig() *Config {
 		},
 		ES: ESConfig{
 			URIs: []string{"http://localhost:9200"},
+		},
+		Monitor: MonitorConfig{
+			DockerEndpoint: "", // 空字符串 → 沿用 /var/run/docker.sock 直连默认行为
 		},
 	}
 }

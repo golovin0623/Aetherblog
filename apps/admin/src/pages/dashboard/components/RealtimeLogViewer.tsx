@@ -951,7 +951,7 @@ export function RealtimeLogViewer({
             type="button"
             onClick={() => setKeyword('')}
             aria-label="清空关键字"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
           >
             <X className="w-3 h-3" />
           </button>
@@ -1228,39 +1228,45 @@ export function RealtimeLogViewer({
   const renderActionButtons = (showFullscreenToggle: boolean) => (
     <div className="flex items-center gap-1">
       <button
-        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
         onClick={handleManualRefresh}
         title="立即重试"
+        aria-label="立即重试"
       >
         <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
       </button>
       <button
-        className={cn('p-1.5 rounded transition-colors', autoScroll ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]')}
+        className={cn('inline-flex items-center justify-center w-7 h-7 rounded transition-colors', autoScroll ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]')}
         onClick={() => setAutoScroll(!autoScroll)}
         title={autoScroll ? '自动滚动开启' : '自动滚动关闭'}
+        aria-label={autoScroll ? '自动滚动开启' : '自动滚动关闭'}
+        aria-pressed={autoScroll}
       >
         <ArrowDown className="w-3.5 h-3.5" />
       </button>
       <button
-        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
         onClick={() => setManualPaused(previous => !previous)}
         title={manualPaused ? '继续滚动' : '暂停滚动'}
+        aria-label={manualPaused ? '继续滚动' : '暂停滚动'}
       >
         {manualPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
       </button>
       <button
-        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        className="inline-flex items-center justify-center w-7 h-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
         onClick={() => setLogs([])}
         title="清空屏幕"
+        aria-label="清空屏幕"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
       {showFullscreenToggle && (
         <button
           ref={fullscreenTriggerRef}
-          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+          className="inline-flex items-center justify-center w-7 h-7 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
           onClick={() => dispatchViewState({ type: isFullScreen ? 'EXIT_FULLSCREEN' : 'ENTER_FULLSCREEN' })}
           title={isFullScreen ? '退出全屏' : '全屏显示'}
+          aria-label={isFullScreen ? '退出全屏' : '全屏显示'}
         >
           {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
@@ -1539,9 +1545,10 @@ export function RealtimeLogViewer({
                   <div className="flex items-center gap-1">
                     {renderActionButtons(false)}
                     <button
-                      className="p-1.5 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] rounded-md hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+                      className="inline-flex items-center justify-center w-7 h-7 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] rounded-md hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
                       onClick={() => dispatchViewState({ type: 'EXIT_FULLSCREEN' })}
                       title="退出全屏 (Esc)"
+                      aria-label="退出全屏"
                     >
                       <X className="w-4 h-4" />
                     </button>
