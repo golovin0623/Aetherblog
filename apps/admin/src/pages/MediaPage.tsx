@@ -4,7 +4,7 @@
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import { useState, useCallback, useMemo, useRef, DragEvent } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect, DragEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -71,14 +71,19 @@ type PendingConfirm =
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
 
+/**
+ * UploadingFile 是 UploadProgress 浮窗里展示的纯渲染数据。
+ *
+ * AbortController 不放在 state 里 —— 改用 controllersRef.current(Map<id, AbortController>),
+ * 解决"异步 setState 完成前 cancel 即触发 → controller 还是 undefined,abort() 失效"的 race。
+ * @ref PR #646 fix: gemini-code-assist medium — controller race condition
+ */
 interface UploadingFile {
   file: File;
   progress: number;
   id: string;
   error?: string;
   status: 'queued' | 'uploading' | 'processing' | 'success' | 'error' | 'aborted';
-  /** AbortController —— uploading/queued/processing 时为活动 controller; 成功/失败/取消后置 null */
-  controller?: AbortController | null;
   /** 当前重试次数(2 = 第 1 次重试中) */
   attempt?: number;
   /** 目标文件夹 ID(用于 retry 时复用) */
@@ -108,6 +113,12 @@ export default function MediaPage() {
   const [viewingIndex, setViewingIndex] = useState(0);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  // 副作用专用 ref —— React state 之外保留 abort 控制器和最新文件快照,
+  // 避免在 setState updater 内调副作用(违反 React 纯函数语义),
+  // 也避免"setState 还没落到 state 时 cancel 已经触发"的 race。
+  // @ref PR #646 fix: gemini-code-assist medium — controller race + setState 反模式
+  const controllersRef = useRef<Map<string, AbortController>>(new Map());
+  const uploadingFilesRef = useRef<UploadingFile[]>([]);
 
   // @ref 媒体库深度优化方案 - Phase 1: 文件夹管理状态
   const [currentFolderId, setCurrentFolderId] = useState<number | undefined>(undefined);
@@ -296,14 +307,20 @@ export default function MediaPage() {
     },
   });
 
-  // 单文件上传执行体 —— 同时被首次上传与重试调用
+  // 让 uploadingFilesRef 跟踪最新 state —— 副作用回调可以直接读最新文件快照,
+  // 不必再到 setUploadingFiles updater 里去找 target 后再触发副作用。
+  useEffect(() => {
+    uploadingFilesRef.current = uploadingFiles;
+  }, [uploadingFiles]);
+
+  // 单文件上传执行体 —— 同时被首次上传与重试调用。
+  // 调用方必须先在 controllersRef 里登记好 controller,本函数不再 new。
   const startUpload = useCallback(
-    (uploadId: string, file: File, folderId?: number) => {
-      const controller = new AbortController();
+    (uploadId: string, file: File, folderId: number | undefined, controller: AbortController) => {
       setUploadingFiles((prev) =>
         prev.map((f) =>
           f.id === uploadId
-            ? { ...f, status: 'uploading', progress: 0, error: undefined, controller, attempt: 1, folderId }
+            ? { ...f, status: 'uploading', progress: 0, error: undefined, attempt: 1, folderId }
             : f
         )
       );
@@ -327,10 +344,9 @@ export default function MediaPage() {
           },
         })
         .then(() => {
+          controllersRef.current.delete(uploadId);
           setUploadingFiles((prev) =>
-            prev.map((f) =>
-              f.id === uploadId ? { ...f, status: 'success', progress: 100, controller: null } : f
-            )
+            prev.map((f) => (f.id === uploadId ? { ...f, status: 'success', progress: 100 } : f))
           );
           // 成功项淡出 —— 1.2s 后移除
           setTimeout(() => {
@@ -339,11 +355,10 @@ export default function MediaPage() {
           queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
         })
         .catch((error: unknown) => {
+          controllersRef.current.delete(uploadId);
           if (isUploadAborted(error)) {
             setUploadingFiles((prev) =>
-              prev.map((f) =>
-                f.id === uploadId ? { ...f, status: 'aborted', controller: null, error: '已取消' } : f
-              )
+              prev.map((f) => (f.id === uploadId ? { ...f, status: 'aborted', error: '已取消' } : f))
             );
             return;
           }
@@ -352,9 +367,7 @@ export default function MediaPage() {
             anyErr.response?.data?.msg || anyErr.response?.data?.message || anyErr.message || '上传失败';
           logger.error('Upload failed:', error);
           setUploadingFiles((prev) =>
-            prev.map((f) =>
-              f.id === uploadId ? { ...f, status: 'error', error: errorMessage, controller: null } : f
-            )
+            prev.map((f) => (f.id === uploadId ? { ...f, status: 'error', error: errorMessage } : f))
           );
           toast.error(`${file.name}: ${errorMessage}`);
         });
@@ -365,56 +378,59 @@ export default function MediaPage() {
   const handleUpload = useCallback(
     (files: FileList | File[]) => {
       const fileArray = Array.from(files);
-      const queued: UploadingFile[] = fileArray.map((file) => ({
+      // 同步预创建 controller —— 在 setState 提交前就放到 ref,即使用户在 setState
+      // 完成前点 X 取消也能立即生效(消除 race condition)。
+      const queued = fileArray.map((file) => {
+        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const controller = new AbortController();
+        controllersRef.current.set(id, controller);
+        return { id, file, controller };
+      });
+      const placeholders: UploadingFile[] = queued.map(({ id, file }) => ({
         file,
         progress: 0,
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id,
         status: 'queued' as const,
         folderId: currentFolderId,
       }));
-      setUploadingFiles((prev) => [...prev, ...queued]);
-      queued.forEach((q) => startUpload(q.id, q.file, currentFolderId));
+      setUploadingFiles((prev) => [...prev, ...placeholders]);
+      queued.forEach(({ id, file, controller }) => startUpload(id, file, currentFolderId, controller));
     },
     [currentFolderId, startUpload]
   );
 
+  // handleCancelUpload 是纯副作用 + 最多一次 setState(终态行的移除),
+  // 不再 mix 副作用到 setState updater 内部。
   const handleCancelUpload = useCallback((id: string) => {
-    setUploadingFiles((prev) => {
-      const target = prev.find((f) => f.id === id);
-      if (!target) return prev;
-      // 进行中:abort + 标 aborted(让 catch 来切状态)
-      if (target.status === 'uploading' || target.status === 'processing' || target.status === 'queued') {
-        target.controller?.abort();
-        return prev; // catch 分支会把 status 改成 aborted
-      }
-      // 终态(success/error/aborted):直接从列表移除
-      return prev.filter((f) => f.id !== id);
-    });
+    const controller = controllersRef.current.get(id);
+    if (controller) {
+      controllersRef.current.delete(id);
+      controller.abort();
+      // .catch 分支会把 status 切到 'aborted',这里不直接 setState 让流程统一
+      return;
+    }
+    // 终态(success/error/aborted):直接从列表移除
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
+  // handleRetryUpload 用 uploadingFilesRef 读最新 state(useEffect 同步过),
+  // 不再在 setState updater 里 queueMicrotask 触发副作用。
   const handleRetryUpload = useCallback(
     (id: string) => {
-      setUploadingFiles((prev) => {
-        const target = prev.find((f) => f.id === id);
-        if (!target) return prev;
-        if (target.status !== 'error' && target.status !== 'aborted') return prev;
-        // 异步触发,避免在 setState 内调副作用
-        queueMicrotask(() => startUpload(id, target.file, target.folderId));
-        return prev;
-      });
+      const target = uploadingFilesRef.current.find((f) => f.id === id);
+      if (!target) return;
+      if (target.status !== 'error' && target.status !== 'aborted') return;
+      const controller = new AbortController();
+      controllersRef.current.set(id, controller);
+      startUpload(id, target.file, target.folderId, controller);
     },
     [startUpload]
   );
 
   const handleCancelAll = useCallback(() => {
-    setUploadingFiles((prev) => {
-      prev.forEach((f) => {
-        if (f.controller && (f.status === 'uploading' || f.status === 'processing' || f.status === 'queued')) {
-          f.controller.abort();
-        }
-      });
-      return prev;
-    });
+    // ref 迭代 —— 没有 setState,纯副作用。catch 分支后续会把 status 切到 aborted。
+    controllersRef.current.forEach((c) => c.abort());
+    controllersRef.current.clear();
   }, []);
 
   const handleClearCompleted = useCallback(() => {

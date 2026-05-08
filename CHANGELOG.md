@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/architecture.md` API 节 / 数据库节：本次未涉及，**无需更新**
 - `.claude/docs/api-handlers.md`：本次未新增端点，**无需更新**
 
+**Follow-up（同 PR 内 review 修复）:**
+- `mediaService.isRetriableError` 收紧:非 axios 错误(TypeError 等编程错误)不再触发重试。  *(gemini-code-assist high)*
+- `UploadOptions.maxRetries` 语义对齐"重试次数(不含首次)",默认 2 即"首次 + 2 次重试 = 3 次总尝试",与原行为等价。  *(chatgpt-codex-connector P2)*
+- `mediaService.uploadBatch` 注释改成"单文件失败立即抛出中止整批",与实际 for-await 行为一致;调用方需要容错请自己 try-catch。  *(gemini-code-assist medium)*
+- `MediaPage`:`AbortController` 提到 `controllersRef`(同步预创建,消除"setState 落地前 cancel 失效"的 race);`handleCancelUpload` / `handleRetryUpload` / `handleCancelAll` 全部从 `setState` updater 内部把副作用提到外面,符合 React updater 必须为纯函数的约束。  *(gemini-code-assist medium ×3)*
+
 ### 🪛 补全 AI 模块 activity_events 埋点 + 修复两条 CHECK constraint 漏写 (2026-05-07, branch claude/add-ai-activity-logging-bc4fb)
 
 **背景：** 活动记录页 `/activities?category=AI` 一直空白 —— admin 后台早就有六个 AI 生成端点 (summary/tags/titles/polish/outline/translate)、Agent 工作台 chat、提示词更新、AI 任务 CRUD,但只有 `/providers/*` 写操作有审计 (`ai.provider_proxy_write`),其它路径完全失声。同时排查 ai_handler 现有审计代码时发现两条 CHECK 约束 silently dropping records:`ai_handler.recordProviderProxyActivity` 4xx 时写入 `Status="FAILED"` 而 `chk_activity_event_status` 只允许 `INFO/SUCCESS/WARNING/ERROR`;`auth_handler.RotateJWTSecret` 写入 `EventCategory="security"` 而 `chk_activity_event_category` 只放 7 类 (post/comment/user/system/friend/media/ai)。两个 INSERT 在生产环境都会被 PostgreSQL 拒绝,Go 代码 `_ = h.activitySvc.Create(...)` / `if err := ...; err != nil { log.Warn() }` 把错误吞进 stderr,前端就一直看不到任何 security / AI failure 记录。

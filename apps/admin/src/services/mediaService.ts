@@ -64,7 +64,12 @@ export interface UploadOptions {
   folderId?: number;
   /** AbortController.signal —— 单文件取消 */
   signal?: AbortSignal;
-  /** 网络瞬时错误自动重试次数(含首次,默认 3) */
+  /**
+   * 额外重试次数(**不含**首次,默认 2,即"首次 + 2 次重试 = 3 次总尝试")。
+   * 仅对网络瞬时错误生效(无响应 / 5xx / 408 / 425 / 429)。
+   *
+   * @ref PR #646 fix: chatgpt-codex-connector — 与"重试次数"语义对齐
+   */
   maxRetries?: number;
   /**
    * 每次重试前回调。
@@ -74,7 +79,7 @@ export interface UploadOptions {
   onAttempt?: (attempt: number, lastError: unknown) => void;
 }
 
-const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_MAX_RETRIES = 2;
 
 /**
  * 上传被显式取消(AbortController.abort)时抛出。
@@ -101,9 +106,12 @@ export function isUploadAborted(err: unknown): boolean {
 
 function isRetriableError(err: unknown): boolean {
   if (isUploadAborted(err)) return false;
-  if (!axios.isAxiosError(err)) return true;
+  // 非 axios 错误意味着 TypeError / ReferenceError / 调用方在 onProgress 回调里抛错等
+  // 编程错误 —— 重试不会让它们消失,只会浪费时间和带宽。仅对 axios 错误判定。
+  // @ref PR #646 fix: gemini-code-assist high — isRetriableError 不应对编程错误重试
+  if (!axios.isAxiosError(err)) return false;
   const ax = err as AxiosError;
-  if (!ax.response) return true;
+  if (!ax.response) return true; // 无响应 = 网络/DNS/超时
   const status = ax.response.status;
   if (status === 408 || status === 425 || status === 429) return true;
   if (status >= 500 && status < 600) return true;
@@ -167,9 +175,10 @@ async function uploadOnce<T>({ url, formData, onProgress, signal }: UploadOnceCo
 }
 
 async function uploadWithRetry<T>(config: UploadOnceConfig, options?: UploadOptions): Promise<T> {
-  const maxRetries = Math.max(1, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
+  const maxRetries = Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
+  const maxAttempts = maxRetries + 1; // 首次 + 重试 = 总尝试次数
   let lastErr: unknown;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await uploadOnce<T>(config);
     } catch (err) {
@@ -177,7 +186,7 @@ async function uploadWithRetry<T>(config: UploadOnceConfig, options?: UploadOpti
       if (isUploadAborted(err)) {
         throw err instanceof UploadAbortedError ? err : new UploadAbortedError(err);
       }
-      if (attempt >= maxRetries || !isRetriableError(err)) throw err;
+      if (attempt >= maxAttempts || !isRetriableError(err)) throw err;
       const wait = backoffMs(attempt);
       options?.onAttempt?.(attempt + 1, err);
       await sleep(wait, options?.signal);
@@ -277,8 +286,13 @@ export const mediaService = {
   },
 
   /**
-   * 批量上传(串行,逐个走自动重试)。
-   * 单文件失败不影响后续 —— 抛出会中断,但 abort 会贯穿所有后续。
+   * 批量上传(串行,逐个走 `upload` 自带的自动重试)。
+   *
+   * 行为:
+   * - 单文件失败会立即 **抛出并中止整批** —— 调用方需要"逐个容错"应自己循环 `upload` 并 try-catch
+   * - abort signal 会贯穿所有后续(共享同一个 `options.signal`)
+   *
+   * @ref PR #646 fix: gemini-code-assist medium — 注释与实现需要对齐
    */
   uploadBatch: async (
     files: File[],
