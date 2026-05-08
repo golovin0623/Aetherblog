@@ -143,6 +143,77 @@ services:
 
 
   # ---------------------------------------------------------------------------
+  # 容器监控代理（可选，opt-in via --profile with-monitor）
+  # ---------------------------------------------------------------------------
+  #
+  # 启用：
+  #   docker-compose -f docker-compose.prod.yml --profile with-monitor up -d
+  # 同时在 .env 设：
+  #   DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375
+  #
+  # 安全模型：tecnativa/docker-socket-proxy 在 backend 与 Docker daemon 之间
+  # 充当只读白名单。下面的环境变量把 API 表面收紧到容器监控所需的最小权限：
+  # GET /containers/json + GET /containers/*/stats，其余全部拒绝。POST=0
+  # 杜绝 exec/启停容器；attribute 类的元数据保留以便 UI 渲染镜像/状态/标签。
+  # 仍需保护 host：容器自身仅有 docker.sock 的 :ro 挂载，不挂任何宿主目录。
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: aetherblog-docker-socket-proxy
+    restart: unless-stopped
+    profiles:
+      - with-monitor
+    environment:
+      # 默认全部 0；只放开容器监控真正需要的 GET 子集
+      CONTAINERS: 1
+      INFO: 1
+      # 显式声明禁用一切写操作（默认即 0，留作审计可见性）
+      POST: 0
+      EXEC: 0
+      BUILD: 0
+      COMMIT: 0
+      VOLUMES: 0
+      IMAGES: 0
+      NETWORKS: 0
+      SYSTEM: 0
+      AUTH: 0
+      SECRETS: 0
+      SERVICES: 0
+      SWARM: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      SESSION: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    networks:
+      - aetherblog-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # 仅保留 user-switch 三件套用于 haproxy drop privileges。2375 是非特权端口
+      # (>1024)，无需 NET_BIND_SERVICE。
+      - CHOWN
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /run:rw,size=4M,mode=0755
+      - /tmp:rw,size=4M,mode=1777
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+        reservations:
+          memory: 16M
+
+  # ---------------------------------------------------------------------------
   # 应用服务
   # ---------------------------------------------------------------------------
 
@@ -184,16 +255,17 @@ services:
       # 默认 info,可在 .env 里覆盖。运行时也可经 PUT /v1/admin/system/log-level
       # 临时调整(进程重启回到这里的值)。
       AETHERBLOG_LOG_LEVEL: ${AETHERBLOG_LOG_LEVEL:-info}
+      # 容器监控（admin "容器监控" 面板）—— 仅当用 `--profile with-monitor`
+      # 启动时下面的 docker-socket-proxy 服务才会拉起，此 URL 才连得通。
+      # 默认部署不带该 profile：变量保持空字符串，backend 走默认 socket 路径
+      # 时也找不到（容器里没挂），UI 会显示"Docker API 不可用"——这是预期行为。
+      DOCKER_SOCKET_PROXY_URL: ${DOCKER_SOCKET_PROXY_URL:-}
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      # REMOVED for security: mounting docker.sock (even :ro) grants host-root-
-      # equivalent privilege via the Docker API to any code execution inside the
-      # backend container. The admin "容器监控" page (/v1/admin/monitor/*) will
-      # therefore return Docker-API-unavailable in this default deployment.
-      # To restore safely, front the daemon with tecnativa/docker-socket-proxy
-      # restricted to /containers/json + /containers/*/stats and point backend
-      # at it over the internal network instead of mounting the socket directly.
+      # 不再 bind-mount /var/run/docker.sock —— 即便 :ro 仍授予宿主 root 等价
+      # 权限。容器监控通过下面的 docker-socket-proxy 服务（with-monitor profile）
+      # 暴露受限只读 API，而非直挂 socket。
     depends_on:
       postgres:
         condition: service_healthy
