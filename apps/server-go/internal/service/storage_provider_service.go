@@ -466,14 +466,22 @@ var secretKeyFields = []string{
 	"password", "token", "apiKey", "api_key", "secret",
 }
 
-// mergeProviderConfigJSON 把前端提交的新 configJson 合并到旧 configJson 上:
-//   - 新值非空且看起来不是脱敏占位符 → 用新值。
-//   - 新值为空字符串、字段缺失、或形如 "ab****12cd" 的脱敏字符串 → 保留旧值。
+// mergeProviderConfigJSON 把前端提交的新 configJson 深合并到旧 configJson 上。
 //
-// 这样 admin 在 UI 上修改 endpoint/region 时不会因为密钥字段是脱敏字符串而被覆盖。
-// 客户端要换新 secret,必须显式提交完整明文。
+// 合并规则(自上而下):
+//  1. 旧 payload 里存在但新 payload 里不存在的字段 → 保留旧值(深合并核心:前端 partial PUT
+//     不应该让 region/endpoint/options 等没改的字段悄悄消失)。
+//  2. nested object(如 options:{...})递归一层做同样的合并 —— 双方都是 map[string]any 时
+//     按字段合并;否则新值整体覆盖旧值。
+//  3. secret 字段(accessKeyId/secretAccessKey/...): 新值缺失 / 空字符串 / 形如 "ab****12cd"
+//     的脱敏占位 → 回退旧值(redactProviderConfigJSON 会脱敏返回给前端,所以前端再次提交时
+//     看到的就是 "****",必须有这条规则保护原始密钥不被覆盖)。
+//  4. 显式 null:被 json.Unmarshal 解析为 nil interface,会进入"缺失"分支被旧值覆盖。
+//     若想清空字段必须提交空字符串(对 secret 仍受规则 3 保护)。
 //
-// raw 输入解析失败时返回原 newJSON,由上层校验链兜底报错。
+// 任一侧 JSON 解析失败时返回原 newJSON,由上层校验链兜底报错。
+//
+// @ref 云储存优化批次 2 — partial PUT 不应丢字段
 func mergeProviderConfigJSON(oldJSON, newJSON string) (string, error) {
 	if oldJSON == "" {
 		return newJSON, nil
@@ -489,22 +497,52 @@ func mergeProviderConfigJSON(oldJSON, newJSON string) (string, error) {
 	if err := json.Unmarshal([]byte(newJSON), &newPayload); err != nil {
 		return newJSON, err
 	}
+	merged := deepMergeStringMap(oldPayload, newPayload)
+	// secret 字段额外处理:脱敏占位 / 空 / 缺失 → 回退旧值
 	for _, k := range secretKeyFields {
-		newVal, hasNew := newPayload[k].(string)
+		newVal, hasNew := merged[k].(string)
 		if !hasNew || newVal == "" || isRedactedValue(newVal) {
-			// 新值缺失/空/脱敏占位 → 保留旧值
 			if oldVal, ok := oldPayload[k].(string); ok && oldVal != "" {
-				newPayload[k] = oldVal
+				merged[k] = oldVal
 			} else {
-				delete(newPayload, k)
+				delete(merged, k)
 			}
 		}
 	}
-	out, err := json.Marshal(newPayload)
+	out, err := json.Marshal(merged)
 	if err != nil {
 		return newJSON, err
 	}
 	return string(out), nil
+}
+
+// deepMergeStringMap 一层递归深合并:newMap 缺失的 key 从 oldMap 继承;
+// 双方都是嵌套 map 时再合并一次,否则 newMap 的值覆盖 oldMap。
+//
+// JSON null 处理:json.Unmarshal 会把 null 解析为 nil,present 为 true。
+// 这里把"显式 null"也当作"缺失"处理,以符合文档承诺(显式 null 被旧值覆盖,
+// 想清空非 secret 字段必须提交空字符串 "")。
+//
+// 不深拷贝:返回的 map 与 newMap 共享底层引用,只对缺失字段补值。
+//
+// @ref PR #647 fix: gemini-code-assist medium — null 覆盖旧值与文档矛盾
+func deepMergeStringMap(oldMap, newMap map[string]any) map[string]any {
+	if newMap == nil {
+		return oldMap
+	}
+	for k, oldVal := range oldMap {
+		newVal, present := newMap[k]
+		if !present || newVal == nil {
+			newMap[k] = oldVal
+			continue
+		}
+		oldNested, oldOK := oldVal.(map[string]any)
+		newNested, newOK := newVal.(map[string]any)
+		if oldOK && newOK {
+			newMap[k] = deepMergeStringMap(oldNested, newNested)
+		}
+	}
+	return newMap
 }
 
 // isRedactedValue 判断字符串是否是 redactProviderConfigJSON 生成的脱敏值。

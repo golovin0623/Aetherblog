@@ -131,6 +131,36 @@ admin 侧栏「云端浏览」→ `CloudExplorerPage`：
 - 媒体页：`apps/admin/src/pages/MediaPage.tsx` (`startUpload` / `handleCancelUpload` / `handleRetryUpload` / `handleCancelAll`)
 - 浮窗：`apps/admin/src/pages/media/components/UploadProgress.tsx` (`status: queued | uploading | processing | success | error | aborted`)
 
+### 上传/移动时 folder 权限校验（批次 2）
+
+`MediaService.Upload` / `Move` / `MoveBatch` 在动作执行前先调 `assertFolderWritable(ctx, folderID, uploaderID)`：
+
+| 情况 | 行为 |
+| --- | --- |
+| `folderID == nil` | 放行（根目录） |
+| `folder` 不存在 | 拒绝 `"目标文件夹不存在"` |
+| `folder.OwnerID == nil`（系统） | 放行 |
+| `*uploaderID == *folder.OwnerID` | 放行 |
+| 其他用户 + `folder_permissions` 有 `UPLOAD`/`EDIT`/`DELETE`/`ADMIN` 且未过期 | 放行 |
+| 否则 | 拒绝 `"无权写入该文件夹"` |
+
+依赖通过 `MediaService.SetFolderAccess(folderRepo, permRepo)` 注入；server.go 在 `mediaSvc` 创建后立即调用。**未注入则保持向后兼容（不拒任何上传/移动）** —— 老部署平滑升级，不会因为 schema 缺权限表而 502。
+
+`PermissionRepo.HasWriteAccess(ctx, folderID, userID)`：单条 SQL `EXISTS` 查询，权限级别 ∈ {`UPLOAD`, `EDIT`, `DELETE`, `ADMIN`}（**不含** `VIEW`）且 `expires_at IS NULL OR expires_at > NOW()`。
+
+> **注意：** 真实 enum 是 migration 000011 `chk_permission_level` 约束的 `VIEW/UPLOAD/EDIT/DELETE/ADMIN`（大写）。`model.FolderPermission` 注释里写的 "read/write/admin" 是过期注释，请勿误以为真。
+
+### 客户端配置 partial PUT 深合并（批次 2）
+
+`mergeProviderConfigJSON` 升级为深合并：
+
+- 旧 payload 里存在但新 payload 没提的字段 **保留旧值**（前端只改 `bucket` 不再把 `region/endpoint/urlPrefix` 抹掉）
+- 嵌套对象（如 `options:{addressingStyle, virtualHost}`）**一层递归合并**
+- secret 字段（`accessKeyId/secretAccessKey/...`）：新值缺失 / 空字符串 / 形如 `"ab****12cd"` 的脱敏占位 → 回退旧值（保留原有保护）
+- 显式 `null` → `deepMergeStringMap` 把 `nil` 和"缺失"等价处理，回退旧值；若想清空非 secret 字段提交空字符串 `""`
+
+测试覆盖见 `apps/server-go/internal/service/storage_provider_service_test.go`。
+
 ### `UploadContent` 修复（历史 bug）
 
 历史实现：handler 写死 `localStore` 且 `SetVersionDeps` 从未被调用 —— 在 S3 模式下完全不可用。

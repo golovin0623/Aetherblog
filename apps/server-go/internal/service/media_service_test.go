@@ -3,12 +3,186 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"strings"
 	"testing"
+
+	"github.com/golovin0623/aetherblog-server/internal/model"
 )
+
+// fakeFolderLookup / fakePermLookup 实现 service.folderLookup / service.permLookup
+// 接口,允许 assertFolderWritable 在不接 sql.DB 的情况下做表驱动测试。
+type fakeFolderLookup struct {
+	folders map[int64]*model.MediaFolder
+	err     error
+}
+
+func (f *fakeFolderLookup) FindByID(_ context.Context, id int64) (*model.MediaFolder, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.folders[id], nil
+}
+
+type fakePermLookup struct {
+	allow map[[2]int64]bool // (folderID, userID) → granted
+	err   error
+}
+
+func (p *fakePermLookup) HasWriteAccess(_ context.Context, folderID, userID int64) (bool, error) {
+	if p.err != nil {
+		return false, p.err
+	}
+	return p.allow[[2]int64{folderID, userID}], nil
+}
+
+func ptrInt64(v int64) *int64 { return &v }
+
+// 批次 2:assertFolderWritable 的覆盖矩阵。
+//
+// 维度:folderID(nil/有/不存在/system/owner mismatch + 显式授权 + 显式无授权 + repo error + nil uploader)。
+func TestAssertFolderWritable(t *testing.T) {
+	owner := int64(7)
+	other := int64(99)
+
+	cases := []struct {
+		name       string
+		folderID   *int64
+		uploader   *int64
+		folders    map[int64]*model.MediaFolder
+		permGrant  map[[2]int64]bool
+		folderErr  error
+		permErr    error
+		wantErrSub string // "" 表示无错;非空表示 err.Error() 包含此子串
+	}{
+		{
+			name:     "folderID nil → 放行",
+			folderID: nil,
+			uploader: &owner,
+		},
+		{
+			name:       "folder 不存在 → 拒绝",
+			folderID:   ptrInt64(42),
+			uploader:   &owner,
+			folders:    map[int64]*model.MediaFolder{},
+			wantErrSub: "目标文件夹不存在",
+		},
+		{
+			name:     "folder.OwnerID nil(系统) → 放行",
+			folderID: ptrInt64(1),
+			uploader: &owner,
+			folders:  map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: nil}},
+		},
+		{
+			name:     "uploader == owner → 放行",
+			folderID: ptrInt64(1),
+			uploader: &owner,
+			folders:  map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}},
+		},
+		{
+			name:       "uploader != owner 且无授权 → 拒绝",
+			folderID:   ptrInt64(1),
+			uploader:   &other,
+			folders:    map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}},
+			wantErrSub: "无权写入",
+		},
+		{
+			name:      "uploader != owner 但有 write 授权 → 放行",
+			folderID:  ptrInt64(1),
+			uploader:  &other,
+			folders:   map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}},
+			permGrant: map[[2]int64]bool{{1, other}: true},
+		},
+		{
+			name:       "uploader 为 nil 且 folder 有 owner → 拒绝",
+			folderID:   ptrInt64(1),
+			uploader:   nil,
+			folders:    map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}},
+			wantErrSub: "无权写入",
+		},
+		{
+			name:     "uploader 为 nil 且 folder 是系统 → 放行",
+			folderID: ptrInt64(1),
+			uploader: nil,
+			folders:  map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: nil}},
+		},
+		{
+			name:       "folderRepo 报错 → 包装错误",
+			folderID:   ptrInt64(1),
+			uploader:   &owner,
+			folderErr:  errors.New("db down"),
+			wantErrSub: "folder lookup failed",
+		},
+		{
+			name:       "permRepo 报错 → 包装错误",
+			folderID:   ptrInt64(1),
+			uploader:   &other,
+			folders:    map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}},
+			permErr:    errors.New("db down"),
+			wantErrSub: "permission lookup failed",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &MediaService{}
+			svc.SetFolderAccess(
+				&fakeFolderLookup{folders: tc.folders, err: tc.folderErr},
+				&fakePermLookup{allow: tc.permGrant, err: tc.permErr},
+			)
+			err := svc.assertFolderWritable(context.Background(), tc.folderID, tc.uploader)
+			if tc.wantErrSub == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)
+			}
+			if !strings.Contains(err.Error(), tc.wantErrSub) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErrSub, err.Error())
+			}
+		})
+	}
+}
+
+// 批次 2:依赖未注入时 assertFolderWritable 必须保持向后兼容 — 不拒任何上传。
+func TestAssertFolderWritable_BackwardCompat(t *testing.T) {
+	svc := &MediaService{} // 不调 SetFolderAccess
+	if err := svc.assertFolderWritable(context.Background(), ptrInt64(1), ptrInt64(99)); err != nil {
+		t.Errorf("依赖未注入时不应拒绝上传,got: %v", err)
+	}
+}
+
+// PR #647 fix:assertFolderWritable 用 sentinel error,handler 层 errors.Is 才能区分
+// "权限拒绝(403)" vs "folder 不存在(400)" vs "其它服务器错误(500)"。这个测试锁住
+// 语义,防止有人把 sentinel 改回字符串 errors.New(...) 时 PR review 不被拦截。
+func TestAssertFolderWritable_SentinelErrors(t *testing.T) {
+	owner := int64(7)
+	other := int64(99)
+
+	svcForbidden := &MediaService{}
+	svcForbidden.SetFolderAccess(
+		&fakeFolderLookup{folders: map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}}},
+		&fakePermLookup{},
+	)
+	if err := svcForbidden.assertFolderWritable(context.Background(), ptrInt64(1), &other); !errors.Is(err, ErrFolderForbidden) {
+		t.Errorf("非 owner 无授权应返回 ErrFolderForbidden,got: %v", err)
+	}
+
+	svcMissing := &MediaService{}
+	svcMissing.SetFolderAccess(
+		&fakeFolderLookup{folders: map[int64]*model.MediaFolder{}},
+		&fakePermLookup{},
+	)
+	if err := svcMissing.assertFolderWritable(context.Background(), ptrInt64(42), &owner); !errors.Is(err, ErrFolderNotFound) {
+		t.Errorf("folder 不存在应返回 ErrFolderNotFound,got: %v", err)
+	}
+}
 
 // TestSVGExtensionMapping 防回归: guessMimeType 必须把 .svg / .svgz 映射到
 // image/svg+xml,该 MIME 不能进入 allowedMimeTypes。这是 SVG 三层防线中的第 2、3 层。
