@@ -197,10 +197,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      # 仅保留 user-switch 三件套用于 haproxy drop privileges。2375 是非特权端口
+      # (>1024)，无需 NET_BIND_SERVICE。
       - CHOWN
       - SETUID
       - SETGID
-      - NET_BIND_SERVICE
     read_only: true
     tmpfs:
       - /run:rw,size=4M,mode=0755

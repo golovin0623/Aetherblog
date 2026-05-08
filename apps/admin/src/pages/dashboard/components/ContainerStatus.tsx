@@ -323,7 +323,11 @@ export function ContainerStatus({
             <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
           
-          {data && !data.dockerAvailable ? (
+          {!data ? (
+            // 数据未加载时不预判状态 —— 给一个 placeholder 占位，避免在错误状态拉到之前
+            // 先闪一下绿色"正常"再翻红的视觉抖动
+            <div className="h-6 w-12 bg-[var(--bg-secondary)] rounded animate-pulse" />
+          ) : !data.dockerAvailable ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded border bg-status-danger-light border-status-danger-border">
               <AlertCircle className="w-3.5 h-3.5 text-status-danger" />
               <span className="text-[10px] font-medium text-status-danger">异常</span>
