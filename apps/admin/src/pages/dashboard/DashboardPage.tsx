@@ -607,8 +607,8 @@ export default function DashboardPage() {
         <AiUsageRecordsTable
           records={aiRecords}
           loading={aiLoading}
-          page={aiData.records?.pageNum || aiPage}
-          pageSize={aiData.records?.pageSize || aiPageSize}
+          page={aiPage}
+          pageSize={aiPageSize}
           total={aiData.records?.total || 0}
           onPageChange={(nextPage) => {
             if (nextPage < 1) {

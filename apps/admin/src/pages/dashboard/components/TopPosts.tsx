@@ -91,7 +91,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
               </div>
               <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">
                 <Eye className="w-3.5 h-3.5" />
-                <span>{post.viewCount.toLocaleString()}</span>
+                <span className="tnum">{post.viewCount.toLocaleString()}</span>
               </div>
             </button>
         ))}
