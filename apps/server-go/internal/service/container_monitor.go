@@ -98,13 +98,20 @@ func NewContainerMonitorService(dockerEndpoint string, linkedTargets ...LinkedTa
 	if strings.HasPrefix(dockerEndpoint, "http://") || strings.HasPrefix(dockerEndpoint, "https://") {
 		// 代理模式：剥掉尾部斜杠避免拼接出 //containers
 		base := strings.TrimRight(dockerEndpoint, "/")
-		svc.endpoint = base
+		// baseURL 必须保留 userinfo —— 真正的 HTTP 请求要带凭据；
+		// endpoint 用于 UI 展示,任何凭据都得 redact 掉,避免随 ContainerOverview.Source
+		// 漏给浏览器(管理员的 DevTools / 截图都会泄露)。
+		displayEndpoint := base
+		if u, err := url.Parse(base); err == nil {
+			displayEndpoint = u.Redacted()
+		}
+		svc.endpoint = displayEndpoint
 		svc.baseURL = base
 		svc.client = &http.Client{Timeout: 5 * time.Second}
 		svc.socketOK = func() error {
 			// 代理可达性探测：能解析 URL 即视为已配置；实际连通性由请求阶段返回的错误反映。
 			if _, err := url.Parse(base); err != nil {
-				return fmt.Errorf("invalid DOCKER_SOCKET_PROXY_URL %q: %w", base, err)
+				return fmt.Errorf("invalid DOCKER_SOCKET_PROXY_URL %q: %w", displayEndpoint, err)
 			}
 			return nil
 		}
@@ -117,10 +124,13 @@ func NewContainerMonitorService(dockerEndpoint string, linkedTargets ...LinkedTa
 	}
 	svc.endpoint = "unix://" + socketPath
 	svc.baseURL = "http://docker"
+	dialer := &net.Dialer{}
 	svc.client = &http.Client{
 		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				// 走 Dialer.DialContext 让上层请求 ctx 的超时/取消能传到 unix dial 阶段;
+				// 直接 net.Dial 会忽略 ctx,长时间挂起的请求无法被中断。
+				return dialer.DialContext(ctx, "unix", socketPath)
 			},
 		},
 		Timeout: 5 * time.Second,
