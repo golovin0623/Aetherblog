@@ -519,14 +519,20 @@ func mergeProviderConfigJSON(oldJSON, newJSON string) (string, error) {
 // deepMergeStringMap 一层递归深合并:newMap 缺失的 key 从 oldMap 继承;
 // 双方都是嵌套 map 时再合并一次,否则 newMap 的值覆盖 oldMap。
 //
+// JSON null 处理:json.Unmarshal 会把 null 解析为 nil,present 为 true。
+// 这里把"显式 null"也当作"缺失"处理,以符合文档承诺(显式 null 被旧值覆盖,
+// 想清空非 secret 字段必须提交空字符串 "")。
+//
 // 不深拷贝:返回的 map 与 newMap 共享底层引用,只对缺失字段补值。
+//
+// @ref PR #647 fix: gemini-code-assist medium — null 覆盖旧值与文档矛盾
 func deepMergeStringMap(oldMap, newMap map[string]any) map[string]any {
 	if newMap == nil {
 		return oldMap
 	}
 	for k, oldVal := range oldMap {
 		newVal, present := newMap[k]
-		if !present {
+		if !present || newVal == nil {
 			newMap[k] = oldVal
 			continue
 		}

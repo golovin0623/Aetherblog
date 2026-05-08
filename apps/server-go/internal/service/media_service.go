@@ -595,13 +595,25 @@ func (s *MediaService) Update(ctx context.Context, id int64, req dto.UpdateMedia
 	return s.GetByID(ctx, id)
 }
 
-// Move 将单个媒体文件移动到指定文件夹（folderID 为 nil 表示移至根目录）。
-func (s *MediaService) Move(ctx context.Context, id int64, folderID *int64) error {
+// Move 将单个媒体文件移动到指定文件夹(folderID 为 nil 表示移至根目录)。
+//
+// 写入目标文件夹同样要校验 folder 权限 —— 否则用户可以把自己的文件 Move
+// 到他人的私有文件夹,绕过 Upload 路径的校验。
+//
+// @ref PR #647 fix: gemini-code-assist medium — Move 路径补 folder 校验
+func (s *MediaService) Move(ctx context.Context, id int64, uploaderID *int64, folderID *int64) error {
+	if err := s.assertFolderWritable(ctx, folderID, uploaderID); err != nil {
+		return err
+	}
 	return s.repo.MoveBatch(ctx, []int64{id}, folderID)
 }
 
 // MoveBatch 在一次数据库查询中将多个媒体文件移动到指定文件夹。
-func (s *MediaService) MoveBatch(ctx context.Context, ids []int64, folderID *int64) error {
+// 同样校验目标文件夹权限,见 Move 注释。
+func (s *MediaService) MoveBatch(ctx context.Context, ids []int64, uploaderID *int64, folderID *int64) error {
+	if err := s.assertFolderWritable(ctx, folderID, uploaderID); err != nil {
+		return err
+	}
 	return s.repo.MoveBatch(ctx, ids, folderID)
 }
 

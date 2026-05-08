@@ -69,10 +69,15 @@ func (r *PermissionRepo) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-// HasWriteAccess 判断指定用户对指定文件夹是否拥有 write 或 admin 级别权限,且权限未过期。
+// HasWriteAccess 判断指定用户对指定文件夹是否拥有"可写"级别权限,且权限未过期。
+//
+// 真实枚举(migration 000011 chk_permission_level + dto/media.go 的 oneof 约束):
+// `VIEW / UPLOAD / EDIT / DELETE / ADMIN`,层级递增。可写 = 任何非 VIEW 级别。
+//
 // 仅查 folder_permissions 表;owner / 系统文件夹的放行规则由 service 层叠加判断。
 //
 // @ref 云储存优化批次 2 — 媒体上传 folder 权限校验
+// @ref PR #647 P1 修复 — 之前用 'write','admin' 与 DB CHECK 约束不匹配,导致所有显式授权失效
 func (r *PermissionRepo) HasWriteAccess(ctx context.Context, folderID int64, userID int64) (bool, error) {
 	var exists bool
 	err := r.db.GetContext(ctx, &exists, `
@@ -80,7 +85,7 @@ func (r *PermissionRepo) HasWriteAccess(ctx context.Context, folderID int64, use
 			SELECT 1 FROM folder_permissions
 			 WHERE folder_id=$1
 			   AND user_id=$2
-			   AND permission_level IN ('write','admin')
+			   AND permission_level IN ('UPLOAD','EDIT','DELETE','ADMIN')
 			   AND (expires_at IS NULL OR expires_at > NOW())
 		)`, folderID, userID)
 	if err != nil {

@@ -208,7 +208,12 @@ func (h *MediaHandler) BatchMove(c echo.Context) error {
 	if len(ids) == 0 {
 		return response.FailWith(c, response.BadRequest, "缺少文件ID列表")
 	}
-	if err := h.svc.MoveBatch(c.Request().Context(), ids, req.FolderID); err != nil {
+	lu := middleware.GetLoginUser(c)
+	var uploaderID *int64
+	if lu != nil {
+		uploaderID = &lu.UserID
+	}
+	if err := h.svc.MoveBatch(c.Request().Context(), ids, uploaderID, req.FolderID); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -399,7 +404,12 @@ func (h *MediaHandler) Move(c echo.Context) error {
 		_ = c.Bind(&req)
 		folderID = req.FolderID
 	}
-	if err := h.svc.Move(c.Request().Context(), id, folderID); err != nil {
+	lu := middleware.GetLoginUser(c)
+	var uploaderID *int64
+	if lu != nil {
+		uploaderID = &lu.UserID
+	}
+	if err := h.svc.Move(c.Request().Context(), id, uploaderID, folderID); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)

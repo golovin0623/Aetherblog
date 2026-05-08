@@ -120,6 +120,45 @@ func TestMergeProviderConfigJSON_OverwriteWhenBothPresent(t *testing.T) {
 	}
 }
 
+// PR #647 fix:JSON null 应该被当作"缺失"处理,从旧值继承,而不是把旧值覆盖成 nil。
+// gemini-code-assist 指出原实现里 null 会让 Unmarshal 落 nil + present=true,绕过缺失分支。
+func TestMergeProviderConfigJSON_NullPreservesOldValue(t *testing.T) {
+	old := `{"region":"cn-hangzhou","endpoint":"https://oss-cn-hangzhou.aliyuncs.com","bucket":"b"}`
+	// 前端显式提交 region:null,文档承诺这等同于"未提",应保留旧值
+	new := `{"region":null,"bucket":"new"}`
+	merged, err := mergeProviderConfigJSON(old, new)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	var got map[string]any
+	json.Unmarshal([]byte(merged), &got)
+	if got["region"] != "cn-hangzhou" {
+		t.Errorf("explicit null should fall back to old value, got: %v", got["region"])
+	}
+	if got["endpoint"] != "https://oss-cn-hangzhou.aliyuncs.com" {
+		t.Errorf("missing field should be preserved, got: %v", got["endpoint"])
+	}
+	if got["bucket"] != "new" {
+		t.Errorf("explicit non-null new value should overwrite, got: %v", got["bucket"])
+	}
+}
+
+// PR #647 fix:嵌套对象内的 null 字段同样回退旧值。
+func TestMergeProviderConfigJSON_NullInsideNestedOptions(t *testing.T) {
+	old := `{"options":{"addressingStyle":"virtual","virtualHost":"old.example.com"}}`
+	new := `{"options":{"addressingStyle":null,"virtualHost":"new.example.com"}}`
+	merged, _ := mergeProviderConfigJSON(old, new)
+	var got map[string]any
+	json.Unmarshal([]byte(merged), &got)
+	opts, _ := got["options"].(map[string]any)
+	if opts["addressingStyle"] != "virtual" {
+		t.Errorf("nested null should fall back to old, got: %v", opts["addressingStyle"])
+	}
+	if opts["virtualHost"] != "new.example.com" {
+		t.Errorf("nested non-null should overwrite, got: %v", opts["virtualHost"])
+	}
+}
+
 func TestIsRedactedValue(t *testing.T) {
 	cases := []struct {
 		v    string
