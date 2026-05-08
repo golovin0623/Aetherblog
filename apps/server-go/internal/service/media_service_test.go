@@ -158,6 +158,32 @@ func TestAssertFolderWritable_BackwardCompat(t *testing.T) {
 	}
 }
 
+// PR #647 fix:assertFolderWritable 用 sentinel error,handler 层 errors.Is 才能区分
+// "权限拒绝(403)" vs "folder 不存在(400)" vs "其它服务器错误(500)"。这个测试锁住
+// 语义,防止有人把 sentinel 改回字符串 errors.New(...) 时 PR review 不被拦截。
+func TestAssertFolderWritable_SentinelErrors(t *testing.T) {
+	owner := int64(7)
+	other := int64(99)
+
+	svcForbidden := &MediaService{}
+	svcForbidden.SetFolderAccess(
+		&fakeFolderLookup{folders: map[int64]*model.MediaFolder{1: {ID: 1, OwnerID: &owner}}},
+		&fakePermLookup{},
+	)
+	if err := svcForbidden.assertFolderWritable(context.Background(), ptrInt64(1), &other); !errors.Is(err, ErrFolderForbidden) {
+		t.Errorf("非 owner 无授权应返回 ErrFolderForbidden,got: %v", err)
+	}
+
+	svcMissing := &MediaService{}
+	svcMissing.SetFolderAccess(
+		&fakeFolderLookup{folders: map[int64]*model.MediaFolder{}},
+		&fakePermLookup{},
+	)
+	if err := svcMissing.assertFolderWritable(context.Background(), ptrInt64(42), &owner); !errors.Is(err, ErrFolderNotFound) {
+		t.Errorf("folder 不存在应返回 ErrFolderNotFound,got: %v", err)
+	}
+}
+
 // TestSVGExtensionMapping 防回归: guessMimeType 必须把 .svg / .svgz 映射到
 // image/svg+xml,该 MIME 不能进入 allowedMimeTypes。这是 SVG 三层防线中的第 2、3 层。
 func TestSVGExtensionMapping(t *testing.T) {

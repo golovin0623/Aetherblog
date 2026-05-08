@@ -154,15 +154,25 @@ func (s *MediaService) SetFolderAccess(folderRepo folderLookup, permRepo permLoo
 	s.permLookup = permRepo
 }
 
+// ErrFolderForbidden 表示用户对目标文件夹无写入权限。
+// handler 层 errors.Is(err, ErrFolderForbidden) 将其映射为 HTTP 403。
+//
+// @ref PR #647 fix: chatgpt-codex-connector P2 — folder 拒绝错误不应回 500
+var ErrFolderForbidden = errors.New("无权写入该文件夹")
+
+// ErrFolderNotFound 表示前端提交的 folder_id 在 media_folders 表中不存在。
+// handler 层 errors.Is(err, ErrFolderNotFound) 将其映射为 HTTP 400。
+var ErrFolderNotFound = errors.New("目标文件夹不存在")
+
 // assertFolderWritable 验证 uploaderID 是否有权写入目标文件夹。
 // 放行规则(自上而下短路):
 //  1. folderID 为空 → 放行(根目录)
 //  2. 依赖未注入(folderLookup/permLookup == nil) → 放行(向后兼容,server.go 必须显式 SetFolderAccess 才启用)
-//  3. folder 不存在 → 拒绝(防止前端伪造 ID)
+//  3. folder 不存在 → 拒绝 ErrFolderNotFound(防止前端伪造 ID)
 //  4. folder.OwnerID 为空(系统文件夹) → 放行
 //  5. uploaderID 等于 folder.OwnerID → 放行
-//  6. uploaderID 在 folder_permissions 有 write/admin 权限且未过期 → 放行
-//  7. 否则拒绝
+//  6. uploaderID 在 folder_permissions 有 UPLOAD/EDIT/DELETE/ADMIN 权限且未过期 → 放行
+//  7. 否则拒绝 ErrFolderForbidden
 //
 // 注意:visibility=public 的文件夹也走步骤 6,因为"公开可读"和"任何人可写"是不同语义。
 func (s *MediaService) assertFolderWritable(ctx context.Context, folderID *int64, uploaderID *int64) error {
@@ -177,7 +187,7 @@ func (s *MediaService) assertFolderWritable(ctx context.Context, folderID *int64
 		return fmt.Errorf("folder lookup failed: %w", err)
 	}
 	if folder == nil {
-		return errors.New("目标文件夹不存在")
+		return ErrFolderNotFound
 	}
 	if folder.OwnerID == nil {
 		return nil
@@ -186,14 +196,14 @@ func (s *MediaService) assertFolderWritable(ctx context.Context, folderID *int64
 		return nil
 	}
 	if uploaderID == nil {
-		return errors.New("无权写入该文件夹")
+		return ErrFolderForbidden
 	}
 	ok, err := s.permLookup.HasWriteAccess(ctx, *folderID, *uploaderID)
 	if err != nil {
 		return fmt.Errorf("permission lookup failed: %w", err)
 	}
 	if !ok {
-		return errors.New("无权写入该文件夹")
+		return ErrFolderForbidden
 	}
 	return nil
 }

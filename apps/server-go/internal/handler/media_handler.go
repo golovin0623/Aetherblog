@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -16,6 +17,21 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
+
+// respondMediaError 把 service 层抛出的 sentinel error 映射为合理的 HTTP 状态码。
+// 未知错误回落到 response.Error(500),保持原 handler 行为不变。
+//
+// @ref PR #647 fix: chatgpt-codex-connector P2 — folder 拒绝错误不应回 500
+func respondMediaError(c echo.Context, err error) error {
+	switch {
+	case errors.Is(err, service.ErrFolderForbidden):
+		return response.FailWith(c, response.Forbidden, err.Error())
+	case errors.Is(err, service.ErrFolderNotFound):
+		return response.FailWith(c, response.BadRequest, err.Error())
+	default:
+		return response.Error(c, err)
+	}
+}
 
 // MediaHandler 负责处理媒体文件的上传、列表、回收站及版本管理接口。
 //
@@ -105,6 +121,11 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	}
 	vo, err := h.svc.Upload(c.Request().Context(), fh, uploaderID, folderID)
 	if err != nil {
+		// folder 权限拒绝走 403;其它(含 ErrFolderNotFound、MIME 不允许、size 超限等
+		// 业务错误)统一按 400 BadRequest 回。
+		if errors.Is(err, service.ErrFolderForbidden) {
+			return response.FailWith(c, response.Forbidden, err.Error())
+		}
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 
@@ -214,7 +235,7 @@ func (h *MediaHandler) BatchMove(c echo.Context) error {
 		uploaderID = &lu.UserID
 	}
 	if err := h.svc.MoveBatch(c.Request().Context(), ids, uploaderID, req.FolderID); err != nil {
-		return response.Error(c, err)
+		return respondMediaError(c, err)
 	}
 	return response.OKEmpty(c)
 }
@@ -410,7 +431,7 @@ func (h *MediaHandler) Move(c echo.Context) error {
 		uploaderID = &lu.UserID
 	}
 	if err := h.svc.Move(c.Request().Context(), id, uploaderID, folderID); err != nil {
-		return response.Error(c, err)
+		return respondMediaError(c, err)
 	}
 	return response.OKEmpty(c)
 }
