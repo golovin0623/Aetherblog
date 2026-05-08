@@ -293,13 +293,30 @@ webhook systemd 单元文件见 `ops/webhook/deploy-webhook.service`，部署与
 | ai-service healthcheck | `start_period: 45s, interval: 10s` | Python 冷启动窗口 ≤ 45s 不计 retries，部署 preflight 不会误判 docker=starting |
 | backend healthcheck | `start_period: 30s, interval: 3s` (**VULN-150**) | 避免把 crash loop 识别为 "healthy yet" |
 
-### Docker socket 访问 —— 默认禁用（PR #603）
+### Docker socket 访问 —— 默认禁用，opt-in 通过 docker-socket-proxy（PR #603 / 当前分支）
 
 `backend` 默认 **不再挂载** `/var/run/docker.sock`，`docker-compose.prod.yml` 的对应 `volumes` / `group_add` 块已移除。原因：即便 `:ro` 也只保护套接字文件本身，Docker API 仍是宿主 root 等价权限 —— 一旦 backend 容器内出现 RCE，攻击者就能直接逃逸到宿主。
 
 **影响**：admin 后台 "容器监控" 面板（`/v1/admin/monitor/*`）在默认部署下会返回 Docker API 不可用。如运行手册仍引用旧的 `DOCKER_GID` / 直接挂 socket 步骤，请同步删除。
 
-**如确需该功能（自托管且评估过风险）**，正确做法是改用 `tecnativa/docker-socket-proxy` 将 API 限制到 `/containers/json` + `/containers/*/stats`，然后让 backend 通过内网地址访问代理；**不要**把宿主套接字直接 bind-mount 回 backend，也**不要**把容器 UID 加回宿主 docker 组。
+**启用容器监控（生产推荐路径）**：`docker-compose.prod.yml` 已内置 `docker-socket-proxy` 服务（`tecnativa/docker-socket-proxy:0.3.0`），通过 `with-monitor` profile 控制，仅放开 `GET /containers/json` + `GET /containers/*/stats`，所有写操作（POST / EXEC / BUILD / VOLUMES / IMAGES / NETWORKS / SYSTEM ...）显式置 0。
+
+操作步骤：
+```bash
+# 1) .env 加上：
+echo 'DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375' >> .env
+
+# 2) 用 with-monitor profile 启动（不会影响默认 profile 已运行的服务，
+#    docker-socket-proxy 只是新增一个容器加入 aetherblog-network）：
+docker-compose -f docker-compose.prod.yml --profile with-monitor up -d
+```
+
+完成后 admin "容器监控" 面板应能拉到 backend / blog / postgres / redis / ai-service 等容器的 CPU / 内存实时指标。
+
+**安全约束**（不要轻易绕过）：
+- 永远不要把 `/var/run/docker.sock` 直接 bind-mount 到 `backend` 容器；
+- 永远不要把容器 UID 加回宿主 `docker` 组（`group_add: docker`）；
+- proxy 容器自身仅持 docker.sock 的 `:ro` 挂载，且 `read_only: true` + `cap_drop: ALL` 加固，被攻破时仍受 API 白名单保护。
 
 ---
 

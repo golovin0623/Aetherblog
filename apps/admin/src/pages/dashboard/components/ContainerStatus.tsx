@@ -323,10 +323,17 @@ export function ContainerStatus({
             <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
           
-          <div className="flex items-center gap-1 px-2 py-1 rounded border bg-status-success-light border-status-success-border">
-            <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />
-            <span className="text-[10px] font-medium text-status-success">正常</span>
-          </div>
+          {data && !data.dockerAvailable ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded border bg-status-danger-light border-status-danger-border">
+              <AlertCircle className="w-3.5 h-3.5 text-status-danger" />
+              <span className="text-[10px] font-medium text-status-danger">异常</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 px-2 py-1 rounded border bg-status-success-light border-status-success-border">
+              <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />
+              <span className="text-[10px] font-medium text-status-success">正常</span>
+            </div>
+          )}
         </div>
       </div>
 
