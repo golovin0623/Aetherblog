@@ -362,6 +362,7 @@ export function RealtimeLogViewer({
   const [wrapLines, setWrapLines] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [showLineMeta, setShowLineMeta] = useState(false);
+  const [rawMode, setRawMode] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -694,13 +695,19 @@ export function RealtimeLogViewer({
   useLayoutEffect(() => {
     if (!exportMenuOpen || !exportTriggerRef.current) return;
     const rect = exportTriggerRef.current.getBoundingClientRect();
-    const menuW = 240;
+    const viewportW = window.innerWidth;
+    const margin = 8;
+    // 移动端窄屏：菜单宽度自适应，最大 280，最小留 16px 边距
+    const menuW = Math.min(280, viewportW - margin * 2);
+    // 优先右对齐到触发器，但若会被左侧裁切则回退到左对齐到视口 margin
+    const idealLeft = rect.right - menuW;
+    const left = Math.max(margin, Math.min(idealLeft, viewportW - menuW - margin));
     const next: CSSProperties = {
       position: 'fixed',
       top: rect.bottom + 6,
-      right: window.innerWidth - rect.right,
+      left,
       width: menuW,
-      zIndex: 9999,
+      zIndex: 10000,
     };
     setExportMenuStyle(next);
   }, [exportMenuOpen]);
@@ -1025,6 +1032,7 @@ export function RealtimeLogViewer({
                 { active: wrapLines,    label: '换行', onClick: () => preserveScrollContext(() => setWrapLines(v => !v)) },
                 { active: compactMode,  label: '紧凑', onClick: () => preserveScrollContext(() => setCompactMode(v => !v)) },
                 { active: showLineMeta, label: '行号', onClick: () => preserveScrollContext(() => setShowLineMeta(v => !v)) },
+                { active: rawMode,      label: '原始', onClick: () => preserveScrollContext(() => setRawMode(v => !v)) },
               ] as const).map((opt) => (
                 <button
                   key={opt.label}
@@ -1316,7 +1324,22 @@ export function RealtimeLogViewer({
             <RefreshCw className="w-4 h-4 animate-spin" />
             <span>正在加载日志…</span>
           </div>
-        ) : visibleLogs.length > 0 ? (
+        ) : visibleLogs.length > 0 ? rawMode ? (
+          <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
+            {visibleLogs.map((line, index) => (
+              <div
+                key={`raw-${index}-${line.slice(0, 24)}`}
+                className={cn(
+                  'leading-relaxed text-[var(--ink-secondary)]',
+                  compactMode ? 'px-2 py-0.5' : 'px-2 py-0.5',
+                  wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto'
+                )}
+              >
+                {line || ' '}
+              </div>
+            ))}
+          </div>
+        ) : (
           <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
             {parsedVisibleLogs.map((parsed, index) => {
               const line = parsed.raw;
@@ -1456,11 +1479,11 @@ export function RealtimeLogViewer({
    */
   const renderStatusBar = (compact = false) => (
     <div className={cn(
-      'flex items-center gap-2 text-sm text-[var(--ink-secondary)] min-w-0',
-      compact && 'gap-2'
+      'flex items-center flex-wrap gap-x-2 gap-y-1 text-sm text-[var(--ink-secondary)] min-w-0',
+      compact && 'gap-x-2'
     )}>
       <Terminal className="w-4 h-4 text-[var(--aurora-1)] shrink-0" />
-      <span className="font-mono font-medium text-[var(--ink-primary)] truncate">{getTitle()}</span>
+      <span className="font-mono font-medium text-[var(--ink-primary)] truncate min-w-0 max-w-full">{getTitle()}</span>
       <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)]">
         {renderStatusDot()}
         <span>{statusLabel}</span>
@@ -1535,14 +1558,14 @@ export function RealtimeLogViewer({
             >
               {/* 全屏工具栏 —— 与嵌入式同样的三段结构（更宽松的间距） */}
               <div className="shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
-                <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0 flex-1">
                     {renderStatusBar(true)}
-                    <span className="text-[10px] font-mono text-[var(--ink-muted)] tnum ml-2 shrink-0">
+                    <span className="hidden sm:inline text-[10px] font-mono text-[var(--ink-muted)] tnum ml-2 shrink-0">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     {renderActionButtons(false)}
                     <button
                       className="inline-flex items-center justify-center w-7 h-7 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] rounded-md hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
