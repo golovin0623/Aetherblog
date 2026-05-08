@@ -33,8 +33,19 @@ type Keystore struct {
 // NewKeystoreFromEnv 读取 AI_CREDENTIAL_ENCRYPTION_KEYS 环境变量(逗号分隔多 key)。
 // 空 env → 返回 enabled=false 的 Keystore(不加密、不警告,允许开发场景);
 // 非空但任一 key 解析失败 → 返回 error,启动应中止。
+//
+// 这是 AI 凭据专用入口。storage 层走 DefaultForStorage(),它会优先读
+// STORAGE_ENCRYPTION_KEYS,只在缺失时 fallback 到这里。
 func NewKeystoreFromEnv() (*Keystore, error) {
-	raw := strings.TrimSpace(os.Getenv("AI_CREDENTIAL_ENCRYPTION_KEYS"))
+	return newKeystoreFromEnvName("AI_CREDENTIAL_ENCRYPTION_KEYS")
+}
+
+// newKeystoreFromEnvName 通用化:从指定 env 读 key 列表构造 Keystore。
+// 抽出来让 storage 路径用独立的 STORAGE_ENCRYPTION_KEYS,与 AI 解耦。
+//
+// @ref 云储存优化批次 3b — Fernet 密钥拆分
+func newKeystoreFromEnvName(envName string) (*Keystore, error) {
+	raw := strings.TrimSpace(os.Getenv(envName))
 	if raw == "" {
 		return &Keystore{enabled: false}, nil
 	}
@@ -47,7 +58,7 @@ func NewKeystoreFromEnv() (*Keystore, error) {
 		}
 		f, err := NewFernet(p)
 		if err != nil {
-			return nil, fmt.Errorf("AI_CREDENTIAL_ENCRYPTION_KEYS key #%d: %w", i+1, err)
+			return nil, fmt.Errorf("%s key #%d: %w", envName, i+1, err)
 		}
 		fernets = append(fernets, f)
 	}
@@ -59,6 +70,22 @@ func NewKeystoreFromEnv() (*Keystore, error) {
 		return nil, err
 	}
 	return &Keystore{mf: mf, enabled: true}, nil
+}
+
+// NewKeystoreFromFallbackEnv 优先用 primary env;空时回落到 fallback env。
+// 两者都空 → 返回 enabled=false 的 Keystore(开发场景兼容)。
+//
+// 用途:storage 路径希望"先看 STORAGE_ENCRYPTION_KEYS,没有就用 AI 那个",
+// 这样老部署不需要改 env 也能用,新部署可以独立轮换 storage 的密钥。
+//
+// @ref 云储存优化批次 3b — Fernet 密钥拆分(storage / AI 解耦)
+func NewKeystoreFromFallbackEnv(primary, fallback string) (*Keystore, string, error) {
+	if strings.TrimSpace(os.Getenv(primary)) != "" {
+		ks, err := newKeystoreFromEnvName(primary)
+		return ks, primary, err
+	}
+	ks, err := newKeystoreFromEnvName(fallback)
+	return ks, fallback, err
 }
 
 // Enabled 报告是否启用了加密。供 startup banner / 健康检查使用。
@@ -110,9 +137,14 @@ var (
 	defaultKeystore *Keystore
 	defaultOnce     sync.Once
 	defaultErr      error
+
+	storageKeystore  *Keystore
+	storageKeySource string // 实际读到的 env name(供 startup banner 打印)
+	storageOnce      sync.Once
+	storageErr       error
 )
 
-// Default 返回进程级单例 Keystore。首次调用从环境读取。
+// Default 返回 AI 凭据用的进程级单例 Keystore。首次调用从环境读取。
 //
 // 失败时 (key 解析错) 直接 panic — 这种属于 startup misconfig,不应让业务带病运行。
 func Default() *Keystore {
@@ -123,4 +155,32 @@ func Default() *Keystore {
 		panic(defaultErr)
 	}
 	return defaultKeystore
+}
+
+// DefaultForStorage 返回 storage_providers / media-related 加密用的进程级单例 Keystore。
+// 解析顺序:STORAGE_ENCRYPTION_KEYS → AI_CREDENTIAL_ENCRYPTION_KEYS → enabled=false。
+//
+// 老部署只配了 AI 那个 → 自动 fallback,storage_providers 落库 / 解密**完全不变**。
+// 新部署可以单独配 STORAGE_ENCRYPTION_KEYS 和 AI 解耦。
+//
+// @ref 云储存优化批次 3b
+func DefaultForStorage() *Keystore {
+	storageOnce.Do(func() {
+		storageKeystore, storageKeySource, storageErr = NewKeystoreFromFallbackEnv(
+			"STORAGE_ENCRYPTION_KEYS",
+			"AI_CREDENTIAL_ENCRYPTION_KEYS",
+		)
+	})
+	if storageErr != nil {
+		panic(storageErr)
+	}
+	return storageKeystore
+}
+
+// StorageKeystoreSource 报告实际读到的 env name("STORAGE_ENCRYPTION_KEYS"
+// 或 "AI_CREDENTIAL_ENCRYPTION_KEYS"),供 server.go 启动期日志使用。
+// 两个 env 都空时返回后者(语义:"fallback 也没配置 = 开发模式")。
+func StorageKeystoreSource() string {
+	DefaultForStorage() // 确保单例已初始化
+	return storageKeySource
 }
