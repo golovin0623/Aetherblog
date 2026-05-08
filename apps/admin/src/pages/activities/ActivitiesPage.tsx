@@ -164,6 +164,7 @@ export default function ActivitiesPage() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRangeValue>({ startTime: '', endTime: '' });
   const [pageNum, setPageNum] = useState(1);
+  const [chipsOverflowHidden, setChipsOverflowHidden] = useState(true);
   const pageSize = 20;
 
   const debouncedSearch = useDebounce(searchTerm.trim(), 350);
@@ -488,9 +489,11 @@ export default function ActivitiesPage() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-              className="overflow-hidden"
+              onAnimationStart={() => setChipsOverflowHidden(true)}
+              onAnimationComplete={() => setChipsOverflowHidden(false)}
+              style={{ overflow: chipsOverflowHidden ? 'hidden' : 'visible' }}
             >
-              <div className="pt-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
+              <div className="pt-3 pb-0.5 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                   已应用 {activeFilterCount}
                 </span>

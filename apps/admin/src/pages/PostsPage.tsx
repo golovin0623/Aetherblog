@@ -116,6 +116,7 @@ export default function PostsPage() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
+  const [chipsOverflowHidden, setChipsOverflowHidden] = useState(true);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
 
   // 分页滚动条: 当前页跟随滚动并在可视区域居中显示, 边界时自然贴合首尾
@@ -717,9 +718,11 @@ export default function PostsPage() {
             animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
             exit={{ opacity: 0, height: 0, marginBottom: 0 }}
             transition={heightTransition}
-            className="overflow-hidden"
+            onAnimationStart={() => setChipsOverflowHidden(true)}
+            onAnimationComplete={() => setChipsOverflowHidden(false)}
+            style={{ overflow: chipsOverflowHidden ? 'hidden' : 'visible' }}
           >
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap py-0.5">
               <span className="tnum text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                 已应用 {activeFilterCount}
               </span>
