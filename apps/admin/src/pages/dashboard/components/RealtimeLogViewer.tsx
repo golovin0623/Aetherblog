@@ -1331,7 +1331,7 @@ export function RealtimeLogViewer({
                 key={`raw-${index}-${line.slice(0, 24)}`}
                 className={cn(
                   'leading-relaxed text-[var(--ink-secondary)]',
-                  compactMode ? 'px-2 py-0.5' : 'px-2 py-0.5',
+                  compactMode ? 'px-2 py-0.5' : 'px-2 py-1',
                   wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto'
                 )}
               >
@@ -1477,11 +1477,8 @@ export function RealtimeLogViewer({
   /**
    * 状态行 —— 顶部紧凑信息条
    */
-  const renderStatusBar = (compact = false) => (
-    <div className={cn(
-      'flex items-center flex-wrap gap-x-2 gap-y-1 text-sm text-[var(--ink-secondary)] min-w-0',
-      compact && 'gap-x-2'
-    )}>
+  const renderStatusBar = () => (
+    <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-sm text-[var(--ink-secondary)] min-w-0">
       <Terminal className="w-4 h-4 text-[var(--aurora-1)] shrink-0" />
       <span className="font-mono font-medium text-[var(--ink-primary)] truncate min-w-0 max-w-full">{getTitle()}</span>
       <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)]">
@@ -1560,7 +1557,7 @@ export function RealtimeLogViewer({
               <div className="shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
                 <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
                   <div className="flex items-center flex-wrap gap-x-2 gap-y-1 min-w-0 flex-1">
-                    {renderStatusBar(true)}
+                    {renderStatusBar()}
                     <span className="hidden sm:inline text-[10px] font-mono text-[var(--ink-muted)] tnum ml-2 shrink-0">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
