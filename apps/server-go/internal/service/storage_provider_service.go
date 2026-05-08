@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -111,6 +112,118 @@ func (s *StorageProviderService) Delete(ctx context.Context, id int64) error {
 		s.invalidator.InvalidateProvider(id)
 	}
 	return nil
+}
+
+// Export 把所有 storage_providers 以**明文** configJson 形式导出,供运维迁移到新实例。
+//
+// 安全提示:返回内容包含 accessKey/secretKey 等敏感字段的明文,前端 UI 在触发前必须给出
+// 醒目警告;调用方有责任妥善保管下载文件。后端不做额外加密(目标场景就是跨实例迁移,
+// 二次加密反而增加恢复成本)。
+func (s *StorageProviderService) Export(ctx context.Context) (*dto.StorageProviderExportPayload, error) {
+	ps, err := s.repo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.StorageProviderExportItem, 0, len(ps))
+	for _, p := range ps {
+		items = append(items, dto.StorageProviderExportItem{
+			Name:         p.Name,
+			ProviderType: p.ProviderType,
+			ConfigJSON:   p.ConfigJSON, // FindAll 已经解密成明文
+			IsDefault:    p.IsDefault,
+			IsEnabled:    p.IsEnabled,
+			Priority:     p.Priority,
+		})
+	}
+	return &dto.StorageProviderExportPayload{
+		Version:    1,
+		ExportedAt: time.Now().UTC(),
+		Providers:  items,
+	}, nil
+}
+
+// Import 把导出文件批量导入。同名 provider 自动跳过,保护已有配置不被覆盖。
+//
+// 默认 provider 处理:导入完成后,如果 payload 中有恰好一条 IsDefault=true,且该条
+// 实际被新建(没被 skip),则调用 SetDefault 切换成它;否则保留当前默认 provider 不动。
+func (s *StorageProviderService) Import(ctx context.Context, payload dto.StorageProviderExportPayload) (*dto.StorageProviderImportResult, error) {
+	if payload.Version != 1 {
+		return nil, fmt.Errorf("unsupported export version %d (expected 1)", payload.Version)
+	}
+	if len(payload.Providers) == 0 {
+		return &dto.StorageProviderImportResult{}, nil
+	}
+
+	existing, err := s.repo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	existingNames := make(map[string]struct{}, len(existing))
+	for _, p := range existing {
+		existingNames[p.Name] = struct{}{}
+	}
+
+	result := &dto.StorageProviderImportResult{}
+	var defaultCandidateID *int64
+	var defaultCandidateName string
+
+	for _, item := range payload.Providers {
+		if !validProviderType(item.ProviderType) {
+			result.FailedNames = append(result.FailedNames, item.Name)
+			continue
+		}
+		if item.Name == "" || item.ConfigJSON == "" {
+			result.FailedNames = append(result.FailedNames, item.Name)
+			continue
+		}
+		if _, dup := existingNames[item.Name]; dup {
+			result.SkippedNames = append(result.SkippedNames, item.Name)
+			continue
+		}
+		// 校验 configJson 至少是合法 JSON,避免坏数据落库
+		var probe map[string]any
+		if err := json.Unmarshal([]byte(item.ConfigJSON), &probe); err != nil {
+			result.FailedNames = append(result.FailedNames, item.Name)
+			continue
+		}
+		created, err := s.repo.Create(ctx, repository.StorageProviderRequest{
+			Name:         item.Name,
+			ProviderType: item.ProviderType,
+			ConfigJSON:   item.ConfigJSON,
+			IsEnabled:    item.IsEnabled,
+			Priority:     item.Priority,
+		})
+		if err != nil {
+			result.FailedNames = append(result.FailedNames, item.Name)
+			continue
+		}
+		existingNames[item.Name] = struct{}{}
+		result.Imported++
+		if item.IsDefault && defaultCandidateID == nil {
+			id := created.ID
+			defaultCandidateID = &id
+			defaultCandidateName = created.Name
+		}
+	}
+
+	if defaultCandidateID != nil {
+		if err := s.repo.SetDefault(ctx, *defaultCandidateID); err == nil {
+			result.DefaultSet = defaultCandidateName
+			if s.invalidator != nil {
+				s.invalidator.InvalidateProvider(*defaultCandidateID)
+			}
+		}
+	}
+	return result, nil
+}
+
+// validProviderType 与 dto.StorageProviderRequest 的 oneof tag 保持一致。
+func validProviderType(t string) bool {
+	switch t {
+	case "LOCAL", "S3", "MINIO", "OSS", "COS", "R2":
+		return true
+	}
+	return false
 }
 
 // SetDefault 将指定提供商标记为默认存储，并同时清除其他提供商的默认标记。

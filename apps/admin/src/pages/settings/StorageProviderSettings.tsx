@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Server, Check, Trash2, TestTube, Edit3, Cloud, HardDrive, Loader2 } from 'lucide-react';
+import { Plus, Server, Check, Trash2, TestTube, Edit3, Cloud, HardDrive, Loader2, Download, Upload } from 'lucide-react';
 import { Button, Toggle } from '@aetherblog/ui';
-import { storageProviderService, CreateStorageProviderRequest } from '@/services/storageProviderService';
+import {
+  storageProviderService,
+  CreateStorageProviderRequest,
+  StorageProviderExportPayload,
+} from '@/services/storageProviderService';
 import { storageSyncService } from '@/services/storageSyncService';
 import type { StorageProvider, StorageProviderType } from '@aetherblog/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -146,6 +150,9 @@ export default function StorageProviderSettings() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<StorageProvider | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // 获取所有存储提供商
   const { data: providersResponse, isLoading } = useQuery({
@@ -192,6 +199,103 @@ export default function StorageProviderSettings() {
     }
   };
 
+  const handleExport = async () => {
+    if (exporting) return;
+    if (providers.length === 0) {
+      toast.error('暂无可导出的存储配置');
+      return;
+    }
+    const ok = confirm(
+      [
+        '⚠️ 安全提示',
+        '',
+        '导出文件将包含所有存储提供商的**明文密钥**(accessKey / secretKey 等),',
+        '用于跨实例迁移配置。请妥善保管下载文件,',
+        '不要提交到代码仓库或分享给无关人员。',
+        '',
+        '继续导出?',
+      ].join('\n')
+    );
+    if (!ok) return;
+    setExporting(true);
+    try {
+      const resp = await storageProviderService.exportConfig();
+      const payload = resp.data;
+      if (!payload) {
+        throw new Error('空响应');
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `aetherblog-storage-providers-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`已导出 ${payload.providers?.length ?? 0} 条存储配置`);
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '导出失败';
+      toast.error(msg);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // 重置 input value 以便重复选择同一文件
+    if (importInputRef.current) importInputRef.current.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      let payload: StorageProviderExportPayload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        toast.error('文件不是合法的 JSON');
+        return;
+      }
+      if (!payload || payload.version !== 1 || !Array.isArray(payload.providers)) {
+        toast.error('文件格式不匹配 (期望 version=1 且 providers 为数组)');
+        return;
+      }
+      if (payload.providers.length === 0) {
+        toast.error('文件中没有 provider 记录');
+        return;
+      }
+      const ok = confirm(
+        `即将从文件导入 ${payload.providers.length} 条存储配置。\n` +
+          '同名 provider 会被自动跳过(不覆盖已有配置)。\n\n继续?'
+      );
+      if (!ok) return;
+      const resp = await storageProviderService.importConfig(payload);
+      const result = resp.data;
+      const parts: string[] = [];
+      parts.push(`导入完成:新建 ${result?.imported ?? 0} 条`);
+      if (result?.skippedNames?.length) {
+        parts.push(`跳过 ${result.skippedNames.length} 条(同名)`);
+      }
+      if (result?.failedNames?.length) {
+        parts.push(`失败 ${result.failedNames.length} 条`);
+      }
+      if (result?.defaultSet) {
+        parts.push(`默认 provider 已切换为「${result.defaultSet}」`);
+      }
+      toast.success(parts.join(' · '));
+      queryClient.invalidateQueries({ queryKey: ['storage-providers'] });
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '导入失败';
+      toast.error(msg);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div>
       {/* 头部 */}
@@ -205,9 +309,38 @@ export default function StorageProviderSettings() {
             配置本地、S3、COS、OSS、MinIO、R2 等存储后端;set-default 后新文件自动入云。
           </p>
         </div>
-        <Button onClick={() => setCreating(true)} className="gap-2 w-full sm:w-auto shrink-0">
-          <Plus className="w-4 h-4" /> 添加存储提供商
-        </Button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="gap-2"
+          >
+            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            导入配置
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleExport}
+            disabled={exporting || providers.length === 0}
+            className="gap-2"
+          >
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            导出配置
+          </Button>
+          <Button onClick={() => setCreating(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> 添加存储提供商
+          </Button>
+        </div>
       </div>
 
       {/* 全局开关:自动后台备份 — Phase 4 */}

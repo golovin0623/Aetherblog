@@ -23,6 +23,9 @@ func NewStorageProviderHandler(svc *service.StorageProviderService) *StorageProv
 func (h *StorageProviderHandler) Mount(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/default", h.Default)
+	// 配置导入/导出 — 注意必须放在 /:id 之前,否则 echo 会把 "export"/"import" 当作 ID
+	g.GET("/export", h.Export)
+	g.POST("/import", h.Import)
 	g.GET("/:id", h.Get)
 	g.POST("", h.Create)
 	g.PUT("/:id", h.Update)
@@ -146,6 +149,34 @@ func (h *StorageProviderHandler) Test(c echo.Context) error {
 	}
 	ok, msg := h.svc.Test(c.Request().Context(), id)
 	return response.OK(c, map[string]interface{}{"success": ok, "message": msg})
+}
+
+// Export 处理 GET /admin/storage/providers/export 请求。
+// 返回所有 provider 的明文 configJson,供运维跨实例迁移。
+//
+// SECURITY: 响应内容包含 accessKey/secretKey 等明文凭证 — 前端 UI 在触发前
+// 必须给用户醒目警告(参考 StorageProviderSettings.tsx 的导出按钮 confirm 流程)。
+func (h *StorageProviderHandler) Export(c echo.Context) error {
+	payload, err := h.svc.Export(c.Request().Context())
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, payload)
+}
+
+// Import 处理 POST /admin/storage/providers/import 请求。
+// 接受导出文件(StorageProviderExportPayload),按 name 去重 skip,逐条创建。
+// 若导入项中有 IsDefault=true 且实际被新建,则在最后调用 SetDefault 切换默认 provider。
+func (h *StorageProviderHandler) Import(c echo.Context) error {
+	var payload dto.StorageProviderExportPayload
+	if err := c.Bind(&payload); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	result, err := h.svc.Import(c.Request().Context(), payload)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, result)
 }
 
 // ListObjects 处理 GET /admin/storage/providers/:id/objects?prefix=&token=&limit=

@@ -129,6 +129,35 @@ type StorageProviderRequest struct {
 	Priority     int    `json:"priority"`                                                          // 优先级
 }
 
+// StorageProviderExportItem 是导出文件中的单条 provider 记录。
+// configJson 是**明文**(含 accessKey/secretKey),便于跨实例迁移。
+type StorageProviderExportItem struct {
+	Name         string `json:"name"`
+	ProviderType string `json:"providerType"`
+	ConfigJSON   string `json:"configJson"`
+	IsDefault    bool   `json:"isDefault"`
+	IsEnabled    bool   `json:"isEnabled"`
+	Priority     int    `json:"priority"`
+}
+
+// StorageProviderExportPayload 是 GET /export 的响应 / POST /import 的请求 body。
+//
+// 安全提示:导出文件包含**明文密钥**,在前端会给出醒目警告。
+// 用户负责妥善保管该文件,避免提交到代码仓库或公开分享。
+type StorageProviderExportPayload struct {
+	Version    int                         `json:"version"`              // 当前固定 1,后续 schema 演进时累加
+	ExportedAt time.Time                   `json:"exportedAt"`           // 导出时间(UTC)
+	Providers  []StorageProviderExportItem `json:"providers"`            // 导出的 provider 列表
+}
+
+// StorageProviderImportResult 是 POST /import 的响应,统计每条记录的处理结果。
+type StorageProviderImportResult struct {
+	Imported     int      `json:"imported"`              // 实际新建的条数
+	SkippedNames []string `json:"skippedNames,omitempty"` // 因同名已存在而跳过的 name 列表
+	FailedNames  []string `json:"failedNames,omitempty"`  // 因校验/写库失败而跳过的 name 列表
+	DefaultSet   string   `json:"defaultSet,omitempty"`   // 若导入中有 isDefault=true 的项,这里返回它的 name
+}
+
 // --- 媒体标签 ---
 
 // MediaTagVO 是媒体标签信息的响应视图对象（View Object）。
