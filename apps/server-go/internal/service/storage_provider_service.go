@@ -144,14 +144,29 @@ func (s *StorageProviderService) Export(ctx context.Context) (*dto.StorageProvid
 
 // Import 把导出文件批量导入。同名 provider 自动跳过,保护已有配置不被覆盖。
 //
-// 默认 provider 处理:导入完成后,如果 payload 中有恰好一条 IsDefault=true,且该条
-// 实际被新建(没被 skip),则调用 SetDefault 切换成它;否则保留当前默认 provider 不动。
+// 默认 provider 处理:DB invariant 是「同时只能有 1 条 is_default=true」,所以
+// 导入前先扫一遍 payload — 若有 ≥2 条 IsDefault=true 直接 fail-fast 拒绝整次导入,
+// 避免静默忽略后续 default 标记导致用户期望落空。
+//
+// 导入完成后,如果有恰好 1 条 IsDefault=true 且该条实际被新建(没被 skip),则调用
+// SetDefault 切换成它;否则保留当前默认 provider 不动。
 func (s *StorageProviderService) Import(ctx context.Context, payload dto.StorageProviderExportPayload) (*dto.StorageProviderImportResult, error) {
 	if payload.Version != 1 {
 		return nil, fmt.Errorf("unsupported export version %d (expected 1)", payload.Version)
 	}
 	if len(payload.Providers) == 0 {
 		return &dto.StorageProviderImportResult{}, nil
+	}
+
+	// 预扫描:多于 1 个 IsDefault=true 直接拒绝(DB invariant 同时只能 1 条 default)
+	defaultCount := 0
+	for _, item := range payload.Providers {
+		if item.IsDefault {
+			defaultCount++
+		}
+	}
+	if defaultCount > 1 {
+		return nil, fmt.Errorf("payload contains %d providers marked isDefault=true; expected at most 1", defaultCount)
 	}
 
 	existing, err := s.repo.FindAll(ctx)
@@ -167,13 +182,18 @@ func (s *StorageProviderService) Import(ctx context.Context, payload dto.Storage
 	var defaultCandidateID *int64
 	var defaultCandidateName string
 
-	for _, item := range payload.Providers {
-		if !validProviderType(item.ProviderType) {
-			result.FailedNames = append(result.FailedNames, item.Name)
+	for i, item := range payload.Providers {
+		// 失败标签:有 name 用 name,否则用 (unnamed #i) 让 UI 能定位到第几条
+		label := item.Name
+		if label == "" {
+			label = fmt.Sprintf("(unnamed #%d)", i)
+		}
+		if !dto.IsValidStorageProviderType(item.ProviderType) {
+			result.FailedNames = append(result.FailedNames, label)
 			continue
 		}
 		if item.Name == "" || item.ConfigJSON == "" {
-			result.FailedNames = append(result.FailedNames, item.Name)
+			result.FailedNames = append(result.FailedNames, label)
 			continue
 		}
 		if _, dup := existingNames[item.Name]; dup {
@@ -183,7 +203,7 @@ func (s *StorageProviderService) Import(ctx context.Context, payload dto.Storage
 		// 校验 configJson 至少是合法 JSON,避免坏数据落库
 		var probe map[string]any
 		if err := json.Unmarshal([]byte(item.ConfigJSON), &probe); err != nil {
-			result.FailedNames = append(result.FailedNames, item.Name)
+			result.FailedNames = append(result.FailedNames, label)
 			continue
 		}
 		created, err := s.repo.Create(ctx, repository.StorageProviderRequest{
@@ -194,7 +214,7 @@ func (s *StorageProviderService) Import(ctx context.Context, payload dto.Storage
 			Priority:     item.Priority,
 		})
 		if err != nil {
-			result.FailedNames = append(result.FailedNames, item.Name)
+			result.FailedNames = append(result.FailedNames, label)
 			continue
 		}
 		existingNames[item.Name] = struct{}{}
@@ -215,15 +235,6 @@ func (s *StorageProviderService) Import(ctx context.Context, payload dto.Storage
 		}
 	}
 	return result, nil
-}
-
-// validProviderType 与 dto.StorageProviderRequest 的 oneof tag 保持一致。
-func validProviderType(t string) bool {
-	switch t {
-	case "LOCAL", "S3", "MINIO", "OSS", "COS", "R2":
-		return true
-	}
-	return false
 }
 
 // SetDefault 将指定提供商标记为默认存储，并同时清除其他提供商的默认标记。
