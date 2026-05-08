@@ -9,9 +9,24 @@ on:
     branches:
       - main
 
-# 并发控制: PR 阶段取消旧运行节省资源；main/develop 分支排队等待，避免构建产物丢失
+# 并发控制策略:
+#   - PR: 同一 ref 上的旧运行被取消（节省 runner，反正会被新 push 覆盖）
+#   - push to main/develop: 每次给独立 group，让 detect-changes / *-test /
+#     frontend-quality / config-validate 等"检查类" job 在多次连续合并时
+#     完全并行——之前所有 push 共享一个 group 导致后到的 push 整段排队。
+#
+# 部署阶段单独通过 job 级 `concurrency`（见 deploy job）串行化，避免:
+#   1) 后部署的旧 commit 把更新的服务版本覆盖回去
+#   2) 不能 cancel-in-progress: 各 push 触发的 detect-changes 结果不同
+#      （A 改 admin / B 改 blog / C 改 backend），跳过中间任何一次都会让
+#      对应 service 永远拿不到新镜像
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{
+      github.event_name == 'pull_request'
+        && format('{0}-pr-{1}', github.workflow, github.ref)
+        || format('{0}-push-{1}', github.workflow, github.run_id)
+    }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # SECURITY (VULN-137): 工作流级权限默认收敛为只读。
@@ -394,6 +409,12 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.detect-changes.outputs.backend == 'true'
+    # 同模块的多次 main push 串行 build——避免两个 build-backend 并行 push
+    # `:latest` tag 时, 后完成的覆盖先完成的, 导致 deploy 拉到错误版本.
+    # 不同模块 (backend/ai-service/blog/admin) 仍然跨 push 并行.
+    concurrency:
+      group: build-backend-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -440,6 +461,9 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.detect-changes.outputs.ai-service == 'true'
+    concurrency:
+      group: build-ai-service-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -486,6 +510,9 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.detect-changes.outputs.blog == 'true'
+    concurrency:
+      group: build-blog-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -533,6 +560,9 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.detect-changes.outputs.admin == 'true'
+    concurrency:
+      group: build-admin-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -588,6 +618,12 @@ jobs:
       ) &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
+    # 多个 main push 的 deploy 排队执行——按 commit 顺序逐个重启对应 service。
+    # 不能 cancel-in-progress: 每个 push 的 detect-changes 结果不同（按模块拆分），
+    # 跳掉中间任意一次会让该 push 改动的 service 永远拿不到新镜像。
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
