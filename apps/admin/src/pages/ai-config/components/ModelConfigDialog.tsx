@@ -238,8 +238,9 @@ export default function ModelConfigDialog({
     }
 
     // null = 未填写；0 = 显式免费/零值
-    const ctxWindow = parseNum(form.context_window) ?? 0;
-    const maxOutput = parseNum(form.max_output_tokens) ?? 0;
+    // 上下文窗口 / 最大输出 Tokens 后端 schema 是 int，强制取整避免 422
+    const ctxWindow = Math.trunc(parseNum(form.context_window) ?? 0);
+    const maxOutput = Math.trunc(parseNum(form.max_output_tokens) ?? 0);
     const inputCost = parseNum(form.input_cost_per_1m);
     const outputCost = parseNum(form.output_cost_per_1m);
     const cachedInputCost = parseNum(form.cached_input_cost_per_1m);
