@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 💰 全局模型价格管理 — 跨供应商共享价格 + 一键批量回填 / 反向同步 (2026-05-09, branch claude/global-model-pricing-Aeaoh)
+
+**背景：** 同一个 `model_id`（如 `gpt-4o-mini`）在 OpenAI / AIHubMix / AI302 等多个供应商下都各有一份 `ai_models` 行，过去要进每家供应商的模型详情**手动**填一遍单价 + 高级 pricing JSON。维护成本高、容易漂移。
+
+新方案：把单价 / 高级 pricing 抽到 `model_id` 维度集中维护，可一键批量回填到所有同名 ai_models 行；编辑单条模型时也可点击「↺ 从全局回填 / 写入全局」做反向闭环。
+
+**Added — DB / `apps/server-go/migrations/000047_ai_global_pricing.up.sql`:**
+- 新建 `ai_global_pricing(model_id UNIQUE, currency, input_cost_per_1m, output_cost_per_1m, cached_input_cost_per_1m, pricing JSONB, notes, updated_at)`；数值列 `DECIMAL(14,6)`（per-1M 量级比 ai_models 的 `DECIMAL(12,8)`/per-1K 大 1000 倍）。
+
+**Added — Backend / `apps/ai-service`:**
+- `app/services/global_pricing.py`：`GlobalPricingService`，CRUD + `coverage()`（全数据库 distinct model_id × 全局表 join，给前端「全部 / 已配置 / 未配置 / 部分脱锚」过滤）+ `apply_to_models()`（按 model_id 批量回填，可按 `provider_codes` 限制 / `overwrite_existing` 切换）+ `sync_from_model()`（model→global 反向写入）。
+- 单价比较用 `_approx_equal`（相对误差 1e-5）容忍 `DECIMAL(12,8)` 浮点漂移，避免数值上等同的行被误判脱锚。
+- `app/api/routes/providers.py`：新增 7 个端点 —— `GET /global-pricing`、`GET /global-pricing/coverage`、`GET/PUT/DELETE /global-pricing/{model_id:path}`、`POST /global-pricing/{model_id:path}/apply`、`POST /models/{id}/sync-global-pricing`、`POST /models/{id}/sync-from-global`。
+- `app/schemas/provider.py`：5 个新 Pydantic schema（Response / Upsert / CoverageRow / ApplyRequest / ApplyResponse）。
+
+> Go 后端不需要改：`/v1/admin/providers/*` 早已通过 `ai_handler.MountProviders` 通配符代理到 FastAPI，新端点自动透传。
+
+**Added — Admin frontend / `apps/admin/src/pages/global-pricing/`:**
+- `GlobalPricingPage.tsx`：表格视图，显示每个 model_id 的覆盖率徽章（全部同步 / N 行待同步 / 未配置）、provider chip、当前全局单价、批量回填按钮。
+- `GlobalPricingDialog.tsx`：编辑全局价格，支持单价四象限 + 高级 pricing JSON + 备注；保存后可勾选「立即批量回填到所有同名供应商模型」+「覆盖已存在 / 仅填补缺失」。
+- `hooks.ts`：`useGlobalPricingList / useGlobalPricingCoverage / useUpsertGlobalPricing / useDeleteGlobalPricing / useApplyGlobalPricing / useSyncModelToGlobal / useSyncModelFromGlobal`。
+- 路由 `/ai-config/pricing`，侧边栏「全局价格」项（Coins 图标）放在「AI 配置」之后。
+
+**Changed — `apps/admin/src/pages/ai-config/components/ModelConfigDialog.tsx`:**
+- 价格段标题右侧新增两个迷你按钮：「↺ 从全局回填」（GET 全局 → 写回当前模型 → 即时更新表单）与「↑ 写入全局」（把当前模型作为基准）。
+- 价格段下方实时显示全局基准的输入 / 输出 / 缓存读取价 + currency，方便对比是否漂移。
+
+**Changed — `apps/admin/src/services/aiProviderService.ts`:**
+- 新增 5 个类型 + 8 个方法（listGlobalPricing / globalPricingCoverage / getGlobalPricing / upsertGlobalPricing / deleteGlobalPricing / applyGlobalPricing / syncModelToGlobalPricing / syncModelFromGlobalPricing）。
+
+**📄 文档影响：** 已更新 `.claude/docs/api-handlers.md`（AI 节增加全局价格端点行）、`.claude/docs/database-migrations.md`（基线 → 47，新表索引 + 演进叙事 §000047）。
+
+---
+
 ### 🛡️ 云储存全面优化 · 批次 2 — 后端硬化:folder 上传权限校验 + provider 配置深合并 (2026-05-08, branch codex/cloud-storage-server-hardening)
 
 **背景:** 批次 1 把客户端体验补齐之后,把后端两个潜在事故点也一并堵上。

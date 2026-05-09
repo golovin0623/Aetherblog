@@ -5,12 +5,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Loader2, AlertTriangle, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { Toggle } from '@aetherblog/ui';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing } from '../types';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
+import {
+  useSyncModelFromGlobal,
+  useSyncModelToGlobal,
+} from '@/pages/global-pricing/hooks';
 import {
   buildModelCapabilities,
   getModelExtra,
@@ -139,6 +143,18 @@ export default function ModelConfigDialog({
   const createMutation = useCreateModel();
   const updateMutation = useUpdateModel();
   const deleteMutation = useDeleteModel();
+  const syncFromGlobalMutation = useSyncModelFromGlobal();
+  const syncToGlobalMutation = useSyncModelToGlobal();
+
+  // 查询当前 model_id 是否已配置全局价格 —— 用于在编辑面板里展示「↺ 从全局回填」按钮
+  const globalPricingQuery = useQuery({
+    queryKey: ['ai-global-pricing', 'by-model-id', initial?.model_id],
+    queryFn: () => aiProviderService.getGlobalPricing(initial!.model_id),
+    select: (res) => res.data,
+    enabled: mode === 'edit' && !!initial?.model_id,
+    retry: false,
+  });
+  const hasGlobalPricing = !!globalPricingQuery.data;
 
   // 检查该 embedding 模型是否被搜索路由使用
   const embeddingRoutingQuery = useQuery({
@@ -776,7 +792,95 @@ export default function ModelConfigDialog({
 
           {/* 价格 */}
           <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">价格</div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                价格
+              </div>
+              {mode === 'edit' && initial && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!hasGlobalPricing || syncFromGlobalMutation.isPending}
+                    onClick={async () => {
+                      try {
+                        await syncFromGlobalMutation.mutateAsync(initial.id);
+                        const fresh = await globalPricingQuery.refetch();
+                        const g = fresh.data;
+                        if (g) {
+                          // 把全局价格立即回填进表单，避免用户在保存前还看到旧值
+                          const extraPricing: Record<string, unknown> = {};
+                          Object.entries(g.pricing || {}).forEach(([k, v]) => {
+                            if (
+                              ['input', 'output', 'cachedInput', 'currency', 'units'].includes(k)
+                            )
+                              return;
+                            extraPricing[k] = v;
+                          });
+                          setForm((prev) => ({
+                            ...prev,
+                            input_cost_per_1m: g.input_cost_per_1m ?? 0,
+                            output_cost_per_1m: g.output_cost_per_1m ?? 0,
+                            cached_input_cost_per_1m: g.cached_input_cost_per_1m ?? 0,
+                            pricing_currency: (g.currency ||
+                              'USD') as ModelPricing['currency'],
+                            // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
+                            // 等字段，导致回填后仍与全局基准不一致
+                            pricing_json: Object.keys(extraPricing).length
+                              ? JSON.stringify(extraPricing, null, 2)
+                              : '',
+                          }));
+                        }
+                      } catch {
+                        // 错误已在 hook 中 toast
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title={
+                      hasGlobalPricing
+                        ? '从全局价格回填到本模型'
+                        : '尚未配置该 model_id 的全局价格'
+                    }
+                  >
+                    {syncFromGlobalMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ArrowDownToLine className="w-3 h-3" />
+                    )}
+                    从全局回填
+                  </button>
+                  <button
+                    type="button"
+                    disabled={syncToGlobalMutation.isPending}
+                    onClick={async () => {
+                      try {
+                        await syncToGlobalMutation.mutateAsync(initial.id);
+                        await globalPricingQuery.refetch();
+                      } catch {
+                        // toast handled in hook
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="把本模型当前价格写入全局表"
+                  >
+                    {syncToGlobalMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ArrowUpFromLine className="w-3 h-3" />
+                    )}
+                    写入全局
+                  </button>
+                </div>
+              )}
+            </div>
+            {mode === 'edit' && hasGlobalPricing && globalPricingQuery.data && (
+              <div className="text-[11px] text-[var(--text-muted)] -mt-2">
+                全局基准：输入 {globalPricingQuery.data.input_cost_per_1m ?? '—'} ·
+                输出 {globalPricingQuery.data.output_cost_per_1m ?? '—'} ·
+                缓存 {globalPricingQuery.data.cached_input_cost_per_1m ?? '—'}
+                {' '}
+                ({globalPricingQuery.data.currency})
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">币种</label>

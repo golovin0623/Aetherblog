@@ -22,6 +22,7 @@ const AIToolsPage = lazy(() => import('./pages/AIToolsPage'));
 const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const FolderPermissionsPage = lazy(() => import('./pages/media/FolderPermissionsPage'));
 const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
+const GlobalPricingPage = lazy(() => import('./pages/global-pricing/GlobalPricingPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
@@ -93,6 +94,7 @@ function App() {
               <Route path="ai-tools" element={<AIToolsPage />} />
               <Route path="ai-test" element={<AiTestPage />} />
               <Route path="ai-config" element={<AiConfigPage />} />
+              <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
               <Route path="search-config" element={<SearchConfigPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
