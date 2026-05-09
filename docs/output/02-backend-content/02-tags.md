@@ -161,10 +161,11 @@ func (s *TagService) Merge(ctx context.Context, fromID, toID int64) error {
 - 与 categories 行为不一致，对运维者可能误伤。
 - 设计上的判断：标签是低权重元数据，丢失不致命；分类是导航骨架，丢失影响 URL。
 
-### 7.4 Slug 生成保留 ASCII 但不保留 CJK
-对比 `PostService.generateSlug`（`post_service.go:672-692`）保留 CJK 字符（U+4E00 ~ U+9FFF），`tag_service.go:107` 的 `generateTagSlug` 只是 `ToLower + Replace(" ", "-")`，**不去 CJK 字符也不清理特殊符号**。
+### 7.4 Slug 生成未做字符清洗（CJK 与特殊符号原样保留）
+`tag_service.go:107` 的 `generateTagSlug` 只是 `ToLower + Replace(" ", "-")`，**既不剥 CJK 字符也不清理特殊符号**——比 `PostService.generateSlug`（`post_service.go:672-692`）的"显式保留 CJK U+4E00 ~ U+9FFF + 清理其余非字母数字字符"做得更"裸"。
 - 标签 "机器学习" → slug "机器学习"，浏览器会 URL-encode 成 `%E6%9C%BA...`，可用但不优雅。
 - 标签 "C++" → slug "c++"，URL-encoded `c%2B%2B`，可能破坏路由（`+` 在 query string 解析为空格）。
+- 标签 "AI/ML" → slug "ai/ml"，`/` 直接进 URL path，会被路由当成多级分隔符而 404。
 
 ### 7.5 颜色无格式校验
 DTO `TagRequest.Color` 是 `string`，没有 `validate:"hexcolor"` 之类标签。Service 层只检查 `if color == ""`。可以传任意字符串（如 "indigo"、"red-500"），前端展示时若用 inline style 会被浏览器忽略；用 Tailwind class 会失效。

@@ -116,18 +116,20 @@ Layer 4  迭代变更摘要       CHANGELOG.md  ——  每次产出/修订的�
 ```bash
 # 顶层结构
 ls -la <project_root>
-ls <apps_or_packages_root>
+ls <apps_or_packages_root> 2>/dev/null
 # 服务/应用列表
-find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*"
-find . -maxdepth 3 -name "go.mod" -o -name "pyproject.toml"
+find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null
+find . -maxdepth 3 \( -name "go.mod" -o -name "pyproject.toml" \) 2>/dev/null
 # 后端关键路径(按语言适配)
-ls <backend>/internal/handler /service /repository /model /middleware
-ls <backend>/migrations | tail -20
+ls <backend>/internal/handler /service /repository /model /middleware 2>/dev/null
+ls <backend>/migrations 2>/dev/null | tail -20
 # 前端
-ls <frontend>/app /src
+ls <frontend>/app /src 2>/dev/null
 # 文档与基础设施
 ls docs/ .github/ ops/ nginx/ scripts/ 2>/dev/null
 ```
+
+> 所有 `ls` / `find` 一律带 `2>/dev/null` —— 项目结构未必符合假设,目录缺失只想留空输出,不要让错误信息污染 agent 的解析视图。`find` 的 `-name a -o -name b` 没用括号会让前一个 expression 的 `-not -path` 失效,务必用 `\( ... \)` 包起来。
 
 **目标:** 在不超过 8 个并行 Bash 调用内,得到:
 - 顶层目录树
@@ -402,18 +404,18 @@ P2 在文档量大时可省略 — 只保留 P0/P1 让读者聚焦。
 
 ```bash
 # 后端 handler 全集
-ls <backend>/internal/handler/*.go | grep -v _test
+ls <backend>/internal/handler/*.go 2>/dev/null | grep -v _test
 # DTO 全集
-ls <backend>/internal/dto/
+ls <backend>/internal/dto/ 2>/dev/null
 # Repo / Service / Model 全集
-ls <backend>/internal/{repository,service,model}/
+ls <backend>/internal/{repository,service,model}/ 2>/dev/null
 # Migrations 全集
-ls <backend>/migrations/ | wc -l
+ls <backend>/migrations/ 2>/dev/null | wc -l
 # Frontend 页面 / 路由全集
-find <frontend>/app -maxdepth 3 -type d
-find <frontend>/src/pages -maxdepth 2 -type d
+find <frontend>/app -maxdepth 3 -type d 2>/dev/null
+find <frontend>/src/pages -maxdepth 2 -type d 2>/dev/null
 # 共享包
-ls packages/
+ls packages/ 2>/dev/null
 ```
 
 把数量与文档中的覆盖做对照。任何元素**没被任何模块文档提到** = 盲区。
@@ -763,12 +765,24 @@ grep -E '[a-z_/]+\.[a-z]+:[0-9]+' docs/output/01-mod/01-xxx.md | wc -l
 
 ```bash
 # 收集所有模块内 markdown 链接,验证目标文件存在
+# 注意:使用 -E + 多步 grep -v 过滤,避免依赖 -P (PCRE/lookahead),保证 macOS / busybox 都可跑
+shopt -s globstar  # bash >= 4
 for f in docs/output/**/*.md; do
-  grep -oE '\]\(\.\./[^)]+\)' "$f" | sed 's/](\(.*\))/\1/' | while read link; do
-    test -f "docs/output/$(realpath --relative-to=docs/output "$(dirname "$f")/$link" 2>/dev/null)" || echo "broken: $f -> $link";
-  done;
+  grep -oE '\]\([^)]+\)' "$f" \
+    | sed 's/^](//; s/)$//; s/#.*$//' \
+    | grep -vE '^(https?://|mailto:|tel:|/|$)' \
+    | while read link; do
+      target="$(dirname "$f")/$link"
+      test -e "$target" || echo "broken: $f -> $link"
+    done
 done
 ```
+
+要点:
+- `grep -oE '\]\([^)]+\)'` 抓所有 markdown 链接(同级 / 子目录 / 父目录 / 锚点全覆盖)。
+- `sed` 剥离括号 + 去掉行内 `#anchor` 段(只校文件路径,不校锚点)。
+- `grep -vE '^(https?://|mailto:|tel:|/|$)'` 过滤掉外链 / 邮箱 / 电话 / 站点绝对路径 / 空行 —— 仅保留**相对路径**链接。
+- `test -e`(不是 `-f`)同时支持文件和目录链接。
 
 #### 11.3.4 多语言项目的 prompt 分支
 
