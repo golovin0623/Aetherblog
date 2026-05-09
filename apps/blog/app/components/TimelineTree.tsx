@@ -50,6 +50,12 @@ function readRestoreSnapshot(): {
 } | null {
   if (typeof window === 'undefined') return null;
   try {
+    // 硬刷新（reload）时跳过恢复：SSR 重新输出默认全展开 HTML，若此时仍读旧的 sessionStorage
+    // 客户端首次渲染会与服务端不一致，触发 hydration mismatch。仅 App Router 软导航返回时走恢复。
+    const navEntry = performance.getEntriesByType('navigation')[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    if (navEntry?.type === 'reload') return null;
     if (!sessionStorage.getItem(RESTORE_FLAG)) return null;
     const parse = <T,>(key: string): T[] | null => {
       const raw = sessionStorage.getItem(key);
