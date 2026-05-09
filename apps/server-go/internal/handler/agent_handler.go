@@ -235,11 +235,28 @@ type articleItem struct {
 	PublishedAt string `json:"publishedAt,omitempty"`
 }
 
-// Articles 处理 GET /api/v1/agent/articles?q=&limit=
+// articleListResponse 是 picker @ 列表 / 搜索结果的统一返回信封。
 //
-//   - q 缺省 / 空 → 返回最近发布的 limit 条（默认 12）；
-//   - q 非空      → 走 SearchPublished（tsvector + ILIKE 兜底，对中文友好）；
-//   - limit 上限 30，避免一次性灌大数据。
+// 前端 ArticlePicker 用 total 推算总页数（10 / 页），用 page / pageSize 回填
+// 当前页码 —— 信封形态比裸数组更利于将来扩展（例如 hasMore、cursor）。
+type articleListResponse struct {
+	Items    []articleItem `json:"items"`
+	Total    int64         `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"pageSize"`
+}
+
+// Articles 处理 GET /api/v1/agent/articles?q=&page=&pageSize=
+//
+//   - q 缺省 / 空 → 走 FindPublishedNoPassword 分页（按 page / pageSize），
+//     返回真实 total，前端用于驱动分页 UI（10 / 页固定）。
+//   - q 非空      → 走 SearchPublished（tsvector + ILIKE 兜底）；搜索结果
+//     不做分页，固定返回前 pageSize*3 (≤30) 条候选，total = 返回条数。
+//     原因：搜索本身就是收敛过程，强行翻页容易让用户错过相关结果，体验
+//     不如让用户继续打字精化查询。
+//   - 兼容旧 `limit` 参数：若指定 `limit` 而未指定 `pageSize`，使用 limit
+//     作为 pageSize。
+//   - pageSize 上限 30，避免一次性灌大数据；page 最小为 1。
 //
 // 安全过滤（必读，不要在没读完之前合并）：
 //
@@ -249,43 +266,43 @@ type articleItem struct {
 //     · is_hidden = TRUE                   —— 仅作者可见
 //     · password IS NOT NULL               —— 密码保护，正常访问要先验密码
 //
-//   `FindPublished` / `SearchPublished` 已经处理了前 3 项，但**没过滤 password**
-//   —— 这是 IDOR / 信息泄露同类风险。一旦在 picker 里允许选中一篇密码保护
-//   文章，后端 RAG context builder 又会读它的 content_markdown 注入 prompt，
-//   等同于绕过密码门把正文送给 LLM（且后续可能在 Agent 回答里复述出来）。
-//   因此本端点必须在 Repo 调用之后再做一次本地 password 过滤，
-//   ai-service 那边 _build_picker_context 也有 `password IS NULL` 二次防御。
+//   FindPublishedNoPassword 一次性把 4 项全过滤了（SQL 层），分页 total 就
+//   是"用户可见"的真实数。SearchPublished 路径仍由 filterPublicArticleIDs
+//   做兜底密码过滤。ai-service 那边 _build_picker_context 也有
+//   `password IS NULL` 二次防御。
 func (h *AgentHandler) Articles(c echo.Context) error {
 	if middleware.GetLoginUser(c) == nil {
 		return response.FailWith(c, response.Unauthorized, "未登录")
 	}
 	q := strings.TrimSpace(c.QueryParam("q"))
-	limit := parseIntDefault(c.QueryParam("limit"), 12)
-	if limit < 1 {
-		limit = 12
+
+	// 解析 pageSize：优先用显式 pageSize；否则回退到旧 limit（兼容老前端）；
+	// 都没有就默认 10（picker 现在固定 10/页）。
+	pageSize := parseIntDefault(c.QueryParam("pageSize"), 0)
+	if pageSize <= 0 {
+		pageSize = parseIntDefault(c.QueryParam("limit"), 10)
 	}
-	if limit > 30 {
-		limit = 30
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 30 {
+		pageSize = 30
+	}
+	page := parseIntDefault(c.QueryParam("page"), 1)
+	if page < 1 {
+		page = 1
 	}
 
 	ctx := c.Request().Context()
 
 	if q == "" {
-		// 拉多一些再过滤密码保护，避免过滤后剩一半导致前端误以为没结果。
-		// 取 limit*2 作为缓冲，绝大多数站点密码保护文章占比 < 5%，足够。
-		rows, _, err := h.postRepo.FindPublished(ctx, 1, limit*2)
+		rows, total, err := h.postRepo.FindPublishedNoPassword(ctx, page, pageSize)
 		if err != nil {
-			log.Warn().Err(err).Msg("agent.articles: FindPublished failed")
+			log.Warn().Err(err).Msg("agent.articles: FindPublishedNoPassword failed")
 			return response.FailWith(c, response.InternalError, "查询失败")
 		}
-		out := make([]articleItem, 0, limit)
+		out := make([]articleItem, 0, len(rows))
 		for _, r := range rows {
-			if r.Password != nil { // 密码保护：前端不展示
-				continue
-			}
-			if len(out) >= limit {
-				break
-			}
 			out = append(out, articleItem{
 				ID:          r.ID,
 				Slug:        r.Slug,
@@ -295,22 +312,36 @@ func (h *AgentHandler) Articles(c echo.Context) error {
 				PublishedAt: formatTimePtr(r.PublishedAt),
 			})
 		}
-		return response.OK(c, out)
+		return response.OK(c, articleListResponse{
+			Items:    out,
+			Total:    total,
+			Page:     page,
+			PageSize: pageSize,
+		})
 	}
 
 	if len(q) > 200 {
 		return response.FailWith(c, response.BadRequest, "查询过长 (上限 200 字符)")
 	}
-	// SearchResultRow 没有 Password 字段（只返必要列做相关性排序），需要在
-	// 拿到 ID 之后再做一次 password 过滤批量查询。先 SearchPublished 拿候选，
-	// 再用 batch SELECT 把密码保护的剔除。
-	candidates, err := h.postRepo.SearchPublished(ctx, q, limit*2, 0)
+	// 搜索路径不分页：拉多一点候选 (≤30) 后过滤密码保护，截断到 pageSize*3
+	// 上限。SearchResultRow 没有 Password 字段，需要在拿到 ID 后做一次
+	// 批量 password 过滤兜底。
+	searchLimit := pageSize * 3
+	if searchLimit > 30 {
+		searchLimit = 30
+	}
+	candidates, err := h.postRepo.SearchPublished(ctx, q, searchLimit*2, 0)
 	if err != nil {
 		log.Warn().Err(err).Msg("agent.articles: SearchPublished failed")
 		return response.FailWith(c, response.InternalError, "搜索失败")
 	}
 	if len(candidates) == 0 {
-		return response.OK(c, []articleItem{})
+		return response.OK(c, articleListResponse{
+			Items:    []articleItem{},
+			Total:    0,
+			Page:     1,
+			PageSize: pageSize,
+		})
 	}
 
 	ids := make([]int64, 0, len(candidates))
@@ -323,12 +354,12 @@ func (h *AgentHandler) Articles(c echo.Context) error {
 		return response.FailWith(c, response.InternalError, "查询失败")
 	}
 
-	out := make([]articleItem, 0, limit)
+	out := make([]articleItem, 0, searchLimit)
 	for _, r := range candidates {
 		if !publicIDs[r.ID] {
 			continue
 		}
-		if len(out) >= limit {
+		if len(out) >= searchLimit {
 			break
 		}
 		out = append(out, articleItem{
@@ -340,7 +371,12 @@ func (h *AgentHandler) Articles(c echo.Context) error {
 			PublishedAt: formatTimePtr(r.PublishedAt),
 		})
 	}
-	return response.OK(c, out)
+	return response.OK(c, articleListResponse{
+		Items:    out,
+		Total:    int64(len(out)),
+		Page:     1,
+		PageSize: pageSize,
+	})
 }
 
 // filterPublicArticleIDs 输入候选 id 列表，输出真正"无密码 + 已发布 +

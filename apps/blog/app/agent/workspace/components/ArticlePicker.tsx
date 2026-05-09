@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Search, FileText, Loader2 } from 'lucide-react';
+import { Search, FileText, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import PickerPopover from './PickerPopover';
-import { useArticleSearch, type AgentArticle } from '../../lib/agentResources';
+import {
+  useArticleSearch,
+  ARTICLE_PAGE_SIZE,
+  type AgentArticle,
+} from '../../lib/agentResources';
 
 interface Props {
   open: boolean;
@@ -17,10 +21,11 @@ interface Props {
 /**
  * @ 文章选择器
  *
- *  - 搜索框输入触发 `/api/v1/agent/articles?q=...`，空查询时返回最近 12 篇；
- *  - 列表里 hover/选中样式与 ModelPicker 一致（aurora 高亮 + Check）；
- *  - 选中后通过 onPick 通知父级；父级负责把文章 id 加入 mentions 数组并把
- *    `@<title>` token 插入 textarea。
+ *  - 搜索框输入触发 `/api/v1/agent/articles?q=...`，搜索路径单页返回；
+ *  - 空查询走分页（10 / 页），底部 prev/next 翻页；
+ *  - 列表区域固定高度，pagination footer 始终渲染 —— 整体尺寸不随结果数量变化，
+ *    打开 / 翻页 / 搜索都不会出现"模态忽大忽小"的跳动感；
+ *  - 选中样式与 ModelPicker 一致（aurora 高亮 + Check）。
  */
 export default function ArticlePicker({
   open,
@@ -30,16 +35,39 @@ export default function ArticlePicker({
   onPick,
 }: Props) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { items, loading, error } = useArticleSearch(query, open);
+  const { items, total, loading, error } = useArticleSearch(
+    query,
+    open,
+    page,
+    ARTICLE_PAGE_SIZE,
+  );
 
-  // 打开时自动 focus 搜索框
+  // 打开时清空搜索 + 重置页码 + 自动 focus
   useEffect(() => {
     if (open) {
+      setQuery('');
+      setPage(1);
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
   }, [open]);
+
+  // query 变化时把页码拨回 1（避免上次翻到第 3 页后输入新关键词仍带 page=3）
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  const isSearching = query.trim().length > 0;
+  const totalPages = isSearching
+    ? 1
+    : Math.max(1, Math.ceil(total / ARTICLE_PAGE_SIZE));
+  const canPrev = !isSearching && page > 1 && !loading;
+  const canNext = !isSearching && page < totalPages && !loading;
+
+  const showInitialLoading = loading && items.length === 0;
+  const showEmpty = !loading && !error && items.length === 0;
 
   return (
     <PickerPopover
@@ -64,15 +92,16 @@ export default function ArticlePicker({
           />
         </div>
         <div className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)] flex items-center justify-between">
-          <span>§ {query.trim() ? '搜索结果' : '最近发布'}</span>
-          <span>{items.length} 条</span>
+          <span>§ {isSearching ? '搜索结果' : '最近发布'}</span>
+          <span>{total} 条</span>
         </div>
       </div>
 
-      <div className="agent-thumb-scroll max-h-[320px] overflow-y-auto py-1">
-        {loading && (
-          <div className="px-3 py-3 inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-            <Loader2 className="w-3 h-3 animate-spin" />
+      {/* 列表区域固定高度 —— 哪怕只有 1 条结果也保持容器尺寸不变。 */}
+      <div className="agent-thumb-scroll h-[300px] overflow-y-auto py-1 relative">
+        {showInitialLoading && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            <Loader2 className="w-3 h-3 animate-spin mr-2" />
             加载中…
           </div>
         )}
@@ -83,50 +112,80 @@ export default function ArticlePicker({
           </div>
         )}
 
-        {!loading && !error && items.length === 0 && (
-          <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+        {showEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             没有匹配的文章
           </div>
         )}
 
-        {!loading && !error &&
-          items.map((it) => {
-            const checked = selectedIds.has(it.id);
-            return (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => onPick(it)}
-                className={`group/item w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
-                  checked
-                    ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                    : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 opacity-80" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] truncate" title={it.title}>
-                    {it.title}
-                  </div>
-                  {it.summary && (
-                    <div className="text-[11.5px] text-[var(--ink-muted)] line-clamp-2 mt-0.5 leading-relaxed">
-                      {it.summary}
+        {items.length > 0 && (
+          <div
+            className={`transition-opacity duration-150 ${loading ? 'opacity-50' : 'opacity-100'}`}
+          >
+            {items.map((it) => {
+              const checked = selectedIds.has(it.id);
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => onPick(it)}
+                  className={`group/item w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
+                    checked
+                      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 opacity-80" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] truncate" title={it.title}>
+                      {it.title}
                     </div>
-                  )}
-                  <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] mt-1 flex items-center gap-1.5">
-                    {it.category && <span className="truncate">{it.category}</span>}
-                    {it.category && it.publishedAt && <span aria-hidden="true">·</span>}
-                    {it.publishedAt && <span>{it.publishedAt}</span>}
+                    {it.summary && (
+                      <div className="text-[11.5px] text-[var(--ink-muted)] line-clamp-2 mt-0.5 leading-relaxed">
+                        {it.summary}
+                      </div>
+                    )}
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] mt-1 flex items-center gap-1.5">
+                      {it.category && <span className="truncate">{it.category}</span>}
+                      {it.category && it.publishedAt && <span aria-hidden="true">·</span>}
+                      {it.publishedAt && <span>{it.publishedAt}</span>}
+                    </div>
                   </div>
-                </div>
-                {checked && (
-                  <span className="font-mono text-[9px] uppercase tracking-[0.22em] flex-shrink-0">
-                    已选
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                  {checked && (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.22em] flex-shrink-0">
+                      已选
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 分页 footer —— 始终渲染，禁用态用透明度区分，整体高度恒定。 */}
+      <div className="flex items-center justify-between border-t border-[var(--ink-subtle)]/15 px-3 py-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={!canPrev}
+          aria-label="上一页"
+          className="flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-[var(--bg-raised)] enabled:hover:text-[var(--ink-primary)]"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <span>
+          {isSearching ? '搜索结果' : `第 ${page} / ${totalPages} 页`}
+        </span>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={!canNext}
+          aria-label="下一页"
+          className="flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-[var(--bg-raised)] enabled:hover:text-[var(--ink-primary)]"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </PickerPopover>
   );

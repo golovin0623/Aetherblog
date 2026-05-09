@@ -65,6 +65,7 @@ import {
   type SlashCommand,
   type StreamAnimationMode,
   SLASH_COMMANDS,
+  ARTICLE_PAGE_SIZE,
   createEmptySession,
   deriveSessionTitle,
   filterSlashCommands,
@@ -2095,14 +2096,34 @@ function ArticlePicker({
   onPick: (article: AgentArticle) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { items, loading, error } = useArticleSearch(query, open);
+  const { items, total, loading, error } = useArticleSearch(
+    query,
+    open,
+    page,
+    ARTICLE_PAGE_SIZE,
+  );
 
   useEffect(() => {
     if (!open) return;
+    setQuery('');
+    setPage(1);
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  const isSearching = query.trim().length > 0;
+  const totalPages = isSearching ? 1 : Math.max(1, Math.ceil(total / ARTICLE_PAGE_SIZE));
+  const canPrev = !isSearching && page > 1 && !loading;
+  const canNext = !isSearching && page < totalPages && !loading;
+
+  const showInitialLoading = loading && items.length === 0;
+  const showEmpty = !loading && !error && items.length === 0;
 
   return (
     <PickerPopover
@@ -2126,14 +2147,16 @@ function ArticlePicker({
             spellCheck={false}
           />
         </div>
-        <div className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-          § Articles
+        <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+          <span>§ {isSearching ? 'Search' : 'Articles'}</span>
+          <span>{total} 条</span>
         </div>
       </div>
-      <div className="max-h-[320px] overflow-y-auto py-1">
-        {loading && (
-          <div className="px-3 py-4 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-            <Loader2 className="mx-auto mb-1 h-3.5 w-3.5 animate-spin" />
+      {/* 列表区域固定高度 —— 内容数量变化不影响 modal 整体尺寸。 */}
+      <div className="relative h-[300px] overflow-y-auto py-1">
+        {showInitialLoading && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
             搜索中…
           </div>
         )}
@@ -2142,39 +2165,81 @@ function ArticlePicker({
             {error}
           </div>
         )}
-        {!loading && !error && items.length === 0 && (
-          <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+        {showEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             没有找到匹配的文章
           </div>
         )}
-        {items.map((article) => {
-          const selected = selectedIds.has(article.id);
-          return (
-            <button
-              key={article.id}
-              type="button"
-              onClick={() => onPick(article)}
-              disabled={selected}
-              className={cn(
-                'flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors',
-                selected
-                  ? 'cursor-default text-[var(--aurora-1)]'
-                  : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
-              )}
-            >
-              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" />
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-1 text-[13px]">{article.title}</div>
-                {article.summary && (
-                  <div className="mt-0.5 line-clamp-1 text-[11.5px] text-[var(--ink-muted)]">
-                    {article.summary}
+        {items.length > 0 && (
+          <div
+            className={cn(
+              'transition-opacity duration-150',
+              loading ? 'opacity-50' : 'opacity-100',
+            )}
+          >
+            {items.map((article) => {
+              const selected = selectedIds.has(article.id);
+              return (
+                <button
+                  key={article.id}
+                  type="button"
+                  onClick={() => onPick(article)}
+                  disabled={selected}
+                  className={cn(
+                    'flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors',
+                    selected
+                      ? 'cursor-default text-[var(--aurora-1)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                  )}
+                >
+                  <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" />
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-1 text-[13px]">{article.title}</div>
+                    {article.summary && (
+                      <div className="mt-0.5 line-clamp-1 text-[11.5px] text-[var(--ink-muted)]">
+                        {article.summary}
+                      </div>
+                    )}
+                    {(article.category || article.publishedAt) && (
+                      <div className="mt-1 flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                        {article.category && (
+                          <span className="truncate">{article.category}</span>
+                        )}
+                        {article.category && article.publishedAt && (
+                          <span aria-hidden="true">·</span>
+                        )}
+                        {article.publishedAt && <span>{article.publishedAt}</span>}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              {selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
-            </button>
-          );
-        })}
+                  {selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {/* 分页 footer —— 始终渲染，禁用态用透明度区分。 */}
+      <div className="flex items-center justify-between border-t border-[var(--hub-border)] px-3 py-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={!canPrev}
+          aria-label="上一页"
+          className="flex h-6 w-6 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-30 enabled:hover:bg-[var(--hub-control-hover)] enabled:hover:text-[var(--ink-primary)]"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <span>{isSearching ? '搜索结果' : `第 ${page} / ${totalPages} 页`}</span>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={!canNext}
+          aria-label="下一页"
+          className="flex h-6 w-6 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-30 enabled:hover:bg-[var(--hub-control-hover)] enabled:hover:text-[var(--ink-primary)]"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </PickerPopover>
   );
