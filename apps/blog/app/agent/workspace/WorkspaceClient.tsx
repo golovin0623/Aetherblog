@@ -928,7 +928,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             只读 caption 形式展示当前模式（cowork/code 暂未上线，移动端没有
             真实切换需求）；ModelPicker 走 activeSession ?? override 兜底，
             与 composer 内的 ModelPicker 共享同一控制语义。 */}
-        <div className="sm:hidden px-3 pt-2 pb-1.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-substrate)]/88 backdrop-blur-md">
+        <div className="sm:hidden relative z-30 px-3 pt-2 pb-1.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-substrate)]/88 backdrop-blur-md">
           <div className="surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-2.5 py-2 flex items-center justify-between gap-2">
             <div className="min-w-0 flex items-center gap-2">
               <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
