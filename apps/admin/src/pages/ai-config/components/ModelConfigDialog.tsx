@@ -56,6 +56,37 @@ const SEARCH_IMPL_OPTIONS: Array<{ label: string; value: ModelSettings['searchIm
   { label: '模型内置', value: 'internal' },
 ];
 
+// 上下文窗口预设档位
+const CONTEXT_PRESETS: Array<{ value: number; label: string }> = [
+  { value: 8192, label: '8K' },
+  { value: 32768, label: '32K' },
+  { value: 65536, label: '64K' },
+  { value: 131072, label: '128K' },
+  { value: 200000, label: '200K' },
+  { value: 400000, label: '400K' },
+  { value: 1000000, label: '1M' },
+  { value: 2000000, label: '2M' },
+];
+
+// 最大输出 Tokens 预设档位
+const OUTPUT_TOKENS_PRESETS: Array<{ value: number; label: string }> = [
+  { value: 2048, label: '2K' },
+  { value: 4096, label: '4K' },
+  { value: 8192, label: '8K' },
+  { value: 16384, label: '16K' },
+  { value: 32768, label: '32K' },
+  { value: 65536, label: '64K' },
+  { value: 131072, label: '128K' },
+];
+
+// 空串 → null（未设置），数字串 → number；保留 "0" 为合法值
+const parseNum = (s: string): number | null => {
+  const trimmed = s.trim();
+  if (trimmed === '') return null;
+  const n = Number.parseFloat(trimmed);
+  return Number.isFinite(n) ? n : null;
+};
+
 export default function ModelConfigDialog({
   mode,
   providerCode,
@@ -132,9 +163,10 @@ export default function ModelConfigDialog({
     const contextWindow = resolveModelContextWindow(initial);
     const maxOutputTokens = resolveModelMaxOutputTokens(initial);
 
-    const initialInputCost = initial.input_cost_per_1m || pricing.input || 0;
-    const initialOutputCost = initial.output_cost_per_1m || pricing.output || 0;
-    const initialCachedInputCost = initial.cached_input_cost_per_1m || pricing.cachedInput || 0;
+    const initialInputCost = initial.input_cost_per_1m ?? pricing.input ?? null;
+    const initialOutputCost = initial.output_cost_per_1m ?? pricing.output ?? null;
+    const initialCachedInputCost = initial.cached_input_cost_per_1m ?? pricing.cachedInput ?? null;
+    const costToString = (v: number | null | undefined) => (v == null ? '' : String(v));
 
     setForm({
       model_id: initial.model_id,
@@ -142,9 +174,9 @@ export default function ModelConfigDialog({
       model_type: initial.model_type || 'chat',
       context_window: String(contextWindow || 128000),
       max_output_tokens: String(maxOutputTokens || 4096),
-      input_cost_per_1m: initialInputCost ? String(initialInputCost) : '',
-      output_cost_per_1m: initialOutputCost ? String(initialOutputCost) : '',
-      cached_input_cost_per_1m: initialCachedInputCost ? String(initialCachedInputCost) : '',
+      input_cost_per_1m: costToString(initialInputCost),
+      output_cost_per_1m: costToString(initialOutputCost),
+      cached_input_cost_per_1m: costToString(initialCachedInputCost),
       pricing_currency: pricing.currency || 'USD',
       description: extra.description ? String(extra.description) : '',
       legacy: !!extra.legacy,
@@ -203,17 +235,18 @@ export default function ModelConfigDialog({
       }
     }
 
-    const ctxWindow = parseInt(form.context_window, 10) || 0;
-    const maxOutput = parseInt(form.max_output_tokens, 10) || 0;
-    const inputCost = parseFloat(form.input_cost_per_1m) || 0;
-    const outputCost = parseFloat(form.output_cost_per_1m) || 0;
-    const cachedInputCost = parseFloat(form.cached_input_cost_per_1m) || 0;
+    // null = 未填写；0 = 显式免费/零值
+    const ctxWindow = parseNum(form.context_window) ?? 0;
+    const maxOutput = parseNum(form.max_output_tokens) ?? 0;
+    const inputCost = parseNum(form.input_cost_per_1m);
+    const outputCost = parseNum(form.output_cost_per_1m);
+    const cachedInputCost = parseNum(form.cached_input_cost_per_1m);
 
     const pricing: ModelPricing = {
       currency: form.pricing_currency || 'USD',
-      input: inputCost || undefined,
-      output: outputCost || undefined,
-      cachedInput: cachedInputCost || undefined,
+      input: inputCost ?? undefined,
+      output: outputCost ?? undefined,
+      cachedInput: cachedInputCost ?? undefined,
       ...pricingExtra,
     };
 
@@ -242,7 +275,7 @@ export default function ModelConfigDialog({
         enabledSearch: form.config.enabledSearch,
       },
       pricing:
-        pricingExtra || inputCost || outputCost || cachedInputCost
+        pricingExtra || inputCost !== null || outputCost !== null || cachedInputCost !== null
           ? pricing
           : undefined,
       parameters,
@@ -265,9 +298,9 @@ export default function ModelConfigDialog({
         model_type: form.model_type,
         context_window: ctxWindow,
         max_output_tokens: maxOutput,
-        input_cost_per_1m: inputCost || null,
-        output_cost_per_1m: outputCost || null,
-        cached_input_cost_per_1m: cachedInputCost || null,
+        input_cost_per_1m: inputCost,
+        output_cost_per_1m: outputCost,
+        cached_input_cost_per_1m: cachedInputCost,
         capabilities,
         is_enabled: true,
       };
@@ -278,9 +311,9 @@ export default function ModelConfigDialog({
         model_type: form.model_type,
         context_window: ctxWindow,
         max_output_tokens: maxOutput,
-        input_cost_per_1m: inputCost || null,
-        output_cost_per_1m: outputCost || null,
-        cached_input_cost_per_1m: cachedInputCost || null,
+        input_cost_per_1m: inputCost,
+        output_cost_per_1m: outputCost,
+        cached_input_cost_per_1m: cachedInputCost,
         capabilities,
       };
       updateMutation.mutate({ id: initial.id, data: payload }, { onSuccess: onClose });
@@ -295,29 +328,6 @@ export default function ModelConfigDialog({
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
-
-  // 上下文窗口预设档位
-  const contextPresets: Array<{ value: number; label: string }> = [
-    { value: 8192, label: '8K' },
-    { value: 32768, label: '32K' },
-    { value: 65536, label: '64K' },
-    { value: 131072, label: '128K' },
-    { value: 200000, label: '200K' },
-    { value: 400000, label: '400K' },
-    { value: 1000000, label: '1M' },
-    { value: 2000000, label: '2M' },
-  ];
-
-  // 最大输出 Tokens 预设档位
-  const outputTokensPresets: Array<{ value: number; label: string }> = [
-    { value: 2048, label: '2K' },
-    { value: 4096, label: '4K' },
-    { value: 8192, label: '8K' },
-    { value: 16384, label: '16K' },
-    { value: 32768, label: '32K' },
-    { value: 65536, label: '64K' },
-    { value: 131072, label: '128K' },
-  ];
 
   const extendParamSet = useMemo(() => new Set(form.settings.extendParams), [form.settings.extendParams]);
 
@@ -476,7 +486,7 @@ export default function ModelConfigDialog({
               <label className="text-sm text-[var(--text-muted)]">最大上下文窗口</label>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                  {contextPresets.map((preset) => {
+                  {CONTEXT_PRESETS.map((preset) => {
                     const active = String(preset.value) === form.context_window;
                     return (
                       <button
@@ -531,7 +541,7 @@ export default function ModelConfigDialog({
               <label className="text-sm text-[var(--text-muted)]">最大输出 Tokens</label>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                  {outputTokensPresets.map((preset) => {
+                  {OUTPUT_TOKENS_PRESETS.map((preset) => {
                     const active = String(preset.value) === form.max_output_tokens;
                     return (
                       <button
