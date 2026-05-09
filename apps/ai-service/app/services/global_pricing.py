@@ -508,8 +508,14 @@ class GlobalPricingService:
                         # units 会在 _sync 内重建，避免双重写入
                         if k == "units":
                             continue
+                        # overwrite=False 时只填充缺失的扩展键，保留模型自有的
+                        # currency / audioInput / 其他自定义字段
+                        if not overwrite_existing and k in merged_pricing:
+                            continue
                         merged_pricing[k] = v
-                    if global_row.currency:
+                    if global_row.currency and (
+                        overwrite_existing or not merged_pricing.get("currency")
+                    ):
                         merged_pricing["currency"] = global_row.currency
                     capabilities["pricing"] = merged_pricing
 
@@ -551,7 +557,12 @@ class GlobalPricingService:
     # ------------------------------------------------------------
 
     async def sync_from_model(self, model_db_id: int) -> GlobalPricingRow | None:
-        """从指定 ai_models 行把价格 / 高级 pricing JSON 写回 ai_global_pricing。"""
+        """从指定 ai_models 行把价格 / 高级 pricing JSON 写回 ai_global_pricing。
+
+        反向同步只关心价格 / pricing JSON，不应擦除 ai_global_pricing.notes 这种
+        操作员手写的元数据 —— 既有 notes 必须原样回传给 upsert，否则 ON CONFLICT
+        分支会用 None 覆盖。
+        """
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -562,8 +573,12 @@ class GlobalPricingService:
                 """,
                 model_db_id,
             )
-        if not row:
-            return None
+            if not row:
+                return None
+            existing = await conn.fetchrow(
+                "SELECT notes FROM ai_global_pricing WHERE model_id = $1",
+                row["model_id"],
+            )
 
         model_dict = dict(row)
         capabilities = _parse_json(model_dict.get("capabilities"))
@@ -580,5 +595,5 @@ class GlobalPricingService:
             output_cost_per_1m=_model_output_per_1m(model_dict),
             cached_input_cost_per_1m=_model_cached_input_per_1m(model_dict),
             pricing=pricing,
-            notes=None,
+            notes=existing["notes"] if existing else None,
         )
