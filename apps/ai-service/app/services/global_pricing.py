@@ -101,6 +101,29 @@ def _model_cached_input_per_1m(row: dict[str, Any]) -> float | None:
     return None
 
 
+def _model_currency(row: dict[str, Any]) -> str:
+    """读取模型的币种；未声明则与默认 USD 一致。
+
+    全局表的 currency 列默认 USD，模型侧只能从 capabilities.pricing.currency
+    读取。同步判定要把币种纳入对比，避免数值相同但币种不同的行被误标为
+    「全部同步」（1.0 USD ≠ 1.0 CNY）。
+    """
+    capabilities = _parse_json(row.get("capabilities"))
+    pricing = capabilities.get("pricing") if isinstance(capabilities, dict) else None
+    if isinstance(pricing, dict):
+        currency = pricing.get("currency")
+        if isinstance(currency, str) and currency.strip():
+            return currency.strip().upper()
+    return "USD"
+
+
+def _currency_matches(model_currency: str | None, global_currency: str | None) -> bool:
+    """两条价格是否同币种，缺省皆视为 USD。"""
+    a = (model_currency or "USD").upper()
+    b = (global_currency or "USD").upper()
+    return a == b
+
+
 def _approx_equal(a: float | None, b: float | None) -> bool:
     """两个 1M 单价是否「实际上一致」。
 
@@ -161,12 +184,14 @@ class GlobalPricingService:
             global_input = _to_float(r["input_cost_per_1m"])
             global_output = _to_float(r["output_cost_per_1m"])
             global_cached = _to_float(r["cached_input_cost_per_1m"])
+            global_currency = r["currency"] or "USD"
             in_sync = sum(
                 1
                 for rel in related
                 if _approx_equal(_model_input_per_1m(rel), global_input)
                 and _approx_equal(_model_output_per_1m(rel), global_output)
                 and _approx_equal(_model_cached_input_per_1m(rel), global_cached)
+                and _currency_matches(_model_currency(rel), global_currency)
             )
             result.append(
                 GlobalPricingRow(
@@ -336,6 +361,7 @@ class GlobalPricingService:
             global_input = _to_float(g["input_cost_per_1m"]) if g else None
             global_output = _to_float(g["output_cost_per_1m"]) if g else None
             global_cached = _to_float(g["cached_input_cost_per_1m"]) if g else None
+            global_currency = (g["currency"] if g else None) or "USD"
 
             in_sync = 0
             out_of_sync = 0
@@ -351,6 +377,7 @@ class GlobalPricingService:
                     _approx_equal(m_in, global_input)
                     and _approx_equal(m_out, global_output)
                     and _approx_equal(m_cached, global_cached)
+                    and _currency_matches(_model_currency(rel), global_currency)
                 ):
                     in_sync += 1
                 elif g:

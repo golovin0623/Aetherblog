@@ -93,9 +93,10 @@ export function GlobalPricingDialog({
       model_id: modelId,
       display_name: form.display_name || null,
       currency: form.currency || 'USD',
-      input_cost_per_1m: form.input_cost_per_1m || null,
-      output_cost_per_1m: form.output_cost_per_1m || null,
-      cached_input_cost_per_1m: form.cached_input_cost_per_1m || null,
+      // 直接传数值：0 表示"免费"（与 null"未配置"语义不同），不要被 `|| null` 吞掉
+      input_cost_per_1m: form.input_cost_per_1m,
+      output_cost_per_1m: form.output_cost_per_1m,
+      cached_input_cost_per_1m: form.cached_input_cost_per_1m,
       pricing: {
         ...pricingExtra,
         // 同时把单价 / currency 写入扩展 JSON, 这样 _sync_model_pricing_capabilities

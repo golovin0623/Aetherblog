@@ -752,9 +752,11 @@ export default function ModelConfigDialog({
                             cached_input_cost_per_1m: g.cached_input_cost_per_1m ?? 0,
                             pricing_currency: (g.currency ||
                               'USD') as ModelPricing['currency'],
+                            // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
+                            // 等字段，导致回填后仍与全局基准不一致
                             pricing_json: Object.keys(extraPricing).length
                               ? JSON.stringify(extraPricing, null, 2)
-                              : prev.pricing_json,
+                              : '',
                           }));
                         }
                       } catch {
