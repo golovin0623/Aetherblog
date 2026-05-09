@@ -29,9 +29,11 @@ export function GlobalPricingDialog({
   const [form, setForm] = useState({
     display_name: '',
     currency: 'USD' as string,
-    input_cost_per_1m: 0,
-    output_cost_per_1m: 0,
-    cached_input_cost_per_1m: 0,
+    // 三个数值字段允许 null —— 区分"未配置"(null) 与"免费"(0)，
+    // 编辑时若原本是 null，仅改备注不应把它静默变成 0
+    input_cost_per_1m: null as number | null,
+    output_cost_per_1m: null as number | null,
+    cached_input_cost_per_1m: null as number | null,
     pricing_json: '',
     notes: '',
   });
@@ -48,9 +50,9 @@ export function GlobalPricingDialog({
         ...prev,
         display_name: displayName ?? '',
         currency: 'USD',
-        input_cost_per_1m: 0,
-        output_cost_per_1m: 0,
-        cached_input_cost_per_1m: 0,
+        input_cost_per_1m: null,
+        output_cost_per_1m: null,
+        cached_input_cost_per_1m: null,
         pricing_json: '',
         notes: '',
       }));
@@ -66,9 +68,9 @@ export function GlobalPricingDialog({
     setForm({
       display_name: initial.display_name ?? displayName ?? '',
       currency: initial.currency || 'USD',
-      input_cost_per_1m: initial.input_cost_per_1m ?? 0,
-      output_cost_per_1m: initial.output_cost_per_1m ?? 0,
-      cached_input_cost_per_1m: initial.cached_input_cost_per_1m ?? 0,
+      input_cost_per_1m: initial.input_cost_per_1m ?? null,
+      output_cost_per_1m: initial.output_cost_per_1m ?? null,
+      cached_input_cost_per_1m: initial.cached_input_cost_per_1m ?? null,
       pricing_json: Object.keys(extraPricing).length
         ? JSON.stringify(extraPricing, null, 2)
         : '',
@@ -192,13 +194,15 @@ export function GlobalPricingDialog({
                 <input
                   type="number"
                   step="0.000001"
-                  value={form.input_cost_per_1m}
-                  onChange={(e) =>
+                  placeholder="未配置"
+                  value={form.input_cost_per_1m ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
                     setForm((prev) => ({
                       ...prev,
-                      input_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
-                  }
+                      input_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
+                    }));
+                  }}
                   className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
@@ -207,13 +211,15 @@ export function GlobalPricingDialog({
                 <input
                   type="number"
                   step="0.000001"
-                  value={form.output_cost_per_1m}
-                  onChange={(e) =>
+                  placeholder="未配置"
+                  value={form.output_cost_per_1m ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
                     setForm((prev) => ({
                       ...prev,
-                      output_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
-                  }
+                      output_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
+                    }));
+                  }}
                   className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
@@ -222,13 +228,15 @@ export function GlobalPricingDialog({
                 <input
                   type="number"
                   step="0.000001"
-                  value={form.cached_input_cost_per_1m}
-                  onChange={(e) =>
+                  placeholder="未配置"
+                  value={form.cached_input_cost_per_1m ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
                     setForm((prev) => ({
                       ...prev,
-                      cached_input_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
-                  }
+                      cached_input_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
+                    }));
+                  }}
                   className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
