@@ -210,7 +210,6 @@ function MessageBubbleBase({
                 minute: '2-digit',
               })}
             </span>
-            {!isUser && <ThinkingMeta message={message} />}
             {hoverActions}
           </span>
           <span
@@ -219,13 +218,10 @@ function MessageBubbleBase({
           />
         </div>
 
-        {/* think 块（仅 assistant） */}
-        {!isUser && message.think && (
+        {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
+        {!isUser && (
           <div className="mb-3">
-            <ThinkingBlock
-              think={message.think}
-              streaming={!!message.pending && !message.firstTokenAt}
-            />
+            <ThinkingPanel message={message} />
           </div>
         )}
 
@@ -315,7 +311,6 @@ function MessageBubbleBase({
               minute: '2-digit',
             })}
           </span>
-          {!isUser && <ThinkingMeta message={message} />}
           {/* hover actions —— 与 ChatGPT / Claude 一致的位置：紧贴 meta 行，
               hover 整条消息时才浮现。focus-within 让键盘用户也能拿到焦点。 */}
           <div
@@ -369,10 +364,8 @@ function MessageBubbleBase({
           </div>
         </div>
 
-        {/* think 块（仅 assistant） */}
-        {!isUser && message.think && (
-          <ThinkingBlock think={message.think} streaming={!!message.pending && !message.firstTokenAt} />
-        )}
+        {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
+        {!isUser && <ThinkingPanel message={message} />}
 
         {/* 主体气泡 */}
         <div
@@ -457,130 +450,52 @@ function MessageBubbleBase({
 }
 
 /**
- * ThinkingBlock —— Codex 级思考块
+ * ThinkingPanel —— Lobehub 风格统一思考面板
  *
- *   收起态：单行 pill（可点击展开）
- *     · 流式中：左缘 shimmer 光带 + Brain 图标 + "正在思考"+ 字数实时计数 + tail 摘要
- *     · 完成后：Brain 图标 + "已深度思考"+ 总字数
+ * 取代旧的 inline `ThinkingMeta` + 独立 `ThinkingBlock` 双轨实现 —— 把"思考状态行"
+ * 和"思考内容折叠卡"合并成一块挂在主回答正文上方的独立 UI，永远不混进 AGENT
+ * meta 行（YOU/AGENT · 时间）。这样：
  *
- *   展开态：可滚动 think 文本框，流式中自动 stick-to-bottom；
- *           展开时也同时显示完整时长 / 字数指标。
+ *  · 移动端不再因为 meta 行被左右 hairline 挤压而把 CJK 标签（"已深度思考"）
+ *    逐字纵向断行；
+ *  · 视觉层级更接近 LobeChat / Claude / Gemini 等 Agent 工具：思考内容是
+ *    "可折叠副面板"，不是"正文标题的一部分"。
  *
- * 设计动机：用户在 LobeChat / Claude Code 中看到的"思考"卡片之所以舒服，是因为
- * 它在传达"模型在工作"这件事时不喧宾夺主 —— 边沿一缕光，预览一行字，体感上
- * 像是听到打字机的轻响，而不是横幅广告闯入。这里我们用 surface-leaf + 极光左缘
- * 还原同样的"克制感"。
+ * 渲染态：
+ *   收起 pill（永远显示一行）
+ *     · 流式 + 未首 token  → 左缘 aurora shimmer + Brain + "正在思考" + 实时秒数
+ *     · 流式 + 已首 token  → 同上但 label = "正在生成"
+ *     · 已完成 + 有 think  → Brain + "已深度思考" + 总秒数 + N chars，可展开
+ *     · 已完成 + 无 think  → Brain + "已深度思考" + 总秒数（不可展开）
+ *     · 错误中断           → "已中断" + 秒数
+ *
+ *   展开（仅在有 think 内容时可用）
+ *     · 滚动 pre 框，流式中 stick-to-bottom（终端 tail -f 体验）。
  */
-function ThinkingBlock({ think, streaming }: { think: string; streaming: boolean }) {
+function ThinkingPanel({ message }: { message: AgentMessage }) {
   const [open, setOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
 
-  // 展开时让滚动条自动跟随尾部 —— 类似终端 tail -f 体验
+  const isStreaming = !!message.pending;
+  const hasThink = !!message.think && message.think.length > 0;
+  const expandable = hasThink;
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [isStreaming]);
+
   useLayoutEffect(() => {
-    if (!open || !streaming) return;
+    if (!open || !isStreaming) return;
     const el = previewRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [open, streaming, think]);
-
-  const charCount = think.length;
-  // 取最后一段非空文本作为收起时的"思路尾巴"——只用作视觉提示，不参与语义
-  const tail = (() => {
-    const trimmed = think.replace(/\s+$/, '');
-    if (trimmed.length <= 36) return trimmed;
-    return `…${trimmed.slice(-36)}`;
-  })();
-
-  return (
-    <div className="relative mb-2.5 max-w-full">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className={`group/think relative w-full flex items-center gap-2 pl-3 pr-3 py-2 rounded-xl border text-left transition-colors overflow-hidden ${
-          streaming
-            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
-            : 'bg-[var(--bg-raised)]/55 border-[var(--ink-subtle)]/16 hover:border-[var(--aurora-1)]/30'
-        }`}
-      >
-        {/* 左缘 aurora 光带：仅 streaming 时显示 */}
-        {streaming && (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
-          >
-            <span className="agent-think-shimmer" />
-          </span>
-        )}
-        <Brain
-          className={`w-3.5 h-3.5 flex-shrink-0 ${
-            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]'
-          }`}
-        />
-        <span
-          className={`font-mono text-[10.5px] uppercase tracking-[0.22em] flex-shrink-0 ${
-            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]'
-          }`}
-        >
-          {streaming ? '正在思考' : '已深度思考'}
-        </span>
-        <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)]">·</span>
-        <span className="font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums flex-shrink-0">
-          {charCount} chars
-        </span>
-        {/* tail 摘要：只在收起态 + 有内容时显示，截断 */}
-        {!open && tail && (
-          <span className="hidden sm:inline truncate text-[12px] italic text-[var(--ink-muted)]/85 ml-1.5 min-w-0">
-            {tail}
-          </span>
-        )}
-        <span className="ml-auto flex-shrink-0 text-[var(--ink-muted)]">
-          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        </span>
-      </button>
-
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="think-body"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
-          >
-            <div
-              ref={previewRef}
-              className="agent-thumb-scroll mt-2 max-h-[260px] overflow-y-auto p-3 rounded-xl bg-[var(--bg-raised)]/55 border border-[var(--ink-subtle)]/15"
-            >
-              <pre className="whitespace-pre-wrap break-words leading-relaxed text-[12.5px] text-[var(--ink-secondary)] font-sans">
-                {think}
-              </pre>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/**
- * ThinkingMeta —— 渲染「正在思考 · 2.4s」/「已深度思考 · 3.1s」状态行（小字 inline）。
- *
- *   - pending && !firstToken      → "正在思考 · X.Xs" + breath dot
- *   - pending && firstToken to     → "正在生成 · X.Xs"
- *   - !pending && finishedAt set   → "已深度思考 · X.Xs"（不再实时计时）
- */
-function ThinkingMeta({ message }: { message: AgentMessage }) {
-  const [now, setNow] = useState<number>(() => Date.now());
-  useEffect(() => {
-    if (!message.pending) return;
-    const id = window.setInterval(() => setNow(Date.now()), 100);
-    return () => window.clearInterval(id);
-  }, [message.pending]);
+  }, [open, isStreaming, message.think]);
 
   if (!message.startedAt) return null;
-  const isStreaming = message.pending;
+
   const endTs = isStreaming ? now : (message.finishedAt ?? message.startedAt);
   const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
   const elapsedStr = `${elapsed.toFixed(1)}s`;
@@ -596,22 +511,98 @@ function ThinkingMeta({ message }: { message: AgentMessage }) {
     label = '已深度思考';
   }
 
-  return (
+  const charCount = hasThink ? message.think!.length : 0;
+  const showShimmer = isStreaming && !message.firstTokenAt;
+
+  const containerClass = `group/think relative w-full flex items-center gap-2 pl-3 pr-3 py-2 rounded-xl border text-left transition-colors overflow-hidden ${
+    isStreaming
+      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+      : message.error
+      ? 'bg-[color-mix(in_oklch,var(--signal-warn)_6%,transparent)] border-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)]'
+      : 'bg-[var(--bg-raised)]/55 border-[var(--ink-subtle)]/16 hover:border-[var(--aurora-1)]/30'
+  } ${expandable ? 'cursor-pointer' : 'cursor-default'}`;
+
+  const inner = (
     <>
-      <span aria-hidden="true">·</span>
-      <span className={`inline-flex items-center gap-1 ${isStreaming ? 'text-[var(--aurora-1)]' : ''}`}>
-        {isStreaming && (
-          <span
-            aria-hidden="true"
-            className="w-1 h-1 rounded-full bg-current"
-            style={{ animation: 'breath-soft 1.2s ease-in-out infinite' }}
-          />
-        )}
+      {showShimmer && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
+        >
+          <span className="agent-think-shimmer" />
+        </span>
+      )}
+      <Brain
+        className={`w-3.5 h-3.5 flex-shrink-0 ${
+          isStreaming ? 'text-[var(--aurora-1)]' : message.error ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
+        }`}
+      />
+      <span
+        className={`font-mono text-[10.5px] uppercase tracking-[0.22em] flex-shrink-0 whitespace-nowrap ${
+          isStreaming ? 'text-[var(--aurora-1)]' : message.error ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
+        }`}
+      >
         {label}
-        <span aria-hidden="true">·</span>
-        <span className="tabular-nums">{elapsedStr}</span>
       </span>
+      <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)] flex-shrink-0">·</span>
+      <span className="font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums flex-shrink-0 whitespace-nowrap">
+        {elapsedStr}
+      </span>
+      {hasThink && (
+        <>
+          <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)] flex-shrink-0">·</span>
+          <span className="font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums flex-shrink-0 whitespace-nowrap">
+            {charCount} chars
+          </span>
+        </>
+      )}
+      {expandable && (
+        <span className="ml-auto flex-shrink-0 text-[var(--ink-muted)]">
+          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        </span>
+      )}
     </>
+  );
+
+  return (
+    <div className="relative mb-2.5 max-w-full">
+      {expandable ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className={containerClass}
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className={containerClass} aria-live={isStreaming ? 'polite' : undefined}>
+          {inner}
+        </div>
+      )}
+
+      <AnimatePresence initial={false}>
+        {expandable && open && (
+          <motion.div
+            key="think-body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div
+              ref={previewRef}
+              className="agent-thumb-scroll mt-2 max-h-[260px] overflow-y-auto p-3 rounded-xl bg-[var(--bg-raised)]/55 border border-[var(--ink-subtle)]/15"
+            >
+              <pre className="whitespace-pre-wrap break-words leading-relaxed text-[12.5px] text-[var(--ink-secondary)] font-sans">
+                {message.think}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

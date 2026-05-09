@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronDown, Cpu, Loader2, AlertCircle } from 'lucide-react';
 import { useAgentModels, type AgentModelItem } from '../../lib/agentModels';
@@ -44,6 +45,13 @@ export default function ModelPicker({
   const state = useAgentModels(enabled);
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 关闭策略 —— 仅监听 ESC，外部点击靠 backdrop overlay 拦截。
   // 历史方案用 document.pointerdown + wrapperRef.contains() 检测：iOS Safari
@@ -60,6 +68,28 @@ export default function ModelPicker({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  // 弹层定位：把 menu 通过 Portal 挂到 document.body 之外，避开 composer / mobile
+  // 控制条父级因 backdrop-filter / surface-leaf 创建的 stacking context —— 否则
+  // 即便给 menu 写 z-50，它仍会被同级（DOM 在后）的 thread/EmptyState 容器盖住，
+  // 表现为"下拉显示在最底层、点击不到"。Portal + position: fixed 让弹层一定盖在
+  // 全屏最上方。
+  const measureTrigger = useCallback(() => {
+    if (!triggerRef.current) return;
+    setTriggerRect(triggerRef.current.getBoundingClientRect());
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    measureTrigger();
+    const onResize = () => measureTrigger();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
+    };
+  }, [open, measureTrigger]);
 
   // 把 items 按 providerCode 分组
   const grouped = useMemo(() => {
@@ -99,11 +129,78 @@ export default function ModelPicker({
     ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-95 transition-all text-[12px] max-w-[160px] sm:max-w-[240px]'
     : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 active:scale-[0.97] transition-all text-[12px] max-w-[220px]';
 
-  // 弹出位置：top-start 让 popover 出现在按钮上方左对齐，避免遮挡 composer 内容。
-  const popClass =
-    placement === 'top-start'
-      ? 'absolute left-0 bottom-full mb-2 w-[300px]'
-      : 'absolute right-0 mt-1.5 w-[280px]';
+  // 弹出尺寸：top-start 用 300px、bottom-end 用 280px。
+  const popoverWidth = placement === 'top-start' ? 300 : 280;
+  // 内容高度上限（max-h-[360px] 内框 + 上下 padding 8px*2 ≈ 376px）。
+  // 实际渲染高度作为"理想"上限，若任一方向空间不足则按可用空间夹紧并塞入
+  // 内框 maxHeight，避免菜单溢出视口顶部 / 底部。
+  const idealMenuHeight = 376;
+
+  // 计算 portal 弹层的 fixed 坐标。横向：贴齐按钮端点 + 8px 视口安全区；
+  // 纵向：先按 placement 偏好放，空间不够则翻转到对侧；最终若两侧都不够，
+  // 把弹层压成"剩余空间 - 8px"并把 maxHeight 透传到内滚动框。
+  const { popStyle, contentMaxHeight } = useMemo<{
+    popStyle: React.CSSProperties;
+    contentMaxHeight: number | null;
+  }>(() => {
+    if (!triggerRect || typeof window === 'undefined') {
+      return {
+        popStyle: { position: 'fixed', top: 0, left: 0, opacity: 0, pointerEvents: 'none' },
+        contentMaxHeight: null,
+      };
+    }
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // 横向定位 + 视口夹紧
+    let left: number;
+    if (placement === 'top-start') {
+      left = triggerRect.left;
+    } else {
+      left = triggerRect.right - popoverWidth;
+    }
+    if (left + popoverWidth > viewportWidth - margin) {
+      left = viewportWidth - popoverWidth - margin;
+    }
+    if (left < margin) left = margin;
+
+    // 纵向：先按偏好计算可用空间，不够就翻转。
+    const spaceBelow = viewportHeight - triggerRect.bottom - margin;
+    const spaceAbove = triggerRect.top - margin;
+    const prefersTop = placement === 'top-start';
+    const preferredSpace = prefersTop ? spaceAbove : spaceBelow;
+    const oppositeSpace = prefersTop ? spaceBelow : spaceAbove;
+    const flipped = preferredSpace < idealMenuHeight && oppositeSpace > preferredSpace;
+    const useTop = prefersTop ? !flipped : flipped;
+    const usableSpace = useTop ? spaceAbove : spaceBelow;
+    // 最终内容上限 = min(理想, 可用) - 估算 padding 16px。null = 不限制。
+    const heightCap = Math.max(120, Math.min(idealMenuHeight, usableSpace) - 16);
+    const contentMax = usableSpace < idealMenuHeight ? heightCap : null;
+
+    if (useTop) {
+      // 弹层底边贴在 trigger 上方 8px 处。
+      const bottom = viewportHeight - (triggerRect.top - 8);
+      return {
+        popStyle: {
+          position: 'fixed',
+          left,
+          bottom,
+          width: popoverWidth,
+        },
+        contentMaxHeight: contentMax,
+      };
+    }
+    return {
+      popStyle: {
+        position: 'fixed',
+        left,
+        top: triggerRect.bottom + 6,
+        width: popoverWidth,
+      },
+      contentMaxHeight: contentMax,
+    };
+  }, [triggerRect, placement, popoverWidth]);
 
   const motionProps =
     placement === 'top-start'
@@ -113,6 +210,7 @@ export default function ModelPicker({
   return (
     <div ref={wrapperRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
@@ -135,36 +233,39 @@ export default function ModelPicker({
         <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* 全屏 backdrop 接住外部点击，z-40 < menu z-50。这条路径替代了
-                document.pointerdown + wrapperRef.contains() 的兜底逻辑：
-                选项 onClick 永远先于 backdrop onClick 触发（事件冒泡 + 立体
-                z-index），不再有"选了模型却被外部检测误判 setOpen(false)
-                抢跑"的 iOS 竞态。 */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {open && (
+            <>
+              {/* 全屏 backdrop 接住外部点击，z-[1000] < menu z-[1001]。Portal
+                  到 body 后不再受父级 stacking context（backdrop-filter /
+                  surface-leaf 等）压制，下拉永远盖在最上层；选项 onClick
+                  永远先于 backdrop onClick 触发，不再有 iOS 误判竞态。 */}
+              <div
+                className="fixed inset-0 z-[1000]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                }}
+                aria-hidden="true"
+              />
+              <motion.div
+                {...motionProps}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                role="listbox"
+                // inline style 强制实色背景：surface-overlay 自带的玻璃半透明 +
+                // backdrop-filter: blur(40px) 在 EmptyState（背后有 aurora glow
+                // + Sparkles 大图标）下会出现内容穿透感（用户截图证据：下拉项
+                // 之间能看到背景的 ✨ icon），并在部分 iOS 设备上干扰菜单内
+                // 触控命中。inline style 优先级最高，覆盖 surface-overlay 的
+                // background shorthand，让弹层=信息焦点、背景=视觉次级。
+                style={{ ...popStyle, background: 'var(--bg-leaf)', zIndex: 1001 }}
+                className="surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]"
+              >
             <div
-              className="fixed inset-0 z-40"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-              }}
-              aria-hidden="true"
-            />
-            <motion.div
-              {...motionProps}
-              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              role="listbox"
-              // inline style 强制实色背景：surface-overlay 自带的玻璃半透明 +
-              // backdrop-filter: blur(40px) 在 EmptyState（背后有 aurora glow
-              // + Sparkles 大图标）下会出现内容穿透感（用户截图证据：下拉项
-              // 之间能看到背景的 ✨ icon），并在部分 iOS 设备上干扰菜单内
-              // 触控命中。inline style 优先级最高，覆盖 surface-overlay 的
-              // background shorthand，让弹层=信息焦点、背景=视觉次级。
-              style={{ background: 'var(--bg-leaf)' }}
-              className={`${popClass} surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 z-50 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]`}
+              className="overflow-y-auto py-2"
+              style={{ maxHeight: contentMaxHeight ?? 360 }}
             >
-            <div className="max-h-[360px] overflow-y-auto py-2">
               {/* 默认（自动）选项 */}
               <button
                 type="button"
@@ -272,11 +373,13 @@ export default function ModelPicker({
                     </section>
                   );
                 })}
-            </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   );
 }
