@@ -2200,6 +2200,17 @@ function ArticlePicker({
                         {article.summary}
                       </div>
                     )}
+                    {(article.category || article.publishedAt) && (
+                      <div className="mt-1 flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                        {article.category && (
+                          <span className="truncate">{article.category}</span>
+                        )}
+                        {article.category && article.publishedAt && (
+                          <span aria-hidden="true">·</span>
+                        )}
+                        {article.publishedAt && <span>{article.publishedAt}</span>}
+                      </div>
+                    )}
                   </div>
                   {selected && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
                 </button>
