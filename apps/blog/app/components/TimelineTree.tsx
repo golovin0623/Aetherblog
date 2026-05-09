@@ -38,6 +38,44 @@ const STORAGE_KEYS = {
   EXPANDED_POSTS_MONTHS: 'timeline_expanded_posts_months',
   LAST_CLICKED_POST: 'timeline_last_clicked_post',
 };
+const RESTORE_FLAG = 'timeline_should_restore';
+
+// 在首屏渲染前同步读取 sessionStorage：避免「先用默认状态渲染、再 useEffect 重置」造成的二次渲染抖动。
+// SSR 阶段 window 不存在，回落到 null，组件首次渲染走默认全展开。
+function readRestoreSnapshot(): {
+  years: number[] | null;
+  months: string[] | null;
+  postsMonths: string[] | null;
+  highlightId: string | null;
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    // 硬刷新（reload）时跳过恢复：SSR 重新输出默认全展开 HTML，若此时仍读旧的 sessionStorage
+    // 客户端首次渲染会与服务端不一致，触发 hydration mismatch。仅 App Router 软导航返回时走恢复。
+    const navEntry = performance.getEntriesByType('navigation')[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    if (navEntry?.type === 'reload') return null;
+    if (!sessionStorage.getItem(RESTORE_FLAG)) return null;
+    const parse = <T,>(key: string): T[] | null => {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw) as T[];
+      } catch {
+        return null;
+      }
+    };
+    return {
+      years: parse<number>(STORAGE_KEYS.EXPANDED_YEARS),
+      months: parse<string>(STORAGE_KEYS.EXPANDED_MONTHS),
+      postsMonths: parse<string>(STORAGE_KEYS.EXPANDED_POSTS_MONTHS),
+      highlightId: sessionStorage.getItem(STORAGE_KEYS.LAST_CLICKED_POST),
+    };
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================================
 // 记忆化组件
@@ -353,13 +391,23 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     return set;
   }, [archives]);
 
-  // 从 sessionStorage 恢复状态，或使用默认值 (初始渲染必须与 SSR 一致)
-  const [expandedYears, setExpandedYears] = useState<Set<number>>(allYears);
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(allMonths);
-  const [expandedPostsMonths, setExpandedPostsMonths] = useState<Set<string>>(new Set());
-  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
+  // 客户端首次渲染时同步读取持久化状态，避免「默认全展开 → useEffect 收起」的二次渲染抖动。
+  // SSR 阶段返回 null，组件 fallback 到默认全展开（与服务端 HTML 一致，不会触发 hydration mismatch）。
+  const restoreSnapshot = useMemo(readRestoreSnapshot, []);
+
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(() =>
+    restoreSnapshot?.years ? new Set(restoreSnapshot.years) : allYears
+  );
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() =>
+    restoreSnapshot?.months ? new Set(restoreSnapshot.months) : allMonths
+  );
+  const [expandedPostsMonths, setExpandedPostsMonths] = useState<Set<string>>(() =>
+    restoreSnapshot?.postsMonths ? new Set(restoreSnapshot.postsMonths) : new Set()
+  );
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(
+    () => restoreSnapshot?.highlightId ?? null
+  );
   const [isHighlightFading, setIsHighlightFading] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
 
   // 在稳定回调中访问的 refs
   const expandedYearsRef = useRef(expandedYears);
@@ -372,59 +420,33 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     expandedPostsMonthsRef.current = expandedPostsMonths;
   }, [expandedYears, expandedMonths, expandedPostsMonths]);
 
-  // 组件挂载时从 sessionStorage 恢复状态 (仅限从文章详情返回时)
+  // 挂载后清理 sessionStorage（一次性使用）并安排高亮渐隐
   useEffect(() => {
-    setIsMounted(true);
-
     try {
-      // 只有存在 "返回导航" 标记时才恢复状态
-      const shouldRestore = sessionStorage.getItem('timeline_should_restore');
-      if (!shouldRestore) {
-        // 刷新或直接访问：清除所有旧状态
-        sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_YEARS);
-        sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_MONTHS);
-        sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS);
-        sessionStorage.removeItem(STORAGE_KEYS.LAST_CLICKED_POST);
-        return;
-      }
-
-      // 恢复状态
-      const savedYears = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_YEARS);
-      const savedMonths = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_MONTHS);
-      const savedPostsMonths = sessionStorage.getItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS);
-      const lastClickedPost = sessionStorage.getItem(STORAGE_KEYS.LAST_CLICKED_POST);
-
-      if (savedYears) setExpandedYears(new Set(JSON.parse(savedYears)));
-      if (savedMonths) setExpandedMonths(new Set(JSON.parse(savedMonths)));
-      if (savedPostsMonths) setExpandedPostsMonths(new Set(JSON.parse(savedPostsMonths)));
-
-      // 高亮上次点击的文章，带渐隐效果
-      if (lastClickedPost) {
-        setHighlightedPostId(lastClickedPost);
-        setIsHighlightFading(false);
-        // 1.5秒后开始渐隐
-        setTimeout(() => setIsHighlightFading(true), 1500);
-        // 渐隐动画结束后移除高亮 (动画持续 1 秒)
-        setTimeout(() => setHighlightedPostId(null), 2500);
-      }
-
-      // 清除所有状态（一次性使用）
-      sessionStorage.removeItem('timeline_should_restore');
+      sessionStorage.removeItem(RESTORE_FLAG);
       sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_YEARS);
       sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_MONTHS);
       sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS);
       sessionStorage.removeItem(STORAGE_KEYS.LAST_CLICKED_POST);
     } catch (e) {
-      logger.warn('Failed to restore timeline state:', e);
+      logger.warn('Failed to clean up timeline state:', e);
     }
-  }, []);
+
+    if (!restoreSnapshot?.highlightId) return;
+    const fadeTimer = setTimeout(() => setIsHighlightFading(true), 1500);
+    const removeTimer = setTimeout(() => setHighlightedPostId(null), 2500);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+    };
+  }, [restoreSnapshot]);
 
   // 保存状态到 sessionStorage（稳定回调）
   const saveState = useCallback(() => {
     if (typeof window === 'undefined') return;
     try {
       // 设置 "应该恢复" 标记
-      sessionStorage.setItem('timeline_should_restore', 'true');
+      sessionStorage.setItem(RESTORE_FLAG, 'true');
       sessionStorage.setItem(STORAGE_KEYS.EXPANDED_YEARS, JSON.stringify([...expandedYearsRef.current]));
       sessionStorage.setItem(STORAGE_KEYS.EXPANDED_MONTHS, JSON.stringify([...expandedMonthsRef.current]));
       sessionStorage.setItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS, JSON.stringify([...expandedPostsMonthsRef.current]));
@@ -477,10 +499,6 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
       return next;
     });
   }, []);
-
-  if (!isMounted) {
-    // 渲染前在 SSR 时确保静态占位内容或者直接透出默认内容避免 mismatch
-  }
 
   return (
     <div className="space-y-4">
