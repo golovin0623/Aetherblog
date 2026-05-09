@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 46
-- **最新：** `000046_activity_event_category_security`（`activity_events.event_category` 白名单扩展到 8 类，新增 `security`，配合 AI 模块 / JWT 轮换审计落库）
-- **次新：** `000045_default_post_page_size_to_9`（默认每页文章数 10 → 9，配合 3 列网格无尾行单卡）
+- **总数：** 47
+- **最新：** `000047_ai_global_pricing`（新增 `ai_global_pricing` 表，按 `model_id` 集中维护跨供应商共享的单价 + 高级 pricing JSON；前端「全局价格」页 + ModelConfigDialog「↺ 从全局回填 / 写入全局」联动）
+- **次新：** `000046_activity_event_category_security`（`activity_events.event_category` 白名单扩展到 8 类，新增 `security`，配合 AI 模块 / JWT 轮换审计落库）
 
 ---
 
@@ -27,6 +27,7 @@
 | `media_sync_jobs` | 000043 | 存量本地文件入云任务队列 |
 | `search_profiles` | 000041 | Chunking 策略 + 模型 + 切片参数四元组绑定，蓝绿翻转扩展到全 RAG pipeline |
 | `post_embeddings.parent_text` | 000044 | parent_child chunker 父段原文（其他 chunker_kind 为 NULL） |
+| `ai_global_pricing` | 000047 | 按 `model_id` 索引的跨供应商共享价格基准；UI「全局价格」页 + 单条模型详情「↺ 从全局回填 / 写入全局」 |
 
 ---
 
@@ -150,6 +151,18 @@ PG 17 上 `ADD COLUMN IF NOT EXISTS` 是 instant DDL（不重写表），即便 
 - 同期补全的 AI 模块审计 (`ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*`) 仍归类 `'ai'`（已在白名单），不需要再加新分类。
 
 > ⚠️ 回滚提示：若线上已有 `event_category='security'` 的行，down.sql 会因为 CHECK 重建失败。回滚前需先 `DELETE FROM activity_events WHERE event_category = 'security'` 或把这些行迁到 `'system'`。
+
+### 000047 · `ai_global_pricing`
+
+**新表**，配合「全局模型价格」UI 闭环：
+
+- 同一个 `model_id`（如 `gpt-4o-mini`）在 OpenAI / AIHubMix / AI302 等多家 provider 下都有一份独立的 `ai_models` 行，过去要逐个手动维护单价。
+- 新表用 `model_id` 字符串作为 `UNIQUE` 索引，存 `currency` / `input_cost_per_1m` / `output_cost_per_1m` / `cached_input_cost_per_1m` + `pricing` JSONB（容纳 `audioInput` 等扩展键 + `units[]`）。
+- 数值列用 `DECIMAL(14,6)` —— 比 `ai_models.input_cost_per_1k` 的 `DECIMAL(12,8)` 多 2 位整数位，因为单价单位是 1M tokens（per-1M 比 per-1K 数量级大 1000 倍）。
+
+API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理到 FastAPI ai-service（`apps/ai-service/app/services/global_pricing.py`）。详见 `api-handlers.md` AI 节。
+
+> 「批量回填 / 反向同步」核心算法在 `_sync_model_pricing_capabilities`（`provider_registry.py`）—— 复用 model 与 global 两侧统一的 pricing 规范化路径，避免「单价填了但 pricing.units 还停在旧值」这类漂移。
 
 ---
 

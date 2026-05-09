@@ -16,6 +16,7 @@ from app.services.llm_router import LlmRouter
 from app.services.model_router import ModelRouter
 from app.services.provider_registry import ProviderRegistry
 from app.services.credential_resolver import CredentialResolver
+from app.services.global_pricing import GlobalPricingService
 from app.services.remote_model_fetcher import RemoteModelFetcher
 from app.services.metrics import MetricsStore, get_metrics_store
 from app.services.rate_limiter import RateLimiter
@@ -36,6 +37,7 @@ _vector_store: VectorStoreService | None = None
 _pg_pool: asyncpg.Pool | None = None
 _usage_logger: UsageLogger | None = None
 _remote_model_fetcher: RemoteModelFetcher | None = None
+_global_pricing_service: GlobalPricingService | None = None
 
 
 def _get_redis() -> Redis:
@@ -137,6 +139,14 @@ def get_remote_model_fetcher() -> RemoteModelFetcher:
     if _remote_model_fetcher is None:
         _remote_model_fetcher = RemoteModelFetcher()
     return _remote_model_fetcher
+
+
+async def get_global_pricing_service() -> GlobalPricingService:
+    global _global_pricing_service
+    if _global_pricing_service is None:
+        pool = await get_pg_pool()
+        _global_pricing_service = GlobalPricingService(pool)
+    return _global_pricing_service
 
 
 def _normalize_token(raw_token: str | None) -> str | None:

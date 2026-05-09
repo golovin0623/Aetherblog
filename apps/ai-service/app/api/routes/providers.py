@@ -17,6 +17,7 @@ from litellm import acompletion
 from app.api.deps import (
     get_provider_registry,
     get_credential_resolver,
+    get_global_pricing_service,
     get_model_router,
     get_remote_model_fetcher,
     get_pg_pool,
@@ -44,9 +45,15 @@ from app.schemas.provider import (
     ModelBatchToggleRequest,
     ModelSortRequest,
     ProviderBatchToggleRequest,
+    GlobalPricingResponse,
+    GlobalPricingUpsert,
+    GlobalPricingCoverageRow,
+    GlobalPricingApplyRequest,
+    GlobalPricingApplyResponse,
 )
 from app.services.provider_registry import ProviderRegistry, ModelInfo
 from app.services.credential_resolver import CredentialResolver
+from app.services.global_pricing import GlobalPricingService
 from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
 from app.services.llm_router import LlmRouter
@@ -839,6 +846,218 @@ async def test_embedding_credential(
                 latency_ms=latency_ms,
             ),
         )
+
+
+# ============================================================
+# 全局模型价格端点（按 model_id 汇总，跨 provider 共享）
+# ============================================================
+
+def _global_pricing_to_response(row) -> GlobalPricingResponse:
+    return GlobalPricingResponse(
+        id=row.id,
+        model_id=row.model_id,
+        display_name=row.display_name,
+        currency=row.currency,
+        input_cost_per_1m=row.input_cost_per_1m,
+        output_cost_per_1m=row.output_cost_per_1m,
+        cached_input_cost_per_1m=row.cached_input_cost_per_1m,
+        pricing=row.pricing,
+        notes=row.notes,
+        updated_at=row.updated_at,
+        provider_count=row.provider_count,
+        in_sync_count=row.in_sync_count,
+    )
+
+
+@router.get("/global-pricing", response_model=ApiResponse[list[GlobalPricingResponse]])
+async def list_global_pricing(
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """列出全部全局模型价格条目（含每个 model_id 的同步状态统计）。"""
+    rows = await service.list_all()
+    return ApiResponse(data=[_global_pricing_to_response(r) for r in rows])
+
+
+@router.get(
+    "/global-pricing/coverage",
+    response_model=ApiResponse[list[GlobalPricingCoverageRow]],
+)
+async def global_pricing_coverage(
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """返回数据库中所有 distinct model_id 的覆盖率视图。
+
+    前端用这张表实现「全部 / 已配置 / 未配置 / 部分脱锚」过滤与一键编辑。
+    """
+    rows = await service.coverage()
+    return ApiResponse(
+        data=[
+            GlobalPricingCoverageRow(
+                model_id=r.model_id,
+                display_name=r.display_name,
+                provider_count=r.provider_count,
+                has_global=r.has_global,
+                in_sync_count=r.in_sync_count,
+                out_of_sync_count=r.out_of_sync_count,
+                missing_count=r.missing_count,
+                global_input_per_1m=r.global_input_per_1m,
+                global_output_per_1m=r.global_output_per_1m,
+                global_cached_input_per_1m=r.global_cached_input_per_1m,
+                currency=r.currency,
+                providers=r.providers,
+            )
+            for r in rows
+        ]
+    )
+
+
+@router.get(
+    "/global-pricing/{model_id:path}",
+    response_model=ApiResponse[GlobalPricingResponse],
+)
+async def get_global_pricing(
+    model_id: str,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """按 model_id 查询全局价格。"""
+    row = await service.get_by_model_id(model_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Global pricing not found")
+    return ApiResponse(data=_global_pricing_to_response(row))
+
+
+@router.put(
+    "/global-pricing/{model_id:path}",
+    response_model=ApiResponse[GlobalPricingResponse],
+)
+async def upsert_global_pricing(
+    model_id: str,
+    req: GlobalPricingUpsert,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """新增 / 更新指定 model_id 的全局价格。
+
+    URL 中的 ``model_id`` 会覆盖请求体里的 ``model_id``，确保一致。
+    """
+    try:
+        row = await service.upsert(
+            model_id=model_id,
+            display_name=req.display_name,
+            currency=req.currency or "USD",
+            input_cost_per_1m=req.input_cost_per_1m,
+            output_cost_per_1m=req.output_cost_per_1m,
+            cached_input_cost_per_1m=req.cached_input_cost_per_1m,
+            pricing=req.pricing or {},
+            notes=req.notes,
+        )
+        return ApiResponse(data=_global_pricing_to_response(row))
+    except Exception as exc:
+        logger.exception(
+            "Failed to upsert global pricing",
+            extra={"data": {"error_class": type(exc).__name__, "model_id": model_id}},
+        )
+        raise HTTPException(status_code=400, detail="Failed to save global pricing") from exc
+
+
+@router.delete("/global-pricing/{model_id:path}", response_model=ApiResponse[bool])
+async def delete_global_pricing(
+    model_id: str,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """删除指定 model_id 的全局价格条目。"""
+    deleted = await service.delete(model_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Global pricing not found")
+    return ApiResponse(data=True)
+
+
+@router.post(
+    "/global-pricing/{model_id:path}/apply",
+    response_model=ApiResponse[GlobalPricingApplyResponse],
+)
+async def apply_global_pricing(
+    model_id: str,
+    req: GlobalPricingApplyRequest,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """把 ``model_id`` 对应的全局价格批量应用到所有同名 ai_models 行。
+
+    - ``provider_codes``：可选，用于把作用域限制到指定 provider；空 = 全部。
+    - ``overwrite_existing``：False 时只填充原本缺失的字段；True 直接覆盖。
+    """
+    updated, skipped, target = await service.apply_to_models(
+        model_id=model_id,
+        provider_codes=req.provider_codes,
+        overwrite_existing=req.overwrite_existing,
+    )
+    if target == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No matching models found for this model_id",
+        )
+    # 失效 provider_registry 的缓存，确保后续 GET 拿到新价格
+    registry.clear_cache()
+    return ApiResponse(
+        data=GlobalPricingApplyResponse(
+            updated=updated,
+            skipped=skipped,
+            target_count=target,
+        ),
+    )
+
+
+@router.post(
+    "/models/{model_db_id}/sync-global-pricing",
+    response_model=ApiResponse[GlobalPricingResponse],
+)
+async def sync_pricing_from_model_to_global(
+    model_db_id: int,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """从指定 ai_models 行把价格写回 ai_global_pricing。
+
+    用于「在某个供应商下编辑完模型价格后，一键同步到全局基准」的反向闭环。
+    """
+    row = await service.sync_from_model(model_db_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return ApiResponse(data=_global_pricing_to_response(row))
+
+
+@router.post(
+    "/models/{model_db_id}/sync-from-global",
+    response_model=ApiResponse[GlobalPricingApplyResponse],
+)
+async def sync_single_model_from_global(
+    model_db_id: int,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """从全局表把价格同步到指定 ai_models 行（不影响其他同名行）。
+
+    用于「在单条模型详情面板里点击 ↺ 从全局回填」。
+    """
+    info = await registry.get_model_by_id(model_db_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Model not found")
+    global_row = await service.get_by_model_id(info.model_id)
+    if not global_row:
+        raise HTTPException(status_code=404, detail="No global pricing for this model_id")
+
+    updated, skipped, target = await service.apply_to_models(
+        model_id=info.model_id,
+        provider_codes=[info.provider_code],
+        overwrite_existing=True,
+    )
+    registry.clear_cache()
+    return ApiResponse(
+        data=GlobalPricingApplyResponse(
+            updated=updated,
+            skipped=skipped,
+            target_count=target,
+        ),
+    )
 
 
 # ============================================================

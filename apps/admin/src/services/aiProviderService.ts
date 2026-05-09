@@ -152,6 +152,64 @@ export interface ModelSortItem {
   sort: number;
 }
 
+// ============================================================
+// 全局价格类型（按 model_id 跨 provider 共享）
+// ============================================================
+
+export interface GlobalPricing {
+  id: number;
+  model_id: string;
+  display_name?: string | null;
+  currency: string;
+  input_cost_per_1m?: number | null;
+  output_cost_per_1m?: number | null;
+  cached_input_cost_per_1m?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pricing: Record<string, any>;
+  notes?: string | null;
+  updated_at: string;
+  provider_count: number;
+  in_sync_count: number;
+}
+
+export interface GlobalPricingCoverageRow {
+  model_id: string;
+  display_name?: string | null;
+  provider_count: number;
+  has_global: boolean;
+  in_sync_count: number;
+  out_of_sync_count: number;
+  missing_count: number;
+  global_input_per_1m?: number | null;
+  global_output_per_1m?: number | null;
+  global_cached_input_per_1m?: number | null;
+  currency?: string | null;
+  providers: string[];
+}
+
+export interface GlobalPricingUpsertRequest {
+  model_id: string;
+  display_name?: string | null;
+  currency?: string;
+  input_cost_per_1m?: number | null;
+  output_cost_per_1m?: number | null;
+  cached_input_cost_per_1m?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pricing?: Record<string, any>;
+  notes?: string | null;
+}
+
+export interface GlobalPricingApplyRequest {
+  provider_codes?: string[] | null;
+  overwrite_existing?: boolean;
+}
+
+export interface GlobalPricingApplyResult {
+  updated: number;
+  skipped: number;
+  target_count: number;
+}
+
 export const aiProviderService = {
   listProviders: (enabledOnly = false): Promise<AiServiceResponse<AiProvider[]>> =>
     api.get('/v1/admin/providers', { params: { enabled_only: enabledOnly } }),
@@ -254,6 +312,47 @@ export const aiProviderService = {
     items: ModelSortItem[]
   ): Promise<AiServiceResponse<{ updated: number }>> =>
     api.put(`/v1/admin/providers/${providerCode}/models/sort`, { items }),
+
+  // ----------------------------------------------------------
+  // 全局价格 (按 model_id 跨 provider 共享)
+  // ----------------------------------------------------------
+
+  listGlobalPricing: (): Promise<AiServiceResponse<GlobalPricing[]>> =>
+    api.get('/v1/admin/providers/global-pricing'),
+
+  globalPricingCoverage: (): Promise<AiServiceResponse<GlobalPricingCoverageRow[]>> =>
+    api.get('/v1/admin/providers/global-pricing/coverage'),
+
+  getGlobalPricing: (modelId: string): Promise<AiServiceResponse<GlobalPricing>> =>
+    api.get(`/v1/admin/providers/global-pricing/${encodeURIComponent(modelId)}`),
+
+  upsertGlobalPricing: (
+    modelId: string,
+    data: GlobalPricingUpsertRequest
+  ): Promise<AiServiceResponse<GlobalPricing>> =>
+    api.put(`/v1/admin/providers/global-pricing/${encodeURIComponent(modelId)}`, data),
+
+  deleteGlobalPricing: (modelId: string): Promise<AiServiceResponse<boolean>> =>
+    api.delete(`/v1/admin/providers/global-pricing/${encodeURIComponent(modelId)}`),
+
+  applyGlobalPricing: (
+    modelId: string,
+    data: GlobalPricingApplyRequest = {}
+  ): Promise<AiServiceResponse<GlobalPricingApplyResult>> =>
+    api.post(
+      `/v1/admin/providers/global-pricing/${encodeURIComponent(modelId)}/apply`,
+      data
+    ),
+
+  syncModelToGlobalPricing: (
+    modelDbId: number
+  ): Promise<AiServiceResponse<GlobalPricing>> =>
+    api.post(`/v1/admin/providers/models/${modelDbId}/sync-global-pricing`),
+
+  syncModelFromGlobalPricing: (
+    modelDbId: number
+  ): Promise<AiServiceResponse<GlobalPricingApplyResult>> =>
+    api.post(`/v1/admin/providers/models/${modelDbId}/sync-from-global`),
 
   listPromptConfigs: (): Promise<AiServiceResponse<any[]>> =>
     api.get('/v1/admin/ai/prompts'),

@@ -212,3 +212,75 @@ class RoutingUpdateRequest(BaseModel):
     fallback_model_id: int | None = None
     credential_id: int | None = None
     config_override: dict[str, Any] | None = None
+
+
+# ============================================================
+# 全局价格 Schemas
+# ============================================================
+
+class GlobalPricingResponse(BaseModel):
+    """全局模型价格响应。"""
+    id: int
+    model_id: str
+    display_name: str | None
+    currency: str
+    input_cost_per_1m: float | None
+    output_cost_per_1m: float | None
+    cached_input_cost_per_1m: float | None
+    pricing: dict[str, Any]
+    notes: str | None
+    updated_at: datetime
+    # 衍生字段（运行时计算）
+    provider_count: int = 0  # 拥有相同 model_id 的 ai_models 行数
+    in_sync_count: int = 0   # 价格与全局一致的行数
+
+
+class GlobalPricingUpsert(BaseModel):
+    """新增 / 更新全局模型价格。"""
+    model_id: str = Field(min_length=1, max_length=100)
+    display_name: str | None = Field(default=None, max_length=200)
+    currency: str = Field(default="USD", max_length=10)
+    input_cost_per_1m: float | None = None
+    output_cost_per_1m: float | None = None
+    cached_input_cost_per_1m: float | None = None
+    pricing: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+
+
+class GlobalPricingCoverageRow(BaseModel):
+    """全局价格覆盖率视图的一行。
+
+    汇总「整个数据库里 distinct model_id」+「是否已在全局价格表登记」+
+    「在多少个 provider 下出现」+「价格是否与全局一致」。
+    """
+    model_id: str
+    display_name: str | None  # 取自第一个 provider 的 display_name
+    provider_count: int       # 出现在多少个 provider 下
+    has_global: bool          # 是否已配置全局价格
+    in_sync_count: int        # 与全局一致的 provider 行数
+    out_of_sync_count: int    # 价格存在但与全局不一致的行数
+    missing_count: int        # 完全没价格的行数
+    global_input_per_1m: float | None
+    global_output_per_1m: float | None
+    global_cached_input_per_1m: float | None
+    currency: str | None
+    providers: list[str]      # 涉及的 provider_code 列表
+
+
+class GlobalPricingApplyRequest(BaseModel):
+    """把全局价格批量应用到所有同名 model_id 的 provider 模型。"""
+    # 可选：限定只应用到这些 provider_code；为空则应用到全部
+    provider_codes: list[str] | None = None
+    # 是否覆盖已经有非空价格的模型；False 时只填充缺失字段
+    overwrite_existing: bool = True
+
+
+class GlobalPricingApplyResponse(BaseModel):
+    updated: int       # 实际更新的 ai_models 行数
+    skipped: int       # 跳过的行数（overwrite_existing=False 且已有价格）
+    target_count: int  # 命中的同名 model_id 总行数
+
+
+class GlobalPricingSyncFromModelRequest(BaseModel):
+    """从指定 model 把价格反向写入全局表。"""
+    model_db_id: int
