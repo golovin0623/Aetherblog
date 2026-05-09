@@ -48,6 +48,10 @@ export function DataTable<T extends { id: number | string }>({
 
   const totalPages = Math.ceil(total / pageSize);
 
+  // 页脚的极光态导航按钮 —— DataTable 落在 surface-leaf 上,故 ring-offset 跟随 --bg-leaf。
+  const navButtonClass =
+    'group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]';
+
   return (
     <div className="surface-leaf surface-dashboard-card rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
@@ -180,7 +184,7 @@ export function DataTable<T extends { id: number | string }>({
               <button
                 onClick={() => onPageChange?.(page - 1)}
                 disabled={page <= 1}
-                className="group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]"
+                className={navButtonClass}
                 aria-label="上一页"
               >
                 <span
@@ -192,7 +196,7 @@ export function DataTable<T extends { id: number | string }>({
               <button
                 onClick={() => onPageChange?.(page + 1)}
                 disabled={page >= totalPages}
-                className="group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]"
+                className={navButtonClass}
                 aria-label="下一页"
               >
                 <span
