@@ -471,18 +471,13 @@ class GlobalPricingService:
                     if not isinstance(capabilities, dict):
                         capabilities = {}
 
-                    # overwrite=False 时：只填充缺失字段
+                    # overwrite=False 时：仅作为 target_in/out/cached 的解析依据；
+                    # 不再因为三个核心价格齐全就 fast-path skip —— 扩展键
+                    # (currency / audioInput / 其他) 仍可能缺失，需要补齐。
                     if not overwrite_existing:
                         existing_in = _model_input_per_1m(row)
                         existing_out = _model_output_per_1m(row)
                         existing_cached = _model_cached_input_per_1m(row)
-                        if (
-                            existing_in is not None
-                            and existing_out is not None
-                            and existing_cached is not None
-                        ):
-                            skipped += 1
-                            continue
                         target_in = (
                             existing_in if existing_in is not None else global_row.input_cost_per_1m
                         )
@@ -503,20 +498,33 @@ class GlobalPricingService:
 
                     # 把全局表里的扩展 pricing JSON 合并进 model 的 capabilities.pricing,
                     # 然后用统一的 _sync 规范化（保留模型原本的非 pricing capabilities）。
-                    merged_pricing = dict(capabilities.get("pricing") or {})
-                    for k, v in (global_row.pricing or {}).items():
-                        # units 会在 _sync 内重建，避免双重写入
-                        if k == "units":
-                            continue
-                        # overwrite=False 时只填充缺失的扩展键，保留模型自有的
-                        # currency / audioInput / 其他自定义字段
-                        if not overwrite_existing and k in merged_pricing:
-                            continue
-                        merged_pricing[k] = v
-                    if global_row.currency and (
-                        overwrite_existing or not merged_pricing.get("currency")
-                    ):
-                        merged_pricing["currency"] = global_row.currency
+                    if overwrite_existing:
+                        # 完全替换为全局基准 —— 模型上残留的旧键（含 pricing.input
+                        # 等）必须被清掉，否则全局的"清空"无法传播：_sync 会从
+                        # 旧 pricing.input 解析回老数值。
+                        merged_pricing = {
+                            k: v for k, v in (global_row.pricing or {}).items() if k != "units"
+                        }
+                        if global_row.input_cost_per_1m is None:
+                            merged_pricing.pop("input", None)
+                        if global_row.output_cost_per_1m is None:
+                            merged_pricing.pop("output", None)
+                        if global_row.cached_input_cost_per_1m is None:
+                            merged_pricing.pop("cachedInput", None)
+                        if global_row.currency:
+                            merged_pricing["currency"] = global_row.currency
+                    else:
+                        merged_pricing = dict(capabilities.get("pricing") or {})
+                        for k, v in (global_row.pricing or {}).items():
+                            if k == "units":
+                                continue
+                            # 仅填充缺失的扩展键，保留模型自有的 currency /
+                            # audioInput / 其他自定义字段
+                            if k in merged_pricing:
+                                continue
+                            merged_pricing[k] = v
+                        if global_row.currency and not merged_pricing.get("currency"):
+                            merged_pricing["currency"] = global_row.currency
                     capabilities["pricing"] = merged_pricing
 
                     (
@@ -533,6 +541,20 @@ class GlobalPricingService:
 
                     new_input_1k = resolved_in / 1000 if resolved_in is not None else None
                     new_output_1k = resolved_out / 1000 if resolved_out is not None else None
+
+                    # 与行的当前状态对比，确认是否真的需要 UPDATE —— 避免
+                    # overwrite=False 下扫到完全对齐的行也徒劳 bump updated_at,
+                    # 同时仍能体现 "skipped" 计数语义。
+                    old_input_1k = _to_float(row.get("input_cost_per_1k"))
+                    old_output_1k = _to_float(row.get("output_cost_per_1k"))
+                    old_caps = _parse_json(row.get("capabilities")) or {}
+                    if (
+                        _approx_equal(old_input_1k, new_input_1k)
+                        and _approx_equal(old_output_1k, new_output_1k)
+                        and old_caps == normalized_caps
+                    ):
+                        skipped += 1
+                        continue
 
                     await conn.execute(
                         """
