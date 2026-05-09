@@ -11,6 +11,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // mediaColumns 列举 model.MediaFile 中已映射的 media_files 表字段，
@@ -110,7 +111,7 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 	// 关键字同时模糊匹配存储文件名和原始文件名（不区分大小写）
 	if f.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (filename ILIKE $%d OR original_name ILIKE $%d)", idx, idx))
-		args = append(args, "%"+f.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
 

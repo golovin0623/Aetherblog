@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 )
 
@@ -126,7 +127,7 @@ func buildActivityWhere(f ActivityFilter) (string, []any) {
 	}
 	if f.Search != "" {
 		// ILIKE 跨 title / description 做不区分大小写的模糊匹配
-		pattern := "%" + escapeLike(f.Search) + "%"
+		pattern := "%" + dbutil.EscapeLike(f.Search) + "%"
 		ph := placeholder(pattern)
 		clauses = append(clauses,
 			"(title ILIKE "+ph+" OR description ILIKE "+ph+")")
@@ -141,10 +142,4 @@ func buildActivityWhere(f ActivityFilter) (string, []any) {
 		return "", args
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
-}
-
-// escapeLike 转义 PostgreSQL ILIKE 模式中的特殊字符，避免用户输入触发通配符匹配。
-func escapeLike(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return r.Replace(s)
 }
