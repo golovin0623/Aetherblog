@@ -1291,7 +1291,7 @@ function RenderingPreferencesButton({
                         <motion.span
                           layoutId="layout-pill"
                           aria-hidden
-                          className="absolute inset-0 -z-0 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]"
+                          className="absolute inset-0 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]"
                           transition={spring.soft}
                         />
                       )}
@@ -1366,15 +1366,9 @@ function RenderingPreferencesButton({
             <motion.div variants={sectionVariants}>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[12px] font-medium text-[var(--ink-primary)]">字体大小</span>
-                <motion.span
-                  key={fontSize}
-                  initial={{ opacity: 0, y: -3 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: motionDuration.instant, ease: motionEase.out }}
-                  className="font-mono text-[10.5px] tabular-nums text-[var(--ink-muted)]"
-                >
+                <span className="font-mono text-[10.5px] tnum text-[var(--ink-muted)]">
                   {fontSize}px
-                </motion.span>
+                </span>
               </div>
               <input
                 type="range"
