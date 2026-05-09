@@ -95,13 +95,19 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
     [sortedData],
   );
 
+  const hasData = sortedData.length > 0 && totalCost > 0;
+
   // ref: 移动端 min-h-[360px] 让 ResponsiveContainer 拿不到 definite height, BarChart
   // 在 height="100%" 下渲染为空。改用根据 bar 数量推导的定值高度: 头部/轴/边距固定 ~110px,
   // 每个任务类型再追加 44px, 兜底 360px (零数据态也保持视觉占位)。
   // ref: chatgpt-codex on PR #650 — 后端 analytics_repo.go GROUP BY task_type 无 LIMIT,
   // 自定义 task code 累积时 (50 个 → 2310px) 卡片会拉爆 dashboard 整页。叠一个 720px
   // 上限, 超出走容器内滚动, 既保留每行 44px 的可读性, 又锁住对页面布局的影响。
-  const naturalChartHeight = Math.max(360, sortedData.length * 44 + 110);
+  // ref: chatgpt-codex on PR #650 #2 — 当 task 分组很多但 totalCost === 0 (例如 cached-only
+  // 或 pricing 缺失), hasData=false 走空态文案, 不应继承 bar-count 高度, 收回到 360px。
+  const naturalChartHeight = hasData
+    ? Math.max(360, sortedData.length * 44 + 110)
+    : 360;
   const chartHeight = Math.min(720, naturalChartHeight);
   const needsScroll = naturalChartHeight > chartHeight;
 
@@ -124,8 +130,6 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
       </div>
     );
   }
-
-  const hasData = sortedData.length > 0 && totalCost > 0;
 
   return (
     <div
