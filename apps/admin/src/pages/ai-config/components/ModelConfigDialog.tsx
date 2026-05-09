@@ -67,11 +67,11 @@ export default function ModelConfigDialog({
     model_id: '',
     display_name: '',
     model_type: 'chat',
-    context_window: 128000,
-    max_output_tokens: 4096,
-    input_cost_per_1m: 0,
-    output_cost_per_1m: 0,
-    cached_input_cost_per_1m: 0,
+    context_window: '128000',
+    max_output_tokens: '4096',
+    input_cost_per_1m: '',
+    output_cost_per_1m: '',
+    cached_input_cost_per_1m: '',
     pricing_currency: 'USD' as ModelPricing['currency'],
     description: '',
     legacy: false,
@@ -132,15 +132,19 @@ export default function ModelConfigDialog({
     const contextWindow = resolveModelContextWindow(initial);
     const maxOutputTokens = resolveModelMaxOutputTokens(initial);
 
+    const initialInputCost = initial.input_cost_per_1m || pricing.input || 0;
+    const initialOutputCost = initial.output_cost_per_1m || pricing.output || 0;
+    const initialCachedInputCost = initial.cached_input_cost_per_1m || pricing.cachedInput || 0;
+
     setForm({
       model_id: initial.model_id,
       display_name: initial.display_name || '',
       model_type: initial.model_type || 'chat',
-      context_window: contextWindow || 128000,
-      max_output_tokens: maxOutputTokens || 4096,
-      input_cost_per_1m: initial.input_cost_per_1m || pricing.input || 0,
-      output_cost_per_1m: initial.output_cost_per_1m || pricing.output || 0,
-      cached_input_cost_per_1m: initial.cached_input_cost_per_1m || pricing.cachedInput || 0,
+      context_window: String(contextWindow || 128000),
+      max_output_tokens: String(maxOutputTokens || 4096),
+      input_cost_per_1m: initialInputCost ? String(initialInputCost) : '',
+      output_cost_per_1m: initialOutputCost ? String(initialOutputCost) : '',
+      cached_input_cost_per_1m: initialCachedInputCost ? String(initialCachedInputCost) : '',
       pricing_currency: pricing.currency || 'USD',
       description: extra.description ? String(extra.description) : '',
       legacy: !!extra.legacy,
@@ -199,11 +203,17 @@ export default function ModelConfigDialog({
       }
     }
 
+    const ctxWindow = parseInt(form.context_window, 10) || 0;
+    const maxOutput = parseInt(form.max_output_tokens, 10) || 0;
+    const inputCost = parseFloat(form.input_cost_per_1m) || 0;
+    const outputCost = parseFloat(form.output_cost_per_1m) || 0;
+    const cachedInputCost = parseFloat(form.cached_input_cost_per_1m) || 0;
+
     const pricing: ModelPricing = {
       currency: form.pricing_currency || 'USD',
-      input: form.input_cost_per_1m || undefined,
-      output: form.output_cost_per_1m || undefined,
-      cachedInput: form.cached_input_cost_per_1m || undefined,
+      input: inputCost || undefined,
+      output: outputCost || undefined,
+      cachedInput: cachedInputCost || undefined,
       ...pricingExtra,
     };
 
@@ -232,14 +242,14 @@ export default function ModelConfigDialog({
         enabledSearch: form.config.enabledSearch,
       },
       pricing:
-        pricingExtra || form.input_cost_per_1m || form.output_cost_per_1m || form.cached_input_cost_per_1m
+        pricingExtra || inputCost || outputCost || cachedInputCost
           ? pricing
           : undefined,
       parameters,
       released_at: form.released_at || null,
       source,
-      maxToken: form.context_window || undefined,
-      maxOutputTokens: form.max_output_tokens || undefined,
+      maxToken: ctxWindow || undefined,
+      maxOutputTokens: maxOutput || undefined,
       description: form.description || undefined,
       legacy: form.legacy,
       organization: form.organization || undefined,
@@ -253,11 +263,11 @@ export default function ModelConfigDialog({
         model_id: form.model_id,
         display_name: form.display_name || null,
         model_type: form.model_type,
-        context_window: form.context_window,
-        max_output_tokens: form.max_output_tokens,
-        input_cost_per_1m: form.input_cost_per_1m || null,
-        output_cost_per_1m: form.output_cost_per_1m || null,
-        cached_input_cost_per_1m: form.cached_input_cost_per_1m || null,
+        context_window: ctxWindow,
+        max_output_tokens: maxOutput,
+        input_cost_per_1m: inputCost || null,
+        output_cost_per_1m: outputCost || null,
+        cached_input_cost_per_1m: cachedInputCost || null,
         capabilities,
         is_enabled: true,
       };
@@ -266,11 +276,11 @@ export default function ModelConfigDialog({
       const payload: UpdateModelRequest = {
         display_name: form.display_name || null,
         model_type: form.model_type,
-        context_window: form.context_window,
-        max_output_tokens: form.max_output_tokens,
-        input_cost_per_1m: form.input_cost_per_1m || null,
-        output_cost_per_1m: form.output_cost_per_1m || null,
-        cached_input_cost_per_1m: form.cached_input_cost_per_1m || null,
+        context_window: ctxWindow,
+        max_output_tokens: maxOutput,
+        input_cost_per_1m: inputCost || null,
+        output_cost_per_1m: outputCost || null,
+        cached_input_cost_per_1m: cachedInputCost || null,
         capabilities,
       };
       updateMutation.mutate({ id: initial.id, data: payload }, { onSuccess: onClose });
@@ -286,8 +296,28 @@ export default function ModelConfigDialog({
 
   const isPending = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
-  // 上下文窗口预设值
-  const contextPresets = [4096, 8192, 16384, 32768, 65536, 131072, 200000, 1000000, 2000000];
+  // 上下文窗口预设档位
+  const contextPresets: Array<{ value: number; label: string }> = [
+    { value: 8192, label: '8K' },
+    { value: 32768, label: '32K' },
+    { value: 65536, label: '64K' },
+    { value: 131072, label: '128K' },
+    { value: 200000, label: '200K' },
+    { value: 400000, label: '400K' },
+    { value: 1000000, label: '1M' },
+    { value: 2000000, label: '2M' },
+  ];
+
+  // 最大输出 Tokens 预设档位
+  const outputTokensPresets: Array<{ value: number; label: string }> = [
+    { value: 2048, label: '2K' },
+    { value: 4096, label: '4K' },
+    { value: 8192, label: '8K' },
+    { value: 16384, label: '16K' },
+    { value: 32768, label: '32K' },
+    { value: 65536, label: '64K' },
+    { value: 131072, label: '128K' },
+  ];
 
   const extendParamSet = useMemo(() => new Set(form.settings.extendParams), [form.settings.extendParams]);
 
@@ -444,31 +474,37 @@ export default function ModelConfigDialog({
             {/* 上下文窗口 */}
             <div className="space-y-2">
               <label className="text-sm text-[var(--text-muted)]">最大上下文窗口</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={contextPresets.length - 1}
-                  value={contextPresets.indexOf(
-                    contextPresets.find((p) => p >= form.context_window) ||
-                      contextPresets[contextPresets.length - 1]
-                  )}
-                  onChange={(e) => {
-                    const idx = parseInt(e.target.value);
-                    setForm((prev) => ({ ...prev, context_window: contextPresets[idx] }));
-                  }}
-                  className="flex-1 accent-black dark:accent-white"
-                />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex flex-wrap gap-1.5 flex-1">
+                  {contextPresets.map((preset) => {
+                    const active = String(preset.value) === form.context_window;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, context_window: String(preset.value) }))
+                        }
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                          active
+                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
+                            : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={form.context_window}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      context_window: parseInt(e.target.value) || 0,
-                    }))
+                    setForm((prev) => ({ ...prev, context_window: e.target.value }))
                   }
-                  className="w-24 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-right text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  placeholder="自定义"
+                  className="w-full sm:w-28 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm sm:text-right text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
                 />
               </div>
             </div>
@@ -493,17 +529,39 @@ export default function ModelConfigDialog({
             {/* 最大输出 */}
             <div className="space-y-2">
               <label className="text-sm text-[var(--text-muted)]">最大输出 Tokens</label>
-              <input
-                type="number"
-                value={form.max_output_tokens}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    max_output_tokens: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
-              />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex flex-wrap gap-1.5 flex-1">
+                  {outputTokensPresets.map((preset) => {
+                    const active = String(preset.value) === form.max_output_tokens;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({ ...prev, max_output_tokens: String(preset.value) }))
+                        }
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                          active
+                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
+                            : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={form.max_output_tokens}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, max_output_tokens: e.target.value }))
+                  }
+                  placeholder="自定义"
+                  className="w-full sm:w-28 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm sm:text-right text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+                />
+              </div>
             </div>
 
             {form.model_type === 'image' && (
@@ -727,42 +785,45 @@ export default function ModelConfigDialog({
                 <label className="text-sm text-[var(--text-muted)]">输入成本 / 1M Tokens</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
                   value={form.input_cost_per_1m}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      input_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
+                    setForm((prev) => ({ ...prev, input_cost_per_1m: e.target.value }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  placeholder="0"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">输出成本 / 1M Tokens</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
                   value={form.output_cost_per_1m}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      output_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
+                    setForm((prev) => ({ ...prev, output_cost_per_1m: e.target.value }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  placeholder="0"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">缓存输入读取 / 1M Tokens</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
                   value={form.cached_input_cost_per_1m}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      cached_input_cost_per_1m: parseFloat(e.target.value) || 0,
-                    }))
+                    setForm((prev) => ({ ...prev, cached_input_cost_per_1m: e.target.value }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  placeholder="0"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
                 />
               </div>
             </div>
