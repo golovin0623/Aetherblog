@@ -131,44 +131,74 @@ export default function ModelPicker({
 
   // 弹出尺寸：top-start 用 300px、bottom-end 用 280px。
   const popoverWidth = placement === 'top-start' ? 300 : 280;
+  // 内容高度上限（max-h-[360px] 内框 + 上下 padding 8px*2 ≈ 376px）。
+  // 实际渲染高度作为"理想"上限，若任一方向空间不足则按可用空间夹紧并塞入
+  // 内框 maxHeight，避免菜单溢出视口顶部 / 底部。
+  const idealMenuHeight = 376;
 
-  // 计算 portal 弹层的 fixed 坐标。
-  //  - bottom-end：按钮下方 + 右对齐
-  //  - top-start：按钮上方 + 左对齐
-  // 同时夹在视口内 8px 安全区，避免左右溢出（移动端窄屏 320px 时按钮右对齐
-  // 加 280px 弹层会顶到屏幕外）。
-  const popStyle = useMemo<React.CSSProperties>(() => {
+  // 计算 portal 弹层的 fixed 坐标。横向：贴齐按钮端点 + 8px 视口安全区；
+  // 纵向：先按 placement 偏好放，空间不够则翻转到对侧；最终若两侧都不够，
+  // 把弹层压成"剩余空间 - 8px"并把 maxHeight 透传到内滚动框。
+  const { popStyle, contentMaxHeight } = useMemo<{
+    popStyle: React.CSSProperties;
+    contentMaxHeight: number | null;
+  }>(() => {
     if (!triggerRect || typeof window === 'undefined') {
-      return { position: 'fixed', top: 0, left: 0, opacity: 0, pointerEvents: 'none' };
+      return {
+        popStyle: { position: 'fixed', top: 0, left: 0, opacity: 0, pointerEvents: 'none' },
+        contentMaxHeight: null,
+      };
     }
     const margin = 8;
     const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // 横向定位 + 视口夹紧
     let left: number;
-    let top: number;
     if (placement === 'top-start') {
       left = triggerRect.left;
-      top = triggerRect.top - 8; // 弹层在上，bottom = top
     } else {
       left = triggerRect.right - popoverWidth;
-      top = triggerRect.bottom + 6;
     }
     if (left + popoverWidth > viewportWidth - margin) {
       left = viewportWidth - popoverWidth - margin;
     }
     if (left < margin) left = margin;
-    if (placement === 'top-start') {
+
+    // 纵向：先按偏好计算可用空间，不够就翻转。
+    const spaceBelow = viewportHeight - triggerRect.bottom - margin;
+    const spaceAbove = triggerRect.top - margin;
+    const prefersTop = placement === 'top-start';
+    const preferredSpace = prefersTop ? spaceAbove : spaceBelow;
+    const oppositeSpace = prefersTop ? spaceBelow : spaceAbove;
+    const flipped = preferredSpace < idealMenuHeight && oppositeSpace > preferredSpace;
+    const useTop = prefersTop ? !flipped : flipped;
+    const usableSpace = useTop ? spaceAbove : spaceBelow;
+    // 最终内容上限 = min(理想, 可用) - 估算 padding 16px。null = 不限制。
+    const heightCap = Math.max(120, Math.min(idealMenuHeight, usableSpace) - 16);
+    const contentMax = usableSpace < idealMenuHeight ? heightCap : null;
+
+    if (useTop) {
+      // 弹层底边贴在 trigger 上方 8px 处。
+      const bottom = viewportHeight - (triggerRect.top - 8);
       return {
-        position: 'fixed',
-        left,
-        bottom: window.innerHeight - top,
-        width: popoverWidth,
+        popStyle: {
+          position: 'fixed',
+          left,
+          bottom,
+          width: popoverWidth,
+        },
+        contentMaxHeight: contentMax,
       };
     }
     return {
-      position: 'fixed',
-      left,
-      top,
-      width: popoverWidth,
+      popStyle: {
+        position: 'fixed',
+        left,
+        top: triggerRect.bottom + 6,
+        width: popoverWidth,
+      },
+      contentMaxHeight: contentMax,
     };
   }, [triggerRect, placement, popoverWidth]);
 
@@ -232,7 +262,10 @@ export default function ModelPicker({
                 style={{ ...popStyle, background: 'var(--bg-leaf)', zIndex: 1001 }}
                 className="surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]"
               >
-            <div className="max-h-[360px] overflow-y-auto py-2">
+            <div
+              className="overflow-y-auto py-2"
+              style={{ maxHeight: contentMaxHeight ?? 360 }}
+            >
               {/* 默认（自动）选项 */}
               <button
                 type="button"
