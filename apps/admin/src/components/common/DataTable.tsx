@@ -151,13 +151,16 @@ export function DataTable<T extends { id: number | string }>({
 
       {/* 分页 */}
       {(totalPages > 1 || (pageSizeOptions && pageSizeOptions.length > 0 && total > 0)) && (
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[var(--border-subtle)]">
-          <span className="font-mono text-[11px] tracking-wider text-[var(--text-muted)] tnum">
-            共 {total} 条,第 {page}/{Math.max(totalPages, 1)} 页
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-4 border-t border-[var(--border-subtle)]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)] tnum">
+            共 <span className="text-[var(--text-secondary)]">{total.toLocaleString()}</span> 条
+            <span className="mx-2 text-[var(--ink-subtle,var(--border-default))]">·</span>
+            第 <span className="text-[var(--text-secondary)]">{page}</span>
+            <span className="opacity-60"> / {Math.max(totalPages, 1)}</span> 页
           </span>
           <div className="flex items-center gap-2">
             {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-              <label className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
                 <span className="hidden sm:inline">每页</span>
                 <StyledSelect
                   value={String(pageSize)}
@@ -167,28 +170,38 @@ export function DataTable<T extends { id: number | string }>({
                     label: String(opt),
                   }))}
                   ariaLabel="每页条数"
-                  className="w-16"
-                  buttonClassName="!h-7 !rounded-md !px-2 !text-[11px] !font-mono !tracking-wider"
-                  menuClassName="!rounded-lg"
+                  className="w-[72px]"
+                  buttonClassName="!h-8 !rounded-lg !px-3 !text-[12px] !font-mono !tracking-wider hover:!shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_4px_14px_-6px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+                  menuClassName="!rounded-xl"
                 />
               </label>
             )}
-            <button
-              onClick={() => onPageChange?.(page - 1)}
-              disabled={page <= 1}
-              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="上一页"
-            >
-              <ChevronLeft className="w-4 h-4 text-[var(--text-muted)]" />
-            </button>
-            <button
-              onClick={() => onPageChange?.(page + 1)}
-              disabled={page >= totalPages}
-              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="下一页"
-            >
-              <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onPageChange?.(page - 1)}
+                disabled={page <= 1}
+                className="group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]"
+                aria-label="上一页"
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 translate-x-full bg-gradient-to-r from-transparent via-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] to-transparent opacity-0 transition-[transform,opacity] duration-[520ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-full group-hover:opacity-100"
+                />
+                <ChevronLeft className="relative h-4 w-4 transition-transform duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-0.5 group-active:-translate-x-1" />
+              </button>
+              <button
+                onClick={() => onPageChange?.(page + 1)}
+                disabled={page >= totalPages}
+                className="group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]"
+                aria-label="下一页"
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] to-transparent opacity-0 transition-[transform,opacity] duration-[520ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-full group-hover:opacity-100"
+                />
+                <ChevronRight className="relative h-4 w-4 transition-transform duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-0.5 group-active:translate-x-1" />
+              </button>
+            </div>
           </div>
         </div>
       )}
