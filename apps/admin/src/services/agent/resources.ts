@@ -33,8 +33,24 @@ interface ApiEnvelope<T> {
   message?: string;
 }
 
-export function useArticleSearch(query: string, enabled: boolean) {
+interface ArticleListPayload {
+  items?: AgentArticle[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+/** picker 默认每页 10 条 —— 与 ArticlePicker 的 UI 固定行数对齐。 */
+export const ARTICLE_PAGE_SIZE = 10;
+
+export function useArticleSearch(
+  query: string,
+  enabled: boolean,
+  page: number = 1,
+  pageSize: number = ARTICLE_PAGE_SIZE,
+) {
   const [items, setItems] = useState<AgentArticle[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,28 +61,40 @@ export function useArticleSearch(query: string, enabled: boolean) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    const url = debounced.trim()
-      ? `/api/v1/agent/articles?q=${encodeURIComponent(debounced.trim())}&limit=20`
-      : `/api/v1/agent/articles?limit=12`;
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    if (debounced.trim()) params.set('q', debounced.trim());
+    const url = `/api/v1/agent/articles?${params.toString()}`;
     fetch(url, { credentials: 'include', signal: controller.signal, cache: 'no-store' })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as ApiEnvelope<AgentArticle[]>;
+        const json = (await res.json()) as ApiEnvelope<ArticleListPayload | AgentArticle[]>;
         if (json?.success === false) throw new Error(json.message || '加载失败');
-        setItems(Array.isArray(json?.data) ? json.data : []);
+        const data = json?.data;
+        if (Array.isArray(data)) {
+          setItems(data);
+          setTotal(data.length);
+          return;
+        }
+        const list = Array.isArray(data?.items) ? (data!.items as AgentArticle[]) : [];
+        setItems(list);
+        setTotal(typeof data?.total === 'number' ? data!.total! : list.length);
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : '未知错误');
         setItems([]);
+        setTotal(0);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [enabled, debounced]);
+  }, [enabled, debounced, page, pageSize]);
 
-  return { items, loading, error };
+  return { items, total, loading, error };
 }
 
 function useDebouncedValue<T>(value: T, delay: number): T {

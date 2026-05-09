@@ -295,6 +295,27 @@ func (r *PostRepo) FindPublished(ctx context.Context, pageNum, pageSize int) ([]
 	return rows, total, err
 }
 
+// FindPublishedNoPassword 与 FindPublished 类似，但额外排除密码保护文章。
+// 专用于 Agent picker 的 @ 文章选择器：picker 选中的文章会被注入 LLM prompt，
+// 因此密码保护文章必须在 SQL 层就剔除（避免 IDOR / 信息泄露）。
+// 排序规则：published_at DESC（picker 不需要置顶逻辑，按发布时间倒序即可）。
+func (r *PostRepo) FindPublishedNoPassword(ctx context.Context, pageNum, pageSize int) ([]postListRow, int64, error) {
+	const baseWhere = " WHERE p.deleted=false AND p.status='PUBLISHED' AND p.is_hidden=false AND p.password IS NULL"
+	var total int64
+	if err := r.db.GetContext(ctx, &total,
+		"SELECT COUNT(*) FROM posts p"+baseWhere); err != nil {
+		return nil, 0, err
+	}
+	offset := (pageNum - 1) * pageSize
+	var rows []postListRow
+	err := r.db.SelectContext(ctx, &rows,
+		`SELECT p.*, c.name AS category_name FROM posts p
+		 LEFT JOIN categories c ON p.category_id = c.id`+baseWhere+
+			fmt.Sprintf(" ORDER BY p.published_at DESC NULLS LAST, p.id DESC LIMIT %d OFFSET %d",
+				pageSize, offset))
+	return rows, total, err
+}
+
 // FindByCategory 返回指定分类下已发布、可见文章的分页列表及总数。
 // 操作表：posts LEFT JOIN categories；WHERE 条件额外增加 category_id = $1。
 func (r *PostRepo) FindByCategory(ctx context.Context, categoryID int64, pageNum, pageSize int) ([]postListRow, int64, error) {
