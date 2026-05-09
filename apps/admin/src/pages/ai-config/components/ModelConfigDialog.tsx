@@ -79,11 +79,13 @@ const OUTPUT_TOKENS_PRESETS: Array<{ value: number; label: string }> = [
   { value: 131072, label: '128K' },
 ];
 
-// 空串 → null（未设置），数字串 → number；保留 "0" 为合法值
+// 空串 → null（未设置），数字串 → number；保留 "0" 为合法值。
+// 用 `Number()` 而非 `parseFloat` —— 后者对 "12 cats" 之类宽松截取，
+// 这里要严格一些；同时支持 type="number" 输入框可能产生的 "1e6" 写法。
 const parseNum = (s: string): number | null => {
   const trimmed = s.trim();
   if (trimmed === '') return null;
-  const n = Number.parseFloat(trimmed);
+  const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
 };
 
