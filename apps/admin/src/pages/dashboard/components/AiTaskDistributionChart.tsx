@@ -102,7 +102,10 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
 
   if (loading) {
     return (
-      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px]">
+      <div
+        className="surface-leaf surface-dashboard-card p-6 rounded-xl"
+        style={{ height: `${chartHeight}px` }}
+      >
         <div className="h-6 w-44 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => (
