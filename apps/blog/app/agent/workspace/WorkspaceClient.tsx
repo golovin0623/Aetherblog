@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+import { spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
 import {
   ArrowLeft,
   ChevronDown,
@@ -1208,29 +1209,56 @@ function RenderingPreferencesButton({
 
   return (
     <div ref={wrapRef} className="relative">
-      <button
+      <motion.button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="渲染偏好"
         title="渲染偏好"
         aria-expanded={open}
-        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-all active:scale-90"
+        whileTap={{ scale: 0.92 }}
+        transition={spring.precise}
+        className={`relative inline-flex items-center justify-center w-9 h-9 rounded-lg transition-colors ${
+          open
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+            : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]'
+        }`}
       >
-        <SlidersHorizontal className="w-[18px] h-[18px]" />
-      </button>
+        <motion.span
+          animate={{ rotate: open ? 90 : 0 }}
+          transition={spring.precise}
+          className="inline-flex"
+        >
+          <SlidersHorizontal className="w-[18px] h-[18px]" />
+        </motion.span>
+        <AnimatePresence>
+          {open && (
+            <motion.span
+              key="ring"
+              aria-hidden
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.15 }}
+              transition={{ duration: motionDuration.quick, ease: motionEase.out }}
+              className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
+            />
+          )}
+        </AnimatePresence>
+      </motion.button>
+
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            variants={panelVariants}
+            initial="closed"
+            animate="open"
+            exit="closed"
+            style={{ transformOrigin: 'top right' }}
             role="dialog"
             aria-label="渲染偏好"
             className="absolute right-0 top-full mt-2 w-[280px] rounded-xl border border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-40 p-3"
           >
             {/* 显示模式 */}
-            <div className="mb-3">
+            <motion.div variants={sectionVariants} className="mb-3">
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[12px] font-medium text-[var(--ink-primary)]">显示模式</span>
                 <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
@@ -1246,33 +1274,43 @@ function RenderingPreferencesButton({
                 ).map((opt) => {
                   const active = opt.value === displayMode;
                   return (
-                    <button
+                    <motion.button
                       key={opt.value}
                       type="button"
                       onClick={() => onSetDisplayMode(opt.value)}
                       aria-pressed={active}
-                      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-all ${
+                      whileTap={{ scale: 0.96 }}
+                      transition={spring.precise}
+                      className={`relative flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
                         active
-                          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+                          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)]'
                           : 'border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]'
                       }`}
                     >
+                      {active && (
+                        <motion.span
+                          layoutId="layout-pill"
+                          aria-hidden
+                          className="absolute inset-0 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]"
+                          transition={spring.soft}
+                        />
+                      )}
                       <span
-                        className={`text-[12.5px] font-medium ${
+                        className={`relative text-[12.5px] font-medium transition-colors ${
                           active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]'
                         }`}
                       >
                         {opt.label}
                       </span>
-                      <span className="text-[10.5px] text-[var(--ink-muted)]">{opt.hint}</span>
-                    </button>
+                      <span className="relative text-[10.5px] text-[var(--ink-muted)]">{opt.hint}</span>
+                    </motion.button>
                   );
                 })}
               </div>
-            </div>
+            </motion.div>
 
             {/* 过渡动画 */}
-            <div className="mb-3">
+            <motion.div variants={sectionVariants} className="mb-3">
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[12px] font-medium text-[var(--ink-primary)]">过渡动画</span>
                 <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
@@ -1281,7 +1319,7 @@ function RenderingPreferencesButton({
               </div>
               <div
                 role="radiogroup"
-                className="grid grid-cols-3 gap-1 rounded-lg border border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 p-1"
+                className="relative grid grid-cols-3 gap-1 rounded-lg border border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 p-1"
               >
                 {(
                   [
@@ -1292,33 +1330,43 @@ function RenderingPreferencesButton({
                 ).map((opt) => {
                   const active = opt.value === streamAnimation;
                   return (
-                    <button
+                    <motion.button
                       key={opt.value}
                       type="button"
                       role="radio"
                       aria-checked={active}
                       onClick={() => onSetStreamAnimation(opt.value)}
-                      className={`h-7 rounded-md text-[12px] transition-all ${
+                      whileTap={{ scale: 0.94 }}
+                      transition={spring.precise}
+                      className={`relative h-7 rounded-md text-[12px] transition-colors ${
                         active
-                          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]'
-                          : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]'
+                          ? 'text-[var(--aurora-1)]'
+                          : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
                       }`}
                     >
-                      {opt.label}
-                    </button>
+                      {active && (
+                        <motion.span
+                          layoutId="stream-pill"
+                          aria-hidden
+                          className="absolute inset-0 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]"
+                          transition={spring.soft}
+                        />
+                      )}
+                      <span className="relative">{opt.label}</span>
+                    </motion.button>
                   );
                 })}
               </div>
               <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
                 节流模型 SSE 颗粒，平滑越好阅读节奏越稳。
               </p>
-            </div>
+            </motion.div>
 
             {/* 字体大小 */}
-            <div>
+            <motion.div variants={sectionVariants}>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[12px] font-medium text-[var(--ink-primary)]">字体大小</span>
-                <span className="font-mono text-[10.5px] tabular-nums text-[var(--ink-muted)]">
+                <span className="font-mono text-[10.5px] tnum text-[var(--ink-muted)]">
                   {fontSize}px
                 </span>
               </div>
@@ -1337,10 +1385,40 @@ function RenderingPreferencesButton({
                 <span>标准</span>
                 <span>A</span>
               </div>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 }
+
+const panelVariants = {
+  closed: {
+    opacity: 0,
+    y: -10,
+    scale: 0.9,
+    transition: {
+      ...spring.precise,
+      when: 'afterChildren',
+      staggerChildren: 0.025,
+      staggerDirection: -1,
+    },
+  },
+  open: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      ...spring.soft,
+      when: 'beforeChildren',
+      delayChildren: 0.05,
+      staggerChildren: 0.055,
+    },
+  },
+} as const;
+
+const sectionVariants = {
+  closed: { opacity: 0, y: 8 },
+  open: { opacity: 1, y: 0, transition: spring.soft },
+} as const;

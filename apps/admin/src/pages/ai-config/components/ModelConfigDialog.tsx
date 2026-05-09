@@ -93,6 +93,8 @@ const parseNum = (s: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+const costToString = (v: number | null | undefined) => (v == null ? '' : String(v));
+
 export default function ModelConfigDialog({
   mode,
   providerCode,
@@ -184,7 +186,6 @@ export default function ModelConfigDialog({
     const initialInputCost = initial.input_cost_per_1m ?? pricing.input ?? null;
     const initialOutputCost = initial.output_cost_per_1m ?? pricing.output ?? null;
     const initialCachedInputCost = initial.cached_input_cost_per_1m ?? pricing.cachedInput ?? null;
-    const costToString = (v: number | null | undefined) => (v == null ? '' : String(v));
 
     setForm({
       model_id: initial.model_id,
@@ -818,11 +819,9 @@ export default function ModelConfigDialog({
                           });
                           setForm((prev) => ({
                             ...prev,
-                            input_cost_per_1m: String(g.input_cost_per_1m ?? 0),
-                            output_cost_per_1m: String(g.output_cost_per_1m ?? 0),
-                            cached_input_cost_per_1m: String(
-                              g.cached_input_cost_per_1m ?? 0,
-                            ),
+                            input_cost_per_1m: costToString(g.input_cost_per_1m),
+                            output_cost_per_1m: costToString(g.output_cost_per_1m),
+                            cached_input_cost_per_1m: costToString(g.cached_input_cost_per_1m),
                             pricing_currency: (g.currency ||
                               'USD') as ModelPricing['currency'],
                             // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
