@@ -818,9 +818,11 @@ export default function ModelConfigDialog({
                           });
                           setForm((prev) => ({
                             ...prev,
-                            input_cost_per_1m: g.input_cost_per_1m ?? 0,
-                            output_cost_per_1m: g.output_cost_per_1m ?? 0,
-                            cached_input_cost_per_1m: g.cached_input_cost_per_1m ?? 0,
+                            input_cost_per_1m: String(g.input_cost_per_1m ?? 0),
+                            output_cost_per_1m: String(g.output_cost_per_1m ?? 0),
+                            cached_input_cost_per_1m: String(
+                              g.cached_input_cost_per_1m ?? 0,
+                            ),
                             pricing_currency: (g.currency ||
                               'USD') as ModelPricing['currency'],
                             // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
