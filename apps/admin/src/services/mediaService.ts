@@ -4,7 +4,7 @@ import { R, PageResult } from '@/types';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
-export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
+export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'MISSING';
 
 export interface MediaItem {
   id: number;

@@ -46,3 +46,22 @@ type ObjectInfo struct {
 type Lister interface {
 	List(ctx context.Context, prefix, continuationToken string, limit int) (objects []ObjectInfo, nextToken string, err error)
 }
+
+// Existser 是 Storage 的可选扩展接口,用于 Phase 5 的"备份完整性校验"。
+// 返回值:
+//
+//	exists=true, err=nil  → 对象存在
+//	exists=false, err=nil → 对象 *确认* 不存在(404 / NoSuchKey)
+//	err != nil            → 瞬时错误(网络 / 5xx / 凭据失效),caller 应跳过本轮不改状态
+//
+// 区分"确认不存在"与"瞬时错误"是关键 —— 否则一次网络抖动就会把整批 SYNCED 错标 MISSING。
+type Existser interface {
+	Exists(ctx context.Context, key string) (exists bool, err error)
+}
+
+// PublicURLKeyResolver 是 Storage 的可选扩展接口,用于从历史落库的公开 URL
+// 反解出后端 key。备份校验必须使用 backup_url 指向的原始对象,不能使用当前
+// media_files.file_path,因为主文件替换后 file_path 可能已经变化。
+type PublicURLKeyResolver interface {
+	KeyFromURL(rawURL string) (key string, err error)
+}

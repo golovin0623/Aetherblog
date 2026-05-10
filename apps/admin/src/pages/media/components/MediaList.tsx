@@ -8,7 +8,7 @@ import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2, FolderInpu
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
 import { format } from 'date-fns';
-import { StorageBadge } from './StorageBadge';
+import { StorageStatusIcon } from './StorageStatusIcon';
 
 interface MediaListProps {
   items: MediaItem[];
@@ -126,8 +126,14 @@ export function MediaList({
                     <span className="text-sm text-[var(--text-secondary)]">
                       {typeLabels[item.fileType] || item.fileType}
                     </span>
-                    {/* Phase 3 存储徽章 */}
-                    {item.storageType && <StorageBadge type={item.storageType} size="sm" />}
+                    {/* iCloud 风格存储/备份状态 */}
+                    {item.storageType && (
+                      <StorageStatusIcon
+                        storageType={item.storageType}
+                        syncStatus={item.syncStatus}
+                        size="sm"
+                      />
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">

@@ -2,8 +2,13 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // TestS3Storage_TypeReturnsProviderType 验证 Type() 透传 providerType。
@@ -157,6 +162,81 @@ func TestS3Storage_CustomURLPreservesExistingQuery(t *testing.T) {
 	}
 }
 
+func TestS3Storage_KeyFromURLUsesPersistedBackupLocation(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"ap-shanghai",
+		"path":"assets/",
+		"customUrl":"https://cdn.example.com/static?token=abc",
+		"options":"?variant=public",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+
+	rawURL := "https://cdn.example.com/static/assets/original/backup.png?token=abc&variant=public"
+	got, err := st.KeyFromURL(rawURL)
+	if err != nil {
+		t.Fatalf("KeyFromURL: %v", err)
+	}
+	if got != "original/backup.png" {
+		t.Fatalf("KeyFromURL()=%q want original/backup.png", got)
+	}
+}
+
+func TestS3Storage_KeyFromURLSupportsPathStyleEndpoint(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"us-east-1",
+		"endpoint":"https://1.1.1.1:9000/minio",
+		"allowPrivateEndpoint":true,
+		"forcePathStyle":true,
+		"path":"mirror/",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "MINIO")
+	if err != nil {
+		t.Fatalf("NewS3Storage(MINIO): %v", err)
+	}
+
+	rawURL := "https://1.1.1.1:9000/minio/example-bucket/mirror/old/a.png"
+	got, err := st.KeyFromURL(rawURL)
+	if err != nil {
+		t.Fatalf("KeyFromURL: %v", err)
+	}
+	if got != "old/a.png" {
+		t.Fatalf("KeyFromURL()=%q want old/a.png", got)
+	}
+}
+
+func TestS3Storage_KeyFromURLSupportsVirtualHostedEndpoint(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"ap-shanghai",
+		"endpoint":"https://cos.ap-shanghai.myqcloud.com/root",
+		"path":"mirror/",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+
+	rawURL := "https://example-bucket.cos.ap-shanghai.myqcloud.com/root/mirror/old/a.png"
+	got, err := st.KeyFromURL(rawURL)
+	if err != nil {
+		t.Fatalf("KeyFromURL: %v", err)
+	}
+	if got != "old/a.png" {
+		t.Fatalf("KeyFromURL()=%q want old/a.png", got)
+	}
+}
+
 func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
 	cfg := `{"bucket":"b","region":"ap-shanghai","path":"/assets/","accessKeyId":"k","secretAccessKey":"s"}`
 	st, err := NewS3Storage(cfg, "COS")
@@ -168,6 +248,46 @@ func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
 	}
 	if got := st.externalKey("assets/2026/05/a.png"); got != "2026/05/a.png" {
 		t.Fatalf("externalKey=%q", got)
+	}
+}
+
+func TestS3ObjectNotFoundErrorRecognizesGenericAPIAndHTTPStatus(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "generic not found",
+			err:  &smithy.GenericAPIError{Code: "NotFound", Message: "missing"},
+			want: true,
+		},
+		{
+			name: "generic no such key",
+			err:  &smithy.GenericAPIError{Code: "NoSuchKey", Message: "missing"},
+			want: true,
+		},
+		{
+			name: "http 404",
+			err: &smithyhttp.ResponseError{
+				Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusNotFound}},
+				Err:      errors.New("missing"),
+			},
+			want: true,
+		},
+		{
+			name: "access denied",
+			err:  &smithy.GenericAPIError{Code: "AccessDenied", Message: "denied"},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isS3ObjectNotFoundError(tc.err); got != tc.want {
+				t.Fatalf("isS3ObjectNotFoundError()=%v want %v", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -34,11 +34,12 @@ import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
 import { ImageEditor } from './ImageEditor';
 import { VersionHistory } from './VersionHistory';
-import { StorageBadge } from './StorageBadge';
-import { useMutation } from '@tanstack/react-query';
+import { StorageStatusIcon } from './StorageStatusIcon';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { storageSyncService } from '@/services/storageSyncService';
 import { toast } from 'sonner';
-import { CloudUpload, RefreshCcw, ExternalLink as ExternalLinkIcon } from 'lucide-react';
+import { CloudUpload, RefreshCcw, CloudOff, ExternalLink as ExternalLinkIcon } from 'lucide-react';
+import { ConfirmModal } from '@aetherblog/ui';
 
 interface MediaDetailProps {
   item: MediaItem;
@@ -394,17 +395,20 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 }
 
 /**
- * StorageInfoSection - 详情页"存储信息"分组
- *  - 显示主文件 storage type / 完整 URL
- *  - 显示备份 sync status / backup URL / 时间
- *  - 提供"立即同步到云" / "重试同步" 操作
- * @ref 对象存储 rollout - Phase 3 + Phase 4
+ * StorageInfoSection - 详情页"存储信息"分组(iCloud 风格重构)
+ *  - 单图标合并显示 storage type + sync status (StorageStatusIcon)
+ *  - 提供"立即同步" / "重试" / "重新备份" / "从云端移除备份" 操作
+ * @ref 对象存储 rollout - Phase 3 + Phase 4 + Phase 5(备份校验)
  */
 function StorageInfoSection({ media }: { media: MediaItem }) {
+  const queryClient = useQueryClient();
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+
   const syncMutation = useMutation({
     mutationFn: () => storageSyncService.syncOne(media.id),
     onSuccess: () => {
       toast.success('已加入备份队列');
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (e: any) => {
@@ -412,17 +416,42 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
     },
   });
 
+  const removeBackupMutation = useMutation({
+    mutationFn: () => storageSyncService.removeBackup(media.id),
+    onSuccess: () => {
+      toast.success('已移除云端备份(本地文件保留)');
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => {
+      toast.error(e.response?.data?.msg || '移除云端备份失败');
+    },
+  });
+
   const status = media.syncStatus || 'NONE';
-  const canSync = status === 'NONE' || status === 'FAILED';
+  const canSync = status === 'NONE' || status === 'FAILED' || status === 'MISSING';
   const canRetry = status === 'FAILED';
+  const canRemove = status === 'SYNCED' && !!media.backupUrl;
+  const isMissing = status === 'MISSING';
 
   return (
     <div className="rounded-xl bg-[var(--bg-secondary)]/30 dark:bg-white/[0.02] border border-black/5 dark:border-white/10 p-3 space-y-2.5">
       <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">存储信息</p>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--text-secondary)]">存储位置</span>
-        <StorageBadge type={media.storageType} size="md" />
+        <span className="text-xs text-[var(--text-secondary)]">云端状态</span>
+        <StorageStatusIcon
+          storageType={media.storageType}
+          syncStatus={status}
+          size="md"
+          showLabel
+        />
       </div>
+      {media.storageType && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-[var(--text-secondary)]">主存储</span>
+          <span className="text-[11px] font-mono text-[var(--text-muted)] tracking-wider">{media.storageType}</span>
+        </div>
+      )}
       {media.cdnUrl && (
         <div>
           <p className="text-[10px] text-[var(--text-muted)] mb-1">访问 URL</p>
@@ -436,11 +465,7 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
           </a>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--text-secondary)]">备份状态</span>
-        <SyncStatusPill status={status} />
-      </div>
-      {media.backupUrl && (
+      {media.backupUrl && status !== 'MISSING' && (
         <div>
           <p className="text-[10px] text-[var(--text-muted)] mb-1">备份位置</p>
           <a
@@ -459,42 +484,62 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
           最后备份: {format(new Date(media.backupAt), 'yyyy-MM-dd HH:mm:ss')}
         </p>
       )}
-      {(canSync || canRetry) && (
-        <button
-          onClick={() => syncMutation.mutate()}
-          disabled={syncMutation.isPending}
-          className={cn(
-            'w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-            canRetry
-              ? 'bg-status-warning/15 text-status-warning hover:bg-status-warning/25'
-              : 'bg-primary/15 text-primary hover:bg-primary/25',
-            syncMutation.isPending && 'opacity-60 cursor-not-allowed'
-          )}
-        >
-          {canRetry ? <RefreshCcw className="w-3.5 h-3.5" /> : <CloudUpload className="w-3.5 h-3.5" />}
-          {syncMutation.isPending ? '提交中...' : canRetry ? '重试同步' : '立即同步到云'}
-        </button>
+      {isMissing && (
+        <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-status-danger/10 border border-status-danger/30 text-[11px] text-status-danger">
+          <CloudOff className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>云端备份对象已不存在(可能被外部删除),请重新备份。</span>
+        </div>
       )}
-    </div>
-  );
-}
 
-/**
- * SyncStatusPill - 主文件 vs default provider 的镜像状态徽章
- * @ref 对象存储 rollout - Phase 3 (UI 占位) / Phase 4 (后端实装)
- */
-function SyncStatusPill({ status }: { status: NonNullable<MediaItem['syncStatus']> }) {
-  const config: Record<typeof status, { label: string; tint: string }> = {
-    NONE: { label: '无需备份', tint: 'bg-zinc-500/15 text-zinc-300' },
-    PENDING: { label: '待同步', tint: 'bg-amber-500/15 text-amber-400' },
-    SYNCING: { label: '同步中', tint: 'bg-blue-500/15 text-blue-400' },
-    SYNCED: { label: '已备份', tint: 'bg-green-500/15 text-green-400' },
-    FAILED: { label: '失败', tint: 'bg-red-500/15 text-red-400' },
-  };
-  const c = config[status];
-  return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', c.tint)}>
-      {c.label}
-    </span>
+      <div className="flex items-center gap-2">
+        {(canSync || canRetry) && (
+          <button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            className={cn(
+              'flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              isMissing
+                ? 'bg-status-danger/15 text-status-danger hover:bg-status-danger/25'
+                : canRetry
+                  ? 'bg-status-warning/15 text-status-warning hover:bg-status-warning/25'
+                  : 'bg-primary/15 text-primary hover:bg-primary/25',
+              syncMutation.isPending && 'opacity-60 cursor-not-allowed'
+            )}
+          >
+            {isMissing ? <RefreshCcw className="w-3.5 h-3.5" /> : canRetry ? <RefreshCcw className="w-3.5 h-3.5" /> : <CloudUpload className="w-3.5 h-3.5" />}
+            {syncMutation.isPending ? '提交中...' : isMissing ? '重新备份' : canRetry ? '重试同步' : '立即同步到云'}
+          </button>
+        )}
+        {canRemove && (
+          <button
+            onClick={() => setRemoveConfirmOpen(true)}
+            disabled={removeBackupMutation.isPending}
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              'bg-status-danger/10 text-status-danger hover:bg-status-danger/20 border border-status-danger/30',
+              removeBackupMutation.isPending && 'opacity-60 cursor-not-allowed'
+            )}
+            title="只删除云端备份,不动本地文件"
+          >
+            <CloudOff className="w-3.5 h-3.5" />
+            移除云端备份
+          </button>
+        )}
+      </div>
+
+      <ConfirmModal
+        isOpen={removeConfirmOpen}
+        title="移除云端备份"
+        message="将删除云端备份对象,但本地文件保留。可随时通过「立即同步到云」重新上传。是否继续?"
+        confirmText="移除备份"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          setRemoveConfirmOpen(false);
+          removeBackupMutation.mutate();
+        }}
+        onCancel={() => setRemoveConfirmOpen(false)}
+      />
+    </div>
   );
 }

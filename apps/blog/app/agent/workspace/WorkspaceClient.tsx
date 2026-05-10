@@ -64,6 +64,20 @@ const MODE_LABEL: Record<AgentMode, string> = {
   code: '编排',
 };
 
+// 转义正则元字符,确保用文章/标签名做 RegExp 子模式时安全。
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 从 draft 中清掉残留的 mention token(此前版本 handlePick* 会把 @title/#tag
+// 注入 textarea,移除胶囊后这些文字会变孤儿)。当前版本不再注入,本函数只为
+// 兼容旧草稿。匹配 "@title" / "#tag" 前后的可选空白,并把多重空白塌缩。
+function stripMentionToken(draft: string, prefix: '@' | '#', label: string): string {
+  if (!draft) return draft;
+  const pattern = new RegExp(`\\s*${escapeRegExp(prefix)}${escapeRegExp(label)}\\s*`, 'g');
+  return draft.replace(pattern, ' ').replace(/[ \t]{2,}/g, ' ').replace(/^\s+|\s+$/g, '');
+}
+
 /**
  * /agent/workspace —— Agent 工作台主界面
  *
@@ -653,27 +667,18 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   }, []);
 
   // ---- @ / # / / picker handlers ----
-  const handlePickArticle = useCallback(
-    (article: AgentArticle) => {
-      // toggle: 已选过则取消引用；否则加入 + 在 textarea 末尾追加 "@<title>"
-      setPendingArticles((curr) => {
-        if (curr.some((a) => a.id === article.id)) {
-          return curr.filter((a) => a.id !== article.id);
-        }
-        return [...curr, article];
-      });
-      // 仅在新增时把可视 token 插到 textarea
-      setPendingArticles((curr) => {
-        const wasSelected = curr.some((a) => a.id === article.id);
-        if (wasSelected) {
-          const sep = draft && !draft.endsWith(' ') ? ' ' : '';
-          composerRef.current?.insert(`${sep}@${article.title} `);
-        }
-        return curr;
-      });
-    },
-    [draft],
-  );
+  // 引用 token 与 textarea 文本解耦 —— ChatGPT / Codex 风格:已选项以独立胶囊
+  // 在 composer 上方呈现,textarea 内只放纯用户输入。这样移除胶囊不会留下脏文本,
+  // 也避免胶囊与文本"双份"显示导致歧义。handleSend 只读 pendingArticles/Tags
+  // 数组(行 497-498),textarea 内容对 payload 无影响。
+  const handlePickArticle = useCallback((article: AgentArticle) => {
+    setPendingArticles((curr) => {
+      if (curr.some((a) => a.id === article.id)) {
+        return curr.filter((a) => a.id !== article.id);
+      }
+      return [...curr, article];
+    });
+  }, []);
 
   const handlePickTag = useCallback((tag: AgentTag) => {
     setPendingTags((curr) => {
@@ -682,21 +687,32 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       }
       return [...curr, tag];
     });
-    setPendingTags((curr) => {
-      const wasSelected = curr.some((t) => t.slug === tag.slug);
-      if (wasSelected) {
-        composerRef.current?.insert(`#${tag.name} `);
-      }
-      return curr;
-    });
   }, []);
 
+  // remove handler 同时清理 draft 中可能残留的旧 "@title" / "#tag" 文本 ——
+  // 兼容此前版本 insert 到 textarea 的会话草稿。
   const handleRemoveArticle = useCallback(
-    (id: number) => setPendingArticles((curr) => curr.filter((a) => a.id !== id)),
+    (id: number) => {
+      setPendingArticles((curr) => {
+        const target = curr.find((a) => a.id === id);
+        if (target) {
+          setDraft((d) => stripMentionToken(d, '@', target.title));
+        }
+        return curr.filter((a) => a.id !== id);
+      });
+    },
     [],
   );
   const handleRemoveTag = useCallback(
-    (slug: string) => setPendingTags((curr) => curr.filter((t) => t.slug !== slug)),
+    (slug: string) => {
+      setPendingTags((curr) => {
+        const target = curr.find((t) => t.slug === slug);
+        if (target) {
+          setDraft((d) => stripMentionToken(d, '#', target.name));
+        }
+        return curr.filter((t) => t.slug !== slug);
+      });
+    },
     [],
   );
 
@@ -887,31 +903,15 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 onChange={handleModeChange}
               />
             </div>
-            {/* 移动端最高频操作：一键新建会话。Sidebar drawer 内也有"新对话"
-                按钮，但顶栏直达更适合"边看边开新话题"的连续使用场景。 */}
-            <button
-              type="button"
-              onClick={handleCreate}
-              aria-label="新建会话"
-              title="新建会话"
-              className="sm:hidden inline-flex items-center justify-center w-10 h-10 -mr-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] transition-all active:scale-90"
-            >
-              <Plus className="w-[18px] h-[18px]" />
-            </button>
-            <div className="hidden sm:flex items-center gap-1 pl-1 ml-1 border-l border-[var(--ink-subtle)]/15">
-              <RenderingPreferencesButton
-                displayMode={displayMode}
-                onSetDisplayMode={setDisplayMode}
-                streamAnimation={streamAnimation}
-                onSetStreamAnimation={setStreamAnimation}
-                fontSize={fontSize}
-                onSetFontSize={setFontSize}
-              />
+            {/* 顶栏右侧：主题切换 + 渲染偏好(含会话模式选择)。
+                "新对话"统一收回 Sidebar drawer 内,顶栏不再单独提供入口 ——
+                避免与 Sidebar 内的"新建会话"双入口造成认知重复。
+                移动端的"会话模式 / 模型选择"已分别迁移到本面板与 Composer 左下角。 */}
+            <div className="inline-flex items-center gap-1 sm:pl-1 sm:ml-1 sm:border-l sm:border-[var(--ink-subtle)]/15">
               <ThemeToggle size="sm" />
-            </div>
-            {/* 移动端：把渲染偏好挂在 + 旁边，避免顶栏拥挤 */}
-            <div className="sm:hidden inline-flex">
               <RenderingPreferencesButton
+                mode={activeSession?.mode || 'chat'}
+                onModeChange={handleModeChange}
                 displayMode={displayMode}
                 onSetDisplayMode={setDisplayMode}
                 streamAnimation={streamAnimation}
@@ -922,41 +922,6 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             </div>
           </div>
         </header>
-
-        {/* 移动端控制条：把"当前模式 / 模型选择 / 主题"集中到顶栏下方一行，
-            减少顶部认知负担。原顶栏 ModeSwitch 在 mobile 已隐藏，控制条以
-            只读 caption 形式展示当前模式（cowork/code 暂未上线，移动端没有
-            真实切换需求）；ModelPicker 走 activeSession ?? override 兜底，
-            与 composer 内的 ModelPicker 共享同一控制语义。 */}
-        <div className="sm:hidden relative z-30 px-3 pt-2 pb-1.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-substrate)]/88 backdrop-blur-md">
-          <div className="surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-2.5 py-2 flex items-center justify-between gap-2">
-            <div className="min-w-0 flex items-center gap-2">
-              <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-                模式
-              </span>
-              <span className="text-[12px] text-[var(--ink-primary)] truncate">
-                {MODE_LABEL[activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat']}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <ModelPicker
-                value={
-                  sessionModelOverride
-                    ? sessionModelOverride
-                    : {
-                        modelId: activeSession?.modelId ?? null,
-                        providerCode: activeSession?.providerCode ?? null,
-                      }
-                }
-                onChange={handleModelChange}
-                enabled={state.status === 'authed'}
-                placement="bottom-end"
-                compact
-              />
-              <ThemeToggle size="sm" />
-            </div>
-          </div>
-        </div>
 
         {/* 对话流 */}
         <div className="relative flex-1 min-h-0">
@@ -1027,29 +992,25 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             onAbort={handleAbort}
             busy={busy}
             leadingSlot={
-              // 移动端 ModelPicker 已经在顶栏下方控制条暴露，composer 内不再
-              // 重复渲染（避免触控区域内同一控件出现两次造成歧义 + 节省横向
-              // 空间给主行的 @ # / + 发送按钮）。桌面端没有独立控制条，
-              // composer 仍承载 ModelPicker。
-              // value 三元：override 存在时优先采用（含"自动选择"的 null/null
-              // 真值），否则回到 activeSession 存档。EmptyState 下两条路径都
-              // 落到正确显示，且用户主动选"自动"不会被会话存档值覆盖。
-              <div className="hidden sm:block">
-                <ModelPicker
-                  value={
-                    sessionModelOverride
-                      ? sessionModelOverride
-                      : {
-                          modelId: activeSession?.modelId ?? null,
-                          providerCode: activeSession?.providerCode ?? null,
-                        }
-                  }
-                  onChange={handleModelChange}
-                  enabled={state.status === 'authed'}
-                  placement="top-start"
-                  compact
-                />
-              </div>
+              // 移动端旧的"顶栏下方控制条"已移除,模型选择改为在 composer 左下角
+              // 暴露 —— 与桌面端共用同一入口,前后端一致语义。
+              // value 三元:override 存在时优先采用(含"自动选择"的 null/null
+              // 真值),否则回到 activeSession 存档。EmptyState 下两条路径都
+              // 落到正确显示,且用户主动选"自动"不会被会话存档值覆盖。
+              <ModelPicker
+                value={
+                  sessionModelOverride
+                    ? sessionModelOverride
+                    : {
+                        modelId: activeSession?.modelId ?? null,
+                        providerCode: activeSession?.providerCode ?? null,
+                      }
+                }
+                onChange={handleModelChange}
+                enabled={state.status === 'authed'}
+                placement="top-start"
+                compact
+              />
             }
             selectedArticles={pendingArticles}
             selectedTags={pendingTags}
@@ -1170,10 +1131,12 @@ function EmptyState({
 
 /**
  * RenderingPreferencesButton —— 顶栏挂的"渲染偏好"小弹层。
- * 包含「过渡动画」三段（无 / 淡入 / 平滑）+「字体大小」12-18px 滑块。
+ * 包含「会话模式」segmented + 「显示模式」+「过渡动画」+「字体大小」。
  * localStorage 持久化由父组件负责。
  */
 function RenderingPreferencesButton({
+  mode,
+  onModeChange,
   displayMode,
   onSetDisplayMode,
   streamAnimation,
@@ -1181,6 +1144,8 @@ function RenderingPreferencesButton({
   fontSize,
   onSetFontSize,
 }: {
+  mode: AgentMode;
+  onModeChange: (m: AgentMode) => void;
   displayMode: DisplayMode;
   onSetDisplayMode: (m: DisplayMode) => void;
   streamAnimation: StreamAnimationMode;
@@ -1257,6 +1222,17 @@ function RenderingPreferencesButton({
             aria-label="渲染偏好"
             className="absolute right-0 top-full mt-2 w-[280px] rounded-xl border border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-40 p-3"
           >
+            {/* 会话模式 (Chat / Cowork / Code) */}
+            <motion.div variants={sectionVariants} className="mb-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">会话模式</span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  MODE
+                </span>
+              </div>
+              <ModeSwitch value={mode} onChange={onModeChange} />
+            </motion.div>
+
             {/* 显示模式 */}
             <motion.div variants={sectionVariants} className="mb-3">
               <div className="mb-1.5 flex items-center justify-between">

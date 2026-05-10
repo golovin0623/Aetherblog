@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Server, Check, Trash2, TestTube, Edit3, Cloud, HardDrive, Loader2, Download, Upload } from 'lucide-react';
+import { Plus, Server, Star, Trash2, Zap, Edit3, Cloud, HardDrive, Loader2, Download, Upload } from 'lucide-react';
 import { Button, Toggle } from '@aetherblog/ui';
 import {
   storageProviderService,
@@ -346,6 +346,9 @@ export default function StorageProviderSettings() {
       {/* 全局开关:自动后台备份 — Phase 4 */}
       <AutoBackupToggle />
 
+      {/* 全局开关:定期备份完整性校验 — Phase 5 */}
+      <VerifyToggle />
+
       {/* 提供商列表 */}
       <div className="space-y-4">
         {isLoading ? (
@@ -460,43 +463,47 @@ function ProviderCard({
           <p className="text-sm text-[var(--text-secondary)] mt-2 break-all">{summary}</p>
           <p className="text-xs text-[var(--text-muted)] mt-1">优先级: {provider.priority}</p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 -mx-1 sm:mx-0 self-start">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 -mx-1 sm:mx-0 self-start flex-wrap">
           <button
             onClick={onTest}
             disabled={testing}
-            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
             title="测试连接"
             aria-label="测试连接"
           >
-            <TestTube className="w-4 h-4" />
+            <Zap className="w-3.5 h-3.5" />
+            <span>测试</span>
           </button>
           <button
             onClick={onEdit}
-            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors touch-manipulation"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors touch-manipulation"
             title="编辑配置"
             aria-label="编辑配置"
           >
-            <Edit3 className="w-4 h-4" />
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>编辑</span>
           </button>
           {!provider.isDefault && (
             <button
               onClick={onSetDefault}
               disabled={busySetDefault}
-              className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success/10 active:bg-status-success/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success/10 active:bg-status-success/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
               title="设为默认"
               aria-label="设为默认"
             >
-              <Check className="w-4 h-4" />
+              <Star className="w-3.5 h-3.5" />
+              <span>设默认</span>
             </button>
           )}
           <button
             onClick={onDelete}
             disabled={provider.isDefault || busyDelete}
-            className="p-2.5 sm:p-2 text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger/10 active:bg-status-danger/15 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger/10 active:bg-status-danger/15 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
             title={provider.isDefault ? '默认 provider 不可删除,请先切换' : '删除'}
             aria-label="删除"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>删除</span>
           </button>
         </div>
       </div>
@@ -756,6 +763,99 @@ function AutoBackupToggle() {
         </p>
       </div>
       <div className="shrink-0 inline-flex items-center gap-2">
+        {setMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" />}
+        <Toggle
+          checked={enabled}
+          disabled={isLoading || setMutation.isPending}
+          onChange={(next) => setMutation.mutate(next)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * VerifyToggle — 定期备份完整性校验开关 (Phase 5)。
+ *
+ * 后端落到 site_settings.storage.verify.auto_enabled,
+ * 切换后立即启停 verify worker (独立于主 sync worker)。
+ *
+ * 提供"立即扫描一轮"按钮,供 admin 手动触发(无需打开自动模式)。
+ */
+function VerifyToggle() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['storage-sync-verify-enabled'],
+    queryFn: () => storageSyncService.getVerifyEnabled(),
+  });
+  const enabled = data?.data?.autoEnabled ?? false;
+  const intervalSec = data?.data?.intervalSeconds ?? 86400;
+  const running = data?.data?.running ?? false;
+
+  const setMutation = useMutation({
+    mutationFn: (v: boolean) => storageSyncService.setVerifyEnabled(v),
+    onSuccess: (resp) => {
+      const next = resp?.data?.autoEnabled;
+      toast.success(next ? '已启用定期校验(verify worker 已启动)' : '已停用定期校验');
+      queryClient.invalidateQueries({ queryKey: ['storage-sync-verify-enabled'] });
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => {
+      toast.error(e.response?.data?.msg || '切换失败');
+    },
+  });
+
+  const verifyAllMutation = useMutation({
+    mutationFn: () => storageSyncService.verifyAll(),
+    onSuccess: (resp) => {
+      const checked = resp?.data?.checked ?? 0;
+      if (checked === 0) {
+        toast.info('当前没有到期需要校验的备份记录');
+      } else {
+        toast.success(`本轮校验完成,检查了 ${checked} 条记录`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => {
+      toast.error(e.response?.data?.msg || '触发校验失败');
+    },
+  });
+
+  // 间隔展示(秒 → 友好单位)
+  const intervalLabel = (() => {
+    if (intervalSec >= 86400 && intervalSec % 86400 === 0) return `${intervalSec / 86400} 天`;
+    if (intervalSec >= 3600 && intervalSec % 3600 === 0) return `${intervalSec / 3600} 小时`;
+    if (intervalSec >= 60 && intervalSec % 60 === 0) return `${intervalSec / 60} 分钟`;
+    return `${intervalSec} 秒`;
+  })();
+
+  return (
+    <div className="surface-leaf surface-admin-item rounded-xl p-4 mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+          定期备份完整性校验
+          {running && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-status-success/15 text-status-success text-[10px] font-medium">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Worker 运行中
+            </span>
+          )}
+        </p>
+        <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+          打开后,worker 每 {intervalLabel} 扫一遍 SYNCED 记录,HEAD 检查云端对象是否还在。
+          云端对象已被外部删除的记录会被标记为「云端缺失」,可在媒体详情页一键重新备份。
+        </p>
+      </div>
+      <div className="shrink-0 inline-flex items-center gap-2">
+        <button
+          onClick={() => verifyAllMutation.mutate()}
+          disabled={verifyAllMutation.isPending}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
+          title="立即扫描一轮(不打开自动模式也能触发)"
+        >
+          {verifyAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+          立即扫描
+        </button>
         {setMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" />}
         <Toggle
           checked={enabled}

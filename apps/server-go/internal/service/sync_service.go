@@ -45,6 +45,11 @@ type SyncService struct {
 
 	running atomic.Bool
 	cancel  context.CancelFunc
+
+	// Phase 5: 独立的备份完整性 verify worker
+	verifyRunning atomic.Bool
+	verifyDesired atomic.Bool
+	verifyCancel  atomic.Pointer[context.CancelFunc]
 }
 
 // NewSyncService 构造 SyncService。配套调用 Start() 启动 worker。
@@ -361,3 +366,380 @@ func (s *SyncService) resolveTargetProvider(ctx context.Context, targetProviderI
 
 // 确保依赖类型可见(避免循环 import)
 var _ storage.Storage = (*storage.LocalStorage)(nil)
+
+// ============================================================================
+// Phase 5: 删除云端备份 + 定期校验
+// ============================================================================
+
+// VerifyAutoEnabledKey / VerifyIntervalKey 是 site_settings 中存校验配置的 key。
+//
+//	storage.verify.auto_enabled       'true'/'false' 是否启用定期校验 worker
+//	storage.verify.interval_seconds   '86400'        校验间隔秒 (默认一天)
+//
+// migration 000048 时种入默认值。
+const (
+	VerifyAutoEnabledKey        = "storage.verify.auto_enabled"
+	VerifyIntervalKey           = "storage.verify.interval_seconds"
+	defaultVerifyIntervalSec    = 86400 // 一天
+	verifyBatchSize             = 50
+	verifyWorkerPollIntervalSec = 60 // worker 拣表间隔(找 due 的记录)
+)
+
+// RemoveBackup 删除云端备份对象,但保留本地主文件。
+//
+// 流程 (顺序敏感):
+//  1. 加载 media → 必须存在,sync_status 必须是 SYNCED 或 MISSING (允许从 MISSING 清掉残留 catalog 行)
+//  2. 用 backup_provider_id 解析 storage,删 backup_url 对应 key
+//     · 删除失败但是 NotFound 系错误 → 视作"云端已不在",当成清理 catalog 的副作用接受
+//     · 网络/凭据等瞬时错误 → 返回错误,catalog 不动 (避免 catalog 漏指针 + 云端残留)
+//  3. ClearBackup 清 sync_status=NONE + 全部 backup_*
+//
+// 不动 file_path / storage_provider_id / file_url —— 主文件保留。
+func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64) error {
+	media, err := s.mediaRepo.FindByID(ctx, mediaID)
+	if err != nil {
+		return fmt.Errorf("find media: %w", err)
+	}
+	if media == nil {
+		return fmt.Errorf("media %d not found", mediaID)
+	}
+	if media.BackupProviderID == nil || media.BackupURL == nil || *media.BackupURL == "" {
+		// 没有备份痕迹,直接清 catalog 即可(幂等)
+		if _, err := s.mediaRepo.ClearBackup(ctx, mediaID); err != nil {
+			return fmt.Errorf("clear backup row: %w", err)
+		}
+		return nil
+	}
+	// 用 backup_provider_id 解析对应 storage
+	bp := *media.BackupProviderID
+	store, _, err := s.mediaSvc.resolveStore(ctx, &bp)
+	if err != nil {
+		return fmt.Errorf("resolve backup store: %w", err)
+	}
+	backupKey, err := backupStorageKey(store, media.FilePath, media.BackupURL)
+	if err != nil {
+		return fmt.Errorf("resolve backup key: %w", err)
+	}
+	if backupTargetMatchesPrimary(media, backupKey) {
+		return errors.New("backup target matches primary media object; refusing to remove backup")
+	}
+	if err := store.Delete(ctx, backupKey); err != nil {
+		// 容忍 NotFound (云端已不存在视作删除成功)
+		if !isNotFoundLike(err) {
+			return fmt.Errorf("delete remote backup: %w", err)
+		}
+	}
+	if _, err := s.mediaRepo.ClearBackup(ctx, mediaID); err != nil {
+		return fmt.Errorf("clear backup row: %w", err)
+	}
+	return nil
+}
+
+// isNotFoundLike 粗暴判断 error 是否表示"对象不存在"。供 RemoveBackup 容忍幂等删除场景。
+func isNotFoundLike(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "nosuchkey") ||
+		strings.Contains(msg, "no such file") ||
+		(containsStandalone404(msg) && (strings.Contains(msg, "status") || strings.Contains(msg, "http") || strings.Contains(msg, "code")))
+}
+
+func containsStandalone404(msg string) bool {
+	start := 0
+	for {
+		i := strings.Index(msg[start:], "404")
+		if i < 0 {
+			return false
+		}
+		i += start
+		beforeOK := i == 0 || !isASCIIDigit(msg[i-1])
+		after := i + len("404")
+		afterOK := after >= len(msg) || !isASCIIDigit(msg[after])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = after
+	}
+}
+
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func backupTargetMatchesPrimary(media *model.MediaFile, backupKey string) bool {
+	if media == nil || media.BackupProviderID == nil {
+		return false
+	}
+	if media.StorageProviderID != nil && *media.BackupProviderID == *media.StorageProviderID && backupKey == media.FilePath {
+		return true
+	}
+	backupURL := normalizeMediaURL(strDeref(media.BackupURL))
+	if backupURL == "" {
+		return false
+	}
+	if normalizeMediaURL(media.FileURL) == backupURL {
+		return true
+	}
+	return media.CdnURL != nil && normalizeMediaURL(*media.CdnURL) == backupURL
+}
+
+func normalizeMediaURL(v string) string {
+	return strings.TrimRight(strings.TrimSpace(v), "/")
+}
+
+func backupStorageKey(store storage.Storage, filePath string, backupURL *string) (string, error) {
+	rawBackupURL := strings.TrimSpace(strDeref(backupURL))
+	if rawBackupURL == "" {
+		return filePath, nil
+	}
+	if resolver, ok := store.(storage.PublicURLKeyResolver); ok {
+		key, err := resolver.KeyFromURL(rawBackupURL)
+		if err != nil {
+			return "", err
+		}
+		return key, nil
+	}
+	if normalizeMediaURL(store.GetURL(filePath)) == normalizeMediaURL(rawBackupURL) {
+		return filePath, nil
+	}
+	return "", errors.New("backup_url does not match current file_path and storage backend cannot resolve it")
+}
+
+// VerifyAutoEnabled 报告是否启用定期备份校验。
+func (s *SyncService) VerifyAutoEnabled(ctx context.Context) bool {
+	if s.settingRepo == nil {
+		return false
+	}
+	row, err := s.settingRepo.FindByKey(ctx, VerifyAutoEnabledKey)
+	if err != nil || row == nil || row.SettingValue == nil {
+		return false
+	}
+	return strings.EqualFold(*row.SettingValue, "true")
+}
+
+// VerifyIntervalSec 读取校验间隔(秒);异常或未配置时返回默认值。
+func (s *SyncService) VerifyIntervalSec(ctx context.Context) int {
+	if s.settingRepo == nil {
+		return defaultVerifyIntervalSec
+	}
+	row, err := s.settingRepo.FindByKey(ctx, VerifyIntervalKey)
+	if err != nil || row == nil || row.SettingValue == nil {
+		return defaultVerifyIntervalSec
+	}
+	var n int
+	if _, err := fmt.Sscanf(*row.SettingValue, "%d", &n); err != nil || n < 60 {
+		return defaultVerifyIntervalSec
+	}
+	return n
+}
+
+// SetVerifyAutoEnabled 写入 site_settings + 立即启停 verify worker。
+func (s *SyncService) SetVerifyAutoEnabled(ctx context.Context, enabled bool) error {
+	if s.settingRepo == nil {
+		return errors.New("site setting repo not configured")
+	}
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	if err := s.settingRepo.Upsert(ctx, VerifyAutoEnabledKey, val); err != nil {
+		return err
+	}
+	if enabled {
+		s.StartVerifyWorker(ctx)
+	} else {
+		s.StopVerifyWorker()
+	}
+	return nil
+}
+
+// StartVerifyWorker 启动后台 verify worker (idempotent)。
+func (s *SyncService) StartVerifyWorker(ctx context.Context) {
+	s.verifyDesired.Store(true)
+	if s.verifyRunning.CompareAndSwap(false, true) {
+		workerCtx, cancel := context.WithCancel(context.Background())
+		s.verifyCancel.Store(&cancel)
+		go s.verifyLoop(workerCtx)
+	}
+}
+
+// StopVerifyWorker 通知 verify worker 退出。
+func (s *SyncService) StopVerifyWorker() {
+	s.verifyDesired.Store(false)
+	if cancel := s.verifyCancel.Load(); cancel != nil {
+		(*cancel)()
+	}
+}
+
+// VerifyAutoStartIfEnabled 在 server 启动时被调用 —— 只有用户开了开关才启动 worker。
+func (s *SyncService) VerifyAutoStartIfEnabled(ctx context.Context) {
+	if s.VerifyAutoEnabled(ctx) {
+		s.StartVerifyWorker(ctx)
+	}
+}
+
+// verifyLoop 校验 worker 主循环。
+func (s *SyncService) verifyLoop(ctx context.Context) {
+	defer func() {
+		if s.finishVerifyLoop() {
+			s.StartVerifyWorker(context.Background())
+		}
+	}()
+	tick := time.NewTicker(time.Duration(verifyWorkerPollIntervalSec) * time.Second)
+	defer tick.Stop()
+
+	for {
+		// 立即跑一次,然后才睡
+		for {
+			processed, err := s.VerifyOverdue(ctx, verifyBatchSize)
+			if err != nil {
+				log.Warn().Err(err).Int("checked", processed).Msg("verify worker: batch failed")
+				break
+			}
+			if processed > 0 {
+				log.Info().Int("checked", processed).Msg("verify worker: batch done")
+			}
+			if processed < verifyBatchSize {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+func (s *SyncService) finishVerifyLoop() bool {
+	s.verifyRunning.Store(false)
+	return s.verifyDesired.Load()
+}
+
+// VerifyOverdue 拣一批"到期需要校验"的 SYNCED 记录,逐条 HEAD 检查云端是否还在。
+// 返回本次实际处理数量。
+//
+// 调度策略:
+//
+//	staleBefore = NOW() - VerifyIntervalSec(从 settings 取)
+//	仅检查 last_verified_at IS NULL 或更早的记录
+func (s *SyncService) VerifyOverdue(ctx context.Context, limit int) (int, error) {
+	intervalSec := s.VerifyIntervalSec(ctx)
+	staleBefore := time.Now().Add(-time.Duration(intervalSec) * time.Second)
+	targets, err := s.mediaRepo.FindBackedUpForVerification(ctx, staleBefore, limit)
+	if err != nil {
+		return 0, fmt.Errorf("find verify targets: %w", err)
+	}
+	if len(targets) == 0 {
+		return 0, nil
+	}
+
+	processed := 0
+	var firstErr error
+	for _, t := range targets {
+		select {
+		case <-ctx.Done():
+			return processed, ctx.Err()
+		default:
+		}
+		if err := s.verifyOne(ctx, &t, true); err != nil {
+			log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: target failed")
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+		processed++
+	}
+	return processed, firstErr
+}
+
+// VerifyOne 校验单条记录(供 admin 手动触发)。
+// 不要求 sync_status=SYNCED;允许校验任意有 backup_provider_id 的行。
+func (s *SyncService) VerifyOne(ctx context.Context, mediaID int64) error {
+	media, err := s.mediaRepo.FindByID(ctx, mediaID)
+	if err != nil {
+		return fmt.Errorf("find media: %w", err)
+	}
+	if media == nil {
+		return fmt.Errorf("media %d not found", mediaID)
+	}
+	if media.BackupProviderID == nil || media.BackupURL == nil {
+		return errors.New("media has no backup to verify")
+	}
+	t := repository.BackupVerifyTarget{
+		ID:               media.ID,
+		FilePath:         media.FilePath,
+		BackupProviderID: media.BackupProviderID,
+		BackupURL:        media.BackupURL,
+	}
+	return s.verifyOne(ctx, &t, false)
+}
+
+// verifyOne 内部:对单个目标做 HEAD 检查 + 写状态。
+func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyTarget, markUnsupportedVerified bool) error {
+	if t.BackupProviderID == nil {
+		return errors.New("media has no backup provider")
+	}
+	store, _, err := s.mediaSvc.resolveStore(ctx, t.BackupProviderID)
+	if err != nil {
+		return fmt.Errorf("resolve backup store: %w", err)
+	}
+	existser, ok := store.(storage.Existser)
+	if !ok {
+		// provider 不支持 Exists。后台 worker 标记为已校验,避免同一批记录反复被拣起;
+		// 手动校验则返回明确错误,让 admin 知道这次没有真实 HEAD 检查。
+		log.Debug().Int64("media_id", t.ID).Msg("verify: storage backend has no Existser, skipping")
+		if markUnsupportedVerified {
+			if err := s.mediaRepo.MarkBackupVerified(ctx, t.ID, time.Now()); err != nil {
+				return fmt.Errorf("mark unsupported backend verified: %w", err)
+			}
+			return nil
+		}
+		return errors.New("storage backend does not support backup existence checks")
+	}
+	backupKey, err := backupStorageKey(store, t.FilePath, t.BackupURL)
+	if err != nil {
+		return fmt.Errorf("resolve backup key: %w", err)
+	}
+	exists, err := existser.Exists(ctx, backupKey)
+	if err != nil {
+		// 瞬时错误 —— 不改状态,等下轮再试
+		return fmt.Errorf("check backup existence: %w", err)
+	}
+	now := time.Now()
+	if exists {
+		if err := s.restoreBackupVerified(ctx, t.ID, now); err != nil {
+			return fmt.Errorf("mark backup verified: %w", err)
+		}
+		return nil
+	}
+	if err := s.mediaRepo.MarkBackupMissing(ctx, t.ID, now, "REMOTE_GONE: object not found at backup_url"); err != nil {
+		return fmt.Errorf("mark backup missing: %w", err)
+	}
+	log.Info().Int64("media_id", t.ID).Str("backup_url", strDeref(t.BackupURL)).Msg("verify: marked MISSING (object gone)")
+	return nil
+}
+
+func (s *SyncService) restoreBackupVerified(ctx context.Context, mediaID int64, at time.Time) error {
+	return s.mediaRepo.MarkBackupVerified(ctx, mediaID, at)
+}
+
+// IsVerifyRunning 当前 verify worker 是否在执行(供 admin 状态摘要)。
+func (s *SyncService) IsVerifyRunning() bool { return s.verifyRunning.Load() }
+
+// strDeref 安全解引 *string,nil 返回空串 (供日志用)。
+func strDeref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}

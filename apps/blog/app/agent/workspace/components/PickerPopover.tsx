@@ -64,6 +64,11 @@ export default function PickerPopover({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 6 }}
           transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          // inline style 强制实色背景:surface-overlay 在暗模式下走 rgb(... / 0.70)
+          // 玻璃半透明,EmptyState 背后有 aurora glow + 推荐卡片,picker 浮在
+          // 上面会穿透看到下层。强制 var(--bg-leaf) 让弹层=信息焦点。
+          // 与 ModelPicker.tsx 同一 fix。
+          style={{ background: 'var(--bg-leaf)' }}
           className={`absolute left-0 bottom-full mb-2 surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 z-40 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] ${className}`}
         >
           {children}

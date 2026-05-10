@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // LocalStorage 是基于本地文件系统的存储实现，将上传文件保存到指定目录。
@@ -92,8 +94,70 @@ func (s *LocalStorage) GetURL(key string) string {
 	return s.baseURL + "/" + key
 }
 
+// KeyFromURL 从 LocalStorage 生成的公开 URL 中反解业务 key。
+func (s *LocalStorage) KeyFromURL(rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", fmt.Errorf("local url: empty")
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(s.baseURL), "/")
+	if base == "" {
+		return "", fmt.Errorf("local base url: empty")
+	}
+
+	path := rawURL
+	if u, err := url.Parse(rawURL); err == nil && u.Path != "" {
+		path = u.Path
+	}
+
+	basePath := base
+	if u, err := url.Parse(base); err == nil && u.Path != "" {
+		if u.IsAbs() {
+			rawParsed, rawErr := url.Parse(rawURL)
+			if rawErr != nil {
+				return "", fmt.Errorf("local url: %w", rawErr)
+			}
+			if !strings.EqualFold(rawParsed.Scheme, u.Scheme) || !strings.EqualFold(rawParsed.Host, u.Host) {
+				return "", fmt.Errorf("local url: host does not match storage base")
+			}
+		}
+		basePath = u.Path
+	}
+
+	basePath = strings.TrimRight(basePath, "/")
+	path = strings.TrimRight(path, "/")
+	if !strings.HasPrefix(path, basePath+"/") {
+		return "", fmt.Errorf("local url path %q does not match base %q", path, basePath)
+	}
+	key := strings.TrimPrefix(path, basePath+"/")
+	if key == "" {
+		return "", fmt.Errorf("local url: missing key")
+	}
+	return key, nil
+}
+
 // Type 返回存储类型标识符 "LOCAL"。
 func (s *LocalStorage) Type() string { return "LOCAL" }
+
+// Exists 实现 Existser 接口 —— 检查 key 在本地文件系统是否存在。
+//
+//	exists=true   → 文件存在
+//	exists=false  → 确认不存在(os.IsNotExist)
+//	err != nil    → 路径穿越被拒 / 权限问题等瞬时错误
+func (s *LocalStorage) Exists(_ context.Context, key string) (bool, error) {
+	dest, err := getSafePath(s.basePath, key)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Stat(dest); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
 
 // Get 读取本地文件,返回 ReadCloser + 文件大小 + MIME 类型。
 // MIME 类型按扩展名启发(LOCAL 不存元数据,只能这么算)。
