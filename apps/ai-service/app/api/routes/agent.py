@@ -62,9 +62,8 @@ class AgentChatRequest(BaseModel):
     sessionId: str = Field(..., min_length=1, max_length=128)
     mode: Literal["chat", "cowork", "code"] = "chat"
     messages: list[AgentChatMessage] = Field(..., min_length=1, max_length=64)
-    # DEPRECATED：保留字段仅为前端 ModelPicker 请求体兼容；本端点不再接受
-    # 任何客户端提供的模型覆盖（见 _resolve_for_agent 内安全说明）。前端可
-    # 继续发送，服务端会静默忽略并按 _FALLBACK_TASK_ALIASES 自动路由。
+    # 前端 ModelPicker 显式选择的模型。服务端仍会重新校验：模型必须启用、
+    # 类型必须可用于 chat，且当前用户必须能拿到该 provider 的凭证。
     modelId: str | None = None
     providerCode: str | None = None
     # @ picker 选中的文章 ID 列表 —— 后端会查 posts 表取标题 + 摘要 + 正文片段，
@@ -258,26 +257,44 @@ async def _resolve_for_agent(
     llm_router: LlmRouter,
     *,
     user_id: int | None,
+    model_id: str | None = None,
+    provider_code: str | None = None,
 ) -> Any:
     """解析 Agent 调用的最终路由 ——
 
-    1. 按 _FALLBACK_TASK_ALIASES 顺序找第一个有 routing 的任务别名；
-    2. 全部找不到 → 抛 503，前端会渲染清晰的错误气泡。
+    1. 若用户在 ModelPicker 选择了具体模型，先按 user/provider credential
+       重新校验并尊重该 override；
+    2. 未指定模型时，按 _FALLBACK_TASK_ALIASES 顺序找第一个有 routing 的任务别名；
+    3. 全部找不到 → 抛 503，前端会渲染清晰的错误气泡。
 
     这层包装没复用 ``llm_router._resolve_route(...)`` 的全部逻辑，
     因为它在 routing 缺失时会进入 env-var 分支返回未带 provider 前缀的
     模型名（比如 ``"agent"`` 字面），而 LiteLLM 会因为辨认不出 provider
     抛 BadRequestError —— 那是这次 bug 的根因。
 
-    SECURITY (PR #591 / #614)：原本此处会先走 ``_resolve_override`` 路径让
-    管理员通过 ModelPicker 显式选模型，但 Go 端 ``agent_handler`` 对**所有**
-    登录用户都注入 ``X-Internal-Service`` 让 ai-service 的
-    ``require_admin_or_internal`` 直通，无法在 ai-service 单侧区分 admin /
-    普通用户 —— 因此这里完全移除 override 分支，保留 ``modelId`` /
-    ``providerCode`` 字段仅为请求体兼容（已在 ``AgentChatRequest`` 标注
-    DEPRECATED）。如要恢复 admin 级 override，须 Go 同步转发可信 role 标识，
-    并在此处重新建立 admin-only 闸口。
+    SECURITY：Go 端 ``agent_handler`` 对所有已登录用户注入内部服务 token，
+    所以这里不能信任客户端声称的权限或模型可用性。override 只能通过
+    ``LlmRouter._resolve_override`` 生效：它会按真实 ``user_id`` 查询模型、
+    provider 凭证、模型类型与启用状态；未通过校验时直接失败，避免静默落回
+    默认 Claude/OpenAI 路由造成"UI 选中但实际没生效"。
     """
+    if model_id:
+        try:
+            override = await llm_router._resolve_override(  # noqa: SLF001
+                model_id=model_id,
+                provider_code=provider_code,
+                user_id=user_id,
+                model_alias="agent",
+                allow_override=True,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        if override:
+            return override
+
     # 任务别名 fallback —— 从 model_router 拿 RoutingConfig
     if llm_router.model_router is None:
         raise HTTPException(
@@ -532,16 +549,28 @@ async def agent_chat(
 
     # X-Forwarded-User-ID 是 Go agent_handler 透传的真实登录用户 id；
     # require_admin_or_internal 在内部 token 路径下只能给出 "system"，
-    # 我们更信任前者，否则 _resolve_override / resolve_routing 都会做错的
-    # user-level 路由匹配。
+    # 我们更信任前者，否则 override / resolve_routing 都会做错 user-level
+    # 凭证匹配。
     user_id = _resolve_forwarded_user_id(user, forwarded_user_id)
 
-    # NOTE：``payload.modelId`` / ``payload.providerCode`` 已被 PR #614 安全
-    # 收紧为静默忽略 —— 见 ``AgentChatRequest`` 上的 DEPRECATED 注释与
-    # ``_resolve_for_agent`` 的 SECURITY 段。这里有意不向下传递。
     resolved = await _resolve_for_agent(
         llm_router,
         user_id=user_id,
+        model_id=payload.modelId,
+        provider_code=payload.providerCode,
+    )
+    logger.info(
+        "agent.route_resolved",
+        extra={
+            "data": {
+                "requested_provider_code": payload.providerCode,
+                "requested_model_id": payload.modelId,
+                "provider_code": resolved.provider_code,
+                "model_id": resolved.model_id,
+                "model": resolved.model,
+                "override": resolved.override,
+            }
+        },
     )
 
     # 把 @ / # picker 引用的文章 / 标签拼成上下文段（system 消息），让 Agent
