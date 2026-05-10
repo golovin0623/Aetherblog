@@ -12,6 +12,7 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // PostRepo 提供对 posts 表及相关 post_tags 关联表的数据访问能力。
@@ -245,9 +246,10 @@ func buildAdminWhere(f AdminPostFilter) (string, []any) {
 	}
 	if f.Keyword != nil && *f.Keyword != "" {
 		// 对标题和正文 Markdown 做大小写不敏感的模糊匹配
-		pattern := "%" + *f.Keyword + "%"
+		pattern := "%" + dbutil.EscapeLike(*f.Keyword) + "%"
+		ph := placeholder(pattern)
 		clauses = append(clauses,
-			fmt.Sprintf("(p.title ILIKE %s OR p.content_markdown ILIKE %s)", placeholder(pattern), placeholder(pattern)))
+			fmt.Sprintf("(p.title ILIKE %s OR p.content_markdown ILIKE %s)", ph, ph))
 	}
 	if f.CategoryID != nil {
 		clauses = append(clauses, "p.category_id = "+placeholder(*f.CategoryID))

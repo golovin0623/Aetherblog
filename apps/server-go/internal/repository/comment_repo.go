@@ -11,6 +11,7 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 )
 
@@ -76,7 +77,7 @@ func (r *CommentRepo) findWithFilter(ctx context.Context, f dto.CommentFilter) (
 	// 关键字同时模糊匹配评论内容和昵称（不区分大小写）
 	if f.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (content ILIKE $%d OR nickname ILIKE $%d)", idx, idx))
-		args = append(args, "%"+f.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
 
