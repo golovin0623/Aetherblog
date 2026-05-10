@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // LocalStorage 是基于本地文件系统的存储实现，将上传文件保存到指定目录。
@@ -90,6 +92,49 @@ func (s *LocalStorage) Delete(_ context.Context, key string) error {
 // GetURL 根据 key 拼接并返回文件的公开访问 URL。
 func (s *LocalStorage) GetURL(key string) string {
 	return s.baseURL + "/" + key
+}
+
+// KeyFromURL 从 LocalStorage 生成的公开 URL 中反解业务 key。
+func (s *LocalStorage) KeyFromURL(rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", fmt.Errorf("local url: empty")
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(s.baseURL), "/")
+	if base == "" {
+		return "", fmt.Errorf("local base url: empty")
+	}
+
+	path := rawURL
+	if u, err := url.Parse(rawURL); err == nil && u.Path != "" {
+		path = u.Path
+	}
+
+	basePath := base
+	if u, err := url.Parse(base); err == nil && u.Path != "" {
+		if u.IsAbs() {
+			rawParsed, rawErr := url.Parse(rawURL)
+			if rawErr != nil {
+				return "", fmt.Errorf("local url: %w", rawErr)
+			}
+			if !strings.EqualFold(rawParsed.Scheme, u.Scheme) || !strings.EqualFold(rawParsed.Host, u.Host) {
+				return "", fmt.Errorf("local url: host does not match storage base")
+			}
+		}
+		basePath = u.Path
+	}
+
+	basePath = strings.TrimRight(basePath, "/")
+	path = strings.TrimRight(path, "/")
+	if !strings.HasPrefix(path, basePath+"/") {
+		return "", fmt.Errorf("local url path %q does not match base %q", path, basePath)
+	}
+	key := strings.TrimPrefix(path, basePath+"/")
+	if key == "" {
+		return "", fmt.Errorf("local url: missing key")
+	}
+	return key, nil
 }
 
 // Type 返回存储类型标识符 "LOCAL"。

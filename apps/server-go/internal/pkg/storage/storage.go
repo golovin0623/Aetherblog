@@ -58,3 +58,10 @@ type Lister interface {
 type Existser interface {
 	Exists(ctx context.Context, key string) (exists bool, err error)
 }
+
+// PublicURLKeyResolver 是 Storage 的可选扩展接口,用于从历史落库的公开 URL
+// 反解出后端 key。备份校验必须使用 backup_url 指向的原始对象,不能使用当前
+// media_files.file_path,因为主文件替换后 file_path 可能已经变化。
+type PublicURLKeyResolver interface {
+	KeyFromURL(rawURL string) (key string, err error)
+}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	storagepkg "github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 )
 
 func TestIsNotFoundLikeRecognizesLocalMissingFiles(t *testing.T) {
@@ -35,19 +36,34 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 	backupID := int64(20)
 
 	cases := []struct {
-		name  string
-		media *model.MediaFile
-		want  bool
+		name      string
+		media     *model.MediaFile
+		backupKey string
+		want      bool
 	}{
 		{
-			name: "same provider",
+			name: "same provider and same key",
 			media: &model.MediaFile{
 				StorageProviderID: &primaryID,
 				BackupProviderID:  &primaryID,
+				FilePath:          "media/a.png",
 				FileURL:           "https://cdn.example.com/a.png",
 				BackupURL:         syncTestStringPtr("https://backup.example.com/a.png"),
 			},
-			want: true,
+			backupKey: "media/a.png",
+			want:      true,
+		},
+		{
+			name: "same provider but distinct key",
+			media: &model.MediaFile{
+				StorageProviderID: &primaryID,
+				BackupProviderID:  &primaryID,
+				FilePath:          "media/current.png",
+				FileURL:           "https://cdn.example.com/current.png",
+				BackupURL:         syncTestStringPtr("https://cdn.example.com/backup.png"),
+			},
+			backupKey: "media/backup.png",
+			want:      false,
 		},
 		{
 			name: "same public URL",
@@ -57,7 +73,8 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 				FileURL:           "https://cdn.example.com/a.png/",
 				BackupURL:         syncTestStringPtr("https://cdn.example.com/a.png"),
 			},
-			want: true,
+			backupKey: "backup/a.png",
+			want:      true,
 		},
 		{
 			name: "same CDN URL",
@@ -68,7 +85,8 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 				CdnURL:            syncTestStringPtr("https://cdn.example.com/a.png"),
 				BackupURL:         syncTestStringPtr("https://cdn.example.com/a.png/"),
 			},
-			want: true,
+			backupKey: "backup/a.png",
+			want:      true,
 		},
 		{
 			name: "distinct mirror",
@@ -79,7 +97,8 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 				CdnURL:            syncTestStringPtr("https://cdn.example.com/a.png"),
 				BackupURL:         syncTestStringPtr("https://backup.example.com/a.png"),
 			},
-			want: false,
+			backupKey: "backup/a.png",
+			want:      false,
 		},
 		{
 			name: "no backup provider",
@@ -88,16 +107,28 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 				FileURL:           "https://origin.example.com/a.png",
 				BackupURL:         syncTestStringPtr("https://origin.example.com/a.png"),
 			},
-			want: false,
+			backupKey: "origin/a.png",
+			want:      false,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := backupTargetMatchesPrimary(tc.media); got != tc.want {
+			if got := backupTargetMatchesPrimary(tc.media, tc.backupKey); got != tc.want {
 				t.Fatalf("backupTargetMatchesPrimary() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBackupStorageKeyUsesPersistedBackupURL(t *testing.T) {
+	store := storagepkg.NewLocalStorage(t.TempDir(), "/uploads")
+	got, err := backupStorageKey(store, "current/new.png", syncTestStringPtr("/uploads/original/backup.png"))
+	if err != nil {
+		t.Fatalf("backupStorageKey: %v", err)
+	}
+	if got != "original/backup.png" {
+		t.Fatalf("backupStorageKey() = %q, want original/backup.png", got)
 	}
 }
 

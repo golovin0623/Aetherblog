@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 // multipartThreshold 是 PutObject vs Multipart Upload 的切换阈值。
@@ -464,6 +465,75 @@ func (s *S3Storage) GetURL(key string) string {
 	return appendURLOptions(fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.cfg.Bucket, s.cfg.Region, objectKey), s.cfg.Options)
 }
 
+// KeyFromURL 从 GetURL 生成的公开 URL 反解出业务 key。
+func (s *S3Storage) KeyFromURL(rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", fmt.Errorf("s3 url: empty")
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("s3 url: %w", err)
+	}
+	if u.Path == "" {
+		return "", fmt.Errorf("s3 url: missing object path")
+	}
+
+	var objectKey string
+	publicBase := s.cfg.CustomURL
+	if publicBase == "" {
+		publicBase = s.cfg.URLPrefix
+	}
+	if publicBase != "" {
+		objectKey, err = stripURLBasePath(u, publicBase)
+	} else if s.cfg.Endpoint != "" && s.cfg.ForcePathStyle {
+		objectKey, err = stripURLBasePath(u, joinURLPath(s.cfg.Endpoint, s.cfg.Bucket))
+	} else if s.cfg.Endpoint != "" {
+		objectKey, err = stripURLBasePath(u, s.cfg.Endpoint)
+	} else {
+		objectKey = strings.TrimLeft(u.Path, "/")
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := validateS3Key(objectKey); err != nil {
+		return "", err
+	}
+	key := s.externalKey(objectKey)
+	if key == "" {
+		return "", fmt.Errorf("s3 url: missing key")
+	}
+	return key, nil
+}
+
+func stripURLBasePath(u *url.URL, rawBase string) (string, error) {
+	base, err := url.Parse(strings.TrimSpace(rawBase))
+	if err != nil {
+		return "", fmt.Errorf("base url: %w", err)
+	}
+	if base.IsAbs() {
+		if !strings.EqualFold(u.Scheme, base.Scheme) || !strings.EqualFold(u.Host, base.Host) {
+			return "", fmt.Errorf("url host %q does not match base %q", u.Host, base.Host)
+		}
+	}
+	path := strings.TrimLeft(u.Path, "/")
+	basePath := strings.Trim(base.Path, "/")
+	if basePath == "" {
+		if path == "" {
+			return "", fmt.Errorf("url path: missing key")
+		}
+		return path, nil
+	}
+	if path == basePath {
+		return "", fmt.Errorf("url path: missing key after base %q", basePath)
+	}
+	prefix := basePath + "/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", fmt.Errorf("url path %q does not match base path %q", path, basePath)
+	}
+	return strings.TrimPrefix(path, prefix), nil
+}
+
 func joinURLPath(base string, parts ...string) string {
 	base = strings.TrimSpace(base)
 	if base == "" {
@@ -670,12 +740,33 @@ func (s *S3Storage) Exists(ctx context.Context, key string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	// 检查是否为"对象不存在"(NotFound 或 NoSuchKey),这两种都是 404
-	var notFound *s3types.NotFound
-	var noSuchKey *s3types.NoSuchKey
-	if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+	if isS3ObjectNotFoundError(err) {
 		return false, nil
 	}
 	// 其他错误视为瞬时,caller 不应改状态
 	return false, err
+}
+
+func isS3ObjectNotFoundError(err error) bool {
+	var notFound *s3types.NotFound
+	var noSuchKey *s3types.NoSuchKey
+	if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		code := strings.ToLower(apiErr.ErrorCode())
+		if code == "notfound" || code == "no_such_key" || code == "nosuchkey" || code == "404" {
+			return true
+		}
+	}
+	var statusErr interface{ HTTPStatusCode() int }
+	if errors.As(err, &statusErr) && statusErr.HTTPStatusCode() == 404 {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "status code: 404") ||
+		strings.Contains(msg, "statuscode: 404") ||
+		strings.Contains(msg, "nosuchkey") ||
+		strings.Contains(msg, "not found")
 }

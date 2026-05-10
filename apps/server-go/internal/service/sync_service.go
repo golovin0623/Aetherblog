@@ -409,18 +409,20 @@ func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64) error {
 		}
 		return nil
 	}
-	if backupTargetMatchesPrimary(media) {
-		return errors.New("backup target matches primary media object; refusing to remove backup")
-	}
-
 	// 用 backup_provider_id 解析对应 storage
 	bp := *media.BackupProviderID
 	store, _, err := s.mediaSvc.resolveStore(ctx, &bp)
 	if err != nil {
 		return fmt.Errorf("resolve backup store: %w", err)
 	}
-	// 用 file_path 作为 key —— Phase 4 的 sync 流程就是用相同 key 上传到目标 provider
-	if err := store.Delete(ctx, media.FilePath); err != nil {
+	backupKey, err := backupStorageKey(store, media.FilePath, media.BackupURL)
+	if err != nil {
+		return fmt.Errorf("resolve backup key: %w", err)
+	}
+	if backupTargetMatchesPrimary(media, backupKey) {
+		return errors.New("backup target matches primary media object; refusing to remove backup")
+	}
+	if err := store.Delete(ctx, backupKey); err != nil {
 		// 容忍 NotFound (云端已不存在视作删除成功)
 		if !isNotFoundLike(err) {
 			return fmt.Errorf("delete remote backup: %w", err)
@@ -444,11 +446,11 @@ func isNotFoundLike(err error) bool {
 		strings.Contains(msg, "no such file")
 }
 
-func backupTargetMatchesPrimary(media *model.MediaFile) bool {
+func backupTargetMatchesPrimary(media *model.MediaFile, backupKey string) bool {
 	if media == nil || media.BackupProviderID == nil {
 		return false
 	}
-	if media.StorageProviderID != nil && *media.BackupProviderID == *media.StorageProviderID {
+	if media.StorageProviderID != nil && *media.BackupProviderID == *media.StorageProviderID && backupKey == media.FilePath {
 		return true
 	}
 	backupURL := normalizeMediaURL(strDeref(media.BackupURL))
@@ -463,6 +465,24 @@ func backupTargetMatchesPrimary(media *model.MediaFile) bool {
 
 func normalizeMediaURL(v string) string {
 	return strings.TrimRight(strings.TrimSpace(v), "/")
+}
+
+func backupStorageKey(store storage.Storage, filePath string, backupURL *string) (string, error) {
+	rawBackupURL := strings.TrimSpace(strDeref(backupURL))
+	if rawBackupURL == "" {
+		return filePath, nil
+	}
+	if resolver, ok := store.(storage.PublicURLKeyResolver); ok {
+		key, err := resolver.KeyFromURL(rawBackupURL)
+		if err != nil {
+			return "", err
+		}
+		return key, nil
+	}
+	if normalizeMediaURL(store.GetURL(filePath)) == normalizeMediaURL(rawBackupURL) {
+		return filePath, nil
+	}
+	return "", errors.New("backup_url does not match current file_path and storage backend cannot resolve it")
 }
 
 // VerifyAutoEnabled 报告是否启用定期备份校验。
@@ -653,7 +673,11 @@ func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyT
 		}
 		return errors.New("storage backend does not support backup existence checks")
 	}
-	exists, err := existser.Exists(ctx, t.FilePath)
+	backupKey, err := backupStorageKey(store, t.FilePath, t.BackupURL)
+	if err != nil {
+		return fmt.Errorf("resolve backup key: %w", err)
+	}
+	exists, err := existser.Exists(ctx, backupKey)
 	if err != nil {
 		// 瞬时错误 —— 不改状态,等下轮再试
 		return fmt.Errorf("check backup existence: %w", err)
