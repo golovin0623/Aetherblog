@@ -409,6 +409,9 @@ func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64) error {
 		}
 		return nil
 	}
+	if backupTargetMatchesPrimary(media) {
+		return errors.New("backup target matches primary media object; refusing to remove backup")
+	}
 
 	// 用 backup_provider_id 解析对应 storage
 	bp := *media.BackupProviderID
@@ -437,7 +440,29 @@ func isNotFoundLike(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "not found") ||
 		strings.Contains(msg, "nosuchkey") ||
-		strings.Contains(msg, "404")
+		strings.Contains(msg, "404") ||
+		strings.Contains(msg, "no such file")
+}
+
+func backupTargetMatchesPrimary(media *model.MediaFile) bool {
+	if media == nil || media.BackupProviderID == nil {
+		return false
+	}
+	if media.StorageProviderID != nil && *media.BackupProviderID == *media.StorageProviderID {
+		return true
+	}
+	backupURL := normalizeMediaURL(strDeref(media.BackupURL))
+	if backupURL == "" {
+		return false
+	}
+	if normalizeMediaURL(media.FileURL) == backupURL {
+		return true
+	}
+	return media.CdnURL != nil && normalizeMediaURL(*media.CdnURL) == backupURL
+}
+
+func normalizeMediaURL(v string) string {
+	return strings.TrimRight(strings.TrimSpace(v), "/")
 }
 
 // VerifyAutoEnabled 报告是否启用定期备份校验。
@@ -520,10 +545,23 @@ func (s *SyncService) verifyLoop(ctx context.Context) {
 
 	for {
 		// 立即跑一次,然后才睡
-		if processed, err := s.VerifyOverdue(ctx, verifyBatchSize); err != nil {
-			log.Warn().Err(err).Msg("verify worker: batch failed")
-		} else if processed > 0 {
-			log.Info().Int("checked", processed).Msg("verify worker: batch done")
+		for {
+			processed, err := s.VerifyOverdue(ctx, verifyBatchSize)
+			if err != nil {
+				log.Warn().Err(err).Int("checked", processed).Msg("verify worker: batch failed")
+				break
+			}
+			if processed > 0 {
+				log.Info().Int("checked", processed).Msg("verify worker: batch done")
+			}
+			if processed < verifyBatchSize {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 		}
 
 		select {
@@ -553,16 +591,22 @@ func (s *SyncService) VerifyOverdue(ctx context.Context, limit int) (int, error)
 	}
 
 	processed := 0
+	var firstErr error
 	for _, t := range targets {
 		select {
 		case <-ctx.Done():
 			return processed, ctx.Err()
 		default:
 		}
-		s.verifyOne(ctx, &t)
+		if err := s.verifyOne(ctx, &t, true); err != nil {
+			log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: target failed")
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 		processed++
 	}
-	return processed, nil
+	return processed, firstErr
 }
 
 // VerifyOne 校验单条记录(供 admin 手动触发)。
@@ -584,44 +628,48 @@ func (s *SyncService) VerifyOne(ctx context.Context, mediaID int64) error {
 		BackupProviderID: media.BackupProviderID,
 		BackupURL:        media.BackupURL,
 	}
-	s.verifyOne(ctx, &t)
-	return nil
+	return s.verifyOne(ctx, &t, false)
 }
 
 // verifyOne 内部:对单个目标做 HEAD 检查 + 写状态。
-func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyTarget) {
+func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyTarget, markUnsupportedVerified bool) error {
 	if t.BackupProviderID == nil {
-		return
+		return errors.New("media has no backup provider")
 	}
 	store, _, err := s.mediaSvc.resolveStore(ctx, t.BackupProviderID)
 	if err != nil {
-		log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: resolve store failed")
-		return
+		return fmt.Errorf("resolve backup store: %w", err)
 	}
 	existser, ok := store.(storage.Existser)
 	if !ok {
-		// provider 不支持 Exists —— 跳过,不改状态(避免误判)
+		// provider 不支持 Exists。后台 worker 标记为已校验,避免同一批记录反复被拣起;
+		// 手动校验则返回明确错误,让 admin 知道这次没有真实 HEAD 检查。
 		log.Debug().Int64("media_id", t.ID).Msg("verify: storage backend has no Existser, skipping")
-		return
+		if markUnsupportedVerified {
+			if err := s.mediaRepo.MarkBackupVerified(ctx, t.ID, time.Now()); err != nil {
+				return fmt.Errorf("mark unsupported backend verified: %w", err)
+			}
+			return nil
+		}
+		return errors.New("storage backend does not support backup existence checks")
 	}
 	exists, err := existser.Exists(ctx, t.FilePath)
 	if err != nil {
 		// 瞬时错误 —— 不改状态,等下轮再试
-		log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: head failed (transient), skip")
-		return
+		return fmt.Errorf("check backup existence: %w", err)
 	}
 	now := time.Now()
 	if exists {
 		if err := s.mediaRepo.MarkBackupVerified(ctx, t.ID, now); err != nil {
-			log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: mark verified failed")
+			return fmt.Errorf("mark backup verified: %w", err)
 		}
-		return
+		return nil
 	}
 	if err := s.mediaRepo.MarkBackupMissing(ctx, t.ID, now, "REMOTE_GONE: object not found at backup_url"); err != nil {
-		log.Warn().Err(err).Int64("media_id", t.ID).Msg("verify: mark missing failed")
-		return
+		return fmt.Errorf("mark backup missing: %w", err)
 	}
 	log.Info().Int64("media_id", t.ID).Str("backup_url", strDeref(t.BackupURL)).Msg("verify: marked MISSING (object gone)")
+	return nil
 }
 
 // IsVerifyRunning 当前 verify worker 是否在执行(供 admin 状态摘要)。

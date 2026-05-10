@@ -106,8 +106,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     el.style.height = `${userMinHeight ? Math.max(fitted, userMinHeight) : fitted}px`;
   }, [value, expanded, userMinHeight]);
 
-  // 监听用户拖拽 textarea 右下角 native resize 把手 —— pointerdown 记录起始
-  // 高度,pointerup 比对若变大则把它写入 userMinHeight 作为粘性偏好。
+  // 监听用户拖拽 textarea 右下角 native resize 把手,并把最新手动高度写成粘性偏好。
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -117,7 +116,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     };
     const onUp = () => {
       const upH = el.offsetHeight;
-      if (upH > downH + 4) {
+      if (Math.abs(upH - downH) > 4) {
         setUserMinHeight(upH);
       }
     };
