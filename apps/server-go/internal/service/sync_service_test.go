@@ -19,6 +19,8 @@ func TestIsNotFoundLikeRecognizesLocalMissingFiles(t *testing.T) {
 		{name: "s3 no such key", err: errors.New("NoSuchKey: key missing"), want: true},
 		{name: "http 404", err: errors.New("request failed with status 404"), want: true},
 		{name: "local file missing", err: errors.New("open uploads/a.png: no such file or directory"), want: true},
+		{name: "port number is not status", err: errors.New("dial tcp 127.0.0.1:4040: connect: connection refused"), want: false},
+		{name: "opaque 404 is not enough", err: errors.New("upstream 4040 retry budget exhausted after token 404x"), want: false},
 		{name: "permission", err: errors.New("permission denied"), want: false},
 	}
 
@@ -118,6 +120,28 @@ func TestBackupTargetMatchesPrimary(t *testing.T) {
 				t.Fatalf("backupTargetMatchesPrimary() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestFinishVerifyLoopRestartsOnlyWhenDesired(t *testing.T) {
+	svc := &SyncService{}
+
+	svc.verifyRunning.Store(true)
+	svc.verifyDesired.Store(false)
+	if restart := svc.finishVerifyLoop(); restart {
+		t.Fatal("finishVerifyLoop should not restart after explicit stop")
+	}
+	if svc.verifyRunning.Load() {
+		t.Fatal("finishVerifyLoop should clear running flag")
+	}
+
+	svc.verifyRunning.Store(true)
+	svc.verifyDesired.Store(true)
+	if restart := svc.finishVerifyLoop(); !restart {
+		t.Fatal("finishVerifyLoop should request restart when enable wins the shutdown race")
+	}
+	if svc.verifyRunning.Load() {
+		t.Fatal("finishVerifyLoop should clear running flag before restart")
 	}
 }
 

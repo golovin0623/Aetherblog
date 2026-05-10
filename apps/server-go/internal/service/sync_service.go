@@ -48,6 +48,7 @@ type SyncService struct {
 
 	// Phase 5: 独立的备份完整性 verify worker
 	verifyRunning atomic.Bool
+	verifyDesired atomic.Bool
 	verifyCancel  atomic.Pointer[context.CancelFunc]
 }
 
@@ -442,8 +443,30 @@ func isNotFoundLike(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "not found") ||
 		strings.Contains(msg, "nosuchkey") ||
-		strings.Contains(msg, "404") ||
-		strings.Contains(msg, "no such file")
+		strings.Contains(msg, "no such file") ||
+		(containsStandalone404(msg) && (strings.Contains(msg, "status") || strings.Contains(msg, "http") || strings.Contains(msg, "code")))
+}
+
+func containsStandalone404(msg string) bool {
+	start := 0
+	for {
+		i := strings.Index(msg[start:], "404")
+		if i < 0 {
+			return false
+		}
+		i += start
+		beforeOK := i == 0 || !isASCIIDigit(msg[i-1])
+		after := i + len("404")
+		afterOK := after >= len(msg) || !isASCIIDigit(msg[after])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = after
+	}
+}
+
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
 
 func backupTargetMatchesPrimary(media *model.MediaFile, backupKey string) bool {
@@ -535,6 +558,7 @@ func (s *SyncService) SetVerifyAutoEnabled(ctx context.Context, enabled bool) er
 
 // StartVerifyWorker 启动后台 verify worker (idempotent)。
 func (s *SyncService) StartVerifyWorker(ctx context.Context) {
+	s.verifyDesired.Store(true)
 	if !s.verifyRunning.CompareAndSwap(false, true) {
 		return
 	}
@@ -545,6 +569,7 @@ func (s *SyncService) StartVerifyWorker(ctx context.Context) {
 
 // StopVerifyWorker 通知 verify worker 退出。
 func (s *SyncService) StopVerifyWorker() {
+	s.verifyDesired.Store(false)
 	if cancel := s.verifyCancel.Load(); cancel != nil {
 		(*cancel)()
 	}
@@ -559,7 +584,11 @@ func (s *SyncService) VerifyAutoStartIfEnabled(ctx context.Context) {
 
 // verifyLoop 校验 worker 主循环。
 func (s *SyncService) verifyLoop(ctx context.Context) {
-	defer s.verifyRunning.Store(false)
+	defer func() {
+		if s.finishVerifyLoop() {
+			s.StartVerifyWorker(context.Background())
+		}
+	}()
 	tick := time.NewTicker(time.Duration(verifyWorkerPollIntervalSec) * time.Second)
 	defer tick.Stop()
 
@@ -590,6 +619,11 @@ func (s *SyncService) verifyLoop(ctx context.Context) {
 		case <-tick.C:
 		}
 	}
+}
+
+func (s *SyncService) finishVerifyLoop() bool {
+	s.verifyRunning.Store(false)
+	return s.verifyDesired.Load()
 }
 
 // VerifyOverdue 拣一批"到期需要校验"的 SYNCED 记录,逐条 HEAD 检查云端是否还在。
