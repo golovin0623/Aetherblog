@@ -32,6 +32,21 @@ export function useGlobalPricingCoverage() {
   });
 }
 
+
+export function useEnabledModelIds() {
+  return useQuery({
+    queryKey: [...globalPricingKeys.all, 'enabled-model-ids'],
+    queryFn: () => aiProviderService.listModels(),
+    select: (res) => {
+      const ids = new Set<string>();
+      (res.data || []).forEach((model) => {
+        if (model.is_enabled) ids.add(model.model_id);
+      });
+      return ids;
+    },
+  });
+}
+
 export function useUpsertGlobalPricing() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -24,18 +24,20 @@ import type {
 import {
   useApplyGlobalPricing,
   useDeleteGlobalPricing,
+  useEnabledModelIds,
   useGlobalPricingCoverage,
   useGlobalPricingList,
 } from './hooks';
 import GlobalPricingDialog from './GlobalPricingDialog';
 
-type FilterMode = 'all' | 'configured' | 'missing' | 'out-of-sync';
+type FilterMode = 'all' | 'configured' | 'missing' | 'out-of-sync' | 'enabled-only';
 
 const FILTER_OPTIONS: Array<{ value: FilterMode; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'configured', label: '已配置' },
   { value: 'missing', label: '未配置' },
   { value: 'out-of-sync', label: '存在脱锚' },
+  { value: 'enabled-only', label: '仅启用模型' },
 ];
 
 function formatPrice(value: number | null | undefined, currency = 'USD'): string {
@@ -75,6 +77,7 @@ export default function GlobalPricingPage() {
   const listQuery = useGlobalPricingList();
   const applyMutation = useApplyGlobalPricing();
   const deleteMutation = useDeleteGlobalPricing();
+  const enabledModelIdsQuery = useEnabledModelIds();
 
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
@@ -92,6 +95,7 @@ export default function GlobalPricingPage() {
   const filteredRows = useMemo(() => {
     const rows = coverageQuery.data || [];
     const lower = search.trim().toLowerCase();
+    const enabledModelIds = enabledModelIdsQuery.data ?? new Set<string>();
     return rows.filter((row) => {
       if (lower) {
         const haystack =
@@ -105,11 +109,13 @@ export default function GlobalPricingPage() {
           return !row.has_global;
         case 'out-of-sync':
           return row.has_global && (row.out_of_sync_count > 0 || row.missing_count > 0);
+        case 'enabled-only':
+          return enabledModelIds.has(row.model_id);
         default:
           return true;
       }
     });
-  }, [coverageQuery.data, filter, search]);
+  }, [coverageQuery.data, enabledModelIdsQuery.data, filter, search]);
 
   const stats = useMemo(() => {
     const rows = coverageQuery.data || [];
