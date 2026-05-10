@@ -559,12 +559,11 @@ func (s *SyncService) SetVerifyAutoEnabled(ctx context.Context, enabled bool) er
 // StartVerifyWorker 启动后台 verify worker (idempotent)。
 func (s *SyncService) StartVerifyWorker(ctx context.Context) {
 	s.verifyDesired.Store(true)
-	if !s.verifyRunning.CompareAndSwap(false, true) {
-		return
+	if s.verifyRunning.CompareAndSwap(false, true) {
+		workerCtx, cancel := context.WithCancel(context.Background())
+		s.verifyCancel.Store(&cancel)
+		go s.verifyLoop(workerCtx)
 	}
-	workerCtx, cancel := context.WithCancel(context.Background())
-	s.verifyCancel.Store(&cancel)
-	go s.verifyLoop(workerCtx)
 }
 
 // StopVerifyWorker 通知 verify worker 退出。
