@@ -247,8 +247,9 @@ func buildAdminWhere(f AdminPostFilter) (string, []any) {
 	if f.Keyword != nil && *f.Keyword != "" {
 		// 对标题和正文 Markdown 做大小写不敏感的模糊匹配
 		pattern := "%" + dbutil.EscapeLike(*f.Keyword) + "%"
+		ph := placeholder(pattern)
 		clauses = append(clauses,
-			fmt.Sprintf("(p.title ILIKE %s OR p.content_markdown ILIKE %s)", placeholder(pattern), placeholder(pattern)))
+			fmt.Sprintf("(p.title ILIKE %s OR p.content_markdown ILIKE %s)", ph, ph))
 	}
 	if f.CategoryID != nil {
 		clauses = append(clauses, "p.category_id = "+placeholder(*f.CategoryID))
