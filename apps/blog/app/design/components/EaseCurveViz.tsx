@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface EaseCurveVizProps {
   name: string;
@@ -33,14 +33,14 @@ export default function EaseCurveViz({
   const [x1, y1, x2, y2] = cubic;
   const cubicStr = `cubic-bezier(${cubic.join(', ')})`;
 
-  const scheduleTimeout = (callback: () => void, ms: number) => {
+  const scheduleTimeout = useCallback((callback: () => void, ms: number) => {
     const id = window.setTimeout(() => {
       timeoutIdsRef.current.delete(id);
       callback();
     }, ms);
     timeoutIdsRef.current.add(id);
     return id;
-  };
+  }, []);
 
   const clearScheduledTimers = () => {
     timeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
@@ -52,7 +52,7 @@ export default function EaseCurveViz({
   };
 
   // 单次播放周期 —— 把所有 setTimeout 收拢在一起,并在触发后自动移出跟踪集合
-  const playOnce = () => {
+  const playOnce = useCallback(() => {
     setPhase('run');
     scheduleTimeout(() => {
       setPhase('hold');
@@ -62,7 +62,7 @@ export default function EaseCurveViz({
         scheduleTimeout(() => setPhase('idle'), 30);
       }, 600);
     }, duration + 30);
-  };
+  }, [duration, scheduleTimeout]);
 
   // 手动点击:仅在 idle 时响应,避免连击叠状态
   const handleClick = () => {
@@ -90,7 +90,7 @@ export default function EaseCurveViz({
       clearScheduledTimers();
       setPhase('idle');
     };
-  }, [autoPlay, duration, initialDelay]);
+  }, [autoPlay, duration, initialDelay, playOnce, scheduleTimeout]);
 
   // 计算圆点 left + transition 表达
   const dotLeft = phase === 'run' || phase === 'hold' ? 'calc(100% - 16px)' : '0';

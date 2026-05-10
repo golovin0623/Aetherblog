@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // MediaTagRepo 负责对 media_tags 表及 media_file_tags 关联表进行数据访问操作。
@@ -35,7 +36,7 @@ func (r *MediaTagRepo) FindPopular(ctx context.Context, limit int) ([]model.Medi
 // keyword 支持部分匹配。
 func (r *MediaTagRepo) Search(ctx context.Context, keyword string) ([]model.MediaTag, error) {
 	var tags []model.MediaTag
-	err := r.db.SelectContext(ctx, &tags, `SELECT * FROM media_tags WHERE name ILIKE $1 OR slug ILIKE $1 ORDER BY usage_count DESC`, "%"+keyword+"%")
+	err := r.db.SelectContext(ctx, &tags, `SELECT * FROM media_tags WHERE name ILIKE $1 OR slug ILIKE $1 ORDER BY usage_count DESC`, "%"+dbutil.EscapeLike(keyword)+"%")
 	return tags, err
 }
 

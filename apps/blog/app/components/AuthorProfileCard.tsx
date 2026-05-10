@@ -248,6 +248,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
               className="object-cover outline-none select-none"
               priority
               draggable={false}
+              aria-hidden="true"
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
           </div>
