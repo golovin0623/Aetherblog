@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // multipartThreshold 是 PutObject vs Multipart Upload 的切换阈值。
@@ -646,4 +648,34 @@ func (s *S3Storage) HeadObject(ctx context.Context, key string) (size int64, mim
 		mime = *out.ContentType
 	}
 	return size, mime, true, nil
+}
+
+// Exists 实现 Existser 接口,专为 Phase 5 备份完整性校验设计。
+//
+// 与 HeadObject 的关键差别:
+//   - 区分"确认不存在"(types.NotFound / NoSuchKey)与"瞬时错误"(网络 / 5xx / 凭据失效)
+//   - 确认不存在时返回 (false, nil) — 校验 worker 据此把 SYNCED 标 MISSING
+//   - 瞬时错误返回 (false, err) — caller 跳过本轮,不更改 sync_status
+//
+// 这样一次网络抖动不会把整批 SYNCED 错标 MISSING。
+func (s *S3Storage) Exists(ctx context.Context, key string) (bool, error) {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
+		return false, err
+	}
+	_, err = s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.cfg.Bucket),
+		Key:    aws.String(objectKey),
+	})
+	if err == nil {
+		return true, nil
+	}
+	// 检查是否为"对象不存在"(NotFound 或 NoSuchKey),这两种都是 404
+	var notFound *s3types.NotFound
+	var noSuchKey *s3types.NoSuchKey
+	if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+		return false, nil
+	}
+	// 其他错误视为瞬时,caller 不应改状态
+	return false, err
 }

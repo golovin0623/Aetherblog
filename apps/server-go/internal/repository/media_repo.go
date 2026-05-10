@@ -323,6 +323,73 @@ func (r *MediaRepo) SetSyncStatus(ctx context.Context, id int64, status, errMsg 
 	return res.RowsAffected()
 }
 
+// ClearBackup 把 sync_status 置回 NONE 并清空所有 backup_* 字段 + last_verified_at。
+// 用于"删除云端备份"流程 (Phase 5):service 层先调 storage.Delete 删云端 blob,成功后再调本方法清 catalog 行。
+//
+// 不动 file_path / storage_provider_id 等主文件字段 —— 本地文件保留。
+func (r *MediaRepo) ClearBackup(ctx context.Context, id int64) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE media_files
+		SET sync_status='NONE',
+		    backup_provider_id=NULL,
+		    backup_url=NULL,
+		    backup_at=NULL,
+		    backup_error=NULL,
+		    last_verified_at=NULL
+		WHERE id=$1`, id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// BackupVerifyTarget 是 verify worker 拣到的待校验记录的轻量视图。
+// 故意不复用 model.MediaFile —— 校验只需要 backup_provider_id + backup_url(或 file_path 作为 key)。
+type BackupVerifyTarget struct {
+	ID               int64   `db:"id"`
+	FilePath         string  `db:"file_path"`
+	BackupProviderID *int64  `db:"backup_provider_id"`
+	BackupURL        *string `db:"backup_url"`
+}
+
+// FindBackedUpForVerification 拣 SYNCED 行供 verify worker 处理。
+// staleBefore 是阈值时间:last_verified_at 早于该时间或为 NULL(从未校验)的记录会被选中。
+// 按 last_verified_at NULLS FIRST 排序 —— 优先校验从未校验过的。
+func (r *MediaRepo) FindBackedUpForVerification(ctx context.Context, staleBefore time.Time, limit int) ([]BackupVerifyTarget, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var rows []BackupVerifyTarget
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT id, file_path, backup_provider_id, backup_url
+		FROM media_files
+		WHERE deleted=false
+		  AND sync_status='SYNCED'
+		  AND backup_provider_id IS NOT NULL
+		  AND (last_verified_at IS NULL OR last_verified_at < $1)
+		ORDER BY last_verified_at NULLS FIRST
+		LIMIT $2`, staleBefore, limit)
+	return rows, err
+}
+
+// MarkBackupVerified 校验成功 —— 仅更新 last_verified_at,不动其他字段。
+func (r *MediaRepo) MarkBackupVerified(ctx context.Context, id int64, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET last_verified_at=$1 WHERE id=$2`, at, id)
+	return err
+}
+
+// MarkBackupMissing 校验确认云端 404 —— 把 sync_status 置 MISSING,记录原因和校验时间。
+// 主文件 / 备份位置等其他字段保留,详情页可继续展示"上次备份位置(已失效)"。
+func (r *MediaRepo) MarkBackupMissing(ctx context.Context, id int64, at time.Time, reason string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_files
+		SET sync_status='MISSING',
+		    backup_error=$1,
+		    last_verified_at=$2
+		WHERE id=$3`, reason, at, id)
+	return err
+}
+
 // MediaVariant 是 media_variants 表的简化视图(只含管理流程需要的字段)。
 type MediaVariant struct {
 	ID          int64  `db:"id"`

@@ -17,7 +17,7 @@ import { CloudUpload, X, RotateCcw, AlertCircle, CheckCircle2, Loader2 } from 'l
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { storageSyncService, SyncFailedJob } from '@/services/storageSyncService';
 import { storageProviderService } from '@/services/storageProviderService';
-import { Button } from '@aetherblog/ui';
+import { Button, Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
 interface SyncDialogProps {
@@ -165,19 +165,21 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
 
                 {/* 目标 provider 选择 */}
                 <div>
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">备份目标 (target provider)</label>
-                  <select
-                    value={targetProviderId ?? ''}
-                    onChange={(e) => setTargetProviderId(e.target.value ? Number(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm"
-                  >
-                    <option value="">使用当前 default provider</option>
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.providerType}){p.isDefault ? ' — 默认' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor="sync-target-provider" className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">备份目标 (target provider)</label>
+                  <Select
+                    id="sync-target-provider"
+                    ariaLabel="备份目标 provider"
+                    value={targetProviderId !== undefined ? String(targetProviderId) : ''}
+                    onValueChange={(next) => setTargetProviderId(next ? Number(next) : undefined)}
+                    options={[
+                      { value: '', label: '使用当前 default provider' },
+                      ...providers.map((p) => ({
+                        value: String(p.id),
+                        label: `${p.name} (${p.providerType})${p.isDefault ? ' — 默认' : ''}`,
+                        description: p.providerType,
+                      })),
+                    ]}
+                  />
                   <p className="text-xs text-[var(--text-muted)] mt-1">
                     LOCAL provider 不能作为备份目标 — 需先在"存储管理"配置好云 provider。
                   </p>

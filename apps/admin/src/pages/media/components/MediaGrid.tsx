@@ -10,7 +10,7 @@ import { Image, Video, Music, FileText, Check, Trash2, Download, Link2, Eye, Fol
 import { useMediaQuery } from '@aetherblog/hooks';
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
-import { StorageBadge } from './StorageBadge';
+import { StorageStatusIcon } from './StorageStatusIcon';
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -162,10 +162,15 @@ export function MediaGrid({
                   </motion.button>
                 </div>
 
-                {/* 存储后端徽章 (右上角) — Phase 3 */}
+                {/* 存储/备份状态图标 (右上角) — iCloud 风格,合并 storageType + syncStatus */}
                 {item.storageType && (
-                  <div className="absolute top-2 right-2 z-20 pointer-events-none">
-                    <StorageBadge type={item.storageType} size="sm" />
+                  <div className="absolute top-2 right-2 z-20 pointer-events-none rounded-full bg-black/40 backdrop-blur-md p-1.5 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]">
+                    <StorageStatusIcon
+                      storageType={item.storageType}
+                      syncStatus={item.syncStatus}
+                      size="sm"
+                      tone="onMedia"
+                    />
                   </div>
                 )}
 

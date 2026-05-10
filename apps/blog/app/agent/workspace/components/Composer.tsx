@@ -17,6 +17,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  FileText,
 } from 'lucide-react';
 import ArticlePicker from './ArticlePicker';
 import TagPicker from './TagPicker';
@@ -82,6 +83,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [focused, setFocused] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [picker, setPicker] = useState<PickerKey>(null);
+  // 用户手动 resize 拖大后记录的高度,作为后续 auto-resize 的下限
+  // —— 让 manual height 成为粘性偏好,不会被新输入的 auto-fit 强制塌回。
+  const [userMinHeight, setUserMinHeight] = useState<number | null>(null);
 
   const atBtnRef = useRef<HTMLButtonElement>(null);
   const hashBtnRef = useRef<HTMLButtonElement>(null);
@@ -97,7 +101,37 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     if (!el) return;
     const max = expanded ? EXPANDED_MAX : DEFAULT_MAX;
     el.style.height = 'auto';
-    el.style.height = `${Math.max(MIN_HEIGHT, Math.min(el.scrollHeight, max))}px`;
+    const fitted = Math.max(MIN_HEIGHT, Math.min(el.scrollHeight, max));
+    // userMinHeight 让 manual resize 后保留拖大尺寸 —— 即便清空内容也不回缩。
+    el.style.height = `${userMinHeight ? Math.max(fitted, userMinHeight) : fitted}px`;
+  }, [value, expanded, userMinHeight]);
+
+  // 监听用户拖拽 textarea 右下角 native resize 把手 —— pointerdown 记录起始
+  // 高度,pointerup 比对若变大则把它写入 userMinHeight 作为粘性偏好。
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    let downH = el.offsetHeight;
+    const onDown = () => {
+      downH = el.offsetHeight;
+    };
+    const onUp = () => {
+      const upH = el.offsetHeight;
+      if (upH > downH + 4) {
+        setUserMinHeight(upH);
+      }
+    };
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
+  // 切换 expanded 或 value 清空时重置用户高度偏好,回到 auto-fit。
+  useEffect(() => {
+    if (!value) setUserMinHeight(null);
   }, [value, expanded]);
 
   function insertChar(text: string) {
@@ -134,54 +168,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const selectedTagSlugs = new Set(selectedTags.map((t) => t.slug));
 
   const canSend = !!value.trim() && !busy;
-  const max = expanded ? EXPANDED_MAX : DEFAULT_MAX;
 
   return (
     <div className="relative">
-      {/* mentions 区 —— 选中的文章 / 标签以 chip 形式显示在 composer 上方 */}
-      {(selectedArticles.length > 0 || selectedTags.length > 0) && (
-        <div className="mb-2 flex flex-wrap gap-1.5" aria-label="已引用">
-          {selectedArticles.map((a) => (
-            <span
-              key={`art-${a.id}`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[11.5px] text-[var(--aurora-1)] max-w-[14rem]"
-            >
-              <span aria-hidden="true">@</span>
-              <span className="truncate" title={a.title}>{a.title}</span>
-              {onRemoveArticle && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveArticle(a.id)}
-                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full hover:bg-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]"
-                  aria-label={`移除引用 ${a.title}`}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              )}
-            </span>
-          ))}
-          {selectedTags.map((t) => (
-            <span
-              key={`tag-${t.slug}`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/22 text-[11.5px] text-[var(--ink-secondary)]"
-            >
-              <span aria-hidden="true">#</span>
-              <span className="truncate max-w-[8rem]" title={t.name}>{t.name}</span>
-              {onRemoveTag && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveTag(t.slug)}
-                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]"
-                  aria-label={`移除标签 ${t.name}`}
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -198,6 +187,63 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         ].join(' ')}
         style={bottomSafeArea ? { paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' } : undefined}
       >
+        {/* mentions 区 —— 选中的文章 / 标签作为胶囊显示在 textarea 上方,
+            包在同一个 form 容器内,视觉上与 textarea 一体。Codex/ChatGPT 风格:
+            rounded-full 极致胶囊,精致图标 + 文字 + 点击 ✕ 同步清掉 pending +
+            draft 残留 token。 */}
+        {(selectedArticles.length > 0 || selectedTags.length > 0) && (
+          <div
+            className="mb-2 -mx-0.5 flex flex-wrap items-center gap-1.5"
+            aria-label="已引用上下文"
+          >
+            {selectedArticles.map((a) => (
+              <span
+                key={`art-${a.id}`}
+                className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[15rem] transition-all"
+                style={{
+                  background:
+                    'linear-gradient(135deg, color-mix(in oklch, var(--aurora-1) 14%, transparent), color-mix(in oklch, var(--aurora-1) 8%, transparent))',
+                  border: '1px solid color-mix(in oklch, var(--aurora-1) 36%, transparent)',
+                  color: 'var(--aurora-1)',
+                  boxShadow:
+                    '0 1px 0 inset color-mix(in oklch, var(--aurora-1) 14%, transparent), 0 2px 6px -3px color-mix(in oklch, var(--aurora-1) 38%, transparent)',
+                }}
+              >
+                <FileText className="w-3 h-3 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                <span className="truncate font-medium tracking-tight" title={a.title}>{a.title}</span>
+                {onRemoveArticle && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveArticle(a.id)}
+                    className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-1)]/75 hover:text-white hover:bg-[var(--aurora-1)] transition-colors"
+                    aria-label={`移除引用 ${a.title}`}
+                  >
+                    <X className="w-3 h-3" strokeWidth={2.75} />
+                  </button>
+                )}
+              </span>
+            ))}
+            {selectedTags.map((t) => (
+              <span
+                key={`tag-${t.slug}`}
+                className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[12rem] bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/30 text-[var(--ink-primary)] shadow-[0_1px_0_inset_rgba(255,255,255,0.04),0_2px_6px_-3px_rgba(0,0,0,0.12)] transition-all"
+              >
+                <Hash className="w-3 h-3 shrink-0 text-[var(--ink-muted)]" strokeWidth={2.25} aria-hidden="true" />
+                <span className="truncate font-medium tracking-tight" title={t.name}>{t.name}</span>
+                {onRemoveTag && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTag(t.slug)}
+                    className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-leaf)] transition-colors"
+                    aria-label={`移除标签 ${t.name}`}
+                  >
+                    <X className="w-3 h-3" strokeWidth={2.75} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={taRef}
           value={value}
@@ -208,8 +254,8 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           rows={1}
           aria-label="消息输入框"
           placeholder={placeholder ?? '提问、创建或开始任务。@ 引用文章 · / 调用命令'}
-          className="agent-composer-textarea w-full bg-transparent outline-none resize-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
-          style={{ maxHeight: `${max}px` }}
+          className="agent-composer-textarea w-full bg-transparent outline-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
+          style={{ resize: 'vertical', minHeight: `${MIN_HEIGHT}px` }}
           autoComplete="off"
           spellCheck={false}
         />
@@ -299,7 +345,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           </div>
         </div>
 
-        {/* Picker 弹层 —— 锚到对应的 ToolButton */}
+        {/* Picker 弹层 —— 锚到对应的 ToolButton。
+            选中后立即关闭弹层,避免遮挡刚加进胶囊区的 chip;要多选则用户再次点
+            @ / # / / 重新打开,符合 ChatGPT/Codex 的"挑一项就收"的快进交互。 */}
         {onPickArticle && (
           <ArticlePicker
             open={picker === 'article'}
@@ -308,7 +356,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             selectedIds={selectedArticleIds}
             onPick={(a) => {
               onPickArticle(a);
-              // 选中后保持弹层打开，方便连续选多篇；用户点击外部 / Esc / 再次点 @ 关闭
+              setPicker(null);
             }}
           />
         )}
@@ -320,6 +368,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             selectedSlugs={selectedTagSlugs}
             onPick={(t) => {
               onPickTag(t);
+              setPicker(null);
             }}
           />
         )}

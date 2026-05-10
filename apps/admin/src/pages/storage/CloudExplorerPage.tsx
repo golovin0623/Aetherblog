@@ -15,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Cloud, Folder, FileText, Download, Eye, Trash2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
 import { storageProviderService } from '@/services/storageProviderService';
-import { Button } from '@aetherblog/ui';
+import { Button, ConfirmModal } from '@aetherblog/ui';
 import { formatFileSize } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -36,6 +36,7 @@ export default function CloudExplorerPage() {
   const [currentToken, setCurrentToken] = useState('');
   const [tokenStack, setTokenStack] = useState<string[]>([]); // 用于"上一页"
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: providersResp } = useQuery({
     queryKey: ['storage-providers'],
@@ -212,11 +213,7 @@ export default function CloudExplorerPage() {
           <Button
             variant="secondary"
             disabled={orphanSelected.size === 0 || deleteMutation.isPending}
-            onClick={() => {
-              if (confirm(`确定从云端永久删除 ${orphanSelected.size} 个对象? (catalog 中存在的会被拒绝)`)) {
-                deleteMutation.mutate(Array.from(orphanSelected));
-              }
-            }}
+            onClick={() => setDeleteConfirmOpen(true)}
             className="gap-1.5 text-status-danger"
           >
             <Trash2 className="w-4 h-4" /> 从云端删除
@@ -334,6 +331,20 @@ export default function CloudExplorerPage() {
           </Button>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="从云端永久删除"
+        message={`确定从云端永久删除 ${orphanSelected.size} 个对象? (catalog 中存在的会被拒绝)`}
+        confirmText="确定删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          deleteMutation.mutate(Array.from(orphanSelected));
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }

@@ -313,6 +313,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 优先级: site_settings.storage.sync.auto_enabled > config.SyncConfig.AutoEnabled
 	// admin 在 UI 上切换 site_settings 后(StorageProviderSettings 自动同步开关)立即启停
 	syncSvc.AutoStartIfEnabled(context.Background())
+	syncSvc.VerifyAutoStartIfEnabled(context.Background()) // Phase 5: 定期备份校验 worker
 	syncHandler := handler.NewSyncHandler(syncSvc)
 
 	mediaHandler := handler.NewMediaHandler(mediaSvc, activitySvc)

@@ -72,4 +72,31 @@ export const storageSyncService = {
   setAutoEnabled: (autoEnabled: boolean): Promise<R<{ autoEnabled: boolean }>> => {
     return api.put('/v1/admin/storage/sync/auto-enabled', { autoEnabled });
   },
+
+  // ========== Phase 5: 删除云端备份 + 定期校验 ==========
+
+  /** 删除云端备份对象,但保留本地主文件。sync_status 重置为 NONE。 */
+  removeBackup: (mediaId: number): Promise<R<void>> => {
+    return api.delete(`/v1/admin/media/${mediaId}/backup`);
+  },
+
+  /** 手动校验单条记录的云端备份是否存在(404 → 标记 MISSING) */
+  verifyOne: (mediaId: number): Promise<R<void>> => {
+    return api.post(`/v1/admin/media/${mediaId}/verify`);
+  },
+
+  /** 手动触发批量校验(后端按 staleBefore 拣 SYNCED 行,做 HEAD 检查) */
+  verifyAll: (limit = 200): Promise<R<{ checked: number }>> => {
+    return api.post('/v1/admin/storage/sync/verify', null, { params: { limit } });
+  },
+
+  /** 读取定期校验开关 + 当前间隔 + worker 是否运行 */
+  getVerifyEnabled: (): Promise<R<{ autoEnabled: boolean; intervalSeconds: number; running: boolean }>> => {
+    return api.get('/v1/admin/storage/sync/verify-enabled');
+  },
+
+  /** 切换定期校验开关(立即启停 verify worker) */
+  setVerifyEnabled: (autoEnabled: boolean): Promise<R<{ autoEnabled: boolean }>> => {
+    return api.put('/v1/admin/storage/sync/verify-enabled', { autoEnabled });
+  },
 };

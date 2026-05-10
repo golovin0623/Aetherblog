@@ -95,6 +95,25 @@ func (s *LocalStorage) GetURL(key string) string {
 // Type 返回存储类型标识符 "LOCAL"。
 func (s *LocalStorage) Type() string { return "LOCAL" }
 
+// Exists 实现 Existser 接口 —— 检查 key 在本地文件系统是否存在。
+//
+//	exists=true   → 文件存在
+//	exists=false  → 确认不存在(os.IsNotExist)
+//	err != nil    → 路径穿越被拒 / 权限问题等瞬时错误
+func (s *LocalStorage) Exists(_ context.Context, key string) (bool, error) {
+	dest, err := getSafePath(s.basePath, key)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Stat(dest); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // Get 读取本地文件,返回 ReadCloser + 文件大小 + MIME 类型。
 // MIME 类型按扩展名启发(LOCAL 不存元数据,只能这么算)。
 func (s *LocalStorage) Get(_ context.Context, key string) (io.ReadCloser, int64, string, error) {

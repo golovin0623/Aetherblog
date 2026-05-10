@@ -31,13 +31,21 @@ func (h *SyncHandler) Mount(g *echo.Group) {
 	g.POST("/retry", h.Retry)
 	g.GET("/auto-enabled", h.GetAutoEnabled)
 	g.PUT("/auto-enabled", h.SetAutoEnabled)
+	// Phase 5: 备份完整性校验
+	g.POST("/verify", h.VerifyAll)
+	g.GET("/verify-enabled", h.GetVerifyEnabled)
+	g.PUT("/verify-enabled", h.SetVerifyEnabled)
 }
 
-// MountMediaRoutes 把 "POST /admin/media/:id/sync" 路由挂到 media 组下。
+// MountMediaRoutes 把 "POST /admin/media/:id/sync" / "DELETE /admin/media/:id/backup"
+// / "POST /admin/media/:id/verify" 路由挂到 media 组下。
 //
-// 这是一条"per-media"路由,而不是 storage/sync 子组,所以单独 Mount。
+// 这些是"per-media"路由,而不是 storage/sync 子组,所以单独 Mount。
 func (h *SyncHandler) MountMediaRoutes(g *echo.Group) {
 	g.POST("/:id/sync", h.SyncOne)
+	// Phase 5
+	g.DELETE("/:id/backup", h.RemoveBackup)
+	g.POST("/:id/verify", h.VerifyOne)
 }
 
 // startReq 是 POST /sync/start 的可选 body。
@@ -146,6 +154,77 @@ func (h *SyncHandler) SetAutoEnabled(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "请求格式错误")
 	}
 	if err := h.svc.SetAutoEnabled(c.Request().Context(), req.AutoEnabled); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, map[string]any{"autoEnabled": req.AutoEnabled})
+}
+
+// ============================================================================
+// Phase 5: 删除云端备份 + 定期校验
+// ============================================================================
+
+// RemoveBackup 处理 DELETE /admin/media/:id/backup 请求,删除云端备份对象但保留本地主文件。
+func (h *SyncHandler) RemoveBackup(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	if err := h.svc.RemoveBackup(c.Request().Context(), id); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OKEmpty(c)
+}
+
+// VerifyOne 处理 POST /admin/media/:id/verify 请求,手动校验单条记录的云端备份是否存在。
+func (h *SyncHandler) VerifyOne(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	if err := h.svc.VerifyOne(c.Request().Context(), id); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OKEmpty(c)
+}
+
+// VerifyAll 处理 POST /admin/storage/sync/verify 请求,扫描所有 due 的 SYNCED 记录并校验。
+// 返回本次实际处理数量。
+func (h *SyncHandler) VerifyAll(c echo.Context) error {
+	limit := 200
+	if v := c.QueryParam("limit"); v != "" {
+		if n, _ := strconv.Atoi(v); n > 0 && n <= 1000 {
+			limit = n
+		}
+	}
+	checked, err := h.svc.VerifyOverdue(c.Request().Context(), limit)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, map[string]any{"checked": checked})
+}
+
+// GetVerifyEnabled 返回当前定期校验开关状态 + 间隔。
+func (h *SyncHandler) GetVerifyEnabled(c echo.Context) error {
+	ctx := c.Request().Context()
+	return response.OK(c, map[string]any{
+		"autoEnabled":     h.svc.VerifyAutoEnabled(ctx),
+		"intervalSeconds": h.svc.VerifyIntervalSec(ctx),
+		"running":         h.svc.IsVerifyRunning(),
+	})
+}
+
+// verifyEnabledReq PUT body
+type verifyEnabledReq struct {
+	AutoEnabled bool `json:"autoEnabled"`
+}
+
+// SetVerifyEnabled 修改定期校验开关 + 立即启停 worker。
+func (h *SyncHandler) SetVerifyEnabled(c echo.Context) error {
+	var req verifyEnabledReq
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	if err := h.svc.SetVerifyAutoEnabled(c.Request().Context(), req.AutoEnabled); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OK(c, map[string]any{"autoEnabled": req.AutoEnabled})
