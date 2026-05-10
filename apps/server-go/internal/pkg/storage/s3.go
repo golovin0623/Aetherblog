@@ -489,7 +489,7 @@ func (s *S3Storage) KeyFromURL(rawURL string) (string, error) {
 	} else if s.cfg.Endpoint != "" && s.cfg.ForcePathStyle {
 		objectKey, err = stripURLBasePath(u, joinURLPath(s.cfg.Endpoint, s.cfg.Bucket))
 	} else if s.cfg.Endpoint != "" {
-		objectKey, err = stripURLBasePath(u, s.cfg.Endpoint)
+		objectKey, err = stripURLBasePath(u, virtualHostedURL(s.cfg.Endpoint, s.cfg.Bucket, ""))
 	} else {
 		objectKey = strings.TrimLeft(u.Path, "/")
 	}

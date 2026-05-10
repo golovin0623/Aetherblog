@@ -213,6 +213,30 @@ func TestS3Storage_KeyFromURLSupportsPathStyleEndpoint(t *testing.T) {
 	}
 }
 
+func TestS3Storage_KeyFromURLSupportsVirtualHostedEndpoint(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"ap-shanghai",
+		"endpoint":"https://cos.ap-shanghai.myqcloud.com/root",
+		"path":"mirror/",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+
+	rawURL := "https://example-bucket.cos.ap-shanghai.myqcloud.com/root/mirror/old/a.png"
+	got, err := st.KeyFromURL(rawURL)
+	if err != nil {
+		t.Fatalf("KeyFromURL: %v", err)
+	}
+	if got != "old/a.png" {
+		t.Fatalf("KeyFromURL()=%q want old/a.png", got)
+	}
+}
+
 func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
 	cfg := `{"bucket":"b","region":"ap-shanghai","path":"/assets/","accessKeyId":"k","secretAccessKey":"s"}`
 	st, err := NewS3Storage(cfg, "COS")
