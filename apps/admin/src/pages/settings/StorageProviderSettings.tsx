@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Server, Star, Trash2, Zap, Edit3, Cloud, HardDrive, Loader2, Download, Upload } from 'lucide-react';
-import { Button, Toggle } from '@aetherblog/ui';
+import { Button, Select, Toggle } from '@aetherblog/ui';
 import {
   storageProviderService,
   CreateStorageProviderRequest,
@@ -147,6 +147,25 @@ function safeParseJson<T>(raw: string, fallback: T): T {
   }
 }
 
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const err = error as {
+    message?: string;
+    msg?: string;
+    errorMessage?: string;
+    response?: { data?: { message?: string; msg?: string; errorMessage?: string } };
+  };
+  return (
+    err.response?.data?.message ||
+    err.response?.data?.msg ||
+    err.response?.data?.errorMessage ||
+    err.message ||
+    err.msg ||
+    err.errorMessage ||
+    fallback
+  );
+}
+
 export default function StorageProviderSettings() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -168,15 +187,20 @@ export default function StorageProviderSettings() {
 
   const providers = providersResponse?.data || [];
 
+  const { data: targetProviderResponse, isLoading: isTargetProviderLoading } = useQuery({
+    queryKey: ['storage-sync-target-provider'],
+    queryFn: () => storageSyncService.getTargetProvider(),
+  });
+  const backupTargetProviderId = targetProviderResponse?.data?.targetProviderId ?? null;
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => storageProviderService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['storage-providers'] });
       toast.success('删除成功');
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      toast.error(error.response?.data?.msg || '删除失败');
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '删除失败'));
     },
   });
 
@@ -184,7 +208,27 @@ export default function StorageProviderSettings() {
     mutationFn: (id: number) => storageProviderService.setAsDefault(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['storage-providers'] });
-      toast.success('已设置为默认存储');
+      toast.success('已设置为主存储');
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '设置主存储失败'));
+    },
+  });
+
+  const setBackupTargetMutation = useMutation({
+    mutationFn: (id: number | null) => storageSyncService.setTargetProvider(id),
+    onSuccess: (_resp, id) => {
+      queryClient.invalidateQueries({ queryKey: ['storage-sync-target-provider'] });
+      queryClient.invalidateQueries({ queryKey: ['storage-sync-status'] });
+      if (id) {
+        const target = providers.find((p) => p.id === id);
+        toast.success(`已设置备份目标:${target?.name || `Provider #${id}`}`);
+      } else {
+        toast.success('已清空备份目标配置');
+      }
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '设置备份目标失败'));
     },
   });
 
@@ -236,8 +280,7 @@ export default function StorageProviderSettings() {
       URL.revokeObjectURL(url);
       toast.success(`已导出 ${payload.providers?.length ?? 0} 条存储配置`);
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '导出失败';
+      const msg = getApiErrorMessage(err, '导出失败');
       toast.error(msg);
     } finally {
       setExporting(false);
@@ -268,8 +311,7 @@ export default function StorageProviderSettings() {
       }
       setPendingImport({ fileName: file.name, payload });
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '读取导入文件失败';
+      const msg = getApiErrorMessage(err, '读取导入文件失败');
       toast.error(msg);
     }
   };
@@ -291,13 +333,12 @@ export default function StorageProviderSettings() {
         parts.push(`失败 ${result.failedNames.length} 条`);
       }
       if (result?.defaultSet) {
-        parts.push(`默认 provider 已切换为「${result.defaultSet}」`);
+        parts.push(`主存储已切换为「${result.defaultSet}」`);
       }
       toast.success(parts.join(' · '));
       queryClient.invalidateQueries({ queryKey: ['storage-providers'] });
     } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '导入失败';
+      const msg = getApiErrorMessage(err, '导入失败');
       toast.error(msg);
     } finally {
       setImporting(false);
@@ -314,7 +355,7 @@ export default function StorageProviderSettings() {
             <span>存储管理</span>
           </h2>
           <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-            配置本地、S3、COS、OSS、MinIO、R2 等存储后端;set-default 后新文件自动入云。
+            主存储决定新上传文件落点;备份目标决定后台同步复制到哪里,两者可以相反配置。
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
@@ -351,6 +392,15 @@ export default function StorageProviderSettings() {
         </div>
       </div>
 
+      {/* 主存储 / 备份目标路由策略 */}
+      <StorageRoutingPanel
+        providers={providers}
+        targetProviderId={backupTargetProviderId}
+        isLoading={isTargetProviderLoading}
+        isPending={setBackupTargetMutation.isPending}
+        onSetTarget={(id) => setBackupTargetMutation.mutate(id)}
+      />
+
       {/* 全局开关:自动后台备份 — Phase 4 */}
       <AutoBackupToggle />
 
@@ -375,9 +425,12 @@ export default function StorageProviderSettings() {
               onDelete={() => handleDelete(provider.id)}
               onTest={() => testMutation.mutate(provider.id)}
               onSetDefault={() => setDefaultMutation.mutate(provider.id)}
+              onSetBackupTarget={() => setBackupTargetMutation.mutate(provider.id)}
+              backupTargetId={backupTargetProviderId}
               testing={testMutation.isPending}
               busyDelete={deleteMutation.isPending}
               busySetDefault={setDefaultMutation.isPending}
+              busySetBackupTarget={setBackupTargetMutation.isPending}
             />
           ))
         )}
@@ -427,6 +480,98 @@ export default function StorageProviderSettings() {
   );
 }
 
+function StorageRoutingPanel({
+  providers,
+  targetProviderId,
+  isLoading,
+  isPending,
+  onSetTarget,
+}: {
+  providers: StorageProvider[];
+  targetProviderId: number | null;
+  isLoading: boolean;
+  isPending: boolean;
+  onSetTarget: (id: number | null) => void;
+}) {
+  const primary = providers.find((p) => p.isDefault) ?? null;
+  const explicitTarget = providers.find((p) => p.id === targetProviderId) ?? null;
+  const fallbackTarget = !targetProviderId ? providers.find((p) => p.isDefault && p.providerType !== 'LOCAL') ?? null : null;
+  const effectiveTarget = explicitTarget ?? fallbackTarget;
+  const enabledProviders = providers.filter((p) => p.isEnabled);
+  const targetOptions = [
+    {
+      value: '',
+      label: '自动:非本地主存储',
+      description: fallbackTarget ? `当前会使用 ${fallbackTarget.name}` : '未配置时需要手动选择备份目标',
+      icon: Cloud,
+    },
+    ...enabledProviders.map((provider) => ({
+      value: String(provider.id),
+      label: `${provider.name} (${provider.providerType})${provider.isDefault ? ' - 主存储' : ''}`,
+      description: provider.isDefault ? '当前上传主存储' : `优先级 ${provider.priority}`,
+      icon: provider.providerType === 'LOCAL' ? HardDrive : Cloud,
+    })),
+  ];
+
+  return (
+    <div className="surface-leaf surface-admin-item rounded-xl p-4 mb-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid gap-3 sm:grid-cols-2 lg:flex-1">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/25 px-3 py-2.5">
+            <p className="text-[11px] text-[var(--text-muted)] mb-1">主存储 / 上传落点</p>
+            <div className="flex items-center gap-2 min-w-0">
+              {primary?.providerType === 'LOCAL' ? (
+                <HardDrive className="w-4 h-4 text-primary shrink-0" />
+              ) : (
+                <Cloud className="w-4 h-4 text-primary shrink-0" />
+              )}
+              <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                {primary ? `${primary.name} (${primary.providerType})` : '未配置'}
+              </span>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/25 px-3 py-2.5">
+            <p className="text-[11px] text-[var(--text-muted)] mb-1">备份同步目标</p>
+            <div className="flex items-center gap-2 min-w-0">
+              {effectiveTarget?.providerType === 'LOCAL' ? (
+                <HardDrive className="w-4 h-4 text-status-success shrink-0" />
+              ) : (
+                <Cloud className="w-4 h-4 text-status-success shrink-0" />
+              )}
+              <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                {effectiveTarget
+                  ? `${effectiveTarget.name} (${effectiveTarget.providerType})${explicitTarget ? '' : ' · 兼容默认'}`
+                  : '未配置'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full lg:w-72">
+          <label htmlFor="storage-sync-target-provider" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+            选择备份目标
+          </label>
+          <Select
+            id="storage-sync-target-provider"
+            ariaLabel="选择备份目标"
+            value={targetProviderId ? String(targetProviderId) : ''}
+            onValueChange={(next) => onSetTarget(next ? Number(next) : null)}
+            options={targetOptions}
+            disabled={isLoading || isPending}
+            disabledHint={isPending ? '正在保存...' : '加载中...'}
+            size="md"
+            fullWidth
+            prefix={isPending ? <Loader2 className="animate-spin" /> : <Cloud />}
+          />
+          <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
+            可以选择云 provider 备份本地文件,也可以选择 LOCAL 作为云主存储的本地备份。
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ProviderCard 列表中的单个 provider 行
 function ProviderCard({
   provider,
@@ -434,20 +579,27 @@ function ProviderCard({
   onDelete,
   onTest,
   onSetDefault,
+  onSetBackupTarget,
+  backupTargetId,
   testing,
   busyDelete,
   busySetDefault,
+  busySetBackupTarget,
 }: {
   provider: StorageProvider;
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
   onSetDefault: () => void;
+  onSetBackupTarget: () => void;
+  backupTargetId: number | null;
   testing: boolean;
   busyDelete: boolean;
   busySetDefault: boolean;
+  busySetBackupTarget: boolean;
 }) {
   const TypeIcon = provider.providerType === 'LOCAL' ? HardDrive : Cloud;
+  const isBackupTarget = backupTargetId === provider.id;
   const summary = useMemo(() => {
     try {
       const cfg = JSON.parse(provider.configJson) as Record<string, unknown>;
@@ -481,7 +633,12 @@ function ProviderCard({
             </span>
             {provider.isDefault && (
               <span className="px-2 py-0.5 bg-[color:color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] text-xs font-medium rounded-full">
-                默认
+                主存储
+              </span>
+            )}
+            {isBackupTarget && (
+              <span className="px-2 py-0.5 bg-status-success/15 text-status-success text-xs font-medium rounded-full">
+                备份目标
               </span>
             )}
             {!provider.isEnabled && (
@@ -518,18 +675,36 @@ function ProviderCard({
               onClick={onSetDefault}
               disabled={busySetDefault}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success/10 active:bg-status-success/15 rounded-lg transition-colors disabled:opacity-50 touch-manipulation"
-              title="设为默认"
-              aria-label="设为默认"
+              title="设为主存储"
+              aria-label="设为主存储"
             >
               <Star className="w-3.5 h-3.5" />
-              <span>设默认</span>
+              <span>设主存储</span>
+            </button>
+          )}
+          {!isBackupTarget && (
+            <button
+              onClick={onSetBackupTarget}
+              disabled={!provider.isEnabled || busySetBackupTarget}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 active:bg-primary/15 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+              title={provider.isEnabled ? '设为备份目标' : '已禁用 provider 不能作为备份目标'}
+              aria-label="设为备份目标"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>设备份</span>
             </button>
           )}
           <button
             onClick={onDelete}
-            disabled={provider.isDefault || busyDelete}
+            disabled={provider.isDefault || isBackupTarget || busyDelete}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger/10 active:bg-status-danger/15 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
-            title={provider.isDefault ? '默认 provider 不可删除,请先切换' : '删除'}
+            title={
+              provider.isDefault
+                ? '主存储 provider 不可删除,请先切换'
+                : isBackupTarget
+                  ? '备份目标 provider 不可删除,请先切换'
+                  : '删除'
+            }
             aria-label="删除"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -614,9 +789,8 @@ function ProviderDialog({
       toast.success('创建成功');
       onSuccess();
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      toast.error(error.response?.data?.msg || '创建失败');
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '创建失败'));
     },
   });
 
@@ -626,9 +800,8 @@ function ProviderDialog({
       toast.success('保存成功');
       onSuccess();
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      toast.error(error.response?.data?.msg || '保存失败');
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '保存失败'));
     },
   });
 
@@ -777,9 +950,8 @@ function AutoBackupToggle() {
       queryClient.invalidateQueries({ queryKey: ['storage-sync-auto-enabled'] });
       queryClient.invalidateQueries({ queryKey: ['storage-sync-status'] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (e: any) => {
-      toast.error(e.response?.data?.msg || '切换失败');
+    onError: (e) => {
+      toast.error(getApiErrorMessage(e, '切换失败'));
     },
   });
 
@@ -788,8 +960,8 @@ function AutoBackupToggle() {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-[var(--text-primary)]">自动后台备份</p>
         <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
-          打开后,worker 会按周期(默认 10s 拣一批)自动把未与默认 provider 同步的文件备份到云。
-          关闭时仅响应"立即备份"按钮 — 适合首次切云时人工触发,避免意外费用。
+          打开后,worker 会按周期(默认 10s 拣一批)自动把未与备份目标一致的文件复制过去。
+          关闭时仅响应"立即备份"按钮 — 适合首次切换目标时人工触发,避免意外费用。
         </p>
       </div>
       <div className="shrink-0 inline-flex items-center gap-2">
@@ -829,9 +1001,8 @@ function VerifyToggle() {
       toast.success(next ? '已启用定期校验(verify worker 已启动)' : '已停用定期校验');
       queryClient.invalidateQueries({ queryKey: ['storage-sync-verify-enabled'] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (e: any) => {
-      toast.error(e.response?.data?.msg || '切换失败');
+    onError: (e) => {
+      toast.error(getApiErrorMessage(e, '切换失败'));
     },
   });
 
@@ -846,9 +1017,8 @@ function VerifyToggle() {
       }
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (e: any) => {
-      toast.error(e.response?.data?.msg || '触发校验失败');
+    onError: (e) => {
+      toast.error(getApiErrorMessage(e, '触发校验失败'));
     },
   });
 

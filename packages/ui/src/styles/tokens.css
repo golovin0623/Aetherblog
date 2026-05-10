@@ -36,6 +36,7 @@
   --aurora-2: #7C6FF1;
   --aurora-3: #8B84F0;
   --aurora-4: #A598EC;
+  --aurora-source: var(--color-visual-primary, var(--color-primary, #6366F1));
 
   /* 信号色 —— 苹果级低饱和,chroma 统一压至 0.12 附近 */
   --signal-info:    oklch(0.58 0.12 235);
@@ -145,6 +146,7 @@
   --aurora-2: #9189F6;
   --aurora-3: #9E87F3;
   --aurora-4: #B0A0EC;
+  --aurora-source: var(--color-visual-primary, var(--color-primary, #818CF8));
 
   /* 信号色(暗主题下亮度抬高,chroma 仍然压制)*/
   --signal-info:    oklch(0.72 0.12 235);
@@ -168,12 +170,16 @@
 /* =============================================================
  * Aurora 主色派生 —— 苹果级色彩工程
  * 现代浏览器(Chrome 119+/Safari 16.4+/Firefox 128+)支持 oklch(from ...) 相对色语法,
- * 所有 aurora 色彩自动从 --color-primary 派生,用户在后台改一个主色,
+ * 所有 aurora 色彩自动从 --aurora-source 派生,用户在后台改一个主色,
  * 整个装饰色体系(aurora 渐变、光晕、分类色)一起跟着走 —— 不会再出现
  * "紫 + 橙 + 绿 + 红"的彩虹撞色。
  *
+ * 注意:--color-primary 可以是黑/白/灰这类品牌控制色,它们适合按钮和文字,
+ * 但不适合作为数据可视化光源。应用层可提供 --color-visual-primary 作为
+ * aurora 的 chroma seed;未提供时才回落到 --color-primary。
+ *
  * 派生策略(克制)——
- *   aurora-1 = primary 本色(锚点)
+ *   aurora-1 = visual primary 本色(锚点)
  *   aurora-2 = hue +18°  同色系邻近,轻微提亮
  *   aurora-3 = hue +36°  同色系再远一步
  *   aurora-4 = hue +60°  邻近色(而非 180° 的补色,避免撞)
@@ -182,16 +188,16 @@
 @supports (color: oklch(from red l c h)) {
   :root,
   :root.light {
-    --aurora-1: oklch(from var(--color-primary) l c h);
-    --aurora-2: oklch(from var(--color-primary) calc(l + 0.02) calc(c * 0.92) calc(h + 18));
-    --aurora-3: oklch(from var(--color-primary) calc(l + 0.05) calc(c * 0.82) calc(h + 36));
-    --aurora-4: oklch(from var(--color-primary) calc(l + 0.08) calc(c * 0.68) calc(h + 60));
+    --aurora-1: oklch(from var(--aurora-source) l c h);
+    --aurora-2: oklch(from var(--aurora-source) calc(l + 0.02) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--aurora-source) calc(l + 0.05) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--aurora-source) calc(l + 0.08) calc(c * 0.68) calc(h + 60));
   }
   :root.dark {
-    --aurora-1: oklch(from var(--color-primary) calc(l + 0.08) c h);
-    --aurora-2: oklch(from var(--color-primary) calc(l + 0.10) calc(c * 0.92) calc(h + 18));
-    --aurora-3: oklch(from var(--color-primary) calc(l + 0.12) calc(c * 0.82) calc(h + 36));
-    --aurora-4: oklch(from var(--color-primary) calc(l + 0.10) calc(c * 0.68) calc(h + 60));
+    --aurora-1: oklch(from var(--aurora-source) calc(l + 0.08) c h);
+    --aurora-2: oklch(from var(--aurora-source) calc(l + 0.10) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--aurora-source) calc(l + 0.12) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--aurora-source) calc(l + 0.10) calc(c * 0.68) calc(h + 60));
   }
 }
 

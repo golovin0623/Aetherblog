@@ -52,9 +52,16 @@ export function MediaGrid({
   // 触摸设备没有 hover 态,需要以"激活项"显式管理工具条
   const isTouch = useMediaQuery('(hover: none) and (pointer: coarse)');
   const [activeId, setActiveId] = useState<number | null>(null);
+  const gridClassName = cn(
+    'grid justify-start content-start',
+    // 根据实际容器宽度排布。详情栏打开后中间区域会变窄，不能继续使用视口断点列数。
+    isCompact
+      ? 'grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),9.5rem))] gap-x-4 gap-y-5'
+      : 'grid-cols-[repeat(auto-fill,minmax(min(9.75rem,100%),11rem))] gap-x-5 gap-y-6'
+  );
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
+    <div className={gridClassName}>
       <AnimatePresence mode="popLayout">
         {items.map((item, index) => {
           const Icon = typeIcons[item.fileType] || FileText;
@@ -137,20 +144,21 @@ export function MediaGrid({
                   />
                 </div>
 
-                {/* 预览按钮 (中心) —— 圆形胶囊,统一亮/暗模式;触屏跟随卡片宽度等比缩小 */}
+                {/* 预览按钮 (中心) —— 轻量浮标,避免在缩略图中喧宾夺主 */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <motion.button
                     type="button"
-                    whileHover={{ scale: 1.08 }}
+                    whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.92 }}
                     className={cn(
                       'inline-flex items-center justify-center rounded-full pointer-events-auto cursor-pointer',
-                      'backdrop-blur-md bg-white/15 border border-white/25 text-white',
-                      'shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]',
+                      'backdrop-blur-md bg-black/30 border border-white/25 text-white',
+                      'shadow-[0_6px_18px_-10px_rgba(0,0,0,0.7)]',
                       'opacity-0 group-hover:opacity-100 group-data-[active]:opacity-100',
                       'transition-[opacity,transform] duration-300 ease-out',
-                      // !min-w-0 !min-h-0 绕开 tokens.css 全局触屏 44×44 最小尺寸,让缩略图工具栏按需缩小
-                      isCompact || isTouch ? 'w-10 h-10 !min-w-0 !min-h-0' : 'w-14 h-14'
+                      // 绕开 tokens.css 触屏 44×44 最小尺寸,缩略图里的浮标不能被放大成主操作按钮
+                      '!min-w-0 !min-h-0',
+                      isCompact || isTouch ? 'w-8 h-8' : 'w-10 h-10'
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -158,13 +166,20 @@ export function MediaGrid({
                     }}
                     aria-label="预览"
                   >
-                    <Eye className={cn(isCompact || isTouch ? 'w-4 h-4' : 'w-6 h-6')} strokeWidth={1.6} />
+                    <Eye className={cn(isCompact || isTouch ? 'w-4 h-4' : 'w-5 h-5')} strokeWidth={1.7} />
                   </motion.button>
                 </div>
 
                 {/* 存储/备份状态图标 (右上角) — iCloud 风格,合并 storageType + syncStatus */}
                 {item.storageType && (
-                  <div className="absolute top-2 right-2 z-20 pointer-events-none rounded-full bg-black/40 backdrop-blur-md p-1.5 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]">
+                  <div
+                    className={cn(
+                      'absolute top-2 right-2 z-20 pointer-events-none rounded-full',
+                      'flex items-center justify-center bg-black/40 backdrop-blur-md',
+                      'shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]',
+                      isCompact || isTouch ? 'w-7 h-7' : 'w-8 h-8'
+                    )}
+                  >
                     <StorageStatusIcon
                       storageType={item.storageType}
                       syncStatus={item.syncStatus}
@@ -192,11 +207,11 @@ export function MediaGrid({
                   </div>
                 </div>
 
-                {/* 底部悬浮工具条 —— Codex surface-raised 胶囊;触屏整体等比缩小避免左右被裁切 */}
+                {/* 底部悬浮工具条 —— 缩略图内的轻量快捷操作 */}
                 {!isCompact && (
                   <div
                     className={cn(
-                      'absolute left-1/2 -translate-x-1/2 flex justify-center pointer-events-none max-w-[calc(100%-0.5rem)]',
+                      'absolute left-1/2 -translate-x-1/2 flex justify-center pointer-events-none w-max max-w-[calc(100%-0.75rem)]',
                       isTouch ? 'bottom-2' : 'bottom-3'
                     )}
                   >
@@ -269,7 +284,7 @@ export function MediaGrid({
 }
 
 /**
- * 工具条图标按钮 —— 触屏 44px、桌面 28px,统一语义色
+ * 工具条图标按钮 —— 缩略图内部控件,尺寸低于页面主操作按钮
  */
 function ToolbarIconButton({
   children,
@@ -292,8 +307,9 @@ function ToolbarIconButton({
       aria-label={title}
       className={cn(
         'inline-flex items-center justify-center rounded-full transition-colors',
-        // !min-w-0 !min-h-0 绕开 tokens.css 全局触屏 44×44 最小尺寸 —— 否则工具栏 4 颗按钮在半栏卡片里还是会被裁切
-        isTouch ? 'w-8 h-8 !min-w-0 !min-h-0' : 'w-7 h-7',
+        // 绕开 tokens.css 全局触屏 44×44 最小尺寸 —— 工具栏属于缩略图内部控件
+        '!min-w-0 !min-h-0',
+        isTouch ? 'w-8 h-8' : 'w-7 h-7',
         danger
           ? 'text-[var(--signal-danger,#E26B6B)] hover:bg-[color-mix(in_oklch,var(--signal-danger,#E26B6B)_14%,transparent)]'
           : 'text-[var(--ink-secondary,var(--text-secondary))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'

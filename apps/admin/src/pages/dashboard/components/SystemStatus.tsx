@@ -41,22 +41,20 @@ function safeNumber(value: number | undefined | null, fallback = 0): number {
   return Number.isFinite(value) ? value! : fallback;
 }
 
-function ProgressBar({ value, color = 'primary' }: { value: number; color?: string }) {
+const SYSTEM_STATUS_COLORS = {
+  cpu: 'var(--dashboard-system-status-cpu)',
+  memory: 'var(--dashboard-system-status-memory)',
+  disk: 'var(--dashboard-system-status-disk)',
+  network: 'var(--dashboard-system-status-network)',
+} as const;
+
+function ProgressBar({ value, color = SYSTEM_STATUS_COLORS.cpu }: { value: number; color?: string }) {
   const safeValue = safeNumber(value);
-
-  const colorMap: Record<string, string> = {
-    primary: 'bg-primary',
-    green: 'bg-status-success',
-    blue: 'bg-status-info',
-    orange: 'bg-status-warning',
-    red: 'bg-status-danger',
-  };
-
-  const getBarColor = () => {
-    if (safeValue > 90) return 'bg-status-danger';
-    if (safeValue > 75) return 'bg-status-warning';
-    return colorMap[color] || 'bg-primary';
-  };
+  const barColor = safeValue > 90
+    ? 'var(--color-danger)'
+    : safeValue > 75
+      ? 'var(--color-warning)'
+      : color;
 
   return (
     <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
@@ -64,7 +62,8 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
         initial={{ width: 0 }}
         animate={{ width: `${Math.max(0, Math.min(100, safeValue))}%` }}
         transition={{ duration: 1, ease: "easeOut" }}
-        className={cn("h-full rounded-full", getBarColor())}
+        className="h-full rounded-full"
+        style={{ backgroundColor: barColor }}
       />
     </div>
   );
@@ -89,7 +88,7 @@ function MetricCard({
     <div className="space-y-2">
       <div className="flex justify-between text-xs">
         <span className="text-[var(--text-muted)] flex items-center gap-1">
-          <Icon className="w-3.5 h-3.5" />
+          <Icon className="w-3.5 h-3.5" style={{ color }} />
           {label}
         </span>
         <span className="text-[var(--text-primary)] font-mono">{value}</span>
@@ -261,7 +260,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
             label="CPU"
             value={`${safeNumber(metrics.cpuUsage).toFixed(1)}%`}
             percent={safeNumber(metrics.cpuUsage)}
-            color="primary"
+            color={SYSTEM_STATUS_COLORS.cpu}
             detail={`${safeNumber(metrics.cpuCores)} 核 @ ${formatFrequency(safeNumber(metrics.cpuFrequency))}`}
           />
           <MetricCard
@@ -269,7 +268,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
             label="内存"
             value={`${safeNumber(metrics.memoryPercent).toFixed(1)}%`}
             percent={safeNumber(metrics.memoryPercent)}
-            color="blue"
+            color={SYSTEM_STATUS_COLORS.memory}
             detail={`${formatBytes(safeNumber(metrics.memoryUsed))} / ${formatBytes(safeNumber(metrics.memoryTotal))}`}
           />
           <MetricCard
@@ -277,7 +276,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
             label="磁盘"
             value={`${safeNumber(metrics.diskPercent).toFixed(1)}%`}
             percent={safeNumber(metrics.diskPercent)}
-            color="green"
+            color={SYSTEM_STATUS_COLORS.disk}
             detail={`${formatBytes(safeNumber(metrics.diskUsed))} / ${formatBytes(safeNumber(metrics.diskTotal))}`}
           />
           <MetricCard
@@ -285,7 +284,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
             label="网络"
             value={formatBandwidth(safeNumber(metrics.networkMaxSpeed))}
             percent={safeNumber(metrics.networkPercent)}
-            color="orange"
+            color={SYSTEM_STATUS_COLORS.network}
             detail={`↑${metrics.networkOutRate} ↓${metrics.networkInRate}`}
           />
         </div>

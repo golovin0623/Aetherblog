@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type, Cloud } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type, Cloud, Check, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
@@ -10,6 +10,15 @@ import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import { useFontPreview } from '@/contexts/FontPreviewContext';
 import { Toggle } from '@aetherblog/ui';
+import {
+  isNeutralPrimaryColor,
+  PRESET_DARK_PRIMARY,
+  PRESET_DARK_VISUAL_PRIMARY_HEX,
+  PRESET_LIGHT_PRIMARY,
+  PRESET_LIGHT_VISUAL_PRIMARY_HEX,
+  resolveThemeVisualPrimaryMode,
+  resolveVisualPrimaryColor,
+} from '@aetherblog/utils';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 // 存储管理 tab — Phase 2: 入口落在 /settings 顶层 tab 而非新页面,与现有 migration tab 同套机制
@@ -17,7 +26,7 @@ const StorageProviderSettings = lazy(() => import('./settings/StorageProviderSet
 
 // 设置元数据定义
 // 帮助将原始键映射到 UI 标签和输入类型
-type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload' | 'font-picker';
+type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload' | 'font-picker' | 'select' | 'theme-preset-actions' | 'visual-color-preview';
 
 interface SettingField {
   key: string;
@@ -25,6 +34,7 @@ interface SettingField {
   type: SettingFieldType;
   description?: string;
   placeholder?: string;
+  options?: Array<{ value: string; label: string; description?: string }>;
 }
 
 const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: SettingField[] }> = {
@@ -71,8 +81,24 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '外观设置',
     icon: Palette,
     fields: [
+      {
+        key: 'theme_visual_color_mode',
+        label: '主题配色方案',
+        type: 'select',
+        description: '默认使用产品预设 UI；用户切换为自定义后，才按主色生成 Aurora、图表和仪表盘色阶。',
+        options: [
+          { value: 'preset', label: '产品预设', description: '亮色黑色、暗色紫色，使用内置 UI 与色彩设计，不走自定义色谱' },
+          { value: 'auto', label: '自定义主色', description: '彩色品牌色直接派生；黑/白/灰自动使用推荐 Aurora 光源' },
+          { value: 'follow', label: '严格跟随主色', description: '强制用品牌主色派生，适合明确希望全站同色时使用' },
+          { value: 'custom', label: '品牌色 + 视觉光源', description: '品牌色和图表光源完全分开控制' },
+        ],
+      },
+      { key: 'theme_preset_actions', label: '产品预设', type: 'theme-preset-actions', description: '一键恢复默认配色、视觉光源模式与内置 UI 表现' },
       { key: 'theme_primary_color_light', label: '亮色主题主色调', type: 'color', description: '亮色主题下的品牌主色' },
       { key: 'theme_primary_color_dark', label: '暗色主题主色调', type: 'color', description: '暗色主题下的品牌主色' },
+      { key: 'theme_visual_color_light', label: '亮色主题视觉光源', type: 'color', description: '自定义模式下生效；留空则自动使用推荐光源' },
+      { key: 'theme_visual_color_dark', label: '暗色主题视觉光源', type: 'color', description: '自定义模式下生效；留空则自动使用推荐光源' },
+      { key: 'theme_visual_color_preview', label: '视觉色阶预览', type: 'visual-color-preview', description: '展示当前设置实际用于图表和仪表盘的光源，避免黑色品牌色被静默映射' },
       { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统主题自动切换（如 iPhone 暗黑模式）' },
       { key: 'font_family', label: '全局字体', type: 'font-picker', description: '选择博客全局显示字体，支持预览体验' },
       { key: 'show_banner', label: '显示欢迎页', type: 'boolean', description: '控制首页欢迎页（含「浏览文章」和「关于我」按钮），关闭后直接进入文章列表' },
@@ -245,6 +271,374 @@ function ImageUploadField({ value, onChange }: { value: string; onChange: (url: 
   );
 }
 
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+const NON_PERSISTED_SETTING_KEYS = new Set([
+  'theme_preset_actions',
+  'theme_visual_color_preview',
+]);
+const THEME_SETTING_KEYS = [
+  'theme_visual_color_mode',
+  'theme_primary_color',
+  'theme_primary_color_light',
+  'theme_primary_color_dark',
+  'theme_visual_color_light',
+  'theme_visual_color_dark',
+] as const;
+const THEME_PRESET_FORM_VALUES = {
+  theme_visual_color_mode: 'preset',
+  theme_primary_color: '',
+  theme_primary_color_light: PRESET_LIGHT_PRIMARY,
+  theme_primary_color_dark: PRESET_DARK_PRIMARY,
+  theme_visual_color_light: '',
+  theme_visual_color_dark: '',
+};
+
+function getColorInputValue(value: unknown, fallback: string) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return HEX_COLOR_RE.test(text) ? text : fallback;
+}
+
+function resolveFormThemeMode(formData: Record<string, any>) {
+  return resolveThemeVisualPrimaryMode({
+    lightColor: typeof formData.theme_primary_color_light === 'string' ? formData.theme_primary_color_light : '',
+    darkColor: typeof formData.theme_primary_color_dark === 'string' ? formData.theme_primary_color_dark : '',
+    fallbackColor: typeof formData.theme_primary_color === 'string' ? formData.theme_primary_color : '',
+    lightVisualColor: typeof formData.theme_visual_color_light === 'string' ? formData.theme_visual_color_light : '',
+    darkVisualColor: typeof formData.theme_visual_color_dark === 'string' ? formData.theme_visual_color_dark : '',
+    visualPrimaryMode: typeof formData.theme_visual_color_mode === 'string' ? formData.theme_visual_color_mode : '',
+  });
+}
+
+function getFormThemeModeValue(formData: Record<string, any>) {
+  const storedMode = typeof formData.theme_visual_color_mode === 'string'
+    ? formData.theme_visual_color_mode
+    : '';
+  if (storedMode === 'preset' || storedMode === 'auto' || storedMode === 'follow' || storedMode === 'custom') {
+    return storedMode;
+  }
+  return resolveFormThemeMode(formData);
+}
+
+function toSettingsStringMap(data: Record<string, any>, keys?: readonly string[]) {
+  const stringMap: Record<string, string> = {};
+  const sourceKeys = keys || Object.keys(data);
+
+  sourceKeys.forEach(key => {
+    if (NON_PERSISTED_SETTING_KEYS.has(key)) return;
+    if (data[key] === undefined || data[key] === null) return;
+
+    if (typeof data[key] === 'object') {
+      stringMap[key] = JSON.stringify(data[key]);
+    } else {
+      stringMap[key] = String(data[key]);
+    }
+  });
+
+  return stringMap;
+}
+
+function pickThemeSettings(data: Record<string, any>) {
+  return THEME_SETTING_KEYS.reduce<Record<string, any>>((acc, key) => {
+    if (data[key] !== undefined && data[key] !== null) {
+      acc[key] = data[key];
+    }
+    return acc;
+  }, {});
+}
+
+function getNextFormData(prev: Record<string, any>, key: string, value: any) {
+  const currentMode = resolveFormThemeMode(prev);
+  const next: Record<string, any> = { ...prev, [key]: value };
+
+  if (key === 'theme_visual_color_mode' && value === 'preset') {
+    Object.assign(next, THEME_PRESET_FORM_VALUES);
+  }
+
+  if (key === 'theme_visual_color_mode' && value !== 'preset' && currentMode === 'preset') {
+    next.theme_primary_color_light = prev.theme_primary_color_light || PRESET_LIGHT_PRIMARY;
+    next.theme_primary_color_dark = prev.theme_primary_color_dark || PRESET_DARK_PRIMARY;
+  }
+
+  if ((key === 'theme_primary_color_light' || key === 'theme_primary_color_dark') && currentMode === 'preset') {
+    next.theme_visual_color_mode = 'auto';
+  }
+
+  if ((key === 'theme_visual_color_light' || key === 'theme_visual_color_dark') && currentMode !== 'custom') {
+    next.theme_visual_color_mode = 'custom';
+  }
+
+  return next;
+}
+
+function VisualColorPreview({ formData }: { formData: Record<string, any> }) {
+  const mode = resolveFormThemeMode(formData);
+  const lightPrimary = getColorInputValue(
+    formData.theme_primary_color_light || formData.theme_primary_color,
+    PRESET_LIGHT_PRIMARY,
+  );
+  const darkPrimary = getColorInputValue(
+    formData.theme_primary_color_dark || formData.theme_primary_color,
+    PRESET_DARK_PRIMARY,
+  );
+  const previewLightPrimary = mode === 'preset' ? PRESET_LIGHT_PRIMARY : lightPrimary;
+  const previewDarkPrimary = mode === 'preset' ? PRESET_DARK_PRIMARY : darkPrimary;
+  const lightVisual = mode === 'preset' ? PRESET_LIGHT_VISUAL_PRIMARY_HEX : resolveVisualPrimaryColor(lightPrimary, false, {
+    visualPrimaryMode: mode,
+    visualPrimaryColor: getColorInputValue(formData.theme_visual_color_light, ''),
+  });
+  const darkVisual = mode === 'preset' ? PRESET_DARK_VISUAL_PRIMARY_HEX : resolveVisualPrimaryColor(darkPrimary, true, {
+    visualPrimaryMode: mode,
+    visualPrimaryColor: getColorInputValue(formData.theme_visual_color_dark, ''),
+  });
+
+  const modeLabel = {
+    preset: '产品预设',
+    auto: '自定义主色',
+    follow: '严格跟随主色',
+    custom: '品牌色 + 视觉光源',
+  }[mode];
+
+  const rows = [
+    {
+      label: '亮色主题',
+      primary: previewLightPrimary,
+      visual: lightVisual,
+      neutral: isNeutralPrimaryColor(previewLightPrimary),
+      defaultVisual: PRESET_LIGHT_VISUAL_PRIMARY_HEX,
+    },
+    {
+      label: '暗色主题',
+      primary: previewDarkPrimary,
+      visual: darkVisual,
+      neutral: isNeutralPrimaryColor(previewDarkPrimary),
+      defaultVisual: PRESET_DARK_VISUAL_PRIMARY_HEX,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="px-2 py-1 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]">
+          当前模式：{modeLabel}
+        </span>
+        <span className="text-[var(--text-muted)]">
+          {mode === 'preset'
+            ? '使用产品内置的亮/暗两套 UI 与色彩，不进入自定义色谱计算。'
+            : '品牌色负责按钮和选中态，视觉光源负责 Aurora、图表和仪表盘色阶。'}
+        </span>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        {rows.map((row) => {
+          const usesFallback = mode === 'auto' && row.neutral;
+          const previewStyle = {
+            '--color-visual-primary': row.visual,
+          } as CSSProperties;
+
+          return (
+            <div
+              key={row.label}
+              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{row.label}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    {mode === 'preset'
+                      ? '产品预设：使用内置方案，无需配置色谱'
+                      : usesFallback
+                      ? `低饱和品牌色保护：使用推荐光源 ${row.defaultVisual}`
+                      : '使用下方实际光源生成色阶'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="h-6 w-6 rounded-md border border-[var(--border-subtle)]"
+                    style={{ backgroundColor: row.primary }}
+                    title={`品牌色 ${row.primary}`}
+                  />
+                  <span className="text-[var(--text-muted)]">→</span>
+                  <span
+                    className="h-6 w-6 rounded-md border border-[var(--border-subtle)]"
+                    style={{ backgroundColor: row.visual }}
+                    title={`视觉光源 ${row.visual}`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+                <span className="text-[var(--text-muted)]">品牌主色</span>
+                <code className="font-mono text-[var(--text-secondary)]">{row.primary}</code>
+                <span className="text-[var(--text-muted)]">实际光源</span>
+                <code className="font-mono text-[var(--text-secondary)]">{row.visual}</code>
+              </div>
+
+              <div className="dashboard-page grid grid-cols-12 gap-1" style={previewStyle}>
+                {Array.from({ length: 12 }, (_, index) => (
+                  <span
+                    key={index}
+                    className="h-6 rounded-md border border-white/10 shadow-sm"
+                    style={{ backgroundColor: `var(--dashboard-aurora-${index + 1})` }}
+                    title={`aurora-${index + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface AnimatedSelectFieldProps {
+  value: string;
+  options: Array<{ value: string; label: string; description?: string }>;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+function AnimatedSelectField({ value, options, onChange, disabled }: AnimatedSelectFieldProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selectedOption = options.find(option => option.value === value) || options[0];
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const commitValue = (nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen(current => !current)}
+        disabled={disabled}
+        aria-expanded={open}
+        className={cn(
+          'group w-full min-h-[56px] rounded-xl border bg-[var(--bg-input)] px-3.5 py-3 text-left transition-all',
+          'flex items-center justify-between gap-3 shadow-sm',
+          open
+            ? 'border-primary/50 ring-2 ring-primary/15 shadow-lg shadow-primary/10'
+            : 'border-[var(--border-subtle)] hover:border-primary/35 hover:bg-[var(--bg-card-hover)]',
+          disabled && 'cursor-not-allowed opacity-60 hover:border-[var(--border-subtle)] hover:bg-[var(--bg-input)]',
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className={cn(
+            'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden',
+            open && 'border-primary/30',
+          )}>
+            <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,var(--color-visual-primary)_0%,transparent_48%)] opacity-30" />
+            <Palette className="relative h-4 w-4 text-primary" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium text-[var(--text-primary)]">
+              {selectedOption?.label || '请选择'}
+            </span>
+            {selectedOption?.description && (
+              <span className="mt-0.5 block truncate text-xs text-[var(--text-muted)]">
+                {selectedOption.description}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {disabled && <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />}
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 text-[var(--text-muted)] transition-transform duration-200',
+              open && 'rotate-180 text-primary',
+            )}
+          />
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl shadow-black/10 backdrop-blur-xl"
+            role="listbox"
+          >
+            <div className="max-h-72 overflow-y-auto p-1.5">
+              {options.map(option => {
+                const selected = option.value === value;
+                return (
+                  <motion.button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => commitValue(option.value)}
+                    initial={false}
+                    whileHover={{ x: 2 }}
+                    whileTap={{ scale: 0.99 }}
+                    className={cn(
+                      'w-full rounded-lg px-3 py-2.5 text-left transition-colors',
+                      'flex items-start justify-between gap-3',
+                      selected
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">
+                        {option.label}
+                      </span>
+                      {option.description && (
+                        <span className={cn(
+                          'mt-0.5 block text-xs leading-relaxed',
+                          selected ? 'text-primary/75' : 'text-[var(--text-muted)]',
+                        )}>
+                          {option.description}
+                        </span>
+                      )}
+                    </span>
+                    <span className={cn(
+                      'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all',
+                      selected
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-[var(--border-subtle)] text-transparent',
+                    )}>
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   // 本地状态表单数据（用于保存前编辑）
@@ -286,19 +680,7 @@ export default function SettingsPage() {
   // 变更：批量更新
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, any>) => {
-      // 将所有值转换为字符串以供后端使用
-      const stringMap: Record<string, string> = {};
-      Object.keys(data).forEach(key => {
-        if (data[key] !== undefined && data[key] !== null) {
-          // 对于对象/数组类型（如 social_links），转换为 JSON 字符串
-          if (typeof data[key] === 'object') {
-            stringMap[key] = JSON.stringify(data[key]);
-          } else {
-            stringMap[key] = String(data[key]);
-          }
-        }
-      });
-      return settingsService.batchUpdate(stringMap);
+      return settingsService.batchUpdate(toSettingsStringMap(data));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
@@ -310,9 +692,38 @@ export default function SettingsPage() {
     }
   });
 
+  const themeSettingsMutation = useMutation({
+    mutationFn: (data: Record<string, any>) => {
+      return settingsService.batchUpdate(toSettingsStringMap(data, THEME_SETTING_KEYS));
+    },
+    onSuccess: (_, data) => {
+      const themePatch = pickThemeSettings(data);
+      queryClient.setQueryData<Record<string, any>>(['settings'], old => ({
+        ...(old || {}),
+        ...themePatch,
+      }));
+      toast.success('主题配色方案已应用');
+    },
+    onError: () => {
+      toast.error('主题配色方案保存失败');
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
+
   const handleInputChange = (key: string, value: any) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
+    setFormData(prev => getNextFormData(prev, key, value));
     setHasChanges(true);
+  };
+
+  const handleThemeModeChange = (value: string) => {
+    const nextData = getNextFormData(formData, 'theme_visual_color_mode', value);
+    const themePatch = pickThemeSettings(nextData);
+    setFormData(nextData);
+    queryClient.setQueryData<Record<string, any>>(['settings'], old => ({
+      ...(old || {}),
+      ...themePatch,
+    }));
+    themeSettingsMutation.mutate(nextData);
   };
 
   const handleSave = () => {
@@ -325,6 +736,20 @@ export default function SettingsPage() {
       setHasChanges(false);
       toast.success('已重置更改');
     }
+  };
+
+  const handleResetThemePreset = () => {
+    const nextData = {
+      ...formData,
+      ...THEME_PRESET_FORM_VALUES,
+    };
+    const themePatch = pickThemeSettings(nextData);
+    setFormData(nextData);
+    queryClient.setQueryData<Record<string, any>>(['settings'], old => ({
+      ...(old || {}),
+      ...themePatch,
+    }));
+    themeSettingsMutation.mutate(nextData);
   };
 
   // 字体预览：临时体验 2 分钟（通过全局 context）
@@ -492,21 +917,101 @@ export default function SettingsPage() {
                             {isOn ? '已开启' : '已关闭'}
                           </span>
                         </div>
-                      ) : field.type === 'color' ? (
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="color"
-                            value={formData[field.key] || '#000000'}
-                            onChange={(e) => handleInputChange(field.key, e.target.value)}
-                            className="bg-transparent border-0 w-10 h-10 p-0 cursor-pointer overflow-hidden rounded-lg"
-                          />
-                          <input
-                            type="text"
-                            value={formData[field.key] || ''}
-                            onChange={(e) => handleInputChange(field.key, e.target.value)}
-                            className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono"
-                          />
+                      ) : field.type === 'select' ? (
+                        <AnimatedSelectField
+                          value={field.key === 'theme_visual_color_mode'
+                            ? getFormThemeModeValue(formData)
+                            : formData[field.key] || field.options?.[0]?.value || ''}
+                          options={field.options || []}
+                          disabled={field.key === 'theme_visual_color_mode' && themeSettingsMutation.isPending}
+                          onChange={(value) => {
+                            if (field.key === 'theme_visual_color_mode') {
+                              handleThemeModeChange(value);
+                            } else {
+                              handleInputChange(field.key, value);
+                            }
+                          }}
+                        />
+                      ) : field.type === 'theme-preset-actions' ? (
+                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-4 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-[var(--text-primary)]">
+                                产品预设：亮色黑色 + 暗色紫色
+                              </p>
+                              <p className="text-xs text-[var(--text-muted)]">
+                                恢复内置品牌色、视觉光源模式和仪表盘预设 UI。用户未自定义时会一直使用这套确定设计。
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleResetThemePreset}
+                              disabled={themeSettingsMutation.isPending}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {themeSettingsMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-4 h-4" />
+                              )}
+                              恢复产品预设
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="flex items-center gap-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] px-2 py-2">
+                              <span className="h-5 w-5 rounded-md border border-[var(--border-subtle)]" style={{ backgroundColor: PRESET_LIGHT_PRIMARY }} />
+                              <span className="text-[var(--text-muted)]">亮色品牌色</span>
+                              <code className="ml-auto text-[var(--text-secondary)]">{PRESET_LIGHT_PRIMARY}</code>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] px-2 py-2">
+                              <span className="h-5 w-5 rounded-md border border-[var(--border-subtle)]" style={{ backgroundColor: PRESET_DARK_PRIMARY }} />
+                              <span className="text-[var(--text-muted)]">暗色品牌色</span>
+                              <code className="ml-auto text-[var(--text-secondary)]">{PRESET_DARK_PRIMARY}</code>
+                            </div>
+                          </div>
                         </div>
+                      ) : field.type === 'color' ? (
+                        (() => {
+                          const mode = resolveFormThemeMode(formData);
+                          const isVisualColorField = field.key === 'theme_visual_color_light' || field.key === 'theme_visual_color_dark';
+                          const colorDisabled = mode === 'preset' || (isVisualColorField && mode !== 'custom');
+                          const fallback = field.key.includes('_dark')
+                            ? (isVisualColorField ? PRESET_DARK_VISUAL_PRIMARY_HEX : PRESET_DARK_PRIMARY)
+                            : (isVisualColorField ? PRESET_LIGHT_VISUAL_PRIMARY_HEX : PRESET_LIGHT_PRIMARY);
+                          const value = mode === 'preset'
+                            ? fallback
+                            : getColorInputValue(formData[field.key], fallback);
+                          const textValue = mode === 'preset'
+                            ? fallback
+                            : formData[field.key] || '';
+
+                          return (
+                            <div className={cn('flex items-center gap-3', colorDisabled && 'opacity-55')}>
+                              <input
+                                type="color"
+                                value={value}
+                                onChange={(e) => handleInputChange(field.key, e.target.value)}
+                                disabled={colorDisabled}
+                                className="bg-transparent border-0 w-10 h-10 p-0 cursor-pointer overflow-hidden rounded-lg disabled:cursor-not-allowed"
+                              />
+                              <input
+                                type="text"
+                                value={textValue}
+                                onChange={(e) => handleInputChange(field.key, e.target.value)}
+                                disabled={colorDisabled}
+                                placeholder={fallback}
+                                className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono disabled:cursor-not-allowed"
+                              />
+                              {colorDisabled && (
+                                <span className="text-xs text-[var(--text-muted)]">
+                                  {mode === 'preset' ? '切换为自定义配色后可编辑' : '切换为品牌色 + 视觉光源后可编辑'}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()
+                      ) : field.type === 'visual-color-preview' ? (
+                        <VisualColorPreview formData={formData} />
                       ) : field.type === 'social-links' ? (
                         <SocialLinksEditor
                           value={(() => {

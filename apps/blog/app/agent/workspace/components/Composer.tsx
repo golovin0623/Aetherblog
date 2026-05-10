@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUp,
   AtSign,
@@ -80,12 +81,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   ref,
 ) {
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const chipTrayRef = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [picker, setPicker] = useState<PickerKey>(null);
-  // 用户手动 resize 拖大后记录的高度,作为后续 auto-resize 的下限
-  // —— 让 manual height 成为粘性偏好,不会被新输入的 auto-fit 强制塌回。
-  const [userMinHeight, setUserMinHeight] = useState<number | null>(null);
 
   const atBtnRef = useRef<HTMLButtonElement>(null);
   const hashBtnRef = useRef<HTMLButtonElement>(null);
@@ -102,35 +101,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const max = expanded ? EXPANDED_MAX : DEFAULT_MAX;
     el.style.height = 'auto';
     const fitted = Math.max(MIN_HEIGHT, Math.min(el.scrollHeight, max));
-    // userMinHeight 让 manual resize 后保留拖大尺寸 —— 即便清空内容也不回缩。
-    el.style.height = `${userMinHeight ? Math.max(fitted, userMinHeight) : fitted}px`;
-  }, [value, expanded, userMinHeight]);
-
-  // 监听用户拖拽 textarea 右下角 native resize 把手,并把最新手动高度写成粘性偏好。
-  useEffect(() => {
-    const el = taRef.current;
-    if (!el) return;
-    let downH = el.offsetHeight;
-    const onDown = () => {
-      downH = el.offsetHeight;
-    };
-    const onUp = () => {
-      const upH = el.offsetHeight;
-      if (Math.abs(upH - downH) > 4) {
-        setUserMinHeight(upH);
-      }
-    };
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('pointerup', onUp);
-    return () => {
-      el.removeEventListener('pointerdown', onDown);
-      el.removeEventListener('pointerup', onUp);
-    };
-  }, []);
-
-  // 切换 expanded 或 value 清空时重置用户高度偏好,回到 auto-fit。
-  useEffect(() => {
-    if (!value) setUserMinHeight(null);
+    el.style.height = `${fitted}px`;
   }, [value, expanded]);
 
   function insertChar(text: string) {
@@ -163,14 +134,38 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setPicker((curr) => (curr === k ? null : k));
   };
 
+  const selectedContextCount = selectedArticles.length + selectedTags.length;
+  const hasSelectedContext = selectedContextCount > 0;
+  const trayScrollEnabled = selectedContextCount > 6;
   const selectedArticleIds = new Set(selectedArticles.map((a) => a.id));
   const selectedTagSlugs = new Set(selectedTags.map((t) => t.slug));
+
+  useEffect(() => {
+    const el = chipTrayRef.current;
+    if (!el || selectedContextCount === 0 || !trayScrollEnabled) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrollToBottom = (behavior: ScrollBehavior) => {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    };
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom(reduceMotion ? 'auto' : 'smooth');
+    });
+    const settle = window.setTimeout(() => {
+      scrollToBottom('auto');
+    }, 280);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+    };
+  }, [selectedContextCount, trayScrollEnabled]);
 
   const canSend = !!value.trim() && !busy;
 
   return (
     <div className="relative">
-      <form
+      <motion.form
+        layout
+        transition={{ layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
         onSubmit={(e) => {
           e.preventDefault();
           if (canSend) onSubmit();
@@ -190,59 +185,96 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             包在同一个 form 容器内,视觉上与 textarea 一体。Codex/ChatGPT 风格:
             rounded-full 极致胶囊,精致图标 + 文字 + 点击 ✕ 同步清掉 pending +
             draft 残留 token。 */}
-        {(selectedArticles.length > 0 || selectedTags.length > 0) && (
-          <div
-            className="mb-2 -mx-0.5 flex flex-wrap items-center gap-1.5"
-            aria-label="已引用上下文"
-          >
-            {selectedArticles.map((a) => (
-              <span
-                key={`art-${a.id}`}
-                className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[15rem] transition-all"
+        <AnimatePresence initial={false}>
+          {hasSelectedContext && (
+            <motion.div
+              key="selected-context-tray"
+              layout
+              initial={{ opacity: 0, scale: 0.985, y: 8, filter: 'blur(2px)' }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.985, y: -4, filter: 'blur(2px)' }}
+              transition={{
+                layout: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+                opacity: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+                scale: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
+                y: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
+                filter: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+              }}
+              className="mb-2 overflow-visible pt-1"
+            >
+              <motion.div
+                ref={chipTrayRef}
+                layout
+                className={`agent-thumb-scroll flex max-h-[120px] flex-wrap items-center gap-1.5 px-2 py-1.5 ${
+                  trayScrollEnabled ? 'overflow-y-auto overscroll-contain' : 'overflow-visible'
+                }`}
+                aria-label="已引用上下文"
                 style={{
-                  background:
-                    'linear-gradient(135deg, color-mix(in oklch, var(--aurora-1) 14%, transparent), color-mix(in oklch, var(--aurora-1) 8%, transparent))',
-                  border: '1px solid color-mix(in oklch, var(--aurora-1) 36%, transparent)',
-                  color: 'var(--aurora-1)',
-                  boxShadow:
-                    '0 1px 0 inset color-mix(in oklch, var(--aurora-1) 14%, transparent), 0 2px 6px -3px color-mix(in oklch, var(--aurora-1) 38%, transparent)',
+                  scrollbarGutter: 'stable',
                 }}
               >
-                <FileText className="w-3 h-3 shrink-0" strokeWidth={2.25} aria-hidden="true" />
-                <span className="truncate font-medium tracking-tight" title={a.title}>{a.title}</span>
-                {onRemoveArticle && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveArticle(a.id)}
-                    className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-1)]/75 hover:text-white hover:bg-[var(--aurora-1)] transition-colors"
-                    aria-label={`移除引用 ${a.title}`}
-                  >
-                    <X className="w-3 h-3" strokeWidth={2.75} />
-                  </button>
-                )}
-              </span>
-            ))}
-            {selectedTags.map((t) => (
-              <span
-                key={`tag-${t.slug}`}
-                className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[12rem] bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/30 text-[var(--ink-primary)] shadow-[0_1px_0_inset_rgba(255,255,255,0.04),0_2px_6px_-3px_rgba(0,0,0,0.12)] transition-all"
-              >
-                <Hash className="w-3 h-3 shrink-0 text-[var(--ink-muted)]" strokeWidth={2.25} aria-hidden="true" />
-                <span className="truncate font-medium tracking-tight" title={t.name}>{t.name}</span>
-                {onRemoveTag && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveTag(t.slug)}
-                    className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-leaf)] transition-colors"
-                    aria-label={`移除标签 ${t.name}`}
-                  >
-                    <X className="w-3 h-3" strokeWidth={2.75} />
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
+                <AnimatePresence initial={false}>
+                  {selectedArticles.map((a) => (
+                    <motion.span
+                      layout
+                      initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                      key={`art-${a.id}`}
+                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[15rem] transition-[box-shadow,border-color,background-color]"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, color-mix(in oklch, var(--aurora-1) 14%, transparent), color-mix(in oklch, var(--aurora-1) 8%, transparent))',
+                        border: '1px solid color-mix(in oklch, var(--aurora-1) 36%, transparent)',
+                        color: 'var(--aurora-1)',
+                        boxShadow:
+                          '0 1px 0 inset color-mix(in oklch, var(--aurora-1) 14%, transparent), 0 2px 6px -3px color-mix(in oklch, var(--aurora-1) 38%, transparent)',
+                      }}
+                    >
+                      <FileText className="w-3 h-3 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                      <span className="truncate font-medium tracking-tight" title={a.title}>{a.title}</span>
+                      {onRemoveArticle && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveArticle(a.id)}
+                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-1)]/75 hover:text-white hover:bg-[var(--aurora-1)] transition-colors"
+                          aria-label={`移除引用 ${a.title}`}
+                        >
+                          <X className="w-3 h-3" strokeWidth={2.75} />
+                        </button>
+                      )}
+                    </motion.span>
+                  ))}
+                  {selectedTags.map((t) => (
+                    <motion.span
+                      layout
+                      initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                      key={`tag-${t.slug}`}
+                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[12rem] bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/30 text-[var(--ink-primary)] shadow-[0_1px_0_inset_rgba(255,255,255,0.04),0_2px_6px_-3px_rgba(0,0,0,0.12)] transition-[box-shadow,border-color,background-color]"
+                    >
+                      <Hash className="w-3 h-3 shrink-0 text-[var(--ink-muted)]" strokeWidth={2.25} aria-hidden="true" />
+                      <span className="truncate font-medium tracking-tight" title={t.name}>{t.name}</span>
+                      {onRemoveTag && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveTag(t.slug)}
+                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-leaf)] transition-colors"
+                          aria-label={`移除标签 ${t.name}`}
+                        >
+                          <X className="w-3 h-3" strokeWidth={2.75} />
+                        </button>
+                      )}
+                    </motion.span>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <textarea
           ref={taRef}
           value={value}
@@ -253,8 +285,8 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           rows={1}
           aria-label="消息输入框"
           placeholder={placeholder ?? '提问、创建或开始任务。@ 引用文章 · / 调用命令'}
-          className="agent-composer-textarea w-full bg-transparent outline-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
-          style={{ resize: 'vertical', minHeight: `${MIN_HEIGHT}px` }}
+          className="agent-composer-textarea w-full resize-none bg-transparent outline-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
+          style={{ minHeight: `${MIN_HEIGHT}px` }}
           autoComplete="off"
           spellCheck={false}
         />
@@ -345,18 +377,14 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
 
         {/* Picker 弹层 —— 锚到对应的 ToolButton。
-            选中后立即关闭弹层,避免遮挡刚加进胶囊区的 chip;要多选则用户再次点
-            @ / # / / 重新打开,符合 ChatGPT/Codex 的"挑一项就收"的快进交互。 */}
+            ArticlePicker 选中后保持打开,让弹层稳定浮在已选 chip 上方,便于连续引用。 */}
         {onPickArticle && (
           <ArticlePicker
             open={picker === 'article'}
             onClose={() => setPicker(null)}
             anchorRef={atBtnRef}
             selectedIds={selectedArticleIds}
-            onPick={(a) => {
-              onPickArticle(a);
-              setPicker(null);
-            }}
+            onPick={onPickArticle}
           />
         )}
         {onPickTag && (
@@ -382,7 +410,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             }}
           />
         )}
-      </form>
+      </motion.form>
     </div>
   );
 });

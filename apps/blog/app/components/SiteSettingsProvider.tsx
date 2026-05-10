@@ -2,7 +2,13 @@
 
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import type { SiteSettings } from '../lib/services';
-import { generateColorVars, colorVarsToCSS } from '@aetherblog/utils';
+import {
+  colorVarsToCSS,
+  generateColorVars,
+  PRESET_DARK_PRIMARY,
+  PRESET_LIGHT_PRIMARY,
+  resolveThemeVisualPrimaryMode,
+} from '@aetherblog/utils';
 
 // ============================================================
 // SiteSettingsProvider
@@ -13,6 +19,8 @@ import { generateColorVars, colorVarsToCSS } from '@aetherblog/utils';
 // - 每页文章数 (post_page_size)
 // - 显示欢迎页 (show_banner / welcome_enabled)
 // ============================================================
+
+const PRIMARY_COLOR_STYLE_ID = 'aetherblog-primary-color';
 
 interface SiteSettingsContextValue {
   /** 每页文章数，默认 6 */
@@ -64,38 +72,74 @@ export default function SiteSettingsProvider({ children, settings }: Props) {
 
   // 2. 主色调 - 亮色/暗色分别配置，生成完整变量集
   useEffect(() => {
-    const lightColor = settings.theme_primary_color_light as string;
-    const darkColor = settings.theme_primary_color_dark as string;
-    const fallbackColor = settings.theme_primary_color as string;
-
-    if (lightColor || darkColor || fallbackColor) {
-      let styleEl = document.getElementById('aetherblog-primary-color') as HTMLStyleElement;
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = 'aetherblog-primary-color';
-        document.head.appendChild(styleEl);
-      }
-
-      const lightVal = lightColor || fallbackColor;
-      const darkVal = darkColor || fallbackColor;
-
-      let css = '';
-      if (lightVal) {
-        const vars = generateColorVars(lightVal, false);
-        css += `:root, :root.light {\n${colorVarsToCSS(vars)}\n}\n`;
-      }
-      if (darkVal) {
-        const vars = generateColorVars(darkVal, true);
-        css += `:root.dark {\n${colorVarsToCSS(vars)}\n}\n`;
-      }
-      styleEl.textContent = css;
-    }
-
-    return () => {
-      const el = document.getElementById('aetherblog-primary-color');
+    const lightColor = (settings.theme_primary_color_light as string) || '';
+    const darkColor = (settings.theme_primary_color_dark as string) || '';
+    const fallbackColor = (settings.theme_primary_color as string) || '';
+    const lightVisualColor = (settings.theme_visual_color_light as string) || '';
+    const darkVisualColor = (settings.theme_visual_color_dark as string) || '';
+    const visualColorMode = resolveThemeVisualPrimaryMode({
+      lightColor,
+      darkColor,
+      fallbackColor,
+      lightVisualColor,
+      darkVisualColor,
+      visualPrimaryMode: (settings.theme_visual_color_mode as string) || '',
+    });
+    const root = document.documentElement;
+    const removeDynamicStyle = () => {
+      const el = document.getElementById(PRIMARY_COLOR_STYLE_ID);
       if (el) el.remove();
     };
-  }, [settings.theme_primary_color, settings.theme_primary_color_light, settings.theme_primary_color_dark]);
+
+    root.dataset.themeColorMode = visualColorMode;
+
+    if (visualColorMode === 'preset') {
+      removeDynamicStyle();
+      return () => {
+        delete root.dataset.themeColorMode;
+        removeDynamicStyle();
+      };
+    }
+
+    const lightVal = lightColor || fallbackColor || PRESET_LIGHT_PRIMARY;
+    const darkVal = darkColor || fallbackColor || PRESET_DARK_PRIMARY;
+
+    let styleEl = document.getElementById(PRIMARY_COLOR_STYLE_ID) as HTMLStyleElement;
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = PRIMARY_COLOR_STYLE_ID;
+      document.head.appendChild(styleEl);
+    }
+
+    let css = '';
+    if (lightVal) {
+      const vars = generateColorVars(lightVal, false, {
+        visualPrimaryMode: visualColorMode,
+        visualPrimaryColor: lightVisualColor,
+      });
+      css += `:root, :root.light {\n${colorVarsToCSS(vars)}\n}\n`;
+    }
+    if (darkVal) {
+      const vars = generateColorVars(darkVal, true, {
+        visualPrimaryMode: visualColorMode,
+        visualPrimaryColor: darkVisualColor,
+      });
+      css += `:root.dark {\n${colorVarsToCSS(vars)}\n}\n`;
+    }
+    styleEl.textContent = css;
+
+    return () => {
+      delete root.dataset.themeColorMode;
+      removeDynamicStyle();
+    };
+  }, [
+    settings.theme_primary_color,
+    settings.theme_primary_color_light,
+    settings.theme_primary_color_dark,
+    settings.theme_visual_color_mode,
+    settings.theme_visual_color_light,
+    settings.theme_visual_color_dark,
+  ]);
 
   // 3. 自定义 CSS 注入
   useEffect(() => {

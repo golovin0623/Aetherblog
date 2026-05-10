@@ -1,11 +1,11 @@
 /**
  * @file SyncDialog.tsx
- * @description "备份到云"对话框 - Phase 4 同步备份的前端入口
+ * @description "备份同步"对话框 - Phase 4 同步备份的前端入口
  * @ref 对象存储 rollout - Phase 4
  *
  * 触发流程:
- *   1. 用户点首页"备份到云"按钮 → 打开此对话框
- *   2. 选择目标 provider (默认 default)
+ *   1. 用户点"备份同步"按钮 → 打开此对话框
+ *   2. 选择目标 provider (默认使用存储管理中配置的备份目标)
  *   3. 点"立即备份" → POST /sync/start → 显示进度条 (轮询 /status)
  *   4. running=false 后展示完成统计 + 失败列表 + 单条重试入口
  */
@@ -19,6 +19,25 @@ import { storageSyncService, SyncFailedJob } from '@/services/storageSyncService
 import { storageProviderService } from '@/services/storageProviderService';
 import { Button, Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const err = error as {
+    message?: string;
+    msg?: string;
+    errorMessage?: string;
+    response?: { data?: { message?: string; msg?: string; errorMessage?: string } };
+  };
+  return (
+    err.response?.data?.message ||
+    err.response?.data?.msg ||
+    err.response?.data?.errorMessage ||
+    err.message ||
+    err.msg ||
+    err.errorMessage ||
+    fallback
+  );
+}
 
 interface SyncDialogProps {
   open: boolean;
@@ -36,7 +55,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
     queryFn: () => storageProviderService.getAll(),
     enabled: open,
   });
-  const providers = (providersResp?.data || []).filter((p) => p.providerType !== 'LOCAL' && p.isEnabled);
+  const providers = (providersResp?.data || []).filter((p) => p.isEnabled);
 
   // 状态轮询 — 仅在 dialog 打开时,worker running 时 2s 一次,否则 10s 一次保留摘要
   const { data: statusResp } = useQuery({
@@ -78,9 +97,8 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
       }
       queryClient.invalidateQueries({ queryKey: ['storage-sync-status'] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      toast.error(error.response?.data?.msg || '启动备份失败');
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, '启动备份失败'));
     },
   });
 
@@ -138,7 +156,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                     <CloudUpload className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-[var(--text-primary)]">备份到云</h2>
+                    <h2 className="text-lg font-bold text-[var(--text-primary)]">备份同步</h2>
                     <p className="text-xs text-[var(--text-muted)]">把所有未与目标 provider 同步的文件加入备份队列</p>
                   </div>
                 </div>
@@ -172,16 +190,16 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                     value={targetProviderId !== undefined ? String(targetProviderId) : ''}
                     onValueChange={(next) => setTargetProviderId(next ? Number(next) : undefined)}
                     options={[
-                      { value: '', label: '使用当前 default provider' },
+                      { value: '', label: '使用存储管理中的备份目标' },
                       ...providers.map((p) => ({
                         value: String(p.id),
-                        label: `${p.name} (${p.providerType})${p.isDefault ? ' — 默认' : ''}`,
+                        label: `${p.name} (${p.providerType})${p.isDefault ? ' — 主存储' : ''}`,
                         description: p.providerType,
                       })),
                     ]}
                   />
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    LOCAL provider 不能作为备份目标 — 需先在"存储管理"配置好云 provider。
+                    未指定时使用"存储管理"里的备份同步目标;也可在这里临时覆盖本次任务。
                   </p>
                 </div>
 

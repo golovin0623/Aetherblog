@@ -13,21 +13,16 @@ import {
   RealtimeLogViewer,
   AiUsageTrendChart,
   AiModelDistributionChart,
-  AiUsageRecordsTable
 } from './components';
 import {
   analyticsService,
   DashboardData,
   type AiDashboardData,
-  type AiCallRecord,
 } from '@/services/analyticsService';
 import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-
-const AI_DASHBOARD_DEFAULT_PAGE_SIZE = 10;
-const AI_DASHBOARD_PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
 
 const EMPTY_AI_DASHBOARD: AiDashboardData = {
   rangeDays: 30,
@@ -49,15 +44,11 @@ const EMPTY_AI_DASHBOARD: AiDashboardData = {
   records: {
     list: [],
     pageNum: 1,
-    pageSize: AI_DASHBOARD_DEFAULT_PAGE_SIZE,
+    pageSize: 1,
     total: 0,
     pages: 0,
   },
 };
-
-function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
-  return Array.from(new Set(items.map(mapper).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-}
 
 function extractApiIssue(error: unknown): { message: string; category?: string } {
   if (typeof error === 'object' && error) {
@@ -77,12 +68,6 @@ export default function DashboardPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiData, setAiData] = useState<AiDashboardData>(EMPTY_AI_DASHBOARD);
   const [aiDays, setAiDays] = useState<7 | 30 | 90>(30);
-  const [aiPage, setAiPage] = useState(1);
-  const [aiPageSize, setAiPageSize] = useState<number>(AI_DASHBOARD_DEFAULT_PAGE_SIZE);
-  const [aiTaskType, setAiTaskType] = useState('');
-  const [aiModelId, setAiModelId] = useState('');
-  const [aiKeyword, setAiKeyword] = useState('');
-  const [aiSuccessFilter, setAiSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [aiStatus, setAiStatus] = useState<'healthy' | 'degraded'>('healthy');
   const [aiIssueMessage, setAiIssueMessage] = useState('');
   const [aiIssueCategory, setAiIssueCategory] = useState<string | undefined>();
@@ -162,18 +147,10 @@ export default function DashboardPage() {
     const fetchAiDashboard = async () => {
       try {
         setAiLoading(true);
-        const success = aiSuccessFilter === 'all'
-          ? undefined
-          : aiSuccessFilter === 'success';
-
         const response = await analyticsService.getAiDashboard({
           days: aiDays,
-          pageNum: aiPage,
-          pageSize: aiPageSize,
-          taskType: aiTaskType || undefined,
-          modelId: aiModelId || undefined,
-          success,
-          keyword: aiKeyword.trim() || undefined,
+          pageNum: 1,
+          pageSize: 1,
         });
 
         if (response.code === 200 && response.data) {
@@ -200,7 +177,7 @@ export default function DashboardPage() {
     };
 
     fetchAiDashboard();
-  }, [aiDays, aiPage, aiPageSize, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword, aiReloadTick]);
+  }, [aiDays, aiReloadTick]);
 
   // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
@@ -390,9 +367,6 @@ export default function DashboardPage() {
   const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
   const aiOverview = aiData.overview || EMPTY_AI_DASHBOARD.overview;
-  const aiModelOptions = uniqueBy(aiData.modelDistribution, item => item.model);
-  const aiTaskOptions = uniqueBy(aiData.taskDistribution, item => item.task);
-  const aiRecords: AiCallRecord[] = aiData.records?.list || [];
   const aiTrendData = aiData.trend || [];
   const aiResponseRateSummary = getAiResponseRateSummary(
     aiOverview.totalCalls,
@@ -402,7 +376,7 @@ export default function DashboardPage() {
 
   return (
     <motion.div
-      className="space-y-6"
+      className="dashboard-page space-y-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.15 }}
@@ -491,7 +465,7 @@ export default function DashboardPage() {
       <div className="space-y-4 pt-2">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI 记录与统计看板</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI 使用概览</h2>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className={cn(
                 'px-2 py-0.5 rounded-md border',
@@ -523,7 +497,6 @@ export default function DashboardPage() {
                 key={days}
                 onClick={() => {
                   setAiDays(days);
-                  setAiPage(1);
                 }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${aiDays === days
                     ? 'bg-primary text-white shadow'
@@ -595,59 +568,14 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="min-w-0">
             <AiUsageTrendChart data={aiTrendData} loading={aiLoading} />
           </div>
-          <div>
+          <div className="min-w-0">
             <AiModelDistributionChart data={aiData.modelDistribution} loading={aiLoading} />
           </div>
         </div>
-
-        <AiUsageRecordsTable
-          records={aiRecords}
-          loading={aiLoading}
-          page={aiPage}
-          pageSize={aiPageSize}
-          total={aiData.records?.total || 0}
-          onPageChange={(nextPage) => {
-            if (nextPage < 1) {
-              return;
-            }
-            const totalPages = aiData.records?.pages || 1;
-            if (nextPage > totalPages) {
-              return;
-            }
-            setAiPage(nextPage);
-          }}
-          pageSizeOptions={AI_DASHBOARD_PAGE_SIZE_OPTIONS}
-          onPageSizeChange={(nextSize) => {
-            setAiPageSize(nextSize);
-            setAiPage(1);
-          }}
-          modelOptions={aiModelOptions}
-          taskOptions={aiTaskOptions}
-          selectedTaskType={aiTaskType}
-          selectedModelId={aiModelId}
-          selectedSuccess={aiSuccessFilter}
-          selectedKeyword={aiKeyword}
-          onTaskTypeChange={(value) => {
-            setAiTaskType(value);
-            setAiPage(1);
-          }}
-          onModelIdChange={(value) => {
-            setAiModelId(value);
-            setAiPage(1);
-          }}
-          onSuccessChange={(value) => {
-            setAiSuccessFilter(value);
-            setAiPage(1);
-          }}
-          onKeywordChange={(value) => {
-            setAiKeyword(value);
-            setAiPage(1);
-          }}
-        />
       </div>
 
       {/* 内容和活动 - 上移 */}

@@ -58,7 +58,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   const items = useMemo<CommandItem[]>(() => [
     { id: 'nav-dashboard', label: '前往 · 仪表盘', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['dashboard', 'home', '首页'], run: () => go('/dashboard') },
-    { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats'], run: () => go('/analytics') },
+    { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats', 'ai'], run: () => go('/analytics') },
     { id: 'nav-posts', label: '前往 · 文章管理', group: 'NAVIGATE', icon: FileText, keywords: ['posts', 'articles'], run: () => go('/posts') },
     { id: 'nav-media', label: '前往 · 媒体库', group: 'NAVIGATE', icon: Image, keywords: ['media', 'images'], run: () => go('/media') },
     { id: 'nav-categories', label: '前往 · 分类标签', group: 'NAVIGATE', icon: FolderTree, keywords: ['categories', 'tags'], run: () => go('/categories') },

@@ -204,13 +204,19 @@ function normalizeUploadOptions(input?: UploadOptions | number): UploadOptions {
  * 获取媒体文件的完整 URL。
  *
  * Phase 1 改造:接受 string 或 MediaItem。优先返回 cdnUrl(包含完整可访问 URL)。
+ * Phase 4 补充:LOCAL 主文件完成备份后,优先返回 backupUrl,用于复制/预览对外可访问地址。
  * 字符串入参表示历史 fileUrl(LOCAL=/uploads/...),后端 context path 是 /api,
  * 所以 /uploads/* 需要变成 /api/uploads/*。
  */
-export const getMediaUrl = (input: string | Pick<MediaItem, 'cdnUrl' | 'fileUrl' | 'storageType'>): string => {
+export const getMediaUrl = (
+  input: string | Pick<MediaItem, 'cdnUrl' | 'fileUrl' | 'storageType' | 'syncStatus' | 'backupUrl'>
+): string => {
   if (!input) return '';
-  // MediaItem 对象:优先 cdnUrl,空时 fileUrl
+  // MediaItem 对象:LOCAL 主存储且已备份成功时优先用备份 URL,否则用主文件 URL。
   if (typeof input === 'object') {
+    if (input.storageType === 'LOCAL' && input.syncStatus === 'SYNCED' && input.backupUrl) {
+      return resolveLocalPath(input.backupUrl);
+    }
     if (input.cdnUrl) return input.cdnUrl;
     return resolveLocalPath(input.fileUrl);
   }
@@ -441,4 +447,3 @@ export const mediaService = {
     return api.delete<R<void>>('/v1/admin/media/trash/empty');
   },
 };
-

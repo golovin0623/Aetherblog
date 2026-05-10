@@ -451,14 +451,7 @@ export default function BlogHeader() {
                     : 'text-[var(--ink-secondary)]'
                   }`}
               >
-                <span className="inline-flex items-center gap-1">
-                  灵境
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-1 h-1 rounded-full bg-[var(--aurora-1)] opacity-70 group-hover/agent:opacity-100 transition-opacity"
-                    style={{ animation: 'breath-soft 2.4s cubic-bezier(0.5, 0, 0.25, 1) infinite' }}
-                  />
-                </span>
+                <span className="inline-flex items-center">灵境</span>
                 {activePage === 'agent' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}

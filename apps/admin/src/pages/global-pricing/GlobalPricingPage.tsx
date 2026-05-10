@@ -143,6 +143,7 @@ export default function GlobalPricingPage() {
   const handleRefresh = () => {
     coverageQuery.refetch();
     listQuery.refetch();
+    enabledModelIdsQuery.refetch();
   };
 
   const editingRow = editingModelId

@@ -610,8 +610,8 @@ export function EditorWithPreview({
             ...(useCrossfade ? { willChange: 'transform, opacity', backfaceVisibility: 'hidden' as const } : {}),
           }}
         >
-          <div ref={useCrossfade ? crossfadePreviewRef : (viewMode === 'split' ? previewScrollRef : null)} className="flex-1 overflow-y-auto w-full min-w-[320px]">
-            <div className={`w-full pt-4 pb-12 px-6 min-h-full ${viewMode === 'preview' ? 'max-w-[800px] mx-auto' : 'max-w-[90%] mx-auto'}`}>
+          <div ref={useCrossfade ? crossfadePreviewRef : (viewMode === 'split' ? previewScrollRef : null)} className="flex-1 overflow-y-auto overflow-x-hidden w-full min-w-[320px]">
+            <div className={`w-full min-w-0 overflow-x-hidden pt-4 pb-12 px-6 min-h-full ${viewMode === 'preview' ? 'max-w-[800px] mx-auto' : 'max-w-[90%] mx-auto'}`}>
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}

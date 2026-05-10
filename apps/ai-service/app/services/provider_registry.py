@@ -325,7 +325,7 @@ class ProviderRegistry:
             JOIN ai_providers p ON m.provider_id = p.id
             WHERE ($1::text IS NULL OR p.code = $1)
               AND ($2::text IS NULL OR m.model_type = $2)
-              AND ($3 = FALSE OR m.is_enabled = TRUE)
+              AND ($3 = FALSE OR (m.is_enabled = TRUE AND p.is_enabled = TRUE))
             ORDER BY
               COALESCE((m.capabilities->>'sort')::int, 999999) ASC,
               m.is_enabled DESC,

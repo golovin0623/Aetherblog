@@ -17,6 +17,11 @@ interface VisitorChartProps {
   onTimeRangeChange?: (range: '7d' | '30d') => void;
 }
 
+const VISITOR_CHART_COLORS = {
+  pv: 'var(--dashboard-visitor-pv)',
+  uv: 'var(--dashboard-visitor-uv)',
+} as const;
+
 export function VisitorChart({ 
   data, 
   loading, 
@@ -78,9 +83,10 @@ export function VisitorChart({
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[36px] touch-manipulation",
               activeTab === 'pv'
-                ? "bg-primary text-white shadow-lg"
+                ? "text-white shadow-lg"
                 : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
             )}
+            style={activeTab === 'pv' ? { backgroundColor: VISITOR_CHART_COLORS.pv } : undefined}
           >
             PV
           </button>
@@ -89,9 +95,10 @@ export function VisitorChart({
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[36px] touch-manipulation",
               activeTab === 'uv'
-                ? "bg-[var(--signal-info)] text-white shadow-lg"
+                ? "text-white shadow-lg"
                 : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
             )}
+            style={activeTab === 'uv' ? { backgroundColor: VISITOR_CHART_COLORS.uv } : undefined}
           >
             UV
           </button>
@@ -126,12 +133,12 @@ export function VisitorChart({
           <AreaChart data={displayData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="colorPv" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                <stop offset="5%" stopColor={VISITOR_CHART_COLORS.pv} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={VISITOR_CHART_COLORS.pv} stopOpacity={0} />
               </linearGradient>
               <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                <stop offset="5%" stopColor={VISITOR_CHART_COLORS.uv} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={VISITOR_CHART_COLORS.uv} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
@@ -179,7 +186,7 @@ export function VisitorChart({
               type="monotone"
               dataKey="pv"
               name="页面浏览"
-              stroke="#8b5cf6"
+              stroke={VISITOR_CHART_COLORS.pv}
               strokeWidth={2}
               fillOpacity={activeTab === 'pv' ? 1 : 0}
               strokeOpacity={activeTab === 'pv' ? 1 : 0}
@@ -191,7 +198,7 @@ export function VisitorChart({
               type="monotone"
               dataKey="uv"
               name="独立访客"
-              stroke="#06b6d4"
+              stroke={VISITOR_CHART_COLORS.uv}
               strokeWidth={2}
               fillOpacity={activeTab === 'uv' ? 1 : 0}
               strokeOpacity={activeTab === 'uv' ? 1 : 0}

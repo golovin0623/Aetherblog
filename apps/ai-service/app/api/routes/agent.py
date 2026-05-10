@@ -19,6 +19,7 @@
 ::
 
   data: {"type":"delta","content":"…"}\\n\\n
+  data: {"type":"think","content":"…"}\\n\\n
   data: {"type":"done"}\\n\\n
   data: {"type":"error","code":"…","message":"…"}\\n\\n
 """
@@ -27,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -36,12 +38,16 @@ from litellm import acompletion
 
 from app.api.deps import (
     get_llm_router,
+    get_metrics,
     get_pg_pool,
+    get_usage_logger,
     require_admin_or_internal,
 )
 from app.core.config import get_settings
 from app.schemas.common import ApiResponse
 from app.services.llm_router import NON_CHAT_MODEL_TYPES, LlmRouter, _completion_kwargs
+from app.services.metrics import MetricsStore
+from app.services.usage_logger import UsageLogger, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +114,14 @@ _MODE_SYSTEM_PROMPTS = {
 # 当 'agent' 任务未配置 routing 时，按这个顺序回退到已有任务的路由。
 # qa / summary 在生产环境通常都有配置，能保证开箱可用；任一命中即停止。
 _FALLBACK_TASK_ALIASES = ("agent", "qa", "summary")
+_GEMINI_THINKING_ALLOWED_OPENAI_PARAMS = ["reasoning_effort", "extra_body"]
+_GEMINI_THINKING_EXTRA_BODY = {
+    # LiteLLM passes ``extra_body`` to the underlying OpenAI Python client as
+    # a client-side escape hatch. To make the OpenAI-compatible gateway receive
+    # a JSON body field named ``extra_body`` (which is what Gemini compat uses),
+    # it must be nested one level deeper here.
+    "extra_body": {"google": {"thinking_config": {"include_thoughts": True}}},
+}
 
 
 # ============================================================================
@@ -148,6 +162,259 @@ def _build_chat_messages(req: AgentChatRequest, context_block: str | None = None
     for m in req.messages:
         messages.append({"role": m.role, "content": m.content})
     return messages
+
+
+def _bare_model_id(model: str | None) -> str:
+    if not model:
+        return ""
+    return model.split("/", 1)[1] if "/" in model else model
+
+
+def _is_gemini_model(model: str | None) -> bool:
+    return _bare_model_id(model).lower().startswith("gemini-")
+
+
+def _agent_completion_kwargs(
+    *,
+    model: str,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> dict[str, Any]:
+    kwargs = _completion_kwargs(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    if _is_gemini_model(model):
+        # Google OpenAI-compatible API requires include_thoughts=True to return
+        # visible thought summaries; reasoning_effort only controls budget/level.
+        kwargs["reasoning_effort"] = "low"
+        kwargs["extra_body"] = _GEMINI_THINKING_EXTRA_BODY
+        # LiteLLM validates params before forwarding OpenAI-compatible requests.
+        # Gemini's compat layer supports these fields even when LiteLLM routes via
+        # the generic "openai/" provider prefix.
+        kwargs["allowed_openai_params"] = _GEMINI_THINKING_ALLOWED_OPENAI_PARAMS
+    return kwargs
+
+
+def _without_agent_thinking_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    fallback = dict(kwargs)
+    for key in ("reasoning_effort", "extra_body", "allowed_openai_params"):
+        fallback.pop(key, None)
+    return fallback
+
+
+def _looks_like_thinking_param_rejection(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "reasoning_effort",
+            "thinking_config",
+            "include_thoughts",
+            "extra_body",
+        )
+    )
+
+
+def _coerce_delta_text(value: Any) -> str:
+    """从 LiteLLM/OpenAI-style delta 字段中提取可展示文本。"""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        block_type = str(value.get("type") or "").lower()
+        if block_type.startswith("redacted"):
+            return ""
+        for key in (
+            "content",
+            "text",
+            "summary",
+            "reasoning_content",
+            "reasoning",
+            "thinking",
+            "thought",
+        ):
+            text = _coerce_delta_text(value.get(key))
+            if text:
+                return text
+        return ""
+    if isinstance(value, list):
+        return "".join(_coerce_delta_text(item) for item in value)
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            dumped = model_dump()
+        except Exception:  # pragma: no cover - 防御性兼容第三方对象
+            return ""
+        return _coerce_delta_text(dumped)
+    data = getattr(value, "__dict__", None)
+    if isinstance(data, dict):
+        return _coerce_delta_text(data)
+    return ""
+
+
+def _get_delta_field(delta: Any, field: str) -> Any:
+    if isinstance(delta, dict):
+        return delta.get(field)
+    value = getattr(delta, field, None)
+    if value is not None:
+        return value
+    model_dump = getattr(delta, "model_dump", None)
+    if callable(model_dump):
+        try:
+            dumped = model_dump()
+        except Exception:  # pragma: no cover - 防御性兼容第三方对象
+            return None
+        if isinstance(dumped, dict):
+            return dumped.get(field)
+    return None
+
+
+def _extract_delta_content(delta: Any) -> str:
+    return _coerce_delta_text(_get_delta_field(delta, "content"))
+
+
+def _extract_delta_content_events(delta: Any) -> list[dict[str, str]]:
+    return _coerce_content_events(_get_delta_field(delta, "content"))
+
+
+def _coerce_content_events(value: Any) -> list[dict[str, str]]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [{"type": "delta", "content": value}] if value else []
+    if isinstance(value, list):
+        events: list[dict[str, str]] = []
+        for item in value:
+            events.extend(_coerce_content_events(item))
+        return events
+    if isinstance(value, dict):
+        block_type = str(value.get("type") or "").lower()
+        if block_type.startswith("redacted"):
+            return []
+        text = _coerce_delta_text(value)
+        if not text:
+            return []
+        return [{
+            "type": "think" if value.get("thought") is True else "delta",
+            "content": text,
+        }]
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            dumped = model_dump()
+        except Exception:  # pragma: no cover - 防御性兼容第三方对象
+            return []
+        return _coerce_content_events(dumped)
+    data = getattr(value, "__dict__", None)
+    if isinstance(data, dict):
+        return _coerce_content_events(data)
+    text = _coerce_delta_text(value)
+    return [{"type": "delta", "content": text}] if text else []
+
+
+def _extract_reasoning_content(delta: Any) -> str:
+    # 不同 OpenAI-compatible provider / LiteLLM 版本对 reasoning 增量字段命名
+    # 不完全一致。只抽取显式文本，不把结构化 usage / token 计数误当思考正文。
+    for field in (
+        "reasoning_content",
+        "reasoning",
+        "thinking",
+        "thought",
+        "thinking_blocks",
+        "reasoning_items",
+    ):
+        text = _coerce_delta_text(_get_delta_field(delta, field))
+        if text:
+            return text
+    provider_specific = _get_delta_field(delta, "provider_specific_fields")
+    text = _coerce_delta_text(provider_specific)
+    if text:
+        return text
+    return ""
+
+
+class _ThinkTagSplitter:
+    """把正文中的 <think>/<thinking>/<reasoning> 段拆成 SSE think 事件。"""
+
+    def __init__(self) -> None:
+        self._in_think = False
+        self._buffer = ""
+        self._guard = LlmRouter._THINK_TAG_GUARD  # noqa: SLF001
+
+    def feed(self, content: str):
+        if not content:
+            return
+        self._buffer += content
+        yield from self._drain(final=False)
+
+    def flush(self):
+        yield from self._drain(final=True)
+
+    def _drain(self, *, final: bool):
+        while self._buffer:
+            boundary = len(self._buffer) if final else len(self._buffer) - self._guard
+            if boundary <= 0:
+                return
+
+            pattern = (
+                LlmRouter._THINK_CLOSE_RE  # noqa: SLF001
+                if self._in_think
+                else LlmRouter._THINK_OPEN_RE  # noqa: SLF001
+            )
+            match = pattern.search(self._buffer)
+
+            if match and match.end() <= boundary:
+                head = self._buffer[: match.start()]
+                if head:
+                    yield {
+                        "type": "think" if self._in_think else "delta",
+                        "content": head,
+                    }
+                self._buffer = self._buffer[match.end():]
+                self._in_think = not self._in_think
+                continue
+
+            if match is None:
+                chunk = self._buffer[:boundary]
+                self._buffer = self._buffer[boundary:]
+                if chunk:
+                    yield {
+                        "type": "think" if self._in_think else "delta",
+                        "content": chunk,
+                    }
+                continue
+
+            return
+
+
+async def _stream_litellm_agent_events(stream):
+    """把 LiteLLM streaming chunk 转成 Agent SSE 事件。
+
+    - provider 显式返回 ``reasoning_content`` 等字段时，直接映射为 ``think``；
+    - provider 把推理轨迹混在正文 ``<think>...</think>`` 中时，拆分为 ``think``；
+    - 普通正文继续作为 ``delta``。
+    """
+    splitter = _ThinkTagSplitter()
+    async for part in stream:
+        delta = part.choices[0].delta
+
+        reasoning = _extract_reasoning_content(delta)
+        if reasoning:
+            yield {"type": "think", "content": reasoning}
+
+        for content_event in _extract_delta_content_events(delta):
+            content = content_event.get("content", "")
+            if not content:
+                continue
+            if content_event.get("type") == "think":
+                yield content_event
+                continue
+            for event in splitter.feed(content):
+                yield event
+
+    for event in splitter.flush():
+        yield event
 
 
 # 单篇正文截断阈值。MVP 期间整本博文塞进 prompt 不现实——按字符数硬截断让
@@ -371,6 +638,69 @@ async def _resolve_for_agent(
     )
 
 
+def _agent_usage_request_text(messages: list[dict[str, Any]]) -> str:
+    """把实际发给 LLM 的多轮消息压成稳定文本，用于 token 估算。"""
+    parts: list[str] = []
+    for message in messages:
+        role = str(message.get("role") or "unknown")
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content
+        else:
+            text = json.dumps(content, ensure_ascii=False)
+        parts.append(f"{role}: {text}")
+    return "\n\n".join(parts)
+
+
+async def _record_agent_usage(
+    *,
+    request: Request | None,
+    metrics: MetricsStore,
+    usage_logger: UsageLogger,
+    user_id: int | None,
+    resolved: Any,
+    request_text: str,
+    response_text: str,
+    start_time: float,
+    success: bool,
+    error_code: str | None,
+) -> None:
+    """把灵境问答写入 ai_usage_logs，供后台数据分析统计。"""
+    endpoint = getattr(getattr(request, "url", None), "path", None) or "/api/v1/agent/chat"
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    tokens_in = estimate_tokens(request_text)
+    tokens_out = estimate_tokens(response_text)
+    metrics.record(
+        endpoint=endpoint,
+        duration_ms=duration_ms,
+        success=success,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        model=resolved.model,
+        cached=False,
+    )
+    await usage_logger.record(
+        user_id=str(user_id or "system"),
+        endpoint=endpoint,
+        task_type="agent_chat",
+        provider_code=resolved.provider_code,
+        model_id=resolved.model_id,
+        model=resolved.model,
+        input_cost_per_1m=resolved.input_cost_per_1m,
+        output_cost_per_1m=resolved.output_cost_per_1m,
+        cached_input_cost_per_1m=resolved.cached_input_cost_per_1m,
+        request_chars=len(request_text),
+        response_chars=len(response_text),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        latency_ms=int(duration_ms),
+        success=success,
+        cached=False,
+        error_code=error_code,
+        request_id=getattr(getattr(request, "state", None), "request_id", None),
+    )
+
+
 # ============================================================================
 # /api/v1/agent/models
 # ============================================================================
@@ -537,12 +867,14 @@ async def list_agent_models(
 
 @router.post("/api/v1/agent/chat")
 async def agent_chat(
-    request: Request,  # noqa: ARG001
+    request: Request,
     payload: AgentChatRequest,
     user=Depends(require_admin_or_internal),
     forwarded_user_id: str | None = Header(default=None, alias="X-Forwarded-User-ID"),
     llm_router: LlmRouter = Depends(get_llm_router),
     pool=Depends(get_pg_pool),
+    metrics: MetricsStore = Depends(get_metrics),
+    usage_logger: UsageLogger = Depends(get_usage_logger),
 ):
     """多轮对话流式响应 —— 由 Go 后端在用户登录态下代理调用。"""
     _enforce_message_limits(payload)
@@ -586,42 +918,126 @@ async def agent_chat(
     await llm_router._guard_api_base(resolved.api_base)  # noqa: SLF001
 
     async def generate():
+        start_time = time.perf_counter()
+        request_text = _agent_usage_request_text(chat_messages)
+        response_parts: list[str] = []
+        think_parts: list[str] = []
+        error_code: str | None = None
         if settings.mock_mode and not resolved.override:
             for chunk in [
                 "[mock:", resolved.model, "] ", "你好,",
                 "我已收到 ", str(len(payload.messages)), " 条消息。"
             ]:
+                response_parts.append(chunk)
                 yield f'data: {json.dumps({"type": "delta", "content": chunk}, ensure_ascii=False)}\n\n'
             yield 'data: {"type": "done"}\n\n'
+            await _record_agent_usage(
+                request=request,
+                metrics=metrics,
+                usage_logger=usage_logger,
+                user_id=user_id,
+                resolved=resolved,
+                request_text=request_text,
+                response_text="".join(response_parts),
+                start_time=start_time,
+                success=True,
+                error_code=None,
+            )
             return
 
+        response_chars = 0
+        think_chars = 0
         try:
-            stream = await acompletion(
+            completion_kwargs = _agent_completion_kwargs(
                 model=resolved.model,
-                messages=chat_messages,
-                api_key=resolved.api_key,
-                api_base=resolved.api_base,
-                stream=True,
-                **_completion_kwargs(
-                    model=resolved.model,
-                    temperature=resolved.temperature,
-                    max_tokens=resolved.max_tokens,
-                ),
+                temperature=resolved.temperature,
+                max_tokens=resolved.max_tokens,
             )
-            async for part in stream:
-                delta = part.choices[0].delta
-                content = getattr(delta, "content", None)
-                if content:
-                    data = json.dumps({"type": "delta", "content": content}, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+            try:
+                stream = await acompletion(
+                    model=resolved.model,
+                    messages=chat_messages,
+                    api_key=resolved.api_key,
+                    api_base=resolved.api_base,
+                    stream=True,
+                    **completion_kwargs,
+                )
+            except Exception as exc:
+                if not _looks_like_thinking_param_rejection(exc):
+                    raise
+                logger.warning(
+                    "agent.thinking_params_rejected",
+                    extra={
+                        "data": {
+                            "provider_code": resolved.provider_code,
+                            "model_id": resolved.model_id,
+                            "error": str(exc)[:300],
+                        }
+                    },
+                )
+                stream = await acompletion(
+                    model=resolved.model,
+                    messages=chat_messages,
+                    api_key=resolved.api_key,
+                    api_base=resolved.api_base,
+                    stream=True,
+                    **_without_agent_thinking_kwargs(completion_kwargs),
+                )
+            async for event in _stream_litellm_agent_events(stream):
+                content = event.get("content", "") or ""
+                if event.get("type") == "think":
+                    think_chars += len(content)
+                    think_parts.append(content)
+                else:
+                    response_chars += len(content)
+                    response_parts.append(content)
+                data = json.dumps(event, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+            logger.info(
+                "agent.stream_done",
+                extra={
+                    "data": {
+                        "provider_code": resolved.provider_code,
+                        "model_id": resolved.model_id,
+                        "response_chars": response_chars,
+                        "think_chars": think_chars,
+                    }
+                },
+            )
             yield 'data: {"type": "done"}\n\n'
         except Exception as exc:
-            logger.warning("agent.stream_failed", extra={"data": {"error": str(exc)}})
+            error_code = "agent_stream_error"
+            logger.warning(
+                "agent.stream_failed",
+                extra={
+                    "data": {
+                        "error": str(exc),
+                        "provider_code": resolved.provider_code,
+                        "model_id": resolved.model_id,
+                        "response_chars": response_chars,
+                        "think_chars": think_chars,
+                    }
+                },
+            )
             err = json.dumps(
-                {"type": "error", "code": "agent_stream_error", "message": str(exc)[:300]},
+                {"type": "error", "code": error_code, "message": str(exc)[:300]},
                 ensure_ascii=False,
             )
             yield f"data: {err}\n\n"
+        finally:
+            await _record_agent_usage(
+                request=request,
+                metrics=metrics,
+                usage_logger=usage_logger,
+                user_id=user_id,
+                resolved=resolved,
+                request_text=request_text,
+                # provider 暴露出来的 thinking/reasoning 也属于生成输出，费用估算应计入。
+                response_text="".join(think_parts) + "".join(response_parts),
+                start_time=start_time,
+                success=error_code is None,
+                error_code=error_code,
+            )
 
     return StreamingResponse(
         generate(),

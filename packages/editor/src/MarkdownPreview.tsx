@@ -227,6 +227,11 @@ mermaid.initialize({
   },
   fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
   securityLevel: 'strict',
+  htmlLabels: false,
+  flowchart: {
+    htmlLabels: false,
+    useMaxWidth: true,
+  },
 });
 
 function escapeHtml(value: string): string {
@@ -626,8 +631,15 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
       },
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
       securityLevel: 'strict',
+      htmlLabels: false,
+      flowchart: {
+        htmlLabels: false,
+        useMaxWidth: true,
+      },
     });
     mermaidIdCounter = 0;
+
+    let cancelled = false;
 
     const renderMermaidDiagrams = async () => {
       for (const container of mermaidContainers) {
@@ -636,18 +648,22 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
 
         const code = pre.textContent || '';
         const id = container.getAttribute('data-mermaid-id') || generateMermaidId();
+        container.innerHTML = '<div class="mermaid-loading" role="status">渲染流程图...</div>';
 
         try {
           // mermaid.render 在无效语法时不会 throw,而是生成"炸弹+Syntax error"的 SVG。
           // 先 parse 校验,失败时展示友好错误,避免编辑过程中输入一半就看到炸弹
           const parseResult = await mermaid.parse(code, { suppressErrors: true });
+          if (cancelled) return;
           if (parseResult === false) {
             container.innerHTML = `<div class="mermaid-error">图表语法错误,请检查 mermaid 代码</div>`;
             continue;
           }
           const { svg } = await mermaid.render(id, code);
+          if (cancelled) return;
           container.innerHTML = DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG);
         } catch (error) {
+          if (cancelled) return;
           console.error('Mermaid rendering error:', error);
           container.innerHTML = `<div class="mermaid-error">图表渲染失败</div>`;
         }
@@ -655,6 +671,10 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     };
 
     renderMermaidDiagrams();
+
+    return () => {
+      cancelled = true;
+    };
   }, [html]);
 
   return (
@@ -685,6 +705,10 @@ export const markdownPreviewStyles = `
   }
   
   .markdown-preview {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     /* 深色系暗区自适应 */
     --alert-info-bg: rgba(59, 130, 246, 0.1);
     --alert-info-border: #3b82f6;
@@ -778,6 +802,9 @@ export const markdownPreviewStyles = `
   }
   .markdown-preview p {
     margin: 0.75em 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .markdown-preview code {
     background: rgba(255, 255, 255, 0.1);
@@ -786,6 +813,8 @@ export const markdownPreviewStyles = `
     font-size: 0.9em;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     color: inherit;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .markdown-preview.light-mode code {
     background: #f1f5f9;
@@ -905,15 +934,27 @@ export const markdownPreviewStyles = `
     margin: 0.25em 0;
   }
   .markdown-preview blockquote {
+    box-sizing: border-box;
+    max-width: 100%;
     border-left: 4px solid #6366f1;
     padding-left: 1em;
     margin: 1em 0;
     color: #94a3b8;
     font-style: italic;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .markdown-preview blockquote p {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .markdown-preview a {
     color: #818cf8;
     text-decoration: underline;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .markdown-preview a:hover {
     color: #a5b4fc;
@@ -1052,6 +1093,24 @@ export const markdownPreviewStyles = `
   .markdown-preview .mermaid-container svg {
     max-width: 100%;
     height: auto;
+  }
+  .markdown-preview .mermaid-loading {
+    color: #94a3b8;
+    padding: 1em;
+    text-align: center;
+    font-size: 0.9em;
+  }
+  .markdown-preview .mermaid-container svg text,
+  .markdown-preview .mermaid-container svg .nodeLabel,
+  .markdown-preview .mermaid-container svg .edgeLabel {
+    fill: #e2e8f0 !important;
+    color: #e2e8f0 !important;
+  }
+  .markdown-preview.light-mode .mermaid-container svg text,
+  .markdown-preview.light-mode .mermaid-container svg .nodeLabel,
+  .markdown-preview.light-mode .mermaid-container svg .edgeLabel {
+    fill: #1e293b !important;
+    color: #1e293b !important;
   }
   .markdown-preview .mermaid-error {
     color: #f87171;

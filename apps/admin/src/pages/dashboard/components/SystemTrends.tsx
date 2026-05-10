@@ -3,7 +3,7 @@
  * @description 系统资源历史趋势图组件
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { type CSSProperties, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AreaChart,
   Area,
@@ -48,7 +48,13 @@ const REFRESH_INTERVAL_OPTIONS = [
 ];
 
 const COMPACT_SELECT_FOCUS_CLASS =
-  'focus-visible:!ring-1 focus-visible:!ring-primary/30 focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-secondary)]';
+  'focus-visible:!ring-1 focus-visible:!ring-[color-mix(in_oklch,var(--dashboard-system-trend-cpu)_30%,transparent)] focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-secondary)]';
+
+const SYSTEM_TREND_COLORS = {
+  cpu: 'var(--dashboard-system-trend-cpu)',
+  memory: 'var(--dashboard-system-trend-memory)',
+  disk: 'var(--dashboard-system-trend-disk)',
+} as const;
 
 // ========== 图表数据辅助 ==========
 
@@ -239,7 +245,12 @@ export function SystemTrends({ className }: { className?: string }) {
         {/* 左侧：标题与状态 */}
         <div className="flex items-center gap-3">
           <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">系统负载</h3>
-          {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
+          {loading && data.length > 0 && (
+            <RefreshCw
+              className="w-3.5 h-3.5 animate-spin"
+              style={{ color: SYSTEM_TREND_COLORS.cpu }}
+            />
+          )}
           {minutes > 1440 && (
              <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-status-warning/80 bg-status-warning-light px-2 py-0.5 rounded-full">
                <span className="w-1.5 h-1.5 rounded-full bg-status-warning animate-pulse" />
@@ -259,11 +270,19 @@ export function SystemTrends({ className }: { className?: string }) {
                  className={cn(
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.cpu 
-                     ? "bg-primary/10 border-primary/30 text-primary" 
+                     ? "bg-[var(--metric-bg)] border-[var(--metric-border)] text-[var(--metric-color)]"
                      : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
+                 style={{
+                   '--metric-bg': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.cpu} 12%, transparent)`,
+                   '--metric-border': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.cpu} 34%, transparent)`,
+                   '--metric-color': SYSTEM_TREND_COLORS.cpu,
+                 } as CSSProperties}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-[var(--text-muted)]")} />
+                 <div
+                   className="w-1.5 h-1.5 rounded-full"
+                   style={{ backgroundColor: visibleMetrics.cpu ? SYSTEM_TREND_COLORS.cpu : 'var(--text-muted)' }}
+                 />
                  CPU
                </button>
                {/* 内存 */}
@@ -272,11 +291,19 @@ export function SystemTrends({ className }: { className?: string }) {
                  className={cn(
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.memory 
-                     ? "bg-status-info-light border-status-info-border text-status-info" 
+                     ? "bg-[var(--metric-bg)] border-[var(--metric-border)] text-[var(--metric-color)]"
                      : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
+                 style={{
+                   '--metric-bg': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.memory} 12%, transparent)`,
+                   '--metric-border': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.memory} 34%, transparent)`,
+                   '--metric-color': SYSTEM_TREND_COLORS.memory,
+                 } as CSSProperties}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-status-info" : "bg-[var(--text-muted)]")} />
+                 <div
+                   className="w-1.5 h-1.5 rounded-full"
+                   style={{ backgroundColor: visibleMetrics.memory ? SYSTEM_TREND_COLORS.memory : 'var(--text-muted)' }}
+                 />
                  内存
                </button>
                {/* 磁盘 */}
@@ -285,11 +312,19 @@ export function SystemTrends({ className }: { className?: string }) {
                  className={cn(
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.disk 
-                     ? "bg-status-success-light border-status-success-border text-status-success" 
+                     ? "bg-[var(--metric-bg)] border-[var(--metric-border)] text-[var(--metric-color)]"
                      : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
+                 style={{
+                   '--metric-bg': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.disk} 12%, transparent)`,
+                   '--metric-border': `color-mix(in oklch, ${SYSTEM_TREND_COLORS.disk} 34%, transparent)`,
+                   '--metric-color': SYSTEM_TREND_COLORS.disk,
+                 } as CSSProperties}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-status-success" : "bg-[var(--text-muted)]")} />
+                 <div
+                   className="w-1.5 h-1.5 rounded-full"
+                   style={{ backgroundColor: visibleMetrics.disk ? SYSTEM_TREND_COLORS.disk : 'var(--text-muted)' }}
+                 />
                  磁盘
                </button>
           </div>
@@ -358,16 +393,16 @@ export function SystemTrends({ className }: { className?: string }) {
             <AreaChart data={data} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  <stop offset="5%" stopColor={SYSTEM_TREND_COLORS.cpu} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={SYSTEM_TREND_COLORS.cpu} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="colorMem" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  <stop offset="5%" stopColor={SYSTEM_TREND_COLORS.memory} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={SYSTEM_TREND_COLORS.memory} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="colorDisk" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  <stop offset="5%" stopColor={SYSTEM_TREND_COLORS.disk} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={SYSTEM_TREND_COLORS.disk} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
@@ -434,7 +469,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 type="monotone"
                 dataKey="cpu"
                 name="CPU"
-                stroke="#8b5cf6"
+                stroke={SYSTEM_TREND_COLORS.cpu}
                 strokeWidth={2}
                 fill="url(#colorCpu)"
                 animationDuration={300}
@@ -448,7 +483,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 type="monotone"
                 dataKey="memory"
                 name="内存"
-                stroke="#3b82f6"
+                stroke={SYSTEM_TREND_COLORS.memory}
                 strokeWidth={2}
                 fill="url(#colorMem)"
                 animationDuration={300}
@@ -462,7 +497,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 type="monotone"
                 dataKey="disk"
                 name="磁盘"
-                stroke="#22c55e"
+                stroke={SYSTEM_TREND_COLORS.disk}
                 strokeWidth={2}
                 fill="url(#colorDisk)"
                 animationDuration={300}

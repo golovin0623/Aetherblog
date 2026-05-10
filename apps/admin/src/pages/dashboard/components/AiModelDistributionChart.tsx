@@ -2,24 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import type { AiModelDistribution } from '@/services/analyticsService';
+import { DASHBOARD_AURORA_COLORS } from './palette';
 
 interface AiModelDistributionChartProps {
   data: AiModelDistribution[];
   loading?: boolean;
 }
-
-const COLORS = [
-  '#6366f1', // indigo-500
-  '#14b8a6', // teal-500
-  '#f59e0b', // amber-500
-  '#ec4899', // pink-500
-  '#22c55e', // green-500
-  '#06b6d4', // cyan-500
-  '#8b5cf6', // violet-500
-  '#f43f5e', // rose-500
-  '#0ea5e9', // sky-500
-  '#84cc16', // lime-500
-];
 
 const PAGE_SIZE = 4;
 
@@ -55,10 +43,10 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
 
   if (loading) {
     return (
-      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[420px] md:h-[420px]">
         <div className="h-6 w-44 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="flex gap-4">
-          <div className="w-[150px] h-[150px] rounded-full bg-[var(--bg-secondary)] animate-pulse" />
+          <div className="w-[190px] h-[190px] rounded-full bg-[var(--bg-secondary)] animate-pulse" />
           <div className="flex-1 space-y-3">
             <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
             <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
@@ -75,17 +63,17 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
     value: item.calls,
     percentage: item.percentage,
     providerCode: item.providerCode,
-    color: COLORS[index % COLORS.length],
+    color: DASHBOARD_AURORA_COLORS[index % DASHBOARD_AURORA_COLORS.length],
   }));
 
   const hasData = chartData.length > 0 && totalCalls > 0;
 
   return (
-    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[420px] md:h-[420px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">模型调用占比</h3>
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row items-center gap-4">
-        {/* 左侧：增强环形图 —— 桌面端 50% 宽度，移动端全宽 */}
-        <div className="relative shrink-0 w-[200px] h-[200px] md:w-1/2 md:h-full md:max-h-[260px] aspect-square">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 items-center gap-5">
+        {/* 左侧：增强环形图 —— 与模型列表各占一半 */}
+        <div className="relative mx-auto w-[220px] h-[220px] md:w-full md:h-full md:max-h-[300px] aspect-square">
           {hasData ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
@@ -190,15 +178,27 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
           )}
         </div>
 
-        {/* 右侧：分页模型列表 —— 桌面端 50% 宽度 */}
-        <div className="w-full md:w-1/2 min-w-0 flex flex-col h-full py-1">
-          <div className="flex-1 min-h-0 grid grid-cols-2 md:grid-cols-1 gap-2.5 content-center">
+        {/* 右侧：分页模型列表 —— 上/下按钮分离,页码位于下按钮下方 */}
+        <div className="w-full min-w-0 h-full flex flex-col justify-center py-1">
+          {totalPages > 1 && (
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="mx-auto mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="上一页"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          )}
+
+          <div className="min-h-0 grid grid-cols-2 md:grid-cols-1 gap-3 content-center">
             {visibleModels.length === 0 ? (
               <div className="text-xs text-[var(--text-tertiary)] text-center">暂无模型</div>
             ) : (
-              visibleModels.map((item) => {
-                const globalIndex = sortedData.findIndex((s) => s.model === item.model);
-                const color = COLORS[globalIndex % COLORS.length];
+              visibleModels.map((item, visibleIndex) => {
+                const globalIndex = currentPage * PAGE_SIZE + visibleIndex;
+                const color = DASHBOARD_AURORA_COLORS[globalIndex % DASHBOARD_AURORA_COLORS.length];
                 return (
                   <div
                     key={`${item.providerCode}-${item.model}`}
@@ -208,7 +208,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
                       className="w-2.5 h-2.5 rounded-sm shrink-0 shadow-sm"
                       style={{
                         backgroundColor: color,
-                        boxShadow: `0 0 6px ${color}55`,
+                        boxShadow: `0 0 8px color-mix(in oklch, ${color} 48%, transparent)`,
                       }}
                     />
                     <div className="flex-1 min-w-0">
@@ -224,32 +224,26 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
               })
             )}
           </div>
+
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2 mt-1 border-t border-[var(--border-subtle)]">
-              <span className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
-                {currentPage + 1} / {totalPages}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={currentPage === 0}
-                  className="p-1 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="上一页"
-                >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={currentPage >= totalPages - 1}
-                  className="p-1 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="下一页"
-                >
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className="mx-auto mt-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                aria-label="下一页"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </button>
+
+              <div className="relative mt-3 flex items-center justify-center">
+                <div className="absolute left-0 right-0 top-1/2 h-px bg-[var(--border-subtle)]" />
+                <span className="relative bg-[var(--bg-leaf)] px-3 text-[11px] text-[var(--text-tertiary)] tabular-nums">
+                  {currentPage + 1} / {totalPages}
+                </span>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>

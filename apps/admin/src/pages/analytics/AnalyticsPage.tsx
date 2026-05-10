@@ -158,7 +158,7 @@ export function AnalyticsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">AI 数据分析</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">数据分析</h1>
           <p className="text-[var(--text-muted)] mt-1">模型调用记录、占比、趋势和成本全链路追踪</p>
         </div>
 
