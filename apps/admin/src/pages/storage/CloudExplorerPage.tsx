@@ -13,9 +13,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Cloud, Folder, FileText, Download, Eye, Trash2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
+import { Cloud, Folder, FileText, Download, Eye, Trash2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Loader2, HardDrive } from 'lucide-react';
 import { storageProviderService } from '@/services/storageProviderService';
-import { Button, ConfirmModal } from '@aetherblog/ui';
+import { Button, ConfirmModal, Select, type SelectOption } from '@aetherblog/ui';
 import { formatFileSize } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -38,11 +38,20 @@ export default function CloudExplorerPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  const { data: providersResp } = useQuery({
+  const { data: providersResp, isLoading: isProvidersLoading } = useQuery({
     queryKey: ['storage-providers'],
     queryFn: () => storageProviderService.getAll(),
   });
   const providers = providersResp?.data || [];
+  const providerOptions = useMemo<SelectOption[]>(() => {
+    return providers.map((p) => ({
+      value: String(p.id),
+      label: `${p.name} (${p.providerType})${p.isDefault ? ' — 默认' : ''}`,
+      description: p.isEnabled ? '已启用' : '已禁用',
+      icon: p.providerType === 'LOCAL' ? HardDrive : Cloud,
+      disabled: !p.isEnabled,
+    }));
+  }, [providers]);
 
   // 默认选中第一个非 LOCAL 的 enabled provider
   useEffect(() => {
@@ -161,19 +170,21 @@ export default function CloudExplorerPage() {
       <div className="flex flex-col lg:flex-row gap-3 shrink-0">
         {/* Provider 选择 */}
         <div className="flex-1">
-          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">Provider</label>
-          <select
-            value={providerId ?? ''}
-            onChange={(e) => handleProviderChange(Number(e.target.value))}
-            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm"
-          >
-            <option value="">选择存储提供商</option>
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.providerType}){p.isDefault ? ' — 默认' : ''}{!p.isEnabled ? ' — 已禁用' : ''}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="cloud-provider-select" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">Provider</label>
+          <Select
+            id="cloud-provider-select"
+            ariaLabel="选择存储提供商"
+            value={providerId !== undefined ? String(providerId) : ''}
+            onValueChange={(next) => {
+              if (!next) return;
+              handleProviderChange(Number(next));
+            }}
+            options={providerOptions}
+            placeholder="选择存储提供商"
+            disabled={isProvidersLoading || providerOptions.length === 0}
+            disabledHint={isProvidersLoading ? '加载 provider...' : '暂无存储提供商'}
+            className="bg-[var(--bg-input)]"
+          />
         </div>
         <div className="flex-1">
           <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">Prefix (前缀过滤)</label>

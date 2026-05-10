@@ -11,6 +11,7 @@ import { storageSyncService } from '@/services/storageSyncService';
 import type { StorageProvider, StorageProviderType } from '@aetherblog/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 /**
  * 存储提供商设置页面
@@ -153,6 +154,11 @@ export default function StorageProviderSettings() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{
+    fileName: string;
+    payload: StorageProviderExportPayload;
+  } | null>(null);
 
   // 获取所有存储提供商
   const { data: providersResponse, isLoading } = useQuery({
@@ -199,24 +205,18 @@ export default function StorageProviderSettings() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
     if (exporting) return;
     if (providers.length === 0) {
       toast.error('暂无可导出的存储配置');
       return;
     }
-    const ok = confirm(
-      [
-        '⚠️ 安全提示',
-        '',
-        '导出文件将包含所有存储提供商的**明文密钥**(accessKey / secretKey 等),',
-        '用于跨实例迁移配置。请妥善保管下载文件,',
-        '不要提交到代码仓库或分享给无关人员。',
-        '',
-        '继续导出?',
-      ].join('\n')
-    );
-    if (!ok) return;
+    setExportConfirmOpen(true);
+  };
+
+  const executeExport = async () => {
+    if (exporting) return;
+    setExportConfirmOpen(false);
     setExporting(true);
     try {
       const resp = await storageProviderService.exportConfig();
@@ -249,7 +249,6 @@ export default function StorageProviderSettings() {
     // 重置 input value 以便重复选择同一文件
     if (importInputRef.current) importInputRef.current.value = '';
     if (!file) return;
-    setImporting(true);
     try {
       const text = await file.text();
       let payload: StorageProviderExportPayload;
@@ -267,11 +266,20 @@ export default function StorageProviderSettings() {
         toast.error('文件中没有 provider 记录');
         return;
       }
-      const ok = confirm(
-        `即将从文件导入 ${payload.providers.length} 条存储配置。\n` +
-          '同名 provider 会被自动跳过(不覆盖已有配置)。\n\n继续?'
-      );
-      if (!ok) return;
+      setPendingImport({ fileName: file.name, payload });
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = (err as any)?.response?.data?.msg || (err as Error).message || '读取导入文件失败';
+      toast.error(msg);
+    }
+  };
+
+  const executeImport = async () => {
+    if (!pendingImport || importing) return;
+    const payload = pendingImport.payload;
+    setPendingImport(null);
+    setImporting(true);
+    try {
       const resp = await storageProviderService.importConfig(payload);
       const result = resp.data;
       const parts: string[] = [];
@@ -374,6 +382,28 @@ export default function StorageProviderSettings() {
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={exportConfirmOpen}
+        title="导出存储配置"
+        message="导出文件会包含所有存储提供商的明文密钥(accessKey / secretKey 等),仅用于跨实例迁移。请妥善保管下载文件,不要提交到代码仓库或分享给无关人员。"
+        confirmText="继续导出"
+        cancelText="取消"
+        variant="warning"
+        onConfirm={executeExport}
+        onCancel={() => setExportConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={!!pendingImport}
+        title="导入存储配置"
+        message={`即将从「${pendingImport?.fileName ?? ''}」导入 ${pendingImport?.payload.providers.length ?? 0} 条存储配置。同名 provider 会被自动跳过,不会覆盖已有配置。`}
+        confirmText="确认导入"
+        cancelText="取消"
+        variant="info"
+        onConfirm={executeImport}
+        onCancel={() => setPendingImport(null)}
+      />
 
       {/* 创建/编辑对话框 */}
       <AnimatePresence>

@@ -407,31 +407,38 @@ function SidebarContent({
                 <div className="mx-auto my-1 h-px w-6 bg-[var(--border-subtle)]" aria-hidden="true" />
               )}
               <ul className="space-y-0.5">
-                {section.items.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      to={item.path}
-                      onClick={(e) => handleNavClick(e, item.path)}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex items-center rounded-lg transition-all duration-200',
-                          effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
-                          isActive
-                            ? 'bg-primary text-white'
-                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                        )
-                      }
-                    >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      <span className={cn(
-                        'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
-                        effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
-                      )}>
-                        {item.label}
-                      </span>
-                    </NavLink>
-                  </li>
-                ))}
+                {section.items.map((item) => {
+                  const hasNestedNavItem = section.items.some(
+                    (other) => other.path !== item.path && other.path.startsWith(`${item.path}/`)
+                  );
+
+                  return (
+                    <li key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        end={hasNestedNavItem}
+                        onClick={(e) => handleNavClick(e, item.path)}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex items-center rounded-lg transition-all duration-200',
+                            effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
+                            isActive
+                              ? 'bg-primary text-white'
+                              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                          )
+                        }
+                      >
+                        <item.icon className="w-5 h-5 flex-shrink-0" />
+                        <span className={cn(
+                          'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
+                          effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
+                        )}>
+                          {item.label}
+                        </span>
+                      </NavLink>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}
