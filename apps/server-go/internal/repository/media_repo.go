@@ -372,9 +372,15 @@ func (r *MediaRepo) FindBackedUpForVerification(ctx context.Context, staleBefore
 	return rows, err
 }
 
-// MarkBackupVerified 校验成功 —— 仅更新 last_verified_at,不动其他字段。
+// MarkBackupVerified 校验成功 —— 恢复 SYNCED 状态并更新 last_verified_at。
+// 这允许手动 verify 把曾经被标为 MISSING、但后来又能 HEAD 到的备份恢复成正常状态。
 func (r *MediaRepo) MarkBackupVerified(ctx context.Context, id int64, at time.Time) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET last_verified_at=$1 WHERE id=$2`, at, id)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_files
+		SET sync_status='SYNCED',
+		    backup_error=NULL,
+		    last_verified_at=$1
+		WHERE id=$2`, at, id)
 	return err
 }
 
