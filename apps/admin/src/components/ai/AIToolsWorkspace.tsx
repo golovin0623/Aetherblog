@@ -635,7 +635,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 `;
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3 md:gap-4 animate-in fade-in duration-500 overflow-y-auto md:overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col gap-3 md:gap-4 animate-in fade-in duration-500 overflow-y-auto 2xl:overflow-hidden">
       {/* 注入 Markdown 样式 */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
@@ -692,9 +692,9 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
       </section>
 
-      <div className="flex flex-col gap-4 md:grid md:min-h-0 md:flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-5 md:overflow-hidden">
+      <div className="flex flex-col gap-4 2xl:grid 2xl:min-h-0 2xl:flex-1 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:gap-5 2xl:overflow-hidden">
       {/* 输入列（左侧） */}
-      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[50vh] md:min-h-0 md:h-full rounded-2xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative overflow-hidden">
+      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[50vh] 2xl:min-h-0 2xl:h-full rounded-2xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative overflow-hidden">
         {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
@@ -761,8 +761,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-3 md:px-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <div className="min-w-0 lg:w-[14rem]">
+          <div className="flex flex-col gap-3">
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
                 <Target className="h-4 w-4 text-[var(--aurora-1)]" />
                 输入来源
@@ -772,14 +772,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               </p>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
               {renderTargetSelector()}
               <button
                 type="button"
                 onClick={handleImportFromTarget}
                 disabled={!target.targetPost}
                 className={cn(
-                  'inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all sm:w-[118px]',
+                  'inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all',
                   target.targetPost
                     ? 'border-[var(--border-subtle)] bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90'
                     : 'cursor-not-allowed border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] opacity-50',
@@ -948,7 +948,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       </div>
 
       {/* 结果列（右侧） */}
-      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[45vh] md:min-h-0 md:h-full overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-sm relative group">
+      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[45vh] 2xl:min-h-0 2xl:h-full overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-sm relative group">
         {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
@@ -962,7 +962,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           />
         </div>
 
-        <div className="p-4 md:p-5 border-b border-[var(--border-subtle)] flex flex-col md:flex-row md:items-center md:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/75 backdrop-blur-sm gap-3">
+        <div className="p-4 md:p-5 border-b border-[var(--border-subtle)] flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/75 backdrop-blur-sm gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-1.5 md:p-2 rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)] transition-colors flex-shrink-0">
               <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
@@ -987,8 +987,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3 md:flex-shrink-0 min-w-0 w-full md:w-auto">
-             <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-[10px] text-[var(--text-muted)] md:w-[220px] md:flex-none">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap 2xl:flex-shrink-0">
+             <div className="flex min-w-0 flex-[1_1_180px] items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-[10px] text-[var(--text-muted)] 2xl:w-[220px] 2xl:flex-none">
                <Target
                  className={cn(
                    'h-3.5 w-3.5 shrink-0',
