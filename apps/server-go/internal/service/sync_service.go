@@ -248,22 +248,24 @@ func (s *SyncService) processJob(ctx context.Context, job *model.MediaSyncJob) {
 		s.failJob(ctx, job, "media is in trash")
 		return
 	}
-	if media.StorageProviderID != nil && *media.StorageProviderID == job.TargetProviderID {
-		s.failJob(ctx, job, "该文件已经位于所选备份目标,无需同步")
-		return
-	}
-
 	// 源 store: 主文件所在 provider
-	srcStore, _, err := s.mediaSvc.resolveStoreForMedia(ctx, media)
+	srcStore, srcProvider, err := s.mediaSvc.resolveStoreForMedia(ctx, media)
 	if err != nil {
 		s.failJob(ctx, job, fmt.Sprintf("resolve source store: %v", err))
 		return
 	}
 	// 目标 store: target_provider_id
 	target := job.TargetProviderID
-	dstStore, _, err := s.mediaSvc.resolveStore(ctx, &target)
+	dstStore, targetProvider, err := s.mediaSvc.resolveStore(ctx, &target)
 	if err != nil {
 		s.failJob(ctx, job, fmt.Sprintf("resolve target store: %v", err))
+		return
+	}
+	if (srcProvider == nil && targetProvider != nil && strings.EqualFold(targetProvider.ProviderType, "LOCAL")) ||
+		(srcProvider != nil && targetProvider != nil &&
+			((srcProvider.ID == targetProvider.ID) ||
+				(strings.EqualFold(srcProvider.ProviderType, "LOCAL") && strings.EqualFold(targetProvider.ProviderType, "LOCAL")))) {
+		s.failJob(ctx, job, "该文件已经位于所选备份目标,无需同步")
 		return
 	}
 
