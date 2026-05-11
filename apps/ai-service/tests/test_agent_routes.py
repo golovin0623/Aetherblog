@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -9,6 +10,7 @@ from fastapi import HTTPException
 from app.api.routes import agent as agent_module
 from app.api.routes.agent import AgentChatMessage, AgentChatRequest
 from app.services.llm_router import LlmRouter
+from tests.support import FakeConn, FakePool
 
 
 def _resolved_route(*, override: bool = True) -> LlmRouter._ResolvedRoute:
@@ -108,6 +110,72 @@ async def test_resolve_for_agent_rejects_invalid_override() -> None:
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "Requested model not found"
+
+
+@pytest.mark.asyncio
+async def test_list_agent_models_exposes_provider_icon_capabilities_and_extend_params() -> None:
+    def fetch(_query: str, _args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": 1,
+                "provider_id": 11,
+                "provider_code": "openai",
+                "provider_name": "OpenAI",
+                "provider_icon": "OpenAI",
+                "provider_priority": 100,
+                "model_id": "gpt-5",
+                "display_name": "GPT-5",
+                "model_type": "chat",
+                "context_window": None,
+                "max_output_tokens": None,
+                "input_cost_per_1k": None,
+                "output_cost_per_1k": None,
+                "capabilities": json.dumps(
+                    {
+                        "abilities": {
+                            "functionCall": True,
+                            "vision": True,
+                            "reasoning": True,
+                            "structuredOutput": True,
+                        },
+                        "settings": {
+                            "extendParams": ["gpt5ReasoningEffort", "textVerbosity"],
+                            "searchImpl": "params",
+                        },
+                        "source": "builtin",
+                        "released_at": "2025-08-07",
+                        "maxToken": 400000,
+                        "maxOutputTokens": 128000,
+                        "description": "Flagship model",
+                    }
+                ),
+                "is_enabled": True,
+                "has_user_cred": True,
+            }
+        ]
+
+    response = await agent_module.list_agent_models(
+        request=None,
+        user=SimpleNamespace(user_id="system", role="admin"),
+        forwarded_user_id="7",
+        pool=FakePool(FakeConn(fetch=fetch)),
+    )
+
+    assert response.data is not None
+    item = response.data[0]
+    assert item.providerIcon == "OpenAI"
+    assert item.contextWindow == 400000
+    assert item.maxOutputTokens == 128000
+    assert item.abilities["functionCall"] is True
+    assert item.abilities["vision"] is True
+    assert item.abilities["structuredOutput"] is True
+    assert item.extendParams == ["gpt5ReasoningEffort", "textVerbosity"]
+    assert item.settings["searchImpl"] == "params"
+    assert item.source == "builtin"
+    assert item.releasedAt == "2025-08-07"
+    assert item.description == "Flagship model"
+    assert item.scope == "user"
+    assert item.isDefault is True
 
 
 @pytest.mark.asyncio

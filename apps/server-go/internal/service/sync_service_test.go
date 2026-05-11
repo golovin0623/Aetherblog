@@ -1,11 +1,14 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	storagepkg "github.com/golovin0623/aetherblog-server/internal/pkg/storage"
+	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
 func TestIsNotFoundLikeRecognizesLocalMissingFiles(t *testing.T) {
@@ -142,6 +145,43 @@ func TestFinishVerifyLoopRestartsOnlyWhenDesired(t *testing.T) {
 	}
 	if svc.verifyRunning.Load() {
 		t.Fatal("finishVerifyLoop should clear running flag before restart")
+	}
+}
+
+func TestSyncStatusSnapshotJSONUsesLowerCamelCaseCounts(t *testing.T) {
+	snapshot := SyncStatusSnapshot{
+		Running: true,
+		Counts: repository.SyncStatusCounts{
+			Pending:   1,
+			Running:   2,
+			Succeeded: 3,
+			Failed:    4,
+		},
+		UpdatedAt: time.Unix(1700000000, 0),
+	}
+
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	counts, ok := got["counts"].(map[string]any)
+	if !ok {
+		t.Fatalf("counts missing or wrong type: %#v", got["counts"])
+	}
+
+	for _, key := range []string{"pending", "running", "succeeded", "failed"} {
+		if _, ok := counts[key]; !ok {
+			t.Fatalf("counts.%s missing in JSON: %s", key, string(raw))
+		}
+	}
+	for _, key := range []string{"Pending", "Running", "Succeeded", "Failed"} {
+		if _, ok := counts[key]; ok {
+			t.Fatalf("counts should not expose Go field %q in JSON: %s", key, string(raw))
+		}
 	}
 }
 

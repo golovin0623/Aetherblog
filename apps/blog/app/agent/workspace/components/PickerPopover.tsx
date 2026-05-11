@@ -74,7 +74,7 @@ export default function PickerPopover({
           // 上面会穿透看到下层。强制 var(--bg-leaf) 让弹层=信息焦点。
           // 与 ModelPicker.tsx 同一 fix。
           style={{ background: 'var(--bg-leaf)' }}
-          className={`absolute left-0 bottom-full z-40 mb-3 overflow-hidden rounded-xl border border-[var(--ink-subtle)]/20 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] surface-overlay ${className}`}
+          className={`relative z-40 mb-3 w-full overflow-hidden rounded-xl border border-[var(--ink-subtle)]/20 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] surface-overlay sm:absolute sm:left-0 sm:bottom-full sm:w-auto ${className}`}
         >
           {children}
         </motion.div>

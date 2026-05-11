@@ -1,7 +1,26 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ElementType } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Sparkles, BrainCircuit, Wand2, ListTree, Languages, PenLine, FileEdit, Wrench, Plus, Settings2, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Sparkles,
+  BrainCircuit,
+  Wand2,
+  ListTree,
+  Languages,
+  PenLine,
+  FileEdit,
+  Wrench,
+  Plus,
+  Settings2,
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Layers3,
+  Workflow,
+  BadgeCheck,
+  GripVertical,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AIToolsWorkspace } from '@/components/ai/AIToolsWorkspace';
 import { CustomToolModal } from '@/components/ai/CustomToolModal';
@@ -26,16 +45,70 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 const SYSTEM_TOOLS = [
-  { code: 'summary', name: '生成摘要', description: '提炼文章核心要点', icon: BrainCircuit },
-  { code: 'tags', name: '智能标签', description: '推荐相关标签', icon: Wand2 },
-  { code: 'titles', name: '标题建议', description: '基于正文生成多个标题建议', icon: FileEdit },
-  { code: 'outline', name: '生成大纲', description: '生成结构化文章提纲', icon: ListTree },
-  { code: 'polish', name: '全文润色', description: '优化表达、语气与可读性', icon: PenLine },
-  { code: 'translate', name: '全文翻译', description: '将正文翻译为指定语言', icon: Languages },
+  {
+    code: 'summary',
+    name: '生成摘要',
+    description: '提炼文章核心要点',
+    icon: BrainCircuit,
+    impact: '内容资产',
+    outcome: '摘要卡片',
+    applyTarget: '文章摘要',
+  },
+  {
+    code: 'tags',
+    name: '智能标签',
+    description: '推荐相关标签',
+    icon: Wand2,
+    impact: '检索增长',
+    outcome: '标签策略',
+    applyTarget: '文章标签',
+  },
+  {
+    code: 'titles',
+    name: '标题建议',
+    description: '基于正文生成多个标题建议',
+    icon: FileEdit,
+    impact: '点击转化',
+    outcome: '标题候选',
+    applyTarget: '标题选择',
+  },
+  {
+    code: 'outline',
+    name: '生成大纲',
+    description: '生成结构化文章提纲',
+    icon: ListTree,
+    impact: '结构规划',
+    outcome: '文章骨架',
+    applyTarget: '正文结构',
+  },
+  {
+    code: 'polish',
+    name: '全文润色',
+    description: '优化表达、语气与可读性',
+    icon: PenLine,
+    impact: '质量提升',
+    outcome: '润色正文',
+    applyTarget: '正文替换',
+  },
+  {
+    code: 'translate',
+    name: '全文翻译',
+    description: '将正文翻译为指定语言',
+    icon: Languages,
+    impact: '多语言',
+    outcome: '本地化稿件',
+    applyTarget: '正文替换',
+  },
 ];
 
 const SYSTEM_ORDER_KEY = 'ai-tools-system-order';
 const CUSTOM_ORDER_KEY = 'ai-tools-custom-order';
+
+type PromptConfig = {
+  task_type: string;
+  default_prompt: string;
+  custom_prompt: string | null;
+};
 
 const loadOrder = (key: string) => {
   if (typeof window === 'undefined') return [];
@@ -83,7 +156,7 @@ export default function AIToolsPage() {
   const target = useAiToolTarget();
   const [selectedToolId, setSelectedToolId] = useState(() => searchParams.get('tool') || 'summary');
   const [customTools, setCustomTools] = useState<AiTaskType[]>([]);
-  const [promptConfigs, setPromptConfigs] = useState<any[]>([]);
+  const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // 处理 URL 驱动的深链：?tool=summary&postId=123
@@ -112,8 +185,7 @@ export default function AIToolsPage() {
       // 清除参数，防止刷新时再次触发流程。
       setSearchParams(next, { replace: true });
     }
-    // 故意使用空依赖数组：URL 参数仅在挂载时消费一次。
-  }, []); // eslint-disable-line
+  }, []);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const systemCodes = useMemo(() => SYSTEM_TOOLS.map(t => t.code), []);
   const [systemOrder, setSystemOrder] = useState<string[]>(systemCodes);
@@ -215,7 +287,7 @@ export default function AIToolsPage() {
       } else {
         toast.error(res.message || '操作失败');
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error('保存失败');
     } finally {
       setIsSaving(false);
@@ -235,7 +307,7 @@ export default function AIToolsPage() {
       } else {
         toast.error(res.message || '删除失败');
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error('删除过程中出错');
     }
   };
@@ -262,6 +334,9 @@ export default function AIToolsPage() {
     description: t.description || '',
     icon: Wrench,
     isSystem: false,
+    impact: '自定义流程',
+    outcome: '定制输出',
+    applyTarget: '按结果应用',
     raw: t
   }));
 
@@ -352,14 +427,21 @@ export default function AIToolsPage() {
     setSelectedToolId(code);
   };
 
+  const sidebarStats = [
+    { label: '系统', value: systemToolItems.length },
+    { label: '自定义', value: customToolItems.length },
+    { label: '总计', value: allTools.length },
+  ];
+
   return (
-    <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] overflow-hidden flex flex-col md:flex-row md:gap-6 relative">
+    <div className="ai-tools-page h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6rem)] overflow-hidden flex flex-col md:flex-row gap-3 md:gap-5 relative isolate">
       {/* 移动端：顶部工具标签栏 */}
-      <div className="md:hidden sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center h-[56px] overflow-hidden flex-shrink-0">
+      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[60px] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)]">
         {/* 菜单按钮 - 固定在左侧 */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          aria-label="打开工具导航"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -378,9 +460,9 @@ export default function AIToolsPage() {
                   data-tool-id={tool.code}
                   onClick={() => handleMobileToolSelect(tool.code)}
                   className={cn(
-                    "flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl text-xs font-black transition-all border shadow-sm",
+                    "flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95",
                     isSelected
-                      ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white"
+                      ? "bg-[var(--ink-primary)] text-[var(--bg-void)] border-[var(--ink-primary)] shadow-[0_12px_28px_-18px_color-mix(in_oklch,var(--aurora-1)_70%,black)]"
                       : "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
                   )}
                   title={tool.name}
@@ -393,13 +475,33 @@ export default function AIToolsPage() {
 
           {/* 滚动指示器 / 渐隐边缘 */}
           <div className={cn(
-            "absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
+            "absolute left-0 top-0 bottom-0 w-5 bg-gradient-to-r from-[var(--bg-leaf)] to-transparent pointer-events-none transition-opacity duration-300",
             canScrollLeft ? "opacity-100" : "opacity-0"
           )} />
           <div className={cn(
-            "absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
+            "absolute right-0 top-0 bottom-0 w-5 bg-gradient-to-l from-[var(--bg-leaf)] to-transparent pointer-events-none transition-opacity duration-300",
             canScrollRight ? "opacity-100" : "opacity-0"
           )} />
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => scrollTabs('left')}
+              className="absolute left-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
+              aria-label="向左滚动工具"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          )}
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => scrollTabs('right')}
+              className="absolute right-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
+              aria-label="向右滚动工具"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* 添加按钮 - 固定在右侧 */}
@@ -408,7 +510,8 @@ export default function AIToolsPage() {
             setEditingTool(null);
             setShowToolModal(true);
           }}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          aria-label="新建工具"
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -433,32 +536,50 @@ export default function AIToolsPage() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 1 }}
-              className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
+              className="surface-raised md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[88vw] max-w-[312px] flex flex-col !rounded-none border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
             >
 
               {/* 头部 */}
-              <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-card)]">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h2 className="text-lg font-bold text-[var(--text-primary)]">AI 工具箱</h2>
+              <div className="p-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/70">
+                <div className="flex items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-[var(--text-muted)]">AI 内容运营</p>
+                      <h2 className="truncate text-lg font-bold text-[var(--text-primary)]">工具中枢</h2>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingTool(null);
+                        setShowToolModal(true);
+                        setIsMobileSidebarOpen(false);
+                      }}
+                      className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90 transition-all shadow-sm"
+                      aria-label="新建工具"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setIsMobileSidebarOpen(false)}
+                      className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      aria-label="关闭工具导航"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingTool(null);
-                      setShowToolModal(true);
-                      setIsMobileSidebarOpen(false);
-                    }}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setIsMobileSidebarOpen(false)}
-                    className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {sidebarStats.map((item) => (
+                    <div key={item.label} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-2 py-2 text-center">
+                      <div className="font-mono text-sm tnum text-[var(--text-primary)]">{item.value}</div>
+                      <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{item.label}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -472,6 +593,7 @@ export default function AIToolsPage() {
                 >
                   <div className="space-y-2 relative">
 
+                    <ToolSectionHeader title="系统能力" count={systemToolItems.length} />
                     <SortableContext
                       items={systemToolItems.map(t => t.code)}
                       strategy={verticalListSortingStrategy}
@@ -489,7 +611,7 @@ export default function AIToolsPage() {
                       ))}
                     </SortableContext>
 
-                    {customToolItems.length > 0 && <div className="h-4 border-b border-[var(--border-subtle)] mb-4" />}
+                    {customToolItems.length > 0 && <ToolSectionHeader title="自定义流程" count={customToolItems.length} className="pt-3" />}
 
                     <SortableContext
                       items={customToolItems.map(t => t.code)}
@@ -505,7 +627,7 @@ export default function AIToolsPage() {
                             setIsMobileSidebarOpen(false);
                           }}
                           onEdit={() => {
-                            setEditingTool((tool as any).raw);
+                            setEditingTool(tool.raw);
                             setShowToolModal(true);
                             setIsMobileSidebarOpen(false);
                           }}
@@ -525,29 +647,62 @@ export default function AIToolsPage() {
 
 
       {/* 桌面端：左侧栏 - 工具列表 */}
-      <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden shadow-sm h-full">
+      <div className="ai-tools-sidebar surface-raised hidden md:flex w-[300px] flex-shrink-0 flex-col rounded-2xl border border-[var(--border-subtle)] overflow-hidden h-full">
         {/* 头部 */}
 
         <div className="p-4 border-b border-[var(--border-subtle)]">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" />
-              AI 工具箱
-            </h1>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
+                <Sparkles className="h-3.5 w-3.5 text-[var(--aurora-1)]" />
+                AI 内容运营
+              </div>
+              <h1 className="mt-3 text-xl font-bold text-[var(--text-primary)]">
+                工具中枢
+              </h1>
+            </div>
             <button
               onClick={() => {
                 setEditingTool(null);
                 setShowToolModal(true);
               }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
+              className="w-9 h-9 flex shrink-0 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90 transition-all shadow-sm"
               title="新建工具"
             >
               <Plus className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-[var(--text-muted)] font-light">
-            选择工具以开始创作
-          </p>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {sidebarStats.map((item) => (
+              <div key={item.label} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-2 py-2 text-center">
+                <div className="font-mono text-base tnum text-[var(--text-primary)]">{item.value}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
+              <Workflow className="h-4 w-4 text-[var(--aurora-1)]" />
+              增长闭环
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-1.5">
+              {['选稿', '生成', '应用', '复盘'].map((step, index) => (
+                <div key={step} className="flex flex-col items-center gap-1">
+                  <span className={cn(
+                    'flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-mono tnum',
+                    index === 0
+                      ? 'border-[var(--aurora-1)] bg-[var(--aurora-1)] text-[var(--bg-void)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)]',
+                  )}>
+                    {index + 1}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)]">{step}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
 
@@ -563,6 +718,7 @@ export default function AIToolsPage() {
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2">
+                <ToolSectionHeader title="系统能力" count={systemToolItems.length} />
                 {systemToolItems.map((tool) => (
                   <SortableToolItem
                     key={tool.code}
@@ -574,13 +730,14 @@ export default function AIToolsPage() {
               </div>
             </SortableContext>
 
-            {customToolItems.length > 0 && <div className="h-2" />}
+            {customToolItems.length > 0 && <div className="h-3" />}
 
             <SortableContext
               items={customToolItems.map(t => t.code)}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2">
+                {customToolItems.length > 0 && <ToolSectionHeader title="自定义流程" count={customToolItems.length} />}
                 {customToolItems.map((tool) => (
                   <SortableToolItem
                     key={tool.code}
@@ -588,7 +745,7 @@ export default function AIToolsPage() {
                     isSelected={selectedToolId === tool.code}
                     onSelect={() => setSelectedToolId(tool.code)}
                     onEdit={() => {
-                      setEditingTool((tool as any).raw);
+                      setEditingTool(tool.raw);
                       setShowToolModal(true);
                     }}
                   />
@@ -602,12 +759,15 @@ export default function AIToolsPage() {
       </div>
 
       {/* 主内容区：工作台 */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden p-4 md:p-0">
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <AIToolsWorkspace
           selectedTool={{
             id: selectedTool.code,
             label: selectedTool.name,
-            desc: selectedTool.description || ''
+            desc: selectedTool.description || '',
+            impact: selectedTool.impact,
+            outcome: selectedTool.outcome,
+            applyTarget: selectedTool.applyTarget,
           }}
           allConfigs={promptConfigs}
           onConfigUpdated={fetchAllData}
@@ -641,6 +801,9 @@ function SortableToolItem({
     description: string;
     icon: ElementType;
     isSystem: boolean;
+    impact?: string;
+    outcome?: string;
+    applyTarget?: string;
   };
   isSelected: boolean;
   onSelect: () => void;
@@ -671,11 +834,11 @@ function SortableToolItem({
         }
       }}
       className={cn(
-        'relative w-full min-w-0 flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all duration-300 cursor-grab active:cursor-grabbing select-none group',
+        'relative w-full min-w-0 flex items-start gap-3 px-3.5 py-3.5 rounded-2xl text-left transition-all duration-300 cursor-grab active:cursor-grabbing select-none group',
         'border mb-2 overflow-hidden',
         isSelected
-          ? 'bg-white dark:bg-[var(--bg-secondary)] shadow-md ring-1 ring-primary/20 text-[var(--text-primary)] font-bold z-10'
-          : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
+          ? 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] shadow-[0_16px_34px_-26px_color-mix(in_oklch,var(--aurora-1)_60%,black)] text-[var(--text-primary)] font-bold z-10'
+          : 'bg-[var(--bg-secondary)]/65 text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
         isDragging && 'opacity-80 ring-2 ring-primary/20 scale-[1.02] z-50 shadow-2xl'
       )}
     >
@@ -685,24 +848,39 @@ function SortableToolItem({
         className={cn(
           'p-2.5 rounded-xl transition-colors flex-shrink-0',
           isSelected
-            ? 'bg-primary/10 text-primary'
-            : 'bg-[var(--bg-card)] text-[var(--text-muted)] group-hover:text-black dark:group-hover:text-white'
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+            : 'bg-[var(--bg-card)] text-[var(--text-muted)] group-hover:text-[var(--text-primary)]'
         )}
       >
         <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
       </div>
 
       <div className={cn("flex-1 min-w-0", !tool.isSystem && "pr-8")}>
-        <div className={cn('font-bold text-sm sm:text-base truncate mb-0.5', isSelected ? '' : 'text-[var(--text-primary)]')}>
-          {tool.name}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className={cn('truncate text-sm sm:text-[15px] font-bold', isSelected ? '' : 'text-[var(--text-primary)]')}>
+            {tool.name}
+          </div>
+          {tool.impact && (
+            <span className="hidden xl:inline-flex shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
+              {tool.impact}
+            </span>
+          )}
         </div>
         <p className={cn(
-          'text-[11px] sm:text-xs leading-tight line-clamp-2 h-[32px] overflow-hidden whitespace-normal font-medium',
+          'mt-1 text-[11px] sm:text-xs leading-snug line-clamp-2 min-h-[30px] overflow-hidden whitespace-normal font-medium',
           isSelected ? 'opacity-80' : 'text-[var(--text-muted)]'
         )}>
           {tool.description}
         </p>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+          <BadgeCheck className="h-3 w-3 shrink-0 text-[var(--signal-success)]" />
+          <span className="truncate">{tool.outcome || tool.impact || '输出'}</span>
+          <span className="shrink-0 opacity-40">/</span>
+          <span className="truncate">{tool.applyTarget || '应用'}</span>
+        </div>
       </div>
+
+      <GripVertical className="absolute right-3 top-3 h-3.5 w-3.5 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-60" />
 
       {!tool.isSystem && (
         <button
@@ -715,7 +893,7 @@ function SortableToolItem({
           className={cn(
             'absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-xl transition-all',
             isSelected
-              ? 'text-white/40 hover:text-white hover:bg-white/10 dark:text-black/40 dark:hover:text-black dark:hover:bg-black/5'
+              ? 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-sm bg-[var(--bg-card)]'
           )}
           aria-label="编辑工具"
@@ -723,6 +901,26 @@ function SortableToolItem({
           <Settings2 className="w-4 h-4" />
         </button>
       )}
+    </div>
+  );
+}
+
+function ToolSectionHeader({
+  title,
+  count,
+  className,
+}: {
+  title: string;
+  count: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex items-center justify-between px-1 pb-1', className)}>
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
+        <Layers3 className="h-3.5 w-3.5" />
+        {title}
+      </div>
+      <span className="font-mono text-[10px] tnum text-[var(--text-muted)]">{count}</span>
     </div>
   );
 }

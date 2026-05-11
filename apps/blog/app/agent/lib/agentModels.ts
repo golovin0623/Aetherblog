@@ -11,10 +11,27 @@ import { useEffect, useState } from 'react';
 export interface AgentModelItem {
   providerCode: string;
   providerName?: string | null;
+  providerIcon?: string | null;
   modelId: string;
   displayName?: string | null;
   contextWindow?: number | null;
+  maxOutputTokens?: number | null;
   isDefault?: boolean;
+  abilities?: {
+    functionCall?: boolean;
+    vision?: boolean;
+    reasoning?: boolean;
+    search?: boolean;
+    imageOutput?: boolean;
+    video?: boolean;
+    files?: boolean;
+    structuredOutput?: boolean;
+  };
+  extendParams?: string[];
+  settings?: Record<string, unknown>;
+  source?: string | null;
+  releasedAt?: string | null;
+  description?: string | null;
   /** 来源：'user' 表示当前登录用户在该 provider 下有自己的凭证；
    *  'system' 表示用的是管理员配置的系统级凭证。 */
   scope?: 'user' | 'system';

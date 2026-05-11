@@ -213,12 +213,12 @@ func TestOctetStreamFallbackForSVG(t *testing.T) {
 	}
 }
 
-
 // TestTextPlainFallbackForSVG 直接驱动生产的 resolveMimeWithFallback 而非复制其逻辑,
 // 因此能真正捕获以下回归(PR #615 Codex review 指出的盲区):
 //   - 把 strings.HasPrefix(mime, "text/plain") 改成精确匹配 "text/plain"
 //     → "text/plain; charset=utf-8" 不再触发兜底,SVG 载荷以 text/plain 直通白名单。
 //   - 整段 if 被删 / 条件被反转 / guessed 判空逻辑被改坏。
+//
 // 仅靠 guessMimeType 单边验证(老实现)不会捕获以上任何一条。
 //
 // 覆盖矩阵:
@@ -245,6 +245,36 @@ func TestTextPlainFallbackForSVG(t *testing.T) {
 			t.Errorf("resolveMimeWithFallback(%q, %q) → %q is in allowedMimeTypes — XSS bypass",
 				tc.detected, tc.filename, got)
 		}
+	}
+}
+
+func TestPublicMediaURL(t *testing.T) {
+	if got := publicMediaURL(42); got != "/api/v1/public/media/42" {
+		t.Fatalf("publicMediaURL() = %q", got)
+	}
+	if got := publicMediaURL(0); got != "" {
+		t.Fatalf("publicMediaURL(0) = %q, want empty", got)
+	}
+}
+
+func TestNormalizePersistedMediaURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"https://cdn.example.com/a.png", "https://cdn.example.com/a.png"},
+		{"/api/uploads/2026/a.png", "/api/uploads/2026/a.png"},
+		{"/uploads/2026/a.png", "/api/uploads/2026/a.png"},
+		{"/api/v1/public/media/7", "/api/v1/public/media/7"},
+		{"2026/05/a.png", ""},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := normalizePersistedMediaURL(tc.in); got != tc.want {
+				t.Fatalf("normalizePersistedMediaURL(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 

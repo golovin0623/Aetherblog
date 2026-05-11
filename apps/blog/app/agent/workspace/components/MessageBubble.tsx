@@ -106,57 +106,52 @@ function MessageBubbleBase({
   // 流式中且已有正文 —— bubble 边沿走呼吸 aurora，让"正在生成"的状态可视化
   const isStreaming = !isUser && message.pending && !!message.content;
 
-  // 共用的 hover 操作行（复制 / 编辑 / 重试）—— bubble 与 engraved 模式各自挂一份，
-  // 视觉位置不同但逻辑一致。
-  const hoverActions = (
+  // LobeHub 风格操作条：不占用 YOU/AGENT 标题行，默认隐藏，hover/focus 时浮现。
+  const hasActions = !!message.content || canEditUser || canRetryAssistant;
+  const actionButtonClass =
+    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]';
+  const messageActions = hasActions ? (
     <div
-      className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
-        isUser && displayMode === 'bubble' ? 'flex-row-reverse' : ''
+      className={`mt-1.5 flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)]/65 p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto ${
+        isUser ? 'ml-auto' : 'mr-auto'
       }`}
+      aria-label="消息操作"
     >
       {!!message.content && (
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
-          aria-label="复制消息"
-          title="复制"
+          className={actionButtonClass}
+          aria-label={copied ? '已复制' : '复制消息'}
+          title={copied ? '已复制' : '复制'}
         >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3" /> 已复制
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" /> 复制
-            </>
-          )}
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       )}
       {canEditUser && (
         <button
           type="button"
           onClick={() => onEdit?.(message)}
-          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          className={actionButtonClass}
           aria-label="编辑这条消息"
           title="编辑（将截断后续对话）"
         >
-          <Pencil className="w-3 h-3" /> 编辑
+          <Pencil className="h-3.5 w-3.5" />
         </button>
       )}
       {canRetryAssistant && (
         <button
           type="button"
           onClick={() => onRetry?.(message)}
-          className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
-          aria-label="重试这条回复"
+          className={`${actionButtonClass} hover:text-[var(--aurora-1)]`}
+          aria-label="重新生成回复"
           title="重新生成"
         >
-          <RefreshCcw className="w-3 h-3" /> 重试
+          <RefreshCcw className="h-3.5 w-3.5" />
         </button>
       )}
     </div>
-  );
+  ) : null;
 
   // 共用的 sources 列表
   const sourcesList =
@@ -192,7 +187,7 @@ function MessageBubbleBase({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-        className="group/msg relative max-w-3xl mx-auto"
+        className="group/msg relative mx-auto w-full max-w-[820px]"
         aria-label={isUser ? '用户消息' : 'Agent 回复'}
       >
         {/* 居中浮动 identity 行：左右两条渐隐 hairline */}
@@ -220,7 +215,6 @@ function MessageBubbleBase({
                 minute: '2-digit',
               })}
             </span>
-            {hoverActions}
           </span>
           <span
             aria-hidden="true"
@@ -230,7 +224,7 @@ function MessageBubbleBase({
 
         {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
         {showThinkingPanel && (
-          <div className="mb-3">
+          <div className="mx-auto mb-3 w-full max-w-[680px]">
             <ThinkingPanel
               message={message}
               fontSize={fontSize}
@@ -240,50 +234,54 @@ function MessageBubbleBase({
         )}
 
         {/* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */}
-        <div
-          className="agent-message-font agent-engraved-text break-words"
-          style={messageFontStyle}
-        >
-          {isUser || message.error ? (
-            <div className="whitespace-pre-wrap leading-relaxed">
-              {message.content}
-              {message.error && (
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                    ERROR · {message.error}
-                  </span>
-                  {canRetryAssistant && (
-                    <button
-                      type="button"
-                      onClick={() => onRetry?.(message)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                      aria-label="重新生成回复"
-                    >
-                      <RefreshCcw className="w-3 h-3" /> 重试
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : showTypingDots ? (
-            <TypingDots />
-          ) : message.pending ? (
-            <div
-              className={`agent-engraved-streaming agent-stream-fade${
-                streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
-              }`}
-            >
-              <StreamMarkdown content={renderableContent} />
-              <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
-            </div>
-          ) : (
-            <div className="agent-md agent-engraved-md">
-              <MarkdownRenderer content={finalContent} />
-            </div>
-          )}
+        <div className="mx-auto w-full max-w-[680px]">
+          <div
+            className="agent-message-font agent-engraved-text break-words"
+            style={messageFontStyle}
+          >
+            {isUser || message.error ? (
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {message.content}
+                {message.error && (
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                      ERROR · {message.error}
+                    </span>
+                    {canRetryAssistant && (
+                      <button
+                        type="button"
+                        onClick={() => onRetry?.(message)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                        aria-label="重新生成回复"
+                      >
+                        <RefreshCcw className="w-3 h-3" /> 重试
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : showTypingDots ? (
+              <TypingDots />
+            ) : message.pending ? (
+              <div
+                className={`agent-engraved-streaming agent-stream-fade${
+                  streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
+                }`}
+              >
+                <StreamMarkdown content={renderableContent} />
+                <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
+              </div>
+            ) : (
+              <div className="agent-md agent-engraved-md">
+                <MarkdownRenderer content={finalContent} />
+              </div>
+            )}
+          </div>
+
+          {messageActions}
         </div>
 
-        {sourcesList}
+        {sourcesList && <div className="mx-auto w-full max-w-[680px]">{sourcesList}</div>}
       </motion.article>
     );
   }
@@ -325,57 +323,6 @@ function MessageBubbleBase({
             minute: '2-digit',
           })}
         </span>
-        {/* hover actions —— 与 ChatGPT / Claude 一致的位置：紧贴 meta 行，
-            hover 整条消息时才浮现。focus-within 让键盘用户也能拿到焦点。 */}
-        <div
-          className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
-            isUser ? 'flex-row-reverse' : ''
-          }`}
-        >
-          {/* 复制：user / assistant 都允许，pending 中的 assistant 也允许复制
-              已生成部分（与 ChatGPT 一致）。仅在没有正文时隐藏。 */}
-          {!!message.content && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
-              aria-label="复制消息"
-              title="复制"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3 h-3" /> 已复制
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" /> 复制
-                </>
-              )}
-            </button>
-          )}
-          {canEditUser && (
-            <button
-              type="button"
-              onClick={() => onEdit?.(message)}
-              className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
-              aria-label="编辑这条消息"
-              title="编辑（将截断后续对话）"
-            >
-              <Pencil className="w-3 h-3" /> 编辑
-            </button>
-          )}
-          {canRetryAssistant && (
-            <button
-              type="button"
-              onClick={() => onRetry?.(message)}
-              className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
-              aria-label="重试这条回复"
-              title="重新生成"
-            >
-              <RefreshCcw className="w-3 h-3" /> 重试
-            </button>
-          )}
-        </div>
       </div>
 
       {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
@@ -444,6 +391,8 @@ function MessageBubbleBase({
           )}
         </div>
       </div>
+
+      {messageActions}
 
       {/* sources */}
       {!isUser && message.sources && message.sources.length > 0 && (

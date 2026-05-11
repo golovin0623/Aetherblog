@@ -66,7 +66,7 @@ export interface UseImageUploadReturn {
 }
 
 // 默认允许的图片类型
-const DEFAULT_ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+const DEFAULT_ACCEPT_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
 
 // 默认最大大小:20MB
 const DEFAULT_MAX_SIZE = 20 * 1024 * 1024;

@@ -23,7 +23,6 @@ import {
   PanelLeftClose,
   Cloud,
   Coins,
-  Workflow,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -63,7 +62,7 @@ const navSections: Array<{
   {
     label: 'INTELLIGENCE',
     items: [
-      { path: '/aetherhub', icon: Workflow, label: '灵境' },
+      { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
       { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
       { path: '/analytics', icon: Activity, label: '数据分析' },
       { path: '/ai-config', icon: Bot, label: 'AI 配置' },

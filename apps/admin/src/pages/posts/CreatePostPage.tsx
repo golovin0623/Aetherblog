@@ -1186,10 +1186,10 @@ export function CreatePostPage() {
   }, [tags, selectedTags, setTags, setSelectedTags]);
 
   // 图片上传 Hook
-  // Phase 3: 优先用 cdnUrl(已是完整可访问 URL,LOCAL/COS 都正确),回落 getMediaUrl(item) 兼容老版本
+  // 优先插入稳定 publicUrl,让文章内容跟随媒体记录当前的主存储/备份策略。
   const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
     const result = await mediaService.upload(file, onProgress);
-    const finalUrl = result.cdnUrl || getMediaUrl(result);
+    const finalUrl = result.publicUrl || result.cdnUrl || getMediaUrl(result);
     return {
       url: finalUrl,
       cdnUrl: result.cdnUrl,

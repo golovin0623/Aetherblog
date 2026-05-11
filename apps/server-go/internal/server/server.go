@@ -161,9 +161,6 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 健康检查（兼容 Spring Boot Actuator 路径）
 	api.GET("/actuator/health", s.healthHandler)
 
-	// 静态文件服务：提供上传文件的访问
-	api.Static("/uploads", s.Config.Upload.Path)
-
 	// --- 共享仓储层 ---
 	userRepo := repository.NewUserRepo(s.DB)
 	catRepo := repository.NewCategoryRepo(s.DB)
@@ -317,7 +314,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	syncHandler := handler.NewSyncHandler(syncSvc)
 
 	mediaHandler := handler.NewMediaHandler(mediaSvc, activitySvc)
+	mediaHandler.SetBackupScheduler(syncSvc)
 	mediaHandler.Mount(admin.Group("/media"))
+	handler.NewPublicMediaHandler(mediaSvc).Mount(public.Group("/media"))
+	handler.NewUploadAccessHandler(mediaSvc, s.Config.Upload.Path).Mount(api.Group("/uploads"))
 	syncHandler.MountMediaRoutes(admin.Group("/media")) // POST /admin/media/:id/sync
 	handler.NewFolderHandler(folderSvc).Mount(admin.Group("/media/folders"))
 	handler.NewStorageProviderHandler(storageProviderSvc).Mount(admin.Group("/storage/providers"))

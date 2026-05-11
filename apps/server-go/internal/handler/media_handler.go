@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,11 @@ type MediaHandler struct {
 	versionSvc  *service.VersionService // 可选;UploadContent 用来写版本快照(没注入时不写快照仍可保存)
 	mediaRepo   *repository.MediaRepo   // 可选;UploadContent 用来读旧记录给版本快照
 	activitySvc *service.ActivityService
+	backupSched mediaBackupScheduler
+}
+
+type mediaBackupScheduler interface {
+	ScheduleAutoBackup(ctx context.Context, mediaID int64) error
 }
 
 // NewMediaHandler 创建一个仅含核心 MediaService 的 MediaHandler 实例。
@@ -73,6 +79,12 @@ func (h *MediaHandler) assertMediaOwnership(c echo.Context, mediaID int64) error
 func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, mediaRepo *repository.MediaRepo) {
 	h.versionSvc = versionSvc
 	h.mediaRepo = mediaRepo
+}
+
+// SetBackupScheduler 注入上传后的自动备份调度器。
+// 上传主流程不依赖备份成功;调度失败只记录日志,避免存储目标故障反向阻断内容创作。
+func (h *MediaHandler) SetBackupScheduler(scheduler mediaBackupScheduler) {
+	h.backupSched = scheduler
 }
 
 // Mount 在指定路由组上注册所有媒体管理路由。
@@ -131,6 +143,7 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 
 	// 记录上传文件活动
 	h.recordMediaActivity(c, "media.upload", "上传文件: "+fh.Filename, fmt.Sprintf("文件 %s 已上传", fh.Filename))
+	h.scheduleAutoBackup(c.Request().Context(), vo.ID)
 
 	return response.OK(c, vo)
 }
@@ -166,6 +179,7 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 		if err != nil {
 			results = append(results, map[string]interface{}{"error": err.Error(), "filename": fh.Filename})
 		} else {
+			h.scheduleAutoBackup(c.Request().Context(), vo.ID)
 			results = append(results, vo)
 		}
 	}
@@ -497,12 +511,21 @@ func (h *MediaHandler) recordMediaActivity(c echo.Context, eventType, title, des
 	}
 }
 
+func (h *MediaHandler) scheduleAutoBackup(ctx context.Context, mediaID int64) {
+	if h.backupSched == nil || mediaID <= 0 {
+		return
+	}
+	if err := h.backupSched.ScheduleAutoBackup(ctx, mediaID); err != nil {
+		log.Warn().Err(err).Int64("media_id", mediaID).Msg("schedule auto media backup failed")
+	}
+}
+
 // UploadContent 处理 POST /admin/media/:id/content 请求。
 //
 // 替换文件的二进制内容(图片编辑器保存场景):
-//   1. 校验 ownership;
-//   2. 若 versionSvc 已注入,先把当前版本快照写入 media_versions(用于版本回滚);
-//   3. 调 MediaService.UpdateContent 走对应 provider 上传新内容 + 更新 catalog。
+//  1. 校验 ownership;
+//  2. 若 versionSvc 已注入,先把当前版本快照写入 media_versions(用于版本回滚);
+//  3. 调 MediaService.UpdateContent 走对应 provider 上传新内容 + 更新 catalog。
 //
 // 关键修复(遗留 4):原实现写死 h.store(只在 LOCAL 可用,云模式静默失效),且
 // h.store 一直未被 server.go 注入 → 端点之前一直返回 "版本服务未配置"。

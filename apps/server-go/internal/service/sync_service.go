@@ -149,7 +149,15 @@ func (s *SyncService) SetTargetProviderID(ctx context.Context, providerID *int64
 		}
 		value = strconv.FormatInt(p.ID, 10)
 	}
-	return s.settingRepo.Upsert(ctx, SyncTargetProviderIDKey, value)
+	if err := s.settingRepo.Upsert(ctx, SyncTargetProviderIDKey, value); err != nil {
+		return err
+	}
+	if providerID != nil && *providerID > 0 && s.AutoEnabled(ctx) {
+		if _, err := s.EnqueueAll(ctx, providerID); err != nil {
+			return fmt.Errorf("backup target saved but enqueue failed: %w", err)
+		}
+	}
+	return nil
 }
 
 // IsRunning 当前 worker 是否在执行。
@@ -315,7 +323,17 @@ func (s *SyncService) EnqueueAll(ctx context.Context, targetProviderID *int64) (
 	if err != nil {
 		return 0, err
 	}
-	s.Start(ctx)
+	if n > 0 {
+		s.Start(ctx)
+		return n, nil
+	}
+	counts, err := s.syncRepo.CountByStatus(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if counts.Pending > 0 || counts.Running > 0 {
+		s.Start(ctx)
+	}
 	return n, nil
 }
 
@@ -335,8 +353,20 @@ func (s *SyncService) EnqueueOne(ctx context.Context, mediaID int64, targetProvi
 	if media.Deleted {
 		return errors.New("media is in trash")
 	}
+	targetProvider, err := s.validateTargetProvider(ctx, target)
+	if err != nil {
+		return err
+	}
+	if media.SyncStatus == "SYNCED" && media.BackupProviderID != nil && *media.BackupProviderID == target {
+		return nil
+	}
 	if media.StorageProviderID != nil && *media.StorageProviderID == target {
-		return errors.New("该文件已经位于所选备份目标,无需同步")
+		return nil
+	}
+	if media.StorageProviderID == nil &&
+		strings.EqualFold(media.StorageType, "LOCAL") &&
+		strings.EqualFold(targetProvider.ProviderType, "LOCAL") {
+		return nil
 	}
 	if _, err := s.syncRepo.EnqueueOne(ctx, mediaID, target); err != nil {
 		return err
@@ -347,6 +377,15 @@ func (s *SyncService) EnqueueOne(ctx context.Context, mediaID int64, targetProvi
 	}
 	s.Start(ctx)
 	return nil
+}
+
+// ScheduleAutoBackup 在上传成功后按全局开关决定是否自动入队备份。
+// 它只负责调度,不会改变上传接口的成功语义;调用方应记录错误但不要阻断上传响应。
+func (s *SyncService) ScheduleAutoBackup(ctx context.Context, mediaID int64) error {
+	if !s.AutoEnabled(ctx) {
+		return nil
+	}
+	return s.EnqueueOne(ctx, mediaID, nil)
 }
 
 // Status 当前 worker 状态摘要。

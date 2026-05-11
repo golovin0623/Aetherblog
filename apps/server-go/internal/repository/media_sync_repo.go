@@ -19,22 +19,30 @@ type MediaSyncRepo struct{ db *sqlx.DB }
 func NewMediaSyncRepo(db *sqlx.DB) *MediaSyncRepo { return &MediaSyncRepo{db: db} }
 
 // EnqueueOne 把指定 mediaID 入队为 PENDING 状态。
-// 重复入队同一 (mediaID, targetProviderID) 不会报错(允许重试),但会复用最近一行 PENDING 的 attempt 计数。
+// 同一 (mediaID, targetProviderID) 已存在 PENDING/RUNNING job 时直接返回 0,nil,
+// 防止自动备份与手动点击重复制造并发任务。
 func (r *MediaSyncRepo) EnqueueOne(ctx context.Context, mediaID, targetProviderID int64) (int64, error) {
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO media_sync_jobs (media_id, target_provider_id, status, attempt, created_at)
-		VALUES ($1, $2, 'PENDING', 0, CURRENT_TIMESTAMP)
+		SELECT $1, $2, 'PENDING', 0, CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (
+			SELECT 1 FROM media_sync_jobs
+			WHERE media_id=$1 AND target_provider_id=$2 AND status IN ('PENDING', 'RUNNING')
+		)
 		RETURNING id`, mediaID, targetProviderID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
 	return id, err
 }
 
 // EnqueueAllUnsynced 找出所有 (storage_provider_id IS NULL OR storage_provider_id != targetProviderID)
-// 且 sync_status NOT IN (SYNCING, SYNCED) 的非删除文件,批量插入 PENDING job。
+// 且没有"已同步到当前目标"的非删除文件,批量插入 PENDING job。
 // 返回入队的 job 数量。
 //
-// 注意: 主文件本身就在 targetProviderID 上的不需要镜像。已 SYNCED 的也跳过(防止重复传)。
-// FAILED 的文件允许重新加入队列(给用户重试机会)。
+// 注意:主文件本身就在 targetProviderID 上的不需要镜像。已经 SYNCED 到当前目标的跳过;
+// 但如果切换了备份目标,旧目标上的 SYNCED 行必须重新入队。FAILED/MISSING/NONE 均允许重新加入队列。
 func (r *MediaSyncRepo) EnqueueAllUnsynced(ctx context.Context, targetProviderID int64) (int64, error) {
 	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO media_sync_jobs (media_id, target_provider_id, status, attempt, created_at)
@@ -42,7 +50,8 @@ func (r *MediaSyncRepo) EnqueueAllUnsynced(ctx context.Context, targetProviderID
 		FROM media_files
 		WHERE deleted = false
 		  AND (storage_provider_id IS NULL OR storage_provider_id != $1)
-		  AND sync_status NOT IN ('SYNCING', 'SYNCED')
+		  AND sync_status != 'SYNCING'
+		  AND NOT (sync_status = 'SYNCED' AND backup_provider_id = $1)
 		  AND id NOT IN (
 		    SELECT media_id FROM media_sync_jobs
 		    WHERE target_provider_id = $1 AND status IN ('PENDING', 'RUNNING')
@@ -186,10 +195,10 @@ func (r *MediaSyncRepo) ResetRunningOnStartup(ctx context.Context) (int64, error
 
 // SyncStatusCounts 聚合统计 worker 状态(供 GET /sync/status 端点)。
 type SyncStatusCounts struct {
-	Pending   int64 `db:"pending"`
-	Running   int64 `db:"running"`
-	Succeeded int64 `db:"succeeded"`
-	Failed    int64 `db:"failed"`
+	Pending   int64 `db:"pending" json:"pending"`
+	Running   int64 `db:"running" json:"running"`
+	Succeeded int64 `db:"succeeded" json:"succeeded"`
+	Failed    int64 `db:"failed" json:"failed"`
 }
 
 // CountByStatus 返回 PENDING/RUNNING/SUCCEEDED/FAILED 各自的 job 数。

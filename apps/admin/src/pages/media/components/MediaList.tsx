@@ -28,6 +28,7 @@ const typeIcons: Record<MediaType, typeof Image> = {
   VIDEO: Video,
   AUDIO: Music,
   DOCUMENT: FileText,
+  OTHER: FileText,
 };
 
 const typeLabels: Record<MediaType, string> = {
@@ -35,6 +36,7 @@ const typeLabels: Record<MediaType, string> = {
   VIDEO: '视频',
   AUDIO: '音频',
   DOCUMENT: '文档',
+  OTHER: '其他',
 };
 
 /**

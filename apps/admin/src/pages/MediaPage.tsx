@@ -39,7 +39,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks';
-import { mediaService, MediaListParams, MediaType, getMediaUrl, isUploadAborted } from '@/services/mediaService';
+import { mediaService, MediaItem, MediaListParams, MediaType, getMediaUrl, isUploadAborted } from '@/services/mediaService';
 import { folderService } from '@/services/folderService';
 import { MediaGrid } from './media/components/MediaGrid';
 import { MediaList } from './media/components/MediaList';
@@ -70,6 +70,10 @@ type PendingConfirm =
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
+
+function hasActiveMediaSync(items?: MediaItem[]): boolean {
+  return items?.some((item) => item.syncStatus === 'PENDING' || item.syncStatus === 'SYNCING') ?? false;
+}
 
 /**
  * UploadingFile 是 UploadProgress 浮窗里展示的纯渲染数据。
@@ -223,6 +227,7 @@ export default function MediaPage() {
       const res = await mediaService.getList(params);
       return res.data; // 返回 PageResult<MediaItem>
     },
+    refetchInterval: (query) => (hasActiveMediaSync(query.state.data?.list) ? 2000 : false),
   });
 
   // @ref 回收站: 获取回收站文件数量

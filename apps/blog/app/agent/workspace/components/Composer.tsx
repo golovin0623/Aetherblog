@@ -11,7 +11,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUp,
   AtSign,
+  Check,
+  ChevronDown,
+  CornerDownLeft,
   Hash,
+  SlidersHorizontal,
   SlashSquare,
   Square,
   Mic,
@@ -26,6 +30,34 @@ import SlashCommandPicker from './SlashCommandPicker';
 import type { AgentArticle, AgentTag, SlashCommand } from '../../lib/agentResources';
 
 type PickerKey = 'article' | 'tag' | 'slash' | null;
+type SendShortcut = 'enter' | 'mod-enter';
+
+const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.blog.agent.sendShortcut';
+const SEND_SHORTCUT_OPTIONS: Array<{
+  value: SendShortcut;
+  label: string;
+  keys: string;
+  description: string;
+}> = [
+  {
+    value: 'enter',
+    label: '按 Enter 发送',
+    keys: '↵',
+    description: 'Shift + Enter 保持换行',
+  },
+  {
+    value: 'mod-enter',
+    label: '按 ⌘ / Ctrl + Enter 发送',
+    keys: '⌘ ↵',
+    description: 'Enter 直接换行',
+  },
+];
+
+function readSendShortcut(): SendShortcut {
+  if (typeof window === 'undefined') return 'enter';
+  const stored = window.localStorage.getItem(SEND_SHORTCUT_STORAGE_KEY);
+  return stored === 'mod-enter' ? 'mod-enter' : 'enter';
+}
 
 interface Props {
   value: string;
@@ -89,6 +121,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const atBtnRef = useRef<HTMLButtonElement>(null);
   const hashBtnRef = useRef<HTMLButtonElement>(null);
   const slashBtnRef = useRef<HTMLButtonElement>(null);
+  const sendMenuRef = useRef<HTMLDivElement>(null);
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
 
   useImperativeHandle(ref, () => ({
     focus: () => taRef.current?.focus(),
@@ -122,9 +157,40 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     });
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
+  }, [sendShortcut]);
+
+  useEffect(() => {
+    if (!sendMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!sendMenuRef.current) return;
+      if (!sendMenuRef.current.contains(e.target as Node)) setSendMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSendMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [sendMenuOpen]);
+
+  useEffect(() => {
+    if (busy) setSendMenuOpen(false);
+  }, [busy]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter') {
-      if (e.shiftKey) return;
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const shouldSubmit =
+      sendShortcut === 'enter'
+        ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+        : (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+
+    if (shouldSubmit) {
       e.preventDefault();
       if (!busy && value.trim()) onSubmit();
     }
@@ -139,6 +205,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const trayScrollEnabled = selectedContextCount > 6;
   const selectedArticleIds = new Set(selectedArticles.map((a) => a.id));
   const selectedTagSlugs = new Set(selectedTags.map((t) => t.slug));
+  const activeShortcut =
+    SEND_SHORTCUT_OPTIONS.find((option) => option.value === sendShortcut) ??
+    SEND_SHORTCUT_OPTIONS[0];
 
   useEffect(() => {
     const el = chipTrayRef.current;
@@ -171,16 +240,51 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           if (canSend) onSubmit();
         }}
         className={[
-          'group/composer rounded-2xl px-3 pt-3 pb-2',
-          'transition-[box-shadow,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          'bg-[var(--bg-leaf)] backdrop-blur-xl',
+          'group/composer rounded-[26px] px-3 pt-3.5 pb-2.5 sm:rounded-[28px] sm:px-3.5',
+          'transition-[box-shadow,border-color,background-color] duration-300 ease-aether',
+          'bg-[var(--bg-raised)]',
           'border',
           focused
-            ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] shadow-[0_10px_32px_-12px_color-mix(in_oklch,var(--aurora-1)_50%,transparent),0_0_0_4px_color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
-            : 'border-[var(--ink-subtle)]/22 shadow-[0_4px_16px_-10px_rgba(0,0,0,0.18)]',
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] shadow-[0_16px_42px_-24px_color-mix(in_oklch,var(--aurora-1)_46%,transparent),0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
+            : 'border-[var(--ink-subtle)]/18 shadow-[0_12px_34px_-28px_rgba(0,0,0,0.42)]',
         ].join(' ')}
         style={bottomSafeArea ? { paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' } : undefined}
       >
+        {/* 移动端把 picker 作为输入框内部面板渲染，避免浮层盖住对话内容；
+            桌面端仍由 PickerPopover 走 absolute top-start，不改变 PC 体验。 */}
+        {onPickArticle && (
+          <ArticlePicker
+            open={picker === 'article'}
+            onClose={() => setPicker(null)}
+            anchorRef={atBtnRef}
+            selectedIds={selectedArticleIds}
+            onPick={onPickArticle}
+          />
+        )}
+        {onPickTag && (
+          <TagPicker
+            open={picker === 'tag'}
+            onClose={() => setPicker(null)}
+            anchorRef={hashBtnRef}
+            selectedSlugs={selectedTagSlugs}
+            onPick={(t) => {
+              onPickTag(t);
+              setPicker(null);
+            }}
+          />
+        )}
+        {onSlashCommand && (
+          <SlashCommandPicker
+            open={picker === 'slash'}
+            onClose={() => setPicker(null)}
+            anchorRef={slashBtnRef}
+            onPick={(cmd) => {
+              onSlashCommand(cmd);
+              setPicker(null);
+            }}
+          />
+        )}
+
         {/* mentions 区 —— 选中的文章 / 标签作为胶囊显示在 textarea 上方,
             包在同一个 form 容器内,视觉上与 textarea 一体。Codex/ChatGPT 风格:
             rounded-full 极致胶囊,精致图标 + 文字 + 点击 ✕ 同步清掉 pending +
@@ -238,7 +342,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                         <button
                           type="button"
                           onClick={() => onRemoveArticle(a.id)}
-                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-1)]/75 hover:text-white hover:bg-[var(--aurora-1)] transition-colors"
+                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-1)]/75 hover:text-[var(--bg-void)] hover:bg-[var(--aurora-1)] transition-colors"
                           aria-label={`移除引用 ${a.title}`}
                         >
                           <X className="w-3 h-3" strokeWidth={2.75} />
@@ -285,60 +389,57 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           rows={1}
           aria-label="消息输入框"
           placeholder={placeholder ?? '提问、创建或开始任务。@ 引用文章 · / 调用命令'}
-          className="agent-composer-textarea w-full resize-y bg-transparent outline-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
+          className="agent-composer-textarea w-full resize-y bg-transparent px-1 outline-none text-[14.5px] leading-[1.6] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/62"
           style={{ minHeight: `${MIN_HEIGHT}px` }}
           autoComplete="off"
           spellCheck={false}
         />
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 text-[var(--ink-muted)] min-w-0">
-            {leadingSlot && (
-              <>
-                <div className="flex-shrink-0">{leadingSlot}</div>
-                <span aria-hidden="true" className="hidden sm:inline-block w-px h-4 bg-[var(--ink-subtle)]/22 mx-1" />
-              </>
-            )}
-            <ToolButton
-              ref={atBtnRef}
-              title="引用文章"
-              active={picker === 'article'}
-              onClick={() => (onPickArticle ? togglePicker('article') : insertChar('@'))}
-            >
-              <AtSign className="w-3.5 h-3.5" />
-            </ToolButton>
-            <ToolButton
-              ref={hashBtnRef}
-              title="按标签筛选"
-              active={picker === 'tag'}
-              onClick={() => (onPickTag ? togglePicker('tag') : insertChar('#'))}
-            >
-              <Hash className="w-3.5 h-3.5" />
-            </ToolButton>
-            <ToolButton
-              ref={slashBtnRef}
-              title="斜杠命令"
-              active={picker === 'slash'}
-              onClick={() => (onSlashCommand ? togglePicker('slash') : insertChar('/'))}
-            >
-              <SlashSquare className="w-3.5 h-3.5" />
-            </ToolButton>
-            {/* 语音输入暂为占位 —— 移动端横向空间紧张时优先让出给主要工具
-                （@ # /），桌面端继续暴露占位以维持视觉提示功能。 */}
-            <ToolButton title="语音输入（待接入）" disabled mobileHidden>
-              <Mic className="w-3.5 h-3.5" />
-            </ToolButton>
-            <span className="hidden lg:inline ml-1.5 font-mono text-[10px] uppercase tracking-[0.22em] truncate">
-              Enter 发送 · Shift+Enter 换行
-            </span>
+        <div className="mt-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--ink-subtle)]/10 pt-2 md:min-h-8">
+          <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[var(--ink-muted)]">
+            {leadingSlot && <div className="min-w-0 flex-1 sm:flex-none">{leadingSlot}</div>}
+            <div className="flex shrink-0 items-center gap-0.5">
+              <ToolButton
+                ref={atBtnRef}
+                title={selectedArticles.length ? `已引用 ${selectedArticles.length} 篇文章` : '引用文章'}
+                active={picker === 'article' || selectedArticles.length > 0}
+                count={selectedArticles.length}
+                onClick={() => (onPickArticle ? togglePicker('article') : insertChar('@'))}
+              >
+                <AtSign className="w-3.5 h-3.5" />
+              </ToolButton>
+              <ToolButton
+                ref={hashBtnRef}
+                title={selectedTags.length ? `已圈定 ${selectedTags.length} 个标签` : '按标签筛选'}
+                active={picker === 'tag' || selectedTags.length > 0}
+                count={selectedTags.length}
+                onClick={() => (onPickTag ? togglePicker('tag') : insertChar('#'))}
+              >
+                <Hash className="w-3.5 h-3.5" />
+              </ToolButton>
+              <ToolButton
+                ref={slashBtnRef}
+                title="斜杠命令"
+                active={picker === 'slash'}
+                mobileHidden
+                onClick={() => (onSlashCommand ? togglePicker('slash') : insertChar('/'))}
+              >
+                <SlashSquare className="w-3.5 h-3.5" />
+              </ToolButton>
+              {/* 语音输入暂为占位 —— 移动端横向空间紧张时优先让出给主要工具
+                  （@ # /），桌面端继续暴露占位以维持视觉提示功能。 */}
+              <ToolButton title="语音输入（待接入）" disabled mobileHidden>
+                <Mic className="w-3.5 h-3.5" />
+              </ToolButton>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center justify-end gap-1">
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? '收起输入框' : '展开输入框'}
               aria-label={expanded ? '收起输入框' : '展开输入框'}
-              className="hidden sm:inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-leaf)] hover:text-[var(--ink-primary)]"
             >
               {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
@@ -348,68 +449,115 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 type="button"
                 onClick={onAbort}
                 aria-label="停止生成"
-                className="group/stop relative inline-flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] transition-all text-[12px] font-medium active:scale-95"
+                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] transition-all hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95 md:h-8 md:px-3"
               >
                 <span
                   aria-hidden="true"
-                  className="absolute inset-0 rounded-xl pointer-events-none"
+                  className="pointer-events-none absolute inset-0 rounded-full"
                   style={{ animation: 'breath-soft 2.4s ease-in-out infinite' }}
                 />
                 <Square className="w-3 h-3 fill-current" />
                 停止
               </button>
             ) : (
-              <button
-                type="submit"
-                disabled={!canSend}
-                aria-label="发送"
+              <div
+                ref={sendMenuRef}
                 className={[
-                  'relative inline-flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200',
+                  'relative flex h-11 shrink-0 items-center rounded-full border transition-[background-color,border-color,box-shadow] duration-quick ease-aether md:h-8',
                   canSend
-                    ? 'bg-[var(--aurora-1)] text-white shadow-[0_6px_18px_-6px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] hover:brightness-110 hover:shadow-[0_10px_24px_-6px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)] hover:-translate-y-px active:translate-y-0 active:scale-95'
-                    : 'bg-[var(--ink-subtle)]/25 text-[var(--ink-muted)] cursor-not-allowed border border-[var(--ink-subtle)]/30',
+                    ? 'border-transparent bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_18px_-10px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)]'
+                    : 'border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] text-[var(--ink-muted)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
                 ].join(' ')}
               >
-                <ArrowUp className="w-4 h-4" />
-              </button>
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label="发送"
+                  title={`发送（${activeShortcut.label}）`}
+                  className={[
+                    'relative inline-flex h-11 w-11 items-center justify-center rounded-l-full bg-transparent transition-all duration-quick ease-aether md:h-8 md:w-8',
+                    canSend
+                      ? 'hover:bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)] active:scale-95'
+                      : 'cursor-not-allowed opacity-58',
+                  ].join(' ')}
+                >
+                  <ArrowUp className="h-4 w-4 md:h-3.5 md:w-3.5" />
+                </button>
+                <span
+                  aria-hidden="true"
+                  className={`h-6 w-px md:h-5 ${
+                    canSend
+                      ? 'bg-[color-mix(in_oklch,var(--bg-void)_28%,transparent)]'
+                      : 'bg-[var(--ink-subtle)]/18'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setSendMenuOpen((open) => !open)}
+                  aria-label="选择发送方式"
+                  aria-haspopup="menu"
+                  aria-expanded={sendMenuOpen}
+                  title="选择发送方式"
+                  className="inline-flex h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-all duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] active:scale-95 md:h-8 md:w-8"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform md:h-3.5 md:w-3.5 ${sendMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                <AnimatePresence>
+                  {sendMenuOpen && (
+                    <motion.div
+                      role="menu"
+                      aria-label="发送触发方式"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute bottom-full right-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--ink-subtle)]/18 bg-[var(--bg-raised)] p-2 shadow-[0_24px_48px_-18px_rgba(0,0,0,0.36)]"
+                    >
+                      <div className="flex items-center gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>发送方式</span>
+                      </div>
+                      {SEND_SHORTCUT_OPTIONS.map((option) => {
+                        const selected = option.value === sendShortcut;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={selected}
+                            onClick={() => {
+                              setSendShortcut(option.value);
+                              setSendMenuOpen(false);
+                            }}
+                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                              selected
+                                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
+                                : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
+                            }`}
+                          >
+                            <span className="inline-flex h-7 w-12 shrink-0 items-center justify-center gap-1 rounded-lg bg-[var(--bg-leaf)] font-mono text-[12px] text-[var(--ink-secondary)]">
+                              <CornerDownLeft className="h-3 w-3" aria-hidden="true" />
+                              <span>{option.keys}</span>
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-medium">{option.label}</span>
+                              <span className="block text-[11px] text-[var(--ink-muted)]">
+                                {option.description}
+                              </span>
+                            </span>
+                            {selected && <Check className="h-4 w-4 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Picker 弹层 —— 锚到对应的 ToolButton。
-            ArticlePicker 选中后保持打开,让弹层稳定浮在已选 chip 上方,便于连续引用。 */}
-        {onPickArticle && (
-          <ArticlePicker
-            open={picker === 'article'}
-            onClose={() => setPicker(null)}
-            anchorRef={atBtnRef}
-            selectedIds={selectedArticleIds}
-            onPick={onPickArticle}
-          />
-        )}
-        {onPickTag && (
-          <TagPicker
-            open={picker === 'tag'}
-            onClose={() => setPicker(null)}
-            anchorRef={hashBtnRef}
-            selectedSlugs={selectedTagSlugs}
-            onPick={(t) => {
-              onPickTag(t);
-              setPicker(null);
-            }}
-          />
-        )}
-        {onSlashCommand && (
-          <SlashCommandPicker
-            open={picker === 'slash'}
-            onClose={() => setPicker(null)}
-            anchorRef={slashBtnRef}
-            onPick={(cmd) => {
-              onSlashCommand(cmd);
-              setPicker(null);
-            }}
-          />
-        )}
       </motion.form>
     </div>
   );
@@ -420,6 +568,7 @@ interface ToolButtonProps {
   title: string;
   disabled?: boolean;
   active?: boolean;
+  count?: number;
   onClick?: () => void;
   /** mobileHidden=true 时移动端隐藏，仅 ≥md 渲染。用于次要工具（如语音占位）
    *  腾出移动端单手操作的横向空间。 */
@@ -427,14 +576,13 @@ interface ToolButtonProps {
 }
 
 const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolButton(
-  { children, title, disabled, active, onClick, mobileHidden },
+  { children, title, disabled, active, count = 0, onClick, mobileHidden },
   ref,
 ) {
-  // 触控区：移动端 36×36（HIG 推荐 44，单手操作密集排列下选 36 平衡密度）；
-  // 桌面 28×28（hover-friendly 紧凑形态）。
+  // 移动端保持 44px 触控区；桌面收敛成 LobeHub 式紧凑圆形工具按钮。
   const sizeClass = mobileHidden
-    ? 'hidden md:inline-flex w-7 h-7'
-    : 'inline-flex w-9 h-9 md:w-7 md:h-7';
+    ? 'hidden md:inline-flex md:h-8 md:w-8'
+    : 'inline-flex h-11 w-11 md:h-8 md:w-8';
   return (
     <button
       ref={ref}
@@ -442,16 +590,25 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
       title={title}
       disabled={disabled}
       onClick={onClick}
+      aria-label={count > 0 ? `${title}，已选择 ${count} 项` : title}
       aria-pressed={active}
-      className={`${sizeClass} items-center justify-center rounded-lg transition-all duration-200 ${
+      className={`${sizeClass} relative shrink-0 items-center justify-center rounded-full transition-all duration-quick ease-aether ${
         disabled
           ? 'opacity-40 cursor-not-allowed'
-          : active
+        : active
           ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)] active:scale-95'
           : 'hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] active:scale-95'
       }`}
     >
       {children}
+      {count > 0 && (
+        <span
+          aria-hidden="true"
+          className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--aurora-1)] px-1 font-mono text-[9px] font-semibold leading-none text-[var(--bg-void)] shadow-[0_2px_8px_-3px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)] md:-right-0.5 md:-top-0.5"
+        >
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
     </button>
   );
 });
