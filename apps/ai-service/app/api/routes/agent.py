@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 import time
 from typing import Any, Literal
 
@@ -353,7 +354,16 @@ class _ThinkTagSplitter:
 
     def _drain(self, *, final: bool):
         while self._buffer:
-            boundary = len(self._buffer) if final else len(self._buffer) - self._guard
+            if final:
+                boundary = len(self._buffer)
+            else:
+                # 仅在末尾可能包含未闭合 think 标签时保留 guard 长度，避免流式输出恒定滞后。
+                last_lt = self._buffer.rfind("<")
+                boundary = (
+                    last_lt
+                    if last_lt != -1 and len(self._buffer) - last_lt < self._guard
+                    else len(self._buffer)
+                )
             if boundary <= 0:
                 return
 
@@ -375,7 +385,7 @@ class _ThinkTagSplitter:
                 self._in_think = not self._in_think
                 continue
 
-            if match is None:
+            if match is None or match.start() >= boundary:
                 chunk = self._buffer[:boundary]
                 self._buffer = self._buffer[boundary:]
                 if chunk:
@@ -1005,6 +1015,20 @@ async def agent_chat(
                 },
             )
             yield 'data: {"type": "done"}\n\n'
+        except asyncio.CancelledError:
+            error_code = "client_cancelled"
+            logger.info(
+                "agent.stream_cancelled",
+                extra={
+                    "data": {
+                        "provider_code": resolved.provider_code,
+                        "model_id": resolved.model_id,
+                        "response_chars": response_chars,
+                        "think_chars": think_chars,
+                    }
+                },
+            )
+            raise
         except Exception as exc:
             error_code = "agent_stream_error"
             logger.warning(
@@ -1025,7 +1049,8 @@ async def agent_chat(
             )
             yield f"data: {err}\n\n"
         finally:
-            await _record_agent_usage(
+            await asyncio.shield(
+                _record_agent_usage(
                 request=request,
                 metrics=metrics,
                 usage_logger=usage_logger,
@@ -1037,6 +1062,7 @@ async def agent_chat(
                 start_time=start_time,
                 success=error_code is None,
                 error_code=error_code,
+                )
             )
 
     return StreamingResponse(
