@@ -558,8 +558,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         }}
         title="选择目标文章"
         className={cn(
-          'flex h-11 w-full items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)] focus:outline-none focus:ring-2 focus:ring-primary/30',
-          showTargetDropdown && 'border-primary ring-2 ring-primary/30',
+          'flex h-11 w-full items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
+          showTargetDropdown && 'border-primary ring-2 ring-primary/30 ring-offset-2 ring-offset-[var(--bg-secondary)]',
         )}
       >
         <Target className={cn('h-4 w-4 shrink-0', target.targetPostId ? 'text-[var(--aurora-1)]' : 'text-[var(--text-muted)]')} />

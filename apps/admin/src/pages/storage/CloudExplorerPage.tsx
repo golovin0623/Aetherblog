@@ -653,7 +653,7 @@ function Metric({
       <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', toneClass)}>{icon}</span>
       <div className="min-w-0">
         <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
-        <p className="mt-0.5 truncate text-base font-semibold text-[var(--text-primary)] tabular-nums">{value}</p>
+        <p className="mt-0.5 truncate text-base font-semibold text-[var(--text-primary)] tnum">{value}</p>
         <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{helper}</p>
       </div>
     </div>
@@ -768,10 +768,10 @@ function ObjectTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-right align-middle text-sm text-[var(--text-secondary)] tabular-nums">
+                <td className="px-4 py-3 text-right align-middle text-sm text-[var(--text-secondary)] tnum">
                   {formatFileSize(item.size)}
                 </td>
-                <td className="px-4 py-3 align-middle text-sm text-[var(--text-secondary)] tabular-nums">
+                <td className="px-4 py-3 align-middle text-sm text-[var(--text-secondary)] tnum">
                   {formatObjectDate(item.lastModified)}
                 </td>
                 <td className="px-4 py-3 align-middle">

@@ -117,7 +117,7 @@ function ActionButton({ label, icon, onClick, disabled, variant = 'secondary', t
       title={title}
       className={cn(
         'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95',
-        'border shadow-sm focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]',
+        'border shadow-sm focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]',
         variant === 'primary'
           ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] border-[var(--ink-primary)] hover:opacity-90'
           : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)]',

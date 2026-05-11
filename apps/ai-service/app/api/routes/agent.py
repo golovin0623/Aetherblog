@@ -1173,17 +1173,17 @@ async def agent_chat(
         finally:
             await asyncio.shield(
                 _record_agent_usage(
-                request=request,
-                metrics=metrics,
-                usage_logger=usage_logger,
-                user_id=user_id,
-                resolved=resolved,
-                request_text=request_text,
-                # provider 暴露出来的 thinking/reasoning 也属于生成输出，费用估算应计入。
-                response_text="".join(think_parts) + "".join(response_parts),
-                start_time=start_time,
-                success=error_code is None,
-                error_code=error_code,
+                    request=request,
+                    metrics=metrics,
+                    usage_logger=usage_logger,
+                    user_id=user_id,
+                    resolved=resolved,
+                    request_text=request_text,
+                    # provider 暴露出来的 thinking/reasoning 也属于生成输出，费用估算应计入。
+                    response_text="".join(think_parts) + "".join(response_parts),
+                    start_time=start_time,
+                    success=error_code is None,
+                    error_code=error_code,
                 )
             )
 

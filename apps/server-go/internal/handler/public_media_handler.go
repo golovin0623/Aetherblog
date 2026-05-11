@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -75,13 +76,11 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 	}
 
 	if h.svc != nil {
+		// Catalog lookup is best-effort for legacy paths; keep static fallback available on lookup failures.
 		target, err := h.svc.PublicAccessURLByPath(c.Request().Context(), key)
 		if err == nil && target != "" && !h.pointsToUploadsKey(target, key) {
 			c.Response().Header().Set("Cache-Control", "public, max-age=60")
 			return c.Redirect(http.StatusFound, target)
-		}
-		if err != nil && !errors.Is(err, service.ErrMediaNotFound) {
-			return response.Error(c, err)
 		}
 	}
 
@@ -93,9 +92,18 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 }
 
 func (h *UploadAccessHandler) pointsToUploadsKey(target, key string) bool {
-	target = strings.TrimRight(strings.TrimSpace(target), "/")
+	target = strings.TrimSpace(target)
 	key = strings.Trim(key, "/")
-	return target == h.basePath+"/"+key || target == "/uploads/"+key
+	if target == "" || key == "" {
+		return false
+	}
+
+	targetPath := target
+	if parsed, err := url.Parse(target); err == nil && parsed.Path != "" {
+		targetPath = parsed.Path
+	}
+	targetPath = strings.TrimRight(targetPath, "/")
+	return targetPath == strings.TrimRight(h.basePath, "/")+"/"+key || targetPath == "/uploads/"+key
 }
 
 func safeUploadFilePath(baseDir, key string) (string, error) {

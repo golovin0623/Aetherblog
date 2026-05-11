@@ -3683,7 +3683,7 @@ function HubSegmentedControl({
             title={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-leaf)]',
+              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
               active
                 ? 'text-black dark:text-white'
                 : 'text-black/55 hover:text-black/70 dark:text-white/55 dark:hover:text-white/70',
@@ -3797,7 +3797,7 @@ function filterSessions(sessions: AgentSession[], query: string): AgentSession[]
       .slice(-8)
       .map((message) => [message.content, message.think, ...(message.sources?.map((s) => s.title) ?? [])].join(' '))
       .join(' ');
-    return [session.title, session.id, messages].join(' ').toLowerCase().includes(keyword);
+    return [session.title, messages].join(' ').toLowerCase().includes(keyword);
   });
 }
 

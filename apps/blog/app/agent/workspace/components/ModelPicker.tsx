@@ -445,7 +445,7 @@ export default function ModelPicker({
               >
                 <AgentProviderIcon code={g.provider} icon={providerIcon} size={14} />
                 <span className="min-w-0 flex-1 truncate">{providerLabel}</span>
-                <span className="tabular-nums opacity-70">{String(g.items.length).padStart(2, '0')}</span>
+                <span className="tnum opacity-70">{String(g.items.length).padStart(2, '0')}</span>
                 <span
                   className={cn(
                     'rounded-md px-1.5 py-0.5 tracking-[0.18em]',
