@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,7 +24,13 @@ import (
 //   - 'false' → 不自动启动,只响应手动 API 触发
 //
 // migration 000042 时种入默认值 'false'。
-const SyncAutoEnabledKey = "storage.sync.auto_enabled"
+//
+// SyncTargetProviderIDKey 单独存备份同步目标 provider ID,避免把"上传主存储"
+// (default provider) 和"备份目标"绑死到同一个配置上。
+const (
+	SyncAutoEnabledKey      = "storage.sync.auto_enabled"
+	SyncTargetProviderIDKey = "storage.sync.target_provider_id"
+)
 
 // SyncService 是 Phase 4 的同步备份 worker。
 //
@@ -119,6 +126,30 @@ func (s *SyncService) SetAutoEnabled(ctx context.Context, enabled bool) error {
 		s.Stop()
 	}
 	return nil
+}
+
+// TargetProviderID 返回当前配置的备份同步目标 provider ID。
+//
+// nil 表示尚未显式配置;后续入队会兼容旧逻辑,尝试使用非 LOCAL 的默认 provider。
+func (s *SyncService) TargetProviderID(ctx context.Context) (*int64, error) {
+	return s.configuredTargetProviderID(ctx)
+}
+
+// SetTargetProviderID 写入备份同步目标 provider ID。
+func (s *SyncService) SetTargetProviderID(ctx context.Context, providerID *int64) error {
+	if s.settingRepo == nil {
+		return errors.New("site setting repo not configured")
+	}
+
+	value := ""
+	if providerID != nil && *providerID > 0 {
+		p, err := s.validateTargetProvider(ctx, *providerID)
+		if err != nil {
+			return err
+		}
+		value = strconv.FormatInt(p.ID, 10)
+	}
+	return s.settingRepo.Upsert(ctx, SyncTargetProviderIDKey, value)
 }
 
 // IsRunning 当前 worker 是否在执行。
@@ -217,6 +248,10 @@ func (s *SyncService) processJob(ctx context.Context, job *model.MediaSyncJob) {
 		s.failJob(ctx, job, "media is in trash")
 		return
 	}
+	if media.StorageProviderID != nil && *media.StorageProviderID == job.TargetProviderID {
+		s.failJob(ctx, job, "该文件已经位于所选备份目标,无需同步")
+		return
+	}
 
 	// 源 store: 主文件所在 provider
 	srcStore, _, err := s.mediaSvc.resolveStoreForMedia(ctx, media)
@@ -268,7 +303,7 @@ func (s *SyncService) failJob(ctx context.Context, job *model.MediaSyncJob, msg 
 
 // EnqueueAll 立即把所有未与目标 provider 同步的非删除文件入队 + 启动 worker。
 //
-// targetProviderID == nil 时使用当前 default provider(找不到 default 返回错误)。
+// targetProviderID == nil 时优先使用已配置的备份目标;未配置则兼容旧逻辑使用非 LOCAL default provider。
 func (s *SyncService) EnqueueAll(ctx context.Context, targetProviderID *int64) (int64, error) {
 	target, err := s.resolveTargetProvider(ctx, targetProviderID)
 	if err != nil {
@@ -287,6 +322,19 @@ func (s *SyncService) EnqueueOne(ctx context.Context, mediaID int64, targetProvi
 	target, err := s.resolveTargetProvider(ctx, targetProviderID)
 	if err != nil {
 		return err
+	}
+	media, err := s.mediaRepo.FindByID(ctx, mediaID)
+	if err != nil {
+		return fmt.Errorf("find media: %w", err)
+	}
+	if media == nil {
+		return fmt.Errorf("media %d not found", mediaID)
+	}
+	if media.Deleted {
+		return errors.New("media is in trash")
+	}
+	if media.StorageProviderID != nil && *media.StorageProviderID == target {
+		return errors.New("该文件已经位于所选备份目标,无需同步")
 	}
 	if _, err := s.syncRepo.EnqueueOne(ctx, mediaID, target); err != nil {
 		return err
@@ -336,30 +384,74 @@ func (s *SyncService) RetryFailed(ctx context.Context, jobIDs []int64) error {
 	return nil
 }
 
-// resolveTargetProvider 把可空的 providerID 解析成具体 ID(空 → default)。
+// configuredTargetProviderID 从 site_settings 读取显式配置的备份目标 provider ID。
+func (s *SyncService) configuredTargetProviderID(ctx context.Context) (*int64, error) {
+	if s.settingRepo == nil {
+		return nil, nil
+	}
+	row, err := s.settingRepo.FindByKey(ctx, SyncTargetProviderIDKey)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil || row.SettingValue == nil {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(*row.SettingValue)
+	if raw == "" || raw == "0" {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("invalid backup target provider id %q", raw)
+	}
+	return &id, nil
+}
+
+func (s *SyncService) validateTargetProvider(ctx context.Context, providerID int64) (*model.StorageProvider, error) {
+	p, err := s.providerRepo.FindByID(ctx, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("find target provider: %w", err)
+	}
+	if p == nil {
+		return nil, fmt.Errorf("target provider %d not found", providerID)
+	}
+	if !p.IsEnabled {
+		return nil, fmt.Errorf("备份目标 provider %d 已禁用", providerID)
+	}
+	return p, nil
+}
+
+// resolveTargetProvider 把可空的 providerID 解析成具体备份目标。
 func (s *SyncService) resolveTargetProvider(ctx context.Context, targetProviderID *int64) (int64, error) {
 	if targetProviderID != nil && *targetProviderID > 0 {
-		p, err := s.providerRepo.FindByID(ctx, *targetProviderID)
+		p, err := s.validateTargetProvider(ctx, *targetProviderID)
 		if err != nil {
-			return 0, fmt.Errorf("find target provider: %w", err)
-		}
-		if p == nil {
-			return 0, fmt.Errorf("target provider %d not found", *targetProviderID)
-		}
-		if p.ProviderType == "LOCAL" {
-			return 0, fmt.Errorf("LOCAL provider cannot be a backup target")
+			return 0, err
 		}
 		return p.ID, nil
 	}
+
+	configured, err := s.configuredTargetProviderID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if configured != nil {
+		p, err := s.validateTargetProvider(ctx, *configured)
+		if err != nil {
+			return 0, err
+		}
+		return p.ID, nil
+	}
+
 	def, err := s.providerRepo.FindDefault(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("find default provider: %w", err)
 	}
 	if def == nil {
-		return 0, fmt.Errorf("no default storage provider configured")
+		return 0, fmt.Errorf("未配置备份目标 provider")
 	}
 	if def.ProviderType == "LOCAL" {
-		return 0, fmt.Errorf("default provider is LOCAL — set a cloud provider as default first")
+		return 0, fmt.Errorf("未配置备份目标 provider,请先在存储管理中选择备份目标")
 	}
 	return def.ID, nil
 }

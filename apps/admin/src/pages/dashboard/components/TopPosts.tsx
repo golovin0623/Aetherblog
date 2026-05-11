@@ -14,12 +14,9 @@ interface TopPostsProps {
 }
 
 const RANK_STYLES = [
-  // 1st - gold
-  'bg-gradient-to-br from-amber-300/30 to-yellow-500/20 text-amber-500 border border-amber-400/40 shadow-[0_0_12px_rgba(251,191,36,0.25)]',
-  // 2nd - silver
-  'bg-gradient-to-br from-slate-200/30 to-slate-400/20 text-slate-400 border border-slate-300/40 shadow-[0_0_10px_rgba(148,163,184,0.2)]',
-  // 3rd - bronze
-  'bg-gradient-to-br from-orange-400/30 to-amber-700/20 text-orange-500 border border-orange-500/40 shadow-[0_0_10px_rgba(234,88,12,0.2)]',
+  'bg-gradient-to-br from-[color-mix(in_oklch,var(--dashboard-aurora-1)_28%,transparent)] to-[color-mix(in_oklch,var(--dashboard-aurora-5)_14%,transparent)] text-[var(--dashboard-aurora-1)] border border-[color-mix(in_oklch,var(--dashboard-aurora-1)_38%,transparent)] shadow-[0_0_12px_color-mix(in_oklch,var(--dashboard-aurora-1)_24%,transparent)]',
+  'bg-gradient-to-br from-[color-mix(in_oklch,var(--dashboard-aurora-4)_24%,transparent)] to-[color-mix(in_oklch,var(--dashboard-aurora-8)_12%,transparent)] text-[var(--dashboard-aurora-4)] border border-[color-mix(in_oklch,var(--dashboard-aurora-4)_34%,transparent)] shadow-[0_0_10px_color-mix(in_oklch,var(--dashboard-aurora-4)_20%,transparent)]',
+  'bg-gradient-to-br from-[color-mix(in_oklch,var(--dashboard-aurora-7)_24%,transparent)] to-[color-mix(in_oklch,var(--dashboard-aurora-11)_12%,transparent)] text-[var(--dashboard-aurora-7)] border border-[color-mix(in_oklch,var(--dashboard-aurora-7)_34%,transparent)] shadow-[0_0_10px_color-mix(in_oklch,var(--dashboard-aurora-7)_20%,transparent)]',
 ];
 
 export function TopPosts({ posts, loading }: TopPostsProps) {
@@ -62,7 +59,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
         <button
           type="button"
           onClick={handleViewAll}
-          className="-m-2 p-2 rounded-lg text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] transition-colors touch-manipulation"
+          className="-m-2 p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--dashboard-aurora-1)] hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] transition-colors touch-manipulation"
           aria-label="查看更多"
         >
           <ArrowUpRight className="w-5 h-5" />
@@ -85,7 +82,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
                 {index + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-medium text-[var(--text-primary)] truncate group-hover:text-primary transition-colors">
+                <h4 className="text-sm font-medium text-[var(--text-primary)] truncate group-hover:text-[var(--dashboard-aurora-1)] transition-colors">
                   {post.title}
                 </h4>
               </div>

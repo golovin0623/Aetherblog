@@ -28,14 +28,14 @@ import {
   Move,
 } from 'lucide-react';
 import { cn, formatFileSize } from '@/lib/utils';
-import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
+import { MediaItem, MediaType, getMediaUrl, mediaService } from '@/services/mediaService';
 import { format } from 'date-fns';
 import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
 import { ImageEditor } from './ImageEditor';
 import { VersionHistory } from './VersionHistory';
 import { StorageStatusIcon } from './StorageStatusIcon';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { storageSyncService } from '@/services/storageSyncService';
 import { toast } from 'sonner';
 import { CloudUpload, RefreshCcw, CloudOff, ExternalLink as ExternalLinkIcon } from 'lucide-react';
@@ -62,16 +62,47 @@ const typeLabels: Record<MediaType, string> = {
   DOCUMENT: '文档',
 };
 
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const err = error as {
+    message?: string;
+    msg?: string;
+    errorMessage?: string;
+    response?: { data?: { message?: string; msg?: string; errorMessage?: string } };
+  };
+  return (
+    err.response?.data?.message ||
+    err.response?.data?.msg ||
+    err.response?.data?.errorMessage ||
+    err.message ||
+    err.msg ||
+    err.errorMessage ||
+    fallback
+  );
+}
+
 type DetailTab = 'info' | 'tags' | 'versions';
 
 /**
  * 媒体详情侧边栏组件 - 高级玻璃态设计
  */
-export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDetailProps) {
+export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: MediaDetailProps) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const { data: media = initialMedia } = useQuery({
+    queryKey: ['media', 'detail', initialMedia.id],
+    queryFn: async () => {
+      const res = await mediaService.getDetail(initialMedia.id);
+      return res.data;
+    },
+    initialData: initialMedia,
+    refetchInterval: (query) => {
+      const status = query.state.data?.syncStatus;
+      return status === 'PENDING' || status === 'SYNCING' ? 2000 : false;
+    },
+  });
 
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {
@@ -409,22 +440,22 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
     onSuccess: () => {
       toast.success('已加入备份队列');
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'detail', media.id] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (e: any) => {
-      toast.error(e.response?.data?.msg || '加入备份失败');
+    onError: (e) => {
+      toast.error(getApiErrorMessage(e, '加入备份失败'));
     },
   });
 
   const removeBackupMutation = useMutation({
     mutationFn: () => storageSyncService.removeBackup(media.id),
     onSuccess: () => {
-      toast.success('已移除云端备份(本地文件保留)');
+      toast.success('已移除备份文件(主文件保留)');
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'detail', media.id] });
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (e: any) => {
-      toast.error(e.response?.data?.msg || '移除云端备份失败');
+    onError: (e) => {
+      toast.error(getApiErrorMessage(e, '移除备份失败'));
     },
   });
 
@@ -487,7 +518,7 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
       {isMissing && (
         <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-status-danger/10 border border-status-danger/30 text-[11px] text-status-danger">
           <CloudOff className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <span>云端备份对象已不存在(可能被外部删除),请重新备份。</span>
+          <span>备份对象已不存在(可能被外部删除),请重新备份。</span>
         </div>
       )}
 
@@ -507,7 +538,7 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
             )}
           >
             {isMissing ? <RefreshCcw className="w-3.5 h-3.5" /> : canRetry ? <RefreshCcw className="w-3.5 h-3.5" /> : <CloudUpload className="w-3.5 h-3.5" />}
-            {syncMutation.isPending ? '提交中...' : isMissing ? '重新备份' : canRetry ? '重试同步' : '立即同步到云'}
+            {syncMutation.isPending ? '提交中...' : isMissing ? '重新备份' : canRetry ? '重试同步' : '立即同步'}
           </button>
         )}
         {canRemove && (
@@ -519,18 +550,18 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
               'bg-status-danger/10 text-status-danger hover:bg-status-danger/20 border border-status-danger/30',
               removeBackupMutation.isPending && 'opacity-60 cursor-not-allowed'
             )}
-            title="只删除云端备份,不动本地文件"
+            title="只删除备份对象,不动主文件"
           >
             <CloudOff className="w-3.5 h-3.5" />
-            移除云端备份
+            移除备份
           </button>
         )}
       </div>
 
       <ConfirmModal
         isOpen={removeConfirmOpen}
-        title="移除云端备份"
-        message="将删除云端备份对象,但本地文件保留。可随时通过「立即同步到云」重新上传。是否继续?"
+        title="移除备份"
+        message="将删除备份对象,但主文件保留。可随时通过「立即同步」重新复制。是否继续?"
         confirmText="移除备份"
         cancelText="取消"
         variant="danger"

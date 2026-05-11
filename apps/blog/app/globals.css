@@ -530,24 +530,60 @@ body {
   pointer-events: none;
 }
 
+.agent-skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: rgb(from var(--ink-primary) r g b / 0.09);
+}
+
+:root.light .agent-skeleton-shimmer {
+  background: rgb(from var(--ink-primary) r g b / 0.075);
+}
+
+.agent-skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  animation: shimmer 2.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 48%,
+    rgb(from var(--ink-primary) r g b / 0.08) 52%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-skeleton-shimmer::after {
+    animation: none !important;
+  }
+}
+
 /* ========================================
    Agent 工作台 · MarkdownRenderer 缩放
    ----------------------------------------
    .markdown-body 默认面向万字长文（line-height 1.8、标题阶梯往上拔到 h1 32px+），
    塞进对话气泡里太"重"。`.agent-md` 包裹后把它压成 chat 体量：
-     · 段落 line-height 1.55、字号继承气泡 14.5px；
+     · 段落 line-height 1.55、字号继承灵境设置，默认 14.5px；
      · 标题不再有顶部留白与超大尺寸 —— 用类似 inline 段头的处理；
      · 代码块 my-3 而非 my-4，列表项行距贴一格。
    不动 .markdown-body 全局样式，只在 .agent-md 内做 cascade 覆盖，避免污染
    /posts 文章详情页等同源 renderer。
    ======================================== */
 .agent-md .markdown-body {
-  line-height: 1.55;
-  font-size: 14.5px;
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  letter-spacing: 0;
+  line-height: 1.78;
+  font-size: var(--agent-message-font-size, 14.5px);
+  color: var(--ink-primary);
 }
 .agent-md .markdown-body > * {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.66em;
+  margin-bottom: 0.66em;
 }
 .agent-md .markdown-body > :first-child {
   margin-top: 0;
@@ -561,38 +597,44 @@ body {
 .agent-md .markdown-body h4 {
   font-family: var(--font-display, inherit);
   font-weight: 600;
-  line-height: 1.25;
-  margin-top: 0.9rem;
-  margin-bottom: 0.4rem;
+  line-height: 1.24;
+  letter-spacing: 0;
+  margin-top: 1.05em;
+  margin-bottom: 0.45em;
   color: var(--ink-primary);
+  text-wrap: balance;
 }
-.agent-md .markdown-body h1 { font-size: 1.25rem; }
-.agent-md .markdown-body h2 { font-size: 1.15rem; }
-.agent-md .markdown-body h3 { font-size: 1.05rem; }
-.agent-md .markdown-body h4 { font-size: 0.98rem; }
+.agent-md .markdown-body h1 { font-size: 1.34em; }
+.agent-md .markdown-body h2 { font-size: 1.2em; }
+.agent-md .markdown-body h3 { font-size: 1.08em; }
+.agent-md .markdown-body h4 { font-size: 1em; }
 .agent-md .markdown-body p {
-  margin: 0.4rem 0;
+  margin: 0.62em 0;
+  color: var(--ink-primary);
 }
 .agent-md .markdown-body ul,
 .agent-md .markdown-body ol {
-  margin: 0.4rem 0;
-  padding-left: 1.4rem;
+  margin: 0.56em 0;
+  padding-left: 1.45em;
 }
 .agent-md .markdown-body li {
-  margin: 0.2rem 0;
+  margin: 0.24em 0;
 }
 .agent-md .markdown-body pre,
 .agent-md .markdown-body .code-block-wrapper {
-  margin-top: 0.6rem !important;
-  margin-bottom: 0.6rem !important;
+  margin-top: 0.78em !important;
+  margin-bottom: 0.78em !important;
 }
 .agent-md .markdown-body code:not(pre code) {
   font-size: 0.88em;
-  padding: 0.1em 0.35em;
+  padding: 0.08em 0.34em;
+  border-color: color-mix(in oklch, var(--aurora-1) 13%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 5%, transparent);
+  color: color-mix(in oklch, var(--ink-primary) 88%, var(--aurora-1));
 }
 .agent-md .markdown-body blockquote {
-  margin: 0.5rem 0;
-  padding: 0.4rem 0.9rem;
+  margin: 0.7em 0;
+  padding: 0.5em 0.95em;
   border-left: 2px solid color-mix(in oklch, var(--aurora-1) 40%, transparent);
   color: var(--ink-secondary);
 }
@@ -606,13 +648,16 @@ body {
  切换瞬间不抖；唯一区别是 code 块没有 shiki 背景，给个简洁的 token 框。
 */
 .agent-md-stream {
-  font-size: 14.5px;
-  line-height: 1.55;
+  font-size: var(--agent-message-font-size, 14.5px);
+  font-family: var(--font-editorial, var(--font-serif, ui-serif));
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  letter-spacing: 0;
+  line-height: 1.78;
   color: var(--ink-primary);
 }
 .agent-md-stream > * {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.66em;
+  margin-bottom: 0.66em;
 }
 .agent-md-stream > :first-child { margin-top: 0; }
 .agent-md-stream > :last-child  { margin-bottom: 0; }
@@ -622,36 +667,40 @@ body {
 .agent-md-stream h4 {
   font-family: var(--font-display, inherit);
   font-weight: 600;
-  line-height: 1.25;
-  margin-top: 0.9rem;
-  margin-bottom: 0.4rem;
+  line-height: 1.24;
+  letter-spacing: 0;
+  margin-top: 1.05em;
+  margin-bottom: 0.45em;
   color: var(--ink-primary);
+  text-wrap: balance;
 }
-.agent-md-stream h1 { font-size: 1.25rem; }
-.agent-md-stream h2 { font-size: 1.15rem; }
-.agent-md-stream h3 { font-size: 1.05rem; }
-.agent-md-stream h4 { font-size: 0.98rem; }
-.agent-md-stream p { margin: 0.4rem 0; }
+.agent-md-stream h1 { font-size: 1.34em; }
+.agent-md-stream h2 { font-size: 1.2em; }
+.agent-md-stream h3 { font-size: 1.08em; }
+.agent-md-stream h4 { font-size: 1em; }
+.agent-md-stream p { margin: 0.62em 0; }
 .agent-md-stream ul,
 .agent-md-stream ol {
-  margin: 0.4rem 0;
-  padding-left: 1.4rem;
+  margin: 0.56em 0;
+  padding-left: 1.45em;
 }
-.agent-md-stream li { margin: 0.2rem 0; }
+.agent-md-stream li { margin: 0.24em 0; }
 .agent-md-stream code:not(pre code) {
   font-size: 0.88em;
-  padding: 0.1em 0.35em;
+  padding: 0.08em 0.34em;
   border-radius: 4px;
-  background: color-mix(in oklch, var(--ink-subtle) 18%, transparent);
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 13%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 5%, transparent);
+  color: color-mix(in oklch, var(--ink-primary) 88%, var(--aurora-1));
 }
 .agent-md-stream pre {
-  margin: 0.6rem 0;
+  margin: 0.78em 0;
   padding: 0.7rem 0.9rem;
   border-radius: 0.6rem;
   border: 1px solid color-mix(in oklch, var(--ink-subtle) 22%, transparent);
   background: color-mix(in oklch, var(--ink-subtle) 8%, transparent);
   overflow-x: auto;
-  font-size: 12.5px;
+  font-size: calc(var(--agent-message-font-size, 14.5px) * 0.86);
   line-height: 1.55;
 }
 .agent-md-stream pre code {
@@ -661,15 +710,15 @@ body {
   color: var(--ink-primary);
 }
 .agent-md-stream blockquote {
-  margin: 0.5rem 0;
-  padding: 0.4rem 0.9rem;
+  margin: 0.7em 0;
+  padding: 0.5em 0.95em;
   border-left: 2px solid color-mix(in oklch, var(--aurora-1) 40%, transparent);
   color: var(--ink-secondary);
 }
 .agent-md-stream table {
   border-collapse: collapse;
   margin: 0.5rem 0;
-  font-size: 12.5px;
+  font-size: calc(var(--agent-message-font-size, 14.5px) * 0.86);
 }
 .agent-md-stream th,
 .agent-md-stream td {
@@ -681,6 +730,43 @@ body {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+}
+
+/* 字号调整的正文过渡：设置面板拖动时避免气泡高度突然跳变。 */
+.agent-message-font,
+.agent-message-font .markdown-body,
+.agent-message-font .agent-md-stream,
+.agent-message-font .markdown-body h1,
+.agent-message-font .markdown-body h2,
+.agent-message-font .markdown-body h3,
+.agent-message-font .markdown-body h4,
+.agent-message-font .agent-md-stream h1,
+.agent-message-font .agent-md-stream h2,
+.agent-message-font .agent-md-stream h3,
+.agent-message-font .agent-md-stream h4,
+.agent-message-font .agent-md-stream pre,
+.agent-message-font .agent-md-stream table {
+  transition:
+    font-size 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    line-height 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-message-font,
+  .agent-message-font .markdown-body,
+  .agent-message-font .agent-md-stream,
+  .agent-message-font .markdown-body h1,
+  .agent-message-font .markdown-body h2,
+  .agent-message-font .markdown-body h3,
+  .agent-message-font .markdown-body h4,
+  .agent-message-font .agent-md-stream h1,
+  .agent-message-font .agent-md-stream h2,
+  .agent-message-font .agent-md-stream h3,
+  .agent-message-font .agent-md-stream h4,
+  .agent-message-font .agent-md-stream pre,
+  .agent-message-font .agent-md-stream table {
+    transition: none !important;
+  }
 }
 
 /* ========================================
@@ -753,6 +839,33 @@ body {
   pointer-events: none;
 }
 
+.agent-thinking-live-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: agent-dot-pulse 1.35s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.agent-thinking-scroll {
+  scrollbar-gutter: stable;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+
 /* 流式光标 —— 平滑 1.05s 闪烁，不刺眼 */
 @keyframes agent-caret-blink {
   0%, 50% { opacity: 1; }
@@ -774,6 +887,7 @@ body {
   .agent-dot,
   .agent-bubble-pending,
   .agent-think-shimmer,
+  .agent-thinking-live-dot,
   .agent-caret {
     animation: none !important;
   }
@@ -808,25 +922,17 @@ body {
 .agent-engraved-text {
   font-family: var(--font-editorial, var(--font-serif, ui-serif));
   font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1, 'ss01' 1;
-  letter-spacing: 0.005em;
-  line-height: 1.85;
+  letter-spacing: 0;
+  line-height: 1.8;
   color: var(--ink-primary);
 }
 
-/* 浮印 / 凸起效果 ——
-   亮色：上明下暗，字从纸面抬起 0.5px；
-   暗色：上沿微反光，下沿微沉影。 */
+/* 对话正文需要贴近文章详情页的清晰阅读效果，不给整段文字叠浮印阴影。 */
 :root.light .agent-engraved-text,
-:root.light .agent-engraved-md {
-  text-shadow:
-    0 0.5px 0 color-mix(in oklch, var(--bg-leaf) 60%, white),
-    0 1.4px 0.8px color-mix(in oklch, var(--ink-primary) 6%, transparent);
-}
+:root.light .agent-engraved-md,
 :root.dark .agent-engraved-text,
 :root.dark .agent-engraved-md {
-  text-shadow:
-    0 -0.4px 0 color-mix(in oklch, var(--aurora-1) 5%, transparent),
-    0 1px 1.6px color-mix(in oklch, var(--bg-void) 70%, transparent);
+  text-shadow: none;
 }
 
 /* 流式中：内容左侧 2px aurora shimmer 上下流动 —— 比 hub-bubble-pending
@@ -860,7 +966,8 @@ body {
 .agent-engraved-md .markdown-body {
   font-family: var(--font-editorial, var(--font-serif, ui-serif));
   font-size: inherit;
-  line-height: 1.85;
+  letter-spacing: 0;
+  line-height: 1.8;
 }
 .agent-engraved-md .markdown-body h1,
 .agent-engraved-md .markdown-body h2,
@@ -868,16 +975,16 @@ body {
 .agent-engraved-md .markdown-body h4 {
   font-family: var(--font-display, var(--font-serif, ui-serif));
   font-weight: 600;
-  letter-spacing: -0.012em;
+  letter-spacing: 0;
   color: var(--ink-primary);
   margin-top: 1.6em;
   margin-bottom: 0.5em;
   text-wrap: balance;
 }
-.agent-engraved-md .markdown-body h1 { font-size: 1.5rem; }
-.agent-engraved-md .markdown-body h2 { font-size: 1.28rem; }
-.agent-engraved-md .markdown-body h3 { font-size: 1.12rem; }
-.agent-engraved-md .markdown-body h4 { font-size: 1.02rem; }
+.agent-engraved-md .markdown-body h1 { font-size: 1.38em; }
+.agent-engraved-md .markdown-body h2 { font-size: 1.22em; }
+.agent-engraved-md .markdown-body h3 { font-size: 1.1em; }
+.agent-engraved-md .markdown-body h4 { font-size: 1em; }
 .agent-engraved-md .markdown-body h2::before {
   content: '§ ';
   color: color-mix(in oklch, var(--aurora-1) 80%, transparent);
@@ -901,10 +1008,11 @@ body {
   text-shadow: none;
 }
 .agent-engraved-md .markdown-body code:not(pre code) {
-  padding: 0.1em 0.4em;
+  padding: 0.08em 0.34em;
   border-radius: 4px;
-  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
-  color: color-mix(in oklch, var(--aurora-1) 90%, var(--ink-primary));
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 13%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 5%, transparent);
+  color: color-mix(in oklch, var(--ink-primary) 88%, var(--aurora-1));
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.9em;
   text-shadow: none;
@@ -920,6 +1028,91 @@ body {
 .agent-engraved-md .markdown-body .code-block-content code {
   text-shadow: none;
 }
+
+/* 思考面板内的 Markdown：保留结构和格式，但比正文更克制。 */
+.agent-think-md,
+.agent-think-md .markdown-body,
+.agent-think-md .agent-md-stream {
+  color: var(--ink-secondary);
+  font-family: var(--font-sans, ui-sans-serif, system-ui);
+  font-size: inherit;
+  line-height: 1.75;
+  text-shadow: none;
+}
+
+.agent-think-md p,
+.agent-think-md .agent-md-stream p {
+  margin: 0.45em 0;
+}
+
+.agent-think-md h1,
+.agent-think-md h2,
+.agent-think-md h3,
+.agent-think-md h4,
+.agent-think-md .markdown-body h1,
+.agent-think-md .markdown-body h2,
+.agent-think-md .markdown-body h3,
+.agent-think-md .markdown-body h4,
+.agent-think-md .agent-md-stream h1,
+.agent-think-md .agent-md-stream h2,
+.agent-think-md .agent-md-stream h3,
+.agent-think-md .agent-md-stream h4 {
+  margin: 0.8em 0 0.35em;
+  color: var(--ink-primary);
+  font-family: var(--font-sans, ui-sans-serif, system-ui);
+  font-size: 1em;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+
+.agent-think-md ul,
+.agent-think-md ol,
+.agent-think-md .markdown-body ul,
+.agent-think-md .markdown-body ol,
+.agent-think-md .agent-md-stream ul,
+.agent-think-md .agent-md-stream ol {
+  margin: 0.45em 0;
+  padding-left: 1.3em;
+}
+
+.agent-think-md li,
+.agent-think-md .markdown-body li,
+.agent-think-md .agent-md-stream li {
+  margin: 0.2em 0;
+}
+
+.agent-think-md blockquote,
+.agent-think-md .markdown-body blockquote,
+.agent-think-md .agent-md-stream blockquote {
+  margin: 0.65em 0;
+  padding: 0.45em 0.75em;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 34%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in oklch, var(--ink-primary) 3%, transparent);
+  color: var(--ink-secondary);
+  text-shadow: none;
+}
+
+.agent-think-md code:not(pre code),
+.agent-think-md .markdown-body code:not(pre code),
+.agent-think-md .agent-md-stream code:not(pre code) {
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
+  color: color-mix(in oklch, var(--aurora-1) 86%, var(--ink-primary));
+}
+
+.agent-think-md pre,
+.agent-think-md .markdown-body pre,
+.agent-think-md .markdown-body .code-block-wrapper,
+.agent-think-md .agent-md-stream pre {
+  margin: 0.65em 0;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--ink-primary) 5%, transparent);
+  text-shadow: none;
+}
+
 .agent-engraved-md .markdown-body hr {
   margin: 2em auto;
   border: none;
@@ -995,6 +1188,54 @@ body {
   scrollbar-color: color-mix(in oklch, var(--ink-subtle) 40%, transparent) transparent;
 }
 
+/* 字体大小 range slider —— 与后台灵境同款：进度轨道 + 可按压 thumb。 */
+.agent-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--aurora-1) 0%,
+    var(--aurora-1) calc((var(--agent-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) calc((var(--agent-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.agent-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  transition:
+    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: grab;
+}
+.agent-range::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px -4px color-mix(in oklch, var(--aurora-1) 70%, transparent);
+  cursor: grabbing;
+}
+.agent-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  cursor: grab;
+}
+.agent-range:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
+}
+
 /* ========================================
    Markdown 渲染器样式（完整）
    ======================================== */
@@ -1037,6 +1278,18 @@ body {
 .markdown-body > .code-block-wrapper {
   /* 代码块通常更高,给它更精准的 intrinsic 估算 */
   contain-intrinsic-size: auto 480px;
+}
+
+.markdown-body .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-body .mermaid-diagram svg text,
+.markdown-body .mermaid-diagram svg .nodeLabel,
+.markdown-body .mermaid-diagram svg .edgeLabel {
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
 }
 
 .markdown-body > figure,

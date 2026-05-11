@@ -50,6 +50,200 @@
   box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.65);
 }
 
+/* Dashboard visual palette:
+   Product preset keeps charts aligned to the indigo/teal/amber/pink product set.
+   User-customized theme modes switch KPI cards and charts to --dashboard-aurora-*
+   so one chosen light source can expand into a display-ordered 12-tone sequence. */
+.dashboard-page {
+  --dashboard-aurora-seed: var(--color-visual-primary, oklch(0.72 0.150 270));
+  --dashboard-chart-1: #6366f1;
+  --dashboard-chart-2: #14b8a6;
+  --dashboard-chart-3: #f59e0b;
+  --dashboard-chart-4: #ec4899;
+  --dashboard-chart-5: #22c55e;
+  --dashboard-chart-6: #06b6d4;
+  --dashboard-chart-7: #8b5cf6;
+  --dashboard-chart-8: #f43f5e;
+  --dashboard-chart-9: #0ea5e9;
+  --dashboard-chart-10: #84cc16;
+  --dashboard-chart-11: #a855f7;
+  --dashboard-chart-12: #f97316;
+  --dashboard-device-desktop: #6366f1;
+  --dashboard-device-mobile: #14b8a6;
+  --dashboard-device-tablet: #f59e0b;
+  --dashboard-device-other: #ec4899;
+  --dashboard-visitor-pv: #6366f1;
+  --dashboard-visitor-uv: #14b8a6;
+  --dashboard-system-trend-cpu: #6366f1;
+  --dashboard-system-trend-memory: #14b8a6;
+  --dashboard-system-trend-disk: #f59e0b;
+  --dashboard-system-status-cpu: #6366f1;
+  --dashboard-system-status-memory: #14b8a6;
+  --dashboard-system-status-disk: #f59e0b;
+  --dashboard-system-status-network: #ec4899;
+  --dashboard-aurora-1: #6366f1;
+  --dashboard-aurora-2: #946ff1;
+  --dashboard-aurora-3: #c090ec;
+  --dashboard-aurora-4: #7d76f2;
+  --dashboard-aurora-5: #aa78ea;
+  --dashboard-aurora-6: #8a72f0;
+  --dashboard-aurora-7: #bd86e5;
+  --dashboard-aurora-8: #7270f3;
+  --dashboard-aurora-9: #a681ee;
+  --dashboard-aurora-10: #b58be8;
+  --dashboard-aurora-11: #9479ef;
+  --dashboard-aurora-12: #c9a0e4;
+  --dashboard-card-fill-main: 18%;
+  --dashboard-card-fill-next: 8%;
+  --dashboard-card-fill-radial: 12%;
+  --dashboard-card-border-mix: 26%;
+  --dashboard-card-edge-mix: 34%;
+  --dashboard-card-icon-fill: 20%;
+  --dashboard-card-change-fill: 14%;
+  --dashboard-card-shadow-mix: 36%;
+}
+
+:root.dark .dashboard-page {
+  --dashboard-aurora-seed: var(--color-visual-primary, oklch(0.74 0.138 270));
+  --dashboard-card-fill-main: 31%;
+  --dashboard-card-fill-next: 17%;
+  --dashboard-card-fill-radial: 24%;
+  --dashboard-card-border-mix: 44%;
+  --dashboard-card-edge-mix: 72%;
+  --dashboard-card-icon-fill: 30%;
+  --dashboard-card-change-fill: 20%;
+  --dashboard-card-shadow-mix: 62%;
+}
+
+@supports (color: oklch(from red l c h)) {
+  .dashboard-page {
+    --dashboard-aurora-1: oklch(from var(--dashboard-aurora-seed) l c h);
+    --dashboard-aurora-2: oklch(from var(--dashboard-aurora-seed) calc(l + 0.02) calc(c * 0.88) calc(h + 30));
+    --dashboard-aurora-3: oklch(from var(--dashboard-aurora-seed) calc(l + 0.07) calc(c * 0.70) calc(h + 60));
+    --dashboard-aurora-4: oklch(from var(--dashboard-aurora-seed) calc(l + 0.01) calc(c * 0.96) calc(h + 12));
+    --dashboard-aurora-5: oklch(from var(--dashboard-aurora-seed) calc(l + 0.04) calc(c * 0.78) calc(h + 42));
+    --dashboard-aurora-6: oklch(from var(--dashboard-aurora-seed) calc(l + 0.02) calc(c * 0.92) calc(h + 18));
+    --dashboard-aurora-7: oklch(from var(--dashboard-aurora-seed) calc(l + 0.06) calc(c * 0.72) calc(h + 54));
+    --dashboard-aurora-8: oklch(from var(--dashboard-aurora-seed) calc(l - 0.01) calc(c * 0.98) calc(h + 6));
+    --dashboard-aurora-9: oklch(from var(--dashboard-aurora-seed) calc(l + 0.04) calc(c * 0.82) calc(h + 36));
+    --dashboard-aurora-10: oklch(from var(--dashboard-aurora-seed) calc(l + 0.05) calc(c * 0.74) calc(h + 48));
+    --dashboard-aurora-11: oklch(from var(--dashboard-aurora-seed) calc(l + 0.03) calc(c * 0.86) calc(h + 24));
+    --dashboard-aurora-12: oklch(from var(--dashboard-aurora-seed) calc(l + 0.08) calc(c * 0.62) calc(h + 60));
+  }
+
+  :root.dark .dashboard-page {
+    --dashboard-aurora-1: oklch(from var(--dashboard-aurora-seed) calc(l + 0.08) calc(c * 1.05) h);
+    --dashboard-aurora-2: oklch(from var(--dashboard-aurora-seed) calc(l + 0.10) calc(c * 0.96) calc(h + 30));
+    --dashboard-aurora-3: oklch(from var(--dashboard-aurora-seed) calc(l + 0.13) calc(c * 0.78) calc(h + 60));
+    --dashboard-aurora-4: oklch(from var(--dashboard-aurora-seed) calc(l + 0.09) c calc(h + 12));
+    --dashboard-aurora-5: oklch(from var(--dashboard-aurora-seed) calc(l + 0.11) calc(c * 0.86) calc(h + 42));
+    --dashboard-aurora-6: oklch(from var(--dashboard-aurora-seed) calc(l + 0.10) calc(c * 0.98) calc(h + 18));
+    --dashboard-aurora-7: oklch(from var(--dashboard-aurora-seed) calc(l + 0.12) calc(c * 0.82) calc(h + 54));
+    --dashboard-aurora-8: oklch(from var(--dashboard-aurora-seed) calc(l + 0.08) calc(c * 1.06) calc(h + 6));
+    --dashboard-aurora-9: oklch(from var(--dashboard-aurora-seed) calc(l + 0.11) calc(c * 0.90) calc(h + 36));
+    --dashboard-aurora-10: oklch(from var(--dashboard-aurora-seed) calc(l + 0.12) calc(c * 0.84) calc(h + 48));
+    --dashboard-aurora-11: oklch(from var(--dashboard-aurora-seed) calc(l + 0.10) calc(c * 0.94) calc(h + 24));
+    --dashboard-aurora-12: oklch(from var(--dashboard-aurora-seed) calc(l + 0.14) calc(c * 0.72) calc(h + 60));
+  }
+}
+
+:root[data-theme-color-mode="auto"] .dashboard-page,
+:root[data-theme-color-mode="follow"] .dashboard-page,
+:root[data-theme-color-mode="custom"] .dashboard-page {
+  --dashboard-chart-1: var(--dashboard-aurora-1);
+  --dashboard-chart-2: var(--dashboard-aurora-2);
+  --dashboard-chart-3: var(--dashboard-aurora-3);
+  --dashboard-chart-4: var(--dashboard-aurora-4);
+  --dashboard-chart-5: var(--dashboard-aurora-5);
+  --dashboard-chart-6: var(--dashboard-aurora-6);
+  --dashboard-chart-7: var(--dashboard-aurora-7);
+  --dashboard-chart-8: var(--dashboard-aurora-8);
+  --dashboard-chart-9: var(--dashboard-aurora-9);
+  --dashboard-chart-10: var(--dashboard-aurora-10);
+  --dashboard-chart-11: var(--dashboard-aurora-11);
+  --dashboard-chart-12: var(--dashboard-aurora-12);
+  --dashboard-device-desktop: var(--dashboard-aurora-1);
+  --dashboard-device-mobile: var(--dashboard-aurora-2);
+  --dashboard-device-tablet: var(--dashboard-aurora-3);
+  --dashboard-device-other: var(--dashboard-aurora-4);
+  --dashboard-visitor-pv: var(--dashboard-aurora-1);
+  --dashboard-visitor-uv: var(--dashboard-aurora-3);
+  --dashboard-system-trend-cpu: var(--dashboard-aurora-1);
+  --dashboard-system-trend-memory: var(--dashboard-aurora-2);
+  --dashboard-system-trend-disk: var(--dashboard-aurora-3);
+  --dashboard-system-status-cpu: var(--dashboard-aurora-1);
+  --dashboard-system-status-memory: var(--dashboard-aurora-2);
+  --dashboard-system-status-disk: var(--dashboard-aurora-3);
+  --dashboard-system-status-network: var(--dashboard-aurora-4);
+}
+
+:root[data-theme-color-mode="auto"] .dashboard-page .dashboard-stat-card,
+:root[data-theme-color-mode="follow"] .dashboard-page .dashboard-stat-card,
+:root[data-theme-color-mode="custom"] .dashboard-page .dashboard-stat-card {
+  background-image:
+    radial-gradient(
+      circle at 88% 18%,
+      color-mix(
+        in oklch,
+        var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-fill-radial),
+        transparent
+      ),
+      transparent 42%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(
+        in oklch,
+        var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-fill-main),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--stats-card-next, var(--dashboard-aurora-2)) var(--dashboard-card-fill-next),
+        transparent
+      )
+    );
+  border-color: color-mix(
+    in oklch,
+    var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-border-mix),
+    transparent
+  );
+  box-shadow:
+    inset 2px 0 0 color-mix(
+      in oklch,
+      var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-edge-mix),
+      transparent
+    ),
+    0 1px 0 color-mix(in oklch, var(--stats-card-base, var(--dashboard-aurora-1)) 10%, transparent),
+    0 16px 42px -34px color-mix(
+      in oklch,
+      var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-shadow-mix),
+      black
+    );
+}
+
+:root[data-theme-color-mode="auto"] .dashboard-page .dashboard-stat-card-icon,
+:root[data-theme-color-mode="follow"] .dashboard-page .dashboard-stat-card-icon,
+:root[data-theme-color-mode="custom"] .dashboard-page .dashboard-stat-card-icon {
+  background-color: color-mix(
+    in oklch,
+    var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-icon-fill),
+    transparent
+  );
+  color: var(--stats-card-base, var(--dashboard-aurora-1));
+}
+
+:root[data-theme-color-mode="auto"] .dashboard-page .dashboard-stat-card-change[data-change-tone="colored"],
+:root[data-theme-color-mode="follow"] .dashboard-page .dashboard-stat-card-change[data-change-tone="colored"],
+:root[data-theme-color-mode="custom"] .dashboard-page .dashboard-stat-card-change[data-change-tone="colored"] {
+  background-color: color-mix(
+    in oklch,
+    var(--stats-card-base, var(--dashboard-aurora-1)) var(--dashboard-card-change-fill),
+    transparent
+  );
+  color: var(--stats-card-base, var(--dashboard-aurora-1));
+}
+
 /* AetherHub workspace —— 复合 token 全部基于 Codex 全局变量派生：
  * - aurora-1..4 走 packages/ui/src/styles/tokens.css 的 OKLCH 派生（aurora-1
  *   = primary 锚点，2/3/4 = h+18°/+36°/+60° 同色系邻近，由 --color-primary
@@ -98,6 +292,38 @@
     0 1px 0 inset rgb(from var(--ink-primary) r g b / 0.04),
     var(--hub-card-shadow),
     0 0 0 1px color-mix(in oklch, var(--aurora-1) 12%, transparent);
+}
+
+.aetherhub-workspace .hub-skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: rgb(from var(--ink-primary) r g b / 0.085);
+}
+
+:root.light .aetherhub-workspace .hub-skeleton-shimmer {
+  background: rgb(from var(--ink-primary) r g b / 0.07);
+}
+
+.aetherhub-workspace .hub-skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  animation: shimmer 2.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 24%, transparent) 48%,
+    rgb(from var(--ink-primary) r g b / 0.075) 52%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-skeleton-shimmer::after {
+    animation: none !important;
+  }
 }
 
 /* ============================================================
@@ -156,6 +382,33 @@
   pointer-events: none;
 }
 
+.aetherhub-workspace .hub-think-live-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: hub-dot-pulse 1.35s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.aetherhub-workspace .hub-think-scroll {
+  scrollbar-gutter: stable;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+
 @keyframes hub-caret-blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0.05; }
@@ -183,6 +436,7 @@
   .aetherhub-workspace .hub-dot,
   .aetherhub-workspace .hub-bubble-pending,
   .aetherhub-workspace .hub-think-shimmer,
+  .aetherhub-workspace .hub-think-live-dot,
   .aetherhub-workspace .hub-caret,
   .aetherhub-workspace .hub-breath-dot {
     animation: none !important;
@@ -200,7 +454,7 @@
 .aetherhub-workspace .hub-engraved-text {
   font-family: var(--font-editorial, var(--font-serif, ui-serif));
   font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1, 'ss01' 1;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
 }
 
 /* 防御性规则 —— 把任何遗漏的 .drop-cap / .markdown-body 类首字下沉
@@ -228,19 +482,10 @@
   -webkit-initial-letter: normal !important;
 }
 
-/* 浮印 / 凸起效果 ——
-   白底用上明下暗一线的极轻投影，让字像从纸面抬起 0.5px；
-   深色底改成"上沿微反光、下沿微沉影"，体感是从板上凸起。 */
-:root.light .aetherhub-workspace .hub-engraved-text {
-  text-shadow:
-    0 0.5px 0 color-mix(in oklch, var(--bg-leaf) 60%, white),
-    0 1.4px 0.8px color-mix(in oklch, var(--ink-primary) 6%, transparent);
-}
-
+/* 对话正文对齐文章详情的清晰阅读效果，不给整段文字叠浮印阴影。 */
+:root.light .aetherhub-workspace .hub-engraved-text,
 :root.dark .aetherhub-workspace .hub-engraved-text {
-  text-shadow:
-    0 -0.4px 0 color-mix(in oklch, var(--aurora-1) 5%, transparent),
-    0 1px 1.6px color-mix(in oklch, var(--bg-void) 70%, transparent);
+  text-shadow: none;
 }
 
 .aetherhub-workspace .hub-engraved-streaming {
@@ -266,12 +511,61 @@
 
 /* MarkdownPreview 内部样式覆写 —— 让流式 markdown 在版书模式下看起来像
    文章详情页（packages/editor 的默认 className 是 .markdown-body 衍生）。 */
-.aetherhub-workspace .hub-engraved-md > div,
-.aetherhub-workspace .hub-engraved-md .markdown-body {
+.aetherhub-workspace .hub-agent-md.markdown-preview,
+.aetherhub-workspace .hub-agent-md > div,
+.aetherhub-workspace .hub-agent-md .markdown-body {
   font-family: var(--font-editorial, var(--font-serif, ui-serif));
-  font-size: 15.5px;
-  line-height: 1.85;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  letter-spacing: 0;
+  font-size: inherit;
+  line-height: 1.78;
   color: var(--ink-primary);
+}
+
+.aetherhub-workspace .hub-agent-md p,
+.aetherhub-workspace .hub-agent-md.markdown-preview p {
+  margin: 0.62em 0;
+  color: var(--ink-primary);
+}
+
+.aetherhub-workspace .hub-agent-md ul,
+.aetherhub-workspace .hub-agent-md ol,
+.aetherhub-workspace .hub-agent-md.markdown-preview ul,
+.aetherhub-workspace .hub-agent-md.markdown-preview ol {
+  margin: 0.56em 0;
+  padding-left: 1.45em;
+}
+
+.aetherhub-workspace .hub-agent-md li,
+.aetherhub-workspace .hub-agent-md.markdown-preview li {
+  margin: 0.24em 0;
+}
+
+.aetherhub-workspace .hub-agent-md blockquote,
+.aetherhub-workspace .hub-agent-md.markdown-preview blockquote {
+  margin: 0.7em 0;
+  padding: 0.5em 0.95em;
+  border-left: 2px solid color-mix(in_oklch,var(--aurora-1)_36%,transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in_oklch,var(--ink-primary)_3%,transparent);
+  color: var(--ink-secondary);
+}
+
+.aetherhub-workspace .hub-agent-md code:not(pre code),
+.aetherhub-workspace .hub-agent-md.markdown-preview code:not(pre code) {
+  padding: 0.08em 0.34em;
+  border-radius: 4px;
+  border: 1px solid color-mix(in_oklch,var(--aurora-1)_13%,transparent);
+  background: color-mix(in_oklch,var(--aurora-1)_5%,transparent);
+  color: color-mix(in_oklch,var(--ink-primary)_88%,var(--aurora-1));
+  font-size: 0.88em;
+}
+
+.aetherhub-workspace .hub-agent-md pre,
+.aetherhub-workspace .hub-agent-md.markdown-preview pre,
+.aetherhub-workspace .hub-agent-md.markdown-preview .code-block-wrapper {
+  margin: 0.78em 0;
+  text-shadow: none;
 }
 
 .aetherhub-workspace .hub-engraved-md h1,
@@ -280,16 +574,16 @@
 .aetherhub-workspace .hub-engraved-md h4 {
   font-family: var(--font-display, var(--font-serif, ui-serif));
   font-weight: 600;
-  letter-spacing: -0.012em;
+  letter-spacing: 0;
   color: var(--ink-primary);
   margin-top: 1.6em;
   margin-bottom: 0.5em;
   text-wrap: balance;
 }
-.aetherhub-workspace .hub-engraved-md h1 { font-size: 1.5rem; }
-.aetherhub-workspace .hub-engraved-md h2 { font-size: 1.28rem; }
-.aetherhub-workspace .hub-engraved-md h3 { font-size: 1.12rem; }
-.aetherhub-workspace .hub-engraved-md h4 { font-size: 1.02rem; }
+.aetherhub-workspace .hub-engraved-md h1 { font-size: 1.38em; }
+.aetherhub-workspace .hub-engraved-md h2 { font-size: 1.22em; }
+.aetherhub-workspace .hub-engraved-md h3 { font-size: 1.1em; }
+.aetherhub-workspace .hub-engraved-md h4 { font-size: 1em; }
 .aetherhub-workspace .hub-engraved-md h2::before {
   content: '§ ';
   color: color-mix(in oklch, var(--aurora-1) 80%, transparent);
@@ -323,10 +617,11 @@
 }
 
 .aetherhub-workspace .hub-engraved-md code:not(pre code) {
-  padding: 0.1em 0.4em;
+  padding: 0.08em 0.34em;
   border-radius: 4px;
-  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
-  color: color-mix(in oklch, var(--aurora-1) 90%, var(--ink-primary));
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 13%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 5%, transparent);
+  color: color-mix(in oklch, var(--ink-primary) 88%, var(--aurora-1));
   font-size: 0.9em;
   font-family: var(--font-mono, ui-monospace, monospace);
   /* 单行 code 不参与版书 text-shadow，避免和 mono 字宽冲突 */
@@ -348,6 +643,84 @@
 .aetherhub-workspace .hub-engraved-md pre code {
   font-family: inherit;
   text-shadow: none;
+}
+
+/* 思考面板内的 Markdown：保留结构，但用更轻的层级，避免抢正文焦点。 */
+.aetherhub-workspace .hub-think-md,
+.aetherhub-workspace .hub-think-md > div,
+.aetherhub-workspace .hub-think-md .markdown-body,
+.aetherhub-workspace .hub-think-md .markdown-preview,
+.aetherhub-workspace .hub-think-md.markdown-preview {
+  color: var(--ink-secondary);
+  font-family: var(--font-sans, ui-sans-serif, system-ui);
+  font-size: inherit;
+  line-height: 1.75;
+}
+
+.aetherhub-workspace .hub-think-md p,
+.aetherhub-workspace .hub-think-md.markdown-preview p {
+  font-size: inherit !important;
+  margin: 0.45em 0;
+}
+
+.aetherhub-workspace .hub-think-md h1,
+.aetherhub-workspace .hub-think-md h2,
+.aetherhub-workspace .hub-think-md h3,
+.aetherhub-workspace .hub-think-md h4,
+.aetherhub-workspace .hub-think-md.markdown-preview h1,
+.aetherhub-workspace .hub-think-md.markdown-preview h2,
+.aetherhub-workspace .hub-think-md.markdown-preview h3,
+.aetherhub-workspace .hub-think-md.markdown-preview h4 {
+  margin: 0.8em 0 0.35em;
+  color: var(--ink-primary);
+  font-family: var(--font-sans, ui-sans-serif, system-ui);
+  font-size: 1em !important;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.aetherhub-workspace .hub-think-md.markdown-preview h1::after,
+.aetherhub-workspace .hub-think-md.markdown-preview h2::before {
+  display: none !important;
+}
+
+.aetherhub-workspace .hub-think-md ul,
+.aetherhub-workspace .hub-think-md ol,
+.aetherhub-workspace .hub-think-md.markdown-preview ul,
+.aetherhub-workspace .hub-think-md.markdown-preview ol {
+  margin: 0.45em 0;
+  padding-left: 1.3em;
+}
+
+.aetherhub-workspace .hub-think-md li,
+.aetherhub-workspace .hub-think-md.markdown-preview li {
+  margin: 0.2em 0;
+}
+
+.aetherhub-workspace .hub-think-md blockquote,
+.aetherhub-workspace .hub-think-md.markdown-preview blockquote {
+  margin: 0.65em 0;
+  padding: 0.45em 0.75em;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 34%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in oklch, var(--ink-primary) 3%, transparent);
+  color: var(--ink-secondary);
+}
+
+.aetherhub-workspace .hub-think-md code:not(pre code),
+.aetherhub-workspace .hub-think-md.markdown-preview code:not(pre code) {
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--aurora-1) 8%, transparent);
+  color: color-mix(in oklch, var(--aurora-1) 86%, var(--ink-primary));
+}
+
+.aetherhub-workspace .hub-think-md pre,
+.aetherhub-workspace .hub-think-md.markdown-preview pre,
+.aetherhub-workspace .hub-think-md.markdown-preview .code-block-wrapper {
+  margin: 0.65em 0;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--ink-primary) 5%, transparent);
 }
 
 .aetherhub-workspace .hub-engraved-md hr {

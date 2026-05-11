@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -264,8 +265,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     ? [currentIndex - 1, currentIndex, currentIndex + 1].filter(i => i >= 0 && i < items.length)
     : [currentIndex];
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-12">
+  const viewer = (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 lg:p-6">
       {/* 背景遮罩 - 移动端使用更柔和的深色而非纯黑 */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -287,11 +288,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         className={cn(
-          "relative z-10 w-full max-w-6xl h-full",
+          "relative z-10 w-full h-full max-w-[1600px]",
           "flex flex-col overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.5)]",
           isMobile
             ? "max-h-full rounded-2xl bg-[var(--bg-primary)]"
-            : "max-h-[85vh] rounded-[2.5rem] bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl"
+            : "max-h-[calc(100dvh-3rem)] rounded-[2rem] bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl"
         )}
         onClick={(e) => e.stopPropagation()}
       >
@@ -383,13 +384,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           </div>
         ) : (
           /* ===== 桌面端工具栏（保持原样）===== */
-          <div className="flex items-center justify-between px-8 py-6 border-b border-[var(--border-subtle)]">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-4 px-5 lg:px-8 py-4 lg:py-5 border-b border-[var(--border-subtle)] shrink-0">
+            <div className="flex items-center gap-3 lg:gap-4 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
                  <ImageIcon className="w-5 h-5 text-primary" />
               </div>
-              <div className="flex flex-col">
-                <h3 className="text-[var(--text-primary)] text-base font-semibold truncate max-w-[300px]">
+              <div className="flex flex-col min-w-0">
+                <h3 className="text-[var(--text-primary)] text-base font-semibold truncate max-w-[min(520px,42vw)]">
                   {currentItem.originalName}
                 </h3>
                 <p className="text-[var(--text-secondary)] text-[10px] tracking-wider">
@@ -446,7 +447,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <div
           className={cn(
             "flex-1 relative flex items-center justify-center overflow-hidden",
-            isMobile ? "px-0 pb-0" : "px-8 pb-8"
+            isMobile ? "px-0 pb-0" : "px-4 lg:px-8 py-4 lg:py-6"
           )}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -495,7 +496,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               <button
                 onClick={onPrev}
                 className={cn(
-                  "absolute left-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+                  "absolute left-4 lg:left-8 z-20 p-3 lg:p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
                   "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
                   currentIndex === 0 && "invisible"
                 )}
@@ -526,7 +527,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               <button
                 onClick={onNext}
                 className={cn(
-                  "absolute right-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+                  "absolute right-4 lg:right-8 z-20 p-3 lg:p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
                   "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
                   currentIndex === items.length - 1 && "invisible"
                 )}
@@ -618,4 +619,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       </motion.div>
     </div>
   );
+
+  return createPortal(viewer, document.body);
 };

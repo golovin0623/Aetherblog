@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, Sparkles, User, Copy, Check, Brain, Pencil, RefreshCcw } from 'lucide-react';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
@@ -73,6 +74,13 @@ function MessageBubbleBase({
     () => (isUser ? message.content : normalizeCjkInlineMarkdown(message.content)),
     [isUser, message.content],
   );
+  const messageFontStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!fontSize) return undefined;
+    return {
+      fontSize: `${fontSize}px`,
+      '--agent-message-font-size': `${fontSize}px`,
+    } as CSSProperties;
+  }, [fontSize]);
 
   async function handleCopy() {
     try {
@@ -91,6 +99,8 @@ function MessageBubbleBase({
   const canRetryAssistant =
     !isUser && !!onRetry && !busy && !message.pending && (!!message.content || !!message.error);
 
+  const hasThink = !isUser && !!message.think?.trim();
+  const showThinkingPanel = !isUser && (!!message.pending || hasThink);
   // 流式中（pending）且尚未收到正文 token —— 显示 typing dots
   const showTypingDots = !isUser && message.pending && !message.content && !message.error;
   // 流式中且已有正文 —— bubble 边沿走呼吸 aurora，让"正在生成"的状态可视化
@@ -219,16 +229,20 @@ function MessageBubbleBase({
         </div>
 
         {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
-        {!isUser && (
+        {showThinkingPanel && (
           <div className="mb-3">
-            <ThinkingPanel message={message} />
+            <ThinkingPanel
+              message={message}
+              fontSize={fontSize}
+              streamAnimation={streamAnimation}
+            />
           </div>
         )}
 
         {/* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */}
         <div
-          className="agent-engraved-text break-words"
-          style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
+          className="agent-message-font agent-engraved-text break-words"
+          style={messageFontStyle}
         >
           {isUser || message.error ? (
             <div className="whitespace-pre-wrap leading-relaxed">
@@ -281,103 +295,113 @@ function MessageBubbleBase({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      className={`group/msg relative ${isUser ? 'flex flex-row-reverse' : 'flex flex-row'} gap-3 max-w-3xl mx-auto`}
+      className={`group/msg relative mx-auto flex w-full max-w-[820px] flex-col ${
+        isUser ? 'items-end' : 'items-start'
+      }`}
       aria-label={isUser ? '用户消息' : 'Agent 回复'}
     >
-      {/* 头像 */}
+      {/* 元信息 + 状态行。头像放在 header，不再作为正文横向 gutter，
+          这样思考块 / 回答卡 / 输入框共享同一条居中 rail。 */}
       <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[12px] ${
-          isUser
-            ? 'bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-primary)]'
-            : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+        className={`mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] ${
+          isUser ? 'flex-row-reverse self-end' : 'self-start'
         }`}
-        aria-hidden="true"
       >
-        {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-      </div>
-
-      <div className={`flex-1 min-w-0 ${isUser ? 'flex flex-col items-end' : ''}`}>
-        {/* 元信息 + 状态行 */}
+        <span
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[12px] ${
+            isUser
+              ? 'bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-primary)]'
+              : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+          }`}
+          aria-hidden="true"
+        >
+          {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+        </span>
+        <span>{isUser ? 'YOU' : 'AGENT'}</span>
+        <span aria-hidden="true">·</span>
+        <span suppressHydrationWarning>
+          {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
+        {/* hover actions —— 与 ChatGPT / Claude 一致的位置：紧贴 meta 行，
+            hover 整条消息时才浮现。focus-within 让键盘用户也能拿到焦点。 */}
         <div
-          className={`flex items-center gap-2 mb-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] ${
+          className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
             isUser ? 'flex-row-reverse' : ''
           }`}
         >
-          <span>{isUser ? 'YOU' : 'AGENT'}</span>
-          <span aria-hidden="true">·</span>
-          <span suppressHydrationWarning>
-            {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </span>
-          {/* hover actions —— 与 ChatGPT / Claude 一致的位置：紧贴 meta 行，
-              hover 整条消息时才浮现。focus-within 让键盘用户也能拿到焦点。 */}
-          <div
-            className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
-              isUser ? 'flex-row-reverse' : ''
-            }`}
-          >
-            {/* 复制：user / assistant 都允许，pending 中的 assistant 也允许复制
-                已生成部分（与 ChatGPT 一致）。仅在没有正文时隐藏。 */}
-            {!!message.content && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
-                aria-label="复制消息"
-                title="复制"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3 h-3" /> 已复制
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" /> 复制
-                  </>
-                )}
-              </button>
-            )}
-            {canEditUser && (
-              <button
-                type="button"
-                onClick={() => onEdit?.(message)}
-                className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
-                aria-label="编辑这条消息"
-                title="编辑（将截断后续对话）"
-              >
-                <Pencil className="w-3 h-3" /> 编辑
-              </button>
-            )}
-            {canRetryAssistant && (
-              <button
-                type="button"
-                onClick={() => onRetry?.(message)}
-                className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
-                aria-label="重试这条回复"
-                title="重新生成"
-              >
-                <RefreshCcw className="w-3 h-3" /> 重试
-              </button>
-            )}
-          </div>
+          {/* 复制：user / assistant 都允许，pending 中的 assistant 也允许复制
+              已生成部分（与 ChatGPT 一致）。仅在没有正文时隐藏。 */}
+          {!!message.content && (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+              aria-label="复制消息"
+              title="复制"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3 h-3" /> 已复制
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> 复制
+                </>
+              )}
+            </button>
+          )}
+          {canEditUser && (
+            <button
+              type="button"
+              onClick={() => onEdit?.(message)}
+              className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+              aria-label="编辑这条消息"
+              title="编辑（将截断后续对话）"
+            >
+              <Pencil className="w-3 h-3" /> 编辑
+            </button>
+          )}
+          {canRetryAssistant && (
+            <button
+              type="button"
+              onClick={() => onRetry?.(message)}
+              className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
+              aria-label="重试这条回复"
+              title="重新生成"
+            >
+              <RefreshCcw className="w-3 h-3" /> 重试
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
-        {!isUser && <ThinkingPanel message={message} />}
+      {/* 思考面板（仅 assistant）—— Lobehub 式独立折叠卡，永远不混入 meta 行 */}
+      {showThinkingPanel && (
+        <div className="w-full">
+          <ThinkingPanel
+            message={message}
+            fontSize={fontSize}
+            streamAnimation={streamAnimation}
+          />
+        </div>
+      )}
 
-        {/* 主体气泡 */}
+      {/* 主体气泡 */}
+      <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
-          className={`max-w-full rounded-2xl px-4 py-3 leading-relaxed text-[14.5px] break-words ${
+          className={`agent-message-font rounded-2xl px-4 py-3 leading-relaxed text-[14.5px] break-words ${
             isUser
-              ? 'whitespace-pre-wrap bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+              ? 'max-w-[85%] whitespace-pre-wrap bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
               : message.error
-              ? 'whitespace-pre-wrap bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] text-[var(--ink-primary)]'
+              ? 'w-full max-w-full whitespace-pre-wrap bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] text-[var(--ink-primary)]'
               : isStreaming
-              ? 'agent-bubble-pending surface-leaf border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
-              : 'surface-leaf border border-[var(--ink-subtle)]/15 text-[var(--ink-primary)]'
+              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
+              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/15 text-[var(--ink-primary)]'
           }`}
+          style={messageFontStyle}
         >
           {isUser || message.error ? (
             <>
@@ -406,7 +430,6 @@ function MessageBubbleBase({
             // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer）
             <div
               className={`agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
-              style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
             >
               <StreamMarkdown content={renderableContent} />
               <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
@@ -415,38 +438,51 @@ function MessageBubbleBase({
             // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色
             <div
               className="agent-md"
-              style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
             >
               <MarkdownRenderer content={finalContent} />
             </div>
           )}
         </div>
-
-        {/* sources */}
-        {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-3 max-w-full">
-            <div className="font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mb-1.5">
-              § Sources
-            </div>
-            <ul className="flex flex-wrap gap-1.5">
-              {message.sources.map((s) => (
-                <li key={s.slug + s.title}>
-                  <a
-                    href={`/posts/${s.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 text-[11.5px] text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] hover:border-[var(--aurora-1)]/40 transition-colors"
-                  >
-                    {s.title || s.slug}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
+
+      {/* sources */}
+      {!isUser && message.sources && message.sources.length > 0 && (
+        <div className="mt-3 w-full max-w-full">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mb-1.5">
+            § Sources
+          </div>
+          <ul className="flex flex-wrap gap-1.5">
+            {message.sources.map((s) => (
+              <li key={s.slug + s.title}>
+                <a
+                  href={`/posts/${s.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 text-[11.5px] text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] hover:border-[var(--aurora-1)]/40 transition-colors"
+                >
+                  {s.title || s.slug}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </motion.article>
   );
+}
+
+function markdownToPreviewText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/(^|\s)#{1,6}\s+/g, '$1')
+    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1')
+    .replace(/^[>\s-]*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -472,14 +508,43 @@ function MessageBubbleBase({
  *   展开（仅在有 think 内容时可用）
  *     · 滚动 pre 框，流式中 stick-to-bottom（终端 tail -f 体验）。
  */
-function ThinkingPanel({ message }: { message: AgentMessage }) {
+function ThinkingPanel({
+  message,
+  fontSize,
+  streamAnimation,
+}: {
+  message: AgentMessage;
+  fontSize?: number;
+  streamAnimation: StreamAnimationMode;
+}) {
+  const isStreaming = !!message.pending;
   const [open, setOpen] = useState(false);
+  const userToggledRef = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState<number>(() => Date.now());
+  // 思考内容和正文内容各自使用独立的平滑流。这样大段 reasoning 还在
+  // 视觉追帧时，正文 delta 仍能按自己的节奏同步渲染，不被思考缓冲拖住。
+  const smoothedThink = useSmoothStream(message.think ?? '', isStreaming, streamAnimation);
+  const thinkFontStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!fontSize) return undefined;
+    return {
+      fontSize: `${fontSize}px`,
+      '--agent-message-font-size': `${fontSize}px`,
+    } as CSSProperties;
+  }, [fontSize]);
 
-  const isStreaming = !!message.pending;
   const hasThink = !!message.think && message.think.length > 0;
   const expandable = hasThink;
+
+  useEffect(() => {
+    if (!hasThink || userToggledRef.current) return;
+    if (isStreaming) {
+      setOpen(true);
+      return;
+    }
+    const id = window.setTimeout(() => setOpen(false), 520);
+    return () => window.clearTimeout(id);
+  }, [hasThink, isStreaming]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -492,34 +557,47 @@ function ThinkingPanel({ message }: { message: AgentMessage }) {
     const el = previewRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [open, isStreaming, message.think]);
+  }, [open, isStreaming, smoothedThink]);
+
+  const renderableThink = useMemo(
+    () => normalizeCjkInlineMarkdown(smoothedThink),
+    [smoothedThink],
+  );
+  const tail = useMemo(() => {
+    const trimmed = markdownToPreviewText(smoothedThink);
+    if (!trimmed) return '';
+    if (trimmed.length <= 86) return trimmed;
+    return `${trimmed.slice(0, 86)}…`;
+  }, [smoothedThink]);
 
   if (!message.startedAt) return null;
 
   const endTs = isStreaming ? now : (message.finishedAt ?? message.startedAt);
   const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
-  const elapsedStr = `${elapsed.toFixed(1)}s`;
+  const elapsedStr = `${elapsed.toFixed(1)} 秒`;
 
   let label: string;
-  if (isStreaming && !message.firstTokenAt) {
+  if (isStreaming && hasThink && !message.firstTokenAt) {
     label = '正在思考';
   } else if (isStreaming) {
-    label = '正在生成';
+    label = message.firstTokenAt ? '正在生成' : '等待响应';
   } else if (message.error) {
     label = '已中断';
-  } else {
+  } else if (hasThink) {
     label = '已深度思考';
+  } else {
+    label = '已生成';
   }
 
   const charCount = hasThink ? message.think!.length : 0;
-  const showShimmer = isStreaming && !message.firstTokenAt;
+  const showShimmer = isStreaming;
 
-  const containerClass = `group/think relative w-full flex items-center gap-2 pl-3 pr-3 py-2 rounded-xl border text-left transition-colors overflow-hidden ${
+  const containerClass = `group/think relative w-full flex items-center gap-2 pl-3 pr-2.5 py-2.5 rounded-xl border text-left transition-[border-color,background-color,box-shadow] overflow-hidden ${
     isStreaming
-      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] shadow-[0_12px_28px_-24px_rgba(0,0,0,0.35)]'
       : message.error
       ? 'bg-[color-mix(in_oklch,var(--signal-warn)_6%,transparent)] border-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)]'
-      : 'bg-[var(--bg-raised)]/55 border-[var(--ink-subtle)]/16 hover:border-[var(--aurora-1)]/30'
+      : 'bg-[var(--bg-raised)]/48 border-[var(--ink-subtle)]/14 hover:border-[var(--aurora-1)]/30'
   } ${expandable ? 'cursor-pointer' : 'cursor-default'}`;
 
   const inner = (
@@ -532,32 +610,49 @@ function ThinkingPanel({ message }: { message: AgentMessage }) {
           <span className="agent-think-shimmer" />
         </span>
       )}
-      <Brain
-        className={`w-3.5 h-3.5 flex-shrink-0 ${
-          isStreaming ? 'text-[var(--aurora-1)]' : message.error ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
-        }`}
-      />
       <span
-        className={`font-mono text-[10.5px] uppercase tracking-[0.22em] flex-shrink-0 whitespace-nowrap ${
-          isStreaming ? 'text-[var(--aurora-1)]' : message.error ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
+        className={`relative grid h-6 w-6 flex-shrink-0 place-items-center rounded-lg ${
+          isStreaming
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]'
+            : message.error
+            ? 'bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] text-[var(--signal-warn)]'
+            : 'bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-muted)]'
         }`}
+        aria-hidden="true"
       >
-        {label}
+        <Brain className="w-3.5 h-3.5" />
       </span>
-      <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)] flex-shrink-0">·</span>
-      <span className="font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums flex-shrink-0 whitespace-nowrap">
-        {elapsedStr}
-      </span>
-      {hasThink && (
-        <>
-          <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)] flex-shrink-0">·</span>
-          <span className="font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums flex-shrink-0 whitespace-nowrap">
-            {charCount} chars
+      <span className="min-w-0 flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={`text-[12px] font-medium flex-shrink-0 whitespace-nowrap ${
+            isStreaming ? 'text-[var(--aurora-1)]' : message.error ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-secondary)]'
+          }`}
+        >
+          {label}
+        </span>
+        {isStreaming && (
+          <span className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_9%,transparent)] px-2 text-[10.5px] text-[var(--aurora-1)]">
+            <span className="agent-thinking-live-dot" aria-hidden="true" />
+            实时
           </span>
-        </>
-      )}
+        )}
+        {!open && tail && (
+          <span className="hidden min-w-[8rem] max-w-[min(44vw,34rem)] flex-1 truncate text-[12px] text-[var(--ink-muted)] sm:inline">
+            {tail}
+          </span>
+        )}
+      </span>
+      <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1.5 font-mono text-[10.5px] text-[var(--ink-muted)] tabular-nums">
+        <span className="whitespace-nowrap">用时 {elapsedStr}</span>
+        {hasThink && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="whitespace-nowrap">{charCount} 字符</span>
+          </>
+        )}
+      </span>
       {expandable && (
-        <span className="ml-auto flex-shrink-0 text-[var(--ink-muted)]">
+        <span className="flex-shrink-0 text-[var(--ink-muted)]">
           {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         </span>
       )}
@@ -569,7 +664,10 @@ function ThinkingPanel({ message }: { message: AgentMessage }) {
       {expandable ? (
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            userToggledRef.current = true;
+            setOpen((v) => !v);
+          }}
           aria-expanded={open}
           className={containerClass}
         >
@@ -593,11 +691,32 @@ function ThinkingPanel({ message }: { message: AgentMessage }) {
           >
             <div
               ref={previewRef}
-              className="agent-thumb-scroll mt-2 max-h-[260px] overflow-y-auto p-3 rounded-xl bg-[var(--bg-raised)]/55 border border-[var(--ink-subtle)]/15"
+              className={`agent-thumb-scroll agent-thinking-scroll mt-2 max-h-[min(340px,42vh)] overflow-y-auto p-3.5 rounded-xl border ${
+                isStreaming
+                  ? 'bg-[color-mix(in_oklch,var(--aurora-1)_5%,var(--bg-raised))] border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+                  : 'bg-[var(--bg-raised)]/55 border-[var(--ink-subtle)]/15'
+              }`}
             >
-              <pre className="whitespace-pre-wrap break-words leading-relaxed text-[12.5px] text-[var(--ink-secondary)] font-sans">
-                {message.think}
-              </pre>
+              {isStreaming ? (
+                <div
+                  className={`agent-think-md agent-stream-fade${
+                    streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
+                  }`}
+                  style={thinkFontStyle}
+                >
+                  <StreamMarkdown content={renderableThink} />
+                </div>
+              ) : (
+                <div
+                  className="agent-md agent-think-md"
+                  style={thinkFontStyle}
+                >
+                  <MarkdownRenderer content={renderableThink} />
+                </div>
+              )}
+              {isStreaming && (
+                <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
+              )}
             </div>
           </motion.div>
         )}

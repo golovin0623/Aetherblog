@@ -20,6 +20,8 @@ interface DeleteMediaConfirmModalProps {
   title: string;
   message: string;
   itemCount: number;
+  /** 自定义层级。嵌在高层级弹窗上方时需要显式抬升。 */
+  zIndex?: number;
   /** 当前选中文件是否有任意一个落在云端 (LOCAL 之外);决定是否显示"删除存储后端"复选框 */
   hasCloudItems: boolean;
   /** 是否有备份(Phase 4 启用后才有意义) */
@@ -33,6 +35,7 @@ export function DeleteMediaConfirmModal({
   title,
   message,
   itemCount,
+  zIndex = 70,
   hasCloudItems,
   hasBackup,
   onConfirm,
@@ -51,7 +54,7 @@ export function DeleteMediaConfirmModal({
   const content = (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

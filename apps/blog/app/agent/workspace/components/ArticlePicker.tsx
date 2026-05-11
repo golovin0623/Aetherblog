@@ -13,7 +13,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   anchorRef: React.RefObject<HTMLElement | null>;
-  /** 用户已选中的文章 ID 集合 —— 选中态显示 ✓；再次点击会从 selected 移除。 */
+  /** 用户已选中的文章 ID 集合 —— 选中态显示已选；移除从 composer chip 处理。 */
   selectedIds: Set<number>;
   onPick: (article: AgentArticle) => void;
 }
@@ -75,7 +75,7 @@ export default function ArticlePicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择文章"
-      className="w-[360px] sm:w-[420px]"
+      className="w-[min(360px,calc(100vw-2rem))]"
     >
       <div className="p-3 border-b border-[var(--ink-subtle)]/15">
         <div className="relative">
@@ -97,8 +97,8 @@ export default function ArticlePicker({
         </div>
       </div>
 
-      {/* 列表区域固定高度 —— 哪怕只有 1 条结果也保持容器尺寸不变。 */}
-      <div className="agent-thumb-scroll h-[300px] overflow-y-auto py-1 relative">
+      {/* 列表区域按 3 个固定槽位展示,避免底部露出半截下一篇文章。 */}
+      <div className="agent-thumb-scroll h-[288px] overflow-y-auto relative">
         {showInitialLoading && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             <Loader2 className="w-3 h-3 animate-spin mr-2" />
@@ -129,14 +129,15 @@ export default function ArticlePicker({
                   key={it.id}
                   type="button"
                   onClick={() => onPick(it)}
-                  className={`group/item w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
+                  disabled={checked}
+                  className={`group/item h-24 w-full overflow-hidden text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
                     checked
-                      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
+                      ? 'cursor-default bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
                       : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 opacity-80" />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <div className="text-[13px] truncate" title={it.title}>
                       {it.title}
                     </div>
@@ -145,10 +146,10 @@ export default function ArticlePicker({
                         {it.summary}
                       </div>
                     )}
-                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] mt-1 flex items-center gap-1.5">
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] mt-1 flex min-w-0 items-center gap-1.5">
                       {it.category && <span className="truncate">{it.category}</span>}
                       {it.category && it.publishedAt && <span aria-hidden="true">·</span>}
-                      {it.publishedAt && <span>{it.publishedAt}</span>}
+                      {it.publishedAt && <span className="shrink-0">{it.publishedAt}</span>}
                     </div>
                   </div>
                   {checked && (

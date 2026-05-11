@@ -229,11 +229,15 @@ export const aiProviderService = {
   ): Promise<AiServiceResponse<{ updated: number }>> =>
     api.put('/v1/admin/providers/batch-toggle', { ids, enabled }),
 
-  listModels: (providerCode?: string, modelType?: string): Promise<AiServiceResponse<AiModel[]>> => {
+  listModels: (
+    providerCode?: string,
+    modelType?: string,
+    enabledOnly = false
+  ): Promise<AiServiceResponse<AiModel[]>> => {
     if (providerCode) {
-      return api.get(`/v1/admin/providers/${providerCode}/models`, { params: { enabled_only: false } });
+      return api.get(`/v1/admin/providers/${providerCode}/models`, { params: { enabled_only: enabledOnly } });
     }
-    return api.get('/v1/admin/providers/models', { params: { model_type: modelType, enabled_only: false } });
+    return api.get('/v1/admin/providers/models', { params: { model_type: modelType, enabled_only: enabledOnly } });
   },
 
   createModel: (providerCode: string, data: CreateModelRequest): Promise<AiServiceResponse<AiModel>> =>

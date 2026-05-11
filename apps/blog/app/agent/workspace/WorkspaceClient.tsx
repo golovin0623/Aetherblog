@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -56,8 +57,6 @@ const PROMPT_SUGGESTIONS = [
 ];
 
 // 模式名的中文显示映射（顶栏 caption 等用户可见位置使用）。
-// ModeSwitch 内部 segmented 仍用工程字面 Chat / Cowork / Code + SOON 徽标，
-// 此映射只服务于"灵境 · X"形态的副标。
 const MODE_LABEL: Record<AgentMode, string> = {
   chat: '对话',
   cowork: '协作',
@@ -894,13 +893,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* ModeSwitch 仅桌面显示 —— 移动端单手操作下三档 segmented 占用过多
-                横向空间，且 cowork/code 暂未上线（点击只是教育性 InfoPopover），
-                让出空间给"标题 + 新建"两件套更符合移动端高频动作分布。 */}
+            {/* 顶栏只显示当前会话模式；完整选择收进渲染偏好面板，避免三段控件挤压右侧。 */}
             <div className="hidden sm:inline-flex">
               <ModeSwitch
                 value={activeSession?.mode || 'chat'}
                 onChange={handleModeChange}
+                variant="current"
               />
             </div>
             {/* 顶栏右侧：主题切换 + 渲染偏好(含会话模式选择)。
@@ -927,26 +925,28 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         <div className="relative flex-1 min-h-0">
           <div
             ref={threadRef}
-            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-contain"
+            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]"
           >
             {!activeSession || activeSession.messages.length === 0 ? (
               <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
             ) : (
-              <div className="px-3 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-7">
-                {activeSession.messages.map((m) => (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    busy={busy}
-                    displayMode={displayMode}
-                    streamAnimation={streamAnimation}
-                    fontSize={fontSize}
-                    onEdit={handleEditUserMessage}
-                    onRetry={handleRetryAssistantMessage}
-                  />
-                ))}
-                {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
-                <div className="h-2" aria-hidden="true" />
+              <div className="px-3 sm:px-6 py-6 sm:py-8">
+                <div className="mx-auto w-full max-w-[820px] space-y-6 sm:space-y-7">
+                  {activeSession.messages.map((m) => (
+                    <MessageBubble
+                      key={m.id}
+                      message={m}
+                      busy={busy}
+                      displayMode={displayMode}
+                      streamAnimation={streamAnimation}
+                      fontSize={fontSize}
+                      onEdit={handleEditUserMessage}
+                      onRetry={handleRetryAssistantMessage}
+                    />
+                  ))}
+                  {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
+                  <div className="h-2" aria-hidden="true" />
+                </div>
               </div>
             )}
           </div>
@@ -972,10 +972,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           </AnimatePresence>
         </div>
 
-        {/* 输入栏（centered，max-w-3xl） —— ModelPicker 内嵌左侧。
+        {/* 输入栏（centered，max-w-[820px]） —— ModelPicker 内嵌左侧。
             上方加一条从透明到 bg-substrate 的渐变蒙版，让滚动文本"溶入"
             composer 区域，避免最后一行字硬切在 composer 上沿。 */}
-        <div className="relative px-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5 pt-1 max-w-3xl w-full mx-auto">
+        <div className="relative px-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5 pt-1">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -top-6 left-0 right-0 h-6"
@@ -984,45 +984,47 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 'linear-gradient(to bottom, color-mix(in oklch, var(--bg-substrate) 0%, transparent), var(--bg-substrate))',
             }}
           />
-          <Composer
-            ref={composerRef}
-            value={draft}
-            onChange={setDraft}
-            onSubmit={handleSend}
-            onAbort={handleAbort}
-            busy={busy}
-            leadingSlot={
-              // 移动端旧的"顶栏下方控制条"已移除,模型选择改为在 composer 左下角
-              // 暴露 —— 与桌面端共用同一入口,前后端一致语义。
-              // value 三元:override 存在时优先采用(含"自动选择"的 null/null
-              // 真值),否则回到 activeSession 存档。EmptyState 下两条路径都
-              // 落到正确显示,且用户主动选"自动"不会被会话存档值覆盖。
-              <ModelPicker
-                value={
-                  sessionModelOverride
-                    ? sessionModelOverride
-                    : {
-                        modelId: activeSession?.modelId ?? null,
-                        providerCode: activeSession?.providerCode ?? null,
-                      }
-                }
-                onChange={handleModelChange}
-                enabled={state.status === 'authed'}
-                placement="top-start"
-                compact
-              />
-            }
-            selectedArticles={pendingArticles}
-            selectedTags={pendingTags}
-            onPickArticle={handlePickArticle}
-            onPickTag={handlePickTag}
-            onSlashCommand={handleSlashCommand}
-            onRemoveArticle={handleRemoveArticle}
-            onRemoveTag={handleRemoveTag}
-          />
-          <p className="mt-1.5 text-center font-mono text-[9.5px] uppercase tracking-[0.24em] text-[var(--ink-muted)]/80">
-            灵境 可能出错 · 关键决定请二次核对
-          </p>
+          <div className="mx-auto w-full max-w-[820px]">
+            <Composer
+              ref={composerRef}
+              value={draft}
+              onChange={setDraft}
+              onSubmit={handleSend}
+              onAbort={handleAbort}
+              busy={busy}
+              leadingSlot={
+                // 移动端旧的"顶栏下方控制条"已移除,模型选择改为在 composer 左下角
+                // 暴露 —— 与桌面端共用同一入口,前后端一致语义。
+                // value 三元:override 存在时优先采用(含"自动选择"的 null/null
+                // 真值),否则回到 activeSession 存档。EmptyState 下两条路径都
+                // 落到正确显示,且用户主动选"自动"不会被会话存档值覆盖。
+                <ModelPicker
+                  value={
+                    sessionModelOverride
+                      ? sessionModelOverride
+                      : {
+                          modelId: activeSession?.modelId ?? null,
+                          providerCode: activeSession?.providerCode ?? null,
+                        }
+                  }
+                  onChange={handleModelChange}
+                  enabled={state.status === 'authed'}
+                  placement="top-start"
+                  compact
+                />
+              }
+              selectedArticles={pendingArticles}
+              selectedTags={pendingTags}
+              onPickArticle={handlePickArticle}
+              onPickTag={handlePickTag}
+              onSlashCommand={handleSlashCommand}
+              onRemoveArticle={handleRemoveArticle}
+              onRemoveTag={handleRemoveTag}
+            />
+            <p className="mt-1.5 text-center font-mono text-[9.5px] uppercase tracking-[0.24em] text-[var(--ink-muted)]/80">
+              灵境 可能出错 · 关键决定请二次核对
+            </p>
+          </div>
         </div>
       </section>
     </div>
@@ -1230,7 +1232,7 @@ function RenderingPreferencesButton({
                   MODE
                 </span>
               </div>
-              <ModeSwitch value={mode} onChange={onModeChange} />
+              <ModeSwitch value={mode} onChange={onModeChange} variant="grid" />
             </motion.div>
 
             {/* 显示模式 */}
@@ -1354,7 +1356,12 @@ function RenderingPreferencesButton({
                 value={fontSize}
                 onChange={(e) => onSetFontSize(Number(e.target.value))}
                 aria-label="字体大小"
-                className="w-full accent-[var(--aurora-1)]"
+                className="agent-range w-full"
+                style={
+                  {
+                    '--agent-range-progress': `${(fontSize - 12) / (18 - 12)}`,
+                  } as CSSProperties
+                }
               />
               <div className="mt-0.5 flex justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
                 <span>A</span>

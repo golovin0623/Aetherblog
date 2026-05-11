@@ -152,10 +152,95 @@ check_dependencies() {
     echo -e "${GREEN}✅ 依赖检查通过${NC}"
 }
 
+python_version_at_least() {
+    local python_bin=$1
+    local major=$2
+    local minor=$3
+
+    "$python_bin" - "$major" "$minor" <<'PY' >/dev/null 2>&1
+import sys
+
+major = int(sys.argv[1])
+minor = int(sys.argv[2])
+raise SystemExit(0 if sys.version_info >= (major, minor) else 1)
+PY
+}
+
+select_ai_python_bin() {
+    local candidate resolved
+
+    for candidate in "${AI_PYTHON_BIN:-}" python3.12 python3.11 python3 python; do
+        if [ -z "$candidate" ]; then
+            continue
+        fi
+        if command -v "$candidate" >/dev/null 2>&1 && python_version_at_least "$candidate" 3 11; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+
+    if command -v uv >/dev/null 2>&1; then
+        for candidate in 3.12 3.11; do
+            resolved=$(uv python find "$candidate" 2>/dev/null || true)
+            if [ -n "$resolved" ] && [ -x "$resolved" ] && python_version_at_least "$resolved" 3 11; then
+                echo "$resolved"
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
+
+ensure_ai_service_venv() {
+    local python_bin venv_python
+
+    python_bin=$(select_ai_python_bin) || {
+        echo -e "${RED}❌ AI 服务需要 Python >= 3.11，请安装 python3.12 或设置 AI_PYTHON_BIN${NC}" >&2
+        return 1
+    }
+
+    venv_python=".venv/bin/python"
+
+    if [ ! -x "$venv_python" ]; then
+        if [ -d ".venv" ]; then
+            echo -e "${YELLOW}⚠️  AI 服务虚拟环境不完整，正在重建...${NC}"
+            rm -rf .venv
+        else
+            echo -e "${BLUE}   创建 AI 服务虚拟环境...${NC}"
+        fi
+        "$python_bin" -m venv .venv
+    fi
+
+    if ! "$venv_python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  AI 服务虚拟环境 Python 版本过低，正在重建...${NC}"
+        rm -rf .venv
+        "$python_bin" -m venv .venv
+    fi
+
+    if [ ! -x "$venv_python" ]; then
+        echo -e "${RED}❌ AI 服务虚拟环境创建失败：缺少 .venv/bin/python${NC}" >&2
+        return 1
+    fi
+
+    if ! "$venv_python" -m pip --version >/dev/null 2>&1; then
+        echo -e "${BLUE}   补齐 AI 服务虚拟环境 pip...${NC}"
+        if ! "$venv_python" -m ensurepip --upgrade >/dev/null 2>&1; then
+            echo -e "${RED}❌ AI 服务虚拟环境缺少 pip，且 ensurepip 修复失败${NC}" >&2
+            return 1
+        fi
+    fi
+
+    if ! "$venv_python" -m pip --version >/dev/null 2>&1; then
+        echo -e "${RED}❌ AI 服务虚拟环境 pip 不可用${NC}" >&2
+        return 1
+    fi
+}
+
 # 读取 .env 中某个 KEY 的当前值（仅匹配行首 KEY=...，不展开变量）
 get_env_field() {
     local key=$1
-    grep -E "^${key}=" "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2-
+    grep -E "^${key}=" "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- || true
 }
 
 # 跨平台 sed -i：GNU sed 用 "-i"，BSD/macOS sed 用 "-i ''"
@@ -754,6 +839,13 @@ wait_for_http() {
     return 1
 }
 
+wait_for_blog_http() {
+    local log_file=$1
+
+    wait_for_http "http://localhost:3000" "博客前台" "$log_file" || return 1
+    wait_for_http "http://localhost:3000/agent/workspace" "博客前台灵境" "$log_file" || return 1
+}
+
 # 确保 Docker 已运行 (需要 Docker 时使用)
 ensure_docker_running() {
     if docker info &> /dev/null; then
@@ -847,6 +939,68 @@ install_deps() {
     else
         echo -e "${GREEN}✅ 依赖已安装${NC}"
     fi
+}
+
+stop_blog_port_processes() {
+    local pids pid cmd cwd
+    pids=$(lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null || true)
+    if [ -z "$pids" ]; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}⚠️  检测到 3000 端口已有进程，正在清理博客前台残留...${NC}"
+    for pid in $pids; do
+        if ! ps -p "$pid" > /dev/null 2>&1; then
+            continue
+        fi
+
+        cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+        cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
+
+        if [[ "$cwd" == "$PROJECT_ROOT/apps/blog"* ]] || [[ "$cmd" == *"next-server"* ]] || [[ "$cmd" == *"next dev"* ]]; then
+            echo -e "${YELLOW}   停止博客前台残留进程 PID: $pid${NC}"
+            kill "$pid" 2>/dev/null || true
+            for _ in {1..10}; do
+                if ! ps -p "$pid" > /dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.3
+            done
+            if ps -p "$pid" > /dev/null 2>&1; then
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        else
+            echo -e "${RED}❌ 3000 端口被非博客进程占用，跳过清理: PID $pid ($cmd)${NC}"
+            return 1
+        fi
+    done
+}
+
+reset_blog_next_cache_if_needed() {
+    local blog_dir=$1
+    local next_dir="$blog_dir/.next"
+    local stale_dir
+
+    if [ ! -d "$next_dir" ]; then
+        return 0
+    fi
+
+    # `next build` 和 `next dev` 共享 .next。开发服务运行中执行 build 后，
+    # dev server 可能继续读取 production manifest，表现为 app-build-manifest
+    # 或 static/development/_buildManifest.js.tmp ENOENT。启动前发现 production
+    # 形态缓存时挪走，让 dev server 重新生成。
+    if [ -f "$next_dir/BUILD_ID" ] || [ -d "$next_dir/standalone" ]; then
+        stale_dir="$blog_dir/.next.stale.$(date +%Y%m%d%H%M%S)"
+        echo -e "${YELLOW}⚠️  检测到博客 .next 为生产构建缓存，已挪到 ${stale_dir#$PROJECT_ROOT/}${NC}"
+        mv "$next_dir" "$stale_dir"
+    fi
+}
+
+blog_next_cache_needs_reset() {
+    local blog_dir=$1
+    local next_dir="$blog_dir/.next"
+
+    [ -f "$next_dir/BUILD_ID" ] || [ -d "$next_dir/standalone" ]
 }
 
 # 启动后端 (Go 服务)
@@ -953,9 +1107,9 @@ start_ai_service() {
 
         cd "$AI_DIR"
 
-        if [ ! -d ".venv" ]; then
-            echo -e "${BLUE}   创建 AI 服务虚拟环境...${NC}"
-            $PYTHON_BIN -m venv .venv
+        if ! ensure_ai_service_venv; then
+            record_failure "AI 服务"
+            return
         fi
 
         if [ ! -f ".env" ] && [ -f ".env.example" ]; then
@@ -972,7 +1126,7 @@ start_ai_service() {
 
         if [ "$should_install_ai_deps" = true ]; then
             echo -e "${BLUE}   安装 AI 服务依赖...${NC}"
-            .venv/bin/pip install -r requirements.txt
+            .venv/bin/python -m pip install -r requirements.txt
         fi
 
         # 确保导出必要的环境变量
@@ -1055,13 +1209,23 @@ start_blog() {
         if [ -f "$PID_DIR/blog.pid" ]; then
             if PID=$(read_pid "$PID_DIR/blog.pid"); then
                 if ps -p "$PID" > /dev/null 2>&1; then
-                    echo -e "${YELLOW}⚠️  博客前台已在运行 (PID: $PID)${NC}"
-                    return
+                    if ! blog_next_cache_needs_reset "$BLOG_DIR" && wait_for_blog_http "$LOG_DIR/blog.log"; then
+                        echo -e "${YELLOW}⚠️  博客前台已在运行 (PID: $PID)${NC}"
+                        return
+                    fi
+                    echo -e "${YELLOW}⚠️  博客前台 PID 存在但缓存或健康检查异常，准备重建 dev 缓存并重启${NC}"
+                    kill "$PID" 2>/dev/null || true
                 fi
-            else
-                rm -f "$PID_DIR/blog.pid"
             fi
+            rm -f "$PID_DIR/blog.pid"
         fi
+
+        if ! stop_blog_port_processes; then
+            record_failure "博客前台"
+            return
+        fi
+
+        reset_blog_next_cache_if_needed "$BLOG_DIR"
         
         # 加载根目录 .env (将 NEXT_PUBLIC_* 等变量注入到前端进程)
         if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -1072,8 +1236,27 @@ start_blog() {
 
         # 安装依赖并启动
         pnpm install --silent
-        nohup pnpm dev > "$LOG_DIR/blog.log" 2>&1 &
-        local blog_pid=$!
+        local blog_pid
+        blog_pid=$("$PYTHON_BIN" - "$BLOG_DIR" "$LOG_DIR/blog.log" <<'PY'
+import subprocess
+import sys
+
+cwd = sys.argv[1]
+log_path = sys.argv[2]
+
+with open(log_path, "ab", buffering=0) as log:
+    proc = subprocess.Popen(
+        ["./node_modules/.bin/next", "dev", "--port", "3000", "--turbopack"],
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+print(proc.pid)
+PY
+)
         echo $blog_pid > "$PID_DIR/blog.pid"
 
         if ! wait_for_process "$blog_pid" "博客前台" "$LOG_DIR/blog.log"; then
@@ -1081,7 +1264,7 @@ start_blog() {
             return
         fi
 
-        if ! wait_for_http "http://localhost:3000" "博客前台" "$LOG_DIR/blog.log"; then
+        if ! wait_for_blog_http "$LOG_DIR/blog.log"; then
             record_failure "博客前台"
             return
         fi

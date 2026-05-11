@@ -57,6 +57,7 @@ import { useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
+import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
   type AgentArticle,
   type AgentMessage,
@@ -278,7 +279,7 @@ export default function AetherHubWorkspacePage() {
     abortRef.current = null;
     setStreaming(false);
     // 关键修复：abort 走 AbortError 分支不会触发 onDone/onError，pending 永远不会被
-    // 清掉，导致 ThinkingMeta 的 100ms tick 一直滚（你看到的 "正在生成 · 1413s"）。
+    // 清掉，导致思考状态计时的 100ms tick 一直滚（你看到的 "正在生成 · 1413s"）。
     // 这里手动把"还在 pending 的 assistant 消息"全部落定到完成态。
     setSessions((prev) =>
       prev.map((s) => ({
@@ -298,9 +299,18 @@ export default function AetherHubWorkspacePage() {
   }, []);
 
   const handleSend = useCallback(
-    async (rawText: string) => {
+    async (
+      rawText: string,
+      override?: {
+        session: AgentSession;
+        messages: AgentMessage[];
+        selectedArticles?: AgentArticle[];
+      },
+    ) => {
       const text = rawText.trim();
-      if (!text || streaming || !activeSession) return;
+      const baseSession = override?.session ?? activeSession;
+      const baseMessages = override?.messages ?? baseSession?.messages ?? [];
+      if (!text || streaming || !baseSession) return;
 
       const now = Date.now();
       const userMsg: AgentMessage = {
@@ -319,18 +329,19 @@ export default function AetherHubWorkspacePage() {
         pending: true,
       };
 
-      const isFirstMessage = activeSession.messages.length === 0;
-      const sessionId = activeSession.id;
-      const modelId = activeSession.modelId ?? null;
-      const providerCode = activeSession.providerCode ?? null;
-      const historyForRequest = [...activeSession.messages, userMsg].map((m) => ({
+      const isFirstMessage = baseMessages.length === 0;
+      const sessionId = baseSession.id;
+      const modelId = baseSession.modelId ?? null;
+      const providerCode = baseSession.providerCode ?? null;
+      const requestArticles = override?.selectedArticles ?? selectedArticles;
+      const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
       updateSession(sessionId, (s) => ({
         ...s,
-        messages: [...s.messages, userMsg, assistantMsg],
+        messages: [...baseMessages, userMsg, assistantMsg],
         title: isFirstMessage ? deriveSessionTitle(text) : s.title,
         updatedAt: now,
       }));
@@ -362,7 +373,7 @@ export default function AetherHubWorkspacePage() {
         messages: historyForRequest,
         modelId,
         providerCode,
-        articleIds: selectedArticles.length > 0 ? selectedArticles.map((a) => a.id) : null,
+        articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
       };
 
       try {
@@ -431,6 +442,53 @@ export default function AetherHubWorkspacePage() {
     [streaming, activeSession, updateSession, selectedArticles],
   );
 
+  const handleEditMessage = useCallback(
+    (message: AgentMessage) => {
+      if (streaming || message.role !== 'user' || !activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      updateSession(activeSession.id, (s) => ({
+        ...s,
+        messages: s.messages.slice(0, idx),
+        updatedAt: Date.now(),
+      }));
+      setComposer(message.content);
+    },
+    [activeSession, streaming, updateSession],
+  );
+
+  const handleRetryMessage = useCallback(
+    (message: AgentMessage) => {
+      if (streaming || message.role !== 'assistant' || !activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx <= 0) return;
+      const prior = activeSession.messages[idx - 1];
+      if (prior.role !== 'user') return;
+      const baseMessages = activeSession.messages.slice(0, idx - 1);
+      void handleSend(prior.content, {
+        session: { ...activeSession, messages: baseMessages },
+        messages: baseMessages,
+        selectedArticles: [],
+      });
+    },
+    [activeSession, streaming, handleSend],
+  );
+
+  const handleDeleteMessage = useCallback(
+    (message: AgentMessage) => {
+      if (streaming || !activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      updateSession(activeSession.id, (s) => ({
+        ...s,
+        messages: s.messages.slice(0, idx),
+        updatedAt: Date.now(),
+      }));
+      toast.success('已删除此处及后续消息');
+    },
+    [activeSession, streaming, updateSession],
+  );
+
   // ----- 斜杠命令 -----
   const handleSlashCommand = useCallback(
     (cmd: SlashCommand) => {
@@ -483,6 +541,10 @@ export default function AetherHubWorkspacePage() {
     [activeSession, streaming, updateSession, handleNewSession, handleSend],
   );
 
+  if (!hydrated) {
+    return <AetherHubSkeleton label="正在恢复灵境会话…" />;
+  }
+
   return (
     <div className="aetherhub-workspace fixed inset-0 flex flex-col overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
       <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--bg-void)]">
@@ -526,7 +588,7 @@ export default function AetherHubWorkspacePage() {
               onNewSession={handleNewSession}
             />
 
-            <WorkspaceCanvas
+              <WorkspaceCanvas
               greeting={greeting}
               nickname={currentUser.nickname}
               currentUser={currentUser}
@@ -552,6 +614,9 @@ export default function AetherHubWorkspacePage() {
                 setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
               }
               onSlashCommand={handleSlashCommand}
+              onEditMessage={handleEditMessage}
+              onRetryMessage={handleRetryMessage}
+              onDeleteMessage={handleDeleteMessage}
             />
           </section>
 
@@ -1093,6 +1158,9 @@ function WorkspaceCanvas({
   onPickArticle,
   onRemoveArticle,
   onSlashCommand,
+  onEditMessage,
+  onRetryMessage,
+  onDeleteMessage,
 }: {
   greeting: string;
   nickname: string;
@@ -1113,6 +1181,9 @@ function WorkspaceCanvas({
   onPickArticle: (article: AgentArticle) => void;
   onRemoveArticle: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
+  onEditMessage: (message: AgentMessage) => void;
+  onRetryMessage: (message: AgentMessage) => void;
+  onDeleteMessage: (message: AgentMessage) => void;
 }) {
   const isEmpty = !activeSession || activeSession.messages.length === 0;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1201,6 +1272,10 @@ function WorkspaceCanvas({
                   streamAnimation={streamAnimation}
                   fontSize={fontSize}
                   currentUser={currentUser}
+                  busy={streaming}
+                  onEdit={onEditMessage}
+                  onRetry={onRetryMessage}
+                  onDelete={onDeleteMessage}
                 />
               ))}
             </div>
@@ -1289,24 +1364,78 @@ function MessageRow({
   streamAnimation,
   fontSize,
   currentUser,
+  busy,
+  onEdit,
+  onRetry,
+  onDelete,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
   streamAnimation: StreamAnimationMode;
   fontSize: number;
   currentUser: CurrentUser;
+  busy: boolean;
+  onEdit: (message: AgentMessage) => void;
+  onRetry: (message: AgentMessage) => void;
+  onDelete: (message: AgentMessage) => void;
 }) {
   const { isDark } = useTheme();
+  const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isUser = message.role === 'user';
-  const showTypingDots = !isUser && !!message.pending && !message.content && !message.error;
+  const hasThink = !isUser && !!message.think?.trim();
+  const showThinkStatus = !isUser && (!!message.pending || hasThink);
+  const showTypingDots = !isUser && !!message.pending && !message.content && !message.error && !showThinkStatus;
   const isStreaming = !isUser && !!message.pending && !!message.content;
-  const thinkStreaming = !!message.pending && !message.firstTokenAt;
+  const canEdit = isUser && !busy && !!message.content;
+  const canRetry = !isUser && !busy && !message.pending && (!!message.content || !!message.error);
+  const canDelete = !busy && !message.pending;
+
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const id = window.setTimeout(() => setConfirmDelete(false), 1800);
+    return () => window.clearTimeout(id);
+  }, [confirmDelete]);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+      toast.success('消息已复制');
+    } catch {
+      toast.error('复制失败，请手动选中复制');
+    }
+  }
+
+  const actions = (
+    <MessageActions
+      isUser={isUser}
+      copied={copied}
+      canCopy={!!message.content}
+      canEdit={canEdit}
+      canRetry={canRetry}
+      canDelete={canDelete}
+      confirmDelete={confirmDelete}
+      onCopy={handleCopy}
+      onEdit={() => onEdit(message)}
+      onRetry={() => onRetry(message)}
+      onDelete={() => {
+        if (!confirmDelete) {
+          setConfirmDelete(true);
+          return;
+        }
+        setConfirmDelete(false);
+        onDelete(message);
+      }}
+    />
+  );
 
   const header =
     displayMode === 'engraved' ? (
-      <EngravedHeader message={message} isUser={isUser} currentUser={currentUser} />
+      <EngravedHeader message={message} isUser={isUser} currentUser={currentUser} actions={actions} />
     ) : (
-      <BubbleHeader message={message} isUser={isUser} currentUser={currentUser} />
+      <BubbleHeader message={message} isUser={isUser} currentUser={currentUser} actions={actions} />
     );
 
   const body = isUser ? (
@@ -1323,7 +1452,7 @@ function MessageRow({
       fontSize={fontSize}
       isDark={isDark}
       isStreaming={isStreaming}
-      thinkStreaming={thinkStreaming}
+      showThinkStatus={showThinkStatus}
     />
   );
 
@@ -1364,10 +1493,12 @@ function BubbleHeader({
   message,
   isUser,
   currentUser,
+  actions,
 }: {
   message: AgentMessage;
   isUser: boolean;
   currentUser: CurrentUser;
+  actions: ReactNode;
 }) {
   return (
     <div
@@ -1386,7 +1517,7 @@ function BubbleHeader({
       <span className="tnum font-mono text-[10.5px] text-[var(--ink-muted)]">
         {formatDate(new Date(message.createdAt), 'HH:mm')}
       </span>
-      {!isUser && <ThinkingMeta message={message} />}
+      {actions}
     </div>
   );
 }
@@ -1395,10 +1526,12 @@ function EngravedHeader({
   message,
   isUser,
   currentUser,
+  actions,
 }: {
   message: AgentMessage;
   isUser: boolean;
   currentUser: CurrentUser;
+  actions: ReactNode;
 }) {
   return (
     <div className="my-6 flex items-center gap-3 px-1" aria-label={isUser ? 'YOU' : 'AGENT'}>
@@ -1413,7 +1546,7 @@ function EngravedHeader({
         <span className="tnum normal-case tracking-[0.14em]">
           {formatDate(new Date(message.createdAt), 'HH:mm')}
         </span>
-        {!isUser && <ThinkingMeta message={message} />}
+        {actions}
       </span>
       <span
         className="h-px flex-1 bg-gradient-to-l from-transparent to-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
@@ -1421,6 +1554,111 @@ function EngravedHeader({
       />
     </div>
   );
+}
+
+function MessageActions({
+  isUser,
+  copied,
+  canCopy,
+  canEdit,
+  canRetry,
+  canDelete,
+  confirmDelete,
+  onCopy,
+  onEdit,
+  onRetry,
+  onDelete,
+}: {
+  isUser: boolean;
+  copied: boolean;
+  canCopy: boolean;
+  canEdit: boolean;
+  canRetry: boolean;
+  canDelete: boolean;
+  confirmDelete: boolean;
+  onCopy: () => void;
+  onEdit: () => void;
+  onRetry: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <span
+      className={cn(
+        'ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100',
+        isUser && 'flex-row-reverse',
+      )}
+    >
+      {canCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="复制消息"
+          title="复制"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3" /> 已复制
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" /> 复制
+            </>
+          )}
+        </button>
+      )}
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="编辑这条消息"
+          title="编辑（将截断后续对话）"
+        >
+          <Pencil className="h-3 w-3" /> 编辑
+        </button>
+      )}
+      {canRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
+          aria-label="重试这条回复"
+          title="重新生成"
+        >
+          <RefreshCcw className="h-3 w-3" /> 重试
+        </button>
+      )}
+      {canDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className={cn(
+            'inline-flex items-center gap-1 hover:text-[var(--signal-danger)]',
+            confirmDelete && 'text-[var(--signal-danger)]',
+          )}
+          aria-label={confirmDelete ? '确认删除这条及后续消息' : '删除这条及后续消息'}
+          title={confirmDelete ? '再次点击确认删除' : '删除这条及后续消息'}
+        >
+          <Trash2 className="h-3 w-3" /> {confirmDelete ? '确认删除' : '删除'}
+        </button>
+      )}
+    </span>
+  );
+}
+
+function markdownToPreviewText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/(^|\s)#{1,6}\s+/g, '$1')
+    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1')
+    .replace(/^[>\s-]*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function Avatar({
@@ -1537,7 +1775,7 @@ function AssistantContent({
   fontSize,
   isDark,
   isStreaming,
-  thinkStreaming,
+  showThinkStatus,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
@@ -1545,7 +1783,7 @@ function AssistantContent({
   fontSize: number;
   isDark: boolean;
   isStreaming: boolean;
-  thinkStreaming: boolean;
+  showThinkStatus: boolean;
 }) {
   // 节流后的内容 —— 流式中按用户选择的速率匀速吐字；完成态立即同步到完整文本。
   const smoothed = useSmoothStream(message.content, !!message.pending, streamAnimation);
@@ -1557,9 +1795,14 @@ function AssistantContent({
 
   return (
     <div className="w-full">
-      {message.think && (
+      {showThinkStatus && (
         <div className={cn(displayMode === 'engraved' && 'mx-auto mb-3 max-w-full')}>
-          <ThinkingBlock think={message.think} streaming={thinkStreaming} />
+          <ThinkingPanel
+            message={message}
+            isDark={isDark}
+            fontSize={fontSize}
+            streamAnimation={streamAnimation}
+          />
         </div>
       )}
       <AssistantSurface
@@ -1571,6 +1814,8 @@ function AssistantContent({
           <div className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
             ERROR · {message.error}
           </div>
+        ) : message.pending && !message.content ? (
+          <TypingDots />
         ) : (
           <>
             <div
@@ -1585,7 +1830,7 @@ function AssistantContent({
                 content={renderableContent}
                 theme={isDark ? 'dark' : 'light'}
                 className={cn(
-                  'leading-relaxed',
+                  'hub-agent-md leading-relaxed',
                   displayMode === 'engraved' && 'hub-engraved-md',
                 )}
                 style={{ fontSize: `${fontSize}px` }}
@@ -1611,81 +1856,177 @@ function AssistantContent({
 }
 
 /**
- * ThinkingBlock —— Codex 级思考块
- * 收起态：单行 pill（左侧呼吸光带 + Brain + "正在思考"/"已深度思考" + 字数 + tail 摘要）
- * 展开态：可滚动 think 文本框，流式中自动 stick-to-bottom
+ * ThinkingPanel —— 后台灵境与前台一致的独立思考面板。
+ * 流式中自动展开并跟随底部；完成后若用户没有手动操作，会收回为摘要条。
  */
-function ThinkingBlock({ think, streaming }: { think: string; streaming: boolean }) {
+function ThinkingPanel({
+  message,
+  isDark,
+  fontSize,
+  streamAnimation,
+}: {
+  message: AgentMessage;
+  isDark: boolean;
+  fontSize: number;
+  streamAnimation: StreamAnimationMode;
+}) {
+  const [now, setNow] = useState<number>(() => Date.now());
   const [open, setOpen] = useState(false);
+  const userToggledRef = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const isStreaming = !!message.pending;
+  const think = message.think ?? '';
+  // 独立于正文的平滑流：思考内容可以继续柔和吐字，但正文 delta 不需要等
+  // reasoning 追帧结束才显示。
+  const smoothedThink = useSmoothStream(think, isStreaming, streamAnimation);
+  const hasThink = !!think.trim();
+  const expandable = hasThink;
+  const renderableThink = useMemo(
+    () => normalizeCjkInlineMarkdown(smoothedThink),
+    [smoothedThink],
+  );
+  const tail = useMemo(() => {
+    const trimmed = markdownToPreviewText(smoothedThink);
+    if (!trimmed) return '';
+    if (trimmed.length <= 86) return trimmed;
+    return `${trimmed.slice(0, 86)}…`;
+  }, [smoothedThink]);
+
+  useEffect(() => {
+    if (!message.pending) return;
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [message.pending]);
+
+  useEffect(() => {
+    if (!hasThink || userToggledRef.current) return;
+    if (isStreaming) {
+      setOpen(true);
+      return;
+    }
+    const id = window.setTimeout(() => setOpen(false), 520);
+    return () => window.clearTimeout(id);
+  }, [hasThink, isStreaming]);
 
   useLayoutEffect(() => {
-    if (!open || !streaming) return;
+    if (!open || !isStreaming || !expandable) return;
     const el = previewRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [open, streaming, think]);
+  }, [open, isStreaming, expandable, smoothedThink]);
 
+  if (!message.startedAt) return null;
+
+  const endTs = isStreaming ? now : (message.finishedAt ?? message.startedAt);
+  const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
+  const elapsedStr = `${elapsed.toFixed(1)} 秒`;
   const charCount = think.length;
-  const tail = useMemo(() => {
-    const trimmed = think.replace(/\s+$/, '');
-    if (trimmed.length <= 36) return trimmed;
-    return `…${trimmed.slice(-36)}`;
-  }, [think]);
 
-  return (
-    <div className="relative mb-2.5 max-w-full">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
+  let label: string;
+  if (isStreaming && hasThink && !message.firstTokenAt) label = '正在思考';
+  else if (isStreaming && !message.firstTokenAt) label = '等待响应';
+  else if (isStreaming) label = '正在生成';
+  else if (message.error) label = '已中断';
+  else if (hasThink) label = '已深度思考';
+  else label = '已生成';
+
+  const headerClass = cn(
+    'group/think relative flex w-full items-center gap-2 overflow-hidden rounded-xl border py-2.5 pl-3 pr-2.5 text-left transition-[border-color,background-color,box-shadow]',
+    isStreaming
+      ? 'border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)] shadow-[0_12px_28px_-24px_rgba(0,0,0,0.35)]'
+      : message.error
+        ? 'border-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_6%,transparent)]'
+        : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+    !expandable && 'cursor-default',
+  );
+
+  const headerContent = (
+    <>
+      {isStreaming && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
+        >
+          <span className="hub-think-shimmer" />
+        </span>
+      )}
+      <span
         className={cn(
-          'group/think relative flex w-full items-center gap-2 overflow-hidden rounded-xl border px-3 py-2 text-left transition-colors',
-          streaming
-            ? 'border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)]'
-            : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+          'grid h-6 w-6 shrink-0 place-items-center rounded-lg',
+          isStreaming
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]'
+            : message.error
+              ? 'bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] text-[var(--signal-warn)]'
+              : 'bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-muted)]',
         )}
+        aria-hidden="true"
       >
-        {streaming && (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
-          >
-            <span className="hub-think-shimmer" />
-          </span>
-        )}
-        <Brain
-          className={cn(
-            'h-3.5 w-3.5 shrink-0',
-            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]',
-          )}
-        />
+        <Brain className="h-3.5 w-3.5" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <span
           className={cn(
-            'shrink-0 font-mono text-[10.5px] uppercase tracking-[0.22em]',
-            streaming ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]',
+            'shrink-0 whitespace-nowrap text-[12px] font-medium',
+            isStreaming
+              ? 'text-[var(--aurora-1)]'
+              : message.error
+                ? 'text-[var(--signal-warn)]'
+                : 'text-[var(--ink-secondary)]',
           )}
         >
-          {streaming ? '正在思考' : '已深度思考'}
+          {label}
         </span>
-        <span aria-hidden="true" className="font-mono text-[10px] text-[var(--ink-muted)]">
-          ·
-        </span>
-        <span className="shrink-0 font-mono text-[10.5px] tnum text-[var(--ink-muted)]">
-          {charCount} chars
-        </span>
+        {isStreaming && (
+          <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_9%,transparent)] px-2 text-[10.5px] text-[var(--aurora-1)]">
+            <span className="hub-think-live-dot" aria-hidden="true" />
+            实时
+          </span>
+        )}
         {!open && tail && (
-          <span className="ml-1.5 hidden min-w-0 truncate text-[12px] italic text-[var(--ink-muted)] opacity-85 sm:inline">
+          <span className="hidden min-w-[8rem] max-w-[min(44vw,34rem)] flex-1 truncate text-[12px] text-[var(--ink-muted)] sm:inline">
             {tail}
           </span>
         )}
-        <span className="ml-auto shrink-0 text-[var(--ink-muted)]">
+      </span>
+      <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[10.5px] tnum text-[var(--ink-muted)]">
+        <span className="whitespace-nowrap">用时 {elapsedStr}</span>
+        {hasThink && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="whitespace-nowrap">{charCount} 字符</span>
+          </>
+        )}
+      </span>
+      {expandable && (
+        <span className="shrink-0 text-[var(--ink-muted)]">
           {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </span>
-      </button>
+      )}
+    </>
+  );
+
+  return (
+    <div className="relative mb-2.5 max-w-full">
+      {expandable ? (
+        <button
+          type="button"
+          onClick={() => {
+            userToggledRef.current = true;
+            setOpen((v) => !v);
+          }}
+          aria-expanded={open}
+          className={headerClass}
+        >
+          {headerContent}
+        </button>
+      ) : (
+        <div className={headerClass} aria-live={isStreaming ? 'polite' : undefined}>
+          {headerContent}
+        </div>
+      )}
 
       <AnimatePresence initial={false}>
-        {open && (
+        {expandable && open && (
           <motion.div
             key="think-body"
             initial={{ opacity: 0, height: 0 }}
@@ -1696,66 +2037,31 @@ function ThinkingBlock({ think, streaming }: { think: string; streaming: boolean
           >
             <div
               ref={previewRef}
-              className="mt-2 max-h-[260px] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3"
+              className={cn(
+                'hub-think-scroll mt-2 max-h-[min(340px,42vh)] overflow-y-auto rounded-xl border p-3.5',
+                isStreaming
+                  ? 'border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_5%,var(--hub-control))]'
+                  : 'border-[var(--hub-border)] bg-[var(--hub-control)]',
+              )}
             >
-              <pre className="whitespace-pre-wrap break-words font-sans text-[12.5px] leading-relaxed text-[var(--ink-secondary)]">
-                {think}
-              </pre>
+              <MarkdownPreview
+                content={renderableThink}
+                theme={isDark ? 'dark' : 'light'}
+                className={cn(
+                  'hub-think-md hub-stream-fade leading-relaxed',
+                  streamAnimation === 'fade' && 'hub-stream-fade--fade',
+                  streamAnimation === 'smooth' && 'hub-stream-fade--smooth',
+                )}
+                style={{ fontSize: `${fontSize}px` }}
+              />
+              {isStreaming && (
+                <span className="hub-caret text-[var(--aurora-1)]" aria-hidden="true" />
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-/**
- * ThinkingMeta —— inline 状态行：
- *   pending && !firstToken → "正在思考 · X.Xs" + 呼吸点
- *   pending && firstToken  → "正在生成 · X.Xs"
- *   !pending && finishedAt → "已深度思考 · X.Xs"
- *   error                  → "已中断 · X.Xs"
- */
-function ThinkingMeta({ message }: { message: AgentMessage }) {
-  const [now, setNow] = useState<number>(() => Date.now());
-  useEffect(() => {
-    if (!message.pending) return;
-    const id = window.setInterval(() => setNow(Date.now()), 100);
-    return () => window.clearInterval(id);
-  }, [message.pending]);
-
-  if (!message.startedAt) return null;
-  const isStreaming = !!message.pending;
-  const endTs = isStreaming ? now : (message.finishedAt ?? message.startedAt);
-  const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
-  const elapsedStr = `${elapsed.toFixed(1)}s`;
-
-  let label: string;
-  if (isStreaming && !message.firstTokenAt) label = '正在思考';
-  else if (isStreaming) label = '正在生成';
-  else if (message.error) label = '已中断';
-  else label = '已深度思考';
-
-  return (
-    <>
-      <span aria-hidden="true">·</span>
-      <span
-        className={cn(
-          'inline-flex items-center gap-1',
-          isStreaming && 'text-[var(--aurora-1)]',
-        )}
-      >
-        {isStreaming && (
-          <span
-            aria-hidden="true"
-            className="hub-breath-dot inline-block h-1 w-1 rounded-full bg-current"
-          />
-        )}
-        {label}
-        <span aria-hidden="true">·</span>
-        <span className="tnum">{elapsedStr}</span>
-      </span>
-    </>
   );
 }
 
@@ -1812,6 +2118,7 @@ function Composer({
   onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const chipTrayRef = useRef<HTMLDivElement | null>(null);
   const atBtnRef = useRef<HTMLButtonElement | null>(null);
   const slashBtnRef = useRef<HTMLButtonElement | null>(null);
   const [picker, setPicker] = useState<'article' | 'slash' | null>(null);
@@ -1843,35 +2150,34 @@ function Composer({
     setPicker((cur) => (cur === k ? null : k));
   };
 
+  const selectedArticleCount = selectedArticles.length;
+  const trayScrollEnabled = selectedArticleCount > 6;
+
+  useEffect(() => {
+    const el = chipTrayRef.current;
+    if (!el || selectedArticleCount === 0 || !trayScrollEnabled) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrollToBottom = (behavior: ScrollBehavior) => {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    };
+    const frame = window.requestAnimationFrame(() => {
+      scrollToBottom(reduceMotion ? 'auto' : 'smooth');
+    });
+    const settle = window.setTimeout(() => {
+      scrollToBottom('auto');
+    }, 280);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+    };
+  }, [selectedArticleCount, trayScrollEnabled]);
+
   return (
     <div className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 md:px-8 md:pb-4 md:pt-3">
       <div className="relative mx-auto w-full max-w-[820px]">
-        {/* mentions chips —— @ 选中的文章 */}
-        {selectedArticles.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5" aria-label="已引用文章">
-            {selectedArticles.map((a) => (
-              <span
-                key={`art-${a.id}`}
-                className="inline-flex max-w-[18rem] items-center gap-1 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-2 py-1 text-[11.5px] text-[var(--aurora-1)]"
-              >
-                <AtSign className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="truncate" title={a.title}>
-                  {a.title}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveArticle(a.id)}
-                  className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full hover:bg-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]"
-                  aria-label={`移除引用 ${a.title}`}
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div
+        <motion.div
+          layout
+          transition={{ layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
           className={cn(
             'rounded-3xl bg-[var(--hub-panel-strong)] p-3 transition-[box-shadow,border-color] duration-300 md:p-4',
             'border',
@@ -1880,6 +2186,66 @@ function Composer({
               : 'border-[var(--hub-border)] shadow-[0_4px_18px_-12px_rgba(0,0,0,0.25)]',
           )}
         >
+          {/* mentions chips —— @ 选中的文章,内嵌在输入面板中,与首页灵境保持同一承载关系。 */}
+          <AnimatePresence initial={false}>
+            {selectedArticleCount > 0 && (
+              <motion.div
+                key="selected-articles-tray"
+                layout
+                initial={{ opacity: 0, scale: 0.985, y: 8, filter: 'blur(2px)' }}
+                animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, scale: 0.985, y: -4, filter: 'blur(2px)' }}
+                transition={{
+                  layout: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+                  opacity: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+                  scale: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
+                  y: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
+                  filter: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+                }}
+                className="mb-2 overflow-visible pt-1"
+              >
+                <motion.div
+                  ref={chipTrayRef}
+                  layout
+                  className={`agent-thumb-scroll flex max-h-[120px] flex-wrap gap-1.5 px-2 py-1.5 ${
+                    trayScrollEnabled ? 'overflow-y-auto overscroll-contain' : 'overflow-visible'
+                  }`}
+                  aria-label="已引用文章"
+                  style={{
+                    scrollbarGutter: 'stable',
+                  }}
+                >
+                  <AnimatePresence initial={false}>
+                    {selectedArticles.map((a) => (
+                      <motion.span
+                        key={`art-${a.id}`}
+                        layout
+                        initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                        className="inline-flex max-w-[18rem] items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] py-1 pl-2.5 pr-1 text-[11.5px] text-[var(--aurora-1)]"
+                      >
+                        <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate" title={a.title}>
+                          {a.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveArticle(a.id)}
+                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-1)]/75 transition-colors hover:bg-[var(--aurora-1)] hover:text-white"
+                          aria-label={`移除引用 ${a.title}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </motion.span>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -1979,7 +2345,7 @@ function Composer({
               onSlashCommand(cmd);
             }}
           />
-        </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -2065,9 +2431,14 @@ function PickerPopover({
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 6 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          layout
+          transition={{
+            duration: 0.18,
+            ease: [0.16, 1, 0.3, 1],
+            layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+          }}
           className={cn(
-            'absolute bottom-full left-0 z-40 mb-2 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl',
+            'absolute bottom-full left-0 z-40 mb-3 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl',
             className,
           )}
         >

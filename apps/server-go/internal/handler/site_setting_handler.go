@@ -20,7 +20,7 @@ var allowedSettingKeys = map[string]bool{
 	"site_name": true, "site_description": true, "site_url": true,
 	"site_logo": true, "site_favicon": true, "site_keywords": true,
 	"footer_text": true, "footer_signature": true,
-	"icp_number": true,
+	"icp_number":      true,
 	"welcome_enabled": true, "welcome_title": true, "welcome_subtitle": true,
 	// author
 	"author_name": true, "author_avatar": true, "author_bio": true,
@@ -36,6 +36,7 @@ var allowedSettingKeys = map[string]bool{
 	"theme_primary_color": true, "enable_dark_mode": true,
 	"show_banner": true, "post_page_size": true, "custom_css": true,
 	"font_family": true, "theme_primary_color_light": true, "theme_primary_color_dark": true,
+	"theme_visual_color_mode": true, "theme_visual_color_light": true, "theme_visual_color_dark": true,
 	// seo
 	"seo_robots": true, "enable_sitemap": true,
 	"baidu_analytics_id": true, "google_analytics_id": true,
@@ -79,18 +80,19 @@ func (h *SiteSettingHandler) GetAll(c echo.Context) error {
 // allowedSettingGroups 限定 GetByGroup 可查询的分组，避免任意字符串透传到
 // DB 触发全表扫描或不期望的键暴露（VULN-055）。
 var allowedSettingGroups = map[string]bool{
-	"site":     true,
-	"ui":       true,
-	"author":   true,
-	"seo":      true,
-	"ai":       true,
-	"search":   true,
-	"comment":  true,
-	"welcome":  true,
-	"social":   true,
-	"storage":  true,
-	"analytics": true,
-	"font":     true,
+	"site":       true,
+	"ui":         true,
+	"author":     true,
+	"seo":        true,
+	"ai":         true,
+	"search":     true,
+	"comment":    true,
+	"welcome":    true,
+	"social":     true,
+	"storage":    true,
+	"analytics":  true,
+	"appearance": true,
+	"font":       true,
 }
 
 // GetByGroup 处理 GET /admin/settings/group/:group 请求。

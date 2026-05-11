@@ -4,7 +4,7 @@
  * @ref 媒体库深度优化方案 - 回收站功能
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -71,6 +71,18 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const trashItems = data?.list || [];
   const totalItems = data?.total || 0;
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedIds(new Set());
+      setPendingConfirm(null);
+      return;
+    }
+
+    setPage(1);
+    queryClient.invalidateQueries({ queryKey: ['media', 'trash'] });
+    queryClient.invalidateQueries({ queryKey: ['media', 'trash', 'count'] });
+  }, [open, queryClient]);
 
   // 恢复单个文件
   const restoreMutation = useMutation({
@@ -438,6 +450,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
           title={confirmCopy.title}
           message={confirmCopy.message}
           itemCount={pendingConfirm.kind === 'permanent-delete' ? 1 : pendingConfirm.ids.length}
+          zIndex={10000}
           hasCloudItems={(() => {
             if (pendingConfirm.kind === 'permanent-delete') {
               const item = trashItems.find((m: { id: number }) => m.id === pendingConfirm.id);

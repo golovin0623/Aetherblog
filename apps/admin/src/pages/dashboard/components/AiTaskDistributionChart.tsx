@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { AiTaskDistribution } from '@/services/analyticsService';
+import { DASHBOARD_AURORA_COLORS } from './palette';
 
 interface AiTaskDistributionChartProps {
   data: AiTaskDistribution[];
@@ -17,7 +18,7 @@ interface AiTaskDistributionChartProps {
 }
 
 /**
- * 7 个内置 task 的中文化标签 -- 与 ai_task_types.code seed (migration 000019)
+ * 内置 task 的中文化标签 -- 与 ai_task_types.code seed (migration 000019)
  * 对齐。命中失败时退回到原始 code (例如自定义 task), 让 dashboard 仍可用。
  */
 const TASK_LABEL_ZH: Record<string, string> = {
@@ -28,19 +29,11 @@ const TASK_LABEL_ZH: Record<string, string> = {
   outline: '大纲',
   translate: '翻译',
   qa: '问答 (QA)',
+  agent_chat: '灵境问答',
   embedding: '向量化',
 };
 
-const COLORS = [
-  '#6366f1', // indigo-500
-  '#14b8a6', // teal-500
-  '#f59e0b', // amber-500
-  '#ec4899', // pink-500
-  '#22c55e', // green-500
-  '#06b6d4', // cyan-500
-  '#8b5cf6', // violet-500
-  '#f43f5e', // rose-500
-];
+const COLORS = DASHBOARD_AURORA_COLORS;
 
 const TASK_COLORS: Record<string, string> = {
   summary: COLORS[0],
@@ -50,7 +43,8 @@ const TASK_COLORS: Record<string, string> = {
   outline: COLORS[4],
   translate: COLORS[5],
   qa: COLORS[6],
-  embedding: COLORS[7],
+  agent_chat: COLORS[7],
+  embedding: COLORS[8],
 };
 
 const getTaskColor = (task: string): string => {

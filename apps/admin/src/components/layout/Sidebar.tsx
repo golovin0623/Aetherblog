@@ -47,7 +47,6 @@ const navSections: Array<{
     label: 'OVERVIEW',
     items: [
       { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
-      { path: '/analytics', icon: Activity, label: '数据分析' },
     ],
   },
   {
@@ -66,6 +65,7 @@ const navSections: Array<{
     items: [
       { path: '/aetherhub', icon: Workflow, label: '灵境' },
       { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
+      { path: '/analytics', icon: Activity, label: '数据分析' },
       { path: '/ai-config', icon: Bot, label: 'AI 配置' },
       { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },
       { path: '/search-config', icon: Search, label: '搜索配置' },

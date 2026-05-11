@@ -24,21 +24,21 @@ import { activityService, ActivityEvent } from '@/services/activityService';
 const categoryConfig = {
   post: {
     icon: FileText,
-    bgColor: 'bg-status-info-light',
-    borderColor: 'border-status-info-border',
-    textColor: 'text-status-info',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-1)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-1)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-1)]',
   },
   comment: {
     icon: MessageSquare,
-    bgColor: 'bg-status-success-light',
-    borderColor: 'border-status-success-border',
-    textColor: 'text-status-success',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-3)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-3)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-3)]',
   },
   user: {
     icon: User,
-    bgColor: 'bg-accent/10',
-    borderColor: 'border-accent/20',
-    textColor: 'text-accent',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-5)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-5)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-5)]',
   },
   system: {
     icon: Settings,
@@ -48,21 +48,21 @@ const categoryConfig = {
   },
   friend: {
     icon: Link,
-    bgColor: 'bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--signal-info)_20%,transparent)]',
-    textColor: 'text-[var(--signal-info)]',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-7)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-7)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-7)]',
   },
   media: {
     icon: Image,
-    bgColor: 'bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--signal-success)_20%,transparent)]',
-    textColor: 'text-[var(--signal-success)]',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-9)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-9)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-9)]',
   },
   ai: {
     icon: Sparkles,
-    bgColor: 'bg-primary/10',
-    borderColor: 'border-primary/20',
-    textColor: 'text-primary',
+    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-11)_12%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-11)_28%,transparent)]',
+    textColor: 'text-[var(--dashboard-aurora-11)]',
   },
 };
 
@@ -91,15 +91,16 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
 
   // 从 API 获取最近动态
   const { data: activities, isLoading } = useQuery({
-    queryKey: ['activities', 'recent'],
+    queryKey: ['activities', 'recent', 8],
     queryFn: async () => {
-      const res = await activityService.getRecentActivities(10);
+      const res = await activityService.getRecentActivities(8);
       return res.code === 200 ? res.data : [];
     },
     refetchInterval: 60000, // 每分钟刷新
   });
 
   const loading = externalLoading || isLoading;
+  const visibleActivities = (activities || []).slice(0, 8);
 
   const getIcon = (category: ActivityEvent['eventCategory'], status: string) => {
     // 警告和错误状态使用警告图标
@@ -155,7 +156,7 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
   }
 
   // 没有数据时显示空状态
-  if (!activities || activities.length === 0) {
+  if (visibleActivities.length === 0) {
     return (
       <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-full flex flex-col">
         <div className="flex items-center justify-between mb-6">
@@ -177,7 +178,7 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">最近动态</h3>
         <button 
           onClick={handleViewAll}
-          className="text-[var(--text-muted)] hover:text-primary transition-colors"
+          className="text-[var(--text-muted)] hover:text-[var(--dashboard-aurora-1)] transition-colors"
           title="查看全部"
         >
           <ArrowUpRight className="w-5 h-5" />
@@ -185,18 +186,20 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <div className="space-y-6 relative h-full overflow-y-auto pr-2 pl-10 pt-2">
-          {/* 垂直线 */}
-          <div className="absolute left-[20px] top-2 bottom-2 w-px bg-[var(--border-subtle)]" />
-
-          {activities.map((item) => {
+        <div className="relative h-full overflow-y-auto pr-2 pl-10">
+          {visibleActivities.map((item, index) => {
             const colors = getColors(item.eventCategory, item.status);
+            const isLast = index === visibleActivities.length - 1;
             
             return (
-              <div key={item.id} className="relative">
+              <div key={item.id} className="relative pb-5 last:pb-0">
+                {!isLast && (
+                  <div className="absolute left-[-20px] top-3 bottom-[-1.25rem] w-px bg-[var(--border-subtle)]" />
+                )}
+
                 {/* 时间轴节点 */}
                 <div className={cn(
-                  "absolute left-[-32px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-[var(--bg-card)] backdrop-blur-sm z-10",
+                  "absolute left-[-32px] top-0 w-6 h-6 rounded-full border flex items-center justify-center bg-[var(--bg-card)] backdrop-blur-sm z-10",
                   colors.bgColor,
                   colors.borderColor
                 )}>

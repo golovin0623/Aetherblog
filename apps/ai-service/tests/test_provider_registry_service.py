@@ -86,6 +86,18 @@ async def test_list_and_get_models():
 
 
 @pytest.mark.asyncio
+async def test_list_models_enabled_only_requires_enabled_provider():
+    conn = FakeConn(fetch=lambda _query, _args: [_model_row()])
+    registry = ProviderRegistry(FakePool(conn))
+
+    await registry.list_models(enabled_only=True)
+
+    query, args = conn.fetch_calls[0]
+    assert args == (None, None, True)
+    assert "m.is_enabled = TRUE AND p.is_enabled = TRUE" in query
+
+
+@pytest.mark.asyncio
 async def test_create_update_delete_provider_model():
     def fetchrow(_query, _args):
         return _provider_row()
@@ -168,7 +180,7 @@ async def test_model_mutations_and_bulk_ops():
     ]
     inserted = await registry.bulk_insert_models("openai", models)
     assert inserted == 1
-    assert conn.executemany_calls
+    assert any("INSERT INTO ai_models" in query for query, _ in conn.fetchrow_calls)
 
     deleted_count = await registry.delete_models_by_provider("openai", source="remote")
     assert deleted_count == 2

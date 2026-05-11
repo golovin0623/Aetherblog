@@ -239,6 +239,7 @@ export default function MediaPage() {
     mutationFn: (id: number) => mediaService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'trash'] });
       queryClient.invalidateQueries({ queryKey: ['media', 'trash', 'count'] });
       // 只有当删除的是当前选中的项目才关闭详情栏
       if (selectedMedia) {
@@ -301,6 +302,7 @@ export default function MediaPage() {
     mutationFn: (ids: number[]) => mediaService.batchDelete(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'trash'] });
       queryClient.invalidateQueries({ queryKey: ['media', 'trash', 'count'] });
       setSelectedIds(new Set());
       toast.success('已批量移入回收站');

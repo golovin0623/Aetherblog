@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { AiTrendPoint } from '@/services/analyticsService';
+import { DASHBOARD_AURORA } from './palette';
 
 interface AiUsageTrendChartProps {
   data: AiTrendPoint[];
@@ -17,15 +18,15 @@ interface AiUsageTrendChartProps {
 export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartProps) {
   if (loading) {
     return (
-      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[420px]">
         <div className="h-6 w-36 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
-        <div className="h-[280px] bg-[var(--bg-secondary)] rounded animate-pulse" />
+        <div className="h-[340px] bg-[var(--bg-secondary)] rounded animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[420px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">AI 调用趋势</h3>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
@@ -33,13 +34,13 @@ export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartPr
             <defs>
               {/* 调用次数面积 —— 从 60% 渐淡到 5%,清晰但不刺眼 */}
               <linearGradient id="aiCallsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.6} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0.05} />
+                <stop offset="5%" stopColor={DASHBOARD_AURORA.primary} stopOpacity={0.6} />
+                <stop offset="95%" stopColor={DASHBOARD_AURORA.primary} stopOpacity={0.05} />
               </linearGradient>
               {/* Tokens 面积 —— 稍弱于调用次数(视觉主次分层) */}
               <linearGradient id="aiTokensGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.45} />
-                <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.05} />
+                <stop offset="5%" stopColor={DASHBOARD_AURORA.secondary} stopOpacity={0.45} />
+                <stop offset="95%" stopColor={DASHBOARD_AURORA.secondary} stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
@@ -94,7 +95,7 @@ export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartPr
               yAxisId="left"
               type="monotone"
               dataKey="calls"
-              stroke="#6366f1"
+              stroke={DASHBOARD_AURORA.primary}
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#aiCallsGradient)"
@@ -104,7 +105,7 @@ export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartPr
               yAxisId="right"
               type="monotone"
               dataKey="tokens"
-              stroke="#14b8a6"
+              stroke={DASHBOARD_AURORA.secondary}
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#aiTokensGradient)"

@@ -29,10 +29,14 @@ export interface SyncFailedJob {
   finishedAt?: string;
 }
 
+export interface SyncTargetProviderConfig {
+  targetProviderId: number | null;
+}
+
 export const storageSyncService = {
   /**
    * 立即把所有未同步文件入队 + 启动 worker。
-   * targetProviderId 缺省时使用当前 default provider。
+   * targetProviderId 缺省时使用已配置的备份目标;未配置时兼容使用非 LOCAL default provider。
    */
   start: (targetProviderId?: number): Promise<R<{ enqueued: number }>> => {
     return api.post('/v1/admin/storage/sync/start', targetProviderId ? { targetProviderId } : {});
@@ -73,14 +77,24 @@ export const storageSyncService = {
     return api.put('/v1/admin/storage/sync/auto-enabled', { autoEnabled });
   },
 
-  // ========== Phase 5: 删除云端备份 + 定期校验 ==========
+  /** 读取备份同步目标 provider 配置 */
+  getTargetProvider: (): Promise<R<SyncTargetProviderConfig>> => {
+    return api.get('/v1/admin/storage/sync/target-provider');
+  },
 
-  /** 删除云端备份对象,但保留本地主文件。sync_status 重置为 NONE。 */
+  /** 设置备份同步目标 provider。null 表示清空显式配置并回退兼容逻辑。 */
+  setTargetProvider: (targetProviderId: number | null): Promise<R<SyncTargetProviderConfig>> => {
+    return api.put('/v1/admin/storage/sync/target-provider', { targetProviderId });
+  },
+
+  // ========== Phase 5: 删除备份 + 定期校验 ==========
+
+  /** 删除备份对象,但保留主文件。sync_status 重置为 NONE。 */
   removeBackup: (mediaId: number): Promise<R<void>> => {
     return api.delete(`/v1/admin/media/${mediaId}/backup`);
   },
 
-  /** 手动校验单条记录的云端备份是否存在(404 → 标记 MISSING) */
+  /** 手动校验单条记录的备份对象是否存在(404 → 标记 MISSING) */
   verifyOne: (mediaId: number): Promise<R<void>> => {
     return api.post(`/v1/admin/media/${mediaId}/verify`);
   },

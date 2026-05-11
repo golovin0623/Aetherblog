@@ -31,6 +31,8 @@ const taskLabelMap: Record<string, string> = {
   polish: '润色',
   outline: '大纲',
   translate: '翻译',
+  qa: '问答 (QA)',
+  agent_chat: '灵境问答',
 };
 
 function formatTask(task: string) {

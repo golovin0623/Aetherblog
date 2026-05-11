@@ -454,6 +454,11 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
         mermaid.initialize({
           startOnLoad: false,
           theme: mermaidTheme as any,
+          htmlLabels: false,
+          flowchart: {
+            htmlLabels: false,
+            useMaxWidth: true,
+          },
           // 仅针对暗色模式或特定需求调整变量
           themeVariables: theme === 'dark' ? {
             primaryColor: '#6366f1',
@@ -517,7 +522,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
 
   return (
     <div
-      className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
+      className="mermaid-diagram my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(svg, SVG_SANITIZE_CONFIG) }}
     />
   );

@@ -8,6 +8,8 @@ import type { AgentMode } from '../../lib/agentSessions';
 interface Props {
   value: AgentMode;
   onChange: (v: AgentMode) => void;
+  /** segmented = 完整三段控件；current = 只展示当前模式；grid = 面板内纵向选择。 */
+  variant?: 'segmented' | 'current' | 'grid';
 }
 
 interface ModeOption {
@@ -62,9 +64,11 @@ const OPTIONS: ModeOption[] = [
  *
  * 视觉走 BlogHeader 同款 iOS 21 segmented 风格保持前台一致性。
  */
-export default function ModeSwitch({ value, onChange }: Props) {
+export default function ModeSwitch({ value, onChange, variant = 'segmented' }: Props) {
   const [activeInfo, setActiveInfo] = useState<AgentMode | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const effectiveValue: AgentMode = OPTIONS.find((o) => o.value === value && o.available)?.value ?? 'chat';
+  const current = OPTIONS.find((o) => o.value === effectiveValue) ?? OPTIONS[0];
 
   // 点击外部 / ESC 关闭
   useEffect(() => {
@@ -84,17 +88,38 @@ export default function ModeSwitch({ value, onChange }: Props) {
     };
   }, [activeInfo]);
 
+  if (variant === 'current') {
+    const Icon = current.icon;
+    return (
+      <div ref={wrapRef} className="relative">
+        <div
+          role="status"
+          aria-label={`当前会话模式：${current.label}`}
+          className="inline-flex h-9 items-center gap-2 rounded-[14px] border border-[var(--ink-subtle)]/15 bg-black/[0.06] px-3 text-[12px] font-medium tracking-[-0.01em] text-[var(--aurora-1)] backdrop-blur-2xl dark:bg-white/[0.06]"
+        >
+          <Icon className="h-3.5 w-3.5" />
+          <span>{current.label}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const isGrid = variant === 'grid';
+
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className={isGrid ? 'relative w-full' : 'relative'}>
       <div
         role="group"
         aria-label="对话模式"
-        className="relative inline-flex items-center rounded-[14px] p-[3px] backdrop-blur-2xl bg-black/[0.06] dark:bg-white/[0.06] border border-[var(--ink-subtle)]/15"
+        className={
+          isGrid
+            ? 'relative grid w-full grid-cols-1 gap-1.5'
+            : 'relative inline-flex items-center rounded-[14px] border border-[var(--ink-subtle)]/15 bg-black/[0.06] p-[3px] backdrop-blur-2xl dark:bg-white/[0.06]'
+        }
       >
         {OPTIONS.map((opt) => {
           const Icon = opt.icon;
           // value 永远视觉上指向 chat —— 即使 session 历史里残留 cowork/code，UI 也只高亮 chat。
-          const effectiveValue: AgentMode = OPTIONS.find((o) => o.value === value && o.available)?.value ?? 'chat';
           const isActive = opt.value === effectiveValue;
           const isLocked = !opt.available;
 
@@ -114,20 +139,28 @@ export default function ModeSwitch({ value, onChange }: Props) {
                   onChange(opt.value);
                 }
               }}
-              className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[11px] text-[12px] font-medium tracking-[-0.01em] transition-all duration-200 ${
-                isActive
-                  ? 'bg-[var(--bg-raised)] text-[var(--aurora-1)] shadow-[0_2px_6px_rgba(0,0,0,0.10)]'
-                  : isLocked
-                  ? 'text-[var(--ink-muted)]/75 hover:text-[var(--ink-secondary)]'
-                  : 'text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
-              }`}
+              className={
+                isGrid
+                  ? `relative flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-[12px] font-medium tracking-[-0.01em] transition-colors ${
+                      isActive
+                        ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
+                        : 'border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:text-[var(--ink-primary)]'
+                    }`
+                  : `relative inline-flex items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-[12px] font-medium tracking-[-0.01em] transition-all duration-200 ${
+                      isActive
+                        ? 'bg-[var(--bg-raised)] text-[var(--aurora-1)] shadow-[0_2px_6px_rgba(0,0,0,0.10)]'
+                        : isLocked
+                        ? 'text-[var(--ink-muted)]/75 hover:text-[var(--ink-secondary)]'
+                        : 'text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                    }`
+              }
             >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{opt.label}</span>
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{opt.label}</span>
               {isLocked && (
                 <span
                   aria-hidden="true"
-                  className="ml-0.5 inline-flex items-center justify-center px-1 py-px rounded-full text-[8.5px] font-mono uppercase tracking-[0.16em] bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]/80 border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]"
+                  className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] px-1 py-px font-mono text-[8.5px] uppercase tracking-[0.16em] text-[var(--aurora-1)]/80"
                 >
                   Soon
                 </span>
@@ -142,6 +175,7 @@ export default function ModeSwitch({ value, onChange }: Props) {
         {activeInfo && (
           <ModeInfoPopover
             mode={OPTIONS.find((o) => o.value === activeInfo)!}
+            compact={isGrid}
             onClose={() => setActiveInfo(null)}
           />
         )}
@@ -159,7 +193,15 @@ export default function ModeSwitch({ value, onChange }: Props) {
  *
  * 不解释架构、不列工具，那些放在 docs/agent/*.md。
  */
-function ModeInfoPopover({ mode, onClose }: { mode: ModeOption; onClose: () => void }) {
+function ModeInfoPopover({
+  mode,
+  compact,
+  onClose,
+}: {
+  mode: ModeOption;
+  compact?: boolean;
+  onClose: () => void;
+}) {
   const docPath = mode.value === 'cowork' ? 'docs/agent/COWORK_ROADMAP.md' : 'docs/agent/CODE_ROADMAP.md';
   const Icon = mode.icon;
 
@@ -172,7 +214,9 @@ function ModeInfoPopover({ mode, onClose }: { mode: ModeOption; onClose: () => v
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 6, scale: 0.98 }}
       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-      className="absolute right-0 top-full mt-2 w-[min(92vw,360px)] surface-overlay rounded-2xl border border-[var(--ink-subtle)]/22 z-50 overflow-hidden shadow-[0_20px_44px_-16px_rgba(0,0,0,0.35)]"
+      className={`absolute right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-[var(--ink-subtle)]/22 shadow-[0_20px_44px_-16px_rgba(0,0,0,0.35)] surface-overlay ${
+        compact ? 'w-full' : 'w-[min(92vw,360px)]'
+      }`}
     >
       <div className="p-4 space-y-2.5">
         <div className="flex items-start gap-2.5">

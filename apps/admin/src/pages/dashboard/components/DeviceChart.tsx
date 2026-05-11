@@ -1,15 +1,14 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-
 interface DeviceChartProps {
   data?: { name: string; value: number }[];
   loading?: boolean;
 }
 
 const COLORS: Record<string, string> = {
-  '桌面端': 'var(--color-primary)',
-  '移动端': 'var(--signal-info)',
-  '平板':   'var(--signal-warn)',
-  '其他':   'var(--text-muted)',
+  '桌面端': 'var(--dashboard-device-desktop)',
+  '移动端': 'var(--dashboard-device-mobile)',
+  '平板': 'var(--dashboard-device-tablet)',
+  '其他': 'var(--dashboard-device-other)',
 };
 
 export function DeviceChart({
@@ -20,7 +19,7 @@ export function DeviceChart({
   // 处理数据，添加颜色映射
   const chartData = (data && data.length > 0) ? data.map(item => ({
     ...item,
-    color: COLORS[item.name] || 'var(--text-muted)'
+    color: COLORS[item.name] || 'var(--dashboard-device-other)'
   })) : [
     // 空数据或默认状态
     { name: '暂无数据', value: 1, color: 'var(--bg-secondary)' }

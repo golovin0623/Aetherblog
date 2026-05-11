@@ -36,7 +36,7 @@ export function useGlobalPricingCoverage() {
 export function useEnabledModelIds() {
   return useQuery({
     queryKey: [...globalPricingKeys.all, 'enabled-model-ids'],
-    queryFn: () => aiProviderService.listModels(),
+    queryFn: () => aiProviderService.listModels(undefined, undefined, true),
     select: (res) => {
       const ids = new Set<string>();
       (res.data || []).forEach((model) => {

@@ -9,7 +9,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// SyncHandler 处理"本地→云"备份相关的管理端 HTTP 接口。
+// SyncHandler 处理媒体备份同步相关的管理端 HTTP 接口。
 //
 // 路由前缀: /v1/admin/storage/sync
 // @ref 对象存储 rollout - Phase 4
@@ -29,6 +29,8 @@ func (h *SyncHandler) Mount(g *echo.Group) {
 	g.GET("/status", h.Status)
 	g.GET("/failed", h.Failed)
 	g.POST("/retry", h.Retry)
+	g.GET("/target-provider", h.GetTargetProvider)
+	g.PUT("/target-provider", h.SetTargetProvider)
 	g.GET("/auto-enabled", h.GetAutoEnabled)
 	g.PUT("/auto-enabled", h.SetAutoEnabled)
 	// Phase 5: 备份完整性校验
@@ -55,7 +57,7 @@ type startReq struct {
 
 // Start 立即把所有未与目标 provider 同步的非删除文件入队 + 启动 worker。
 //
-// targetProviderId 缺省时使用当前 default provider(必须是非 LOCAL)。
+// targetProviderId 缺省时使用已配置的备份目标;未配置时兼容使用非 LOCAL default provider。
 // 返回入队的 job 数量。
 func (h *SyncHandler) Start(c echo.Context) error {
 	var req startReq
@@ -134,6 +136,32 @@ func (h *SyncHandler) SyncOne(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OKEmpty(c)
+}
+
+// GetTargetProvider 返回当前显式配置的备份目标 provider。
+func (h *SyncHandler) GetTargetProvider(c echo.Context) error {
+	targetProviderID, err := h.svc.TargetProviderID(c.Request().Context())
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, map[string]any{"targetProviderId": targetProviderID})
+}
+
+// targetProviderReq 是 PUT /storage/sync/target-provider 的 body。
+type targetProviderReq struct {
+	TargetProviderID *int64 `json:"targetProviderId"`
+}
+
+// SetTargetProvider 修改备份同步目标 provider。
+func (h *SyncHandler) SetTargetProvider(c echo.Context) error {
+	var req targetProviderReq
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	if err := h.svc.SetTargetProviderID(c.Request().Context(), req.TargetProviderID); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, map[string]any{"targetProviderId": req.TargetProviderID})
 }
 
 // GetAutoEnabled 返回当前自动后台备份开关状态。

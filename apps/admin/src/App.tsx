@@ -1,10 +1,11 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { FocusModeProvider } from './contexts/FocusModeContext';
+import { AetherHubSkeleton } from './pages/aetherhub/AetherHubSkeleton';
 import { Toaster } from 'sonner';
 
 // 懒加载页面组件
@@ -51,6 +52,21 @@ function FolderPermissionsWrapper() {
   );
 }
 
+function RouteSuspenseFallback() {
+  const location = useLocation();
+  const pathname = location.pathname.replace(/\/+$/, '') || '/';
+
+  if (pathname === '/aetherhub') {
+    return <AetherHubSkeleton />;
+  }
+
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <LoadingSpinner size="lg" />
+    </div>
+  );
+}
+
 function App() {
   // 使用 Vite 注入的 BASE_URL，开发环境为 '/'，生产环境为 '/admin/'
   const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
@@ -60,11 +76,7 @@ function App() {
       <Toaster richColors position="top-center" />
       <FocusModeProvider>
       <ErrorBoundary>
-        <Suspense fallback={
-          <div className="flex h-screen items-center justify-center">
-            <LoadingSpinner size="lg" />
-          </div>
-        }>
+        <Suspense fallback={<RouteSuspenseFallback />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
