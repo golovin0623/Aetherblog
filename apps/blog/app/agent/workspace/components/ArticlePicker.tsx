@@ -75,7 +75,7 @@ export default function ArticlePicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择文章"
-      className="w-[min(360px,calc(100vw-2rem))]"
+      className="w-[min(360px,calc(100vw-1.25rem))] max-w-[calc(100vw-1.25rem)]"
     >
       <div className="p-3 border-b border-[var(--ink-subtle)]/15">
         <div className="relative">
@@ -98,7 +98,7 @@ export default function ArticlePicker({
       </div>
 
       {/* 列表区域按 3 个固定槽位展示,避免底部露出半截下一篇文章。 */}
-      <div className="agent-thumb-scroll h-[288px] overflow-y-auto relative">
+      <div className="agent-thumb-scroll relative h-[min(288px,52vh)] overflow-y-auto">
         {showInitialLoading && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             <Loader2 className="w-3 h-3 animate-spin mr-2" />
@@ -141,11 +141,9 @@ export default function ArticlePicker({
                     <div className="text-[13px] truncate" title={it.title}>
                       {it.title}
                     </div>
-                    {it.summary && (
-                      <div className="text-[11.5px] text-[var(--ink-muted)] line-clamp-2 mt-0.5 leading-relaxed">
-                        {it.summary}
-                      </div>
-                    )}
+                    <div className="mt-0.5 line-clamp-2 min-h-[2.25rem] text-[11.5px] leading-relaxed text-[var(--ink-muted)]">
+                      {it.summary?.trim() || '暂无摘要'}
+                    </div>
                     <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] mt-1 flex min-w-0 items-center gap-1.5">
                       {it.category && <span className="truncate">{it.category}</span>}
                       {it.category && it.publishedAt && <span aria-hidden="true">·</span>}

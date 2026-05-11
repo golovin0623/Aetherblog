@@ -392,14 +392,14 @@ function MessageBubbleBase({
       {/* 主体气泡 */}
       <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
-          className={`agent-message-font rounded-2xl px-4 py-3 leading-relaxed text-[14.5px] break-words ${
+          className={`agent-message-font rounded-2xl px-4 py-3 leading-relaxed text-[14.5px] break-words transition-[border-color,box-shadow,transform] duration-300 ${
             isUser
-              ? 'max-w-[85%] whitespace-pre-wrap bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+              ? 'max-w-[85%] whitespace-pre-wrap bg-[linear-gradient(155deg,color-mix(in_oklch,var(--aurora-1)_14%,transparent),color-mix(in_oklch,var(--aurora-1)_6%,transparent))] text-[var(--ink-primary)] border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] shadow-[0_10px_28px_-18px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
               : message.error
               ? 'w-full max-w-full whitespace-pre-wrap bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] text-[var(--ink-primary)]'
               : isStreaming
-              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
-              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/15 text-[var(--ink-primary)]'
+              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)] shadow-[0_14px_32px_-22px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
+              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/15 text-[var(--ink-primary)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.42)] hover:border-[color-mix(in_oklch,var(--aurora-1)_24%,var(--ink-subtle))] hover:shadow-[0_16px_38px_-24px_color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
           }`}
           style={messageFontStyle}
         >
