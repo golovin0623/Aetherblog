@@ -41,7 +41,7 @@ export default function SlashCommandPicker({ open, onClose, anchorRef, onPick }:
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择命令"
-      className="w-full sm:w-[320px]"
+      className="w-full max-w-[calc(100vw-1.25rem)] sm:w-[min(320px,calc(100vw-1.25rem))]"
     >
       <div className="p-3 border-b border-[var(--ink-subtle)]/15">
         <div className="relative">
@@ -62,7 +62,7 @@ export default function SlashCommandPicker({ open, onClose, anchorRef, onPick }:
         </div>
       </div>
 
-      <div className="agent-thumb-scroll max-h-[min(320px,38dvh)] overflow-y-auto py-1 sm:max-h-[320px]">
+      <div className="agent-thumb-scroll max-h-[min(320px,52dvh)] overflow-y-auto py-1 sm:max-h-[320px]">
         {visible.length === 0 && (
           <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             没有匹配的命令

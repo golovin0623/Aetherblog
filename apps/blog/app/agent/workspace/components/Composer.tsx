@@ -309,7 +309,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               <motion.div
                 ref={chipTrayRef}
                 layout
-                className={`agent-thumb-scroll flex max-h-[120px] flex-wrap items-center gap-1.5 px-2 py-1.5 ${
+                className={`agent-thumb-scroll flex max-h-[120px] flex-wrap items-center gap-1.5 overflow-x-hidden px-2 py-1.5 ${
                   trayScrollEnabled ? 'overflow-y-auto overscroll-contain' : 'overflow-visible'
                 }`}
                 aria-label="已引用上下文"
@@ -326,7 +326,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                       exit={{ opacity: 0, scale: 0.98, y: -4 }}
                       transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
                       key={`art-${a.id}`}
-                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[15rem] transition-[box-shadow,border-color,background-color]"
+                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[min(15rem,calc(100vw-7rem))] transition-[box-shadow,border-color,background-color]"
                       style={{
                         background:
                           'linear-gradient(135deg, color-mix(in oklch, var(--aurora-1) 14%, transparent), color-mix(in oklch, var(--aurora-1) 8%, transparent))',
@@ -358,7 +358,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                       exit={{ opacity: 0, scale: 0.98, y: -4 }}
                       transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
                       key={`tag-${t.slug}`}
-                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[12rem] bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/30 text-[var(--ink-primary)] shadow-[0_1px_0_inset_rgba(255,255,255,0.04),0_2px_6px_-3px_rgba(0,0,0,0.12)] transition-[box-shadow,border-color,background-color]"
+                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[min(12rem,calc(100vw-7rem))] bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/30 text-[var(--ink-primary)] shadow-[0_1px_0_inset_rgba(255,255,255,0.04),0_2px_6px_-3px_rgba(0,0,0,0.12)] transition-[box-shadow,border-color,background-color]"
                     >
                       <Hash className="w-3 h-3 shrink-0 text-[var(--ink-muted)]" strokeWidth={2.25} aria-hidden="true" />
                       <span className="truncate font-medium tracking-tight" title={t.name}>{t.name}</span>

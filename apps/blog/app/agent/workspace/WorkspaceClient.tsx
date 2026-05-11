@@ -905,7 +905,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         <div className="relative flex-1 min-h-0">
           <div
             ref={threadRef}
-            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]"
+            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {!activeSession || activeSession.messages.length === 0 ? (
               <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
@@ -945,11 +946,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 <button
                   type="button"
                   onClick={handleJumpToBottom}
-                  className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-full surface-raised border border-[var(--ink-subtle)]/16 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[var(--ink-subtle)]/32 transition-colors shadow-[0_6px_16px_-12px_rgba(0,0,0,0.24)]"
+                  className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full surface-overlay border border-[var(--ink-subtle)]/22 text-[var(--ink-secondary)] shadow-[0_8px_22px_-10px_rgba(0,0,0,0.25)] transition-colors hover:border-[var(--aurora-1)]/45 hover:text-[var(--ink-primary)]"
                   aria-label="滚动到最新消息"
                   title="滚动到最新消息"
                 >
-                  <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                  <ChevronDown className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
                 </button>
               </motion.div>
             )}
