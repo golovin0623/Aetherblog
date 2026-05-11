@@ -925,7 +925,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         <div className="relative flex-1 min-h-0">
           <div
             ref={threadRef}
-            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]"
+            className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {!activeSession || activeSession.messages.length === 0 ? (
               <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
@@ -962,11 +963,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute left-1/2 -translate-x-1/2 bottom-3 inline-flex items-center gap-1.5 px-3 h-8 rounded-full surface-overlay border border-[var(--ink-subtle)]/22 text-[12px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/45 transition-colors shadow-[0_8px_22px_-10px_rgba(0,0,0,0.25)]"
+                className="absolute left-1/2 -translate-x-1/2 bottom-3 inline-flex h-10 w-10 items-center justify-center rounded-full surface-overlay border border-[var(--ink-subtle)]/22 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/45 transition-colors shadow-[0_8px_22px_-10px_rgba(0,0,0,0.25)]"
                 aria-label="滚动到最新消息"
+                title="滚动到最新消息"
               >
-                <ChevronDown className="w-3.5 h-3.5" />
-                最新
+                <ChevronDown className="h-4 w-4" />
               </motion.button>
             )}
           </AnimatePresence>
