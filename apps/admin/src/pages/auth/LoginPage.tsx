@@ -39,9 +39,9 @@ export function LoginPage() {
       if (res.code === 200 && res.data) {
         const { userInfo, mustChangePassword } = res.data;
         const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
-        const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
+        const validRoles = ['ADMIN', 'AUTHOR', 'USER'] as const;
         const role = validRoles.includes(roleStr as typeof validRoles[number])
-          ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER')
+          ? (roleStr as 'ADMIN' | 'AUTHOR' | 'USER')
           : 'USER';
 
         const user = {

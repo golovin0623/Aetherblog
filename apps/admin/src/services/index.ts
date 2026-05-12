@@ -1,6 +1,7 @@
 export { default as api } from './api';
 export { postService } from './postService';
 export { authService } from './authService';
+export { accessService } from './accessService';
 export { mediaService } from './mediaService';
 export { aiService } from './aiService';
 export { commentService } from './commentService';
@@ -13,4 +14,3 @@ export { analyticsService } from './analyticsService';
 export { activityService } from './activityService';
 export { searchConfigService } from './searchConfigService';
 export { searchProfileService } from './searchProfileService';
-

@@ -24,22 +24,47 @@ const (
 	seedAdminUsername  = "admin"
 	seedAdminHash      = "$2a$10$1B6fti5pzyTwI58rszwobe/Lpbe2GUzhUk7xVlkGe8kpTckIPsdHe"
 
-	maxFailedAttempts     = 5              // 触发账号锁定所需的连续失败次数（单 IP）
-	maxFailedAttemptsAll = 20             // 触发账号锁定所需的连续失败次数（全 IP 汇总）
+	maxFailedAttempts    = 5                // 触发账号锁定所需的连续失败次数（单 IP）
+	maxFailedAttemptsAll = 20               // 触发账号锁定所需的连续失败次数（全 IP 汇总）
 	lockDuration         = 15 * time.Minute // 账号被锁定的持续时间
 	windowDuration       = 15 * time.Minute // 失败计数的时间窗口
 )
 
 // AuthService 处理用户认证相关的业务逻辑，包括登录安全防护。
 type AuthService struct {
-	userRepo *repository.UserRepo
-	redis    *redis.Client
+	userRepo   *repository.UserRepo
+	accessRepo *repository.AccessRepo
+	redis      *redis.Client
 }
 
 // NewAuthService 使用给定的用户仓储和 Redis 客户端创建 AuthService。
 // Redis 用于登录频率限制；传入 nil 表示禁用频率限制功能。
-func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client) *AuthService {
-	return &AuthService{userRepo: userRepo, redis: rdb}
+func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client, accessRepo ...*repository.AccessRepo) *AuthService {
+	s := &AuthService{userRepo: userRepo, redis: rdb}
+	if len(accessRepo) > 0 {
+		s.accessRepo = accessRepo[0]
+	}
+	return s
+}
+
+// UserAccess 返回用户通过 RBAC 表继承到的角色与权限。
+// accessRepo 未注入时降级为 legacy users.role，保证旧测试和无迁移环境可用。
+func (s *AuthService) UserAccess(ctx context.Context, userID int64, legacyRole string) ([]string, []string, error) {
+	if s.accessRepo == nil {
+		if legacyRole == "" {
+			return []string{"USER"}, nil, nil
+		}
+		return []string{legacyRole}, nil, nil
+	}
+	roles, err := s.accessRepo.GetUserRoleCodes(ctx, userID, legacyRole)
+	if err != nil {
+		return nil, nil, err
+	}
+	perms, err := s.accessRepo.GetUserPermissionCodes(ctx, userID, legacyRole)
+	if err != nil {
+		return nil, nil, err
+	}
+	return roles, perms, nil
 }
 
 // FindByID 通过主键查询用户记录。

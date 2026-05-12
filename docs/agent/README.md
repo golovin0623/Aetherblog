@@ -1,7 +1,7 @@
 # Agent 模块 · 三模式产品定位
 
-状态：定位锁定（Chat 已上线 · Cowork / Code 设计冻结，开发推迟）
-更新时间：2026-05-05
+状态：定位锁定（Chat 已上线 · Cowork 设计冻结 · Code/Agent Workflow Canvas MVP 已启动）
+更新时间：2026-05-12
 负责人：AetherBlog 团队
 
 ---
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | **Chat** | 站点内嵌的轻量问答 Agent。基于已有的文章、标签、设置回答用户的问题 | ✅ 已上线 |
 | **Cowork** | 主动副手 —— 定时任务 + 通知推送 + 知识合成的异步助理 | 🚧 设计冻结，开发未开始 |
-| **Code** | 最底层的 Agent 编排平台 —— 工具注册 + 工作流定义 + 自治执行 | 🚧 设计冻结，开发未开始 |
+| **Code / Agent Workflow** | 最底层的 Agent 编排平台 —— 工具注册 + 工作流定义 + 自治执行 | 🚧 Canvas-first MVP 已启动 |
 
 **这一份 `README.md`** 是三模式的总入口与定位文档；下面两份子文档分别给出 Cowork 与 Code 的完整产品路线：
 
@@ -46,15 +46,15 @@
 - **不做什么**：不自由编排工作流（那是 Code 模式的事），不暴露原子级工具调用。Cowork 给用户的是"高层任务模板"。
 - **设计参考**：[`COWORK_ROADMAP.md`](./COWORK_ROADMAP.md)
 
-### 2.3 Code —— Agent 编排平台
+### 2.3 Code / Agent Workflow —— Agent 编排平台
 
-- **形态**：用户定义工具与工作流（YAML 或可视化画布），Code 模式按定义执行；也支持"主代理自由编排"：把目标交给主 Agent，由它在工具集中自行串出工作流。
+- **形态**：后台新增独立菜单 **智能体编排**（`/agent-workflows`），以可视化画布作为工作流真相源；Workspace 里的 Code 模式仍保留为未来入口，不再承载首批 authoring UI。
 - **核心区别**：从"用预制套餐"变成"自己组装套餐"，开放最底层的 Agent 原语。
 - **关键能力**：
-  - 工具注册表（builtin + 用户自定义 HTTP / Shell tool）；
-  - 工作流定义：固定 DAG / 自治模式 / 混合；
+  - 工具注册表（builtin + 受控 HTTP / OpenAPI / MCP / Skill connector；代码执行必须走独立 sandbox-worker）；
+  - 工作流定义：固定 DAG / 自治模式 / 混合，Canvas JSON 是当前数据库真相源；
   - 工作流执行引擎：节点级 trace、断点暂停、变量替换、分支与循环；
-  - 工作流版本化、保存为模板、复用与共享；
+  - 工作流版本化、保存为模板、发布为 slug 并通过 runtime API 复用；
   - 调试器：在任意节点暂停、改输入、续跑。
 - **不做什么**：不替代 Cowork 的"高层任务模板" —— Code 是"原料库 + 灶台"，Cowork 是"预制菜单"。两者并存，互不替代。
 - **设计参考**：[`CODE_ROADMAP.md`](./CODE_ROADMAP.md)
@@ -94,9 +94,10 @@
 | Cowork — 设计文档 | ✅ 完成（本批） | 2026-05-05 |
 | Cowork — Phase 1 骨架（DB + API stub + 锁定 UI） | ⏸ 暂缓 | 视优先级 |
 | Cowork — Phase 2 MVP 执行（调度器 + 一种工具 + 通知） | ⏸ 暂缓 | Phase 1 完成后启动 |
-| Code — 设计文档 | ✅ 完成（本批） | 2026-05-05 |
-| Code — Phase 1 骨架 | ⏸ 暂缓 | 视优先级 |
-| Code — Phase 2 线性执行器 | ⏸ 暂缓 | Phase 1 完成后启动 |
+| Code — 设计文档 | ✅ 完成并按 Canvas-first 修订 | 2026-05-12 |
+| Agent Workflow — Phase 0/1 Canvas 骨架 | ✅ MVP 可验收 | 后台 `/agent-workflows`、Go CRUD、迁移、工具目录、发布入口 |
+| Agent Workflow — Phase 2 DAG 执行器 | 🚧 已启动 | ai-service deterministic runner、分支/循环/trace、模拟外部执行 |
+| Agent Workflow — Phase 3+ MCP / Schedule / Sandbox | ⏳ 待扩展 | 需要 connector adapter、调度器、sandbox-worker |
 
 **Workspace UI 当前处理**：
 - ModeSwitch 上 Cowork / Code 两个按钮加 `Soon` 徽标；

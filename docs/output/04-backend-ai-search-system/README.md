@@ -13,6 +13,7 @@
 > | `05-system-monitor.md` | 系统指标、容器监控、日志查看、告警 |
 > | `06-misc-handlers.md` | 友链 / 设置 / 站点 / 访客 / 迁移 / 版本 / 日志级别 |
 > | `07-middleware.md` | CORS / 限流 / Recovery / Trace 中间件链 |
+> | `08-agent-workflows.md` | 智能体编排 authoring/runtime/published API、迁移与 trace |
 
 ---
 
@@ -55,6 +56,9 @@ AetherBlog 的「应用大脑」由 Go backend (server-go) 承担:
 | AI 提供商通配代理 | `/api/v1/admin/providers/*` | `ai_handler.go:96-173` |
 | Agent 工作台对话 (普通用户级) | `POST /api/v1/agent/chat` SSE | `agent_handler.go:105-184` |
 | Agent picker (文章 / 标签) | `GET /api/v1/agent/articles\|tags` | `agent_handler.go:258-403` |
+| Agent Workflow authoring | `/api/v1/admin/agent-workflows/*` | `agent_workflow_handler.go` |
+| Agent Workflow catalog | `/api/v1/admin/agent-tools\|agent-definitions\|agent-schedules` | `agent_workflow_handler.go` |
+| Agent Workflow runtime | `POST /api/v1/agent/workflows/:id/runs` `/api/v1/agent/published/*` | `agent_workflow_handler.go`, `agent_workflow_service.go` |
 | 公开搜索 | `GET /api/v1/public/search?mode=keyword\|semantic\|hybrid` | `search_handler.go:105-134`, `search_service.go:416-491` |
 | 公开搜索 QA | `GET /api/v1/public/search/qa` SSE | `search_handler.go:137-186` |
 | 搜索功能开关 | `GET /api/v1/public/search/features` | `search_handler.go:189-196` |
@@ -72,7 +76,7 @@ AetherBlog 的「应用大脑」由 Go backend (server-go) 承担:
 | VanBlog 数据迁移 | `/api/v1/admin/migrations/vanblog/*` | `migration_handler.go`, `migration_service.go` |
 | 媒体版本管理 | `/api/v1/admin/media/files/:id/versions/*` | `version_handler.go` |
 
-合计 79 个端点,集中在 `apps/server-go/internal/server/server.go:156-389` 的 `setupRoutes` 内一次性挂载。
+端点集中在 `apps/server-go/internal/server/server.go` 的 `setupRoutes` 内一次性挂载；新增 Agent Workflow 后，AI/Agent 相关端点不再只包含 Chat 与传统 AI 工具。
 
 ## 3. 架构图 (网关 / 限流 / 监控)
 

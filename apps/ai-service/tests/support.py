@@ -16,15 +16,18 @@ class FakeConn:
         self,
         fetch: Callable[[str, tuple[Any, ...]], list[dict]] | None = None,
         fetchrow: Callable[[str, tuple[Any, ...]], dict | None] | None = None,
+        fetchval: Callable[[str, tuple[Any, ...]], Any] | None = None,
         execute: Callable[[str, tuple[Any, ...]], Any] | None = None,
         executemany: Callable[[str, list[tuple[Any, ...]]], Any] | None = None,
     ) -> None:
         self._fetch = fetch
         self._fetchrow = fetchrow
+        self._fetchval = fetchval
         self._execute = execute
         self._executemany = executemany
         self.fetch_calls: list[tuple[str, tuple[Any, ...]]] = []
         self.fetchrow_calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.fetchval_calls: list[tuple[str, tuple[Any, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[Any, ...]]] = []
         self.executemany_calls: list[tuple[str, list[tuple[Any, ...]]]] = []
 
@@ -39,6 +42,12 @@ class FakeConn:
         if self._fetchrow:
             return self._fetchrow(query, args)
         return None
+
+    async def fetchval(self, query: str, *args: Any):
+        self.fetchval_calls.append((query, args))
+        if self._fetchval:
+            return self._fetchval(query, args)
+        return 0
 
     async def execute(self, query: str, *args: Any):
         self.execute_calls.append((query, args))

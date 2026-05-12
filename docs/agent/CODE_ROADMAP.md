@@ -1,7 +1,7 @@
 # Code 模式产品路线（Agent Orchestration Platform）
 
-状态：设计冻结（Design Frozen） · 开发未启动
-更新时间：2026-05-05
+状态：Canvas-first MVP 已启动
+更新时间：2026-05-12
 关联文档：[`README.md`](./README.md)（三模式总定位）· [`COWORK_ROADMAP.md`](./COWORK_ROADMAP.md)
 
 ---
@@ -24,8 +24,8 @@
 
 ### 1.3 设计原则
 
-1. **YAML 优先**：v1 不做 DAG 画布，工作流以 YAML 文本为单一真相来源（single source of truth）；画布 v2 再做，且画布是 YAML 的可视化层，不是替代。
-2. **工具是平等公民**：builtin / 用户自定义 HTTP / 用户自定义 Shell（沙箱）三类工具用同一套 `agent_tools` 注册表，调用契约一致。
+1. **Canvas 优先**：当前 MVP 以后台 `/agent-workflows` 的 React Flow 画布 JSON 为单一真相来源；YAML/JSON 导入导出可以做，但不再作为数据库第一形态。
+2. **工具是平等公民**：builtin / HTTP / OpenAPI / MCP / Skill / sandbox code 用同一套 `agent_tools` + `agent_connectors` 注册表，调用契约一致。
 3. **一切可回放**：每个 run 在 `workflow_runs` + `workflow_node_logs` 留完整 trace，调试器可在任何节点暂停 / 改输入 / 续跑。
 4. **autonomous 模式可被"固化"**：让主 Agent 自由编排一次，把它走过的路径保存成 fixed workflow 模板 —— 这是 Code 模式的杀手特性。
 5. **安全是默认值，不是开关**：自定义 Shell 工具默认禁用；HTTP 工具有 URL 白名单；任意工具 require_approval 后默认要用户确认才执行。
@@ -35,6 +35,15 @@
 - ❌ **不替代 Cowork 的"高层任务模板"**：两者并存。Cowork 是预制菜单（用户感受是"任务"），Code 是原料库与灶台（用户感受是"管道"）。
 - ❌ **不做无沙箱的代码执行**：v1 / v2 都不允许在主机上跑任意 Shell；如要跑用户脚本，等专项 sandbox（Wasm / firejail / Docker-in-Docker）立项。
 - ❌ **不做工作流互信任**：用户 A 的 workflow 不能调用用户 B 的 tool（除非 tool 标记为 public）。
+
+### 1.5 2026-05-12 实施偏移
+
+本路线原先把 Canvas 放在后期 Phase 5。当前实现已根据 `.agent/plans/agent-workflow-canvas-module-plan.md` 提前改为 Canvas-first：
+
+- 后台 authoring 入口是 `apps/admin/src/pages/agent-workflows/AgentWorkflowsPage.tsx`，菜单名为「智能体编排」。
+- Go 后端新增 `agent_workflows` authoring API、runtime run API、run history/detail/log 查询、published slug invoke、版本快照、run 和 node log 持久化。
+- ai-service 新增 `app/workflows/*` deterministic runner，覆盖 input/output/tool/extractor/branch/loop，以及 llm/agent/code 的受控模拟执行。
+- `agent_connectors` / `agent_tools` / `agent_variables` / `agent_schedules` / `agent_publications` 已进入迁移边界；真实 MCP adapter、调度器 daemon、sandbox-worker 属于后续阶段。
 
 ---
 
@@ -80,11 +89,12 @@
 
 | 能力 | 描述 | 优先级 |
 | --- | --- | --- |
-| 工具注册（builtin） | 内置 kb_search / kb_get_post / web_fetch / web_search / image_generate / model_call | P0 |
-| 工具注册（用户 HTTP tool） | URL + JSON Schema args + 可选 headers / auth | P0 |
-| 工具注册（用户 Shell tool） | 沙箱内执行命令，**P3 才开放** | P3 |
-| YAML 工作流定义 | 完整 schema + 校验器 | P0 |
-| 线性执行器 | 按 nodes 顺序跑，支持变量替换 | P0 |
+| 工具注册（builtin） | 内置 kb_search / kb_get_post / text_join / echo；web_search 作为默认禁用的受控 MCP 工具 | P0 |
+| 工具注册（HTTP / OpenAPI / MCP / Skill） | Connector registry + JSON Schema args + 审批 / 限流 / 超时策略 | P1 |
+| 工具注册（Code sandbox） | 只允许独立 sandbox-worker 执行，主进程不得执行任意代码 | P3 |
+| Canvas 工作流定义 | React Flow 画布 JSON + Go 校验器 + ai-service Pydantic schema | P0 |
+| YAML / JSON 导入导出 | 作为迁移与可读格式，不作为当前数据库第一真相源 | P2 |
+| DAG 执行器 | 拓扑排序，支持模板变量、分支、循环、跳过上游未命中节点 | P0 |
 | 输入参数 | 工作流的 inputs 段，运行时填 | P0 |
 | 输出参数 | 工作流的 outputs 段 | P0 |
 | 节点 trace | 每节点写 input / output / duration / tokens | P0 |
@@ -98,7 +108,7 @@
 | hybrid 模式 | autonomous 但限定工具集 | P2 |
 | run 固化 | 把 autonomous 的执行轨迹保存为 fixed YAML | P2 |
 | 工作流版本化 | 编辑保留历史版本，可 rollback | P2 |
-| Canvas 编辑器 | YAML <-> 节点画布双向同步 | P3 |
+| Canvas 编辑器 | 节点画布、属性面板、变量、工具目录、trace 面板 | P0 |
 | 工具市场 | 用户共享 HTTP 工具配方 | P3 |
 | Shell tool 沙箱 | Wasm / Docker / firejail 执行环境 | P3 |
 | 多用户协作 workflow | 工作流多 owner / 团队 | P4 |
@@ -597,24 +607,24 @@ POST /internal/workflow/cancel
 
 ## 9 · 实施阶段（Milestones）
 
-### Phase 1 — 骨架（约 1.5 周）
+### Phase 0/1 — Canvas 骨架与可保存画布（已启动）
 **交付物**：
-- DB migrations：`agent_tools` / `agent_workflows` / `agent_workflow_versions` / `workflow_runs` / `workflow_node_logs`
-- Go 后端：tools / workflows CRUD（不能 run）
-- 前端：Code 模式 workspace UI 三栏 layout，YAML 编辑器（CodeMirror），全部 "Coming Soon" 占位
-- ai-service：YAML schema 校验器（不执行）+ 把 YAML 解析成 AST 存 DB
+- DB migrations：`agent_connectors` / `agent_tools` / `agent_workflows` / `agent_workflow_versions` / `agent_workflow_runs` / `agent_workflow_node_logs` / `agent_variables` / `agent_schedules` / `agent_publications`
+- Go 后端：workflow CRUD、tool/agent/schedule catalog、runtime run 入口、版本快照
+- 前端：后台独立 `/agent-workflows` 三栏 Canvas UI、节点属性编辑、运行输入表单、变量面板、工具目录、运行历史、保存/试运行按钮
+- ai-service：Workflow definition schema + deterministic runner
 
-**完成标志**：用户可以建工具、建工作流，也能保存版本，但点 Run 弹"工作流引擎将在下个版本上线"。
+**完成标志**：用户可以进入「智能体编排」，编辑画布和节点属性、填写运行输入、保存到后端、触发 runtime run，并在 trace / run history 面板看到执行结果或 pending 状态。
 
-### Phase 2 — 线性执行器 + 内置工具（约 2.5 周）
+### Phase 2 — DAG 执行器 + 内置工具（已启动）
 **交付物**：
-- ai-service workflow engine：fixed mode 线性执行（按 nodes 顺序）
-- 内置工具：`kb_search`, `kb_get_post`, `model_call`
-- 节点级 SSE trace 推前端
-- 用户 HTTP 工具调用（含 timeout / retries）
-- 运行历史页 + 节点 log 查看器
+- ai-service workflow engine：fixed mode DAG 执行（拓扑排序）
+- 内置工具：`kb_search`, `kb_get_post`, `text_join`, `echo`
+- 节点级 trace 返回 Go，Go 写入 `agent_workflow_node_logs`
+- 分支、单层循环、extractor、模板变量解析
+- llm / agent / code 节点在真实 adapter 未连接时只能显式模拟，避免主进程执行不安全逻辑
 
-**完成标志**：用户能把"Article Quality Audit"这种 4 节点串行 workflow 跑通，前端实时看每一步。
+**完成标志**：用户能把"Article Audit Agent"这种包含 tool / extractor / agent / branch / loop / output 的 workflow 保存并试运行；真实 LLM/MCP/sandbox adapter 分阶段接入。
 
 ### Phase 3 — DAG + 调试器 + Web 工具（约 3 周）
 **交付物**：
@@ -631,9 +641,8 @@ POST /internal/workflow/cancel
 - run → fixed YAML 固化按钮
 - 工具市场基础（is_public 共享 + fork）
 
-### Phase 5 — Canvas / Shell sandbox（不限期）
+### Phase 5 — Shell sandbox 与协作（不限期）
 **交付物**：
-- React Flow 画布（YAML <-> 节点视图双向同步）
 - Shell tool sandbox（Wasm or Docker-in-Docker，专项立项）
 - 跨用户 / 跨团队 workflow 协作
 - 此时 Cowork 与 Code 共享底层引擎，准备做基础设施重构
