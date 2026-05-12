@@ -215,7 +215,7 @@ func ValidateDefinition(def Definition, opts ValidationOptions) error {
 	validateInputs(&v, def.Inputs)
 	nodeTypes := validateNodes(&v, def.Nodes, opts)
 	validateEdges(&v, def.Edges, nodeTypes)
-	if def.Mode == "fixed" && len(def.Edges) > 0 {
+	if len(def.Edges) > 0 {
 		validateAcyclic(&v, def.Edges)
 	}
 	return v.err()

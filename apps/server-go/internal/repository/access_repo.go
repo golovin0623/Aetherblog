@@ -542,18 +542,67 @@ func (r *AccessRepo) CreateTeam(ctx context.Context, t *model.Team) (*TeamRow, e
 
 // UpdateTeam 更新团队。
 func (r *AccessRepo) UpdateTeam(ctx context.Context, id int64, in *model.Team) (*TeamRow, error) {
-	var out TeamRow
-	err := r.db.QueryRowxContext(ctx, `
-		UPDATE teams SET name=$1, slug=$2, description=$3, owner_id=$4, visibility=$5, updated_at=NOW()
-		WHERE id=$6
-		RETURNING *,
-			COALESCE((SELECT COUNT(*) FROM team_members tm WHERE tm.team_id=teams.id), 0) AS member_count`,
-		in.Name, in.Slug, in.Description, in.OwnerID, in.Visibility, id,
-	).StructScan(&out)
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var previousOwner sql.NullInt64
+	err = tx.QueryRowxContext(ctx, `SELECT owner_id FROM teams WHERE id=$1 FOR UPDATE`, id).Scan(&previousOwner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return &out, err
+	if err != nil {
+		return nil, err
+	}
+	var updatedID int64
+	err = tx.QueryRowxContext(ctx, `
+		UPDATE teams SET name=$1, slug=$2, description=$3, owner_id=$4, visibility=$5, updated_at=NOW()
+		WHERE id=$6
+		RETURNING id`,
+		in.Name, in.Slug, in.Description, in.OwnerID, in.Visibility, id,
+	).Scan(&updatedID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerChanged(previousOwner, in.OwnerID) {
+		if in.OwnerID != nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO team_members (team_id, user_id, member_role, status, added_by)
+				VALUES ($1,$2,'OWNER','ACTIVE',$3)
+				ON CONFLICT (team_id, user_id) DO UPDATE SET
+					member_role='OWNER',
+					status='ACTIVE',
+					added_by=COALESCE(EXCLUDED.added_by, team_members.added_by)`,
+				id, *in.OwnerID, in.CreatedBy); err != nil {
+				return nil, err
+			}
+		}
+		if previousOwner.Valid && (in.OwnerID == nil || previousOwner.Int64 != *in.OwnerID) {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE team_members
+				SET member_role='MANAGER'
+				WHERE team_id=$1 AND user_id=$2 AND member_role='OWNER'`,
+				id, previousOwner.Int64); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.FindTeam(ctx, updatedID)
+}
+
+func ownerChanged(previous sql.NullInt64, next *int64) bool {
+	if !previous.Valid {
+		return next != nil
+	}
+	if next == nil {
+		return true
+	}
+	return previous.Int64 != *next
 }
 
 // FindTeam 返回团队。

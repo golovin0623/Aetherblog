@@ -114,6 +114,14 @@ func TestValidateDefinitionInvalidCases(t *testing.T) {
 		{"self loop", func(d *Definition) { d.Edges = append(d.Edges, Edge{Source: "load", Target: "load"}) }, "self-loop"},
 		{"duplicate edge", func(d *Definition) { d.Edges = append(d.Edges, d.Edges[0]) }, "duplicate edge"},
 		{"cycle", func(d *Definition) { d.Edges = append(d.Edges, Edge{Source: "answer", Target: "input_1"}) }, "cycle"},
+		{"autonomous cycle", func(d *Definition) {
+			d.Mode = "autonomous"
+			d.Edges = append(d.Edges, Edge{Source: "answer", Target: "input_1"})
+		}, "cycle"},
+		{"hybrid cycle", func(d *Definition) {
+			d.Mode = "hybrid"
+			d.Edges = append(d.Edges, Edge{Source: "answer", Target: "input_1"})
+		}, "cycle"},
 		{"llm missing prompt", func(d *Definition) { d.Nodes = []Node{{ID: "llm_1", Type: "llm"}} }, "prompt"},
 		{"llm invalid template", func(d *Definition) {
 			d.Nodes = []Node{{ID: "llm_1", Type: "llm", Data: map[string]any{"prompt": "{{ exec.bad }}"}}}
