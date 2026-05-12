@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Hash, Search, Loader2 } from 'lucide-react';
+import { Hash, Search } from 'lucide-react';
 import PickerPopover from './PickerPopover';
 import { filterTags, useAllTags, type AgentTag } from '../../lib/agentResources';
 
@@ -37,6 +37,7 @@ export default function TagPicker({
 
   useEffect(() => {
     if (open) {
+      setQuery('');
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
@@ -71,10 +72,15 @@ export default function TagPicker({
       </div>
 
       <div className="agent-thumb-scroll max-h-[min(320px,52dvh)] overflow-y-auto py-1 sm:max-h-[320px]">
-        {loading && (
-          <div className="px-3 py-3 inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            加载中…
+        {loading && items.length === 0 && (
+          <div className="space-y-2 px-3 py-3" aria-label="标签加载中">
+            {[0, 1, 2, 3].map((idx) => (
+              <div key={idx} className="flex items-center gap-2.5 animate-pulse">
+                <div className="h-3.5 w-3.5 rounded bg-[var(--ink-subtle)]/14" />
+                <div className="h-3 flex-1 rounded-full bg-[var(--ink-subtle)]/14" />
+                <div className="h-3 w-8 rounded-full bg-[var(--ink-subtle)]/10" />
+              </div>
+            ))}
           </div>
         )}
 
@@ -97,7 +103,10 @@ export default function TagPicker({
               <button
                 key={t.id}
                 type="button"
-                onClick={() => onPick(t)}
+                onClick={() => {
+                  if (!checked) onPick(t);
+                }}
+                aria-disabled={checked}
                 className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${
                   checked
                     ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'

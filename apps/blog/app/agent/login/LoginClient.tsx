@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, KeyRound, Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, KeyRound, ShieldCheck, Sparkles } from 'lucide-react';
 import { loginAgent, useAgentAuth } from '../lib/agentAuth';
 
 interface Props {
@@ -74,7 +74,7 @@ export default function LoginClient({ siteTitle, next }: Props) {
 
   if (showCheckingState) {
     return (
-      <main className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-16 bg-[var(--bg-void)]">
+      <main className="relative min-h-[calc(100vh-4rem)] overflow-x-hidden flex items-center justify-center px-4 py-16 bg-[var(--bg-void)]">
         <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
           <div className="absolute -top-[15%] left-[15%] w-[40%] h-[40%] bg-[var(--aurora-1)]/10 rounded-full blur-[120px]" />
           <div className="absolute bottom-[-10%] right-[10%] w-[35%] h-[35%] bg-[var(--aurora-3)]/10 rounded-full blur-[100px]" />
@@ -106,7 +106,7 @@ export default function LoginClient({ siteTitle, next }: Props) {
   }
 
   return (
-    <main className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-16 bg-[var(--bg-void)]">
+    <main className="relative min-h-[calc(100vh-4rem)] overflow-x-hidden flex items-center justify-center px-4 py-16 bg-[var(--bg-void)]">
       {/* aurora 环境光晕 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div className="absolute -top-[15%] left-[15%] w-[40%] h-[40%] bg-[var(--aurora-1)]/10 rounded-full blur-[120px]" />
@@ -117,13 +117,13 @@ export default function LoginClient({ siteTitle, next }: Props) {
         initial="initial"
         animate="animate"
         variants={{ animate: { transition: { staggerChildren: 0.08 } } }}
-        className="relative z-10 w-full max-w-md surface-overlay rounded-2xl border border-[var(--ink-subtle)]/15 p-8 md:p-10 space-y-7"
+        className="relative z-10 w-full max-w-md surface-overlay rounded-2xl border border-[var(--ink-subtle)]/15 p-6 sm:p-8 md:p-10 space-y-7"
       >
         <motion.div variants={fadeUp} className="space-y-3 text-center">
           <p className="eyebrow inline-flex items-center justify-center gap-2">
             <Sparkles className="w-3.5 h-3.5" /> {siteTitle.toUpperCase()} · AGENT
           </p>
-          <h1 className="text-h2 md:text-h1 font-display font-bold text-[var(--ink-primary)] tracking-[-0.02em]">
+          <h1 className="font-display text-[clamp(2rem,9vw,3.5rem)] font-bold leading-tight text-[var(--ink-primary)] tracking-[-0.02em]">
             登录以进入工作台
           </h1>
           <p className="font-editorial italic text-[var(--ink-secondary)]">
@@ -181,7 +181,13 @@ export default function LoginClient({ siteTitle, next }: Props) {
           >
             <span className="hero-btn-shimmer" aria-hidden="true" />
             <span className="relative z-10 inline-flex items-center gap-2">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+              {submitting ? (
+                <span className="grid h-4 w-4 place-items-center" aria-hidden="true">
+                  <span className="h-2 w-2 rounded-full bg-current animate-pulse" />
+                </span>
+              ) : (
+                <KeyRound className="w-4 h-4" />
+              )}
               {submitting ? '登录中…' : '登录'}
             </span>
           </button>

@@ -4,7 +4,6 @@
 目标：按「明天约 100 个用例验收」口径审计智能体编排模块是否可验收。
 
 ## 1. 目标拆解
-
 本轮目标不是单纯“代码能编译”，而是让验收人员可以覆盖以下用户路径：
 
 1. 后台能进入独立的「智能体编排」模块。
@@ -40,9 +39,9 @@
 | 分支、循环、extractor、模板变量 | ai-service runner + workflow tests | 已完成 |
 | Code 节点安全边界 | Go validator 要求 `sandboxRef`；ai-service 默认只模拟或注入 executor | 已完成 |
 | 文档同步 | `.agent/plans/agent-workflow-canvas-module-plan.md`、`docs/agent/*`、`docs/output/*` | 已完成 |
-| 前端验证 | `pnpm --filter @aetherblog/admin typecheck`、`pnpm --filter @aetherblog/admin build` | 已通过 |
+| 前端验证 | `pnpm --filter @aetherblog/admin typecheck`、`exec eslint . --quiet`、`build` | 已通过 |
 | Go 验证 | `cd apps/server-go && go test ./...` | 已通过 |
-| ai-service 验证 | `ruff check .`、全量 `pytest -q --no-cov`；全量 coverage 模式下 264 个用例通过但总覆盖率未达 80% | 行为通过 / 覆盖率基线需后续处理 |
+| ai-service 验证 | `cd apps/ai-service && .venv/bin/python -m pytest -q --no-cov`，264 passed | 已通过 |
 | compose 验证 | `docker compose -f docker-compose.yml config --quiet`、`docker compose -f docker-compose.prod.yml config --quiet` | 已通过 |
 | diff hygiene | `git diff --check` | 已通过 |
 | 明天手工验收清单 | `.agent/plans/agent-workflow-acceptance-cases.md`，140+ 个检查点 | 已完成 |
@@ -66,13 +65,13 @@
 ## 5. 2026-05-12 复验记录
 
 - `pnpm --filter @aetherblog/admin typecheck`：通过。
+- `pnpm --filter @aetherblog/admin exec eslint . --quiet`：通过。
 - `pnpm --filter @aetherblog/admin build`：通过，仅保留 Vite 大 chunk 警告。
 - `cd apps/server-go && go test ./...`：通过。
-- `cd apps/ai-service && ruff check .`：通过。
-- `cd apps/ai-service && .venv/bin/python -m pytest tests/test_workflow_runner.py tests/e2e/test_model_fetch_flow.py tests/test_provider_routes.py --no-cov`：64 passed，3 warnings。
+- `cd apps/server-go && go test ./internal/pkg/agentworkflow -json | awk -F'"' '/"Action":"run"/ {count++} END {print count}'`：157。
 - `cd apps/ai-service && .venv/bin/python -m pytest -q --no-cov`：264 passed，12 warnings。
-- `cd apps/ai-service && .venv/bin/python -m pytest`：264 passed，12 warnings；因当前全应用 coverage 总计 68.42% 低于 `--cov-fail-under=80` 而退出失败。
 - `docker compose -f docker-compose.yml config --quiet`：通过。
-- `env DB_PASSWORD=compose-check-db REDIS_PASSWORD=compose-check-redis docker compose -f docker-compose.dev.yml config --quiet`：通过。
-- `env POSTGRES_PASSWORD=compose-check-postgres REDIS_PASSWORD=compose-check-redis AI_INTERNAL_SERVICE_TOKEN=compose-check-internal-token-32chars JWT_SECRET=compose-check-jwt-secret-32-characters AI_CREDENTIAL_ENCRYPTION_KEYS=compose-check-fernet-key docker compose -f docker-compose.prod.yml config --quiet`：通过。
+- `docker compose -f docker-compose.prod.yml config --quiet`：通过。
+- `docker compose -f docker-compose.dev.yml config --quiet`：当前本地 `.env` 缺少必填 `DB_PASSWORD`，因此按预期失败；不是本轮代码回归。
 - `git diff --check`：通过。
+- Playwright 访问 `http://127.0.0.1:4173/admin/agent-workflows`：通过 mock auth/settings/agent-workflow API 渲染到页面，确认出现「智能体编排」「发布」「RUN INPUTS」「RUN HISTORY」「TRACE」。

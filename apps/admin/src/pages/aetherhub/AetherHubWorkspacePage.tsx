@@ -30,6 +30,7 @@ import {
   CircleHelp,
   Copy,
   FileText,
+  Hash,
   LayoutDashboard,
   LayoutGrid,
   MessageCircle,
@@ -60,6 +61,7 @@ import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
   type AgentArticle,
+  type AgentTag,
   type AgentMessage,
   type AgentSession,
   type ChatStreamRequest,
@@ -70,6 +72,7 @@ import {
   createEmptySession,
   deriveSessionTitle,
   filterSlashCommands,
+  filterTags,
   groupSessionsByRecency,
   loadSessions,
   modelLabel,
@@ -78,6 +81,7 @@ import {
   saveSessions,
   streamAgentChat,
   useAgentModels,
+  useAllTags,
   useArticleSearch,
   useSmoothStream,
 } from '@/services/agent';
@@ -202,10 +206,11 @@ export default function AetherHubWorkspacePage() {
   const [composer, setComposer] = useState('');
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  // @ 选中的文章（每条会话独立维护，简化起见放当前会话级别 state，切换会话时清空）
   const [selectedArticles, setSelectedArticles] = useState<AgentArticle[]>([]);
+  const [selectedTags, setSelectedTags] = useState<AgentTag[]>([]);
   useEffect(() => {
     setSelectedArticles([]);
+    setSelectedTags([]);
   }, [activeId]);
 
   // ----- 右侧上下文面板：收起 / 展开 -----
@@ -352,6 +357,7 @@ export default function AetherHubWorkspacePage() {
         session: AgentSession;
         messages: AgentMessage[];
         selectedArticles?: AgentArticle[];
+        selectedTags?: AgentTag[];
       },
     ) => {
       const text = rawText.trim();
@@ -381,6 +387,7 @@ export default function AetherHubWorkspacePage() {
       const modelId = baseSession.modelId ?? null;
       const providerCode = baseSession.providerCode ?? null;
       const requestArticles = override?.selectedArticles ?? selectedArticles;
+      const requestTags = override?.selectedTags ?? selectedTags;
       const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -393,6 +400,10 @@ export default function AetherHubWorkspacePage() {
         updatedAt: now,
       }));
       setComposer('');
+      if (!override) {
+        setSelectedArticles([]);
+        setSelectedTags([]);
+      }
       setStreaming(true);
 
       const controller = new AbortController();
@@ -421,6 +432,7 @@ export default function AetherHubWorkspacePage() {
         modelId,
         providerCode,
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
+        tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
       };
 
       try {
@@ -486,7 +498,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags],
   );
 
   const handleEditMessage = useCallback(
@@ -516,6 +528,7 @@ export default function AetherHubWorkspacePage() {
         session: { ...activeSession, messages: baseMessages },
         messages: baseMessages,
         selectedArticles: [],
+        selectedTags: [],
       });
     },
     [activeSession, streaming, handleSend],
@@ -557,6 +570,7 @@ export default function AetherHubWorkspacePage() {
             updatedAt: Date.now(),
           }));
           setSelectedArticles([]);
+          setSelectedTags([]);
           toast.success('已清空当前对话');
           return;
         case '/new':
@@ -667,13 +681,22 @@ export default function AetherHubWorkspacePage() {
               onSetModel={handleSetModel}
               onPickPrompt={(text) => setComposer(text)}
               selectedArticles={selectedArticles}
+              selectedTags={selectedTags}
               onPickArticle={(article) =>
                 setSelectedArticles((prev) =>
                   prev.find((a) => a.id === article.id) ? prev : [...prev, article],
                 )
               }
+              onPickTag={(tag) =>
+                setSelectedTags((prev) =>
+                  prev.find((t) => t.slug === tag.slug) ? prev : [...prev, tag],
+                )
+              }
               onRemoveArticle={(id) =>
                 setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
+              }
+              onRemoveTag={(slug) =>
+                setSelectedTags((prev) => prev.filter((t) => t.slug !== slug))
               }
               onSlashCommand={handleSlashCommand}
               onEditMessage={handleEditMessage}
@@ -706,6 +729,8 @@ export default function AetherHubWorkspacePage() {
                 title: '新对话',
                 updatedAt: Date.now(),
               }));
+              setSelectedArticles([]);
+              setSelectedTags([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -734,6 +759,8 @@ export default function AetherHubWorkspacePage() {
                 title: '新对话',
                 updatedAt: Date.now(),
               }));
+              setSelectedArticles([]);
+              setSelectedTags([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -1519,8 +1546,11 @@ function WorkspaceCanvas({
   onSetModel,
   onPickPrompt,
   selectedArticles,
+  selectedTags,
   onPickArticle,
+  onPickTag,
   onRemoveArticle,
+  onRemoveTag,
   onSlashCommand,
   onEditMessage,
   onRetryMessage,
@@ -1544,8 +1574,11 @@ function WorkspaceCanvas({
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
   onPickPrompt: (text: string) => void;
   selectedArticles: AgentArticle[];
+  selectedTags: AgentTag[];
   onPickArticle: (article: AgentArticle) => void;
+  onPickTag: (tag: AgentTag) => void;
   onRemoveArticle: (id: number) => void;
+  onRemoveTag: (slug: string) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
   onEditMessage: (message: AgentMessage) => void;
   onRetryMessage: (message: AgentMessage) => void;
@@ -1680,8 +1713,11 @@ function WorkspaceCanvas({
         sendShortcut={sendShortcut}
         onSetSendShortcut={onSetSendShortcut}
         selectedArticles={selectedArticles}
+        selectedTags={selectedTags}
         onPickArticle={onPickArticle}
+        onPickTag={onPickTag}
         onRemoveArticle={onRemoveArticle}
+        onRemoveTag={onRemoveTag}
         onSlashCommand={onSlashCommand}
       />
     </main>
@@ -1845,9 +1881,14 @@ function MessageRow({
           <ul className="flex flex-wrap gap-1.5">
             {message.sources.map((s) => (
               <li key={s.slug + s.title}>
-                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-2.5 py-1 text-[11.5px] text-[var(--ink-secondary)]">
+                <a
+                  href={`/posts/${encodeURIComponent(s.slug)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-2.5 py-1 text-[11.5px] text-[var(--ink-secondary)] transition-colors hover:border-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)] hover:text-[var(--ink-primary)]"
+                >
                   {s.title || s.slug}
-                </span>
+                </a>
               </li>
             ))}
           </ul>
@@ -2470,8 +2511,11 @@ function Composer({
   sendShortcut,
   onSetSendShortcut,
   selectedArticles,
+  selectedTags,
   onPickArticle,
+  onPickTag,
   onRemoveArticle,
+  onRemoveTag,
   onSlashCommand,
 }: {
   value: string;
@@ -2485,16 +2529,20 @@ function Composer({
   sendShortcut: SendShortcut;
   onSetSendShortcut: (shortcut: SendShortcut) => void;
   selectedArticles: AgentArticle[];
+  selectedTags: AgentTag[];
   onPickArticle: (article: AgentArticle) => void;
+  onPickTag: (tag: AgentTag) => void;
   onRemoveArticle: (id: number) => void;
+  onRemoveTag: (slug: string) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chipTrayRef = useRef<HTMLDivElement | null>(null);
   const atBtnRef = useRef<HTMLButtonElement | null>(null);
+  const hashBtnRef = useRef<HTMLButtonElement | null>(null);
   const slashBtnRef = useRef<HTMLButtonElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
-  const [picker, setPicker] = useState<'article' | 'slash' | null>(null);
+  const [picker, setPicker] = useState<'article' | 'tag' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -2526,12 +2574,14 @@ function Composer({
     onChange(e.target.value);
   };
 
-  const togglePicker = (k: 'article' | 'slash') => {
+  const togglePicker = (k: 'article' | 'tag' | 'slash') => {
     setPicker((cur) => (cur === k ? null : k));
   };
 
   const selectedArticleCount = selectedArticles.length;
-  const trayScrollEnabled = selectedArticleCount > 6;
+  const selectedTagCount = selectedTags.length;
+  const selectedContextCount = selectedArticleCount + selectedTagCount;
+  const trayScrollEnabled = selectedContextCount > 6;
   const activeShortcut =
     SEND_SHORTCUT_OPTIONS.find((option) => option.value === sendShortcut) ??
     SEND_SHORTCUT_OPTIONS[0];
@@ -2556,7 +2606,7 @@ function Composer({
 
   useEffect(() => {
     const el = chipTrayRef.current;
-    if (!el || selectedArticleCount === 0 || !trayScrollEnabled) return;
+    if (!el || selectedContextCount === 0 || !trayScrollEnabled) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const scrollToBottom = (behavior: ScrollBehavior) => {
       el.scrollTo({ top: el.scrollHeight, behavior });
@@ -2571,7 +2621,7 @@ function Composer({
       window.cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [selectedArticleCount, trayScrollEnabled]);
+  }, [selectedContextCount, trayScrollEnabled]);
 
   return (
     <div className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 md:px-8 md:pb-4 md:pt-3">
@@ -2589,7 +2639,7 @@ function Composer({
         >
           {/* mentions chips —— @ 选中的文章,内嵌在输入面板中,与首页灵境保持同一承载关系。 */}
           <AnimatePresence initial={false}>
-            {selectedArticleCount > 0 && (
+            {selectedContextCount > 0 && (
               <motion.div
                 key="selected-articles-tray"
                 layout
@@ -2611,7 +2661,7 @@ function Composer({
                   className={`agent-thumb-scroll flex max-h-[120px] flex-wrap gap-1.5 px-2 py-1.5 ${
                     trayScrollEnabled ? 'overflow-y-auto overscroll-contain' : 'overflow-visible'
                   }`}
-                  aria-label="已引用文章"
+                  aria-label="已选择上下文"
                   style={{
                     scrollbarGutter: 'stable',
                   }}
@@ -2634,8 +2684,32 @@ function Composer({
                         <button
                           type="button"
                           onClick={() => onRemoveArticle(a.id)}
-                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-1)]/75 transition-colors hover:bg-[var(--aurora-1)] hover:text-white"
+                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-1)]/75 transition-colors hover:bg-[var(--aurora-1)] hover:text-[var(--hub-on-accent)]"
                           aria-label={`移除引用 ${a.title}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </motion.span>
+                    ))}
+                    {selectedTags.map((tag) => (
+                      <motion.span
+                        key={`tag-${tag.slug}`}
+                        layout
+                        initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                        className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_12%,transparent)] py-1 pl-2.5 pr-1 text-[11.5px] text-[var(--aurora-2)]"
+                      >
+                        <Hash className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate" title={tag.name}>
+                          {tag.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveTag(tag.slug)}
+                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-2)]/75 transition-colors hover:bg-[var(--aurora-2)] hover:text-[var(--hub-on-accent)]"
+                          aria-label={`移除标签 ${tag.name}`}
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -2656,7 +2730,7 @@ function Composer({
             onBlur={() => setFocused(false)}
             rows={1}
             disabled={streaming}
-            placeholder="提问、创建或开始任务。@ 引用文章 · / 调用命令"
+            placeholder="提问、创建或开始任务。@ 引用文章 · # 圈定标签 · / 调用命令"
             spellCheck={false}
             autoComplete="off"
             className={cn(
@@ -2668,7 +2742,7 @@ function Composer({
             style={{ boxShadow: 'none' }}
           />
           <div className="mt-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:min-h-10">
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+            <div className="flex min-w-0 items-center gap-1 overflow-visible">
               <ModelPickerButton
                 activeSession={activeSession}
                 modelsState={modelsState}
@@ -2689,6 +2763,15 @@ function Composer({
                 onClick={() => togglePicker('article')}
               >
                 <AtSign className="h-3.5 w-3.5" />
+              </ToolButton>
+              <ToolButton
+                ref={hashBtnRef}
+                title="圈定标签 (#)"
+                active={picker === 'tag'}
+                count={selectedTagCount}
+                onClick={() => togglePicker('tag')}
+              >
+                <Hash className="h-3.5 w-3.5" />
               </ToolButton>
               <ToolButton
                 ref={slashBtnRef}
@@ -2715,7 +2798,7 @@ function Composer({
               <div
                 ref={sendMenuRef}
                 className={cn(
-                  'relative flex h-11 shrink-0 items-center overflow-hidden rounded-full border transition-colors',
+                  'relative flex h-11 shrink-0 items-center overflow-visible rounded-full border transition-colors',
                   canSend
                     ? 'border-transparent text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)]'
                     : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]',
@@ -2812,6 +2895,13 @@ function Composer({
             selectedIds={new Set(selectedArticles.map((a) => a.id))}
             onClose={() => setPicker(null)}
             onPick={(a) => onPickArticle(a)}
+          />
+          <TagPicker
+            open={picker === 'tag'}
+            anchorRef={hashBtnRef}
+            selectedSlugs={new Set(selectedTags.map((t) => t.slug))}
+            onClose={() => setPicker(null)}
+            onPick={(tag) => onPickTag(tag)}
           />
           <SlashPicker
             open={picker === 'slash'}
@@ -2921,7 +3011,7 @@ function PickerPopover({
             layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
           }}
           className={cn(
-            'absolute bottom-full left-0 z-40 mb-3 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl',
+            'relative z-40 mb-3 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:absolute sm:bottom-full sm:left-0',
             className,
           )}
         >
@@ -2985,7 +3075,7 @@ function ArticlePicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="引用文章"
-      className="w-[360px]"
+      className="w-[min(360px,calc(100vw-1.5rem))]"
     >
       <div className="border-b border-[var(--hub-border)] p-3">
         <div className="relative">
@@ -3038,8 +3128,10 @@ function ArticlePicker({
                 <button
                   key={article.id}
                   type="button"
-                  onClick={() => onPick(article)}
-                  disabled={selected}
+                  onClick={() => {
+                    if (!selected) onPick(article);
+                  }}
+                  aria-disabled={selected}
                   className={cn(
                     'flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors',
                     selected
@@ -3101,6 +3193,122 @@ function ArticlePicker({
 }
 
 // =============================================================================
+// TagPicker —— # 选标签
+// =============================================================================
+
+function TagPicker({
+  open,
+  onClose,
+  anchorRef,
+  selectedSlugs,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  selectedSlugs: Set<string>;
+  onPick: (tag: AgentTag) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { items, loading, error } = useAllTags(open);
+
+  const visible = useMemo(() => {
+    const filtered = filterTags(items, query);
+    return [...filtered].sort((a, b) => b.postCount - a.postCount);
+  }, [items, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  const showInitialLoading = loading && items.length === 0;
+
+  return (
+    <PickerPopover
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      ariaLabel="选择标签"
+      className="w-[min(320px,calc(100vw-1.5rem))]"
+    >
+      <div className="border-b border-[var(--hub-border)] p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索标签…"
+            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
+          <span>§ Tags</span>
+          <span>{visible.length} 个</span>
+        </div>
+      </div>
+      <div className="relative max-h-[320px] overflow-y-auto py-1">
+        {showInitialLoading && (
+          <div className="space-y-2 px-3 py-3" aria-label="标签加载中">
+            <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+            <div className="h-8 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+            <div className="h-8 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+            <div className="h-8 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+            {error}
+          </div>
+        )}
+        {!loading && !error && visible.length === 0 && (
+          <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            没有匹配的标签
+          </div>
+        )}
+        {!error && visible.length > 0 && (
+          <div className={cn('transition-opacity duration-150', loading ? 'opacity-50' : 'opacity-100')}>
+            {visible.map((tag) => {
+              const selected = selectedSlugs.has(tag.slug);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => {
+                    if (!selected) onPick(tag);
+                  }}
+                  aria-disabled={selected}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
+                    selected
+                      ? 'cursor-default text-[var(--aurora-2)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                  )}
+                >
+                  <Hash className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{tag.name}</span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                    {tag.postCount}
+                  </span>
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PickerPopover>
+  );
+}
+
+// =============================================================================
 // SlashPicker —— / 选命令
 // =============================================================================
 
@@ -3131,7 +3339,7 @@ function SlashPicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择命令"
-      className="w-[320px]"
+      className="w-[min(320px,calc(100vw-1.5rem))]"
     >
       <div className="border-b border-[var(--hub-border)] p-3">
         <div className="relative">

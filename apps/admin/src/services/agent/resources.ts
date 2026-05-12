@@ -97,6 +97,49 @@ export function useArticleSearch(
   return { items, total, loading, error };
 }
 
+export function useAllTags(enabled: boolean) {
+  const [items, setItems] = useState<AgentTag[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetch('/api/v1/agent/tags', {
+      credentials: 'include',
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as ApiEnvelope<AgentTag[]>;
+        if (json?.success === false) throw new Error(json.message || '加载失败');
+        setItems(Array.isArray(json?.data) ? json.data : []);
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name === 'AbortError') return;
+        setError(err instanceof Error ? err.message : '未知错误');
+        setItems([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [enabled]);
+
+  return { items, loading, error };
+}
+
+export function filterTags(tags: AgentTag[], query: string): AgentTag[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return tags;
+  return tags.filter(
+    (t) => t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q),
+  );
+}
+
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [v, setV] = useState(value);
   useEffect(() => {
