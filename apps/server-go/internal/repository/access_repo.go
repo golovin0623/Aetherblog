@@ -89,7 +89,8 @@ func (r *AccessRepo) ListUsers(ctx context.Context, f UserListFilter) ([]Managed
 		       ), u.role) AS roles_csv
 		FROM users u%s
 		ORDER BY u.created_at DESC, u.id DESC
-		LIMIT %d OFFSET %d`, where, f.PageSize, offset)
+		LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+	args = append(args, f.PageSize, offset)
 
 	var rows []ManagedUserRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
