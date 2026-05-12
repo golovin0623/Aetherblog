@@ -209,15 +209,6 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 	}
 
 	post, shouldHashPassword := buildPostUpdateModel(existing, req, slug, status)
-	// 首次发布时自动记录发布时间
-	if status == "PUBLISHED" && existing.PublishedAt == nil {
-		now := time.Now()
-		post.PublishedAt = &now
-	} else if req.PublishedAt != nil {
-		post.PublishedAt = req.PublishedAt
-	} else {
-		post.PublishedAt = existing.PublishedAt
-	}
 	if shouldHashPassword {
 		if err := s.hashPostPassword(post); err != nil {
 			return nil, err
@@ -229,7 +220,9 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 		return nil, err
 	}
 	if req.TagIDs != nil {
-		s.repo.SetTags(ctx, id, req.TagIDs)
+		if err := s.repo.SetTags(ctx, id, req.TagIDs); err != nil {
+			return nil, err
+		}
 	}
 
 	// 清除 Redis 草稿缓存
@@ -648,6 +641,14 @@ func buildPostUpdateModel(existing *model.Post, req dto.CreatePostRequest, slug,
 		shouldHashPassword = true
 	}
 
+	publishedAt := existing.PublishedAt
+	if status == "PUBLISHED" && existing.PublishedAt == nil {
+		now := time.Now()
+		publishedAt = &now
+	} else if req.PublishedAt != nil {
+		publishedAt = req.PublishedAt
+	}
+
 	return &model.Post{
 		Title: req.Title, Slug: slug, ContentMarkdown: &req.Content,
 		Summary: req.Summary, CoverImage: coverImage, Status: status,
@@ -655,8 +656,10 @@ func buildPostUpdateModel(existing *model.Post, req dto.CreatePostRequest, slug,
 		IsPinned:     boolVal(req.IsPinned, existing.IsPinned),
 		PinPriority:  intVal(req.PinPriority, existing.PinPriority),
 		AllowComment: boolVal(req.AllowComment, existing.AllowComment),
-		Password:     password, WordCount: countWords(req.Content),
-		ReadingTime: calcReadingTime(req.Content),
+		Password:     password,
+		WordCount:    countWords(req.Content),
+		ReadingTime:  calcReadingTime(req.Content),
+		PublishedAt:  publishedAt,
 	}, shouldHashPassword
 }
 
