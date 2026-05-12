@@ -779,7 +779,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 onClick={handleImportFromTarget}
                 disabled={!target.targetPost}
                 className={cn(
-                  'inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all',
+                  'inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm md:text-xs font-bold transition-all',
                   target.targetPost
                     ? 'border-[var(--border-subtle)] bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90'
                     : 'cursor-not-allowed border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] opacity-50',
@@ -792,7 +792,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-1.5">
+          <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {contextSteps.map((step, index) => (
               <div key={step.label} className="flex min-w-0 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-1.5">
                 <span
@@ -884,11 +884,11 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
           {/* 统一执行入口 - 悬浮于底部居中 */}
           <div className={cn(
-            "absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
+            "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
             isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
             showConfig && "hidden md:flex"  // 移动端配置打开时隐藏，PC 端显示
           )}>
-            <div className="surface-raised flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/85 p-1.5 shadow-2xl">
+            <div className="surface-raised flex w-[min(92vw,460px)] md:w-auto items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 p-1.5 shadow-2xl">
               {/* 切换配置按钮 */}
               <button
                 onClick={() => setShowConfig(!showConfig)}

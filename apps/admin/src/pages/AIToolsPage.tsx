@@ -436,11 +436,11 @@ export default function AIToolsPage() {
   return (
     <div className="ai-tools-page h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6rem)] overflow-hidden flex flex-col md:flex-row gap-3 md:gap-5 relative isolate">
       {/* 移动端：顶部工具标签栏 */}
-      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[60px] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)]">
+      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[68px] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
         {/* 菜单按钮 - 固定在左侧 */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex-shrink-0 w-12 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
           aria-label="打开工具导航"
         >
           <Menu className="w-6 h-6" />
@@ -449,7 +449,7 @@ export default function AIToolsPage() {
         <div className="flex-1 relative h-full overflow-hidden">
           <div
             ref={toolTabsRef}
-            className="flex items-center h-full gap-2 px-4 overflow-x-auto no-scrollbar scroll-smooth"
+            className="flex items-center h-full gap-2 px-3 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
           >
             {allTools.map((tool) => {
               const Icon = tool.icon;
@@ -460,7 +460,7 @@ export default function AIToolsPage() {
                   data-tool-id={tool.code}
                   onClick={() => handleMobileToolSelect(tool.code)}
                   className={cn(
-                    "flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95",
+                    "flex-shrink-0 snap-start flex items-center justify-center w-11 h-11 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95",
                     isSelected
                       ? "bg-[var(--ink-primary)] text-[var(--bg-void)] border-[var(--ink-primary)] shadow-[0_12px_28px_-18px_color-mix(in_oklch,var(--aurora-1)_70%,black)]"
                       : "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
@@ -486,7 +486,7 @@ export default function AIToolsPage() {
             <button
               type="button"
               onClick={() => scrollTabs('left')}
-              className="absolute left-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
+              className="hidden absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
               aria-label="向左滚动工具"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -496,7 +496,7 @@ export default function AIToolsPage() {
             <button
               type="button"
               onClick={() => scrollTabs('right')}
-              className="absolute right-1 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
+              className="hidden absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/90 text-[var(--text-primary)] shadow-sm"
               aria-label="向右滚动工具"
             >
               <ChevronRight className="h-4 w-4" />
@@ -510,7 +510,7 @@ export default function AIToolsPage() {
             setEditingTool(null);
             setShowToolModal(true);
           }}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex-shrink-0 w-12 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
           aria-label="新建工具"
         >
           <Plus className="w-6 h-6" />
