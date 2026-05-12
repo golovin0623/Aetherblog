@@ -93,8 +93,8 @@ const persistTarget = (id: number | null) => {
 
 /**
  * 将缓存的 `Post` 重建为 `CreatePostRequest` 负载，供 `postService.update`
- * 使用。关键：必须覆盖全部字段——否则 Go 端 PostService.Update 会把遗漏的
- * 字段置空（title/summary 变 ""，tags 被 `SetTags([])` 清空）。
+ * 使用。正文更新仍需携带标题、摘要、分类、标签等内容元数据；访问密码、
+ * 手工 slug、封面图等未提交属性由 Go 端 PostService.Update 保留。
  */
 function rebuildFullUpdatePayload(
   post: Post,
@@ -366,9 +366,7 @@ export function useAiToolTarget(): AiToolTargetApi {
     }
 
     try {
-      // 必须重建完整负载——Go PostService.Update 用 req 构建 model.Post 并
-      // 无条件覆盖全部列（见 apps/server-go/internal/service/post_service.go:186）。
-      // 仅传 `{content: ...}` 会把 title / summary / tagIds / category 等全部置空。
+      // 正文更新必须重建内容负载；后端会保留未提交的受保护属性。
       const fullPayload = rebuildFullUpdatePayload(targetPost, { content: nextContent });
       const res = await postService.update(id, fullPayload);
       if (res.code === 200) {
