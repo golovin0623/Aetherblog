@@ -50,7 +50,7 @@ func (s *AgentWorkflowService) GetWorkflow(ctx context.Context, userID, id int64
 }
 
 func (s *AgentWorkflowService) CreateWorkflow(ctx context.Context, userID int64, req dto.AgentWorkflowRequest) (*dto.AgentWorkflowDetail, error) {
-	saveReq, err := normalizeWorkflowRequest(userID, req)
+	saveReq, err := normalizeWorkflowRequest(userID, req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,11 @@ func (s *AgentWorkflowService) CreateWorkflow(ctx context.Context, userID int64,
 }
 
 func (s *AgentWorkflowService) UpdateWorkflow(ctx context.Context, userID, id int64, req dto.AgentWorkflowRequest) (*dto.AgentWorkflowDetail, error) {
-	saveReq, err := normalizeWorkflowRequest(userID, req)
+	existing, err := s.repo.FindWorkflowByID(ctx, userID, id)
+	if err != nil || existing == nil {
+		return nil, err
+	}
+	saveReq, err := normalizeWorkflowRequest(userID, req, existing)
 	if err != nil {
 		return nil, err
 	}
@@ -498,7 +502,7 @@ func toRunTraceItems(items []workflowTraceItem) []dto.AgentRunTraceItem {
 	return trace
 }
 
-func normalizeWorkflowRequest(userID int64, req dto.AgentWorkflowRequest) (repository.AgentWorkflowSaveRequest, error) {
+func normalizeWorkflowRequest(userID int64, req dto.AgentWorkflowRequest, existing *model.AgentWorkflow) (repository.AgentWorkflowSaveRequest, error) {
 	raw := strings.TrimSpace(string(req.Definition))
 	if raw == "" || raw == "null" {
 		return repository.AgentWorkflowSaveRequest{}, fmt.Errorf("definition is required")
@@ -525,6 +529,12 @@ func normalizeWorkflowRequest(userID int64, req dto.AgentWorkflowRequest) (repos
 	if strings.TrimSpace(description) == "" {
 		description = def.Description
 	}
+	isTemplate := boolValueOrDefault(req.IsTemplate, false)
+	isPublic := boolValueOrDefault(req.IsPublic, false)
+	if existing != nil {
+		isTemplate = boolValueOrDefault(req.IsTemplate, existing.IsTemplate)
+		isPublic = boolValueOrDefault(req.IsPublic, existing.IsPublic)
+	}
 	desc := nullableDescription(description)
 	return repository.AgentWorkflowSaveRequest{
 		UserID:         userID,
@@ -532,10 +542,17 @@ func normalizeWorkflowRequest(userID int64, req dto.AgentWorkflowRequest) (repos
 		Description:    desc,
 		Mode:           mode,
 		DefinitionJSON: raw,
-		IsTemplate:     req.IsTemplate,
-		IsPublic:       req.IsPublic,
+		IsTemplate:     isTemplate,
+		IsPublic:       isPublic,
 		ChangeNote:     strings.TrimSpace(req.ChangeNote),
 	}, nil
+}
+
+func boolValueOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func normalizePublicationSlug(slug string) (string, error) {

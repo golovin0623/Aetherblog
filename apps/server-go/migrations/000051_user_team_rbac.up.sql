@@ -155,8 +155,20 @@ JOIN permissions p ON p.code IN (
 WHERE r.code = 'AUTHOR'
 ON CONFLICT DO NOTHING;
 
+WITH legacy_user_roles AS (
+    SELECT
+        u.id AS user_id,
+        CASE UPPER(btrim(u.role))
+            WHEN 'ADMIN' THEN 'ADMIN'
+            WHEN 'AUTHOR' THEN 'AUTHOR'
+            WHEN 'EDITOR' THEN 'AUTHOR'
+            WHEN 'USER' THEN 'USER'
+            ELSE 'USER'
+        END AS role_code
+    FROM users u
+)
 INSERT INTO user_roles (user_id, role_id)
-SELECT u.id, r.id
-FROM users u
-JOIN roles r ON r.code = u.role
+SELECT lur.user_id, r.id
+FROM legacy_user_roles lur
+JOIN roles r ON r.code = lur.role_code
 ON CONFLICT DO NOTHING;

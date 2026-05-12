@@ -10,8 +10,8 @@ type AgentWorkflowRequest struct {
 	Description string          `json:"description"`
 	Mode        string          `json:"mode"`
 	Definition  json.RawMessage `json:"definition"`
-	IsTemplate  bool            `json:"isTemplate"`
-	IsPublic    bool            `json:"isPublic"`
+	IsTemplate  *bool           `json:"isTemplate"`
+	IsPublic    *bool           `json:"isPublic"`
 	ChangeNote  string          `json:"changeNote"`
 }
 

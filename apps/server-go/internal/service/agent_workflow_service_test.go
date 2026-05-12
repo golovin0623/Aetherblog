@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
@@ -101,6 +102,65 @@ func TestToRunSummaryHandlesOptionalFields(t *testing.T) {
 	if run.DurationMS == nil || *run.DurationMS != duration {
 		t.Fatalf("duration = %#v, want %d", run.DurationMS, duration)
 	}
+}
+
+func TestNormalizeWorkflowRequestPreservesPublicationFlagsWhenOmitted(t *testing.T) {
+	existing := &model.AgentWorkflow{
+		IsTemplate: true,
+		IsPublic:   true,
+	}
+
+	req := dto.AgentWorkflowRequest{
+		Definition: validWorkflowDefinitionPayload(),
+	}
+
+	saveReq, err := normalizeWorkflowRequest(7, req, existing)
+	if err != nil {
+		t.Fatalf("normalizeWorkflowRequest returned error: %v", err)
+	}
+	if !saveReq.IsTemplate || !saveReq.IsPublic {
+		t.Fatalf("publication flags = template:%v public:%v, want both preserved true", saveReq.IsTemplate, saveReq.IsPublic)
+	}
+}
+
+func TestNormalizeWorkflowRequestAllowsExplicitPublicationFlagsFalse(t *testing.T) {
+	explicitFalse := false
+	existing := &model.AgentWorkflow{
+		IsTemplate: true,
+		IsPublic:   true,
+	}
+
+	req := dto.AgentWorkflowRequest{
+		Definition: validWorkflowDefinitionPayload(),
+		IsTemplate: &explicitFalse,
+		IsPublic:   &explicitFalse,
+	}
+
+	saveReq, err := normalizeWorkflowRequest(7, req, existing)
+	if err != nil {
+		t.Fatalf("normalizeWorkflowRequest returned error: %v", err)
+	}
+	if saveReq.IsTemplate || saveReq.IsPublic {
+		t.Fatalf("publication flags = template:%v public:%v, want explicit false values", saveReq.IsTemplate, saveReq.IsPublic)
+	}
+}
+
+func TestNormalizeWorkflowRequestDefaultsCreatePublicationFlagsFalse(t *testing.T) {
+	req := dto.AgentWorkflowRequest{
+		Definition: validWorkflowDefinitionPayload(),
+	}
+
+	saveReq, err := normalizeWorkflowRequest(7, req, nil)
+	if err != nil {
+		t.Fatalf("normalizeWorkflowRequest returned error: %v", err)
+	}
+	if saveReq.IsTemplate || saveReq.IsPublic {
+		t.Fatalf("publication flags = template:%v public:%v, want create defaults false", saveReq.IsTemplate, saveReq.IsPublic)
+	}
+}
+
+func validWorkflowDefinitionPayload() json.RawMessage {
+	return json.RawMessage(`{"version":1,"name":"Article Audit","mode":"fixed","inputs":{"post_id":{"type":"integer","required":true}},"nodes":[{"id":"input_1","type":"input"},{"id":"load","type":"tool","data":{"toolCode":"kb_get_post"}},{"id":"answer","type":"output"}],"edges":[{"source":"input_1","target":"load"},{"source":"load","target":"answer"}]}`)
 }
 
 func TestNormalizePublicationSlugRejectsUnsafeValues(t *testing.T) {
