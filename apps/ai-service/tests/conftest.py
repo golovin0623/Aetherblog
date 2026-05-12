@@ -13,6 +13,10 @@ from __future__ import annotations
 
 import os
 
+import jwt
+import pytest
+from fastapi.testclient import TestClient
+
 # 仅设置默认值 —— 永远不要覆盖 CI / 开发者 shell 已经提供的值。
 _DEFAULTS = {
     # 既有测试（例如 tests/test_deps.py）使用字面量 ``"test-secret"`` 签名
@@ -27,3 +31,25 @@ _DEFAULTS = {
 
 for _key, _value in _DEFAULTS.items():
     os.environ.setdefault(_key, _value)
+
+from app.core import jwt_keys  # noqa: E402
+
+jwt_keys._STATE["keys"] = [os.environ["JWT_SECRET"]]
+jwt_keys._STATE["loaded_at"] = 1.0
+
+
+@pytest.fixture
+def client():
+    from app.main import app
+
+    test_client = TestClient(app)
+    try:
+        yield (test_client,)
+    finally:
+        app.dependency_overrides = {}
+
+
+@pytest.fixture
+def admin_headers():
+    token = jwt.encode({"userId": "1", "role": "admin"}, os.environ["JWT_SECRET"], algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}

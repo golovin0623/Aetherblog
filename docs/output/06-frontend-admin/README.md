@@ -3,7 +3,7 @@
 > 范围:`apps/admin/`(Vite 6 + React 19 + TypeScript 5.7)。
 > 基线:与本仓 main 分支 `claude/sad-gould-35d3a6`(2026-05-08)对齐。
 >
-> 本目录的其它 9 份文档按"能力切片"展开,本 README 给出全模块的纲要、交叉关系和已知问题。
+> 本目录的其它文档按"能力切片"展开,本 README 给出全模块的纲要、交叉关系和已知问题。
 
 ---
 
@@ -67,6 +67,7 @@
   /friends                                   → FriendsPage(友链 + 拖拽排序)
   /settings                                  → SettingsPage(多 tab,内嵌 MigrationPage / StorageProviderSettings)
   /ai-tools                                  → AIToolsPage(系统 + 自定义工具,DnD 排序)
+  /agent-workflows                           → AgentWorkflowsPage(智能体编排 Canvas)
   /ai-test                                   → AiTestPage(开发期手测页面)
   /ai-config                                 → AiConfigPage(LobeChat 风格 provider/model/credential 配置中心)
   /search-config                             → SearchConfigPage(搜索 + Profile 管理)
@@ -158,6 +159,7 @@
 | `friendService.ts` | `/v1/admin/friend-links` | FriendsPage |
 | `settingsService.ts` | `/v1/admin/settings` | SettingsPage / AdminFontProvider / AdminThemeColorProvider |
 | `aiService.ts` | `/v1/admin/ai/{summary,tags,titles,polish,outline,translate,health}` | AiTestPage / AI 工具的非流式回退 |
+| `agentWorkflowService.ts` | `/v1/admin/agent-workflows` + `/v1/agent/workflows/:id/runs` + `/v1/agent/published` | AgentWorkflowsPage |
 | `aiProviderService.ts` | `/v1/admin/providers` + `/v1/admin/ai/{tasks,prompts}` | AiConfigPage / AIToolsPage / SearchConfigPage |
 | `aiPredictionService.ts` | (未对接后端,本地 mock) | AiWritingWorkspace 的 ghost text 实验 |
 | `analyticsService.ts` | `/v1/admin/stats/*` | DashboardPage / AnalyticsPage |

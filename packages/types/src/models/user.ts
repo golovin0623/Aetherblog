@@ -2,7 +2,7 @@
  * 用户类型
  */
 
-export type UserRole = 'ADMIN' | 'AUTHOR' | 'READER';
+export type UserRole = 'ADMIN' | 'AUTHOR' | 'USER';
 
 export interface User {
   id: number;
@@ -12,6 +12,7 @@ export interface User {
   avatar?: string;
   bio?: string;
   roles: UserRole[];
+  permissions?: string[];
   createdAt: string;
   updatedAt: string;
 }

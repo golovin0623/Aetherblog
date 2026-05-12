@@ -104,6 +104,125 @@
   padding-left: 1rem;
 }
 
+/* Agent Workflow Canvas —— 偏工程工作台的密集编排界面。
+   这里沿用 admin surface token，不做营销式 hero。 */
+.agent-workflows-page {
+  --agent-workflow-grid: rgb(from var(--ink-primary) r g b / 0.04);
+  --agent-workflow-panel-shadow: 0 18px 48px -36px rgb(from var(--ink-primary) r g b / 0.34);
+}
+
+.agent-workflows-page .surface-raised {
+  box-shadow: var(--agent-workflow-panel-shadow);
+}
+
+.agent-workflows-page .react-flow {
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--aurora-2) 8%, transparent), transparent 34%),
+    linear-gradient(225deg, color-mix(in oklch, var(--signal-success) 7%, transparent), transparent 40%),
+    var(--bg-leaf);
+}
+
+.agent-workflows-page .react-flow__node {
+  width: 210px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-workflow-flow-node.selected .agent-workflow-node-card {
+  border-color: color-mix(in oklch, var(--aurora-1) 58%, var(--border-subtle));
+  box-shadow: 0 16px 36px -28px color-mix(in oklch, var(--aurora-1) 55%, black);
+}
+
+.agent-workflow-node-card {
+  min-height: 96px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in oklch, var(--bg-leaf) 92%, var(--bg-substrate));
+  padding: 10px;
+  box-shadow: 0 10px 28px -24px rgb(from var(--ink-primary) r g b / 0.36);
+}
+
+:root.dark .agent-workflow-node-card {
+  background: rgb(from var(--bg-raised) r g b / 0.82);
+}
+
+.agent-workflows-page .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--bg-leaf);
+  background: var(--aurora-1);
+}
+
+.agent-workflow-edge .react-flow__edge-path {
+  stroke: color-mix(in oklch, var(--aurora-1) 52%, var(--text-tertiary));
+  stroke-width: 1.8;
+}
+
+.agent-workflow-field {
+  width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  padding: 0.48rem 0.58rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.agent-workflow-field:focus {
+  border-color: color-mix(in oklch, var(--aurora-1) 62%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 16%, transparent);
+}
+
+.toolbar-button,
+.toolbar-button-primary {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 8px;
+  padding: 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.toolbar-button {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.toolbar-button:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-button-primary {
+  border: 1px solid var(--ink-primary);
+  background: var(--ink-primary);
+  color: var(--bg-void);
+}
+
+.toolbar-button-primary:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .toolbar-button,
+  .toolbar-button-primary {
+    min-width: 44px;
+    height: 44px;
+    justify-content: center;
+    padding: 0 0.65rem;
+  }
+}
+
 .ink-cursor {
   display: inline-block;
   width: 2px;

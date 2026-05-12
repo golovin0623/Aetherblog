@@ -20,11 +20,13 @@ const CommentsPage = lazy(() => import('./pages/CommentsPage'));
 const FriendsPage = lazy(() => import('./pages/FriendsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AIToolsPage = lazy(() => import('./pages/AIToolsPage'));
+const AgentWorkflowsPage = lazy(() => import('./pages/agent-workflows/AgentWorkflowsPage'));
 const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const FolderPermissionsPage = lazy(() => import('./pages/media/FolderPermissionsPage'));
 const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const GlobalPricingPage = lazy(() => import('./pages/global-pricing/GlobalPricingPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
+const AccessControlPage = lazy(() => import('./pages/access/AccessControlPage'));
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
@@ -104,6 +106,7 @@ function App() {
               <Route path="friends" element={<FriendsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="ai-tools" element={<AIToolsPage />} />
+              <Route path="agent-workflows" element={<AgentWorkflowsPage />} />
               <Route path="ai-test" element={<AiTestPage />} />
               <Route path="ai-config" element={<AiConfigPage />} />
               <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
@@ -111,6 +114,7 @@ function App() {
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
+              <Route path="access" element={<AccessControlPage />} />
             </Route>
           </Routes>
         </Suspense>

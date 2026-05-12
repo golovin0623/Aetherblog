@@ -23,6 +23,8 @@ import {
   PanelLeftClose,
   Cloud,
   Coins,
+  Workflow,
+  UsersRound,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -64,6 +66,7 @@ const navSections: Array<{
     items: [
       { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
       { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
+      { path: '/agent-workflows', icon: Workflow, label: '智能体编排' },
       { path: '/analytics', icon: Activity, label: '数据分析' },
       { path: '/ai-config', icon: Bot, label: 'AI 配置' },
       { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },
@@ -75,6 +78,7 @@ const navSections: Array<{
     items: [
       { path: '/monitor', icon: Activity, label: '系统监控' },
       { path: '/activities', icon: ClipboardList, label: '活动记录' },
+      { path: '/access', icon: UsersRound, label: '身份与共享' },
       { path: '/settings', icon: Settings, label: '系统设置' },
     ],
   },

@@ -21,6 +21,7 @@ from app.services.provider_registry import ProviderInfo, ModelInfo
 from app.services.credential_resolver import CredentialInfo
 from app.services.model_router import RoutingConfig
 from app.services.remote_model_fetcher import RemoteModelInfo
+from tests.support import FakeConn, FakePool
 
 
 class FakeRegistry:
@@ -173,6 +174,17 @@ class FakeModelRouter:
             fallback_model=None,
         )
 
+    async def get_routing_db(self, task_type: str, user_id=None):
+        if task_type != "summary":
+            return None
+        return {
+            "task_code": "summary",
+            "primary_model_id": self._model.id,
+            "fallback_model_id": None,
+            "credential_id": self._credential.id,
+            "config_override": {"temperature": 0.7},
+        }
+
     async def update_routing(self, **_kwargs):
         return True
 
@@ -250,7 +262,11 @@ async def test_provider_and_model_endpoints(monkeypatch):
     assert model_updated.data.output_cost_per_1m == 2.0
     assert model_updated.data.cached_input_cost_per_1m == 0.25
 
-    deleted = await providers_module.delete_model(model_id=10, registry=registry)
+    deleted = await providers_module.delete_model(
+        model_id=10,
+        registry=registry,
+        pool=FakePool(FakeConn(fetchval=lambda _query, _args: 0)),
+    )
     assert deleted.data is True
 
     all_models = await providers_module.list_all_models(model_type=None, enabled_only=False, registry=registry)
@@ -331,6 +347,8 @@ async def test_credential_and_routing_endpoints(monkeypatch):
         task_type="summary",
         user=SimpleNamespace(user_id=1),
         model_router=model_router,
+        provider_registry=registry,
+        credential_resolver=resolver,
     )
     assert routing.data.primary_model.model_id == "gpt-test"
 
