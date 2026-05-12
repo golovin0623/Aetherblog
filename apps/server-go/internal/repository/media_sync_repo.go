@@ -37,22 +37,29 @@ func (r *MediaSyncRepo) EnqueueOne(ctx context.Context, mediaID, targetProviderI
 	return id, err
 }
 
-// EnqueueAllUnsynced 找出所有 (storage_provider_id IS NULL OR storage_provider_id != targetProviderID)
-// 且没有"已同步到当前目标"的非删除文件,批量插入 PENDING job。
+// EnqueueAllUnsynced 找出所有尚未同步到目标 provider 的非删除文件,批量插入 PENDING job。
 // 返回入队的 job 数量。
 //
 // 注意:主文件本身就在 targetProviderID 上的不需要镜像。已经 SYNCED 到当前目标的跳过;
 // 但如果切换了备份目标,旧目标上的 SYNCED 行必须重新入队。FAILED/MISSING/NONE 均允许重新加入队列。
+// 当目标 provider 是 LOCAL 时,历史 storage_provider_id 为空或源 provider 也是 LOCAL 的文件也应跳过,
+// 否则 worker 会把 LOCAL→LOCAL 识别为无意义同步并消耗重试次数。
 func (r *MediaSyncRepo) EnqueueAllUnsynced(ctx context.Context, targetProviderID int64) (int64, error) {
 	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO media_sync_jobs (media_id, target_provider_id, status, attempt, created_at)
-		SELECT id, $1, 'PENDING', 0, CURRENT_TIMESTAMP
-		FROM media_files
-		WHERE deleted = false
-		  AND (storage_provider_id IS NULL OR storage_provider_id != $1)
-		  AND sync_status != 'SYNCING'
-		  AND NOT (sync_status = 'SYNCED' AND backup_provider_id = $1)
-		  AND id NOT IN (
+		SELECT mf.id, $1, 'PENDING', 0, CURRENT_TIMESTAMP
+		FROM media_files mf
+		JOIN storage_providers target_provider ON target_provider.id = $1
+		LEFT JOIN storage_providers source_provider ON source_provider.id = mf.storage_provider_id
+		WHERE mf.deleted = false
+		  AND (mf.storage_provider_id IS NULL OR mf.storage_provider_id != $1)
+		  AND NOT (
+		    target_provider.provider_type = 'LOCAL'
+		    AND (mf.storage_provider_id IS NULL OR source_provider.provider_type = 'LOCAL')
+		  )
+		  AND mf.sync_status != 'SYNCING'
+		  AND NOT (mf.sync_status = 'SYNCED' AND mf.backup_provider_id = $1)
+		  AND mf.id NOT IN (
 		    SELECT media_id FROM media_sync_jobs
 		    WHERE target_provider_id = $1 AND status IN ('PENDING', 'RUNNING')
 		  )`, targetProviderID)
