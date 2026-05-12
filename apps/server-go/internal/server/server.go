@@ -168,13 +168,15 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	friendLinkRepo := repository.NewFriendLinkRepo(s.DB)
 	siteSettingRepo := repository.NewSiteSettingRepo(s.DB)
 	postRepo := repository.NewPostRepo(s.DB)
+	accessRepo := repository.NewAccessRepo(s.DB)
+	accessSvc := service.NewAccessService(accessRepo)
 
 	// --- 活动记录服务（提前初始化，供各 handler 注入） ---
 	activityRepo := repository.NewActivityRepo(s.DB)
 	activitySvc := service.NewActivityService(activityRepo, userRepo)
 
 	// --- 认证模块（敏感端点附加速率限制） ---
-	authSvc := service.NewAuthService(userRepo, s.Redis)
+	authSvc := service.NewAuthService(userRepo, s.Redis, accessRepo)
 	sessionSvc := service.NewSessionService(s.Redis, s.Config.JWT.Expiration, s.Config.JWT.RefreshExpiration)
 	authGroup := api.Group("/v1/auth")
 	// jwtRepo 在 New() 里也实例化过用于 jwtkeys.Store 启动,这里另起一个新的
@@ -204,6 +206,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 授权失效。此处必须与 handler 层 ownership check 协同，不可单独省略。
 	// pwdRotated 在 RequireRole 之前 —— 默认密码账号即便是 admin 也得先改密才能进。
 	admin := api.Group("/v1/admin", authMW, pwdRotated, middleware.RequireRole("admin"))
+
+	// --- 身份访问模块（RBAC 自己保护，不强制 legacy ADMIN 角色） ---
+	// 这些端点由 permissions 表驱动，允许后续给非 ADMIN 角色授予精确权限。
+	accessAdmin := api.Group("/v1/admin", authMW, pwdRotated)
+	handler.NewAccessHandler(accessSvc, activitySvc).Mount(accessAdmin, func(permissionCode string) echo.MiddlewareFunc {
+		return middleware.RequirePermission(accessSvc, permissionCode)
+	})
 
 	// 管理员专用 auth 端点（手动轮换 JWT 密钥等）。
 	authHandler.MountAdmin(admin.Group("/auth"))
@@ -356,6 +365,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	aiHandler := handler.NewAiHandler(s.Config, activitySvc)
 	aiHandler.Mount(admin.Group("/ai"))
 
+	// --- Agent Workflow 编排接口 ---
+	agentWorkflowRepo := repository.NewAgentWorkflowRepo(s.DB)
+	agentWorkflowSvc := service.NewAgentWorkflowService(agentWorkflowRepo, service.NewAIClient(s.Config.AI), s.Config.AI.InternalServiceToken)
+	agentWorkflowHandler := handler.NewAgentWorkflowHandler(agentWorkflowSvc)
+	agentWorkflowHandler.MountAdmin(admin.Group("/agent-workflows"))
+	agentWorkflowHandler.MountAdminCatalog(admin)
+
 	// --- Agent 对话接口（任意已登录用户可访问，区别于 admin /ai 代理） ---
 	// SECURITY: 这里只挂 authMW，不强制 RequireRole("admin")。理由是 /agent 工作台
 	// 对所有注册用户开放，但下游 ai-service 仍走 internal-token 通道（在 handler 内
@@ -372,6 +388,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		middleware.RateLimitByUser(s.Redis, "rate:agent:chat", 30, time.Minute),
 		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute),
 	)
+	agentWorkflowHandler.MountRuntime(agentGroup)
 
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"

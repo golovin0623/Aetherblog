@@ -29,6 +29,28 @@ class FakeResolver:
         return self.credential
 
 
+def make_model(**overrides) -> ModelInfo:
+    values = {
+        "id": 1,
+        "provider_id": 1,
+        "provider_code": "openai",
+        "model_id": "gpt-test",
+        "display_name": "GPT",
+        "model_type": "chat",
+        "context_window": None,
+        "max_output_tokens": None,
+        "input_cost_per_1k": None,
+        "output_cost_per_1k": None,
+        "input_cost_per_1m": None,
+        "output_cost_per_1m": None,
+        "cached_input_cost_per_1m": None,
+        "capabilities": {},
+        "is_enabled": True,
+    }
+    values.update(overrides)
+    return ModelInfo(**values)
+
+
 @pytest.mark.asyncio
 async def test_resolve_routing_and_list_tasks():
     row = {
@@ -64,19 +86,11 @@ async def test_resolve_routing_and_list_tasks():
             }
         ]
 
-    model = ModelInfo(
+    model = make_model(
         id=10,
-        provider_id=1,
-        provider_code="openai",
-        model_id="gpt-test",
         display_name="GPT Test",
-        model_type="chat",
         context_window=8000,
         max_output_tokens=2048,
-        input_cost_per_1k=None,
-        output_cost_per_1k=None,
-        capabilities={},
-        is_enabled=True,
     )
     credential = CredentialInfo(
         id=2,
@@ -107,20 +121,7 @@ async def test_update_routing_executes():
         executed["count"] += 1
         return "OK"
 
-    router = ModelRouter(FakePool(FakeConn(execute=execute)), FakeRegistry(ModelInfo(
-        id=1,
-        provider_id=1,
-        provider_code="openai",
-        model_id="gpt-test",
-        display_name="GPT",
-        model_type="chat",
-        context_window=None,
-        max_output_tokens=None,
-        input_cost_per_1k=None,
-        output_cost_per_1k=None,
-        capabilities={},
-        is_enabled=True,
-    )), FakeResolver(None))
+    router = ModelRouter(FakePool(FakeConn(execute=execute)), FakeRegistry(make_model()), FakeResolver(None))
 
     success = await router.update_routing(task_type="summary", config_override={"temperature": 0.2}, update_config=True)
     assert success is True
@@ -132,19 +133,6 @@ async def test_resolve_routing_missing_returns_none():
     def fetchrow(_query, _args):
         return None
 
-    router = ModelRouter(FakePool(FakeConn(fetchrow=fetchrow)), FakeRegistry(ModelInfo(
-        id=1,
-        provider_id=1,
-        provider_code="openai",
-        model_id="gpt-test",
-        display_name="GPT",
-        model_type="chat",
-        context_window=None,
-        max_output_tokens=None,
-        input_cost_per_1k=None,
-        output_cost_per_1k=None,
-        capabilities={},
-        is_enabled=True,
-    )), FakeResolver(None))
+    router = ModelRouter(FakePool(FakeConn(fetchrow=fetchrow)), FakeRegistry(make_model()), FakeResolver(None))
     routing = await router.resolve_routing("summary")
     assert routing is None

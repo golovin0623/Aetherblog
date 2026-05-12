@@ -6,7 +6,7 @@ export interface User {
   username: string;
   nickname: string;
   avatar: string;
-  role: 'ADMIN' | 'EDITOR' | 'USER';
+  role: 'ADMIN' | 'AUTHOR' | 'USER';
   email?: string;
 }
 

@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -252,7 +253,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		}
 	}
 
-	return response.OK(c, h.buildLoginResponse(user, accessToken))
+	return response.OK(c, h.buildLoginResponse(ctx, user, accessToken))
 }
 
 // RegisterUser 处理 POST /api/v1/auth/register 请求。
@@ -267,7 +268,7 @@ func (h *AuthHandler) RegisterUser(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	return response.OK(c, userInfoVO(user))
+	return response.OK(c, h.userInfoVO(c.Request().Context(), user))
 }
 
 // Refresh 处理 POST /api/v1/auth/refresh 请求。
@@ -305,7 +306,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	}
 
 	h.writeAuthCookies(c, accessToken, newRefreshToken)
-	return response.OK(c, h.buildLoginResponse(user, accessToken))
+	return response.OK(c, h.buildLoginResponse(ctx, user, accessToken))
 }
 
 // Me 处理 GET /api/v1/auth/me 请求。
@@ -322,7 +323,7 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	if user == nil {
 		return response.FailWith(c, response.NotFound, "用户不存在")
 	}
-	return response.OK(c, userInfoVO(user))
+	return response.OK(c, h.userInfoVO(c.Request().Context(), user))
 }
 
 // Logout 处理 POST /api/v1/auth/logout 请求。
@@ -396,7 +397,7 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, userInfoVO(user))
+	return response.OK(c, h.userInfoVO(c.Request().Context(), user))
 }
 
 // UpdateAvatar 处理 PUT /api/v1/auth/avatar 请求。
@@ -460,25 +461,32 @@ func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
 }
 
 // buildLoginResponse 从用户模型和 Access Token 构建 LoginResponse DTO。
-func (h *AuthHandler) buildLoginResponse(user *model.User, accessToken string) dto.LoginResponse {
+func (h *AuthHandler) buildLoginResponse(ctx context.Context, user *model.User, accessToken string) dto.LoginResponse {
 	return dto.LoginResponse{
 		AccessToken:        accessToken,
 		TokenType:          "Bearer",
 		ExpiresIn:          h.session.AccessTokenMaxAge(),
 		MustChangePassword: user.MustChangePassword,
-		UserInfo:           userInfoVO(user),
+		UserInfo:           h.userInfoVO(ctx, user),
 	}
 }
 
 // userInfoVO 将用户模型转换为 UserInfoVO 数据传输对象。
-func userInfoVO(user *model.User) dto.UserInfoVO {
+func (h *AuthHandler) userInfoVO(ctx context.Context, user *model.User) dto.UserInfoVO {
+	roles, permissions, err := h.auth.UserAccess(ctx, user.ID, user.Role)
+	if err != nil {
+		log.Warn().Err(err).Int64("user_id", user.ID).Msg("load user RBAC access failed, fallback to legacy role")
+		roles = []string{user.Role}
+	}
 	return dto.UserInfoVO{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Nickname: user.Nickname,
-		Avatar:   user.Avatar,
-		Role:     user.Role,
+		ID:          user.ID,
+		Username:    user.Username,
+		Email:       user.Email,
+		Nickname:    user.Nickname,
+		Avatar:      user.Avatar,
+		Role:        user.Role,
+		Roles:       roles,
+		Permissions: permissions,
 	}
 }
 

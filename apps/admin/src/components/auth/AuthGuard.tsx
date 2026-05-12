@@ -40,9 +40,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
           // 与 LoginPage 适配逻辑保持一致。
           const info = res.data;
           const roleStr = (info.roles && info.roles.length > 0) ? info.roles[0] : 'USER';
-          const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
+          const validRoles = ['ADMIN', 'AUTHOR', 'USER'] as const;
           const role = validRoles.includes(roleStr as typeof validRoles[number])
-            ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER')
+            ? (roleStr as 'ADMIN' | 'AUTHOR' | 'USER')
             : 'USER';
           useAuthStore.setState({
             user: {

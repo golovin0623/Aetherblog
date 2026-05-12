@@ -37,12 +37,14 @@ type UpdateAvatarRequest struct {
 
 // UserInfoVO 是登录及鉴权相关响应中内嵌的用户信息对象。
 type UserInfoVO struct {
-	ID       int64   `json:"id"`       // 用户唯一 ID
-	Username string  `json:"username"` // 用户名
-	Email    string  `json:"email"`    // 电子邮箱
-	Nickname *string `json:"nickname"` // 昵称（可为空）
-	Avatar   *string `json:"avatar"`   // 头像 URL（可为空）
-	Role     string  `json:"role"`     // 用户角色（如 admin/user）
+	ID          int64    `json:"id"`                    // 用户唯一 ID
+	Username    string   `json:"username"`              // 用户名
+	Email       string   `json:"email"`                 // 电子邮箱
+	Nickname    *string  `json:"nickname"`              // 昵称（可为空）
+	Avatar      *string  `json:"avatar"`                // 头像 URL（可为空）
+	Role        string   `json:"role"`                  // 兼容旧 users.role 的主角色
+	Roles       []string `json:"roles"`                 // RBAC 角色列表
+	Permissions []string `json:"permissions,omitempty"` // RBAC 权限代码列表
 }
 
 // LoginResponse 是登录及刷新 Token 接口响应中的数据字段 DTO。

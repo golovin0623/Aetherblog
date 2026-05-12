@@ -64,6 +64,7 @@
 | `POST /api/v1/ai/{summary,tags,titles,polish,outline,translate}` | 同步 | 业务 AI 工具(管理员/JWT) |
 | `POST /api/v1/ai/{...}/stream` | SSE | 同上的流式版本(SSE 帧 `delta` / `result` / `done` / `error`) |
 | `GET /api/v1/agent/models` · `POST /api/v1/agent/chat` | 多轮 | Agent 工作台,Go 后端代理时携带 `X-Forwarded-User-ID` |
+| `POST /api/v1/agent/workflows/execute` | 工作流 | Agent Workflow deterministic runner,Go runtime run 代理调用 |
 | `GET /api/v1/search/semantic` · `GET /api/v1/search/qa` | 搜索 | 公开语义搜索 / RAG 流式问答 |
 | `POST /api/v1/admin/search/{index,reindex,retry-failed}` | 写索引 | server-go 批处理调用,支持单篇 / 全量 / shadow profile 模式 |
 | `/api/v1/admin/search/profiles/*` | Profile 管理 | 蓝绿切换 search profile (migration 000041) |
@@ -189,3 +190,4 @@
 - [04-streaming-and-tools.md](./04-streaming-and-tools.md) SSE 实现 / 重试 / 错误归一化
 - [05-tests-and-quality.md](./05-tests-and-quality.md) 测试矩阵 / 80% 覆盖门
 - [06-deployment-and-config.md](./06-deployment-and-config.md) Dockerfile / docker-compose / env 矩阵
+- [07-workflow-runner.md](./07-workflow-runner.md) Agent Workflow 执行器 / trace / 安全边界

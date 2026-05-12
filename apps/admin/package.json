@@ -26,6 +26,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@lobehub/icons": "^4.1.0",
     "@tanstack/react-query": "^5.62.8",
+    "@xyflow/react": "^12.10.2",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

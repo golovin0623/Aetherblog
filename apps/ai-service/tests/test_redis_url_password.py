@@ -30,7 +30,7 @@ def fresh_settings(monkeypatch):
 
 
 def test_redis_url_unchanged_when_no_password(monkeypatch, fresh_settings):
-    monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+    monkeypatch.setenv("REDIS_PASSWORD", "")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     assert fresh_settings().redis_url == "redis://localhost:6379/0"
 
@@ -78,17 +78,17 @@ def test_redis_url_built_from_host_port_password(monkeypatch, fresh_settings):
     monkeypatch.setenv("REDIS_HOST", "124.221.0.1")
     monkeypatch.setenv("REDIS_PORT", "6999")
     monkeypatch.setenv("REDIS_PASSWORD", "3-var-pwd")
-    assert fresh_settings()().redis_url == "redis://:3-var-pwd@124.221.0.1:6999/0"
+    assert fresh_settings().redis_url == "redis://:3-var-pwd@124.221.0.1:6999/0"
 
 
 def test_redis_url_built_from_host_without_password(monkeypatch, fresh_settings):
     """REDIS_HOST 有值但 REDIS_PASSWORD 缺省 → URL 不带 userinfo, 保持对无认证
     Redis 的兼容。"""
     monkeypatch.delenv("REDIS_URL", raising=False)
-    monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+    monkeypatch.setenv("REDIS_PASSWORD", "")
     monkeypatch.setenv("REDIS_HOST", "cache.internal")
     monkeypatch.setenv("REDIS_PORT", "6379")
-    assert fresh_settings()().redis_url == "redis://cache.internal:6379/0"
+    assert fresh_settings().redis_url == "redis://cache.internal:6379/0"
 
 
 def test_explicit_redis_url_wins_over_three_var(monkeypatch, fresh_settings):
@@ -98,7 +98,7 @@ def test_explicit_redis_url_wins_over_three_var(monkeypatch, fresh_settings):
     monkeypatch.setenv("REDIS_PORT", "9999")
     monkeypatch.setenv("REDIS_PASSWORD", "should-be-ignored")
     assert (
-        fresh_settings()().redis_url
+        fresh_settings().redis_url
         == "rediss://:explicit@external.example.com:6380/2"
     )
 
@@ -110,7 +110,7 @@ def test_empty_redis_url_falls_through_to_three_var(monkeypatch, fresh_settings)
     monkeypatch.setenv("REDIS_HOST", "redis")
     monkeypatch.setenv("REDIS_PORT", "6379")
     monkeypatch.setenv("REDIS_PASSWORD", "fallback-pwd")
-    assert fresh_settings()().redis_url == "redis://:fallback-pwd@redis:6379/0"
+    assert fresh_settings().redis_url == "redis://:fallback-pwd@redis:6379/0"
 
 
 def test_redis_password_field_drives_merge(monkeypatch, fresh_settings):
@@ -124,7 +124,7 @@ def test_redis_password_field_drives_merge(monkeypatch, fresh_settings):
     """
     monkeypatch.setenv("REDIS_PASSWORD", "env-pwd")
     monkeypatch.setenv("REDIS_URL", "redis://host:6379/0")
-    settings = fresh_settings()()
+    settings = fresh_settings()
     # 字段应该被解析出来，不应为 None。
     assert settings.redis_password == "env-pwd"
     # URL 应已合并认证信息。

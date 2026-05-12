@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app
+from app.api.routes import search as search_module
 from app.api.deps import rate_limit, get_vector_store, get_metrics, get_usage_logger, get_cache, get_llm_router
 from app.core.config import get_settings
 from app.core.jwt import UserClaims
@@ -12,6 +13,7 @@ def test_semantic_search_content_limit(monkeypatch):
     # 默认的 MAX_URL_LENGTH (现代 LLM 上下文允许 12 万字符级别 GET 查询会
     # 在测试客户端层面被拒)。
     monkeypatch.setattr(settings, "max_input_chars", 1024)
+    monkeypatch.setattr(search_module.settings, "max_input_chars", 1024)
 
     # mock 各个依赖
     async def mock_rate_limit():
