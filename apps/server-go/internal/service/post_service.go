@@ -190,7 +190,7 @@ func (s *PostService) Create(ctx context.Context, req dto.CreatePostRequest, aut
 // 业务规则：
 //   - 文章不存在时返回错误；
 //   - 首次从非发布状态变为 PUBLISHED 时，自动记录 published_at；
-//   - 密码字段重新进行 bcrypt 加密；
+//   - 显式提交密码时重新进行 bcrypt 加密；未提交时保留原密码保护；
 //   - 更新完成后清除草稿缓存。
 func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRequest, authorID int64) (*dto.PostDetail, error) {
 	existing, err := s.repo.FindByID(ctx, id)
@@ -198,7 +198,7 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 		return nil, errors.New("文章不存在")
 	}
 
-	slug, err := s.resolveSlug(ctx, req.Slug, req.Title, id)
+	slug, err := s.resolveUpdateSlug(ctx, existing.Slug, req.Slug, req.Title, id)
 	if err != nil {
 		return nil, err
 	}
@@ -208,34 +208,22 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 		status = existing.Status
 	}
 
-	post := &model.Post{
-		Title: req.Title, Slug: slug, ContentMarkdown: &req.Content,
-		Summary: req.Summary, CoverImage: req.CoverImage, Status: status,
-		CategoryID: req.CategoryID, IsHidden: boolVal(req.IsHidden, existing.IsHidden),
-		IsPinned: boolVal(req.IsPinned, existing.IsPinned),
-		PinPriority: intVal(req.PinPriority, existing.PinPriority),
-		AllowComment: boolVal(req.AllowComment, existing.AllowComment),
-		Password: req.Password, WordCount: countWords(req.Content),
-		ReadingTime: calcReadingTime(req.Content),
-	}
-	// 首次发布时自动记录发布时间
-	if status == "PUBLISHED" && existing.PublishedAt == nil {
-		now := time.Now()
-		post.PublishedAt = &now
-	} else if req.PublishedAt != nil {
-		post.PublishedAt = req.PublishedAt
-	} else {
-		post.PublishedAt = existing.PublishedAt
-	}
-	if err := s.hashPostPassword(post); err != nil {
-		return nil, err
+	post, shouldHashPassword := buildPostUpdateModel(existing, req, slug, status)
+	if shouldHashPassword {
+		if err := s.hashPostPassword(post); err != nil {
+			return nil, err
+		}
 	}
 
 	out, err := s.repo.Update(ctx, id, post)
 	if err != nil {
 		return nil, err
 	}
-	s.repo.SetTags(ctx, id, req.TagIDs)
+	if req.TagIDs != nil {
+		if err := s.repo.SetTags(ctx, id, req.TagIDs); err != nil {
+			return nil, err
+		}
+	}
 
 	// 清除 Redis 草稿缓存
 	s.deleteDraft(ctx, id)
@@ -565,7 +553,7 @@ func (s *PostService) enrichDetail(ctx context.Context, p *model.Post, includeAd
 		IsPinned: p.IsPinned, PinPriority: p.PinPriority,
 		IsHidden: p.IsHidden, AllowComment: p.AllowComment,
 		PasswordRequired: p.Password != nil && *p.Password != "",
-		SEOTitle: p.SEOTitle, SEODescription: p.SEODescription, SEOKeywords: p.SEOKeywords,
+		SEOTitle:         p.SEOTitle, SEODescription: p.SEODescription, SEOKeywords: p.SEOKeywords,
 		LegacyAuthorName: p.LegacyAuthorName, LegacyVisitedCount: p.LegacyVisitedCount,
 		PublishedAt: p.PublishedAt, ScheduledAt: p.ScheduledAt,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
@@ -628,6 +616,53 @@ func (s *PostService) resolveSlug(ctx context.Context, reqSlug *string, title st
 	return slug, nil
 }
 
+// resolveUpdateSlug 保持 PUT 的兼容语义：未提交 slug 时保留原值；显式提交
+// slug（包括空字符串）时才按普通 slug 规则解析。
+func (s *PostService) resolveUpdateSlug(ctx context.Context, existingSlug string, reqSlug *string, title string, excludeID int64) (string, error) {
+	if reqSlug == nil {
+		return existingSlug, nil
+	}
+	return s.resolveSlug(ctx, reqSlug, title, excludeID)
+}
+
+// buildPostUpdateModel 组装 PUT 全量更新模型。CreatePostRequest 里不少字段是
+// optional，编辑器旧表单不会提交这些字段；此处必须保留已有值，避免窄表单把
+// 密码保护、封面图等重要属性误清空。
+func buildPostUpdateModel(existing *model.Post, req dto.CreatePostRequest, slug, status string) (*model.Post, bool) {
+	coverImage := existing.CoverImage
+	if req.CoverImage != nil {
+		coverImage = req.CoverImage
+	}
+
+	password := existing.Password
+	shouldHashPassword := false
+	if req.Password != nil {
+		password = req.Password
+		shouldHashPassword = true
+	}
+
+	publishedAt := existing.PublishedAt
+	if status == "PUBLISHED" && existing.PublishedAt == nil {
+		now := time.Now()
+		publishedAt = &now
+	} else if req.PublishedAt != nil {
+		publishedAt = req.PublishedAt
+	}
+
+	return &model.Post{
+		Title: req.Title, Slug: slug, ContentMarkdown: &req.Content,
+		Summary: req.Summary, CoverImage: coverImage, Status: status,
+		CategoryID: req.CategoryID, IsHidden: boolVal(req.IsHidden, existing.IsHidden),
+		IsPinned:     boolVal(req.IsPinned, existing.IsPinned),
+		PinPriority:  intVal(req.PinPriority, existing.PinPriority),
+		AllowComment: boolVal(req.AllowComment, existing.AllowComment),
+		Password:     password,
+		WordCount:    countWords(req.Content),
+		ReadingTime:  calcReadingTime(req.Content),
+		PublishedAt:  publishedAt,
+	}, shouldHashPassword
+}
+
 // hashPostPassword 将文章的明文密码字段替换为 bcrypt 哈希值。
 // 密码字段为空时清空该字段。
 func (s *PostService) hashPostPassword(p *model.Post) error {
@@ -656,7 +691,7 @@ func toListItem(p *model.Post, catName *string, tags []model.Tag) dto.PostListIt
 		TagNames: tagNames, ViewCount: p.ViewCount, CommentCount: p.CommentCount,
 		IsPinned: p.IsPinned, PinPriority: p.PinPriority, IsHidden: p.IsHidden,
 		PasswordRequired: p.Password != nil && *p.Password != "",
-		PublishedAt: p.PublishedAt, CreatedAt: p.CreatedAt,
+		PublishedAt:      p.PublishedAt, CreatedAt: p.CreatedAt,
 	}
 }
 
