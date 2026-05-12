@@ -75,7 +75,7 @@ export default function ArticlePicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择文章"
-      className="w-[min(360px,calc(100vw-1.25rem))] max-w-[calc(100vw-1.25rem)]"
+      className="w-full max-w-[calc(100vw-1.25rem)] sm:w-[min(360px,calc(100vw-1.25rem))]"
     >
       <div className="p-3 border-b border-[var(--ink-subtle)]/15">
         <div className="relative">
@@ -98,7 +98,7 @@ export default function ArticlePicker({
       </div>
 
       {/* 列表区域按 3 个固定槽位展示,避免底部露出半截下一篇文章。 */}
-      <div className="agent-thumb-scroll relative h-[min(288px,52vh)] overflow-y-auto">
+      <div className="agent-thumb-scroll relative h-[min(288px,52dvh)] overflow-y-auto sm:h-[288px]">
         {showInitialLoading && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             <Loader2 className="w-3 h-3 animate-spin mr-2" />

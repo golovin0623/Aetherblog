@@ -31,6 +31,7 @@ const typeIcons: Record<MediaType, typeof Image> = {
   VIDEO: Video,
   AUDIO: Music,
   DOCUMENT: FileText,
+  OTHER: FileText,
 };
 
 /**

@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
 import {
-  ArrowLeft,
   ChevronDown,
   Menu,
   PanelLeftClose,
@@ -55,13 +53,6 @@ const PROMPT_SUGGESTIONS = [
   '为这个标题生成 5 个备选',
   '把这段话翻译成英文',
 ];
-
-// 模式名的中文显示映射（顶栏 caption 等用户可见位置使用）。
-const MODE_LABEL: Record<AgentMode, string> = {
-  chat: '对话',
-  cowork: '协作',
-  code: '编排',
-};
 
 // 转义正则元字符,确保用文章/标签名做 RegExp 子模式时安全。
 function escapeRegExp(s: string): string {
@@ -871,28 +862,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 <PanelLeftClose className="w-[18px] h-[18px]" />
               )}
             </button>
-            <Link
-              href="/agent"
-              className="hidden lg:inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              {siteTitle.toUpperCase()}
-            </Link>
-            <div className="hidden lg:block w-px h-4 bg-[var(--ink-subtle)]/25 mx-1" />
-            <div className="min-w-0 flex flex-col">
+            <div className="flex min-w-0 items-center">
               <span
-                className="text-[var(--ink-primary)] text-[14px] font-medium truncate max-w-[58vw] sm:max-w-[24rem]"
+                className="max-w-[58vw] truncate text-[14px] font-medium leading-none text-[var(--ink-primary)] sm:max-w-[24rem]"
                 title={activeSession?.title || ''}
               >
                 {activeSession?.title || '尚未选择会话'}
               </span>
-              <span className="font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-                灵境 · {MODE_LABEL[activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat']}
-              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-4">
             {/* 顶栏只显示当前会话模式；完整选择收进渲染偏好面板，避免三段控件挤压右侧。 */}
             <div className="hidden sm:inline-flex">
               <ModeSwitch
@@ -905,7 +885,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 "新对话"统一收回 Sidebar drawer 内,顶栏不再单独提供入口 ——
                 避免与 Sidebar 内的"新建会话"双入口造成认知重复。
                 移动端的"会话模式 / 模型选择"已分别迁移到本面板与 Composer 左下角。 */}
-            <div className="inline-flex items-center gap-1 sm:pl-1 sm:ml-1 sm:border-l sm:border-[var(--ink-subtle)]/15">
+            <div className="inline-flex items-center gap-2 sm:gap-3 sm:pl-4 sm:ml-1 sm:border-l sm:border-[var(--ink-subtle)]/15">
               <ThemeToggle size="sm" />
               <RenderingPreferencesButton
                 mode={activeSession?.mode || 'chat'}
@@ -952,23 +932,27 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             )}
           </div>
 
-          {/* 浮出的"↓ 最新"按钮 —— 仅在用户向上滚开时显示 */}
+          {/* 浮出的滚动到底部按钮 —— 仅在用户向上滚开时显示 */}
           <AnimatePresence>
             {showJumpToBottom && (
-              <motion.button
+              <motion.div
                 key="jump-to-bottom"
-                type="button"
-                onClick={handleJumpToBottom}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute left-1/2 -translate-x-1/2 bottom-3 inline-flex h-10 w-10 items-center justify-center rounded-full surface-overlay border border-[var(--ink-subtle)]/22 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/45 transition-colors shadow-[0_8px_22px_-10px_rgba(0,0,0,0.25)]"
-                aria-label="滚动到最新消息"
-                title="滚动到最新消息"
+                className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center"
               >
-                <ChevronDown className="h-4 w-4" />
-              </motion.button>
+                <button
+                  type="button"
+                  onClick={handleJumpToBottom}
+                  className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full surface-overlay border border-[var(--ink-subtle)]/22 text-[var(--ink-secondary)] shadow-[0_8px_22px_-10px_rgba(0,0,0,0.25)] transition-colors hover:border-[var(--aurora-1)]/45 hover:text-[var(--ink-primary)]"
+                  aria-label="滚动到最新消息"
+                  title="滚动到最新消息"
+                >
+                  <ChevronDown className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
@@ -1022,9 +1006,6 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               onRemoveArticle={handleRemoveArticle}
               onRemoveTag={handleRemoveTag}
             />
-            <p className="mt-1.5 text-center font-mono text-[9.5px] uppercase tracking-[0.24em] text-[var(--ink-muted)]/80">
-              灵境 可能出错 · 关键决定请二次核对
-            </p>
           </div>
         </div>
       </section>
@@ -1244,48 +1225,15 @@ function RenderingPreferencesButton({
                   LAYOUT
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { value: 'bubble', label: '气泡', hint: '彩色卡片承载' },
-                    { value: 'engraved', label: '版书', hint: '文字浮印纸面' },
-                  ] as const
-                ).map((opt) => {
-                  const active = opt.value === displayMode;
-                  return (
-                    <motion.button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => onSetDisplayMode(opt.value)}
-                      aria-pressed={active}
-                      whileTap={{ scale: 0.96 }}
-                      transition={spring.precise}
-                      className={`relative flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
-                        active
-                          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)]'
-                          : 'border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]'
-                      }`}
-                    >
-                      {active && (
-                        <motion.span
-                          layoutId="layout-pill"
-                          aria-hidden
-                          className="absolute inset-0 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]"
-                          transition={spring.soft}
-                        />
-                      )}
-                      <span
-                        className={`relative text-[12.5px] font-medium transition-colors ${
-                          active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]'
-                        }`}
-                      >
-                        {opt.label}
-                      </span>
-                      <span className="relative text-[10.5px] text-[var(--ink-muted)]">{opt.hint}</span>
-                    </motion.button>
-                  );
-                })}
-              </div>
+              <AgentSegmentedControl
+                ariaLabel="显示模式"
+                value={displayMode}
+                options={[
+                  { value: 'bubble', label: '气泡', title: '彩色卡片承载' },
+                  { value: 'engraved', label: '版书', title: '文字浮印纸面' },
+                ]}
+                onChange={(v) => onSetDisplayMode(v as DisplayMode)}
+              />
             </motion.div>
 
             {/* 过渡动画 */}
@@ -1296,46 +1244,16 @@ function RenderingPreferencesButton({
                   STREAM
                 </span>
               </div>
-              <div
-                role="radiogroup"
-                className="relative grid grid-cols-3 gap-1 rounded-lg border border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 p-1"
-              >
-                {(
-                  [
-                    { value: 'none', label: '无' },
-                    { value: 'fade', label: '淡入' },
-                    { value: 'smooth', label: '平滑' },
-                  ] as const
-                ).map((opt) => {
-                  const active = opt.value === streamAnimation;
-                  return (
-                    <motion.button
-                      key={opt.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => onSetStreamAnimation(opt.value)}
-                      whileTap={{ scale: 0.94 }}
-                      transition={spring.precise}
-                      className={`relative h-7 rounded-md text-[12px] transition-colors ${
-                        active
-                          ? 'text-[var(--aurora-1)]'
-                          : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
-                      }`}
-                    >
-                      {active && (
-                        <motion.span
-                          layoutId="stream-pill"
-                          aria-hidden
-                          className="absolute inset-0 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]"
-                          transition={spring.soft}
-                        />
-                      )}
-                      <span className="relative">{opt.label}</span>
-                    </motion.button>
-                  );
-                })}
-              </div>
+              <AgentSegmentedControl
+                ariaLabel="过渡动画"
+                value={streamAnimation}
+                options={[
+                  { value: 'none', label: '无' },
+                  { value: 'fade', label: '淡入' },
+                  { value: 'smooth', label: '平滑' },
+                ]}
+                onChange={(v) => onSetStreamAnimation(v as StreamAnimationMode)}
+              />
               <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
                 节流模型 SSE 颗粒，平滑越好阅读节奏越稳。
               </p>
@@ -1373,6 +1291,77 @@ function RenderingPreferencesButton({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function AgentSegmentedControl({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string; title?: string }>;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) {
+  const activeIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="relative flex items-center rounded-[14px] bg-black/[0.08] p-[3px] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] backdrop-blur-2xl dark:bg-white/[0.08] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]"
+    >
+      <div
+        className="absolute bottom-[3px] top-[3px] rounded-[11px] transition-[transform] duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] motion-reduce:transition-none"
+        style={{
+          left: 3,
+          width: `calc((100% - 6px) / ${options.length})`,
+          transform: `translateX(${activeIndex * 100}%)`,
+          willChange: 'transform',
+        }}
+        aria-hidden
+      >
+        <div
+          className="absolute inset-0 rounded-[11px] opacity-100 transition-opacity duration-200 dark:opacity-0"
+          style={{
+            background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
+            boxShadow:
+              '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
+          }}
+        />
+        <div
+          className="absolute inset-0 rounded-[11px] opacity-0 transition-opacity duration-200 dark:opacity-100"
+          style={{
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 100%)',
+            boxShadow:
+              '0 3px 8px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.16), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
+          }}
+        />
+      </div>
+
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={opt.title}
+            onClick={() => onChange(opt.value)}
+            className={`relative z-10 flex h-9 flex-1 items-center justify-center rounded-[11px] text-[12.5px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-leaf)] ${
+              active
+                ? 'text-black dark:text-white'
+                : 'text-black/55 hover:text-black/70 dark:text-white/55 dark:hover:text-white/70'
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

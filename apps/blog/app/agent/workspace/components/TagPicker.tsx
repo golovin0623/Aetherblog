@@ -48,7 +48,7 @@ export default function TagPicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择标签"
-      className="w-[min(320px,calc(100vw-1.25rem))] max-w-[calc(100vw-1.25rem)]"
+      className="w-full max-w-[calc(100vw-1.25rem)] sm:w-[min(320px,calc(100vw-1.25rem))]"
     >
       <div className="p-3 border-b border-[var(--ink-subtle)]/15">
         <div className="relative">
@@ -70,7 +70,7 @@ export default function TagPicker({
         </div>
       </div>
 
-      <div className="agent-thumb-scroll max-h-[min(320px,52vh)] overflow-y-auto py-1">
+      <div className="agent-thumb-scroll max-h-[min(320px,52dvh)] overflow-y-auto py-1 sm:max-h-[320px]">
         {loading && (
           <div className="px-3 py-3 inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             <Loader2 className="w-3 h-3 animate-spin" />

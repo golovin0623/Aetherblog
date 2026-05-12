@@ -44,6 +44,32 @@ interface SyncDialogProps {
   onClose: () => void;
 }
 
+interface SyncCountsView {
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+}
+
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeSyncCounts(raw: unknown): SyncCountsView {
+  const counts = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  return {
+    pending: asCount(counts.pending ?? counts.Pending),
+    running: asCount(counts.running ?? counts.Running),
+    succeeded: asCount(counts.succeeded ?? counts.Succeeded),
+    failed: asCount(counts.failed ?? counts.Failed),
+  };
+}
+
+function hasActiveSyncJobs(raw: unknown): boolean {
+  const counts = normalizeSyncCounts(raw);
+  return counts.pending + counts.running > 0;
+}
+
 export function SyncDialog({ open, onClose }: SyncDialogProps) {
   const queryClient = useQueryClient();
   const [targetProviderId, setTargetProviderId] = useState<number | undefined>(undefined);
@@ -64,7 +90,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
     enabled: open,
     refetchInterval: (query) => {
       const data = query.state.data?.data;
-      return data?.running ? 2000 : 10000;
+      return hasActiveSyncJobs(data?.counts) ? 2000 : 10000;
     },
   });
   const status = statusResp?.data;
@@ -127,7 +153,10 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
 
   if (!open) return null;
 
-  const counts = status?.counts || { pending: 0, running: 0, succeeded: 0, failed: 0 };
+  const counts = normalizeSyncCounts(status?.counts);
+  const activeJobs = counts.pending + counts.running;
+  const hasActiveJobs = activeJobs > 0;
+  const workerRunning = status?.running ?? false;
   const total = counts.pending + counts.running + counts.succeeded + counts.failed;
   const progress = total > 0 ? Math.round(((counts.succeeded + counts.failed) / total) * 100) : 0;
 
@@ -207,10 +236,16 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                 <div className="rounded-xl bg-[var(--bg-secondary)]/40 border border-[var(--border-subtle)] p-4">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-medium text-[var(--text-primary)]">同步进度</p>
-                    {status?.running && (
+                    {hasActiveJobs ? (
                       <span className="inline-flex items-center gap-1.5 text-xs text-primary">
-                        <Loader2 className="w-3 h-3 animate-spin" /> Worker 运行中
+                        <Loader2 className="w-3 h-3 animate-spin" /> 队列处理中
                       </span>
+                    ) : workerRunning ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-status-success" /> Worker 待命
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)]">队列空闲</span>
                     )}
                   </div>
                   <div className="grid grid-cols-4 gap-3 mb-3">
@@ -245,13 +280,13 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                     {startMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
                     {startMutation.isPending ? '处理中...' : '立即备份未关联文件'}
                   </Button>
-                  {status?.running && (
+                  {workerRunning && (
                     <Button
                       variant="secondary"
                       onClick={() => cancelMutation.mutate()}
                       disabled={cancelMutation.isPending}
                     >
-                      暂停 worker
+                      {hasActiveJobs ? '暂停 worker' : '停止 worker'}
                     </Button>
                   )}
                 </div>
@@ -297,7 +332,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                 )}
 
                 {/* 完成提示 */}
-                {!status?.running && counts.succeeded > 0 && counts.pending === 0 && (
+                {!hasActiveJobs && counts.succeeded > 0 && (
                   <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-status-success/10 border border-status-success/30 text-sm text-status-success">
                     <CheckCircle2 className="w-4 h-4" />
                     本轮备份已完成 — 共 {counts.succeeded} 个文件成功

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 import time
 from typing import Any, Literal
 
@@ -84,13 +85,118 @@ class AgentModelItem(BaseModel):
     """ModelPicker 下拉的一行。"""
     providerCode: str
     providerName: str | None = None
+    providerIcon: str | None = None
     modelId: str
     displayName: str | None = None
     contextWindow: int | None = None
+    maxOutputTokens: int | None = None
     isDefault: bool = False
+    abilities: dict[str, bool] = Field(default_factory=dict)
+    extendParams: list[str] = Field(default_factory=list)
+    settings: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    releasedAt: str | None = None
+    description: str | None = None
     # scope 标记: "user" 表示该 provider 在当前用户名下有专属凭证；
     # "system" 表示用的是系统级（user_id IS NULL）凭证。前端可据此显示徽标。
     scope: str = "system"
+
+
+def _parse_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float) and value.is_integer():
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+    if isinstance(value, str):
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _normalize_flags(value: Any) -> set[str]:
+    if isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, str):
+        raw_items = value.replace("|", ",").replace(" ", ",").split(",")
+    else:
+        raw_items = []
+    return {str(item).strip().lower() for item in raw_items if str(item).strip()}
+
+
+def _resolve_agent_model_abilities(caps: dict[str, Any]) -> dict[str, bool]:
+    nested = caps.get("abilities") if isinstance(caps.get("abilities"), dict) else {}
+    flags = _normalize_flags(caps.get("ability") or caps.get("abilities"))
+
+    def has_flag(*names: str) -> bool:
+        return any(name.lower() in flags for name in names)
+
+    return {
+        "functionCall": bool(
+            nested.get("functionCall")
+            or caps.get("function_calling")
+            or caps.get("function_call")
+            or has_flag("functioncall", "function_call", "fc", "tool", "tools")
+        ),
+        "vision": bool(nested.get("vision") or caps.get("vision") or has_flag("vision", "image_input")),
+        "reasoning": bool(nested.get("reasoning") or caps.get("reasoning") or has_flag("reasoning", "think")),
+        "search": bool(nested.get("search") or caps.get("web_search") or has_flag("search", "web_search")),
+        "imageOutput": bool(
+            nested.get("imageOutput")
+            or caps.get("image_generation")
+            or has_flag("imageoutput", "image_output", "image_generation")
+        ),
+        "video": bool(nested.get("video") or caps.get("video") or has_flag("video")),
+        "files": bool(nested.get("files") or caps.get("files") or has_flag("file", "files")),
+        "structuredOutput": bool(
+            nested.get("structuredOutput")
+            or caps.get("structured_output")
+            or has_flag("structuredoutput", "structured_output", "json_schema")
+        ),
+    }
+
+
+def _resolve_agent_model_settings(caps: dict[str, Any]) -> dict[str, Any]:
+    settings = caps.get("settings")
+    return settings if isinstance(settings, dict) else {}
+
+
+def _resolve_agent_extend_params(settings: dict[str, Any]) -> list[str]:
+    raw = settings.get("extendParams")
+    if not isinstance(raw, list):
+        return []
+    params: list[str] = []
+    for item in raw:
+        value = str(item).strip()
+        if value and value not in params:
+            params.append(value)
+    return params
+
+
+def _resolve_agent_context_window(row: Any, caps: dict[str, Any]) -> int | None:
+    return (
+        _parse_int(row["context_window"])
+        or _parse_int(caps.get("contextWindowTokens"))
+        or _parse_int(caps.get("contextWindow"))
+        or _parse_int(caps.get("context_window"))
+        or _parse_int(caps.get("maxToken"))
+        or _parse_int(caps.get("max_token"))
+    )
+
+
+def _resolve_agent_max_output_tokens(row: Any, caps: dict[str, Any]) -> int | None:
+    return (
+        _parse_int(row["max_output_tokens"])
+        or _parse_int(caps.get("maxOutputTokens"))
+        or _parse_int(caps.get("maxOutput"))
+        or _parse_int(caps.get("max_output_tokens"))
+        or _parse_int(caps.get("max_output"))
+    )
 
 
 # 三种 mode 对应的 system prompt。
@@ -353,7 +459,16 @@ class _ThinkTagSplitter:
 
     def _drain(self, *, final: bool):
         while self._buffer:
-            boundary = len(self._buffer) if final else len(self._buffer) - self._guard
+            if final:
+                boundary = len(self._buffer)
+            else:
+                # 仅在末尾可能包含未闭合 think 标签时保留 guard 长度，避免流式输出恒定滞后。
+                last_lt = self._buffer.rfind("<")
+                boundary = (
+                    last_lt
+                    if last_lt != -1 and len(self._buffer) - last_lt < self._guard
+                    else len(self._buffer)
+                )
             if boundary <= 0:
                 return
 
@@ -375,7 +490,7 @@ class _ThinkTagSplitter:
                 self._in_think = not self._in_think
                 continue
 
-            if match is None:
+            if match is None or match.start() >= boundary:
                 chunk = self._buffer[:boundary]
                 self._buffer = self._buffer[boundary:]
                 if chunk:
@@ -798,7 +913,9 @@ async def list_agent_models(
     # llm_router.NON_CHAT_MODEL_TYPES 注入, 与 _resolve_override / fallback
     # 保持同源, 避免某天扩 denylist 时漏改 SQL。
     query = """
-        SELECT m.id, m.provider_id, p.code AS provider_code, p.display_name AS provider_name,
+        SELECT m.id, m.provider_id, p.code AS provider_code,
+               COALESCE(p.display_name, p.name, p.code) AS provider_name,
+               p.icon AS provider_icon,
                p.priority AS provider_priority,
                m.model_id, m.display_name, m.model_type, m.context_window,
                m.max_output_tokens, m.input_cost_per_1k, m.output_cost_per_1k,
@@ -843,14 +960,29 @@ async def list_agent_models(
             caps = {}
         if isinstance(caps, dict) and caps.get("chat") is False:
             continue
+        settings = _resolve_agent_model_settings(caps)
         items.append(
             AgentModelItem(
                 providerCode=row["provider_code"],
                 providerName=row["provider_name"],
+                providerIcon=row["provider_icon"],
                 modelId=row["model_id"],
                 displayName=row["display_name"] or row["model_id"],
-                contextWindow=row["context_window"],
+                contextWindow=_resolve_agent_context_window(row, caps),
+                maxOutputTokens=_resolve_agent_max_output_tokens(row, caps),
                 isDefault=False,
+                abilities=_resolve_agent_model_abilities(caps),
+                extendParams=_resolve_agent_extend_params(settings),
+                settings=settings,
+                source=caps.get("source") if isinstance(caps.get("source"), str) else None,
+                releasedAt=(
+                    caps.get("released_at")
+                    if isinstance(caps.get("released_at"), str)
+                    else caps.get("releasedAt")
+                    if isinstance(caps.get("releasedAt"), str)
+                    else None
+                ),
+                description=caps.get("description") if isinstance(caps.get("description"), str) else None,
                 scope="user" if row["has_user_cred"] else "system",
             )
         )
@@ -1005,6 +1137,20 @@ async def agent_chat(
                 },
             )
             yield 'data: {"type": "done"}\n\n'
+        except asyncio.CancelledError:
+            error_code = "client_cancelled"
+            logger.info(
+                "agent.stream_cancelled",
+                extra={
+                    "data": {
+                        "provider_code": resolved.provider_code,
+                        "model_id": resolved.model_id,
+                        "response_chars": response_chars,
+                        "think_chars": think_chars,
+                    }
+                },
+            )
+            raise
         except Exception as exc:
             error_code = "agent_stream_error"
             logger.warning(
@@ -1025,18 +1171,20 @@ async def agent_chat(
             )
             yield f"data: {err}\n\n"
         finally:
-            await _record_agent_usage(
-                request=request,
-                metrics=metrics,
-                usage_logger=usage_logger,
-                user_id=user_id,
-                resolved=resolved,
-                request_text=request_text,
-                # provider 暴露出来的 thinking/reasoning 也属于生成输出，费用估算应计入。
-                response_text="".join(think_parts) + "".join(response_parts),
-                start_time=start_time,
-                success=error_code is None,
-                error_code=error_code,
+            await asyncio.shield(
+                _record_agent_usage(
+                    request=request,
+                    metrics=metrics,
+                    usage_logger=usage_logger,
+                    user_id=user_id,
+                    resolved=resolved,
+                    request_text=request_text,
+                    # provider 暴露出来的 thinking/reasoning 也属于生成输出，费用估算应计入。
+                    response_text="".join(think_parts) + "".join(response_parts),
+                    start_time=start_time,
+                    success=error_code is None,
+                    error_code=error_code,
+                )
             )
 
     return StreamingResponse(

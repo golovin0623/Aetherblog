@@ -30,8 +30,8 @@ import {
   CircleHelp,
   Copy,
   FileText,
+  LayoutDashboard,
   LayoutGrid,
-  Loader2,
   MessageCircle,
   Moon,
   MoreHorizontal,
@@ -90,6 +90,44 @@ const promptChips = [
 ];
 
 type DisplayMode = 'bubble' | 'engraved';
+type SendShortcut = 'enter' | 'mod-enter';
+
+const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
+const SEND_SHORTCUT_OPTIONS: Array<{
+  value: SendShortcut;
+  label: string;
+  keys: string;
+  description: string;
+}> = [
+  {
+    value: 'enter',
+    label: 'Enter 发送',
+    keys: '↵',
+    description: 'Shift + Enter 保持换行',
+  },
+  {
+    value: 'mod-enter',
+    label: '⌘ / Ctrl + Enter 发送',
+    keys: '⌘ ↵',
+    description: 'Enter 直接换行',
+  },
+];
+
+function readSendShortcut(): SendShortcut {
+  if (typeof window === 'undefined') return 'enter';
+  const stored = window.localStorage.getItem(SEND_SHORTCUT_STORAGE_KEY);
+  return stored === 'mod-enter' ? 'mod-enter' : 'enter';
+}
+
+function formatContextWindow(value?: number | null): string | null {
+  if (!value || value <= 0) return null;
+  if (value >= 1_000_000) {
+    const rounded = Math.round((value / 1_000_000) * 10) / 10;
+    return `${String(rounded).replace(/\.0$/, '')}M`;
+  }
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return String(value);
+}
 
 interface CurrentUser {
   id: string;
@@ -172,6 +210,8 @@ export default function AetherHubWorkspacePage() {
 
   // ----- 右侧上下文面板：收起 / 展开 -----
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [mobileSessionOpen, setMobileSessionOpen] = useState(false);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
 
   // ----- 显示模式：bubble（气泡） vs engraved（版书）-----
   // 版书模式下，user/agent 标识行变成居中浮动分隔线，正文以"凸起浮印"质感渲染。
@@ -212,6 +252,13 @@ export default function AetherHubWorkspacePage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('aetherblog.admin.aetherhub.fontSize', String(fontSize));
   }, [fontSize]);
+
+  // ----- 发送触发方式：对齐 LobeHub 的可配置发送键位。 -----
+  const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
+  }, [sendShortcut]);
 
   const updateSession = useCallback(
     (id: string, updater: (s: AgentSession) => AgentSession) => {
@@ -575,20 +622,33 @@ export default function AetherHubWorkspacePage() {
             onDeleteSession={handleDeleteSession}
           />
 
+          <MobileSessionDrawer
+            open={mobileSessionOpen}
+            currentUser={currentUser}
+            sessions={sessions}
+            activeId={activeId}
+            streaming={streaming}
+            onClose={() => setMobileSessionOpen(false)}
+            onBack={() => navigate('/dashboard')}
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+            onDeleteSession={handleDeleteSession}
+            onOpenConfig={() => setMobileConfigOpen(true)}
+          />
+
           <section className="flex h-full min-h-0 min-w-0 flex-col border-x border-[var(--hub-border)]">
             <TopBar
               currentUser={currentUser}
               activeSession={activeSession}
-              modelsState={modelsState}
               streaming={streaming}
               displayMode={displayMode}
               onSetDisplayMode={setDisplayMode}
-              onSetModel={handleSetModel}
-              onBack={() => navigate('/dashboard')}
               onNewSession={handleNewSession}
+              onOpenSessions={() => setMobileSessionOpen(true)}
+              onOpenConfig={() => setMobileConfigOpen(true)}
             />
 
-              <WorkspaceCanvas
+            <WorkspaceCanvas
               greeting={greeting}
               nickname={currentUser.nickname}
               currentUser={currentUser}
@@ -599,6 +659,8 @@ export default function AetherHubWorkspacePage() {
               displayMode={displayMode}
               streamAnimation={streamAnimation}
               fontSize={fontSize}
+              sendShortcut={sendShortcut}
+              onSetSendShortcut={setSendShortcut}
               onComposerChange={setComposer}
               onSend={handleSend}
               onAbort={handleAbort}
@@ -647,6 +709,34 @@ export default function AetherHubWorkspacePage() {
               toast.success('已清空当前对话');
             }}
           />
+
+          <MobileContextSheet
+            open={mobileConfigOpen}
+            session={activeSession}
+            modelsState={modelsState}
+            displayMode={displayMode}
+            onSetDisplayMode={setDisplayMode}
+            streamAnimation={streamAnimation}
+            onSetStreamAnimation={setStreamAnimation}
+            fontSize={fontSize}
+            onSetFontSize={setFontSize}
+            onClose={() => setMobileConfigOpen(false)}
+            onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
+            onClearMessages={() => {
+              if (!activeSession) return;
+              if (streaming) {
+                toast.info('请先停止当前回答');
+                return;
+              }
+              updateSession(activeSession.id, (s) => ({
+                ...s,
+                messages: [],
+                title: '新对话',
+                updatedAt: Date.now(),
+              }));
+              toast.success('已清空当前对话');
+            }}
+          />
         </div>
       </div>
     </div>
@@ -676,7 +766,9 @@ function WorkspaceSidebar({
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
 }) {
-  const groups = useMemo(() => groupSessionsByRecency(sessions), [sessions]);
+  const [query, setQuery] = useState('');
+  const filteredSessions = useMemo(() => filterSessions(sessions, query), [sessions, query]);
+  const groups = useMemo(() => groupSessionsByRecency(filteredSessions), [filteredSessions]);
   const navigate = useNavigate();
 
   return (
@@ -688,7 +780,7 @@ function WorkspaceSidebar({
           aria-label="返回管理后台"
           className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
-          <LayoutGrid className="h-4 w-4" />
+          <LayoutDashboard className="h-4 w-4" />
           <span className="text-sm">控制台</span>
         </button>
         <span className="font-display text-sm tracking-[0.16em] text-[var(--ink-muted)]">
@@ -701,7 +793,7 @@ function WorkspaceSidebar({
         onClick={onNewSession}
         disabled={streaming}
         className={cn(
-          'mb-4 flex h-11 w-full items-center justify-between rounded-xl px-4 text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-[0.99]',
+          'mb-3 flex h-11 w-full items-center justify-between rounded-2xl border border-transparent px-4 text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-[0.99]',
           streaming && 'cursor-not-allowed opacity-60',
         )}
       >
@@ -712,10 +804,21 @@ function WorkspaceSidebar({
         <span className="rounded-md bg-white/16 px-1.5 py-0.5 font-mono text-[11px]">⌘ K</span>
       </button>
 
+      <div className="relative mb-3">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          type="search"
+          placeholder="搜索对话..."
+          className="h-10 w-full rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] pl-9 pr-3 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
+        />
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
-        {sessions.length === 0 && (
+        {filteredSessions.length === 0 && (
           <div className="px-2 py-6 text-center text-[var(--fs-caption)] text-[var(--ink-muted)]">
-            暂无会话，从上方「新建对话」开始
+            {query.trim() ? '没有匹配的对话' : '暂无会话，从上方「新建对话」开始'}
           </div>
         )}
         {groups.map((group) => (
@@ -741,24 +844,14 @@ function WorkspaceSidebar({
       <div className="border-t border-[var(--hub-border)] pt-4">
         <button
           type="button"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/ai-config')}
           className="mb-3 flex h-9 w-full items-center gap-3 rounded-lg px-2 text-sm text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
           <Settings className="h-4 w-4" />
-          其他设置
+          灵境配置
         </button>
         <div className="flex items-center gap-3">
-          {currentUser.avatarUrl ? (
-            <img
-              src={currentUser.avatarUrl}
-              alt={currentUser.nickname}
-              className="h-10 w-10 shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-[var(--hub-on-accent)] [background:var(--hub-gradient)]">
-              {currentUser.initial}
-            </div>
-          )}
+          <UserAvatar currentUser={currentUser} className="h-10 w-10" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-[var(--ink-primary)]">
               {currentUser.nickname}
@@ -773,16 +866,192 @@ function WorkspaceSidebar({
   );
 }
 
+function MobileSessionDrawer({
+  open,
+  currentUser,
+  sessions,
+  activeId,
+  streaming,
+  onClose,
+  onBack,
+  onNewSession,
+  onSelectSession,
+  onDeleteSession,
+  onOpenConfig,
+}: {
+  open: boolean;
+  currentUser: CurrentUser;
+  sessions: AgentSession[];
+  activeId: string | null;
+  streaming: boolean;
+  onClose: () => void;
+  onBack: () => void;
+  onNewSession: () => void;
+  onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
+  onOpenConfig: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const filteredSessions = useMemo(() => filterSessions(sessions, query), [sessions, query]);
+  const groups = useMemo(() => groupSessionsByRecency(filteredSessions), [filteredSessions]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <motion.div
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            onClick={onClose}
+            aria-hidden="true"
+          />
+          <motion.aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="对话记录"
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.9 }}
+            className="relative flex h-full w-[min(88vw,360px)] flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 shadow-[24px_0_54px_-30px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                控制台
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭对话记录"
+                className="grid h-10 w-10 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-4 flex items-center gap-3 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 py-3">
+              <UserAvatar currentUser={currentUser} className="h-10 w-10" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+                  {currentUser.nickname}
+                </div>
+                <div className="mt-0.5 inline-flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal-success)]" />
+                  就绪
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                onNewSession();
+                onClose();
+              }}
+              disabled={streaming}
+              className={cn(
+                'mb-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-medium text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)] active:scale-[0.99]',
+                streaming && 'cursor-not-allowed opacity-60',
+              )}
+            >
+              <Plus className="h-4 w-4" />
+              新建对话
+            </button>
+
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                type="search"
+                placeholder="搜索对话..."
+                className="h-11 w-full rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] pl-9 pr-3 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
+              />
+            </div>
+
+            <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+              {filteredSessions.length === 0 && (
+                <div className="px-2 py-8 text-center text-[12px] text-[var(--ink-muted)]">
+                  {query.trim() ? '没有匹配的对话' : '暂无会话，从上方新建对话开始'}
+                </div>
+              )}
+              {groups.map((group) => (
+                <div key={group.label} className="mb-4">
+                  <div className="mb-1 px-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                    {group.label}
+                  </div>
+                  <div className="space-y-1">
+                    {group.sessions.map((session) => (
+                      <SessionRow
+                        key={session.id}
+                        session={session}
+                        active={session.id === activeId}
+                        showDelete
+                        onSelect={() => {
+                          onSelectSession(session.id);
+                          onClose();
+                        }}
+                        onDelete={() => onDeleteSession(session.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 border-t border-[var(--hub-border)] pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenConfig();
+                  onClose();
+                }}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <Settings className="h-4 w-4" />
+                当前对话配置
+              </button>
+            </div>
+          </motion.aside>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function SessionRow({
   session,
   active,
   onSelect,
   onDelete,
+  showDelete = false,
 }: {
   session: AgentSession;
   active: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  showDelete?: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   return (
@@ -817,7 +1086,9 @@ function SessionRow({
           'grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)]',
           confirmDelete
             ? 'text-[var(--signal-danger)] opacity-100'
-            : 'opacity-0 group-hover:opacity-100 hover:text-[var(--signal-danger)]',
+            : showDelete
+              ? 'opacity-80 hover:text-[var(--signal-danger)]'
+              : 'opacity-0 group-hover:opacity-100 hover:text-[var(--signal-danger)]',
         )}
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -833,23 +1104,21 @@ function SessionRow({
 function TopBar({
   currentUser,
   activeSession,
-  modelsState,
   streaming,
   displayMode,
   onSetDisplayMode,
-  onSetModel,
-  onBack,
   onNewSession,
+  onOpenSessions,
+  onOpenConfig,
 }: {
   currentUser: CurrentUser;
   activeSession: AgentSession | null;
-  modelsState: ReturnType<typeof useAgentModels>;
   streaming: boolean;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
-  onSetModel: (modelId: string | null, providerCode: string | null) => void;
-  onBack: () => void;
   onNewSession: () => void;
+  onOpenSessions: () => void;
+  onOpenConfig: () => void;
 }) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
 
@@ -858,9 +1127,10 @@ function TopBar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
-          onClick={onBack}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] lg:hidden"
-          aria-label="返回管理后台"
+          onClick={onOpenSessions}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] lg:hidden"
+          aria-label="打开对话记录"
+          title="打开对话记录"
         >
           <LayoutGrid className="h-4 w-4" />
         </button>
@@ -874,7 +1144,7 @@ function TopBar({
           <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-[var(--ink-muted)]">
             {streaming ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin text-[var(--aurora-1)]" />
+                <span className="hub-think-live-dot" aria-hidden="true" />
                 <span className="text-[var(--aurora-1)]">正在生成</span>
               </>
             ) : (
@@ -890,15 +1160,6 @@ function TopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
-        {/* 桌面端：模型选择器在 TopBar；移动端：只在 Composer 出现，避免挤标题 */}
-        <div className="hidden md:block">
-          <ModelPickerButton
-            activeSession={activeSession}
-            modelsState={modelsState}
-            disabled={streaming}
-            onSetModel={onSetModel}
-          />
-        </div>
         <button
           type="button"
           onClick={() => onSetDisplayMode(displayMode === 'bubble' ? 'engraved' : 'bubble')}
@@ -919,33 +1180,67 @@ function TopBar({
         </button>
         <button
           type="button"
+          onClick={onOpenConfig}
+          aria-label="打开当前对话配置"
+          title="打开当前对话配置"
+          className="grid h-9 w-9 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] xl:hidden"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           onClick={onNewSession}
           disabled={streaming}
           aria-label="新建对话"
           title="新建对话"
           className={cn(
-            'grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
+            'grid h-9 w-9 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
             streaming && 'cursor-not-allowed opacity-60',
           )}
         >
           <Plus className="h-4 w-4" />
         </button>
-        {currentUser.avatarUrl ? (
-          <img
-            src={currentUser.avatarUrl}
-            alt={currentUser.nickname}
-            className="h-8 w-8 rounded-full object-cover md:h-9 md:w-9"
-          />
-        ) : (
-          <div
-            className="grid h-8 w-8 place-items-center rounded-full bg-[var(--aurora-1)] text-[12px] font-semibold text-[var(--hub-on-accent)] md:h-9 md:w-9 md:text-sm"
-            aria-label={currentUser.nickname}
-          >
-            {currentUser.initial}
-          </div>
-        )}
+        <UserAvatar currentUser={currentUser} className="h-8 w-8 md:h-9 md:w-9" />
       </div>
     </header>
+  );
+}
+
+function UserAvatar({
+  currentUser,
+  className,
+}: {
+  currentUser: CurrentUser;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [currentUser.avatarUrl]);
+
+  if (currentUser.avatarUrl && !failed) {
+    return (
+      <img
+        src={currentUser.avatarUrl}
+        alt={currentUser.nickname}
+        onError={() => setFailed(true)}
+        className={cn('shrink-0 rounded-full object-cover ring-1 ring-[var(--hub-border)]', className)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'grid shrink-0 place-items-center rounded-full text-sm font-semibold text-[var(--hub-on-accent)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] [background:var(--hub-gradient)]',
+        className,
+      )}
+      aria-label={currentUser.nickname}
+      title={currentUser.nickname}
+    >
+      {currentUser.initial}
+    </div>
   );
 }
 
@@ -969,6 +1264,7 @@ function ModelPickerButton({
   align?: 'start' | 'end';
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -991,16 +1287,37 @@ function ModelPickerButton({
     return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
   const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      const haystack = [
+        item.providerCode,
+        item.providerName,
+        item.modelId,
+        item.displayName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, query]);
+
   const grouped = useMemo(() => {
-    const map = new Map<string, typeof items>();
-    for (const item of items) {
+    const map = new Map<string, typeof filteredItems>();
+    for (const item of filteredItems) {
       const key = item.providerCode;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(item);
     }
     return Array.from(map.entries());
-  }, [items]);
+  }, [filteredItems]);
 
   const currentLabel = useMemo(() => {
     if (!activeSession?.modelId) return '自动路由';
@@ -1009,6 +1326,17 @@ function ModelPickerButton({
     );
     return found ? modelLabel(found) : activeSession.modelId;
   }, [activeSession?.modelId, activeSession?.providerCode, items]);
+
+  const currentModel = useMemo(() => {
+    if (!activeSession?.modelId) return null;
+    return (
+      items.find(
+        (m) =>
+          m.modelId === activeSession.modelId && m.providerCode === activeSession.providerCode,
+      ) ?? null
+    );
+  }, [activeSession?.modelId, activeSession?.providerCode, items]);
+  const currentContext = formatContextWindow(currentModel?.contextWindow);
 
   return (
     <div ref={containerRef} className="relative">
@@ -1019,15 +1347,22 @@ function ModelPickerButton({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          'inline-flex h-9 max-w-[220px] items-center gap-2 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)]',
+          'inline-flex h-9 max-w-[38vw] items-center gap-2 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] py-1 pl-2 pr-2.5 text-sm text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors hover:bg-[var(--hub-control-hover)] sm:max-w-[238px]',
           disabled && 'cursor-not-allowed opacity-60',
         )}
       >
-        <Bot className="h-4 w-4 shrink-0 text-[var(--ink-secondary)]" />
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]">
+          {activeSession?.modelId ? <AetherMark className="h-4 w-4" /> : <Bot className="h-3.5 w-3.5" />}
+        </span>
         <span className="truncate">{currentLabel}</span>
+        {currentContext && (
+          <span className="hidden shrink-0 rounded-md bg-[var(--hub-control-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-muted)] sm:inline">
+            {currentContext}
+          </span>
+        )}
         <ChevronDown
           className={cn(
-            'h-4 w-4 shrink-0 text-[var(--ink-muted)] transition-transform',
+            'h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)] transition-transform',
             open && 'rotate-180',
           )}
         />
@@ -1036,38 +1371,63 @@ function ModelPickerButton({
         <div
           role="listbox"
           className={cn(
-            'absolute z-30 w-[min(320px,calc(100vw-2rem))] max-h-[min(420px,60vh)] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[var(--hub-card-shadow)] backdrop-blur-2xl',
+            'absolute z-30 w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_64px_-20px_rgba(0,0,0,0.42)] backdrop-blur-2xl',
             placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2',
             align === 'end' ? 'right-0' : 'left-0',
           )}
         >
-          <button
-            type="button"
-            onClick={() => {
-              onSetModel(null, null);
-              setOpen(false);
-            }}
-            className={cn(
-              'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
-              !activeSession?.modelId
-                ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
-                : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
-            )}
-          >
-            <Sparkles className="h-4 w-4 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">自动路由</div>
-              <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
-                按任务路由策略自动选模型
+          <div className="border-b border-[var(--hub-border)] p-3">
+            <div className="flex items-center gap-2 rounded-xl bg-[var(--hub-control)] px-3 py-2 text-[var(--ink-muted)] ring-1 ring-[var(--hub-border)]">
+              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索模型 ..."
+                className="h-7 min-w-0 flex-1 bg-transparent text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none"
+                autoFocus
+              />
+              <div className="hidden items-center rounded-lg bg-[var(--hub-panel-strong)] p-0.5 sm:flex">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--hub-active)] text-[var(--aurora-1)]">
+                  <Brain className="h-4 w-4" />
+                </span>
+                <span className="grid h-7 w-7 place-items-center rounded-md text-[var(--ink-muted)]">
+                  <LayoutGrid className="h-4 w-4" />
+                </span>
               </div>
             </div>
-            {!activeSession?.modelId && <Check className="h-4 w-4 shrink-0" />}
-          </button>
+          </div>
+
+          <div className="max-h-[min(480px,60vh)] overflow-y-auto p-2">
+            <button
+              type="button"
+              onClick={() => {
+                onSetModel(null, null);
+                setOpen(false);
+              }}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
+                !activeSession?.modelId
+                  ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                  : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+              )}
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">自动路由</div>
+                <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                  按任务路由策略自动选模型
+                </div>
+              </div>
+              {!activeSession?.modelId && <Check className="h-4 w-4 shrink-0" />}
+            </button>
 
           {modelsState.status === 'loading' && (
-            <div className="px-3 py-4 text-center text-[var(--fs-caption)] text-[var(--ink-muted)]">
-              <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-              加载模型清单…
+            <div className="space-y-2 px-3 py-4" aria-label="加载模型清单">
+              <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+              <div className="h-9 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+              <div className="h-9 animate-pulse rounded-xl bg-[var(--hub-control)]" />
             </div>
           )}
 
@@ -1079,14 +1439,15 @@ function ModelPickerButton({
 
           {modelsState.status === 'ready' && grouped.length === 0 && (
             <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--ink-muted)]">
-              没有已启用的模型，去 AI 配置页添加
+              {query.trim() ? '没有匹配的模型' : '没有已启用的模型，去 AI 配置页添加'}
             </div>
           )}
 
           {grouped.map(([providerCode, list]) => (
             <div key={providerCode} className="mt-2">
-              <div className="px-3 pb-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+              <div className="flex items-center justify-between px-3 pb-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
                 {list[0]?.providerName || providerCode}
+                <Settings className="h-3.5 w-3.5" aria-hidden="true" />
               </div>
               {list.map((m) => {
                 const selected =
@@ -1128,6 +1489,7 @@ function ModelPickerButton({
               })}
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>
@@ -1149,6 +1511,8 @@ function WorkspaceCanvas({
   displayMode,
   streamAnimation,
   fontSize,
+  sendShortcut,
+  onSetSendShortcut,
   onComposerChange,
   onSend,
   onAbort,
@@ -1172,6 +1536,8 @@ function WorkspaceCanvas({
   displayMode: DisplayMode;
   streamAnimation: StreamAnimationMode;
   fontSize: number;
+  sendShortcut: SendShortcut;
+  onSetSendShortcut: (shortcut: SendShortcut) => void;
   onComposerChange: (value: string) => void;
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -1311,6 +1677,8 @@ function WorkspaceCanvas({
         modelsState={modelsState}
         activeSession={activeSession}
         onSetModel={onSetModel}
+        sendShortcut={sendShortcut}
+        onSetSendShortcut={onSetSendShortcut}
         selectedArticles={selectedArticles}
         onPickArticle={onPickArticle}
         onRemoveArticle={onRemoveArticle}
@@ -2099,6 +2467,8 @@ function Composer({
   activeSession,
   modelsState,
   onSetModel,
+  sendShortcut,
+  onSetSendShortcut,
   selectedArticles,
   onPickArticle,
   onRemoveArticle,
@@ -2112,6 +2482,8 @@ function Composer({
   activeSession: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
+  sendShortcut: SendShortcut;
+  onSetSendShortcut: (shortcut: SendShortcut) => void;
   selectedArticles: AgentArticle[];
   onPickArticle: (article: AgentArticle) => void;
   onRemoveArticle: (id: number) => void;
@@ -2121,7 +2493,9 @@ function Composer({
   const chipTrayRef = useRef<HTMLDivElement | null>(null);
   const atBtnRef = useRef<HTMLButtonElement | null>(null);
   const slashBtnRef = useRef<HTMLButtonElement | null>(null);
+  const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const [picker, setPicker] = useState<'article' | 'slash' | null>(null);
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
 
   const autosize = useCallback(() => {
@@ -2136,7 +2510,13 @@ function Composer({
   }, [autosize, value]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const shouldSend =
+      sendShortcut === 'enter'
+        ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+        : (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+
+    if (shouldSend) {
       e.preventDefault();
       if (!streaming) onSend(value);
     }
@@ -2152,6 +2532,27 @@ function Composer({
 
   const selectedArticleCount = selectedArticles.length;
   const trayScrollEnabled = selectedArticleCount > 6;
+  const activeShortcut =
+    SEND_SHORTCUT_OPTIONS.find((option) => option.value === sendShortcut) ??
+    SEND_SHORTCUT_OPTIONS[0];
+  const canSend = !!value.trim() && !streaming;
+
+  useEffect(() => {
+    if (!sendMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!sendMenuRef.current) return;
+      if (!sendMenuRef.current.contains(e.target as Node)) setSendMenuOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setSendMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [sendMenuOpen]);
 
   useEffect(() => {
     const el = chipTrayRef.current;
@@ -2266,8 +2667,8 @@ function Composer({
             )}
             style={{ boxShadow: 'none' }}
           />
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1">
+          <div className="mt-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:min-h-10">
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden">
               <ModelPickerButton
                 activeSession={activeSession}
                 modelsState={modelsState}
@@ -2284,6 +2685,7 @@ function Composer({
                 ref={atBtnRef}
                 title="引用文章 (@)"
                 active={picker === 'article'}
+                count={selectedArticleCount}
                 onClick={() => togglePicker('article')}
               >
                 <AtSign className="h-3.5 w-3.5" />
@@ -2296,16 +2698,13 @@ function Composer({
               >
                 <SlashSquare className="h-3.5 w-3.5" />
               </ToolButton>
-              <span className="ml-1.5 hidden truncate font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] lg:inline">
-                Enter 发送 · Shift+Enter 换行
-              </span>
             </div>
 
             {streaming ? (
               <button
                 type="button"
                 onClick={onAbort}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)] px-3 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95"
+                className="inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)] px-3 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95"
                 aria-label="停止生成"
                 title="停止生成"
               >
@@ -2313,19 +2712,97 @@ function Composer({
                 停止
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => onSend(value)}
-                disabled={!value.trim()}
+              <div
+                ref={sendMenuRef}
                 className={cn(
-                  'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-95 md:h-11 md:w-11',
-                  !value.trim() && 'cursor-not-allowed opacity-50',
+                  'relative flex h-11 shrink-0 items-center overflow-hidden rounded-full border transition-colors',
+                  canSend
+                    ? 'border-transparent text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)]'
+                    : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]',
                 )}
-                aria-label="发送"
-                title="发送（Enter）"
               >
-                <ArrowUp className="h-5 w-5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onSend(value)}
+                  disabled={!canSend}
+                  className={cn(
+                    'grid h-11 w-11 place-items-center transition-colors active:scale-95',
+                    !canSend && 'cursor-not-allowed text-[var(--ink-muted)]',
+                  )}
+                  aria-label="发送"
+                  title={`发送（${activeShortcut.label}）`}
+                >
+                  <ArrowUp className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSendMenuOpen((open) => !open)}
+                  aria-expanded={sendMenuOpen}
+                  aria-haspopup="menu"
+                  aria-label="选择发送方式"
+                  title="选择发送方式"
+                  className={cn(
+                    'grid h-11 w-9 place-items-center border-l transition-colors active:scale-95',
+                    canSend
+                      ? 'border-[color-mix(in_oklch,var(--hub-on-accent)_22%,transparent)]'
+                      : 'border-[var(--hub-border)] hover:bg-[var(--hub-control-hover)]',
+                  )}
+                >
+                  <ChevronDown
+                    className={cn('h-4 w-4 transition-transform', sendMenuOpen && 'rotate-180')}
+                  />
+                </button>
+
+                <AnimatePresence>
+                  {sendMenuOpen && (
+                    <motion.div
+                      role="menu"
+                      aria-label="发送触发方式"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute bottom-full right-0 z-40 mb-3 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl"
+                    >
+                      <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                        发送方式
+                      </div>
+                      {SEND_SHORTCUT_OPTIONS.map((option) => {
+                        const selected = option.value === sendShortcut;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={selected}
+                            onClick={() => {
+                              onSetSendShortcut(option.value);
+                              setSendMenuOpen(false);
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
+                              selected
+                                ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                                : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+                            )}
+                          >
+                            <span className="grid h-7 w-9 shrink-0 place-items-center rounded-lg bg-[var(--hub-control)] font-mono text-[12px] text-[var(--ink-secondary)]">
+                              {option.keys}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium">{option.label}</span>
+                              <span className="block text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                                {option.description}
+                              </span>
+                            </span>
+                            {selected && <Check className="h-4 w-4 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )}
           </div>
 
@@ -2357,9 +2834,10 @@ const ToolButton = forwardRef<
     children: ReactNode;
     title: string;
     active?: boolean;
+    count?: number;
     onClick?: () => void;
   }
->(function ToolButton({ children, title, active, onClick }, ref) {
+>(function ToolButton({ children, title, active, count, onClick }, ref) {
   return (
     <button
       ref={ref}
@@ -2369,13 +2847,18 @@ const ToolButton = forwardRef<
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 active:scale-95',
+        'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-200 active:scale-95 md:h-9 md:w-9',
         active
           ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
           : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]',
       )}
     >
       {children}
+      {!!count && count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[var(--aurora-1)] px-1 font-mono text-[9px] leading-4 text-[var(--hub-on-accent)]">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
     </button>
   );
 });
@@ -2526,9 +3009,10 @@ function ArticlePicker({
       {/* 列表区域固定高度 —— 内容数量变化不影响 modal 整体尺寸。 */}
       <div className="relative h-[300px] overflow-y-auto py-1">
         {showInitialLoading && (
-          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            搜索中…
+          <div className="absolute inset-x-3 top-4 space-y-2" aria-label="搜索中">
+            <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+            <div className="h-10 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+            <div className="h-10 animate-pulse rounded-xl bg-[var(--hub-control)]" />
           </div>
         )}
         {error && !loading && (
@@ -2820,20 +3304,15 @@ function ContextPanel({
 
       <PanelCard>
         <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">显示模式</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <DisplayModeOption
-            active={displayMode === 'bubble'}
-            label="气泡"
-            description="彩色卡片承载"
-            onClick={() => onSetDisplayMode('bubble')}
-          />
-          <DisplayModeOption
-            active={displayMode === 'engraved'}
-            label="版书"
-            description="文字浮印纸面"
-            onClick={() => onSetDisplayMode('engraved')}
-          />
-        </div>
+        <HubSegmentedControl
+          ariaLabel="显示模式"
+          value={displayMode}
+          options={[
+            { value: 'bubble', label: '气泡', title: '彩色卡片承载' },
+            { value: 'engraved', label: '版书', title: '文字浮印纸面' },
+          ]}
+          onChange={(v) => onSetDisplayMode(v as DisplayMode)}
+        />
       </PanelCard>
 
       <PanelCard>
@@ -2917,6 +3396,223 @@ function ContextPanel({
   );
 }
 
+function MobileContextSheet({
+  open,
+  session,
+  modelsState,
+  displayMode,
+  onSetDisplayMode,
+  streamAnimation,
+  onSetStreamAnimation,
+  fontSize,
+  onSetFontSize,
+  onClose,
+  onDeleteSession,
+  onClearMessages,
+}: {
+  open: boolean;
+  session: AgentSession | null;
+  modelsState: ReturnType<typeof useAgentModels>;
+  displayMode: DisplayMode;
+  onSetDisplayMode: (mode: DisplayMode) => void;
+  streamAnimation: StreamAnimationMode;
+  onSetStreamAnimation: (m: StreamAnimationMode) => void;
+  fontSize: number;
+  onSetFontSize: (n: number) => void;
+  onClose: () => void;
+  onDeleteSession: () => void;
+  onClearMessages: () => void;
+}) {
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const modelDisplay = useMemo(() => {
+    if (!session?.modelId) return '自动路由';
+    const found = items.find(
+      (m) => m.modelId === session.modelId && m.providerCode === session.providerCode,
+    );
+    return found ? modelLabel(found) : session.modelId;
+  }, [session?.modelId, session?.providerCode, items]);
+
+  const messageCount = session?.messages.length ?? 0;
+  const userMessageCount = session?.messages.filter((m) => m.role === 'user').length ?? 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
+  const handleCopyId = async () => {
+    if (!session) return;
+    try {
+      await navigator.clipboard.writeText(session.id);
+      toast.success('对话 ID 已复制');
+    } catch {
+      toast.error('复制失败，请手动选中复制');
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 xl:hidden">
+          <motion.div
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            onClick={onClose}
+            aria-hidden="true"
+          />
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label="当前对话配置"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.9 }}
+            className="absolute inset-x-0 bottom-0 flex max-h-[82vh] flex-col rounded-t-[28px] border border-b-0 border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-28px_70px_-32px_rgba(0,0,0,0.62)] backdrop-blur-2xl"
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--hub-border)]" />
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-semibold text-[var(--ink-primary)]">
+                  当前对话配置
+                </h2>
+                <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+                  {session?.title || '新对话'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭配置面板"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="agent-thumb-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              <PanelCard>
+                <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">对话信息</h3>
+                <MetadataRow label="模型" value={modelDisplay} />
+                <MetadataRow
+                  label="消息数"
+                  value={`${messageCount} / 用户 ${userMessageCount}`}
+                  mono
+                />
+                <MetadataRow
+                  label="最近活动"
+                  value={session ? formatDate(new Date(session.updatedAt), 'yyyy-MM-dd HH:mm') : '—'}
+                  mono
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyId}
+                  disabled={!session}
+                  className={cn(
+                    'mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                    !session && 'cursor-not-allowed opacity-60',
+                  )}
+                >
+                  <Copy className="h-4 w-4" />
+                  复制对话 ID
+                </button>
+              </PanelCard>
+
+              <PanelCard>
+                <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">显示模式</h3>
+                <HubSegmentedControl
+                  ariaLabel="显示模式"
+                  value={displayMode}
+                  options={[
+                    { value: 'bubble', label: '气泡', title: '彩色卡片承载' },
+                    { value: 'engraved', label: '版书', title: '文字浮印纸面' },
+                  ]}
+                  onChange={(v) => onSetDisplayMode(v as DisplayMode)}
+                />
+              </PanelCard>
+
+              <PanelCard>
+                <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">过渡动画</h3>
+                <SegmentedControl
+                  value={streamAnimation}
+                  options={[
+                    { value: 'none', label: '无' },
+                    { value: 'fade', label: '淡入' },
+                    { value: 'smooth', label: '平滑' },
+                  ]}
+                  onChange={(v) => onSetStreamAnimation(v as StreamAnimationMode)}
+                />
+              </PanelCard>
+
+              <PanelCard>
+                <div className="mb-2 flex items-baseline justify-between">
+                  <h3 className="text-sm font-medium text-[var(--ink-primary)]">字体大小</h3>
+                  <span className="font-mono text-[11px] tnum text-[var(--ink-muted)]">
+                    {fontSize}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={12}
+                  max={18}
+                  step={0.5}
+                  value={fontSize}
+                  onChange={(e) => onSetFontSize(Number(e.target.value))}
+                  className="hub-range w-full"
+                  aria-label="字体大小"
+                  style={
+                    {
+                      '--hub-range-progress': `${(fontSize - 12) / (18 - 12)}`,
+                    } as React.CSSProperties
+                  }
+                />
+                <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                  <span>A</span>
+                  <span>标准</span>
+                  <span>A</span>
+                </div>
+              </PanelCard>
+
+              <PanelCard>
+                <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
+                <div className="grid grid-cols-1 gap-3">
+                  <ActionButton
+                    icon={RefreshCcw}
+                    onClick={onClearMessages}
+                    disabled={!session || session.messages.length === 0}
+                    className="rounded-xl"
+                  >
+                    清空当前对话
+                  </ActionButton>
+                  <ActionButton
+                    icon={Trash2}
+                    danger
+                    onClick={() => {
+                      onDeleteSession();
+                      onClose();
+                    }}
+                    disabled={!session}
+                    className="rounded-xl"
+                  >
+                    删除对话
+                  </ActionButton>
+                </div>
+              </PanelCard>
+            </div>
+          </motion.section>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function SegmentedControl({
   value,
   options,
@@ -2926,11 +3622,56 @@ function SegmentedControl({
   options: Array<{ value: string; label: string }>;
   onChange: (v: string) => void;
 }) {
+  return <HubSegmentedControl ariaLabel="过渡动画" value={value} options={options} onChange={onChange} />;
+}
+
+function HubSegmentedControl({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string; title?: string }>;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+}) {
+  const activeIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
+
   return (
     <div
       role="radiogroup"
-      className="grid grid-cols-3 gap-1 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1"
+      aria-label={ariaLabel}
+      className="relative flex items-center rounded-[14px] bg-black/[0.08] p-[3px] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] backdrop-blur-2xl dark:bg-white/[0.08] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]"
     >
+      <div
+        className="absolute bottom-[3px] top-[3px] rounded-[11px] transition-[transform] duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] motion-reduce:transition-none"
+        style={{
+          left: 3,
+          width: `calc((100% - 6px) / ${options.length})`,
+          transform: `translateX(${activeIndex * 100}%)`,
+          willChange: 'transform',
+        }}
+        aria-hidden="true"
+      >
+        <div
+          className="absolute inset-0 rounded-[11px] opacity-100 transition-opacity duration-200 dark:opacity-0"
+          style={{
+            background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
+            boxShadow:
+              '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
+          }}
+        />
+        <div
+          className="absolute inset-0 rounded-[11px] opacity-0 transition-opacity duration-200 dark:opacity-100"
+          style={{
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 100%)',
+            boxShadow:
+              '0 3px 8px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.16), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
+          }}
+        />
+      </div>
+
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -2939,12 +3680,13 @@ function SegmentedControl({
             type="button"
             role="radio"
             aria-checked={active}
+            title={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'h-8 rounded-lg text-[12.5px] transition-all',
+              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
               active
-                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]'
-                : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                ? 'text-black dark:text-white'
+                : 'text-black/55 hover:text-black/70 dark:text-white/55 dark:hover:text-white/70',
             )}
           >
             {opt.label}
@@ -2952,42 +3694,6 @@ function SegmentedControl({
         );
       })}
     </div>
-  );
-}
-
-function DisplayModeOption({
-  active,
-  label,
-  description,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all',
-        active
-          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
-          : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:bg-[var(--hub-control-hover)]',
-      )}
-    >
-      <span
-        className={cn(
-          'text-[13px] font-medium',
-          active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]',
-        )}
-      >
-        {label}
-      </span>
-      <span className="text-[11px] text-[var(--ink-muted)]">{description}</span>
-    </button>
   );
 }
 
@@ -3081,6 +3787,19 @@ function ActionButton({
 // =============================================================================
 // 工具函数
 // =============================================================================
+
+function filterSessions(sessions: AgentSession[], query: string): AgentSession[] {
+  const keyword = query.trim().toLowerCase();
+  if (!keyword) return sessions;
+
+  return sessions.filter((session) => {
+    const messages = session.messages
+      .slice(-8)
+      .map((message) => [message.content, message.think, ...(message.sources?.map((s) => s.title) ?? [])].join(' '))
+      .join(' ');
+    return [session.title, messages].join(' ').toLowerCase().includes(keyword);
+  });
+}
 
 function formatRelativeShort(timestamp: number): string {
   const now = Date.now();

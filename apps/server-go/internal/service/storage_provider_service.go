@@ -259,6 +259,7 @@ type ListObjectsResult struct {
 // ObjectListing 是 ListObjects 单条记录的视图。
 type ObjectListing struct {
 	Key          string `json:"key"`
+	URL          string `json:"url,omitempty"`
 	Size         int64  `json:"size"`
 	LastModified string `json:"lastModified,omitempty"`
 	ETag         string `json:"etag,omitempty"`
@@ -308,6 +309,7 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 	for i, o := range objs {
 		l := ObjectListing{
 			Key:          o.Key,
+			URL:          st.GetURL(o.Key),
 			Size:         o.Size,
 			LastModified: o.LastModified,
 			ETag:         o.ETag,

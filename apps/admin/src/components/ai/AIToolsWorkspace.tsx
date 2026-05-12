@@ -1,7 +1,26 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Sliders, ChevronDown, ChevronRight, Download, Check, Search, Loader2, X as XIcon } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowUpRight,
+  Code,
+  FileText,
+  CheckCircle2,
+  Square,
+  Sliders,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Check,
+  Search,
+  Loader2,
+  X as XIcon,
+  Target,
+  Workflow,
+  Gauge,
+  FileCheck2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PromptEditor } from './PromptEditor';
 import { ToolParamsPanel, useToolParams } from './ToolParamsPanel';
@@ -21,6 +40,9 @@ interface Tool {
   id: string;
   label: string;
   desc: string;
+  impact?: string;
+  outcome?: string;
+  applyTarget?: string;
 }
 
 interface PromptConfig {
@@ -240,7 +262,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   const handleRunTest = useCallback(async () => {
     if (!input.trim()) {
-      toast.error('请输入测试内容');
+      toast.error('请输入内容');
       return;
     }
 
@@ -314,7 +336,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   // 从目标文章导入正文到输入框
   const handleImportFromTarget = useCallback(() => {
     if (!target.targetPost) {
-      toast.error('请先在右上角选择目标文章');
+      toast.error('请先选择目标文章');
       return;
     }
     const content = target.targetPost.content || '';
@@ -327,7 +349,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   }, [target.targetPost]);
 
   // 是否禁用运行按钮
-  const isRunDisabled = !input.trim() || isGlobalLoading;
+  const isRunDisabled = !input.trim() || !selectedModelId || isGlobalLoading;
 
   // 键盘快捷键处理 (Cmd/Ctrl + Enter)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -357,6 +379,54 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   const hasContent = streamContent.length > 0 || thinkContent.length > 0;
   const previewTheme = resolvedTheme === 'dark' ? 'dark' : 'light';
+  const inputCharCount = input.trim().length;
+  const targetLabel = target.targetPost
+    ? target.targetPost.title || `#${target.targetPost.id}`
+    : target.targetPostId
+      ? `#${target.targetPostId}`
+      : '未绑定';
+  const modelLabel = selectedModelId || '待选择';
+  const resultLabel = streamError
+    ? '异常'
+    : isStreaming
+      ? '生成中'
+      : isDone
+        ? '可应用'
+        : hasContent
+          ? '已输出'
+          : '待生成';
+  const workflowSignals = [
+    {
+      label: '输入',
+      value: inputCharCount > 0 ? `${inputCharCount.toLocaleString()} 字` : '待输入',
+      icon: FileText,
+      active: inputCharCount > 0,
+    },
+    {
+      label: '模型',
+      value: modelLabel,
+      icon: Gauge,
+      active: Boolean(selectedModelId),
+    },
+    {
+      label: '目标',
+      value: targetLabel,
+      icon: Target,
+      active: Boolean(target.targetPostId),
+    },
+    {
+      label: '结果',
+      value: resultLabel,
+      icon: FileCheck2,
+      active: Boolean(hasContent || isStreaming || isDone),
+    },
+  ];
+  const contextSteps = [
+    { label: '选稿', active: Boolean(target.targetPostId) },
+    { label: '导入', active: inputCharCount > 0 },
+    { label: '生成', active: Boolean(selectedModelId || isStreaming || hasContent) },
+    { label: '应用', active: Boolean(target.targetPostId && hasContent) },
+  ];
 
   // 目标文章下拉菜单主体（供桌面端 popover 与移动端 bottom sheet 共用）
   const renderTargetMenuBody = () => (
@@ -476,18 +546,155 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     </>
   );
 
+  const renderTargetSelector = () => (
+    <div ref={targetDropdownRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => {
+          if (!showTargetDropdown && targetDropdownRef.current) {
+            setTargetTriggerRect(targetDropdownRef.current.getBoundingClientRect());
+          }
+          setShowTargetDropdown((v) => !v);
+        }}
+        title="选择目标文章"
+        className={cn(
+          'flex h-11 w-full items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-card-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
+          showTargetDropdown && 'border-primary ring-2 ring-primary/30 ring-offset-2 ring-offset-[var(--bg-secondary)]',
+        )}
+      >
+        <Target className={cn('h-4 w-4 shrink-0', target.targetPostId ? 'text-[var(--aurora-1)]' : 'text-[var(--text-muted)]')} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-medium text-[var(--text-muted)]">目标文章</span>
+          <span className={cn('block truncate font-semibold', !target.targetPostId && 'text-[var(--text-muted)]')}>
+            {target.targetPostId ? currentTargetTitle : '— 无目标文章 —'}
+          </span>
+        </span>
+        <ChevronDown
+          className={cn(
+            'h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] transition-transform',
+            showTargetDropdown && 'rotate-180 text-primary',
+          )}
+        />
+      </button>
+      {createPortal(
+        <AnimatePresence>
+          {showTargetDropdown && (
+            isMobile ? (
+              <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowTargetDropdown(false)}
+                  className="absolute inset-0 backdrop-blur-sm"
+                  style={{ background: 'rgb(from var(--bg-void) r g b / 0.7)' }}
+                />
+                <motion.div
+                  ref={targetMenuRef}
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                  className="relative z-10 max-h-[66vh] flex flex-col rounded-t-2xl border-t border-x border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+                >
+                  <div className="flex justify-center pt-2 pb-1 shrink-0">
+                    <div className="w-10 h-1 rounded-full bg-[var(--border-default)]" />
+                  </div>
+                  {renderTargetMenuBody()}
+                </motion.div>
+              </div>
+            ) : (
+              <motion.div
+                ref={targetMenuRef}
+                initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                style={{
+                  position: 'fixed',
+                  top: targetTriggerRect ? targetTriggerRect.bottom + 8 : 0,
+                  left: targetTriggerRect ? Math.min(Math.max(12, targetTriggerRect.left), window.innerWidth - 352) : 0,
+                  width: 340,
+                  zIndex: 9999,
+                }}
+                className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+              >
+                {renderTargetMenuBody()}
+              </motion.div>
+            )
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </div>
+  );
+
   const previewStyles = `${markdownPreviewStyles}
 .markdown-preview a { text-decoration: none; }
 .markdown-preview a:hover { text-decoration: none; }
 `;
 
   return (
-    <div className="h-full flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6 animate-in fade-in duration-500 overflow-y-auto md:overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col gap-3 md:gap-4 animate-in fade-in duration-500 overflow-y-auto 2xl:overflow-hidden">
       {/* 注入 Markdown 样式 */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
-      {/* 输入列（中间） */}
-      <div className="flex flex-col min-h-[50vh] md:min-h-0 md:h-full bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative">
+      <section className="ai-workspace-brief surface-leaf surface-admin-panel relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] p-3 md:p-4">
+        <div className="flex flex-col gap-3">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-sm">
+                <Workflow className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70 px-2 py-0.5">
+                    {selectedTool.impact || 'AI 能力'}
+                  </span>
+                  <span>{selectedTool.outcome || '内容输出'}</span>
+                  <span className="text-[var(--text-muted)]/50">/</span>
+                  <span>{selectedTool.applyTarget || '文章应用'}</span>
+                </div>
+                <h2 className="mt-1 truncate text-lg md:text-xl font-bold text-[var(--text-primary)]">
+                  {selectedTool.label}
+                </h2>
+                <p className="mt-0.5 line-clamp-2 text-xs md:text-sm leading-relaxed text-[var(--text-muted)]">
+                  {selectedTool.desc}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {workflowSignals.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  className={cn(
+                    'ai-loop-card rounded-xl border px-3 py-2.5 transition-all',
+                    item.active
+                      ? 'border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45',
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                    <Icon className={cn('h-3.5 w-3.5', item.active && 'text-[var(--aurora-1)]')} />
+                    {item.label}
+                  </div>
+                  <div className="mt-1 truncate text-xs font-semibold text-[var(--text-primary)]" title={item.value}>
+                    {item.value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-col gap-4 2xl:grid 2xl:min-h-0 2xl:flex-1 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:gap-5 2xl:overflow-hidden">
+      {/* 输入列（左侧） */}
+      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[50vh] 2xl:min-h-0 2xl:h-full rounded-2xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative overflow-hidden">
         {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
@@ -502,39 +709,24 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         {/* 头部 - 桌面端 */}
-        <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-10 flex-shrink-0">
+        <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)]/70 z-10 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <FileText className="w-5 h-5 text-primary" />
+            <div className="p-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]">
+              <FileText className="w-5 h-5 text-[var(--aurora-1)]" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[var(--text-primary)]">测试内容</h2>
-              <p className="text-xs text-[var(--text-muted)]">输入原始文本以验证效果</p>
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">输入与目标</h2>
+              <p className="text-xs text-[var(--text-muted)]">先选择来源,再导入正文或手动粘贴</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* 从目标文章导入正文 */}
-            <button
-              onClick={handleImportFromTarget}
-              disabled={!target.targetPost}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border',
-                target.targetPost
-                  ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] opacity-50 cursor-not-allowed',
-              )}
-              title={target.targetPost ? `导入《${target.targetPost.title || '无标题'}》正文` : '请先选择目标文章'}
-            >
-              <Download className="w-3.5 h-3.5" />
-              导入正文
-            </button>
             {/* 工具参数入口 */}
             <button
               onClick={() => setShowParams((v) => !v)}
               className={cn(
                 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border',
                 showParams
-                  ? 'bg-primary/10 text-primary border-primary/30'
+                  ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)]'
                   : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
               )}
               title="工具参数"
@@ -548,31 +740,17 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         {/* 头部 - 移动端：仅显示标题 */}
-        <div className="md:hidden p-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-card)] rounded-t-2xl z-20 flex-shrink-0">
-          <div className="p-1.5 rounded-lg bg-primary/10">
-            <FileText className="w-4 h-4 text-primary" />
+        <div className="md:hidden p-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-card)]/70 z-20 flex-shrink-0">
+          <div className="p-1.5 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]">
+            <FileText className="w-4 h-4 text-[var(--aurora-1)]" />
           </div>
-          <h2 className="text-sm font-semibold text-[var(--text-primary)] flex-1">测试内容</h2>
-          <button
-            onClick={handleImportFromTarget}
-            disabled={!target.targetPost}
-            className={cn(
-              'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border',
-              target.targetPost
-                ? 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]'
-                : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] opacity-50',
-            )}
-            aria-label="从目标文章导入"
-          >
-            <Download className="w-3 h-3" />
-            导入
-          </button>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] flex-1">输入与目标</h2>
           <button
             onClick={() => setShowParams((v) => !v)}
             className={cn(
               'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border',
               showParams
-                ? 'bg-primary/10 text-primary border-primary/30'
+                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)]'
                 : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]',
             )}
             aria-label="工具参数"
@@ -580,6 +758,57 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             <Sliders className="w-3 h-3" />
             参数
           </button>
+        </div>
+
+        <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-3 py-3 md:px-4">
+          <div className="flex flex-col gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+                <Target className="h-4 w-4 text-[var(--aurora-1)]" />
+                输入来源
+              </div>
+              <p className="mt-0.5 text-xs leading-5 text-[var(--text-muted)]">
+                目标文章用于导入正文,也作为结果应用对象。
+              </p>
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              {renderTargetSelector()}
+              <button
+                type="button"
+                onClick={handleImportFromTarget}
+                disabled={!target.targetPost}
+                className={cn(
+                  'inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all',
+                  target.targetPost
+                    ? 'border-[var(--border-subtle)] bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90'
+                    : 'cursor-not-allowed border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] opacity-50',
+                )}
+                title={target.targetPost ? `导入《${target.targetPost.title || '无标题'}》正文` : '请先选择目标文章'}
+              >
+                <Download className="h-3.5 w-3.5" />
+                导入正文
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-4 gap-1.5">
+            {contextSteps.map((step, index) => (
+              <div key={step.label} className="flex min-w-0 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-1.5">
+                <span
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-mono tnum transition-colors',
+                    step.active
+                      ? 'border-[var(--aurora-1)] bg-[var(--aurora-1)] text-[var(--bg-void)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-muted)]',
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="truncate text-[10px] font-medium text-[var(--text-muted)]">{step.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* 可折叠参数面板 */}
@@ -608,14 +837,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
-                aria-label="输入测试内容"
-                className="w-full h-full min-h-[200px] p-4 pb-24 md:p-8 md:pb-24 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
+                placeholder={selectedTool.id === 'outline' ? "文章主题、核心论点或章节方向" : "文章正文、片段或待处理草稿"}
+                aria-label="内容输入"
+                className="w-full h-full min-h-[220px] p-4 pb-28 md:p-8 md:pb-28 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.06] dark:opacity-[0.08]">
                   <FileText className="w-20 h-20 md:w-24 md:h-24 mb-3" />
-                  <p className="text-lg md:text-xl font-medium tracking-widest uppercase">点击输入内容</p>
+                  <p className="text-lg md:text-xl font-medium">内容输入</p>
                 </div>
               )}
             </div>
@@ -655,21 +884,21 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
           {/* 统一执行入口 - 悬浮于底部居中 */}
           <div className={cn(
-            "absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
+            "absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
             isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
             showConfig && "hidden md:flex"  // 移动端配置打开时隐藏，PC 端显示
           )}>
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="surface-raised flex items-center gap-1.5 sm:gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-popover)]/85 p-1.5 shadow-2xl">
               {/* 切换配置按钮 */}
               <button
                 onClick={() => setShowConfig(!showConfig)}
                 className={cn(
-                  "w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all duration-300 flex items-center justify-center",
-                  "bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-md",
-                  "hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-lg",
-                  showConfig && "bg-black text-white dark:bg-white dark:text-black shadow-lg"
+                  "w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-all duration-300 flex items-center justify-center",
+                  "bg-[var(--bg-secondary)] text-[var(--text-muted)]",
+                  "hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]",
+                  showConfig && "bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-lg"
                 )}
-                title={showConfig ? "返回输入" : "专家配置"}
+                title={showConfig ? "返回输入" : "Prompt 编排"}
               >
                 <Code className="w-5 h-5" />
               </button>
@@ -680,8 +909,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   setSelectedModelId(modelId);
                   setSelectedProviderCode(provider);
                 }}
-                className="w-[140px] sm:w-[200px]"
-                triggerClassName="h-11 sm:h-12 rounded-full bg-[var(--bg-secondary)] shadow-md hover:bg-[var(--bg-card-hover)] hover:shadow-lg border-none"
+                className="w-[150px] sm:w-[220px]"
+                triggerClassName="h-10 sm:h-11 rounded-full bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border-none"
                 selectedProviderCode={selectedProviderCode}
                 menuPlacement="top"
                 modelType="chat"
@@ -690,7 +919,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               {isStreaming ? (
                 <button
                   onClick={abort}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--bg-secondary)] text-status-danger shadow-md hover:bg-status-danger-light hover:shadow-lg transition-all flex items-center justify-center animate-pulse"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-status-danger-light text-status-danger hover:bg-status-danger-light transition-all flex items-center justify-center animate-pulse"
                   title="停止生成"
                   aria-label="停止生成"
                 >
@@ -701,12 +930,13 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   onClick={handleRunTest}
                   disabled={isRunDisabled}
                   className={cn(
-                    "w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all duration-300 flex items-center justify-center active:scale-95",
-                    "bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-md",
-                    "hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-lg",
+                    "w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-all duration-300 flex items-center justify-center active:scale-95",
+                    !isRunDisabled
+                      ? "bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[0_14px_30px_-18px_color-mix(in_oklch,var(--aurora-1)_70%,black)] hover:opacity-90"
+                      : "bg-[var(--bg-secondary)] text-[var(--text-muted)]",
                     isRunDisabled && "opacity-30 cursor-not-allowed"
                   )}
-                  title={`执行 (${isMac ? '⌘' : 'Ctrl'} + Enter)`}
+                  title={selectedModelId ? `执行 (${isMac ? '⌘' : 'Ctrl'} + Enter)` : '请选择模型'}
                   aria-label={`执行 (${isMac ? 'Command' : 'Ctrl'} + Enter)`}
                 >
                   <ArrowUpRight className="w-5 h-5" />
@@ -718,7 +948,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       </div>
 
       {/* 结果列（右侧） */}
-      <div className="flex flex-col min-h-[45vh] md:min-h-0 md:h-full overflow-hidden bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm relative group">
+      <div className="surface-leaf surface-admin-panel flex flex-col min-h-[45vh] 2xl:min-h-0 2xl:h-full overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-sm relative group">
         {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
@@ -732,108 +962,44 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           />
         </div>
 
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-status-success/5 rounded-full blur-3xl group-hover:bg-status-success-light transition-colors duration-700 -z-10 pointer-events-none" />
-
-        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex flex-col md:flex-row md:items-center md:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
+        <div className="p-4 md:p-5 border-b border-[var(--border-subtle)] flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/75 backdrop-blur-sm gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors flex-shrink-0">
+            <div className="p-1.5 md:p-2 rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)] transition-colors flex-shrink-0">
               <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent truncate">生成结果</h2>
+              <h2 className="text-sm md:text-lg font-bold text-[var(--text-primary)] truncate">
+                结果与应用
+              </h2>
               <div className="flex items-center gap-1 mt-0.5 min-w-0">
-                <span className="w-1 h-1 rounded-full bg-status-success animate-pulse flex-shrink-0" />
-                <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium tracking-tighter truncate">
+                <span
+                  className={cn(
+                    'w-1 h-1 rounded-full flex-shrink-0',
+                    target.targetPostId ? 'bg-status-success animate-pulse' : 'bg-[var(--text-muted)]',
+                  )}
+                />
+                <span className="text-[10px] text-[var(--text-muted)] font-medium truncate">
                   {target.targetPost
-                    ? `目标：${target.targetPost.title || `#${target.targetPost.id}`}`
-                    : '未选择目标文章'}
+                    ? `${selectedTool.outcome || '生成结果'} · 可回写到《${target.targetPost.title || `#${target.targetPost.id}`}》`
+                    : `${selectedTool.outcome || '生成结果'} · 选择目标文章后可回写`}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3 md:flex-shrink-0 min-w-0 w-full md:w-auto">
-             {/* 目标文章选择器 —— 自定义 dropdown 替代原生 <select>，避免浏览器原生菜单样式割裂 */}
-             <div ref={targetDropdownRef} className="relative flex-1 md:flex-none min-w-0">
-               <button
-                 type="button"
-                 onClick={() => {
-                   if (!showTargetDropdown && targetDropdownRef.current) {
-                     setTargetTriggerRect(targetDropdownRef.current.getBoundingClientRect());
-                   }
-                   setShowTargetDropdown((v) => !v);
-                 }}
-                 title="选择应用目标文章"
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap 2xl:flex-shrink-0">
+             <div className="flex min-w-0 flex-[1_1_180px] items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-[10px] text-[var(--text-muted)] 2xl:w-[220px] 2xl:flex-none">
+               <Target
                  className={cn(
-                   'w-full md:w-[220px] md:max-w-[220px] text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30',
-                   'flex items-center justify-between gap-2 hover:bg-[var(--bg-card-hover)] transition-colors',
-                   showTargetDropdown && 'ring-2 ring-primary/30 border-primary',
+                   'h-3.5 w-3.5 shrink-0',
+                   target.targetPostId ? 'text-[var(--aurora-1)]' : 'text-[var(--text-muted)]',
                  )}
-               >
-                 <span className={cn('truncate', !target.targetPostId && 'text-[var(--text-muted)]')}>
-                   {target.targetPostId ? currentTargetTitle : '— 无目标文章 —'}
-                 </span>
-                 <ChevronDown
-                   className={cn(
-                     'w-3.5 h-3.5 text-[var(--text-muted)] transition-transform shrink-0',
-                     showTargetDropdown && 'rotate-180 text-primary',
-                   )}
-                 />
-               </button>
-             {createPortal(
-               <AnimatePresence>
-                 {showTargetDropdown && (
-                   isMobile ? (
-                     // 移动端：底部面板（Bottom Sheet），与 ModelSelector 保持一致
-                     <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
-                       <motion.div
-                         initial={{ opacity: 0 }}
-                         animate={{ opacity: 1 }}
-                         exit={{ opacity: 0 }}
-                         onClick={() => setShowTargetDropdown(false)}
-                         className="absolute inset-0 backdrop-blur-sm"
-                         style={{ background: 'rgb(from var(--bg-void) r g b / 0.7)' }}
-                       />
-                       <motion.div
-                         ref={targetMenuRef}
-                         initial={{ y: '100%' }}
-                         animate={{ y: 0 }}
-                         exit={{ y: '100%' }}
-                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                         className="relative z-10 max-h-[66vh] flex flex-col rounded-t-2xl border-t border-x border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]"
-                       >
-                         {/* 顶部把手 */}
-                         <div className="flex justify-center pt-2 pb-1 shrink-0">
-                           <div className="w-10 h-1 rounded-full bg-[var(--border-default)]" />
-                         </div>
-                         {renderTargetMenuBody()}
-                       </motion.div>
-                     </div>
-                   ) : (
-                     // 桌面端：基于 trigger 位置的 fixed 浮层（脱离父级 overflow-hidden）
-                     <motion.div
-                       ref={targetMenuRef}
-                       initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                       exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                       transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                       style={{
-                         position: 'fixed',
-                         top: targetTriggerRect ? targetTriggerRect.bottom + 8 : 0,
-                         left: targetTriggerRect ? targetTriggerRect.right - 320 : 0,
-                         width: 320,
-                         zIndex: 9999,
-                       }}
-                       className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
-                     >
-                       {renderTargetMenuBody()}
-                     </motion.div>
-                   )
-                 )}
-               </AnimatePresence>,
-               document.body,
-             )}
+               />
+               <span className="truncate">
+                 {target.targetPost
+                   ? `应用到：${target.targetPost.title || `#${target.targetPost.id}`}`
+                   : '未绑定应用目标'}
+               </span>
              </div>
 
              <div className={cn(
@@ -842,7 +1008,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                isStreaming ? "bg-status-info-light text-status-info border-status-info-border animate-pulse" :
                "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
              )}>
-               {isDone ? '已完成' : isStreaming ? '生成中' : '预览'}
+               {isDone ? '已完成' : isStreaming ? '生成中' : '待生成'}
              </div>
 
              <button
@@ -868,12 +1034,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           ) : !hasContent && !isStreaming ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
-              <div className="p-4 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+              <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)]">
                 <Sparkles className="w-8 h-8 text-[var(--text-muted)]" />
               </div>
               <div>
-                <p className="text-[var(--text-primary)] font-medium">等待生成中</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">点击左侧"生成测试"按钮</p>
+                <p className="text-[var(--text-primary)] font-medium">等待生成</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1 max-w-[240px]">
+                  生成完成后可在这里预览、复制或应用到目标文章
+                </p>
               </div>
             </div>
           ) : (
@@ -936,7 +1104,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         {isDone && hasContent && (
-          <div className="p-3 mx-4 mb-4 border border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-secondary)] z-10 rounded-2xl backdrop-blur-sm shadow-sm animate-in slide-in-from-bottom-2 duration-500">
+          <div className="p-3 mx-4 mb-4 border border-[var(--border-subtle)] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-[var(--bg-secondary)] z-10 rounded-2xl backdrop-blur-sm shadow-sm animate-in slide-in-from-bottom-2 duration-500">
             <div className="flex gap-4 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -944,11 +1112,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               </span>
               <span className="hidden sm:inline opacity-60">类型: {selectedTool.label}工具</span>
             </div>
-            <span className="text-[10px] text-[var(--text-muted)] opacity-60">
-              使用上方按钮将结果应用到文章
+            <span className="text-[10px] text-[var(--text-muted)] opacity-70">
+              {target.targetPostId ? '结果已准备好应用到目标文章' : '选择目标文章后可应用结果'}
             </span>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -42,6 +42,26 @@ func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, e
 	return &m, nil
 }
 
+// FindByPath 按 storage key / file_path 查询最新一条未删除媒体记录。
+// 用于兼容历史文章中已经写死的 /api/uploads/{key} 本地 URL:
+// 请求命中 uploads 入口时,可反查 catalog 并跳转到当前最佳主存储/备份地址。
+func (r *MediaRepo) FindByPath(ctx context.Context, filePath string) (*model.MediaFile, error) {
+	var m model.MediaFile
+	err := r.db.GetContext(ctx, &m, `
+		SELECT `+mediaColumns+`
+		FROM media_files
+		WHERE file_path=$1 AND deleted=false
+		ORDER BY id DESC
+		LIMIT 1`, filePath)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &m, nil
+}
+
 // FindManyByIDs 批量按主键加载媒体文件,返回 ID->Record 映射。
 // 不存在的 ID 不出现在 map 中。供 PermanentDeleteBatch / EmptyTrash 在 service 层
 // 做 ownership 校验 + 按 storage_provider_id 分组删存储后端。

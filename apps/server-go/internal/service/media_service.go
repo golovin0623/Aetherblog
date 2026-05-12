@@ -40,13 +40,13 @@ const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
 //  3. image/svg+xml 故意不在本白名单中 —— 保证 (2) 的兜底走到拒绝分支。
 var allowedMimeTypes = map[string]bool{
 	// 图片
-	"image/jpeg":    true,
-	"image/png":     true,
-	"image/gif":     true,
-	"image/webp":    true,
-	"image/bmp":     true,
-	"image/tiff":    true,
-	"image/avif":    true,
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/bmp":  true,
+	"image/tiff": true,
+	"image/avif": true,
 	// 视频
 	"video/mp4":        true,
 	"video/webm":       true,
@@ -163,6 +163,10 @@ var ErrFolderForbidden = errors.New("无权写入该文件夹")
 // ErrFolderNotFound 表示前端提交的 folder_id 在 media_folders 表中不存在。
 // handler 层 errors.Is(err, ErrFolderNotFound) 将其映射为 HTTP 400。
 var ErrFolderNotFound = errors.New("目标文件夹不存在")
+
+// ErrMediaNotFound 表示媒体文件不存在或已不可公开访问。
+// 公共访问路由使用同一个错误隐藏"不存在"与"已删除"的差异,避免 ID 探测。
+var ErrMediaNotFound = errors.New("媒体文件不存在")
 
 // assertFolderWritable 验证 uploaderID 是否有权写入目标文件夹。
 // 放行规则(自上而下短路):
@@ -584,6 +588,68 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	return &vo, nil
 }
 
+// PublicAccessURL 返回媒体文件的稳定公共访问路由最终应跳转到的地址。
+//
+// 解析顺序:
+//  1. LOCAL 主文件且备份已 SYNCED 时,优先返回 backup_url,让文章图片自动获得云端访问能力;
+//  2. 其次使用 cdn_url,这是当前主存储的公开 URL;
+//  3. 再兼容历史 file_url 中已经存成 URL/路径的记录;
+//  4. 最后按 storage_provider_id 反查 store,用 file_path 重新生成公开 URL。
+//
+// 这样文章内容只需要保存 /api/v1/public/media/{id} 这类稳定地址,后续主存储或备份
+// 状态变化不需要重写 Markdown。
+func (s *MediaService) PublicAccessURL(ctx context.Context, id int64) (string, error) {
+	m, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if m == nil || m.Deleted {
+		return "", ErrMediaNotFound
+	}
+	return s.publicAccessURLForMedia(ctx, m)
+}
+
+// PublicAccessURLByPath 通过 file_path 反查媒体记录并返回当前最佳访问地址。
+// 这是历史 /api/uploads/{key} 内容的兼容层:旧文章不用立即重写 Markdown,也能在
+// 备份成功或迁移到云端后获得新的访问路径。
+func (s *MediaService) PublicAccessURLByPath(ctx context.Context, filePath string) (string, error) {
+	filePath = strings.Trim(strings.TrimSpace(filePath), "/")
+	if filePath == "" {
+		return "", ErrMediaNotFound
+	}
+	m, err := s.repo.FindByPath(ctx, filePath)
+	if err != nil {
+		return "", err
+	}
+	if m == nil || m.Deleted {
+		return "", ErrMediaNotFound
+	}
+	return s.publicAccessURLForMedia(ctx, m)
+}
+
+func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.MediaFile) (string, error) {
+	if strings.EqualFold(m.StorageType, "LOCAL") &&
+		strings.EqualFold(m.SyncStatus, "SYNCED") &&
+		m.BackupURL != nil &&
+		strings.TrimSpace(*m.BackupURL) != "" {
+		return strings.TrimSpace(*m.BackupURL), nil
+	}
+
+	if m.CdnURL != nil && strings.TrimSpace(*m.CdnURL) != "" {
+		return strings.TrimSpace(*m.CdnURL), nil
+	}
+
+	if url := normalizePersistedMediaURL(m.FileURL); url != "" {
+		return url, nil
+	}
+
+	store, _, err := s.resolveStoreForMedia(ctx, m)
+	if err != nil {
+		return "", err
+	}
+	return store.GetURL(m.FilePath), nil
+}
+
 // GetUploaderID 返回指定媒体文件的 uploader_id，用于 handler 层 ownership 校验。
 // 返回值：found=false 表示文件不存在；found=true 且 uploaderID=nil 表示匿名上传。
 func (s *MediaService) GetUploaderID(ctx context.Context, id int64) (found bool, uploaderID *int64, err error) {
@@ -848,6 +914,7 @@ func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
 		Filename:          m.Filename,
 		OriginalName:      m.OriginalName,
 		FileURL:           m.FileURL,
+		PublicURL:         publicMediaURL(m.ID),
 		FileSize:          m.FileSize,
 		MimeType:          m.MimeType,
 		FileType:          m.FileType,
@@ -872,6 +939,33 @@ func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
 	return vo
 }
 
+func publicMediaURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("/api/v1/public/media/%d", id)
+}
+
+func normalizePersistedMediaURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	if strings.HasPrefix(raw, "/api/uploads/") {
+		return raw
+	}
+	if strings.HasPrefix(raw, "/uploads/") {
+		return "/api" + raw
+	}
+	if strings.HasPrefix(raw, "/") {
+		return raw
+	}
+	return ""
+}
+
 // classifyFileType 根据 MIME 类型将文件归类为 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER。
 func classifyFileType(mime string) string {
 	switch {
@@ -890,8 +984,10 @@ func classifyFileType(mime string) string {
 
 // rejectSVGByFilename 是 SVG 防 XSS 三层防线的最外层入口护栏:
 // 任何映射到 image/svg+xml 的扩展名(.svg / .svgz)直接拒收。即便:
-//   (a) http.DetectContentType 把带 <?xml 头的 SVG 嗅探为 text/xml(在白名单内),或
-//   (b) 嗅探退化为 application/octet-stream / text/plain 命中扩展名兜底,
+//
+//	(a) http.DetectContentType 把带 <?xml 头的 SVG 嗅探为 text/xml(在白名单内),或
+//	(b) 嗅探退化为 application/octet-stream / text/plain 命中扩展名兜底,
+//
 // 只要保留 .svg/.svgz 文件名落盘,nginx 都会按扩展名以 image/svg+xml 派发,
 // 触发存储型 same-origin XSS。因此判定基准选用扩展名而非内容嗅探结果。
 //
@@ -910,10 +1006,10 @@ func rejectSVGByFilename(filename string) error {
 // 触发回退的三种通用类型:
 //  1. application/octet-stream — 嗅探完全失败的兜底。
 //  2. application/zip          — DOCX/XLSX/PPTX 等 OOXML 格式 magic bytes 与 ZIP 相同,
-//                                必须用扩展名区分具体类型。
+//     必须用扩展名区分具体类型。
 //  3. text/plain 前缀          — 常见 <svg ...> 载荷会被嗅探成 "text/plain; charset=utf-8",
-//                                必须用扩展名抬升为 image/svg+xml 配合白名单拒收。
-//                                注意是 HasPrefix 而非 == — 嗅探结果通常带 charset 后缀。
+//     必须用扩展名抬升为 image/svg+xml 配合白名单拒收。
+//     注意是 HasPrefix 而非 == — 嗅探结果通常带 charset 后缀。
 //
 // guessMimeType 返回 application/octet-stream 表示扩展名也无法识别,此时保留嗅探结果。
 //

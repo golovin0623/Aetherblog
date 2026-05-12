@@ -117,10 +117,10 @@ function ActionButton({ label, icon, onClick, disabled, variant = 'secondary', t
       title={title}
       className={cn(
         'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95',
-        'border shadow-sm',
+        'border shadow-sm focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]',
         variant === 'primary'
-          ? 'bg-black text-white border-black dark:bg-white dark:text-black dark:border-white hover:opacity-90'
-          : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
+          ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] border-[var(--ink-primary)] hover:opacity-90'
+          : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)]',
         disabled && 'opacity-40 cursor-not-allowed',
       )}
     >
@@ -132,8 +132,11 @@ function ActionButton({ label, icon, onClick, disabled, variant = 'secondary', t
 
 function EmptyHint() {
   return (
-    <div className="flex items-center justify-center py-12 text-xs text-[var(--text-muted)]">
-      等待 AI 输出…
+    <div className="flex items-center justify-center py-12">
+      <div className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-4 py-3 text-xs text-[var(--text-muted)]">
+        <Sparkles className="h-4 w-4 text-[var(--aurora-1)]" />
+        等待 AI 输出…
+      </div>
     </div>
   );
 }

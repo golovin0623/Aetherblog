@@ -5,7 +5,7 @@
  * @ref 媒体库深度优化方案 - Phase 2-5 组件集成
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -53,6 +53,7 @@ const typeIcons: Record<MediaType, typeof Image> = {
   VIDEO: Video,
   AUDIO: Music,
   DOCUMENT: FileText,
+  OTHER: FileText,
 };
 
 const typeLabels: Record<MediaType, string> = {
@@ -60,6 +61,7 @@ const typeLabels: Record<MediaType, string> = {
   VIDEO: '视频',
   AUDIO: '音频',
   DOCUMENT: '文档',
+  OTHER: '其他',
 };
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -91,6 +93,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
     queryKey: ['media', 'detail', initialMedia.id],
     queryFn: async () => {
@@ -103,6 +106,23 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       return status === 'PENDING' || status === 'SYNCING' ? 2000 : false;
     },
   });
+
+  useEffect(() => {
+    if (!media) return;
+    queryClient.setQueriesData<{ list: MediaItem[] }>(
+      { queryKey: ['media', 'list'] },
+      (old) => {
+        if (!old?.list?.length) return old;
+        let matched = false;
+        const list = old.list.map((item) => {
+          if (item.id !== media.id) return item;
+          matched = true;
+          return { ...item, ...media };
+        });
+        return matched ? { ...old, list } : old;
+      }
+    );
+  }, [media, queryClient]);
 
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {

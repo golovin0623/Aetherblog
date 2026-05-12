@@ -166,6 +166,7 @@ export interface StorageProviderImportResult {
 export interface ListObjectsResult {
   objects?: Array<{
     key: string;
+    url?: string;
     size: number;
     lastModified?: string;
     etag?: string;

@@ -14,7 +14,7 @@ import {
   X,
   MoreHorizontal,
   AlertTriangle,
-  ArrowLeft,
+  Home,
   Sun,
   Moon,
   UserCircle,
@@ -132,17 +132,20 @@ export default function Sidebar({
           paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
         }}
       >
-        <div className="flex items-center justify-between gap-2">
-          {/* wordmark 兼任"返回主页"入口 —— 加 ArrowLeft icon 让链接性更可见。
-              桌面端 hover 着色，移动端首次接触靠图标暗示。 */}
+        <div className="flex items-center justify-between gap-3">
+          {/* 前台灵境从这里回到站点首页，不再表达为"返回工作台"。 */}
           <Link
-            href="/agent"
-            className="group/home font-display text-[17px] leading-none tracking-[-0.01em] text-[var(--ink-primary)] inline-flex items-center gap-2 hover:text-[var(--aurora-1)] transition-colors min-w-0"
+            href="/"
+            className="group/home -ml-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[var(--ink-secondary)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]"
           >
-            <ArrowLeft className="w-4 h-4 flex-shrink-0 text-[var(--ink-muted)] group-hover/home:text-[var(--aurora-1)] transition-colors" />
-            <span className="aurora-text">灵境</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mt-0.5">workspace</span>
+            <Home className="h-4 w-4 text-[var(--ink-muted)] transition-colors group-hover/home:text-[var(--aurora-1)]" />
+            <span className="text-[13px] font-medium">首页</span>
           </Link>
+          <div className="ml-auto flex min-w-0 items-center text-right">
+            <div className="aurora-text truncate font-display text-[17px] leading-none tracking-[-0.01em]">
+              灵境
+            </div>
+          </div>
           {onMobileClose && (
             <button
               type="button"

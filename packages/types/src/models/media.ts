@@ -81,13 +81,14 @@ export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
  * 备份/同步状态(主文件 vs default provider 的镜像状态)
  * @ref 对象存储 rollout - Phase 4
  */
-export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
+export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED' | 'MISSING';
 
 export interface Media {
   id: number;
   name: string;
   originalName: string;
   url: string;
+  publicUrl?: string;
   type: MediaType;
   mimeType: string;
   size: number;
