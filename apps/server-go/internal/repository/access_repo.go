@@ -314,13 +314,13 @@ func (r *AccessRepo) CountActiveAdmins(ctx context.Context) (int64, error) {
 func (r *AccessRepo) UserHasAdminRole(ctx context.Context, userID int64) (bool, error) {
 	var ok bool
 	err := r.db.GetContext(ctx, &ok, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM users u
-			LEFT JOIN user_roles ur ON ur.user_id = u.id
-			LEFT JOIN roles r ON r.id = ur.role_id
-			WHERE u.id=$1 AND (u.role='ADMIN' OR r.code='ADMIN')
-		)`, userID)
+			SELECT EXISTS (
+				SELECT 1
+				FROM users u
+				LEFT JOIN user_roles ur ON ur.user_id = u.id
+				LEFT JOIN roles r ON r.id = ur.role_id
+				WHERE u.id=$1 AND u.status='ACTIVE' AND (u.role='ADMIN' OR r.code='ADMIN')
+			)`, userID)
 	return ok, err
 }
 
@@ -342,44 +342,57 @@ func (r *AccessRepo) UserHasPermission(ctx context.Context, userID int64, legacy
 	return ok, err
 }
 
-// GetUserRoleCodes 返回用户的角色代码；若 user_roles 未初始化则回退 legacyRole。
-func (r *AccessRepo) GetUserRoleCodes(ctx context.Context, userID int64, legacyRole string) ([]string, error) {
+// GetUserRoleCodes 返回用户当前数据库角色代码。
+func (r *AccessRepo) GetUserRoleCodes(ctx context.Context, userID int64, _ string) ([]string, error) {
 	var codes []string
 	err := r.db.SelectContext(ctx, &codes, `
-		SELECT r.code
-		FROM user_roles ur
-		JOIN roles r ON r.id = ur.role_id
-		WHERE ur.user_id=$1
-		ORDER BY r.sort_order, r.code`, userID)
-	if err != nil {
-		return nil, err
-	}
-	if len(codes) == 0 && legacyRole != "" {
-		return []string{legacyRole}, nil
-	}
-	return codes, nil
+			SELECT code
+			FROM (
+				SELECT r.code, r.sort_order
+				FROM users u
+				JOIN user_roles ur ON ur.user_id = u.id
+				JOIN roles r ON r.id = ur.role_id
+				WHERE u.id=$1 AND u.status='ACTIVE'
+				UNION
+				SELECT r.code, r.sort_order
+				FROM users u
+				JOIN roles r ON r.code = u.role
+				WHERE u.id=$1 AND u.status='ACTIVE'
+			) role_codes
+			ORDER BY sort_order, code`, userID)
+	return codes, err
 }
 
 // GetUserPermissionCodes 返回用户通过角色继承的权限代码。
-func (r *AccessRepo) GetUserPermissionCodes(ctx context.Context, userID int64, legacyRole string) ([]string, error) {
+func (r *AccessRepo) GetUserPermissionCodes(ctx context.Context, userID int64, _ string) ([]string, error) {
 	hasAdmin, err := r.UserHasAdminRole(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if strings.EqualFold(legacyRole, "ADMIN") || hasAdmin {
+	if hasAdmin {
 		var all []string
 		err := r.db.SelectContext(ctx, &all, `SELECT code FROM permissions ORDER BY module, action, code`)
 		return all, err
 	}
 	var codes []string
 	err = r.db.SelectContext(ctx, &codes, `
-		SELECT DISTINCT p.code
-		FROM user_roles ur
-		JOIN roles r ON r.id = ur.role_id
-		JOIN role_permissions rp ON rp.role_id = r.id
-		JOIN permissions p ON p.id = rp.permission_id
-		WHERE ur.user_id=$1
-		ORDER BY p.code`, userID)
+			WITH user_role_ids AS (
+				SELECT r.id
+				FROM users u
+				JOIN user_roles ur ON ur.user_id = u.id
+				JOIN roles r ON r.id = ur.role_id
+				WHERE u.id=$1 AND u.status='ACTIVE'
+				UNION
+				SELECT r.id
+				FROM users u
+				JOIN roles r ON r.code = u.role
+				WHERE u.id=$1 AND u.status='ACTIVE'
+			)
+			SELECT DISTINCT p.code
+			FROM user_role_ids uri
+			JOIN role_permissions rp ON rp.role_id = uri.id
+			JOIN permissions p ON p.id = rp.permission_id
+			ORDER BY p.code`, userID)
 	return codes, err
 }
 
@@ -681,39 +694,49 @@ func (r *AccessRepo) DeleteContentShare(ctx context.Context, id int64) error {
 }
 
 // UserContentPermissionLevel 返回用户对指定资源的最高共享权限。
-func (r *AccessRepo) UserContentPermissionLevel(ctx context.Context, userID int64, legacyRole, resourceType string, resourceID int64) (string, error) {
-	if strings.EqualFold(legacyRole, "ADMIN") {
+func (r *AccessRepo) UserContentPermissionLevel(ctx context.Context, userID int64, _ string, resourceType string, resourceID int64) (string, error) {
+	hasAdmin, err := r.UserHasAdminRole(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if hasAdmin {
 		return "MANAGE", nil
 	}
 	var level sql.NullString
-	err := r.db.GetContext(ctx, &level, `
-		WITH user_role_ids AS (
-			SELECT r.id
-			FROM user_roles ur
-			JOIN roles r ON r.id = ur.role_id
-			WHERE ur.user_id = $1
-			UNION
-			SELECT r.id
-			FROM users u
-			JOIN roles r ON r.code = u.role
-			WHERE u.id = $1
-		),
-		user_team_ids AS (
-			SELECT team_id
-			FROM team_members
-			WHERE user_id = $1 AND status = 'ACTIVE'
-		),
-		candidate AS (
-			SELECT permission_level
+	err = r.db.GetContext(ctx, &level, `
+			WITH active_user AS (
+				SELECT id
+				FROM users
+				WHERE id = $1 AND status = 'ACTIVE'
+			),
+			user_role_ids AS (
+				SELECT r.id
+				FROM active_user au
+				JOIN user_roles ur ON ur.user_id = au.id
+				JOIN roles r ON r.id = ur.role_id
+				UNION
+				SELECT r.id
+				FROM active_user au
+				JOIN users u ON u.id = au.id
+				JOIN roles r ON r.code = u.role
+			),
+			user_team_ids AS (
+				SELECT tm.team_id
+				FROM active_user au
+				JOIN team_members tm ON tm.user_id = au.id
+				WHERE tm.status = 'ACTIVE'
+			),
+			candidate AS (
+				SELECT permission_level
 			FROM content_shares
 			WHERE resource_type = $2
-			  AND resource_id = $3
-			  AND (expires_at IS NULL OR expires_at > NOW())
-			  AND (
-				(principal_type = 'USER' AND principal_id = $1)
-				OR (principal_type = 'TEAM' AND principal_id IN (SELECT team_id FROM user_team_ids))
-				OR (principal_type = 'ROLE' AND principal_id IN (SELECT id FROM user_role_ids))
-			  )
+				  AND resource_id = $3
+				  AND (expires_at IS NULL OR expires_at > NOW())
+				  AND (
+					(principal_type = 'USER' AND principal_id = $1 AND EXISTS (SELECT 1 FROM active_user))
+					OR (principal_type = 'TEAM' AND principal_id IN (SELECT team_id FROM user_team_ids))
+					OR (principal_type = 'ROLE' AND principal_id IN (SELECT id FROM user_role_ids))
+				  )
 		)
 		SELECT permission_level
 		FROM candidate

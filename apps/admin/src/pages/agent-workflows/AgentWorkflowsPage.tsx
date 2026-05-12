@@ -306,11 +306,16 @@ export default function AgentWorkflowsPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
+  const [toolArgsDrafts, setToolArgsDrafts] = useState<Record<string, string>>({});
 
   const selectedNode = useMemo(
     () => getRawNode(nodes.find((node) => node.id === selectedNodeId)),
     [nodes, selectedNodeId],
   );
+  const selectedToolArgsText =
+    selectedNode?.type === 'tool'
+      ? (toolArgsDrafts[selectedNode.id] ?? JSON.stringify(selectedNode.data.args || {}, null, 2))
+      : '';
 
   const stats = [
     { label: 'Nodes', value: nodes.length, icon: Workflow },
@@ -514,6 +519,7 @@ export default function AgentWorkflowsPage() {
     setEdges(toFlowEdges(definition));
     setRunInputs(initialRunInputs(definition));
     setSelectedNodeId(selectedNodeIdFor(definition));
+    setToolArgsDrafts({});
   };
 
   const selectWorkflow = async (workflow: AgentWorkflowSummary) => {
@@ -940,12 +946,14 @@ export default function AgentWorkflowsPage() {
                       <label className="block">
                         <span className="mb-1 block font-mono text-[10px] uppercase text-[var(--text-tertiary)]">args JSON</span>
                         <textarea
-                          value={JSON.stringify(selectedNode.data.args || {}, null, 2)}
+                          value={selectedToolArgsText}
                           onChange={(event) => {
+                            const nextText = event.target.value;
+                            setToolArgsDrafts((current) => ({ ...current, [selectedNode.id]: nextText }));
                             try {
-                              updateSelectedNodeData('args', JSON.parse(event.target.value || '{}'));
+                              updateSelectedNodeData('args', JSON.parse(nextText || '{}'));
                             } catch {
-                              updateSelectedNodeData('argsText', event.target.value);
+                              // Keep invalid draft text visible; commit to node args only after it becomes valid JSON.
                             }
                           }}
                           className="agent-workflow-field min-h-24 resize-y font-mono"

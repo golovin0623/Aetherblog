@@ -383,7 +383,7 @@ function RolesPanel() {
     if (!selectedRole) return;
     setSelectedRoleId(selectedRole.id);
     setPermissionCodes(selectedRole.permissions.map((p) => p.code));
-  }, [selectedRole?.id]);
+  }, [selectedRole]);
 
   const updateMutation = useMutation({
     mutationFn: () => accessService.updateRolePermissions(selectedRole!.id, permissionCodes),
