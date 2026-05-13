@@ -424,7 +424,7 @@ export default function AIToolsPage() {
   return (
     <div className="ai-tools-page h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6rem)] overflow-hidden flex flex-col md:flex-row gap-3 md:gap-5 relative isolate">
       {/* 移动端：顶部工具标签栏 */}
-      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[68px] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
+      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[68px] pt-[env(safe-area-inset-top)] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
         {/* 菜单按钮 - 固定在左侧 */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
