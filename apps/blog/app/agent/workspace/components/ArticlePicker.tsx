@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Search, FileText, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import PickerPopover from './PickerPopover';
 import {
   useArticleSearch,
@@ -100,9 +100,14 @@ export default function ArticlePicker({
       {/* 列表区域按 3 个固定槽位展示,避免底部露出半截下一篇文章。 */}
       <div className="agent-thumb-scroll relative h-[min(288px,52dvh)] overflow-y-auto sm:h-[288px]">
         {showInitialLoading && (
-          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-            <Loader2 className="w-3 h-3 animate-spin mr-2" />
-            加载中…
+          <div className="absolute inset-x-3 top-4 space-y-3" aria-label="文章加载中">
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="h-20 rounded-xl bg-[var(--bg-raised)]/70 p-3 animate-pulse">
+                <div className="h-3 w-2/3 rounded-full bg-[var(--ink-subtle)]/18" />
+                <div className="mt-3 h-2.5 w-full rounded-full bg-[var(--ink-subtle)]/12" />
+                <div className="mt-2 h-2.5 w-3/5 rounded-full bg-[var(--ink-subtle)]/12" />
+              </div>
+            ))}
           </div>
         )}
 
@@ -128,8 +133,10 @@ export default function ArticlePicker({
                 <button
                   key={it.id}
                   type="button"
-                  onClick={() => onPick(it)}
-                  disabled={checked}
+                  onClick={() => {
+                    if (!checked) onPick(it);
+                  }}
+                  aria-disabled={checked}
                   className={`group/item h-24 w-full overflow-hidden text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
                     checked
                       ? 'cursor-default bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'

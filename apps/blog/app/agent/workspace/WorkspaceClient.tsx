@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
+import { ConfirmModal, spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
 import {
   ChevronDown,
   Menu,
@@ -95,6 +95,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearTargetSessionId, setClearTargetSessionId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // 桌面端 sidebar collapse —— 与移动端 drawer 互不影响
   const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(false);
@@ -720,10 +722,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       // local 命令
       if (cmd.command === '/clear') {
         if (!activeId) return;
-        if (!confirm('确认清空当前会话所有消息？此操作不可撤销。')) return;
-        setSessions((list) =>
-          list.map((s) => (s.id === activeId ? { ...s, messages: [], updatedAt: Date.now() } : s)),
-        );
+        setClearTargetSessionId(activeId);
+        setClearConfirmOpen(true);
         return;
       }
       if (cmd.command === '/regen') {
@@ -750,6 +750,28 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     },
     [activeId],
   );
+
+  const closeClearConfirm = useCallback(() => {
+    setClearConfirmOpen(false);
+    setClearTargetSessionId(null);
+  }, []);
+
+  const handleConfirmClear = useCallback(() => {
+    if (!clearTargetSessionId) {
+      closeClearConfirm();
+      return;
+    }
+    setSessions((list) =>
+      list.map((s) =>
+        s.id === clearTargetSessionId ? { ...s, messages: [], updatedAt: Date.now() } : s,
+      ),
+    );
+    if (activeId === clearTargetSessionId) {
+      setPendingArticles([]);
+      setPendingTags([]);
+    }
+    closeClearConfirm();
+  }, [activeId, clearTargetSessionId, closeClearConfirm]);
 
   // 切换会话时清空 pending 引用，避免引用串台到另一个会话
   useEffect(() => {
@@ -1009,6 +1031,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           </div>
         </div>
       </section>
+      <ConfirmModal
+        isOpen={clearConfirmOpen}
+        title="清空当前会话？"
+        message="这会移除当前会话中的所有消息，但保留会话本身。此操作不可撤销。"
+        confirmText="清空"
+        cancelText="取消"
+        variant="warning"
+        zIndex={1000}
+        onConfirm={handleConfirmClear}
+        onCancel={closeClearConfirm}
+      />
     </div>
   );
 }
