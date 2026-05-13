@@ -3251,7 +3251,7 @@ function TagPicker({
         </div>
         <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
           <span>§ Tags</span>
-          <span>{visible.length} 个</span>
+          <span className="tnum">{visible.length} 个</span>
         </div>
       </div>
       <div className="relative max-h-[320px] overflow-y-auto py-1">
@@ -3294,7 +3294,7 @@ function TagPicker({
                 >
                   <Hash className="h-3.5 w-3.5 shrink-0 opacity-80" />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{tag.name}</span>
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  <span className="tnum shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
                     {tag.postCount}
                   </span>
                   {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
