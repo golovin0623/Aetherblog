@@ -437,7 +437,7 @@ export default function AIToolsPage() {
         <div className="flex-1 relative h-full overflow-hidden">
           <div
             ref={toolTabsRef}
-            className="flex items-center h-full gap-2 px-3 scroll-px-3 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
+            className="flex items-center h-full gap-2 px-3 scroll-px-3 overflow-x-auto no-scrollbar motion-safe:scroll-smooth snap-x snap-mandatory"
           >
             {allTools.map((tool) => {
               const Icon = tool.icon;
