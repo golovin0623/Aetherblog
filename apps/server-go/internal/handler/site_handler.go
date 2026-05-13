@@ -66,13 +66,14 @@ func (h *SiteHandler) Info(c echo.Context) error {
 func (h *SiteHandler) Stats(c echo.Context) error {
 	ctx := c.Request().Context()
 	// 并行查询各统计项（忽略查询错误，降级为 0）
-	cats, _ := h.catRepo.FindAll(ctx)
-	tags, _ := h.tagRepo.FindAll(ctx)
+	// ⚡ Bolt: 使用 Count 替代 FindAll 进行统计，避免全表扫描和大量的内存分配
+	catsCount, _ := h.catRepo.Count(ctx)
+	tagsCount, _ := h.tagRepo.Count(ctx)
 	postCount, _ := h.postRepo.CountPublished(ctx)
 	return response.OK(c, map[string]any{
 		"posts":      postCount,
-		"categories": len(cats),
-		"tags":       len(tags),
+		"categories": catsCount,
+		"tags":       tagsCount,
 		"comments":   0, // 评论功能待实现
 		"views":      0, // 总浏览量待实现
 	})

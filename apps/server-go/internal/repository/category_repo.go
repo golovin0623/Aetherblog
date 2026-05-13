@@ -54,13 +54,22 @@ func (r *CategoryRepo) FindByName(ctx context.Context, name string) (*model.Cate
 	return &c, err
 }
 
+// Count 返回总分类数，用于站点统计展示。
+// 操作表：categories
+func (r *CategoryRepo) Count(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM categories`)
+	return n, err
+}
+
 // ExistsPostsInCategory 检查指定分类下是否存在未删除的文章。
 // 返回 true 表示该分类仍有文章，调用方应阻止删除该分类。
 func (r *CategoryRepo) ExistsPostsInCategory(ctx context.Context, id int64) (bool, error) {
-	var count int
-	err := r.db.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM posts WHERE category_id = $1 AND deleted = false`, id)
-	return count > 0, err
+	var exists bool
+	// ⚡ Bolt: 使用 SELECT EXISTS(...) 替代 SELECT COUNT(*)，将 O(N) 扫描优化为 O(1) 存在性检查
+	err := r.db.GetContext(ctx, &exists,
+		`SELECT EXISTS(SELECT 1 FROM posts WHERE category_id = $1 AND deleted = false)`, id)
+	return exists, err
 }
 
 // Create 向 categories 表插入新分类，post_count 初始化为 0，created_at/updated_at 由数据库自动填充，
