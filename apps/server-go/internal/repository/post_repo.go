@@ -212,7 +212,9 @@ func (r *PostRepo) FindForAdmin(ctx context.Context, f AdminPostFilter) ([]postL
 	listSQL := `SELECT p.*, c.name AS category_name FROM posts p
 		LEFT JOIN categories c ON p.category_id = c.id ` +
 		buildTagJoin(f.TagID) + where +
-		fmt.Sprintf(" ORDER BY p.created_at DESC LIMIT %d OFFSET %d", f.PageSize, offset)
+		fmt.Sprintf(" ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, f.PageSize, offset)
+
 	var rows []postListRow
 	err := r.db.SelectContext(ctx, &rows, listSQL, args...)
 	return rows, total, err
@@ -292,8 +294,8 @@ func (r *PostRepo) FindPublished(ctx context.Context, pageNum, pageSize int) ([]
 	err := r.db.SelectContext(ctx, &rows,
 		`SELECT p.*, c.name AS category_name FROM posts p
 		 LEFT JOIN categories c ON p.category_id = c.id`+baseWhere+
-			fmt.Sprintf(" ORDER BY p.is_pinned DESC, p.pin_priority DESC, p.published_at DESC LIMIT %d OFFSET %d",
-				pageSize, offset))
+			" ORDER BY p.is_pinned DESC, p.pin_priority DESC, p.published_at DESC LIMIT $1 OFFSET $2",
+		pageSize, offset)
 	return rows, total, err
 }
 
@@ -335,8 +337,8 @@ func (r *PostRepo) FindByCategory(ctx context.Context, categoryID int64, pageNum
 	err := r.db.SelectContext(ctx, &rows,
 		`SELECT p.*, c.name AS category_name FROM posts p
 		 LEFT JOIN categories c ON p.category_id = c.id`+where+
-			fmt.Sprintf(" ORDER BY p.published_at DESC LIMIT %d OFFSET %d", pageSize, offset),
-		categoryID)
+			" ORDER BY p.published_at DESC LIMIT $2 OFFSET $3",
+		categoryID, pageSize, offset)
 	return rows, total, err
 }
 
@@ -355,8 +357,8 @@ func (r *PostRepo) FindByTag(ctx context.Context, tagID int64, pageNum, pageSize
 		`SELECT p.*, c.name AS category_name FROM posts p
 		 LEFT JOIN categories c ON p.category_id = c.id
 		 JOIN post_tags pt ON p.id = pt.post_id`+baseWhere+
-			fmt.Sprintf(" ORDER BY p.published_at DESC LIMIT %d OFFSET %d", pageSize, offset),
-		tagID)
+			" ORDER BY p.published_at DESC LIMIT $2 OFFSET $3",
+		tagID, pageSize, offset)
 	return rows, total, err
 }
 
@@ -629,7 +631,8 @@ func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string,
 		SELECT p.id, p.title, p.slug, p.status, p.embedding_status, p.published_at, p.updated_at
 		FROM posts p %s
 		ORDER BY p.id DESC
-		LIMIT %d OFFSET %d`, where, limit, offset)
+		LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2)
+	args = append(args, limit, offset)
 
 	var items []dto.EmbeddingPostItem
 	if err := r.db.SelectContext(ctx, &items, selectQuery, args...); err != nil {

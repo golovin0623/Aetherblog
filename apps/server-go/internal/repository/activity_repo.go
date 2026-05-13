@@ -47,8 +47,8 @@ func NewActivityRepo(db *sqlx.DB) *ActivityRepo { return &ActivityRepo{db: db} }
 func (r *ActivityRepo) FindRecent(ctx context.Context, limit int) ([]model.ActivityEvent, error) {
 	var rows []model.ActivityEvent
 	err := r.db.SelectContext(ctx, &rows,
-		fmt.Sprintf(`SELECT %s FROM activity_events ORDER BY created_at DESC LIMIT %d`,
-			activityColumns, limit))
+		"SELECT "+activityColumns+" FROM activity_events ORDER BY created_at DESC LIMIT $1",
+		limit)
 	return rows, err
 }
 
@@ -66,8 +66,10 @@ func (r *ActivityRepo) FindForAdmin(ctx context.Context, f ActivityFilter) ([]mo
 
 	offset := f.Params.Offset()
 	listSQL := fmt.Sprintf(
-		`SELECT %s FROM activity_events%s ORDER BY created_at DESC LIMIT %d OFFSET %d`,
-		activityColumns, where, f.Params.PageSize, offset)
+		`SELECT %s FROM activity_events%s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
+		activityColumns, where, len(args)+1, len(args)+2)
+	args = append(args, f.Params.PageSize, offset)
+
 	var rows []model.ActivityEvent
 	err := r.db.SelectContext(ctx, &rows, listSQL, args...)
 	return rows, total, err
@@ -85,9 +87,8 @@ func (r *ActivityRepo) FindByUser(ctx context.Context, userID int64, p paginatio
 
 	var rows []model.ActivityEvent
 	err := r.db.SelectContext(ctx, &rows,
-		fmt.Sprintf(`SELECT %s FROM activity_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT %d OFFSET %d`,
-			activityColumns, p.PageSize, p.Offset()),
-		userID)
+		"SELECT "+activityColumns+" FROM activity_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+		userID, p.PageSize, p.Offset())
 	return rows, total, err
 }
 

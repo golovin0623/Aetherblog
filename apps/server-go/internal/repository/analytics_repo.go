@@ -188,11 +188,11 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 func (r *AnalyticsRepo) GetTopPosts(ctx context.Context, limit int) ([]TopPost, error) {
 	var rows []TopPost
 	err := r.db.SelectContext(ctx, &rows,
-		fmt.Sprintf(`SELECT id, title, slug, view_count
+		`SELECT id, title, slug, view_count
 		             FROM posts
 		             WHERE deleted = false AND status = 'PUBLISHED' AND is_hidden = false
 		             ORDER BY view_count DESC
-		             LIMIT %d`, limit))
+		             LIMIT $1`, limit)
 	return rows, err
 }
 
@@ -506,7 +506,8 @@ SELECT
     created_at
 FROM priced_logs
 ORDER BY created_at DESC
-LIMIT %d OFFSET %d`, pageSize, offset)
+LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+	args = append(args, pageSize, offset)
 
 	var records []AICallRecord
 	if err := r.db.SelectContext(ctx, &records, recordQuery, args...); err != nil {
