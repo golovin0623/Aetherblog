@@ -54,6 +54,7 @@ export function DiffView({ snapshot1, snapshot2, onClose }: DiffViewProps) {
             </div>
             <button
               onClick={onClose}
+              aria-label="关闭"
               className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             >
               <X className="w-5 h-5" />

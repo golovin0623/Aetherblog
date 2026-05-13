@@ -245,6 +245,7 @@ export default function ProviderDialog({
           </h2>
           <motion.button
             onClick={onClose}
+            aria-label="关闭"
             whileHover={{ scale: 1.1, rotate: 90 }}
             whileTap={{ scale: 0.9 }}
             className="p-1.5 rounded-lg hover:bg-status-danger-light text-[var(--text-muted)] hover:text-status-danger transition-colors"

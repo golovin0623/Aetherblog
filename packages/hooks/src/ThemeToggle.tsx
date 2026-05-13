@@ -111,6 +111,7 @@ export function ThemeToggle({
   if (!showSystem) {
     return (
       <motion.button
+        type="button"
         onClick={handleToggle}
         whileHover={{ scale: 1.1, rotate: 15 }}
         whileTap={{ scale: 0.9 }}
