@@ -429,6 +429,18 @@ async def reindex_profile_stream(
         # 200 OK，期间任何未捕获异常会让 SSE 连接被截断，前端只能感知
         # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
         # useReindexStream 能优雅处理（写 error state、停 isRunning）。
+        pending: set[asyncio.Task[dict]] = set()
+
+        async def cancel_pending_tasks() -> int:
+            if not pending:
+                return 0
+            tasks = tuple(pending)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            pending.clear()
+            return len(tasks)
+
         try:
             # 内存优化：不要一次把所有 PUBLISHED 文章的 content_markdown 拉进
             # 内存（数万篇 × 平均 20KB 正文 = 数百 MB，会让 ai-service OOM）。
@@ -452,6 +464,10 @@ async def reindex_profile_stream(
             # 避免全量 reindex 被单线程串行拖慢。默认 5，可用环境变量调优：
             # AI_REINDEX_STREAM_POST_CONCURRENCY=...
             post_concurrency = max(1, int(settings.reindex_stream_post_concurrency or 5))
+            embed_concurrency = max(1, int(getattr(vector_store, "chunk_concurrency", 5) or 5))
+            # 所有 post 共享同一个 embedding semaphore，避免 post_concurrency *
+            # chunk_concurrency 把上游 LLM 网关的实际并发放大。
+            embed_semaphore = asyncio.Semaphore(embed_concurrency)
 
             async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
@@ -483,6 +499,7 @@ async def reindex_profile_stream(
                         metadata={"status": "PUBLISHED"},
                         profile=profile,
                         target_status=target_status,
+                        embed_semaphore=embed_semaphore,
                     )
                     return {
                         "type": "progress",
@@ -504,7 +521,6 @@ async def reindex_profile_stream(
                         "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
                     }
 
-            pending: set[asyncio.Task[dict]] = set()
             next_idx = 1
             while next_idx <= total or pending:
                 while next_idx <= total and len(pending) < post_concurrency:
@@ -549,9 +565,14 @@ async def reindex_profile_stream(
             yield _sse_pack({"type": "done"})
         except asyncio.CancelledError:
             # 客户端中断连接（比如手动点击“中止”）时，确保后台 task 被回收。
-            logger.info("reindex_stream.client_cancelled", extra={"data": {"profile": code}})
+            cancelled = await cancel_pending_tasks()
+            logger.info(
+                "reindex_stream.client_cancelled",
+                extra={"data": {"profile": code, "cancelled_tasks": cancelled}},
+            )
             raise
         except Exception as exc:
+            await cancel_pending_tasks()
             # DB 连接 / 池获取 / 任何 per-post try 之外的异常都落到这里。
             # message 截断 200 字符避免把堆栈泄露到前端 UI。
             logger.warning(

@@ -8,12 +8,15 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
+from app.api.routes.profiles import reindex_profile_stream
 from app.core.jwt import UserClaims
 from app.main import app
 from app.services.vector_store import SearchProfile
@@ -75,10 +78,14 @@ class _SimplePool:
 
 
 class FakeVectorStore:
-    def __init__(self, *, profile: SearchProfile | None, upsert_results: list):
+    def __init__(self, *, profile: SearchProfile | None, upsert_results):
         self._profile = profile
         # upsert_results：每个元素或为 dict（成功）或为 Exception 实例（失败）
-        self.upsert_results = list(upsert_results)
+        self.upsert_results = (
+            dict(upsert_results)
+            if isinstance(upsert_results, dict)
+            else list(upsert_results)
+        )
         self.calls: list[dict] = []
 
     async def _fetch_profile_by_code(self, code: str):
@@ -90,10 +97,41 @@ class FakeVectorStore:
         self.calls.append(kw)
         if not self.upsert_results:
             return {"status": "indexed", "chunks": 1}
-        nxt = self.upsert_results.pop(0)
+        if isinstance(self.upsert_results, dict):
+            nxt = self.upsert_results.get(
+                kw["post_id"],
+                {"status": "indexed", "chunks": 1},
+            )
+        else:
+            nxt = self.upsert_results.pop(0)
         if isinstance(nxt, Exception):
             raise nxt
         return nxt
+
+
+class BlockingVectorStore(FakeVectorStore):
+    def __init__(self, *, profile: SearchProfile | None, expected_started: int):
+        super().__init__(profile=profile, upsert_results=[])
+        self.expected_started = expected_started
+        self.started = 0
+        self.cancelled = 0
+        self.started_event = asyncio.Event()
+
+    async def upsert_post_embedding(self, **kw):
+        self.calls.append(kw)
+        self.started += 1
+        if self.started >= self.expected_started:
+            self.started_event.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        return {"status": "indexed", "chunks": 1}
+
+
+class StreamSettings:
+    reindex_stream_post_concurrency = 3
 
 
 def _install(*, pool, vector_store):
@@ -133,10 +171,10 @@ def test_reindex_stream_success_yields_full_frame_sequence():
     ])
     vs = FakeVectorStore(
         profile=_profile(),
-        upsert_results=[
-            {"status": "indexed", "chunks": 3},
-            {"status": "indexed", "chunks": 5},
-        ],
+        upsert_results={
+            1: {"status": "indexed", "chunks": 3},
+            2: {"status": "indexed", "chunks": 5},
+        },
     )
     _install(pool=pool, vector_store=vs)
 
@@ -148,13 +186,14 @@ def test_reindex_stream_success_yields_full_frame_sequence():
     events = _parse_sse(res.content)
     assert len(events) == 5  # start + 2 progress + result + done
     assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
-    assert events[1]["type"] == "progress"
-    assert events[1]["postId"] == 1
-    assert events[1]["chunks"] == 3
-    assert events[1]["status"] == "ok"
-    assert events[2]["postId"] == 2
-    assert events[2]["chunks"] == 5
-    assert events[3] == {
+    progress_by_post = {
+        event["postId"]: event for event in events if event["type"] == "progress"
+    }
+    assert progress_by_post[1]["chunks"] == 3
+    assert progress_by_post[1]["status"] == "ok"
+    assert progress_by_post[2]["chunks"] == 5
+    assert progress_by_post[2]["status"] == "ok"
+    assert events[-2] == {
         "type": "result",
         "data": {
             "profile": "new-v2",
@@ -163,7 +202,8 @@ def test_reindex_stream_success_yields_full_frame_sequence():
             "target_status": "shadow",
         },
     }
-    assert events[4] == {"type": "done"}
+    assert events[-1] == {"type": "done"}
+    assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
 
 
 def test_reindex_stream_per_post_failure_continues_emitting_progress():
@@ -174,11 +214,11 @@ def test_reindex_stream_per_post_failure_continues_emitting_progress():
     ])
     vs = FakeVectorStore(
         profile=_profile(),
-        upsert_results=[
-            {"status": "indexed", "chunks": 1},
-            RuntimeError("upstream 503 cascaded"),
-            {"status": "indexed", "chunks": 2},
-        ],
+        upsert_results={
+            1: {"status": "indexed", "chunks": 1},
+            2: RuntimeError("upstream 503 cascaded"),
+            3: {"status": "indexed", "chunks": 2},
+        },
     )
     _install(pool=pool, vector_store=vs)
 
@@ -187,10 +227,11 @@ def test_reindex_stream_per_post_failure_continues_emitting_progress():
     events = _parse_sse(res.content)
     progress = [e for e in events if e["type"] == "progress"]
     assert len(progress) == 3
-    assert progress[0]["status"] == "ok"
-    assert progress[1]["status"] == "failed"
-    assert "503" in progress[1]["error"]
-    assert progress[2]["status"] == "ok"
+    progress_by_post = {event["postId"]: event for event in progress}
+    assert progress_by_post[1]["status"] == "ok"
+    assert progress_by_post[2]["status"] == "failed"
+    assert "503" in progress_by_post[2]["error"]
+    assert progress_by_post[3]["status"] == "ok"
 
     result = next(e for e in events if e["type"] == "result")
     assert result["data"]["indexed"] == 2
@@ -273,3 +314,36 @@ def test_reindex_stream_db_outage_yields_error_frame():
     assert any(e.get("type") == "error" for e in events), events
     err = next(e for e in events if e.get("type") == "error")
     assert "DB outage" in err["message"]
+
+
+@pytest.mark.asyncio
+async def test_reindex_stream_cancel_cleans_up_pending_workers():
+    pool = FakePool([
+        {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
+        {"id": 2, "title": "B", "slug": "b", "content_markdown": "beta"},
+        {"id": 3, "title": "C", "slug": "c", "content_markdown": "gamma"},
+    ])
+    vs = BlockingVectorStore(profile=_profile(), expected_started=3)
+
+    response = await reindex_profile_stream(
+        "new-v2",
+        user=_admin_user(),
+        pool=pool,
+        vector_store=vs,
+        settings=StreamSettings(),
+    )
+    iterator = response.body_iterator.__aiter__()
+
+    first_frame = await iterator.__anext__()
+    assert '"type": "start"' in first_frame
+
+    next_frame = asyncio.create_task(iterator.__anext__())
+    await asyncio.wait_for(vs.started_event.wait(), timeout=1)
+
+    next_frame.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await next_frame
+
+    assert vs.cancelled == 3
+    assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
+    assert vs.calls[0]["embed_semaphore"] is vs.calls[2]["embed_semaphore"]

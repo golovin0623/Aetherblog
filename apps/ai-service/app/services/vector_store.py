@@ -55,6 +55,10 @@ class VectorStoreService:
         # 但限制在 5 是为了不打爆中转网关（OneAPI / LiteLLM proxy 的并发账户）。
         self._chunk_concurrency = 5
 
+    @property
+    def chunk_concurrency(self) -> int:
+        return self._chunk_concurrency
+
     # ============================================================
     # Profile resolution
     # ============================================================
@@ -227,6 +231,7 @@ class VectorStoreService:
         timeout_sec: int | None = None,
         profile: SearchProfile | None = None,
         target_status: str = "active",
+        embed_semaphore: asyncio.Semaphore | None = None,
     ) -> dict[str, Any]:
         """对单篇文章按 profile 配置切片 + embed + upsert。
 
@@ -236,6 +241,9 @@ class VectorStoreService:
 
         ``target_status``：写入新行时的 status 列值。普通索引走 'active'，
         蓝绿写 shadow 时走 'shadow'。
+
+        ``embed_semaphore``：批量重建时可传入跨文章共享的 semaphore，避免调用方
+        的文章并发和这里的 chunk 并发相乘后打穿上游网关。
         """
         profile = profile or await self.get_active_profile()
         content_len = len(content or "")
@@ -274,7 +282,7 @@ class VectorStoreService:
 
         # ---- 并发 embed 每个 chunk
         embed_start = time.perf_counter()
-        semaphore = asyncio.Semaphore(self._chunk_concurrency)
+        semaphore = embed_semaphore or asyncio.Semaphore(self._chunk_concurrency)
 
         async def embed_chunk(c: Chunk) -> tuple[Chunk, list[float]]:
             async with semaphore:
