@@ -605,15 +605,11 @@ func (r *PostRepo) FilterPublicNoPassword(ctx context.Context, ids []int64) ([]i
 	return out, nil
 }
 
-// ListEmbeddingStatus 返回已发布文章的向量索引状态列表，支持按 embeddingStatus 过滤。
-// statusFilter 为空时返回所有已发布文章，否则只返回指定状态的文章。
-//
-// 排除 is_hidden = true：ai-service 的 VULN-062 检查会拒绝给隐藏文章建索引
-// （/api/v1/admin/search/index 直接返回 404），如果在这里把它们列出来，前端
-// 会让用户点"重建"，结果只能拿到 404 把"失败"计数永久 +1。
+// ListEmbeddingStatus 返回文章的向量索引状态列表（仅排除 deleted=true），支持按 embeddingStatus 过滤。
+// statusFilter 为空时返回所有文章，否则只返回指定状态的文章。
 func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string, limit, offset int) ([]dto.EmbeddingPostItem, int, error) {
 	args := []any{}
-	where := "WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false"
+	where := "WHERE p.deleted = false"
 	if statusFilter != "" {
 		where += " AND p.embedding_status = $1"
 		args = append(args, statusFilter)
@@ -641,15 +637,13 @@ func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string,
 	return items, total, nil
 }
 
-// FindByIDs 根据一组 ID 查询已发布文章（用于批量索引）。
-// 与 ListEmbeddingStatus / MarkEmbeddingPending 保持一致：排除 is_hidden = true，
-// 防止隐藏文章绕过列表过滤被塞进批量索引（ai-service 也会用 VULN-062 拒掉）。
+// FindByIDs 根据一组 ID 查询文章（用于批量索引，排除 deleted=true）。
 func (r *PostRepo) FindByIDs(ctx context.Context, ids []int64) ([]model.Post, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	query, args, err := sqlx.In(
-		`SELECT * FROM posts WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED' AND is_hidden = false`, ids)
+		`SELECT * FROM posts WHERE id IN (?) AND deleted = false`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -661,17 +655,13 @@ func (r *PostRepo) FindByIDs(ctx context.Context, ids []int64) ([]model.Post, er
 
 // MarkEmbeddingPending 将指定 ID 的文章 embedding_status 置为 'PENDING'。
 // 用于异步批量索引前先行登记状态，便于前端进度面板通过 stats 接口感知"待处理"数量。
-//
-// 与 ListEmbeddingStatus / FindByIDs 保持一致：排除 is_hidden = true，
-// 与 ai-service 的 VULN-062 检查对齐——隐藏文章不该进入索引流程，否则会被
-// /api/v1/admin/search/index 拒绝并卡在 PENDING。
 func (r *PostRepo) MarkEmbeddingPending(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	query, args, err := sqlx.In(
 		`UPDATE posts SET embedding_status = 'PENDING', updated_at = NOW()
-		 WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED' AND is_hidden = false`, ids)
+		 WHERE id IN (?) AND deleted = false`, ids)
 	if err != nil {
 		return err
 	}
@@ -682,9 +672,9 @@ func (r *PostRepo) MarkEmbeddingPending(ctx context.Context, ids []int64) error 
 
 // MarkEmbeddingFailed 把指定 ID 的文章 embedding_status 置为 'FAILED'。
 //
-// 用途：backend 调 ai-service /api/v1/admin/search/index 时，部分拒绝路径
-// （典型的 VULN-062 隐藏文章 404）会在 ai-service 内部 raise HTTPException
-// 之前就直接返回，**不**写 DB。如果 backend 也只在内存 result.Failed++，
+// 用途：backend 调 ai-service /api/v1/admin/search/index 时，若上游拒绝或超时
+// 会在 ai-service 内部 raise HTTPException 之前就直接返回，**不**写 DB。如果
+// backend 也只在内存 result.Failed++，
 // 这条文章会永远卡在 PENDING：stats.failed_posts 不增 → 前端 progress
 // panel 永远 0% → 用户以为索引在跑，其实早就失败了。这里兜底落库，
 // 让 stats / 列表 / 进度条全都立刻反映真相。
@@ -694,7 +684,7 @@ func (r *PostRepo) MarkEmbeddingFailed(ctx context.Context, ids []int64) error {
 	}
 	query, args, err := sqlx.In(
 		`UPDATE posts SET embedding_status = 'FAILED', updated_at = NOW()
-		 WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED' AND is_hidden = false`, ids)
+		 WHERE id IN (?) AND deleted = false`, ids)
 	if err != nil {
 		return err
 	}

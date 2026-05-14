@@ -245,19 +245,18 @@ async def index_post(
             result = await vector_store.delete_post_embedding(req.postId)
             request_text = str(req.postId)
         else:
-            # SECURITY (VULN-062)：建索引前要求目标文章必须是 PUBLISHED 且
-            # 未被删除/隐藏。否则一旦内部服务 token 被绕过（或未来 Go 代理
-            # 出现回归），攻击者可被滥用以恶意文本替换已发布文章的向量
-            # （通过 AI 搜索实现“训练 / 检索投毒”）。
+            # 仅阻止已删除文章建索引。隐藏/草稿/加密文章允许进入向量库，
+            # 但检索结果是否可见由查询侧按权限再过滤（前台公开检索继续
+            # 受 status/is_hidden/password 约束，管理端可在登录态检索）。
             async with pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    "SELECT id, status, deleted, is_hidden FROM posts WHERE id = $1",
+                    "SELECT id, deleted FROM posts WHERE id = $1",
                     req.postId,
                 )
-            if not row or row["deleted"] or row["is_hidden"] or row["status"] != "PUBLISHED":
+            if not row or row["deleted"]:
                 raise HTTPException(
                     status_code=404,
-                    detail="Post is not indexable (must be PUBLISHED and not hidden/deleted)",
+                    detail="Post is not indexable (must exist and not deleted)",
                 )
             _enforce_content_limit(req.content or "")
             result = await vector_store.upsert_post_embedding(
@@ -468,10 +467,10 @@ async def index_stats(
     async with pool.acquire() as conn:
         post_counts = await conn.fetchrow("""
             SELECT
-                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED') AS total_posts,
-                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'INDEXED') AS indexed_posts,
-                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'FAILED') AS failed_posts,
-                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'PENDING') AS pending_posts
+                (SELECT COUNT(*) FROM posts WHERE deleted = false) AS total_posts,
+                (SELECT COUNT(*) FROM posts WHERE deleted = false AND embedding_status = 'INDEXED') AS indexed_posts,
+                (SELECT COUNT(*) FROM posts WHERE deleted = false AND embedding_status = 'FAILED') AS failed_posts,
+                (SELECT COUNT(*) FROM posts WHERE deleted = false AND embedding_status = 'PENDING') AS pending_posts
         """)
 
         # vector_count = active profile 下的 chunk 总数（旧 UI 字段保留兼容）
