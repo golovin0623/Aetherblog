@@ -66,7 +66,7 @@ func (h *SiteHandler) Info(c echo.Context) error {
 func (h *SiteHandler) Stats(c echo.Context) error {
 	ctx := c.Request().Context()
 	// 并行查询各统计项（忽略查询错误，降级为 0）
-	// ⚡ Bolt: 使用 Count 替代 FindAll 进行统计，避免全表扫描和大量的内存分配
+	// 使用 Count 替代 FindAll 进行统计，避免全量数据加载和大量的内存分配
 	catsCount, _ := h.catRepo.Count(ctx)
 	tagsCount, _ := h.tagRepo.Count(ctx)
 	postCount, _ := h.postRepo.CountPublished(ctx)
