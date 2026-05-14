@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -25,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
+from app.core.config import get_settings
 from app.schemas.common import ApiResponse
 from app.schemas.search import CreateSearchProfileRequest, SearchProfileResponse
 
@@ -397,6 +399,7 @@ async def reindex_profile_stream(
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
     vector_store=Depends(get_vector_store),
+    settings=Depends(get_settings),
 ):
     """以 SSE 流式发送针对指定 profile 的全量 reindex 进度。
 
@@ -426,6 +429,18 @@ async def reindex_profile_stream(
         # 200 OK，期间任何未捕获异常会让 SSE 连接被截断，前端只能感知
         # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
         # useReindexStream 能优雅处理（写 error state、停 isRunning）。
+        pending: set[asyncio.Task[dict]] = set()
+
+        async def cancel_pending_tasks() -> int:
+            if not pending:
+                return 0
+            tasks = tuple(pending)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            pending.clear()
+            return len(tasks)
+
         try:
             # 内存优化：不要一次把所有 PUBLISHED 文章的 content_markdown 拉进
             # 内存（数万篇 × 平均 20KB 正文 = 数百 MB，会让 ai-service OOM）。
@@ -445,8 +460,16 @@ async def reindex_profile_stream(
 
             indexed = 0
             failed = 0
-            for i, id_row in enumerate(id_rows, 1):
-                post_id = id_row["id"]
+            # 每篇文章内部仍由 vector_store 按 chunk 并发嵌入；这里再给“篇级”加并发，
+            # 避免全量 reindex 被单线程串行拖慢。默认 5，可用环境变量调优：
+            # AI_REINDEX_STREAM_POST_CONCURRENCY=...
+            post_concurrency = max(1, int(settings.reindex_stream_post_concurrency or 5))
+            embed_concurrency = max(1, int(getattr(vector_store, "chunk_concurrency", 5) or 5))
+            # 所有 post 共享同一个 embedding semaphore，避免 post_concurrency *
+            # chunk_concurrency 把上游 LLM 网关的实际并发放大。
+            embed_semaphore = asyncio.Semaphore(embed_concurrency)
+
+            async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
                 try:
                     # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
@@ -458,8 +481,7 @@ async def reindex_profile_stream(
                             post_id,
                         )
                     if not post:
-                        failed += 1
-                        yield _sse_pack({
+                        return {
                             "type": "progress",
                             "postId": post_id,
                             "index": i,
@@ -467,8 +489,8 @@ async def reindex_profile_stream(
                             "status": "failed",
                             "error": "post no longer PUBLISHED",
                             "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                        })
-                        continue
+                        }
+
                     result = await vector_store.upsert_post_embedding(
                         post_id=post["id"],
                         title=post["title"],
@@ -477,20 +499,19 @@ async def reindex_profile_stream(
                         metadata={"status": "PUBLISHED"},
                         profile=profile,
                         target_status=target_status,
+                        embed_semaphore=embed_semaphore,
                     )
-                    indexed += 1
-                    yield _sse_pack({
+                    return {
                         "type": "progress",
                         "postId": post["id"],
                         "index": i,
                         "chunks": result.get("chunks", 0),
                         "status": "ok",
                         "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                    })
+                    }
                 except Exception as exc:
-                    failed += 1
                     # 错误消息截断 200 字符避免把堆栈泄露到前端 UI
-                    yield _sse_pack({
+                    return {
                         "type": "progress",
                         "postId": post_id,
                         "index": i,
@@ -498,7 +519,42 @@ async def reindex_profile_stream(
                         "status": "failed",
                         "error": str(exc)[:200],
                         "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                    })
+                    }
+
+            next_idx = 1
+            while next_idx <= total or pending:
+                while next_idx <= total and len(pending) < post_concurrency:
+                    post_id = id_rows[next_idx - 1]["id"]
+                    pending.add(asyncio.create_task(process_one(next_idx, post_id)))
+                    next_idx += 1
+
+                if not pending:
+                    continue
+
+                done, pending = await asyncio.wait(
+                    pending,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in done:
+                    try:
+                        event = task.result()
+                    except Exception as exc:
+                        failed += 1
+                        yield _sse_pack({
+                            "type": "progress",
+                            "postId": 0,
+                            "index": 0,
+                            "chunks": 0,
+                            "status": "failed",
+                            "error": f"worker error: {str(exc)[:160]}",
+                            "elapsedMs": 0,
+                        })
+                        continue
+                    if event.get("status") == "ok":
+                        indexed += 1
+                    else:
+                        failed += 1
+                    yield _sse_pack(event)
 
             yield _sse_pack({"type": "result", "data": {
                 "profile": code,
@@ -507,7 +563,16 @@ async def reindex_profile_stream(
                 "target_status": target_status,
             }})
             yield _sse_pack({"type": "done"})
+        except asyncio.CancelledError:
+            # 客户端中断连接（比如手动点击“中止”）时，确保后台 task 被回收。
+            cancelled = await cancel_pending_tasks()
+            logger.info(
+                "reindex_stream.client_cancelled",
+                extra={"data": {"profile": code, "cancelled_tasks": cancelled}},
+            )
+            raise
         except Exception as exc:
+            await cancel_pending_tasks()
             # DB 连接 / 池获取 / 任何 per-post try 之外的异常都落到这里。
             # message 截断 200 字符避免把堆栈泄露到前端 UI。
             logger.warning(
