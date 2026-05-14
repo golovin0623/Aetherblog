@@ -35,6 +35,14 @@ func (r *TagRepo) FindByID(ctx context.Context, id int64) (*model.Tag, error) {
 	return &t, err
 }
 
+// Count 返回总标签数，用于站点统计展示。
+// 操作表：tags
+func (r *TagRepo) Count(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM tags`)
+	return n, err
+}
+
 // FindBySlug 根据 URL slug 查询单个标签，不存在时返回 nil。
 // 操作表：tags；参数 slug 为标签的 URL 友好标识符。
 func (r *TagRepo) FindBySlug(ctx context.Context, slug string) (*model.Tag, error) {
