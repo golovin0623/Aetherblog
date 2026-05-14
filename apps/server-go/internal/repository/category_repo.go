@@ -66,9 +66,9 @@ func (r *CategoryRepo) Count(ctx context.Context) (int64, error) {
 // 返回 true 表示该分类仍有文章，调用方应阻止删除该分类。
 func (r *CategoryRepo) ExistsPostsInCategory(ctx context.Context, id int64) (bool, error) {
 	var exists bool
-	// ⚡ Bolt: 使用 SELECT EXISTS(...) 替代 SELECT COUNT(*)，将 O(N) 扫描优化为 O(1) 存在性检查
+	// 使用 SELECT EXISTS(...) 替代 SELECT COUNT(*)，优化存在性检查性能
 	err := r.db.GetContext(ctx, &exists,
-		`SELECT EXISTS(SELECT 1 FROM posts WHERE category_id = $1 AND deleted = false)`, id)
+		"SELECT EXISTS(SELECT 1 FROM posts WHERE category_id = $1 AND deleted = false)", id)
 	return exists, err
 }
 
