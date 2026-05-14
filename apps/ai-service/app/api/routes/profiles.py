@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
+from app.core.config import get_settings
 from app.schemas.common import ApiResponse
 from app.schemas.search import CreateSearchProfileRequest, SearchProfileResponse
 
@@ -398,6 +399,7 @@ async def reindex_profile_stream(
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
     vector_store=Depends(get_vector_store),
+    settings=Depends(get_settings),
 ):
     """以 SSE 流式发送针对指定 profile 的全量 reindex 进度。
 
@@ -447,8 +449,9 @@ async def reindex_profile_stream(
             indexed = 0
             failed = 0
             # 每篇文章内部仍由 vector_store 按 chunk 并发嵌入；这里再给“篇级”加并发，
-            # 避免全量 reindex 被单线程串行拖慢。并发上限先固定 5（与 retry-failed 对齐）。
-            post_concurrency = 5
+            # 避免全量 reindex 被单线程串行拖慢。默认 5，可用环境变量调优：
+            # AI_REINDEX_STREAM_POST_CONCURRENCY=...
+            post_concurrency = max(1, int(settings.reindex_stream_post_concurrency or 5))
 
             async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
@@ -517,7 +520,20 @@ async def reindex_profile_stream(
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in done:
-                    event = task.result()
+                    try:
+                        event = task.result()
+                    except Exception as exc:
+                        failed += 1
+                        yield _sse_pack({
+                            "type": "progress",
+                            "postId": 0,
+                            "index": 0,
+                            "chunks": 0,
+                            "status": "failed",
+                            "error": f"worker error: {str(exc)[:160]}",
+                            "elapsedMs": 0,
+                        })
+                        continue
                     if event.get("status") == "ok":
                         indexed += 1
                     else:
@@ -531,6 +547,10 @@ async def reindex_profile_stream(
                 "target_status": target_status,
             }})
             yield _sse_pack({"type": "done"})
+        except asyncio.CancelledError:
+            # 客户端中断连接（比如手动点击“中止”）时，确保后台 task 被回收。
+            logger.info("reindex_stream.client_cancelled", extra={"data": {"profile": code}})
+            raise
         except Exception as exc:
             # DB 连接 / 池获取 / 任何 per-post try 之外的异常都落到这里。
             # message 截断 200 字符避免把堆栈泄露到前端 UI。

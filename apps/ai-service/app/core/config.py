@@ -232,6 +232,15 @@ class Settings(BaseSettings):
     vector_dim: int = Field(default=1536, alias="AI_VECTOR_DIM")
     search_threshold: float = Field(default=0.6, alias="AI_SEARCH_THRESHOLD")
     reindex_batch_size: int = Field(default=200, alias="AI_REINDEX_BATCH")
+    # Search Profile SSE 全量重建的“篇级”并发上限。
+    # 与 vector_store 的 chunk 并发是两层控制：
+    #   - post 并发: 同时处理多少篇文章
+    #   - chunk 并发: 单篇文章内部同时请求多少个 chunk embedding
+    # 默认 5；可按 provider 配额 / CPU 负载在部署环境调优。
+    reindex_stream_post_concurrency: int = Field(
+        default=5,
+        alias="AI_REINDEX_STREAM_POST_CONCURRENCY",
+    )
     usage_log_failure_alert_threshold: int = Field(default=10, alias="AI_USAGE_LOG_FAILURE_ALERT_THRESHOLD")
     usage_log_failure_sample_limit: int = Field(default=50, alias="AI_USAGE_LOG_FAILURE_SAMPLE_LIMIT")
 
