@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -445,8 +446,11 @@ async def reindex_profile_stream(
 
             indexed = 0
             failed = 0
-            for i, id_row in enumerate(id_rows, 1):
-                post_id = id_row["id"]
+            # 每篇文章内部仍由 vector_store 按 chunk 并发嵌入；这里再给“篇级”加并发，
+            # 避免全量 reindex 被单线程串行拖慢。并发上限先固定 5（与 retry-failed 对齐）。
+            post_concurrency = 5
+
+            async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
                 try:
                     # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
@@ -458,8 +462,7 @@ async def reindex_profile_stream(
                             post_id,
                         )
                     if not post:
-                        failed += 1
-                        yield _sse_pack({
+                        return {
                             "type": "progress",
                             "postId": post_id,
                             "index": i,
@@ -467,8 +470,8 @@ async def reindex_profile_stream(
                             "status": "failed",
                             "error": "post no longer PUBLISHED",
                             "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                        })
-                        continue
+                        }
+
                     result = await vector_store.upsert_post_embedding(
                         post_id=post["id"],
                         title=post["title"],
@@ -478,19 +481,17 @@ async def reindex_profile_stream(
                         profile=profile,
                         target_status=target_status,
                     )
-                    indexed += 1
-                    yield _sse_pack({
+                    return {
                         "type": "progress",
                         "postId": post["id"],
                         "index": i,
                         "chunks": result.get("chunks", 0),
                         "status": "ok",
                         "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                    })
+                    }
                 except Exception as exc:
-                    failed += 1
                     # 错误消息截断 200 字符避免把堆栈泄露到前端 UI
-                    yield _sse_pack({
+                    return {
                         "type": "progress",
                         "postId": post_id,
                         "index": i,
@@ -498,7 +499,30 @@ async def reindex_profile_stream(
                         "status": "failed",
                         "error": str(exc)[:200],
                         "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                    })
+                    }
+
+            pending: set[asyncio.Task[dict]] = set()
+            next_idx = 1
+            while next_idx <= total or pending:
+                while next_idx <= total and len(pending) < post_concurrency:
+                    post_id = id_rows[next_idx - 1]["id"]
+                    pending.add(asyncio.create_task(process_one(next_idx, post_id)))
+                    next_idx += 1
+
+                if not pending:
+                    continue
+
+                done, pending = await asyncio.wait(
+                    pending,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in done:
+                    event = task.result()
+                    if event.get("status") == "ok":
+                        indexed += 1
+                    else:
+                        failed += 1
+                    yield _sse_pack(event)
 
             yield _sse_pack({"type": "result", "data": {
                 "profile": code,
