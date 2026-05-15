@@ -81,3 +81,32 @@ func TestMediaSyncRepoEnqueueAllExcludesLocalSourcesForLocalTarget(t *testing.T)
 		t.Fatalf("unmet expectations: %v", err)
 	}
 }
+
+func TestMediaSyncRepoMarkJobSucceededMarksBackupVerified(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMediaSyncRepo(sqlx.NewDb(db, "sqlmock"))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE media_sync_jobs SET status='SUCCEEDED', finished_at=$1 WHERE id=$2`)).
+		WithArgs(sqlmock.AnyArg(), int64(11)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE media_files
+		SET sync_status='SYNCED', backup_provider_id=$1, backup_url=$2, backup_at=$3, backup_error=NULL, last_verified_at=$3
+		WHERE id=$4`)).
+		WithArgs(int64(5), "https://backup.example.com/a.png", sqlmock.AnyArg(), int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := repo.MarkJobSucceeded(context.Background(), 11, 7, 5, "https://backup.example.com/a.png"); err != nil {
+		t.Fatalf("MarkJobSucceeded: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
