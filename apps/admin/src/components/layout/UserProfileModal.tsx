@@ -16,12 +16,19 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
-import { Modal } from '@aetherblog/ui';
+import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
-import { cn } from '@/lib/utils';
+import { cn, formatFileSize } from '@/lib/utils';
+import {
+  compressImageFile,
+  IMAGE_COMPRESSION_THRESHOLD,
+  IMAGE_UPLOAD_MAX_SIZE,
+  isCompressibleImage,
+  type SmartCompressionMetrics,
+} from '@/lib/imageCompression';
 import { useMediaQuery } from '@/hooks';
 
 interface UserProfileModalProps {
@@ -40,6 +47,8 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [avatarCompressionOpen, setAvatarCompressionOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 个人资料状态
@@ -59,25 +68,14 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const resetAvatarInput = () => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
-    // 验证文件类型
-    if (!file.type.startsWith('image/')) {
-      toast.error('请上传图片文件');
-      return;
-    }
-
-    // 验证文件大小 (最大 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('图片大小不能超过 2MB');
-      return;
-    }
-
+  const uploadAvatarFile = async (file: File, compression?: SmartCompressionMetrics) => {
     setIsUploadingAvatar(true);
     try {
-      const mediaItem = await mediaService.upload(file);
+      const mediaItem = await mediaService.upload(file, undefined, compression ? { smartCompression: compression } : undefined);
       // Phase 3: 切到 cdnUrl 优先,LOCAL 模式仍走 fileUrl
       const avatarUrl = mediaItem.cdnUrl || mediaItem.fileUrl;
       const res = await authService.updateAvatar(avatarUrl);
@@ -92,7 +90,70 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
       toast.error(err.message || '头像上传失败');
     } finally {
       setIsUploadingAvatar(false);
+      resetAvatarInput();
     }
+  };
+
+  const uploadCompressedAvatar = async () => {
+    const file = pendingAvatarFile;
+    setAvatarCompressionOpen(false);
+    setPendingAvatarFile(null);
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const compressed = await compressImageFile(file, { profile: 'avatar' });
+      setIsUploadingAvatar(false);
+      if (compressed) {
+        await uploadAvatarFile(compressed.file, compressed.metrics);
+        return;
+      }
+      toast.info('图片已接近最佳体积，将上传原图');
+      await uploadAvatarFile(file);
+    } catch {
+      setIsUploadingAvatar(false);
+      toast.warning('智能压缩未完成，将上传原图');
+      await uploadAvatarFile(file);
+    }
+  };
+
+  const uploadOriginalPendingAvatar = async () => {
+    const file = pendingAvatarFile;
+    setAvatarCompressionOpen(false);
+    setPendingAvatarFile(null);
+    if (file) await uploadAvatarFile(file);
+  };
+
+  const cancelPendingAvatar = () => {
+    setAvatarCompressionOpen(false);
+    setPendingAvatarFile(null);
+    resetAvatarInput();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请上传图片文件');
+      resetAvatarInput();
+      return;
+    }
+
+    if (file.size > IMAGE_UPLOAD_MAX_SIZE) {
+      toast.error('图片大小不能超过 20MB');
+      resetAvatarInput();
+      return;
+    }
+
+    if (file.size > IMAGE_COMPRESSION_THRESHOLD && isCompressibleImage(file)) {
+      setPendingAvatarFile(file);
+      setAvatarCompressionOpen(true);
+      return;
+    }
+
+    await uploadAvatarFile(file);
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -165,13 +226,14 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
   // 按 Escape 键关闭
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape' || avatarCompressionOpen) return;
+      onClose();
     };
     if (isOpen) {
       window.addEventListener('keydown', handleEsc);
     }
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
+  }, [avatarCompressionOpen, isOpen, onClose]);
 
   // 打开时阻止 body 滚动
   React.useEffect(() => {
@@ -352,7 +414,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                           className="hidden"
                           accept="image/*"
                         />
-                        <p className="text-xs text-[var(--text-muted)]">点击更换头像</p>
+                        <p className="text-xs text-[var(--text-muted)]">最大 20MB，超过 5MB 可选择智能压缩</p>
                       </div>
 
                       {/* 个人资料表单 */}
@@ -507,6 +569,20 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               </div>
             </div>
           </motion.div>
+
+          <ConfirmModal
+            isOpen={avatarCompressionOpen}
+            title="智能压缩头像"
+            message={`这张头像大小为 ${pendingAvatarFile ? formatFileSize(pendingAvatarFile.size) : ''}，超过 5MB。系统可以先智能压缩再上传，会尽量保持清晰度。`}
+            confirmText="压缩后上传"
+            secondaryText="原图上传"
+            cancelText="取消"
+            variant="info"
+            zIndex={200}
+            onConfirm={uploadCompressedAvatar}
+            onSecondary={uploadOriginalPendingAvatar}
+            onCancel={cancelPendingAvatar}
+          />
         </>
       )}
     </AnimatePresence>

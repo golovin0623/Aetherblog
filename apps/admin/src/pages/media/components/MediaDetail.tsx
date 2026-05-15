@@ -250,18 +250,25 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       </div>
 
       {/* Tab 导航 */}
-      <div className="flex items-center gap-1 p-1 bg-[var(--bg-secondary)]/50 dark:bg-white/5 rounded-xl mb-4">
+      <div className="relative flex items-center gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-subtle)] mb-4 overflow-hidden">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+              'relative z-10 flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
               activeTab === tab.id
-                ? 'bg-primary text-white shadow-md'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                ? 'text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
             )}
           >
+            {activeTab === tab.id && (
+              <motion.span
+                layoutId={`media-detail-tab-bg-${media.id}`}
+                className="absolute inset-0 -z-10 rounded-lg bg-[var(--bg-popover)] dark:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] shadow-sm"
+                transition={{ type: 'spring', bounce: 0.18, duration: 0.42 }}
+              />
+            )}
             <tab.icon className="w-3.5 h-3.5" />
             {tab.label}
           </button>

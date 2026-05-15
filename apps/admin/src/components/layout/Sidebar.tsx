@@ -185,10 +185,12 @@ export function Sidebar() {
       )}
 
       {/* 移动端抽屉 - 优化宽度 (减少约1/3，目标 ~65vw 或 ~220px) */}
-      <div className={cn(
-        "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu transition-transform duration-300 ease-in-out md:hidden flex flex-col will-change-transform",
-        isMobileOpen ? "translate-x-0" : "-translate-x-full"
-      )}
+      <div
+        aria-hidden={!isMobileOpen}
+        className={cn(
+          "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu transition-transform duration-300 ease-in-out md:hidden flex flex-col will-change-transform",
+          isMobileOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none"
+        )}
         style={{ viewTransitionName: 'admin-sidebar-drawer' } as React.CSSProperties}
       >
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />

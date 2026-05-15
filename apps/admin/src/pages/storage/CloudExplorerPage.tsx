@@ -99,26 +99,26 @@ function ObjectIcon({ kind }: { kind: ObjectKind }) {
   const className = 'w-4 h-4 shrink-0';
   switch (kind) {
     case 'folder':
-      return <Folder className={cn(className, 'text-amber-500')} />;
+      return <Folder className={cn(className, 'text-[var(--signal-warn)]')} />;
     case 'image':
-      return <FileImage className={cn(className, 'text-sky-500')} />;
+      return <FileImage className={cn(className, 'text-[var(--aurora-3)]')} />;
     case 'video':
-      return <FileVideo className={cn(className, 'text-violet-500')} />;
+      return <FileVideo className={cn(className, 'text-[var(--aurora-2)]')} />;
     case 'audio':
-      return <FileAudio className={cn(className, 'text-emerald-500')} />;
+      return <FileAudio className={cn(className, 'text-[var(--signal-success)]')} />;
     case 'archive':
-      return <FileArchive className={cn(className, 'text-orange-500')} />;
+      return <FileArchive className={cn(className, 'text-[var(--aurora-1)]')} />;
     case 'document':
-      return <FileText className={cn(className, 'text-blue-500')} />;
+      return <FileText className={cn(className, 'text-[var(--signal-info)]')} />;
     default:
-      return <File className={cn(className, 'text-[var(--text-muted)]')} />;
+      return <File className={cn(className, 'text-[var(--ink-muted)]')} />;
   }
 }
 
 function StatusBadge({ item }: { item: ObjectListing }) {
   if (item.status === 'IN_CATALOG') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-status-success-border bg-status-success-light px-2.5 py-1 text-[11px] font-medium text-status-success whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-success)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] px-2.5 py-1 text-[11px] font-medium text-[var(--signal-success)] whitespace-nowrap">
         <CheckCircle2 className="w-3.5 h-3.5" />
         已入库
       </span>
@@ -126,7 +126,7 @@ function StatusBadge({ item }: { item: ObjectListing }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-status-warning-border bg-status-warning-light px-2.5 py-1 text-[11px] font-medium text-status-warning whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-warn)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] px-2.5 py-1 text-[11px] font-medium text-[var(--signal-warn)] whitespace-nowrap">
       <AlertTriangle className="w-3.5 h-3.5" />
       孤儿对象
     </span>
@@ -155,10 +155,10 @@ function IconButton({
       aria-label={label}
       className={cn(
         'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors',
-        'text-[var(--text-secondary)] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+        'text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] hover:text-[var(--ink-primary)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]',
-        danger && 'hover:bg-status-danger-light hover:text-status-danger',
-        disabled && 'cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent hover:text-[var(--text-secondary)]'
+        danger && 'hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--signal-danger)]',
+        disabled && 'cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent hover:text-[var(--ink-secondary)]'
       )}
     >
       {children}
@@ -204,6 +204,26 @@ function LoadingRows() {
         </tr>
       ))}
     </>
+  );
+}
+
+function LoadingCards() {
+  return (
+    <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] md:hidden">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div key={index} className="space-y-3 p-4">
+          <div className="flex items-start gap-3">
+            <div className="h-5 w-5 rounded bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+            <div className="h-9 w-9 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 w-3/4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+              <div className="h-3 w-1/2 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            </div>
+          </div>
+          <div className="h-9 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -388,7 +408,7 @@ export default function CloudExplorerPage() {
   }, [prefix]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden px-4 py-4 lg:px-6 lg:py-5">
+    <div className="flex min-h-full touch-pan-y flex-col px-4 py-4 lg:h-full lg:overflow-hidden lg:px-6 lg:py-5">
       <header className="shrink-0 border-b border-[var(--border-subtle)] pb-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -500,59 +520,61 @@ export default function CloudExplorerPage() {
         </div>
       </header>
 
-      <section className="grid shrink-0 gap-3 py-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid shrink-0 grid-cols-2 gap-2 py-3 sm:gap-3 sm:py-4 xl:grid-cols-4">
         <Metric label="当前页对象" value={objects.length} helper={`${PAGE_LIMIT} 条/页`} icon={<Database className="w-4 h-4" />} />
         <Metric label="孤儿对象" value={orphanObjects.length} helper="可导入或删除" icon={<AlertTriangle className="w-4 h-4" />} tone="warning" />
         <Metric label="已入库" value={catalogObjects} helper="受媒体库保护" icon={<ShieldCheck className="w-4 h-4" />} tone="success" />
         <Metric label="当前页容量" value={formatFileSize(totalSize)} helper={hasSelection ? `已选 ${formatFileSize(selectedSize)}` : '按对象大小汇总'} icon={<HardDrive className="w-4 h-4" />} />
       </section>
 
-      <div className="mb-3 grid min-h-[4.5rem] shrink-0 items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-4 py-3 lg:grid-cols-[1fr_auto]">
+      <div className="mb-3 grid shrink-0 items-center gap-3 border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] px-3 py-2.5 lg:grid-cols-[1fr_auto] lg:px-4">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--text-primary)]">
-            {hasSelection ? `已选择 ${selectedOrphans.length} 个孤儿对象` : '选择孤儿对象后可批量治理'}
+          <p className="text-sm font-medium text-[var(--ink-primary)]">
+            {hasSelection ? `已选择 ${selectedOrphans.length} 个孤儿对象` : '勾选孤儿对象后可批量治理'}
           </p>
-          <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">
+          <p className="mt-0.5 text-xs leading-5 text-[var(--ink-secondary)] lg:truncate">
             {hasSelection
               ? `合计 ${formatFileSize(selectedSize)}。已入库对象不会进入批量删除,避免绕过媒体库安全流程。`
-              : '云端对象分为“已入库”和“孤儿对象”。已入库对象请回媒体库处理,孤儿对象可导入 catalog 或从云端清理。'}
+              : '云端对象分为“已入库”和“孤儿对象”。孤儿对象可导入媒体库或从云端清理,已入库对象请回媒体库处理。'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <Button
-            disabled={selectedOrphans.length === 0 || importMutation.isPending}
-            onClick={() => importMutation.mutate(selectedOrphans.map((item) => item.key))}
-            className="gap-1.5"
-          >
-            {importMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Import className="w-4 h-4" />}
-            导入媒体库
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={selectedOrphans.length === 0}
-            onClick={() => copyText(selectedOrphans.map((item) => item.key).join('\n'), '对象 key')}
-            className="gap-1.5"
-          >
-            <Copy className="w-4 h-4" />
-            复制 key
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={selectedOrphans.length === 0 || deleteMutation.isPending}
-            onClick={() => setDeleteConfirmOpen(true)}
-            className="gap-1.5 text-status-danger hover:text-status-danger"
-          >
-            {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            删除孤儿
-          </Button>
-        </div>
+        {hasSelection && (
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Button
+              disabled={selectedOrphans.length === 0 || importMutation.isPending}
+              onClick={() => importMutation.mutate(selectedOrphans.map((item) => item.key))}
+              className="gap-1.5"
+            >
+              <Import className="w-4 h-4" />
+              导入媒体库
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={selectedOrphans.length === 0}
+              onClick={() => copyText(selectedOrphans.map((item) => item.key).join('\n'), '对象 key')}
+              className="gap-1.5"
+            >
+              <Copy className="w-4 h-4" />
+              复制 key
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={selectedOrphans.length === 0 || deleteMutation.isPending}
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="gap-1.5 text-[var(--signal-danger)] hover:text-[var(--signal-danger)]"
+            >
+              <Trash2 className="w-4 h-4" />
+              删除孤儿
+            </Button>
+          </div>
+        )}
       </div>
 
-      <main className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]">
+      <main className="min-h-[520px] flex-1 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-leaf)] lg:min-h-0">
         {!providerId ? (
           <EmptyState title="请选择一个存储 provider" description="云端浏览器会直接读取 provider 对应 bucket,并与媒体库 catalog 做关联识别。" />
         ) : isLoading ? (
-          <div className="h-full overflow-auto">
+          <div className="h-full overflow-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
             <ObjectTable
               objects={[]}
               selectedKeys={selectedKeys}
@@ -573,7 +595,7 @@ export default function CloudExplorerPage() {
         ) : objects.length === 0 ? (
           <EmptyState title="当前前缀下没有对象" description="尝试清空 prefix、切换 provider,或确认对象存储配置中的 path / bucket 是否符合预期。" />
         ) : (
-          <div className="h-full overflow-auto">
+          <div className="h-full overflow-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
             <ObjectTable
               objects={objects}
               selectedKeys={selectedKeys}
@@ -643,18 +665,18 @@ function Metric({
 }) {
   const toneClass =
     tone === 'success'
-      ? 'bg-status-success-light text-status-success'
+      ? 'bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
       : tone === 'warning'
-        ? 'bg-status-warning-light text-status-warning'
+        ? 'bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] text-[var(--signal-warn)]'
         : 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]';
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30 px-4 py-3">
-      <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', toneClass)}>{icon}</span>
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] px-3 py-2.5 sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3">
+      <span className={cn('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-9 sm:w-9', toneClass)}>{icon}</span>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
-        <p className="mt-0.5 truncate text-base font-semibold text-[var(--text-primary)] tnum">{value}</p>
-        <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{helper}</p>
+        <p className="truncate text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--ink-muted)] sm:text-[11px] sm:tracking-[0.12em]">{label}</p>
+        <p className="mt-0.5 truncate text-sm font-semibold text-[var(--ink-primary)] tnum sm:text-base">{value}</p>
+        <p className="mt-0.5 hidden truncate text-xs text-[var(--ink-secondary)] sm:block">{helper}</p>
       </div>
     </div>
   );
@@ -685,128 +707,255 @@ function ObjectTable({
   onViewMedia: (id: number) => void;
   loading: boolean;
 }) {
+  const allOrphanToggleDisabled = loading || objects.every((item) => item.status !== 'ORPHAN');
+
   return (
-    <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
-      <thead className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur">
-        <tr>
-          <th className="w-12 px-4 py-3 text-left">
+    <div className="h-full">
+      <div className="md:hidden">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-4 py-3">
+          <label className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--ink-secondary)]">
             <input
               type="checkbox"
               onChange={onToggleAllOrphans}
               checked={allOrphansSelected}
-              disabled={loading || objects.every((item) => item.status !== 'ORPHAN')}
+              disabled={allOrphanToggleDisabled}
               title="选择当前页全部孤儿对象"
               aria-label="选择当前页全部孤儿对象"
-              className="h-4 w-4 rounded border-[var(--border-default)] bg-transparent text-primary focus:ring-primary/30 disabled:opacity-40"
+              className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-40"
             />
-          </th>
-          <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">对象</th>
-          <th className="w-28 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">大小</th>
-          <th className="w-40 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">最后修改</th>
-          <th className="w-32 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">状态</th>
-          <th className="w-56 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loading ? (
-          <LoadingRows />
-        ) : (
-          objects.map((item) => {
-            const kind = getObjectKind(item.key);
-            const selected = selectedKeys.has(item.key);
-            const protectedByCatalog = item.status === 'IN_CATALOG';
-            const path = getObjectPath(item.key);
-            const name = getObjectName(item.key);
+            当前页孤儿
+          </label>
+          <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+            {loading ? '加载中' : `${objects.length} objects`}
+          </span>
+        </div>
 
-            return (
-              <tr
-                key={item.key}
-                className={cn(
-                  'border-b border-[var(--border-subtle)] transition-colors last:border-b-0',
-                  selected ? 'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]' : 'hover:bg-[var(--bg-card-hover)]'
-                )}
-              >
-                <td className="px-4 py-3 align-middle">
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    disabled={protectedByCatalog}
-                    onChange={() => onToggleObject(item)}
-                    title={protectedByCatalog ? '已入库对象需在媒体库中管理' : '选择孤儿对象'}
-                    aria-label={protectedByCatalog ? '已入库对象需在媒体库中管理' : `选择 ${item.key}`}
-                    className="h-4 w-4 rounded border-[var(--border-default)] bg-transparent text-primary focus:ring-primary/30 disabled:opacity-35"
-                  />
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--bg-secondary)]">
+        {loading ? (
+          <LoadingCards />
+        ) : (
+          <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+            {objects.map((item) => {
+              const kind = getObjectKind(item.key);
+              const selected = selectedKeys.has(item.key);
+              const protectedByCatalog = item.status === 'IN_CATALOG';
+              const path = getObjectPath(item.key);
+              const name = getObjectName(item.key);
+
+              return (
+                <article
+                  key={item.key}
+                  className={cn(
+                    'space-y-3 p-4 transition-colors active:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
+                    selected && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={protectedByCatalog}
+                      onChange={() => onToggleObject(item)}
+                      title={protectedByCatalog ? '已入库对象需在媒体库中管理' : '选择孤儿对象'}
+                      aria-label={protectedByCatalog ? '已入库对象需在媒体库中管理' : `选择 ${item.key}`}
+                      className="mt-1 h-5 w-5 shrink-0 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-35"
+                    />
+                    <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
                       <ObjectIcon kind={kind} />
                     </span>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-sm font-medium leading-5 text-[var(--text-primary)]" title={item.key}>
-                          {name}
-                        </p>
-                        {kind === 'folder' && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenPrefix(item.key)}
-                            className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10"
-                          >
-                            进入
-                          </button>
-                        )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-all text-sm font-semibold leading-5 text-[var(--ink-primary)]" title={item.key}>
+                            {name}
+                          </p>
+                          <p className="mt-1 truncate text-xs leading-5 text-[var(--ink-secondary)]" title={item.key}>
+                            {path || 'bucket 根目录'}
+                          </p>
+                        </div>
+                        <StatusBadge item={item} />
                       </div>
-                      <p className="mt-0.5 truncate text-xs leading-5 text-[var(--text-secondary)]" title={item.key}>
-                        {path || 'bucket 根目录'}
-                      </p>
-                      {item.etag && (
-                        <p className="mt-0.5 truncate text-[11px] leading-4 text-[var(--text-muted)]" title={item.etag}>
-                          ETag {item.etag.replaceAll('"', '')}
-                        </p>
-                      )}
                     </div>
                   </div>
-                </td>
-                <td className="px-4 py-3 text-right align-middle text-sm text-[var(--text-secondary)] tnum">
-                  {formatFileSize(item.size)}
-                </td>
-                <td className="px-4 py-3 align-middle text-sm text-[var(--text-secondary)] tnum">
-                  {formatObjectDate(item.lastModified)}
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  <StatusBadge item={item} />
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  <div className="flex items-center justify-end gap-1">
-                    {item.mediaFileId ? (
-                      <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
-                        <Database className="w-4 h-4" />
-                      </IconButton>
-                    ) : (
-                      <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
-                        <Import className="w-4 h-4" />
-                      </IconButton>
-                    )}
-                    <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
-                      <Copy className="w-4 h-4" />
-                    </IconButton>
-                    <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
-                      <ExternalLink className="w-4 h-4" />
-                    </IconButton>
-                    <IconButton label="复制 URL" onClick={() => item.url && onCopyText(item.url, '对象 URL')} disabled={!item.url}>
-                      <Cloud className="w-4 h-4" />
-                    </IconButton>
-                    <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
-                      <Trash2 className="w-4 h-4" />
-                    </IconButton>
+
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-2">
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--ink-muted)]">大小</p>
+                      <p className="mt-0.5 text-xs font-medium text-[var(--ink-primary)] tnum">{formatFileSize(item.size)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--ink-muted)]">最后修改</p>
+                      <p className="mt-0.5 text-xs font-medium text-[var(--ink-primary)] tnum">{formatObjectDate(item.lastModified)}</p>
+                    </div>
                   </div>
-                </td>
-              </tr>
-            );
-          })
+
+                  {item.etag && (
+                    <p className="truncate text-[11px] leading-4 text-[var(--ink-muted)]" title={item.etag}>
+                      ETag {item.etag.replaceAll('"', '')}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] pt-2">
+                    {kind === 'folder' ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPrefix(item.key)}
+                        className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--aurora-1)] active:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                      >
+                        进入前缀
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--ink-muted)]">{protectedByCatalog ? '回媒体库管理' : '可导入或清理'}</span>
+                    )}
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      {item.mediaFileId ? (
+                        <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
+                          <Database className="w-4 h-4" />
+                        </IconButton>
+                      ) : (
+                        <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
+                          <Import className="w-4 h-4" />
+                        </IconButton>
+                      )}
+                      <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
+                        <Copy className="w-4 h-4" />
+                      </IconButton>
+                      <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
+                        <ExternalLink className="w-4 h-4" />
+                      </IconButton>
+                      <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
+                        <Trash2 className="w-4 h-4" />
+                      </IconButton>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
-      </tbody>
-    </table>
+      </div>
+
+      <table className="hidden w-full min-w-[980px] table-fixed border-collapse text-sm md:table">
+        <thead className="sticky top-0 z-10 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
+          <tr>
+            <th className="w-12 px-4 py-3 text-left">
+              <input
+                type="checkbox"
+                onChange={onToggleAllOrphans}
+                checked={allOrphansSelected}
+                disabled={allOrphanToggleDisabled}
+                title="选择当前页全部孤儿对象"
+                aria-label="选择当前页全部孤儿对象"
+                className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-40"
+              />
+            </th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">对象</th>
+            <th className="w-28 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">大小</th>
+            <th className="w-40 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">最后修改</th>
+            <th className="w-32 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">状态</th>
+            <th className="w-56 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <LoadingRows />
+          ) : (
+            objects.map((item) => {
+              const kind = getObjectKind(item.key);
+              const selected = selectedKeys.has(item.key);
+              const protectedByCatalog = item.status === 'IN_CATALOG';
+              const path = getObjectPath(item.key);
+              const name = getObjectName(item.key);
+
+              return (
+                <tr
+                  key={item.key}
+                  className={cn(
+                    'border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors last:border-b-0',
+                    selected ? 'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]' : 'hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]'
+                  )}
+                >
+                  <td className="px-4 py-3 align-middle">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={protectedByCatalog}
+                      onChange={() => onToggleObject(item)}
+                      title={protectedByCatalog ? '已入库对象需在媒体库中管理' : '选择孤儿对象'}
+                      aria-label={protectedByCatalog ? '已入库对象需在媒体库中管理' : `选择 ${item.key}`}
+                      className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-35"
+                    />
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+                        <ObjectIcon kind={kind} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate text-sm font-medium leading-5 text-[var(--ink-primary)]" title={item.key}>
+                            {name}
+                          </p>
+                          {kind === 'folder' && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenPrefix(item.key)}
+                              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                            >
+                              进入
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-xs leading-5 text-[var(--ink-secondary)]" title={item.key}>
+                          {path || 'bucket 根目录'}
+                        </p>
+                        {item.etag && (
+                          <p className="mt-0.5 truncate text-[11px] leading-4 text-[var(--ink-muted)]" title={item.etag}>
+                            ETag {item.etag.replaceAll('"', '')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right align-middle text-sm text-[var(--ink-secondary)] tnum">
+                    {formatFileSize(item.size)}
+                  </td>
+                  <td className="px-4 py-3 align-middle text-sm text-[var(--ink-secondary)] tnum">
+                    {formatObjectDate(item.lastModified)}
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <StatusBadge item={item} />
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex items-center justify-end gap-1">
+                      {item.mediaFileId ? (
+                        <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
+                          <Database className="w-4 h-4" />
+                        </IconButton>
+                      ) : (
+                        <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
+                          <Import className="w-4 h-4" />
+                        </IconButton>
+                      )}
+                      <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
+                        <Copy className="w-4 h-4" />
+                      </IconButton>
+                      <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
+                        <ExternalLink className="w-4 h-4" />
+                      </IconButton>
+                      <IconButton label="复制 URL" onClick={() => item.url && onCopyText(item.url, '对象 URL')} disabled={!item.url}>
+                        <Cloud className="w-4 h-4" />
+                      </IconButton>
+                      <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
+                        <Trash2 className="w-4 h-4" />
+                      </IconButton>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }

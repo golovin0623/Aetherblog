@@ -130,6 +130,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     fields: [
       { key: 'enable_registrations', label: '允许用户注册', type: 'boolean' },
       { key: 'upload_max_size', label: '最大上传 (MB)', type: 'number', placeholder: '10' },
+      { key: 'editor_image_smart_compression_enabled', label: '编辑器图片智能压缩', type: 'boolean', description: '开启后，文章编辑器上传超过 5MB 的图片会自动压缩，并在活动记录中展示压缩效果。' },
       { key: 'storage_type', label: '存储类型', type: 'text', description: 'LOCAL, MINIO, COS' },
       { key: 'ai_enabled', label: '启用AI功能', type: 'boolean' },
       { key: 'ai_provider', label: 'AI服务商', type: 'text' },

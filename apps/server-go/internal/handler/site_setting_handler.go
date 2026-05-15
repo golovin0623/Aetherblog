@@ -45,6 +45,7 @@ var allowedSettingKeys = map[string]bool{
 	"social_linkedin": true, "social_weibo": true,
 	// advanced
 	"enable_registrations": true, "upload_max_size": true,
+	"editor_image_smart_compression_enabled": true,
 }
 
 // SiteSettingHandler 处理站点设置的管理端 CRUD 接口。
@@ -93,6 +94,7 @@ var allowedSettingGroups = map[string]bool{
 	"analytics":  true,
 	"appearance": true,
 	"font":       true,
+	"advanced":   true,
 }
 
 // GetByGroup 处理 GET /admin/settings/group/:group 请求。

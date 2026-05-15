@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
-import { cn } from '@/lib/utils';
+import { cn, formatFileSize } from '@/lib/utils';
 import { Tooltip, Toggle } from '@aetherblog/ui';
 import {
   ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
@@ -22,6 +23,7 @@ import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
+import { settingsService } from '@/services/settingsService';
 import { SelectionAiToolbar } from './components/SelectionAiToolbar';
 import { AiSidePanel, type AiPanelAction, type AiSidePanelHandle } from './components/AiSidePanel';
 import { SlashCommandMenu } from './components/SlashCommandMenu';
@@ -31,6 +33,12 @@ import { useEditorStore } from '@/stores/editorStore';
 import { useTheme } from '@aetherblog/hooks';
 import { useMediaQuery } from '@/hooks';
 import { logger } from '@/lib/logger';
+import {
+  compressImageFile,
+  IMAGE_COMPRESSION_THRESHOLD,
+  isCompressibleImage,
+  type SmartCompressionMetrics,
+} from '@/lib/imageCompression';
 
 const TAG_COLORS = [
   { bg: 'bg-status-info/10 dark:bg-status-info/20', text: 'text-status-info', border: 'border-status-info-border', hoverBorder: 'hover:border-status-info/40', bgHover: 'hover:bg-status-info/20 dark:hover:bg-status-info/30', activeBg: 'bg-status-info text-white border-status-info shadow-status-info/30' },
@@ -153,6 +161,13 @@ export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
   const { resolvedTheme } = useTheme();
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => settingsService.getAll(),
+  });
+  const editorSmartCompressionEnabled =
+    settings?.editor_image_smart_compression_enabled === true ||
+    settings?.editor_image_smart_compression_enabled === 'true';
 
   const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
   const enableSlashAi = useEditorStore((state) => state.enableSlashAi);
@@ -1188,7 +1203,30 @@ export function CreatePostPage() {
   // 图片上传 Hook
   // 优先插入稳定 publicUrl,让文章内容跟随媒体记录当前的主存储/备份策略。
   const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
-    const result = await mediaService.upload(file, onProgress);
+    let uploadFile = file;
+    let smartCompression: SmartCompressionMetrics | undefined;
+
+    if (editorSmartCompressionEnabled && file.size > IMAGE_COMPRESSION_THRESHOLD && isCompressibleImage(file)) {
+      try {
+        const compressed = await compressImageFile(file, { profile: 'editor' });
+        if (compressed) {
+          uploadFile = compressed.file;
+          smartCompression = compressed.metrics;
+          logger.info('智能压缩', {
+            fileName: file.name,
+            originalSize: formatFileSize(compressed.metrics.originalSize),
+            compressedSize: formatFileSize(compressed.metrics.compressedSize),
+            savingsPercent: `${compressed.metrics.savingsPercent}%`,
+          });
+        } else {
+          logger.warn('智能压缩跳过:压缩后未小于原文件', file.name);
+        }
+      } catch (error) {
+        logger.warn('智能压缩失败,将上传原图', error, file.name);
+      }
+    }
+
+    const result = await mediaService.upload(uploadFile, onProgress, smartCompression ? { smartCompression } : undefined);
     const finalUrl = result.publicUrl || result.cdnUrl || getMediaUrl(result);
     return {
       url: finalUrl,
@@ -1197,7 +1235,7 @@ export function CreatePostPage() {
       width: result.width,
       height: result.height,
     };
-  }, []);
+  }, [editorSmartCompressionEnabled]);
 
   const {
     uploads,
