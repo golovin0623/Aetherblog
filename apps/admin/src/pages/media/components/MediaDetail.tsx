@@ -66,9 +66,15 @@ const typeLabels: Record<MediaType, string> = {
 
 type DetailTab = 'info' | 'tags' | 'versions';
 
+function getRecordProp(value: unknown, key: string): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
 function getBackupRemoveFailure(error: unknown): BackupRemoveFailure | null {
-  if (!error || typeof error !== 'object') return null;
-  const data = 'data' in error ? (error as { data?: unknown }).data : undefined;
+  const rootData = getRecordProp(error, 'data');
+  const responseData = getRecordProp(getRecordProp(error, 'response'), 'data');
+  const data = rootData ?? getRecordProp(responseData, 'data');
   if (!data || typeof data !== 'object') return null;
   const raw = data as Partial<BackupRemoveFailure>;
   if (typeof raw.reason !== 'string' || typeof raw.stage !== 'string') return null;

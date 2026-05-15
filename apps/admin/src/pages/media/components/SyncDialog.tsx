@@ -149,12 +149,12 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
 
   useEffect(() => {
     if (!open || hasActiveJobs || total === 0 || counts.succeeded + counts.failed === 0) return;
-    const signature = `${status?.updatedAt ?? ''}:${counts.succeeded}:${counts.failed}`;
+    const signature = `${counts.succeeded}:${counts.failed}`;
     if (lastSettledSignatureRef.current === signature) return;
     lastSettledSignatureRef.current = signature;
     queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
     queryClient.invalidateQueries({ queryKey: ['media', 'detail'] });
-  }, [open, hasActiveJobs, total, counts.succeeded, counts.failed, status?.updatedAt, queryClient]);
+  }, [open, hasActiveJobs, total, counts.succeeded, counts.failed, queryClient]);
 
   if (!open) return null;
 
