@@ -282,7 +282,7 @@ func (r *StorageProviderRepo) LookupCatalogByKeys(ctx context.Context, providerI
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[string]int64)
+	out := make(map[string]int64, len(keys))
 	for rows.Next() {
 		var id int64
 		var key string
@@ -310,7 +310,7 @@ func (r *StorageProviderRepo) LookupBackupCatalogByURLs(ctx context.Context, pro
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[string]int64)
+	out := make(map[string]int64, len(urls))
 	for rows.Next() {
 		var id int64
 		var backupURL string
