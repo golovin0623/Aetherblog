@@ -27,7 +27,7 @@ import {
   Tag,
   Move,
 } from 'lucide-react';
-import { cn, formatFileSize } from '@/lib/utils';
+import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl, mediaService } from '@/services/mediaService';
 import { format } from 'date-fns';
 import { TagManager } from './TagManager';
@@ -36,7 +36,7 @@ import { ImageEditor } from './ImageEditor';
 import { VersionHistory } from './VersionHistory';
 import { StorageStatusIcon } from './StorageStatusIcon';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { storageSyncService } from '@/services/storageSyncService';
+import { storageSyncService, type BackupRemoveFailure } from '@/services/storageSyncService';
 import { toast } from 'sonner';
 import { CloudUpload, RefreshCcw, CloudOff, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { ConfirmModal } from '@aetherblog/ui';
@@ -64,26 +64,20 @@ const typeLabels: Record<MediaType, string> = {
   OTHER: '其他',
 };
 
-function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (!error || typeof error !== 'object') return fallback;
-  const err = error as {
-    message?: string;
-    msg?: string;
-    errorMessage?: string;
-    response?: { data?: { message?: string; msg?: string; errorMessage?: string } };
-  };
-  return (
-    err.response?.data?.message ||
-    err.response?.data?.msg ||
-    err.response?.data?.errorMessage ||
-    err.message ||
-    err.msg ||
-    err.errorMessage ||
-    fallback
-  );
-}
-
 type DetailTab = 'info' | 'tags' | 'versions';
+
+function getBackupRemoveFailure(error: unknown): BackupRemoveFailure | null {
+  if (!error || typeof error !== 'object') return null;
+  const data = 'data' in error ? (error as { data?: unknown }).data : undefined;
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as Partial<BackupRemoveFailure>;
+  if (typeof raw.reason !== 'string' || typeof raw.stage !== 'string') return null;
+  return {
+    stage: raw.stage,
+    reason: raw.reason,
+    forceAllowed: raw.forceAllowed === true,
+  };
+}
 
 /**
  * 媒体详情侧边栏组件 - 高级玻璃态设计
@@ -461,6 +455,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
 function StorageInfoSection({ media }: { media: MediaItem }) {
   const queryClient = useQueryClient();
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removeFailure, setRemoveFailure] = useState<BackupRemoveFailure | null>(null);
 
   const syncMutation = useMutation({
     mutationFn: () => storageSyncService.syncOne(media.id),
@@ -470,19 +465,27 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
       queryClient.invalidateQueries({ queryKey: ['media', 'detail', media.id] });
     },
     onError: (e) => {
-      toast.error(getApiErrorMessage(e, '加入备份失败'));
+      toast.error(extractApiErrorMessage(e, '加入备份失败'));
     },
   });
 
   const removeBackupMutation = useMutation({
-    mutationFn: () => storageSyncService.removeBackup(media.id),
-    onSuccess: () => {
-      toast.success('已移除备份文件(主文件保留)');
+    mutationFn: (options?: { force?: boolean }) => storageSyncService.removeBackup(media.id, options),
+    onSuccess: (_resp, options) => {
+      toast.success(options?.force ? '已强制移除备份关联(主文件保留)' : '已移除备份文件(主文件保留)');
+      setRemoveFailure(null);
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['media', 'detail', media.id] });
     },
     onError: (e) => {
-      toast.error(getApiErrorMessage(e, '移除备份失败'));
+      const failure = getBackupRemoveFailure(e);
+      if (failure?.forceAllowed) {
+        setRemoveFailure(failure);
+        setRemoveConfirmOpen(true);
+        toast.error(failure.reason);
+        return;
+      }
+      toast.error(extractApiErrorMessage(e, '移除备份失败'));
     },
   });
 
@@ -570,7 +573,10 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
         )}
         {canRemove && (
           <button
-            onClick={() => setRemoveConfirmOpen(true)}
+            onClick={() => {
+              setRemoveFailure(null);
+              setRemoveConfirmOpen(true);
+            }}
             disabled={removeBackupMutation.isPending}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
@@ -587,16 +593,23 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
 
       <ConfirmModal
         isOpen={removeConfirmOpen}
-        title="移除备份"
-        message="将删除备份对象,但主文件保留。可随时通过「立即同步」重新复制。是否继续?"
-        confirmText="移除备份"
+        title={removeFailure ? '强制移除备份关联' : '移除备份'}
+        message={
+          removeFailure
+            ? `远端备份删除失败: ${removeFailure.reason}。可以强制清理媒体库中的备份关联,主文件会保留,但不会继续删除云端对象。是否继续?`
+            : '将删除备份对象,但主文件保留。可随时通过「立即同步」重新复制。是否继续?'
+        }
+        confirmText={removeFailure ? '强制移除关联' : '移除备份'}
         cancelText="取消"
         variant="danger"
         onConfirm={() => {
           setRemoveConfirmOpen(false);
-          removeBackupMutation.mutate();
+          removeBackupMutation.mutate({ force: !!removeFailure });
         }}
-        onCancel={() => setRemoveConfirmOpen(false)}
+        onCancel={() => {
+          setRemoveConfirmOpen(false);
+          setRemoveFailure(null);
+        }}
       />
     </div>
   );

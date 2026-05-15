@@ -395,6 +395,28 @@ type SyncStatusSnapshot struct {
 	UpdatedAt time.Time                   `json:"updatedAt"`
 }
 
+// BackupRemoveFailure 表示远端备份删除阶段失败,但允许用户确认后只清理本地备份关联。
+type BackupRemoveFailure struct {
+	Stage        string `json:"stage"`
+	Reason       string `json:"reason"`
+	ForceAllowed bool   `json:"forceAllowed"`
+	cause        error
+}
+
+func (e *BackupRemoveFailure) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Reason
+}
+
+func (e *BackupRemoveFailure) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
 // GetStatus 返回 worker 实时摘要。
 func (s *SyncService) GetStatus(ctx context.Context) (*SyncStatusSnapshot, error) {
 	c, err := s.syncRepo.CountByStatus(ctx)
@@ -528,7 +550,7 @@ const (
 //  3. ClearBackup 清 sync_status=NONE + 全部 backup_*
 //
 // 不动 file_path / storage_provider_id / file_url —— 主文件保留。
-func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64) error {
+func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64, force bool) error {
 	media, err := s.mediaRepo.FindByID(ctx, mediaID)
 	if err != nil {
 		return fmt.Errorf("find media: %w", err)
@@ -547,25 +569,42 @@ func (s *SyncService) RemoveBackup(ctx context.Context, mediaID int64) error {
 	bp := *media.BackupProviderID
 	store, _, err := s.mediaSvc.resolveStore(ctx, &bp)
 	if err != nil {
-		return fmt.Errorf("resolve backup store: %w", err)
+		return s.handleBackupRemoveFailure(ctx, mediaID, force, "resolve_store", fmt.Sprintf("解析备份存储失败: %v", err), err)
 	}
 	backupKey, err := backupStorageKey(store, media.FilePath, media.BackupURL)
 	if err != nil {
-		return fmt.Errorf("resolve backup key: %w", err)
+		return s.handleBackupRemoveFailure(ctx, mediaID, force, "resolve_key", fmt.Sprintf("解析备份对象地址失败: %v", err), err)
 	}
 	if backupTargetMatchesPrimary(media, backupKey) {
-		return errors.New("backup target matches primary media object; refusing to remove backup")
+		err := errors.New("backup target matches primary media object; refusing to remove backup")
+		return s.handleBackupRemoveFailure(ctx, mediaID, force, "protect_primary", "备份目标与主文件指向同一对象,已拒绝删除远端对象", err)
 	}
 	if err := store.Delete(ctx, backupKey); err != nil {
 		// 容忍 NotFound (云端已不存在视作删除成功)
 		if !isNotFoundLike(err) {
-			return fmt.Errorf("delete remote backup: %w", err)
+			return s.handleBackupRemoveFailure(ctx, mediaID, force, "delete_remote", fmt.Sprintf("删除远端备份对象失败: %v", err), err)
 		}
 	}
 	if _, err := s.mediaRepo.ClearBackup(ctx, mediaID); err != nil {
 		return fmt.Errorf("clear backup row: %w", err)
 	}
 	return nil
+}
+
+func (s *SyncService) handleBackupRemoveFailure(ctx context.Context, mediaID int64, force bool, stage, reason string, cause error) error {
+	if force {
+		if _, err := s.mediaRepo.ClearBackup(ctx, mediaID); err != nil {
+			return fmt.Errorf("force clear backup row after %s failed: %w", stage, err)
+		}
+		log.Warn().Err(cause).Int64("media_id", mediaID).Str("stage", stage).Msg("force cleared media backup metadata after remote delete failure")
+		return nil
+	}
+	return &BackupRemoveFailure{
+		Stage:        stage,
+		Reason:       reason,
+		ForceAllowed: true,
+		cause:        cause,
+	}
 }
 
 // isNotFoundLike 粗暴判断 error 是否表示"对象不存在"。供 RemoveBackup 容忍幂等删除场景。

@@ -1,10 +1,16 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"regexp"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	storagepkg "github.com/golovin0623/aetherblog-server/internal/pkg/storage"
@@ -185,6 +191,105 @@ func TestSyncStatusSnapshotJSONUsesLowerCamelCaseCounts(t *testing.T) {
 	}
 }
 
+func TestRemoveBackupReturnsForceableFailureWhenRemoteDeleteFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mediaID := int64(7)
+	backupProviderID := int64(20)
+	backupURL := "https://backup.example.com/original/a.png"
+	mock.ExpectQuery(`SELECT .* FROM media_files WHERE id=\$1`).
+		WithArgs(mediaID).
+		WillReturnRows(syncMediaFileRows(model.MediaFile{
+			ID:               mediaID,
+			Filename:         "a.png",
+			OriginalName:     "a.png",
+			FilePath:         "current/a.png",
+			FileURL:          "/api/uploads/current/a.png",
+			FileType:         "IMAGE",
+			StorageType:      "LOCAL",
+			SyncStatus:       "SYNCED",
+			BackupProviderID: &backupProviderID,
+			BackupURL:        &backupURL,
+		}))
+
+	repo := repository.NewMediaRepo(sqlx.NewDb(db, "sqlmock"))
+	store := &failingBackupStore{key: "original/a.png", deleteErr: errors.New("AccessDenied: object cannot be deleted")}
+	svc := &SyncService{
+		mediaRepo: repo,
+		mediaSvc:  NewMediaService(repo, store, nil, ""),
+	}
+
+	err = svc.RemoveBackup(context.Background(), mediaID, false)
+	var failure *BackupRemoveFailure
+	if !errors.As(err, &failure) {
+		t.Fatalf("RemoveBackup error = %v, want BackupRemoveFailure", err)
+	}
+	if !failure.ForceAllowed {
+		t.Fatal("BackupRemoveFailure should allow force cleanup")
+	}
+	if failure.Stage != "delete_remote" {
+		t.Fatalf("failure stage = %q, want delete_remote", failure.Stage)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestRemoveBackupForceClearsCatalogWhenRemoteDeleteFails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mediaID := int64(7)
+	backupProviderID := int64(20)
+	backupURL := "https://backup.example.com/original/a.png"
+	mock.ExpectQuery(`SELECT .* FROM media_files WHERE id=\$1`).
+		WithArgs(mediaID).
+		WillReturnRows(syncMediaFileRows(model.MediaFile{
+			ID:               mediaID,
+			Filename:         "a.png",
+			OriginalName:     "a.png",
+			FilePath:         "current/a.png",
+			FileURL:          "/api/uploads/current/a.png",
+			FileType:         "IMAGE",
+			StorageType:      "LOCAL",
+			SyncStatus:       "SYNCED",
+			BackupProviderID: &backupProviderID,
+			BackupURL:        &backupURL,
+		}))
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE media_files
+		SET sync_status='NONE',
+		    backup_provider_id=NULL,
+		    backup_url=NULL,
+		    backup_at=NULL,
+		    backup_error=NULL,
+		    last_verified_at=NULL
+		WHERE id=$1`)).
+		WithArgs(mediaID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	repo := repository.NewMediaRepo(sqlx.NewDb(db, "sqlmock"))
+	store := &failingBackupStore{key: "original/a.png", deleteErr: errors.New("AccessDenied: object cannot be deleted")}
+	svc := &SyncService{
+		mediaRepo: repo,
+		mediaSvc:  NewMediaService(repo, store, nil, ""),
+	}
+
+	if err := svc.RemoveBackup(context.Background(), mediaID, true); err != nil {
+		t.Fatalf("RemoveBackup(force): %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestBackupStorageKeyUsesPersistedBackupURL(t *testing.T) {
 	store := storagepkg.NewLocalStorage(t.TempDir(), "/uploads")
 	got, err := backupStorageKey(store, "current/new.png", syncTestStringPtr("/uploads/original/backup.png"))
@@ -197,3 +302,56 @@ func TestBackupStorageKeyUsesPersistedBackupURL(t *testing.T) {
 }
 
 func syncTestStringPtr(v string) *string { return &v }
+
+type failingBackupStore struct {
+	key       string
+	keyErr    error
+	deleteErr error
+}
+
+func (s *failingBackupStore) Upload(context.Context, string, io.Reader, int64, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *failingBackupStore) Delete(_ context.Context, key string) error {
+	if key != s.key {
+		return errors.New("unexpected delete key: " + key)
+	}
+	return s.deleteErr
+}
+
+func (s *failingBackupStore) GetURL(key string) string { return "https://backup.example.com/" + key }
+
+func (s *failingBackupStore) Type() string { return "COS" }
+
+func (s *failingBackupStore) Get(context.Context, string) (io.ReadCloser, int64, string, error) {
+	return nil, 0, "", errors.New("not implemented")
+}
+
+func (s *failingBackupStore) KeyFromURL(string) (string, error) {
+	if s.keyErr != nil {
+		return "", s.keyErr
+	}
+	return s.key, nil
+}
+
+func syncMediaFileRows(m model.MediaFile) *sqlmock.Rows {
+	createdAt := time.Unix(1700000000, 0)
+	if m.CreatedAt == nil {
+		m.CreatedAt = &createdAt
+	}
+	if m.CurrentVersion == 0 {
+		m.CurrentVersion = 1
+	}
+	return sqlmock.NewRows([]string{
+		"id", "filename", "original_name", "file_path", "file_url", "file_size", "mime_type", "file_type",
+		"storage_type", "width", "height", "alt_text", "uploader_id", "created_at", "folder_id",
+		"storage_provider_id", "cdn_url", "blurhash", "current_version", "is_archived", "archived_at", "archived_by", "deleted", "deleted_at",
+		"sync_status", "backup_provider_id", "backup_url", "backup_at", "backup_error", "last_verified_at",
+	}).AddRow(
+		m.ID, m.Filename, m.OriginalName, m.FilePath, m.FileURL, m.FileSize, m.MimeType, m.FileType,
+		m.StorageType, m.Width, m.Height, m.AltText, m.UploaderID, m.CreatedAt, m.FolderID,
+		m.StorageProviderID, m.CdnURL, m.Blurhash, m.CurrentVersion, m.IsArchived, m.ArchivedAt, m.ArchivedBy, m.Deleted, m.DeletedAt,
+		m.SyncStatus, m.BackupProviderID, m.BackupURL, m.BackupAt, m.BackupError, m.LastVerifiedAt,
+	)
+}

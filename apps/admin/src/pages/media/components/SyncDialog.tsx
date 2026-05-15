@@ -10,7 +10,7 @@
  *   4. running=false 后展示完成统计 + 失败列表 + 单条重试入口
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CloudUpload, X, RotateCcw, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -19,25 +19,7 @@ import { storageSyncService, SyncFailedJob } from '@/services/storageSyncService
 import { storageProviderService } from '@/services/storageProviderService';
 import { Button, Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
-
-function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (!error || typeof error !== 'object') return fallback;
-  const err = error as {
-    message?: string;
-    msg?: string;
-    errorMessage?: string;
-    response?: { data?: { message?: string; msg?: string; errorMessage?: string } };
-  };
-  return (
-    err.response?.data?.message ||
-    err.response?.data?.msg ||
-    err.response?.data?.errorMessage ||
-    err.message ||
-    err.msg ||
-    err.errorMessage ||
-    fallback
-  );
-}
+import { extractApiErrorMessage } from '@/lib/utils';
 
 interface SyncDialogProps {
   open: boolean;
@@ -74,6 +56,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
   const queryClient = useQueryClient();
   const [targetProviderId, setTargetProviderId] = useState<number | undefined>(undefined);
   const [showFailed, setShowFailed] = useState(false);
+  const lastSettledSignatureRef = useRef<string | null>(null);
 
   // 获取所有 provider 用于下拉
   const { data: providersResp } = useQuery({
@@ -115,6 +98,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
   const startMutation = useMutation({
     mutationFn: () => storageSyncService.start(targetProviderId),
     onSuccess: (resp) => {
+      lastSettledSignatureRef.current = null;
       const enq = (resp?.data as { enqueued?: number } | undefined)?.enqueued ?? 0;
       if (enq === 0) {
         toast.info('无未同步文件,所有文件已与目标 provider 一致');
@@ -122,9 +106,11 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
         toast.success(`已入队 ${enq} 个文件,worker 正在处理`);
       }
       queryClient.invalidateQueries({ queryKey: ['storage-sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'detail'] });
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, '启动备份失败'));
+      toast.error(extractApiErrorMessage(error, '启动备份失败'));
     },
   });
 
@@ -142,16 +128,17 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
       toast.success('重试任务已入队');
       queryClient.invalidateQueries({ queryKey: ['storage-sync-status'] });
       queryClient.invalidateQueries({ queryKey: ['storage-sync-failed'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['media', 'detail'] });
     },
   });
 
   useEffect(() => {
     if (!open) {
       setShowFailed(false);
+      lastSettledSignatureRef.current = null;
     }
   }, [open]);
-
-  if (!open) return null;
 
   const counts = normalizeSyncCounts(status?.counts);
   const activeJobs = counts.pending + counts.running;
@@ -159,6 +146,17 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
   const workerRunning = status?.running ?? false;
   const total = counts.pending + counts.running + counts.succeeded + counts.failed;
   const progress = total > 0 ? Math.round(((counts.succeeded + counts.failed) / total) * 100) : 0;
+
+  useEffect(() => {
+    if (!open || hasActiveJobs || total === 0 || counts.succeeded + counts.failed === 0) return;
+    const signature = `${status?.updatedAt ?? ''}:${counts.succeeded}:${counts.failed}`;
+    if (lastSettledSignatureRef.current === signature) return;
+    lastSettledSignatureRef.current = signature;
+    queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+    queryClient.invalidateQueries({ queryKey: ['media', 'detail'] });
+  }, [open, hasActiveJobs, total, counts.succeeded, counts.failed, status?.updatedAt, queryClient]);
+
+  if (!open) return null;
 
   const content = (
     <AnimatePresence>

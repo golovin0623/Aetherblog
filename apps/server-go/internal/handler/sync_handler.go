@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/golovin0623/aetherblog-server/internal/pkg/ctxutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
@@ -197,7 +201,19 @@ func (h *SyncHandler) RemoveBackup(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	if err := h.svc.RemoveBackup(c.Request().Context(), id); err != nil {
+	force := c.QueryParam("force") == "true" || c.QueryParam("force") == "1"
+	if err := h.svc.RemoveBackup(c.Request().Context(), id, force); err != nil {
+		var failure *service.BackupRemoveFailure
+		if errors.As(err, &failure) {
+			return c.JSON(http.StatusConflict, response.R{
+				Code:          http.StatusConflict,
+				Message:       failure.Reason,
+				Data:          failure,
+				Timestamp:     time.Now().UnixMilli(),
+				TraceID:       ctxutil.TraceID(c),
+				ErrorCategory: "backup_delete_failed",
+			})
+		}
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OKEmpty(c)
