@@ -292,6 +292,7 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 	if err != nil {
 		return nil, err
 	}
+	objs = filterListableObjects(objs)
 	if len(objs) == 0 {
 		return &ListObjectsResult{Objects: nil, NextToken: nextTok}, nil
 	}
@@ -300,7 +301,7 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 	for i, o := range objs {
 		keys[i] = o.Key
 	}
-	catalogMap, err := s.lookupCatalog(ctx, providerID, keys)
+	catalogMap, err := s.lookupCatalog(ctx, providerID, keys, st)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +351,7 @@ func (s *StorageProviderService) ImportObjects(ctx context.Context, providerID i
 	}
 
 	// 已在 catalog 的 key 全部跳过(避免重复行)
-	existing, err := s.lookupCatalog(ctx, providerID, keys)
+	existing, err := s.lookupCatalog(ctx, providerID, keys, st)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -400,7 +401,7 @@ func (s *StorageProviderService) DeleteObjects(ctx context.Context, providerID i
 		return 0, nil, err
 	}
 
-	existing, err := s.lookupCatalog(ctx, providerID, keys)
+	existing, err := s.lookupCatalog(ctx, providerID, keys, st)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -446,8 +447,11 @@ func (s *StorageProviderService) openStorage(p *model.StorageProvider) (storage.
 	return storage.NewFromConfig(p.ProviderType, p.ConfigJSON)
 }
 
-// lookupCatalog 反查 keys 在 media_files (storage_provider_id=providerID) 的 ID 映射。
-func (s *StorageProviderService) lookupCatalog(ctx context.Context, providerID int64, keys []string) (map[string]int64, error) {
+// lookupCatalog 反查 keys 在 media_files catalog 中的 ID 映射。
+// 同时覆盖两种关系:
+//  1. 主文件直接存储在该 provider: storage_provider_id + file_path
+//  2. LOCAL 主文件已备份到该 provider: backup_provider_id + backup_url
+func (s *StorageProviderService) lookupCatalog(ctx context.Context, providerID int64, keys []string, st storage.Storage) (map[string]int64, error) {
 	if len(keys) == 0 {
 		return map[string]int64{}, nil
 	}
@@ -455,7 +459,60 @@ func (s *StorageProviderService) lookupCatalog(ctx context.Context, providerID i
 	if err != nil {
 		return nil, err
 	}
+	if st == nil {
+		return rows, nil
+	}
+
+	keyByBackupURL := make(map[string]string, len(keys))
+	backupURLs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		backupURL := strings.TrimSpace(st.GetURL(key))
+		if backupURL == "" {
+			continue
+		}
+		if _, exists := keyByBackupURL[backupURL]; exists {
+			continue
+		}
+		keyByBackupURL[backupURL] = key
+		backupURLs = append(backupURLs, backupURL)
+	}
+	backupRows, err := s.repo.LookupBackupCatalogByURLs(ctx, providerID, backupURLs)
+	if err != nil {
+		return nil, err
+	}
+	for backupURL, mediaID := range backupRows {
+		key, ok := keyByBackupURL[backupURL]
+		if !ok {
+			continue
+		}
+		if _, alreadyMapped := rows[key]; alreadyMapped {
+			continue
+		}
+		rows[key] = mediaID
+	}
 	return rows, nil
+}
+
+func filterListableObjects(objects []storage.ObjectInfo) []storage.ObjectInfo {
+	if len(objects) == 0 {
+		return objects
+	}
+	filtered := objects[:0]
+	for _, obj := range objects {
+		if isDirectoryMarkerObject(obj) {
+			continue
+		}
+		filtered = append(filtered, obj)
+	}
+	return filtered
+}
+
+func isDirectoryMarkerObject(obj storage.ObjectInfo) bool {
+	key := strings.TrimSpace(obj.Key)
+	if key == "" || key == "/" {
+		return true
+	}
+	return obj.Size == 0 && strings.HasSuffix(key, "/")
 }
 
 // headObject 调 Storage 的 HeadObject (S3 实现) 或 LOCAL 兜底(用 Get 判存)

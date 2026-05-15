@@ -1,9 +1,18 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
+
+	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
+	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
 // Phase 2 的 secret-preserving merge 是个安全敏感的纯函数,这里用单元测试穷举边界。
@@ -193,5 +202,82 @@ func TestRedactProviderConfigJSON_HidesSecrets(t *testing.T) {
 	}
 	if !strings.Contains(red, "****") {
 		t.Errorf("redacted output should contain mask marker, got: %s", red)
+	}
+}
+
+type catalogURLStorage struct{}
+
+func (catalogURLStorage) Upload(context.Context, string, io.Reader, int64, string) (string, error) {
+	return "", nil
+}
+
+func (catalogURLStorage) Delete(context.Context, string) error {
+	return nil
+}
+
+func (catalogURLStorage) GetURL(key string) string {
+	return "https://data.example.com/aetherBlog/" + strings.TrimLeft(key, "/") + "?imageAetherBlog"
+}
+
+func (catalogURLStorage) Type() string {
+	return "COS"
+}
+
+func (catalogURLStorage) Get(context.Context, string) (io.ReadCloser, int64, string, error) {
+	return io.NopCloser(strings.NewReader("")), 0, "", nil
+}
+
+func TestStorageProviderServiceLookupCatalogIncludesBackupURL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	repo := repository.NewStorageProviderRepoWithKeystore(sqlx.NewDb(db, "sqlmock"), nil)
+	svc := NewStorageProviderService(repo, nil)
+	st := catalogURLStorage{}
+	keys := []string{"2026/05/backup.png", "2026/05/native.png"}
+	backupURL := st.GetURL(keys[0])
+	nativeURL := st.GetURL(keys[1])
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, file_path FROM media_files WHERE storage_provider_id = ? AND file_path IN (?, ?)`)).
+		WithArgs(int64(5), keys[0], keys[1]).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "file_path"}).AddRow(int64(7), keys[1]))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, backup_url FROM media_files WHERE backup_provider_id = ? AND backup_url IN (?, ?)`)).
+		WithArgs(int64(5), backupURL, nativeURL).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "backup_url"}).AddRow(int64(42), backupURL))
+
+	got, err := svc.lookupCatalog(context.Background(), 5, keys, st)
+	if err != nil {
+		t.Fatalf("lookupCatalog: %v", err)
+	}
+	if got[keys[0]] != 42 {
+		t.Fatalf("backup key media id = %d, want 42", got[keys[0]])
+	}
+	if got[keys[1]] != 7 {
+		t.Fatalf("native key media id = %d, want 7", got[keys[1]])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestFilterListableObjectsDropsDirectoryMarkers(t *testing.T) {
+	got := filterListableObjects([]storage.ObjectInfo{
+		{Key: "", Size: 0},
+		{Key: "/", Size: 1},
+		{Key: "2026/05/", Size: 0},
+		{Key: "2026/05/photo.png", Size: 0},
+		{Key: "2026/05/not-a-marker/", Size: 12},
+	})
+	wantKeys := []string{"2026/05/photo.png", "2026/05/not-a-marker/"}
+	if len(got) != len(wantKeys) {
+		t.Fatalf("filtered length = %d, want %d (%v)", len(got), len(wantKeys), got)
+	}
+	for i, want := range wantKeys {
+		if got[i].Key != want {
+			t.Fatalf("filtered[%d].Key = %q, want %q", i, got[i].Key, want)
+		}
 	}
 }
