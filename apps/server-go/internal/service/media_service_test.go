@@ -9,6 +9,7 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
@@ -254,6 +255,76 @@ func TestPublicMediaURL(t *testing.T) {
 	}
 	if got := publicMediaURL(0); got != "" {
 		t.Fatalf("publicMediaURL(0) = %q, want empty", got)
+	}
+}
+
+func TestPublicAccessURLForMediaFallsBackToPrimaryWhenBackupProviderMissing(t *testing.T) {
+	cdnURL := "/api/uploads/2026/03/photo.png"
+	backupURL := "https://bucket.example.com/2026/03/photo.png"
+	svc := &MediaService{}
+
+	got, err := svc.publicAccessURLForMedia(context.Background(), &model.MediaFile{
+		ID:          42,
+		FilePath:    "2026/03/photo.png",
+		FileURL:     "2026/03/photo.png",
+		StorageType: "LOCAL",
+		SyncStatus:  "SYNCED",
+		CdnURL:      &cdnURL,
+		BackupURL:   &backupURL,
+	})
+	if err != nil {
+		t.Fatalf("publicAccessURLForMedia: %v", err)
+	}
+	if got != cdnURL {
+		t.Fatalf("publicAccessURLForMedia() = %q, want primary %q", got, cdnURL)
+	}
+}
+
+func TestPublicAccessURLForMediaUsesFreshVerifiedBackup(t *testing.T) {
+	cdnURL := "/api/uploads/2026/03/photo.png"
+	backupURL := "https://bucket.example.com/2026/03/photo.png"
+	verifiedAt := time.Now()
+	svc := &MediaService{}
+
+	got, err := svc.publicAccessURLForMedia(context.Background(), &model.MediaFile{
+		ID:             42,
+		FilePath:       "2026/03/photo.png",
+		FileURL:        "2026/03/photo.png",
+		StorageType:    "LOCAL",
+		SyncStatus:     "SYNCED",
+		CdnURL:         &cdnURL,
+		BackupURL:      &backupURL,
+		LastVerifiedAt: &verifiedAt,
+	})
+	if err != nil {
+		t.Fatalf("publicAccessURLForMedia: %v", err)
+	}
+	if got != backupURL {
+		t.Fatalf("publicAccessURLForMedia() = %q, want fresh backup %q", got, backupURL)
+	}
+}
+
+func TestPublicAccessURLForMediaFallsBackWhenBackupMissing(t *testing.T) {
+	cdnURL := "/api/uploads/primary/photo.png"
+	backupURL := "/backup/2026/03/photo.png"
+	backupProviderID := int64(7)
+	svc := &MediaService{}
+
+	got, err := svc.publicAccessURLForMedia(context.Background(), &model.MediaFile{
+		ID:               42,
+		FilePath:         "2026/03/photo.png",
+		FileURL:          "2026/03/photo.png",
+		StorageType:      "LOCAL",
+		SyncStatus:       "SYNCED",
+		CdnURL:           &cdnURL,
+		BackupProviderID: &backupProviderID,
+		BackupURL:        &backupURL,
+	})
+	if err != nil {
+		t.Fatalf("publicAccessURLForMedia: %v", err)
+	}
+	if got != cdnURL {
+		t.Fatalf("publicAccessURLForMedia() = %q, want primary %q", got, cdnURL)
 	}
 }
 

@@ -18,10 +18,11 @@ import (
 // 故意排除 JSONB 类型的 exif_data 和 ai_labels 列，以避免反序列化问题。
 //
 // Phase 4: 增加 sync_status / backup_* 列以支持同步备份机制。
+// Phase 5: 增加 last_verified_at 以支持备份完整性校验和公共访问兜底。
 const mediaColumns = `id, filename, original_name, file_path, file_url, file_size, mime_type, file_type,
 	storage_type, width, height, alt_text, uploader_id, created_at, folder_id,
 	storage_provider_id, cdn_url, blurhash, current_version, is_archived, archived_at, archived_by, deleted, deleted_at,
-	sync_status, backup_provider_id, backup_url, backup_at, backup_error`
+	sync_status, backup_provider_id, backup_url, backup_at, backup_error, last_verified_at`
 
 // MediaRepo 负责对 media_files 表进行数据访问操作。
 type MediaRepo struct{ db *sqlx.DB }

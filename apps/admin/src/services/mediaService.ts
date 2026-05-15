@@ -1,6 +1,7 @@
 import api from './api';
 import axios, { type AxiosError, type AxiosProgressEvent } from 'axios';
 import { R, PageResult } from '@/types';
+import type { SmartCompressionMetrics } from '@/lib/imageCompression';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'OTHER';
 export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
@@ -78,6 +79,8 @@ export interface UploadOptions {
    * @param lastError 上一次失败的错误对象
    */
   onAttempt?: (attempt: number, lastError: unknown) => void;
+  /** 智能压缩指标 —— 仅用于服务端活动记录,不影响上传主体逻辑 */
+  smartCompression?: SmartCompressionMetrics;
 }
 
 const DEFAULT_MAX_RETRIES = 2;
@@ -282,6 +285,18 @@ export const mediaService = {
     formData.append('file', file);
     if (options.folderId !== undefined) {
       formData.append('folderId', options.folderId.toString());
+    }
+    if (options.smartCompression) {
+      const metrics = options.smartCompression;
+      formData.append('smartCompression', 'true');
+      formData.append('smartCompressionProfile', metrics.profile);
+      formData.append('smartCompressionOriginalName', metrics.originalName);
+      formData.append('smartCompressionOriginalSize', String(metrics.originalSize));
+      formData.append('smartCompressionCompressedSize', String(metrics.compressedSize));
+      formData.append('smartCompressionSavedBytes', String(metrics.savedBytes));
+      formData.append('smartCompressionSavingsPercent', String(metrics.savingsPercent));
+      formData.append('smartCompressionRatio', String(metrics.compressionRatio));
+      formData.append('smartCompressionMimeType', metrics.mimeType);
     }
     return uploadWithRetry<MediaItem>(
       {

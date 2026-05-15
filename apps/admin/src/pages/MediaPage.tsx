@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -267,6 +268,10 @@ export default function MediaPage() {
 
   const currentItems = data?.list || [];
   const currentMedia = currentItems.find((item: any) => item.id === selectedMedia);
+
+  const closeMediaDetail = useCallback(() => {
+    setSelectedMedia(null);
+  }, []);
 
   const handleSelectMedia = useCallback((id: number) => {
     setSelectedMedia((prev) => (prev === id ? null : id));
@@ -830,52 +835,69 @@ export default function MediaPage() {
         </AnimatePresence>
 
         {/* 底部详情板 - 移动端 (lg:hidden) */}
-        <AnimatePresence>
-          {selectedMedia && currentMedia && (
-            <>
-              {/* 遮罩 */}
+        {typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {selectedMedia && currentMedia && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="lg:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
-                onClick={() => setSelectedMedia(null)}
-              />
-              
-              {/* 底部面板 */}
-              <motion.div
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                drag="y"
-                dragConstraints={{ top: 0 }}
-                dragElastic={0.2}
-                onDragEnd={(_, info) => {
-                  if (info.offset.y > 100) {
-                    setSelectedMedia(null);
-                  }
+                key={`mobile-media-detail-${selectedMedia}`}
+                initial="closed"
+                animate="open"
+                exit="closed"
+                variants={{
+                  open: { opacity: 1, pointerEvents: 'auto' },
+                  closed: { opacity: 0, pointerEvents: 'none' },
                 }}
-                // 底部菜单 (Bottom Sheet)
-                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
+                transition={{ duration: 0.18 }}
+                className="lg:hidden fixed inset-0 z-50"
               >
-                {/* 拖拽手柄 */}
-                <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={() => setSelectedMedia(null)}>
-                  <div className="w-12 h-1.5 bg-[var(--bg-secondary)] rounded-full" />
-                </div>
+                <button
+                  type="button"
+                  aria-label="关闭媒体详情"
+                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                  onClick={closeMediaDetail}
+                />
 
-                <div className="flex-1 overflow-y-auto p-4 pb-safe-area">
-                  <MediaDetail
-                    item={currentMedia}
-                    onClose={() => setSelectedMedia(null)}
-                    onDelete={(id) => handleDeleteConfirm(id)}
-                    onMove={handleMoveFile}
-                  />
-                </div>
+                <motion.div
+                  variants={{
+                    open: { y: 0 },
+                    closed: { y: '100%' },
+                  }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  drag="y"
+                  dragConstraints={{ top: 0 }}
+                  dragElastic={0.2}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.y > 100) {
+                      closeMediaDetail();
+                    }
+                  }}
+                  // 底部菜单 (Bottom Sheet)
+                  className="absolute bottom-0 left-0 right-0 z-10 h-[85vh] bg-[var(--bg-popover)] dark:bg-[var(--bg-primary)] text-[var(--text-primary)] backdrop-blur-xl rounded-t-3xl border-t border-[var(--border-default)] shadow-2xl overflow-hidden flex flex-col"
+                >
+                  {/* 拖拽手柄 */}
+                  <button
+                    type="button"
+                    className="flex justify-center pt-3 pb-1 shrink-0"
+                    onClick={closeMediaDetail}
+                    aria-label="关闭媒体详情"
+                  >
+                    <span className="w-12 h-1.5 bg-[var(--border-hover)] rounded-full" />
+                  </button>
+
+                  <div className="flex-1 overflow-y-auto p-4 pb-safe-area">
+                    <MediaDetail
+                      item={currentMedia}
+                      onClose={closeMediaDetail}
+                      onDelete={(id) => handleDeleteConfirm(id)}
+                      onMove={handleMoveFile}
+                    />
+                  </div>
+                </motion.div>
               </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
 
         {/* 拖拽上传遮罩 */}

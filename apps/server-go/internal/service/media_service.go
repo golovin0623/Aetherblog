@@ -29,6 +29,7 @@ import (
 // 的图片体积上限。超过该上限的图片只读 header 算 width/height,跳过缩略图生成,
 // 避免高并发上传时 OOM。
 const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
+const publicBackupVerificationFreshness = 24 * time.Hour
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
 //
@@ -591,8 +592,8 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 // PublicAccessURL 返回媒体文件的稳定公共访问路由最终应跳转到的地址。
 //
 // 解析顺序:
-//  1. LOCAL 主文件且备份已 SYNCED 时,优先返回 backup_url,让文章图片自动获得云端访问能力;
-//  2. 其次使用 cdn_url,这是当前主存储的公开 URL;
+//  1. LOCAL 主文件且备份已 SYNCED 时,仅在备份最近校验有效或本次确认存在后返回 backup_url;
+//  2. 若备份指针失效或无法确认,回退到 cdn_url,这是当前主存储的公开 URL;
 //  3. 再兼容历史 file_url 中已经存成 URL/路径的记录;
 //  4. 最后按 storage_provider_id 反查 store,用 file_path 重新生成公开 URL。
 //
@@ -628,11 +629,8 @@ func (s *MediaService) PublicAccessURLByPath(ctx context.Context, filePath strin
 }
 
 func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.MediaFile) (string, error) {
-	if strings.EqualFold(m.StorageType, "LOCAL") &&
-		strings.EqualFold(m.SyncStatus, "SYNCED") &&
-		m.BackupURL != nil &&
-		strings.TrimSpace(*m.BackupURL) != "" {
-		return strings.TrimSpace(*m.BackupURL), nil
+	if backupURL, ok := verifiedBackupAccessURL(m); ok {
+		return backupURL, nil
 	}
 
 	if m.CdnURL != nil && strings.TrimSpace(*m.CdnURL) != "" {
@@ -648,6 +646,26 @@ func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.Med
 		return "", err
 	}
 	return store.GetURL(m.FilePath), nil
+}
+
+func verifiedBackupAccessURL(m *model.MediaFile) (string, bool) {
+	if m == nil ||
+		!strings.EqualFold(m.StorageType, "LOCAL") ||
+		!strings.EqualFold(m.SyncStatus, "SYNCED") ||
+		m.BackupURL == nil {
+		return "", false
+	}
+	backupURL := strings.TrimSpace(*m.BackupURL)
+	if backupURL == "" {
+		return "", false
+	}
+	// Keep public URL generation read-only and fast. Freshness is maintained by
+	// the verify worker/manual verify APIs, which perform the cloud HEAD and DB
+	// status writes outside the high-traffic read path.
+	if m.LastVerifiedAt != nil && time.Since(*m.LastVerifiedAt) < publicBackupVerificationFreshness {
+		return backupURL, true
+	}
+	return "", false
 }
 
 // GetUploaderID 返回指定媒体文件的 uploader_id，用于 handler 层 ownership 校验。

@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 头像与编辑器图片智能压缩 + 云端浏览器移动端可用性 (2026-05-15, branch codex/dev-fix-ui)
+
+**Changed — Admin / `apps/admin/src/pages/storage/CloudExplorerPage.tsx`:**
+- 移动端云端浏览器外层恢复页面纵向滚动，对象列表改为移动端卡片视图，避免统计区占满首屏后文件列表不可见。
+- 底部提示从胶囊数据卡片调整为轻量信息条，并继续保留桌面端表格浏览体验。
+
+**Changed — Admin / 头像上传:**
+- `UserProfileModal` 头像上传上限从 2MB 提升到 20MB。
+- 5-20MB 的 JPEG / PNG / WebP 头像会弹出共享确认框，用户可选择「压缩后上传」或「原图上传」；超过 20MB 直接拒绝。
+
+**Added — Admin / 编辑器图片智能压缩:**
+- 新增 `apps/admin/src/lib/imageCompression.ts`，用浏览器 canvas 做高质量智能压缩，头像最大边长 1600px、编辑器图片最大边长 3200px，质量最低不低于 0.82。
+- 文章编辑器新增 `editor_image_smart_compression_enabled` 设置；开启后上传超过 5MB 的支持格式图片会静默压缩并写本地日志，不打断编辑流程。
+
+**Changed — Backend / 活动记录:**
+- `mediaService.upload` 支持携带智能压缩指标；`MediaHandler.Upload` 在普通上传活动外额外记录 `media.smart_compression`，标题为「智能压缩」，描述包含原始大小、压缩后大小和节省比例。
+
+**Added — DB / `apps/server-go/migrations/000053_add_editor_image_smart_compression_setting.up.sql`:**
+- seed `site_settings.editor_image_smart_compression_enabled=false`，类型 `BOOLEAN`，分组 `advanced`。
+
+**文档影响：** 已更新 `CHANGELOG.md`、`docs/architecture.md`、`.claude/docs/database-migrations.md`。
+
+---
+
 ### 💰 全局模型价格管理 — 跨供应商共享价格 + 一键批量回填 / 反向同步 (2026-05-09, branch claude/global-model-pricing-Aeaoh)
 
 **背景：** 同一个 `model_id`（如 `gpt-4o-mini`）在 OpenAI / AIHubMix / AI302 等多个供应商下都各有一份 `ai_models` 行，过去要进每家供应商的模型详情**手动**填一遍单价 + 高级 pricing JSON。维护成本高、容易漂移。

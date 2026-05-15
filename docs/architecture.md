@@ -523,13 +523,13 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 
 | 表名 | 说明 |
 |------|------|
-| `site_settings` | 站点设置（分组键值对） |
+| `site_settings` | 站点设置（分组键值对；含 `editor_image_smart_compression_enabled` 等功能开关） |
 | `social_links` | 社交链接 |
 | `friend_links` | 友链（含排序 / 状态） |
 | `storage_providers` | 云存储提供商配置 |
 | `permissions` | 文件夹 ACL 权限记录 |
 | `shared_items` | 分享链接（含令牌 / 过期时间） |
-| `activity_events` | 操作活动事件流（`event_category` ∈ {post, comment, user, system, friend, media, ai, security}；AI 写入事件含 `ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*` / `ai.provider_proxy_write`） |
+| `activity_events` | 操作活动事件流（`event_category` ∈ {post, comment, user, system, friend, media, ai, security}；媒体智能压缩写入 `media.smart_compression`，AI 写入事件含 `ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*` / `ai.provider_proxy_write`） |
 
 ---
 

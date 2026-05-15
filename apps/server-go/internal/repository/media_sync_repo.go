@@ -149,7 +149,7 @@ func (r *MediaSyncRepo) MarkJobSucceeded(ctx context.Context, jobID, mediaID, ta
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_files
-		SET sync_status='SYNCED', backup_provider_id=$1, backup_url=$2, backup_at=$3, backup_error=NULL
+		SET sync_status='SYNCED', backup_provider_id=$1, backup_url=$2, backup_at=$3, backup_error=NULL, last_verified_at=$3
 		WHERE id=$4`, targetProviderID, backupURL, now, mediaID); err != nil {
 		return err
 	}

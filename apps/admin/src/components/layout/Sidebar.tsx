@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
-import { useTheme } from '@/hooks';
+import { usePrefersReducedMotion, useTheme } from '@/hooks';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { cn } from '@/lib/utils';
 import { startTransition, useCallback, useRef, useState } from 'react';
@@ -93,6 +93,7 @@ export function Sidebar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const openProfile = () => setShowProfileModal(true);
 
@@ -185,10 +186,13 @@ export function Sidebar() {
       )}
 
       {/* 移动端抽屉 - 优化宽度 (减少约1/3，目标 ~65vw 或 ~220px) */}
-      <div className={cn(
-        "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu transition-transform duration-300 ease-in-out md:hidden flex flex-col will-change-transform",
-        isMobileOpen ? "translate-x-0" : "-translate-x-full"
-      )}
+      <div
+        aria-hidden={!isMobileOpen}
+        className={cn(
+          "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu md:hidden flex flex-col will-change-transform",
+          prefersReducedMotion ? "transition-none" : "transition-transform duration-300 ease-in-out",
+          isMobileOpen ? "translate-x-0 pointer-events-auto" : "-translate-x-full pointer-events-none"
+        )}
         style={{ viewTransitionName: 'admin-sidebar-drawer' } as React.CSSProperties}
       >
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
@@ -198,7 +202,7 @@ export function Sidebar() {
       <motion.aside
         initial={false}
         animate={{ width: effectiveCollapsed ? 64 : 256 }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.3, ease: 'easeInOut' }}
         className={cn(
           'relative h-dvh z-40 overflow-hidden flex-shrink-0',
           'bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border',

@@ -143,6 +143,7 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 
 	// 记录上传文件活动
 	h.recordMediaActivity(c, "media.upload", "上传文件: "+fh.Filename, fmt.Sprintf("文件 %s 已上传", fh.Filename))
+	h.recordSmartCompressionActivity(c, fh.Filename)
 	h.scheduleAutoBackup(c.Request().Context(), vo.ID)
 
 	return response.OK(c, vo)
@@ -509,6 +510,51 @@ func (h *MediaHandler) recordMediaActivity(c echo.Context, eventType, title, des
 	}); err != nil {
 		log.Warn().Err(err).Msg("record activity failed")
 	}
+}
+
+func (h *MediaHandler) recordSmartCompressionActivity(c echo.Context, fallbackName string) {
+	if c.FormValue("smartCompression") != "true" {
+		return
+	}
+	originalSize, err := strconv.ParseInt(c.FormValue("smartCompressionOriginalSize"), 10, 64)
+	if err != nil || originalSize <= 0 {
+		return
+	}
+	compressedSize, err := strconv.ParseInt(c.FormValue("smartCompressionCompressedSize"), 10, 64)
+	if err != nil || compressedSize <= 0 || compressedSize >= originalSize {
+		return
+	}
+	profile := c.FormValue("smartCompressionProfile")
+	if profile == "" {
+		profile = "unknown"
+	}
+	originalName := c.FormValue("smartCompressionOriginalName")
+	if originalName == "" {
+		originalName = fallbackName
+	}
+	savedPercent := float64(originalSize-compressedSize) / float64(originalSize) * 100
+	description := fmt.Sprintf(
+		"文件 %s 已智能压缩：原始 %s，压缩后 %s，节省 %.1f%%。场景：%s。",
+		originalName,
+		formatActivityFileSize(originalSize),
+		formatActivityFileSize(compressedSize),
+		savedPercent,
+		profile,
+	)
+	h.recordMediaActivity(c, "media.smart_compression", "智能压缩", description)
+}
+
+func formatActivityFileSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 func (h *MediaHandler) scheduleAutoBackup(ctx context.Context, mediaID int64) {

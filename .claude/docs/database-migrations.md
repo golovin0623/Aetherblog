@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 47
-- **最新：** `000047_ai_global_pricing`（新增 `ai_global_pricing` 表，按 `model_id` 集中维护跨供应商共享的单价 + 高级 pricing JSON；前端「全局价格」页 + ModelConfigDialog「↺ 从全局回填 / 写入全局」联动）
-- **次新：** `000046_activity_event_category_security`（`activity_events.event_category` 白名单扩展到 8 类，新增 `security`，配合 AI 模块 / JWT 轮换审计落库）
+- **总数：** 53
+- **最新：** `000053_add_editor_image_smart_compression_setting`（为文章编辑器新增图片智能压缩开关，默认关闭；开启后 admin 编辑器上传超过 5MB 的图片会自动压缩并记录活动）
+- **次新：** `000052_agent_workflow_canvas`（为「智能体编排」落地 connector / tool / agent / workflow / run / trace 等持久化边界）
 
 ---
 
@@ -163,6 +163,32 @@ PG 17 上 `ADD COLUMN IF NOT EXISTS` 是 instant DDL（不重写表），即便 
 API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理到 FastAPI ai-service（`apps/ai-service/app/services/global_pricing.py`）。详见 `api-handlers.md` AI 节。
 
 > 「批量回填 / 反向同步」核心算法在 `_sync_model_pricing_capabilities`（`provider_registry.py`）—— 复用 model 与 global 两侧统一的 pricing 规范化路径，避免「单价填了但 pricing.units 还停在旧值」这类漂移。
+
+### 000048 · `add_backup_verification`
+
+对象存储 Phase 5：给 `media_files.sync_status` 加 `MISSING`、新增 `last_verified_at` 与 due-time 索引，并 seed `storage.verify.auto_enabled` / `storage.verify.interval_seconds`，让备份完整性校验能区分「已备份但云端对象被删」。
+
+### 000049 · `add_storage_sync_target`
+
+把「新上传主存储」与「备份同步目标」拆开：新增 `site_settings.storage.sync.target_provider_id`，避免 LOCAL 主存储场景下默认 provider 无法同时表达备份目标。
+
+### 000050 · `add_theme_visual_color_settings`
+
+为 Aether Codex 视觉光源增加 `theme_visual_color_mode` / `theme_visual_color_light` / `theme_visual_color_dark` 三个 `site_settings` 种子值。
+
+### 000051 · `user_team_rbac`
+
+新增可扩展 RBAC / 团队 / 内容共享授权表：`permissions`、`roles`、`role_permissions`、`user_roles`、`teams`、`team_members` 以及文章、媒体、文件夹共享相关边界。
+
+### 000052 · `agent_workflow_canvas`
+
+为后台「智能体编排」提供持久化基础：connector / tool / agent / workflow / version / run / step / trace 等表，并用 `secret_ref` 与变量分离，避免真实密钥下发前端。
+
+### 000053 · `add_editor_image_smart_compression_setting`
+
+**配置 seed，非 schema 变更。**
+
+新增 `site_settings.editor_image_smart_compression_enabled`，默认 `false`、类型 `BOOLEAN`、分组 `advanced`。开启后 admin 文章编辑器上传超过 5MB 的 JPEG / PNG / WebP 图片时会在浏览器端自动智能压缩，上传成功后额外记录 `media.smart_compression` 活动，描述里写入原大小、压缩后大小与节省比例。
 
 ---
 

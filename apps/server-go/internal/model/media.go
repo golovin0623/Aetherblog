@@ -40,43 +40,44 @@ type MediaFile struct {
 	BackupURL        *string    `db:"backup_url"`         // 备份后的完整 URL
 	BackupAt         *time.Time `db:"backup_at"`          // 最近备份成功时间
 	BackupError      *string    `db:"backup_error"`       // 最近失败原因
+	LastVerifiedAt   *time.Time `db:"last_verified_at"`   // 最近一次确认备份对象存在的时间
 }
 
 // MediaSyncJob 对应 media_sync_jobs 表 (Phase 4 同步备份工作队列)。
 type MediaSyncJob struct {
-	ID                int64      `db:"id"`
-	MediaID           int64      `db:"media_id"`
-	TargetProviderID  int64      `db:"target_provider_id"`
-	Status            string     `db:"status"` // PENDING / RUNNING / SUCCEEDED / FAILED
-	Attempt           int        `db:"attempt"`
-	LastError         *string    `db:"last_error"`
-	CreatedAt         time.Time  `db:"created_at"`
-	StartedAt         *time.Time `db:"started_at"`
-	FinishedAt        *time.Time `db:"finished_at"`
+	ID               int64      `db:"id"`
+	MediaID          int64      `db:"media_id"`
+	TargetProviderID int64      `db:"target_provider_id"`
+	Status           string     `db:"status"` // PENDING / RUNNING / SUCCEEDED / FAILED
+	Attempt          int        `db:"attempt"`
+	LastError        *string    `db:"last_error"`
+	CreatedAt        time.Time  `db:"created_at"`
+	StartedAt        *time.Time `db:"started_at"`
+	FinishedAt       *time.Time `db:"finished_at"`
 }
 
 // MediaFolder 对应数据库 `media_folders` 表，为媒体文件提供层级组织结构。
 // 使用物化路径（Materialised Path）模式实现文件夹树形结构。
 type MediaFolder struct {
 	ID          int64      `db:"id"`
-	Name        string     `db:"name"`         // 文件夹显示名称
-	Slug        string     `db:"slug"`         // URL 友好的文件夹唯一标识符
-	Description *string    `db:"description"`  // 文件夹描述，可为空
-	ParentID    *int64     `db:"parent_id"`    // 父文件夹 ID；nil 表示根级文件夹
-	Path        string     `db:"path"`         // 物化路径（如 "/root/photos/2024/"）
-	Depth       int        `db:"depth"`        // 嵌套深度；0 表示根级
-	SortOrder   int        `db:"sort_order"`   // 显示排序权重
-	Color       *string    `db:"color"`        // UI 中文件夹图标的十六进制颜色，可为空
-	Icon        *string    `db:"icon"`         // 图标标识符或 emoji，可为空
-	CoverImage  *string    `db:"cover_image"`  // 相册展示用的封面图片 URL，可为空
-	OwnerID     *int64     `db:"owner_id"`     // 文件夹所有者用户 ID；nil 表示系统文件夹
-	Visibility  string     `db:"visibility"`   // 访问控制：public（公开）| private（私有）| shared（共享）
-	FileCount   int        `db:"file_count"`   // 该文件夹直接包含的文件数量（缓存值）
-	TotalSize   int64      `db:"total_size"`   // 该文件夹所有文件的总字节大小（缓存值）
-	CreatedBy   *int64     `db:"created_by"`   // 创建者用户 ID，可为空
-	UpdatedBy   *int64     `db:"updated_by"`   // 最后更新者用户 ID，可为空
-	CreatedAt   *time.Time `db:"created_at"`   // 记录创建时间
-	UpdatedAt   *time.Time `db:"updated_at"`   // 记录最后更新时间
+	Name        string     `db:"name"`        // 文件夹显示名称
+	Slug        string     `db:"slug"`        // URL 友好的文件夹唯一标识符
+	Description *string    `db:"description"` // 文件夹描述，可为空
+	ParentID    *int64     `db:"parent_id"`   // 父文件夹 ID；nil 表示根级文件夹
+	Path        string     `db:"path"`        // 物化路径（如 "/root/photos/2024/"）
+	Depth       int        `db:"depth"`       // 嵌套深度；0 表示根级
+	SortOrder   int        `db:"sort_order"`  // 显示排序权重
+	Color       *string    `db:"color"`       // UI 中文件夹图标的十六进制颜色，可为空
+	Icon        *string    `db:"icon"`        // 图标标识符或 emoji，可为空
+	CoverImage  *string    `db:"cover_image"` // 相册展示用的封面图片 URL，可为空
+	OwnerID     *int64     `db:"owner_id"`    // 文件夹所有者用户 ID；nil 表示系统文件夹
+	Visibility  string     `db:"visibility"`  // 访问控制：public（公开）| private（私有）| shared（共享）
+	FileCount   int        `db:"file_count"`  // 该文件夹直接包含的文件数量（缓存值）
+	TotalSize   int64      `db:"total_size"`  // 该文件夹所有文件的总字节大小（缓存值）
+	CreatedBy   *int64     `db:"created_by"`  // 创建者用户 ID，可为空
+	UpdatedBy   *int64     `db:"updated_by"`  // 最后更新者用户 ID，可为空
+	CreatedAt   *time.Time `db:"created_at"`  // 记录创建时间
+	UpdatedAt   *time.Time `db:"updated_at"`  // 记录最后更新时间
 }
 
 // StorageProvider 对应数据库 `storage_providers` 表，每条记录代表一个
