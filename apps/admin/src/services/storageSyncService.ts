@@ -33,6 +33,12 @@ export interface SyncTargetProviderConfig {
   targetProviderId: number | null;
 }
 
+export interface BackupRemoveFailure {
+  stage: string;
+  reason: string;
+  forceAllowed: boolean;
+}
+
 export const storageSyncService = {
   /**
    * 立即把所有未同步文件入队 + 启动 worker。
@@ -89,9 +95,11 @@ export const storageSyncService = {
 
   // ========== Phase 5: 删除备份 + 定期校验 ==========
 
-  /** 删除备份对象,但保留主文件。sync_status 重置为 NONE。 */
-  removeBackup: (mediaId: number): Promise<R<void>> => {
-    return api.delete(`/v1/admin/media/${mediaId}/backup`);
+  /** 删除备份对象,但保留主文件。force=true 时只强制清理本地备份关联。 */
+  removeBackup: (mediaId: number, options?: { force?: boolean }): Promise<R<void>> => {
+    return api.delete(`/v1/admin/media/${mediaId}/backup`, {
+      params: options?.force ? { force: true } : undefined,
+    });
   },
 
   /** 手动校验单条记录的备份对象是否存在(404 → 标记 MISSING) */
