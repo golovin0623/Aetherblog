@@ -282,7 +282,7 @@ func (r *StorageProviderRepo) LookupCatalogByKeys(ctx context.Context, providerI
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[string]int64)
+	out := make(map[string]int64, len(keys))
 	for rows.Next() {
 		var id int64
 		var key string
@@ -290,6 +290,34 @@ func (r *StorageProviderRepo) LookupCatalogByKeys(ctx context.Context, providerI
 			return nil, err
 		}
 		out[key] = id
+	}
+	return out, nil
+}
+
+// LookupBackupCatalogByURLs 反查 keys 对应公开 URL 是否作为云端备份登记在 catalog 中。
+// 包含回收站中的 deleted=true 行;已备份对象同样不能被云端浏览器当孤儿删除。
+func (r *StorageProviderRepo) LookupBackupCatalogByURLs(ctx context.Context, providerID int64, urls []string) (map[string]int64, error) {
+	if len(urls) == 0 {
+		return map[string]int64{}, nil
+	}
+	q, args, err := sqlx.In(`SELECT id, backup_url FROM media_files WHERE backup_provider_id = ? AND backup_url IN (?)`, providerID, urls)
+	if err != nil {
+		return nil, err
+	}
+	q = r.db.Rebind(q)
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int64, len(urls))
+	for rows.Next() {
+		var id int64
+		var backupURL string
+		if err := rows.Scan(&id, &backupURL); err != nil {
+			return nil, err
+		}
+		out[backupURL] = id
 	}
 	return out, nil
 }
