@@ -25,7 +25,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { cn } from '@/lib/utils';
+import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { friendService, FriendLink } from '@/services/friendService';
 import { toast } from 'sonner';
 import { useMediaQuery } from '@/hooks';
@@ -80,12 +80,6 @@ function getHost(url?: string): string {
   } catch {
     return url;
   }
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (!error || typeof error !== 'object') return fallback;
-  const err = error as { message?: string; response?: { data?: { message?: string; msg?: string } } };
-  return err.response?.data?.message || err.response?.data?.msg || err.message || fallback;
 }
 
 export default function FriendsPage() {
@@ -152,7 +146,7 @@ export default function FriendsPage() {
       handleCloseForm();
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error, '保存友链失败'));
+      toast.error(extractApiErrorMessage(error, '保存友链失败'));
     },
   });
 
@@ -164,7 +158,7 @@ export default function FriendsPage() {
       setDeleteTarget(null);
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error, '删除友链失败'));
+      toast.error(extractApiErrorMessage(error, '删除友链失败'));
     },
   });
 
@@ -175,7 +169,7 @@ export default function FriendsPage() {
       toast.success('展示状态已更新');
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error, '更新展示状态失败'));
+      toast.error(extractApiErrorMessage(error, '更新展示状态失败'));
     },
   });
 
@@ -187,7 +181,7 @@ export default function FriendsPage() {
     },
     onError: (error) => {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
-      toast.error(getErrorMessage(error, '保存排序失败'));
+      toast.error(extractApiErrorMessage(error, '保存排序失败'));
     },
   });
 

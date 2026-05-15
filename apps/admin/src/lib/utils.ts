@@ -34,6 +34,32 @@ export function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getStringProp(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const prop = value[key];
+  return typeof prop === 'string' && prop.trim() ? prop : undefined;
+}
+
+/**
+ * 从未知错误对象中提取接口错误文案。
+ */
+export function extractApiErrorMessage(error: unknown, fallback: string): string {
+  if (!isRecord(error)) return fallback;
+  const response = isRecord(error.response) ? error.response : undefined;
+  const data = response && isRecord(response.data) ? response.data : undefined;
+  return (
+    getStringProp(data, 'message') ||
+    getStringProp(data, 'msg') ||
+    getStringProp(data, 'errorMessage') ||
+    getStringProp(error, 'message') ||
+    fallback
+  );
+}
+
 /**
  * 文章摘要 textarea 的统一 placeholder 文案。
  *

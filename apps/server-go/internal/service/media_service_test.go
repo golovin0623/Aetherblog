@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
-	storagepkg "github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 )
 
 // fakeFolderLookup / fakePermLookup 实现 service.folderLookup / service.permLookup
@@ -309,9 +308,7 @@ func TestPublicAccessURLForMediaFallsBackWhenBackupMissing(t *testing.T) {
 	cdnURL := "/api/uploads/primary/photo.png"
 	backupURL := "/backup/2026/03/photo.png"
 	backupProviderID := int64(7)
-	svc := &MediaService{
-		localStore: storagepkg.NewLocalStorage(t.TempDir(), "/backup"),
-	}
+	svc := &MediaService{}
 
 	got, err := svc.publicAccessURLForMedia(context.Background(), &model.MediaFile{
 		ID:               42,

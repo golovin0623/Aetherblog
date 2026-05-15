@@ -629,7 +629,7 @@ func (s *MediaService) PublicAccessURLByPath(ctx context.Context, filePath strin
 }
 
 func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.MediaFile) (string, error) {
-	if backupURL, ok := s.verifiedBackupAccessURL(ctx, m); ok {
+	if backupURL, ok := verifiedBackupAccessURL(m); ok {
 		return backupURL, nil
 	}
 
@@ -648,7 +648,7 @@ func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.Med
 	return store.GetURL(m.FilePath), nil
 }
 
-func (s *MediaService) verifiedBackupAccessURL(ctx context.Context, m *model.MediaFile) (string, bool) {
+func verifiedBackupAccessURL(m *model.MediaFile) (string, bool) {
 	if m == nil ||
 		!strings.EqualFold(m.StorageType, "LOCAL") ||
 		!strings.EqualFold(m.SyncStatus, "SYNCED") ||
@@ -659,50 +659,12 @@ func (s *MediaService) verifiedBackupAccessURL(ctx context.Context, m *model.Med
 	if backupURL == "" {
 		return "", false
 	}
+	// Keep public URL generation read-only and fast. Freshness is maintained by
+	// the verify worker/manual verify APIs, which perform the cloud HEAD and DB
+	// status writes outside the high-traffic read path.
 	if m.LastVerifiedAt != nil && time.Since(*m.LastVerifiedAt) < publicBackupVerificationFreshness {
 		return backupURL, true
 	}
-	if m.BackupProviderID == nil {
-		log.Warn().Int64("media_id", m.ID).Msg("public media backup pointer has no provider, falling back to primary URL")
-		return "", false
-	}
-
-	store, _, err := s.resolveStore(ctx, m.BackupProviderID)
-	if err != nil {
-		log.Warn().Err(err).Int64("media_id", m.ID).Msg("public media backup store unavailable, falling back to primary URL")
-		return "", false
-	}
-	existser, ok := store.(storage.Existser)
-	if !ok {
-		// 旧/自定义存储后端没有 HEAD 能力时保持兼容,仍按历史逻辑使用 backup_url。
-		return backupURL, true
-	}
-	backupKey, err := backupStorageKey(store, m.FilePath, m.BackupURL)
-	if err != nil {
-		log.Warn().Err(err).Int64("media_id", m.ID).Msg("public media backup key cannot be resolved, falling back to primary URL")
-		return "", false
-	}
-	exists, err := existser.Exists(ctx, backupKey)
-	if err != nil {
-		log.Warn().Err(err).Int64("media_id", m.ID).Msg("public media backup existence check failed, falling back to primary URL")
-		return "", false
-	}
-
-	now := time.Now()
-	if exists {
-		if s.repo != nil {
-			if err := s.repo.MarkBackupVerified(ctx, m.ID, now); err != nil {
-				log.Warn().Err(err).Int64("media_id", m.ID).Msg("public media backup verified but row update failed")
-			}
-		}
-		return backupURL, true
-	}
-	if s.repo != nil {
-		if err := s.repo.MarkBackupMissing(ctx, m.ID, now, "REMOTE_GONE: object not found at backup_url"); err != nil {
-			log.Warn().Err(err).Int64("media_id", m.ID).Msg("public media backup missing but row update failed")
-		}
-	}
-	log.Info().Int64("media_id", m.ID).Str("backup_url", backupURL).Msg("public media backup missing, falling back to primary URL")
 	return "", false
 }
 
