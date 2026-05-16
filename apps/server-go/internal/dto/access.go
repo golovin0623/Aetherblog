@@ -143,6 +143,16 @@ type ContentShareVO struct {
 	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
+// ShareableResourceVO 是可被内容共享授权绑定的真实资源选择项。
+type ShareableResourceVO struct {
+	ResourceType string     `json:"resourceType"`
+	ID           int64      `json:"id"`
+	Title        string     `json:"title"`
+	Subtitle     *string    `json:"subtitle,omitempty"`
+	Status       *string    `json:"status,omitempty"`
+	UpdatedAt    *time.Time `json:"updatedAt,omitempty"`
+}
+
 // CreateContentShareRequest 是创建/覆盖内容共享授权请求。
 type CreateContentShareRequest struct {
 	ResourceType    string  `json:"resourceType" validate:"required,oneof=POST MEDIA_FILE MEDIA_FOLDER"`
@@ -151,4 +161,22 @@ type CreateContentShareRequest struct {
 	PrincipalID     int64   `json:"principalId" validate:"required"`
 	PermissionLevel string  `json:"permissionLevel" validate:"required,oneof=VIEW COMMENT EDIT MANAGE"`
 	ExpiresAt       *string `json:"expiresAt"`
+}
+
+// BatchCreateContentSharesRequest 是批量创建/覆盖内容共享授权请求。
+type BatchCreateContentSharesRequest struct {
+	ResourceType      string  `json:"resourceType" validate:"required,oneof=POST MEDIA_FILE MEDIA_FOLDER"`
+	ResourceIDs       []int64 `json:"resourceIds" validate:"omitempty,max=1000,dive,gt=0"`
+	ResourceSearch    *string `json:"resourceSearch"`
+	SelectAllMatching bool    `json:"selectAllMatching"`
+	PrincipalType     string  `json:"principalType" validate:"required,oneof=USER TEAM ROLE"`
+	PrincipalID       int64   `json:"principalId" validate:"required"`
+	PermissionLevel   string  `json:"permissionLevel" validate:"required,oneof=VIEW COMMENT EDIT MANAGE"`
+	ExpiresAt         *string `json:"expiresAt"`
+}
+
+// BatchCreateContentSharesVO 是批量授权结果。
+type BatchCreateContentSharesVO struct {
+	Total  int              `json:"total"`
+	Shares []ContentShareVO `json:"shares"`
 }

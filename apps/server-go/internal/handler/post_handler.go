@@ -51,6 +51,12 @@ func (h *PostHandler) MountPublic(g *echo.Group) {
 	// verify-password 路由在 server.go 中单独注册（附带限流中间件）
 }
 
+// MountShared 注册登录用户可读取的协作共享文章路由。
+func (h *PostHandler) MountShared(g *echo.Group) {
+	g.GET("", h.SharedList)
+	g.GET("/:id", h.SharedGet)
+}
+
 // --- 管理端接口 ---
 
 // AdminList 处理 GET /admin/posts 请求。
@@ -369,6 +375,41 @@ func (h *PostHandler) VerifyPassword(c echo.Context) error {
 		return response.FailWith(c, response.Forbidden, "密码错误")
 	}
 	// 密码正确，异步递增浏览量
+	go h.svc.IncrementViewCount(context.Background(), post.ID)
+	return response.OK(c, post)
+}
+
+// SharedList 处理 GET /collaboration/posts 请求，返回当前登录用户被共享的文章。
+func (h *PostHandler) SharedList(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	p := pagination.ParseWithDefaults(c, 1, 10)
+	pr, err := h.svc.GetSharedForUser(c.Request().Context(), lu.UserID, lu.Role, p)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, pr)
+}
+
+// SharedGet 处理 GET /collaboration/posts/:id 请求，按共享授权读取文章详情。
+func (h *PostHandler) SharedGet(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		return response.FailWith(c, response.BadRequest, "无效的文章ID")
+	}
+	post, err := h.svc.GetSharedByIDForUser(c.Request().Context(), lu.UserID, lu.Role, id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if post == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在或未授权")
+	}
 	go h.svc.IncrementViewCount(context.Background(), post.ID)
 	return response.OK(c, post)
 }

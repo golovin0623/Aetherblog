@@ -8,7 +8,7 @@ import { R, PageResult } from '@/types';
 export interface ActivityEvent {
   id: number;
   eventType: string;
-  eventCategory: 'post' | 'comment' | 'user' | 'system' | 'friend' | 'media' | 'ai';
+  eventCategory: 'post' | 'comment' | 'user' | 'system' | 'friend' | 'media' | 'ai' | 'security';
   title: string;
   description?: string;
   metadata?: Record<string, unknown>;
@@ -82,7 +82,7 @@ class ActivityService {
   async getActivitiesByUser(
     userId: number,
     pageNum: number = 1,
-    pageSize: number = 20
+    pageSize: number = 10
   ): Promise<R<PageResult<ActivityEvent>>> {
     return api.get<R<PageResult<ActivityEvent>>>(
       `/v1/admin/activities/user/${userId}?pageNum=${pageNum}&pageSize=${pageSize}`

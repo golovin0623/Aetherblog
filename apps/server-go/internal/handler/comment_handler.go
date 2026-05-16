@@ -40,6 +40,7 @@ func (h *CommentHandler) MountAdmin(g *echo.Group) {
 	g.PATCH("/:id/reject", h.Reject)
 	g.PATCH("/:id/spam", h.Spam)
 	g.PATCH("/:id/restore", h.Restore)
+	g.POST("/:id/reply", h.Reply)
 	g.DELETE("/:id", h.Delete)
 	g.DELETE("/:id/permanent", h.PermanentDelete)
 	g.DELETE("/batch", h.DeleteBatch)
@@ -138,6 +139,30 @@ func (h *CommentHandler) Spam(c echo.Context) error {
 // 将已拒绝或垃圾评论恢复为待审核状态。
 func (h *CommentHandler) Restore(c echo.Context) error {
 	return h.withID(c, h.svc.Restore)
+}
+
+// Reply 处理 POST /admin/comments/:id/reply 请求，
+// 以当前登录管理员身份创建一条已通过的回复评论。
+func (h *CommentHandler) Reply(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	var req dto.AdminReplyCommentRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	req.Content = commentSanitizer.Sanitize(req.Content)
+	vo, err := h.svc.ReplyAsAdmin(c.Request().Context(), id, req, lu.Username, c.RealIP(), c.Request().UserAgent())
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	h.recordCommentActivity(c, "comment.reply", fmt.Sprintf("回复评论 #%d", id), fmt.Sprintf("管理员已回复评论 #%d", id))
+	return response.OK(c, vo)
 }
 
 // Delete 处理 DELETE /admin/comments/:id 请求，

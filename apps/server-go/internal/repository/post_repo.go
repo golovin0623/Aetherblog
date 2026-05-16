@@ -78,6 +78,19 @@ func (r *PostRepo) FindBySlugPublished(ctx context.Context, slug string) (*model
 	return &p, err
 }
 
+// FindPublishedSharedByID 根据 ID 查询可通过身份共享入口读取的已发布文章。
+// 与公开 slug 读取不同，这里允许 is_hidden=true，因为隐藏文章是共享授权的主要业务场景。
+func (r *PostRepo) FindPublishedSharedByID(ctx context.Context, id int64) (*model.Post, error) {
+	var p model.Post
+	err := r.db.GetContext(ctx, &p,
+		`SELECT * FROM posts WHERE id = $1 AND deleted = false AND status = 'PUBLISHED'`,
+		id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &p, err
+}
+
 // Create 向 posts 表插入一条新文章记录，view_count/comment_count/like_count 初始化为 0，
 // embedding_status 初始化为 'PENDING'，并返回完整的创建后记录。
 func (r *PostRepo) Create(ctx context.Context, p *model.Post) (*model.Post, error) {
@@ -322,6 +335,28 @@ func (r *PostRepo) FindPublishedNoPassword(ctx context.Context, pageNum, pageSiz
 			` ORDER BY p.published_at DESC NULLS LAST, p.id DESC LIMIT $1 OFFSET $2`,
 		pageSize, offset)
 	return rows, total, err
+}
+
+// FindPublishedSharedByIDs 返回指定 ID 集合中的已发布文章，允许隐藏文章进入共享列表。
+func (r *PostRepo) FindPublishedSharedByIDs(ctx context.Context, ids []int64) ([]postListRow, error) {
+	if len(ids) == 0 {
+		return []postListRow{}, nil
+	}
+	query, args, err := sqlx.In(`
+		SELECT p.*, c.name AS category_name
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.id IN (?) AND p.deleted = false AND p.status = 'PUBLISHED'
+		ORDER BY p.published_at DESC NULLS LAST, p.id DESC`, ids)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+	var rows []postListRow
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // FindByCategory 返回指定分类下已发布、可见文章的分页列表及总数。

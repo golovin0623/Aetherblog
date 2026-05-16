@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -160,6 +161,44 @@ func (s *CommentService) PermanentDeleteBatch(ctx context.Context, ids []int64) 
 // ApproveBatch 批量审核通过多条评论（状态设为 APPROVED）。
 func (s *CommentService) ApproveBatch(ctx context.Context, ids []int64) error {
 	return s.repo.UpdateStatusBatch(ctx, ids, "APPROVED")
+}
+
+// ReplyAsAdmin 以当前管理员身份创建已通过的评论回复。
+func (s *CommentService) ReplyAsAdmin(ctx context.Context, parentID int64, req dto.AdminReplyCommentRequest, username, ip, userAgent string) (*dto.CommentVO, error) {
+	parent, err := s.ensureExists(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if parent.Status == "DELETED" {
+		return nil, errors.New("不能回复已删除评论")
+	}
+
+	nickname := strings.TrimSpace(username)
+	if nickname == "" {
+		nickname = "管理员"
+	}
+	parentRefID := parent.ID
+	c := &model.Comment{
+		PostID:    parent.PostID,
+		ParentID:  &parentRefID,
+		Nickname:  nickname,
+		Content:   req.Content,
+		Status:    "APPROVED",
+		IP:        strPtr(ip),
+		UserAgent: strPtr(userAgent),
+		IsAdmin:   true,
+	}
+	if err := s.repo.Create(ctx, c); err != nil {
+		return nil, err
+	}
+	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+
+	vo := toCommentVO(*c)
+	vo.Parent = &dto.CommentParentRef{ID: parent.ID, Nickname: parent.Nickname}
+	if post, err := s.postRepo.FindByID(ctx, parent.PostID); err == nil && post != nil {
+		vo.Post = &dto.CommentPostRef{ID: post.ID, Title: post.Title, Slug: post.Slug}
+	}
+	return &vo, nil
 }
 
 // --- 公开接口 ---

@@ -26,22 +26,21 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   CircleHelp,
   Copy,
   FileText,
   Hash,
   LayoutDashboard,
-  LayoutGrid,
   MessageCircle,
   Moon,
   MoreHorizontal,
   Pencil,
-  Plus,
   RefreshCcw,
   Search,
   Settings,
+  Sidebar as SidebarIcon,
   SlashSquare,
+  SquarePen,
   Sparkles,
   Square,
   Sun,
@@ -67,7 +66,6 @@ import {
   type ChatStreamRequest,
   type SlashCommand,
   type StreamAnimationMode,
-  SLASH_COMMANDS,
   ARTICLE_PAGE_SIZE,
   createEmptySession,
   deriveSessionTitle,
@@ -213,7 +211,8 @@ export default function AetherHubWorkspacePage() {
     setSelectedTags([]);
   }, [activeId]);
 
-  // ----- 右侧上下文面板：收起 / 展开 -----
+  // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
+  const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [mobileSessionOpen, setMobileSessionOpen] = useState(false);
   const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
@@ -282,6 +281,14 @@ export default function AetherHubWorkspacePage() {
     setActiveId(fresh.id);
     setComposer('');
   }, [streaming]);
+
+  const handleOpenCurrentConfig = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) {
+      setPanelCollapsed(false);
+      return;
+    }
+    setMobileConfigOpen(true);
+  }, []);
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -619,13 +626,17 @@ export default function AetherHubWorkspacePage() {
         <div
           className={cn(
             'relative z-10 grid h-full min-h-0 w-full grid-cols-1 overflow-hidden',
-            'lg:grid-cols-[320px_minmax(0,1fr)]',
-            panelCollapsed
-              ? 'xl:grid-cols-[320px_minmax(0,1fr)]'
-              : 'xl:grid-cols-[320px_minmax(0,1fr)_320px]',
+            sessionSidebarCollapsed
+              ? panelCollapsed
+                ? 'lg:grid-cols-[0px_minmax(0,1fr)] xl:grid-cols-[0px_minmax(0,1fr)]'
+                : 'lg:grid-cols-[0px_minmax(0,1fr)] xl:grid-cols-[0px_minmax(0,1fr)_320px]'
+              : panelCollapsed
+                ? 'lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]'
+                : 'lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]',
           )}
         >
           <WorkspaceSidebar
+            collapsed={sessionSidebarCollapsed}
             currentUser={currentUser}
             sessions={sessions}
             activeId={activeId}
@@ -634,6 +645,8 @@ export default function AetherHubWorkspacePage() {
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
+            onOpenConfig={handleOpenCurrentConfig}
+            onToggleCollapsed={() => setSessionSidebarCollapsed((v) => !v)}
           />
 
           <MobileSessionDrawer
@@ -647,19 +660,19 @@ export default function AetherHubWorkspacePage() {
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
-            onOpenConfig={() => setMobileConfigOpen(true)}
+            onOpenConfig={handleOpenCurrentConfig}
           />
 
           <section className="flex h-full min-h-0 min-w-0 flex-col border-x border-[var(--hub-border)]">
             <TopBar
-              currentUser={currentUser}
               activeSession={activeSession}
               streaming={streaming}
               displayMode={displayMode}
               onSetDisplayMode={setDisplayMode}
               onNewSession={handleNewSession}
               onOpenSessions={() => setMobileSessionOpen(true)}
-              onOpenConfig={() => setMobileConfigOpen(true)}
+              sessionSidebarCollapsed={sessionSidebarCollapsed}
+              onToggleSessionSidebar={() => setSessionSidebarCollapsed((v) => !v)}
             />
 
             <WorkspaceCanvas
@@ -774,7 +787,47 @@ export default function AetherHubWorkspacePage() {
 // 侧栏 —— 会话列表 + 新建按钮 + 用户信息
 // =============================================================================
 
+function SidebarTopControls({
+  sidebarLabel,
+  onSidebarAction,
+  onNewSession,
+  streaming,
+}: {
+  sidebarLabel: string;
+  onSidebarAction: () => void;
+  onNewSession: () => void;
+  streaming: boolean;
+}) {
+  return (
+    <div className="inline-flex h-12 items-center gap-1.5 rounded-[26px] border border-[var(--hub-border)] bg-[color-mix(in_oklch,var(--hub-control)_78%,var(--ink-primary)_8%)] p-1 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent),0_14px_34px_-28px_rgba(0,0,0,0.42)]">
+      <button
+        type="button"
+        onClick={onSidebarAction}
+        aria-label={sidebarLabel}
+        title={sidebarLabel}
+        className="grid h-10 w-10 place-items-center rounded-[22px] bg-[color-mix(in_oklch,var(--hub-control-hover)_78%,var(--ink-primary)_12%)] text-[var(--ink-primary)] shadow-[0_8px_18px_-14px_rgba(0,0,0,0.45),inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_12%,transparent)] transition-[background-color,color,transform] hover:text-[var(--ink-primary)] active:scale-[0.97]"
+      >
+        <SidebarIcon className="h-5 w-5" strokeWidth={2.15} />
+      </button>
+      <button
+        type="button"
+        onClick={onNewSession}
+        disabled={streaming}
+        aria-label="新建对话"
+        title="新建对话"
+        className={cn(
+          'grid h-10 w-10 place-items-center rounded-[22px] text-[var(--ink-secondary)] transition-[background-color,color,transform] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] active:scale-[0.97]',
+          streaming && 'cursor-not-allowed opacity-60',
+        )}
+      >
+        <SquarePen className="h-5 w-5" strokeWidth={2.15} />
+      </button>
+    </div>
+  );
+}
+
 function WorkspaceSidebar({
+  collapsed,
   currentUser,
   sessions,
   activeId,
@@ -783,7 +836,10 @@ function WorkspaceSidebar({
   onNewSession,
   onSelectSession,
   onDeleteSession,
+  onOpenConfig,
+  onToggleCollapsed,
 }: {
+  collapsed: boolean;
   currentUser: CurrentUser;
   sessions: AgentSession[];
   activeId: string | null;
@@ -792,57 +848,53 @@ function WorkspaceSidebar({
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onOpenConfig: () => void;
+  onToggleCollapsed: () => void;
 }) {
   const [query, setQuery] = useState('');
   const filteredSessions = useMemo(() => filterSessions(sessions, query), [sessions, query]);
   const groups = useMemo(() => groupSessionsByRecency(filteredSessions), [filteredSessions]);
-  const navigate = useNavigate();
+
+  if (collapsed) {
+    return <aside className="hidden h-full min-w-0 overflow-hidden lg:block" aria-hidden="true" />;
+  }
 
   return (
-    <aside className="hidden h-full min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-5 py-4 backdrop-blur-2xl lg:flex">
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="返回管理后台"
-          className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-        >
-          <LayoutDashboard className="h-4 w-4" />
-          <span className="text-sm">控制台</span>
-        </button>
-        <span className="font-display text-sm tracking-[0.16em] text-[var(--ink-muted)]">
-          AetherHub
-        </span>
+    <aside className="hidden h-full min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 py-3 backdrop-blur-2xl lg:flex">
+      <div className="mb-3 flex h-12 items-center px-1">
+        <SidebarTopControls
+          sidebarLabel="收起侧边栏"
+          onSidebarAction={onToggleCollapsed}
+          onNewSession={onNewSession}
+          streaming={streaming}
+        />
       </div>
 
-      <button
-        type="button"
-        onClick={onNewSession}
-        disabled={streaming}
-        className={cn(
-          'mb-3 flex h-11 w-full items-center justify-between rounded-2xl border border-transparent px-4 text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] transition-transform [background:var(--hub-gradient)] active:scale-[0.99]',
-          streaming && 'cursor-not-allowed opacity-60',
-        )}
-      >
-        <span className="inline-flex items-center gap-3 text-sm font-medium">
-          <Plus className="h-4 w-4" />
-          新建对话
-        </span>
-        <span className="rounded-md bg-white/16 px-1.5 py-0.5 font-mono text-[11px]">⌘ K</span>
-      </button>
+      <nav className="mb-3 space-y-1 px-1" aria-label="灵境导航">
+        <button
+          type="button"
+          aria-current="page"
+          className="flex h-10 w-full items-center gap-3 rounded-xl bg-[var(--hub-active)] px-3 text-left text-sm font-medium text-[var(--hub-accent-text)]"
+        >
+          <span className="grid h-5 w-5 shrink-0 place-items-center">
+            <AetherMark className="h-5 w-5" />
+          </span>
+          灵境
+        </button>
+      </nav>
 
-      <div className="relative mb-3">
+      <div className="relative mb-3 px-1">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           type="search"
           placeholder="搜索对话..."
-          className="h-10 w-full rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] pl-9 pr-3 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
+          className="h-10 w-full rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] pl-9 pr-3 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-2">
+      <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto px-1 py-1">
         {filteredSessions.length === 0 && (
           <div className="px-2 py-6 text-center text-[var(--fs-caption)] text-[var(--ink-muted)]">
             {query.trim() ? '没有匹配的对话' : '暂无会话，从上方「新建对话」开始'}
@@ -868,24 +920,33 @@ function WorkspaceSidebar({
         ))}
       </div>
 
-      <div className="border-t border-[var(--hub-border)] pt-4">
-        <button
-          type="button"
-          onClick={() => navigate('/ai-config')}
-          className="mb-3 flex h-9 w-full items-center gap-3 rounded-lg px-2 text-sm text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-        >
-          <Settings className="h-4 w-4" />
-          灵境配置
-        </button>
-        <div className="flex items-center gap-3">
+      <div className="border-t border-[var(--hub-border)] px-1 pt-3">
+        <div className="flex h-12 items-center gap-3 rounded-xl px-2 text-[var(--ink-primary)]">
           <UserAvatar currentUser={currentUser} className="h-10 w-10" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-[var(--ink-primary)]">
               {currentUser.nickname}
             </div>
-            <div className="mt-0.5 inline-flex rounded-md bg-[var(--hub-control)] px-1.5 py-0.5 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
-              在线
-            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="返回管理后台"
+              title="返回管理后台"
+              className="grid h-10 w-10 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <LayoutDashboard className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenConfig}
+              aria-label="打开当前对话配置"
+              title="当前对话配置"
+              className="grid h-10 w-10 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -958,53 +1019,30 @@ function MobileSessionDrawer({
             transition={{ type: 'spring', stiffness: 360, damping: 34, mass: 0.9 }}
             className="relative flex h-full w-[min(88vw,360px)] flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 shadow-[24px_0_54px_-30px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
           >
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                控制台
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="关闭对话记录"
-                className="grid h-10 w-10 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <div className="mb-3 flex h-12 items-center">
+              <SidebarTopControls
+                sidebarLabel="收起侧边栏"
+                onSidebarAction={onClose}
+                onNewSession={() => {
+                  onNewSession();
+                  onClose();
+                }}
+                streaming={streaming}
+              />
             </div>
 
-            <div className="mb-4 flex items-center gap-3 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 py-3">
-              <UserAvatar currentUser={currentUser} className="h-10 w-10" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
-                  {currentUser.nickname}
-                </div>
-                <div className="mt-0.5 inline-flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal-success)]" />
-                  就绪
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                onNewSession();
-                onClose();
-              }}
-              disabled={streaming}
-              className={cn(
-                'mb-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-medium text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)] active:scale-[0.99]',
-                streaming && 'cursor-not-allowed opacity-60',
-              )}
-            >
-              <Plus className="h-4 w-4" />
-              新建对话
-            </button>
+            <nav className="mb-3 space-y-1" aria-label="灵境导航">
+              <button
+                type="button"
+                aria-current="page"
+                className="flex h-11 w-full items-center gap-3 rounded-2xl bg-[var(--hub-active)] px-3 text-left text-sm font-medium text-[var(--hub-accent-text)]"
+              >
+                <span className="grid h-5 w-5 shrink-0 place-items-center">
+                  <AetherMark className="h-5 w-5" />
+                </span>
+                灵境
+              </button>
+            </nav>
 
             <div className="relative mb-3">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
@@ -1048,17 +1086,40 @@ function MobileSessionDrawer({
             </div>
 
             <div className="mt-4 border-t border-[var(--hub-border)] pt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenConfig();
-                  onClose();
-                }}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              >
-                <Settings className="h-4 w-4" />
-                当前对话配置
-              </button>
+              <div className="flex h-12 items-center gap-3 rounded-2xl px-2 text-[var(--ink-primary)]">
+                <UserAvatar currentUser={currentUser} className="h-9 w-9" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+                    {currentUser.nickname}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onBack();
+                      onClose();
+                    }}
+                    aria-label="返回管理后台"
+                    title="返回管理后台"
+                    className="grid h-10 w-10 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                  >
+                    <LayoutDashboard className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenConfig();
+                      onClose();
+                    }}
+                    aria-label="打开当前对话配置"
+                    title="当前对话配置"
+                    className="grid h-10 w-10 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
             </div>
           </motion.aside>
         </div>
@@ -1084,7 +1145,7 @@ function SessionRow({
   return (
     <div
       className={cn(
-        'group relative flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm transition-colors',
+        'group relative flex h-10 w-full items-center gap-2 rounded-xl px-3 text-sm transition-colors',
         active
           ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
           : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
@@ -1093,11 +1154,11 @@ function SessionRow({
       <button
         type="button"
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+        className="flex min-w-0 flex-1 items-center text-left"
       >
-        <span className="min-w-0 truncate">{session.title || '新对话'}</span>
-        <span className="shrink-0 text-[var(--fs-caption)] tnum text-[var(--ink-muted)]">
-          {formatRelativeShort(session.updatedAt)}
+        <span className="min-w-0 truncate pr-8">{session.title || '新对话'}</span>
+        <span className="sr-only">
+          最近更新：{formatRelativeShort(session.updatedAt)}
         </span>
       </button>
       <button
@@ -1110,7 +1171,7 @@ function SessionRow({
         title={confirmDelete ? '再次点击确认删除' : '删除对话'}
         aria-label="删除对话"
         className={cn(
-          'grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)]',
+          'absolute right-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)]',
           confirmDelete
             ? 'text-[var(--signal-danger)] opacity-100'
             : showDelete
@@ -1125,74 +1186,62 @@ function SessionRow({
 }
 
 // =============================================================================
-// 顶栏 —— 会话标题 + 模型选择 + 用户头像
+// 顶栏 —— 会话标题 + 移动端快捷入口
 // =============================================================================
 
 function TopBar({
-  currentUser,
   activeSession,
   streaming,
   displayMode,
   onSetDisplayMode,
   onNewSession,
   onOpenSessions,
-  onOpenConfig,
+  sessionSidebarCollapsed,
+  onToggleSessionSidebar,
 }: {
-  currentUser: CurrentUser;
   activeSession: AgentSession | null;
   streaming: boolean;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
   onNewSession: () => void;
   onOpenSessions: () => void;
-  onOpenConfig: () => void;
+  sessionSidebarCollapsed: boolean;
+  onToggleSessionSidebar: () => void;
 }) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[60px] md:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 backdrop-blur-2xl md:h-[60px] md:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
-          onClick={onOpenSessions}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] lg:hidden"
-          aria-label="打开对话记录"
-          title="打开对话记录"
+          onClick={sessionSidebarCollapsed ? onToggleSessionSidebar : onOpenSessions}
+          className={cn(
+            'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+            sessionSidebarCollapsed ? 'lg:grid' : 'lg:hidden',
+          )}
+          aria-label={sessionSidebarCollapsed ? '展开侧边栏' : '打开对话记录'}
+          title={sessionSidebarCollapsed ? '展开侧边栏' : '打开对话记录'}
         >
-          <LayoutGrid className="h-4 w-4" />
+          <SidebarIcon className="h-[18px] w-[18px]" strokeWidth={2.15} />
         </button>
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center md:h-9 md:w-9">
-          <AetherMark size={28} />
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--hub-control)] ring-1 ring-[var(--hub-border)] md:bg-transparent md:ring-0">
+          <AetherMark size={26} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-[var(--ink-primary)] md:text-sm">
+          <div className="truncate text-[15px] font-semibold text-[var(--ink-primary)] md:text-sm">
             {activeSession?.title || 'AetherHub'}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-[var(--ink-muted)]">
-            {streaming ? (
-              <>
-                <span className="hub-think-live-dot" aria-hidden="true" />
-                <span className="text-[var(--aurora-1)]">正在生成</span>
-              </>
-            ) : (
-              <>
-                <span className="grid h-2 w-2 place-items-center rounded-full bg-[color-mix(in_oklch,var(--signal-success)_22%,transparent)]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal-success)]" />
-                </span>
-                就绪
-              </>
-            )}
           </div>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+      <div className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-[var(--hub-control)] p-1 md:h-auto md:gap-2 md:bg-transparent md:p-0">
         <button
           type="button"
           onClick={() => onSetDisplayMode(displayMode === 'bubble' ? 'engraved' : 'bubble')}
           aria-label={displayMode === 'bubble' ? '切换到版书模式' : '切换到气泡模式'}
           title={displayMode === 'bubble' ? '切换到版书模式' : '切换到气泡模式'}
-          className="grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          className="grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:h-9 md:w-9 md:rounded-lg"
         >
           {displayMode === 'bubble' ? <BookOpen className="h-4 w-4" /> : <MessageCircle className="h-4 w-4" />}
         </button>
@@ -1201,18 +1250,9 @@ function TopBar({
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
           title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
-          className="grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+          className="grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:h-9 md:w-9 md:rounded-lg"
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
-        <button
-          type="button"
-          onClick={onOpenConfig}
-          aria-label="打开当前对话配置"
-          title="打开当前对话配置"
-          className="grid h-9 w-9 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] xl:hidden"
-        >
-          <Settings className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -1221,13 +1261,12 @@ function TopBar({
           aria-label="新建对话"
           title="新建对话"
           className={cn(
-            'grid h-9 w-9 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
+            'grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
             streaming && 'cursor-not-allowed opacity-60',
           )}
         >
-          <Plus className="h-4 w-4" />
+          <SquarePen className="h-4 w-4" />
         </button>
-        <UserAvatar currentUser={currentUser} className="h-8 w-8 md:h-9 md:w-9" />
       </div>
     </header>
   );
@@ -1293,6 +1332,8 @@ function ModelPickerButton({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const modelSearchRef = useRef<HTMLInputElement>(null);
+  const { mobileHeight, handleResizeStart } = useMobilePickerResize(open);
 
   useEffect(() => {
     if (!open) return;
@@ -1374,7 +1415,7 @@ function ModelPickerButton({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          'inline-flex h-9 max-w-[38vw] items-center gap-2 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] py-1 pl-2 pr-2.5 text-sm text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors hover:bg-[var(--hub-control-hover)] sm:max-w-[238px]',
+          'inline-flex h-10 max-w-[40vw] items-center gap-2 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] py-1 pl-2 pr-2.5 text-[13px] text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors hover:bg-[var(--hub-control-hover)] sm:max-w-[238px] md:h-9 md:text-sm',
           disabled && 'cursor-not-allowed opacity-60',
         )}
       >
@@ -1387,44 +1428,34 @@ function ModelPickerButton({
             {currentContext}
           </span>
         )}
-        <ChevronDown
-          className={cn(
-            'h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)] transition-transform',
-            open && 'rotate-180',
-          )}
-        />
       </button>
       {open && (
         <div
           role="listbox"
+          aria-label="选择模型"
+          style={
+            {
+              '--hub-picker-height': `${mobileHeight}px`,
+            } as React.CSSProperties
+          }
           className={cn(
-            'absolute z-30 w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_64px_-20px_rgba(0,0,0,0.42)] backdrop-blur-2xl',
-            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2',
-            align === 'end' ? 'right-0' : 'left-0',
+            'fixed inset-x-4 bottom-[calc(max(0.85rem,env(safe-area-inset-bottom))+8rem)] z-50 flex h-[min(var(--hub-picker-height),calc(100vh-10.5rem))] flex-col overflow-hidden rounded-[1.6rem] border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.5)] backdrop-blur-2xl',
+            'sm:absolute sm:inset-x-auto sm:h-auto sm:w-[min(460px,calc(100vw-2rem))] sm:max-h-none sm:rounded-2xl sm:shadow-[0_24px_64px_-20px_rgba(0,0,0,0.42)]',
+            placement === 'top' ? 'sm:bottom-full sm:mb-3' : 'sm:top-full sm:mt-2',
+            align === 'end' ? 'sm:right-0' : 'sm:left-0',
           )}
         >
-          <div className="border-b border-[var(--hub-border)] p-3">
-            <div className="flex items-center gap-2 rounded-xl bg-[var(--hub-control)] px-3 py-2 text-[var(--ink-muted)] ring-1 ring-[var(--hub-border)]">
-              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索模型 ..."
-                className="h-7 min-w-0 flex-1 bg-transparent text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none"
-                autoFocus
-              />
-              <div className="hidden items-center rounded-lg bg-[var(--hub-panel-strong)] p-0.5 sm:flex">
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--hub-active)] text-[var(--aurora-1)]">
-                  <Brain className="h-4 w-4" />
-                </span>
-                <span className="grid h-7 w-7 place-items-center rounded-md text-[var(--ink-muted)]">
-                  <LayoutGrid className="h-4 w-4" />
-                </span>
-              </div>
-            </div>
-          </div>
+          <PickerResizeHandle onPointerDown={handleResizeStart} />
+          <PickerPanelHeader
+            title="模型路由"
+            description={`当前：${currentLabel}`}
+            query={query}
+            onQueryChange={setQuery}
+            placeholder="搜索模型、厂商或上下文..."
+            inputRef={modelSearchRef}
+          />
 
-          <div className="max-h-[min(480px,60vh)] overflow-y-auto p-2">
+          <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto p-2 sm:max-h-[min(480px,60vh)] sm:flex-none">
             <button
               type="button"
               onClick={() => {
@@ -1432,18 +1463,18 @@ function ModelPickerButton({
                 setOpen(false);
               }}
               className={cn(
-                'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
+                'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors',
                 !activeSession?.modelId
                   ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
                   : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
               )}
             >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]">
                 <Sparkles className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="font-medium">自动路由</div>
-                <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                <div className="mt-0.5 text-[11.5px] text-[var(--ink-muted)]">
                   按任务路由策略自动选模型
                 </div>
               </div>
@@ -1472,9 +1503,8 @@ function ModelPickerButton({
 
           {grouped.map(([providerCode, list]) => (
             <div key={providerCode} className="mt-2">
-              <div className="flex items-center justify-between px-3 pb-1 text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
-                {list[0]?.providerName || providerCode}
-                <Settings className="h-3.5 w-3.5" aria-hidden="true" />
+              <div className="px-3 pb-1.5 text-[11px] font-medium text-[var(--ink-muted)]">
+                <span className="min-w-0 truncate">{list[0]?.providerName || providerCode}</span>
               </div>
               {list.map((m) => {
                 const selected =
@@ -1489,12 +1519,15 @@ function ModelPickerButton({
                       setOpen(false);
                     }}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                      'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors',
                       selected
                         ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
                         : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
                     )}
                   >
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--ink-muted)]">
+                      <Brain className="h-4 w-4" />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate font-medium">{modelLabel(m)}</span>
@@ -1505,12 +1538,18 @@ function ModelPickerButton({
                         )}
                       </div>
                       {m.contextWindow && (
-                        <div className="text-[var(--fs-caption)] tnum text-[var(--ink-muted)]">
+                        <div className="mt-0.5 text-[11.5px] tnum text-[var(--ink-muted)]">
                           上下文 {Math.round(m.contextWindow / 1000)}K
                         </div>
                       )}
                     </div>
-                    {selected && <Check className="h-4 w-4 shrink-0" />}
+                    {selected ? (
+                      <Check className="h-4 w-4 shrink-0" />
+                    ) : m.contextWindow ? (
+                      <span className="hidden shrink-0 rounded-full bg-[var(--hub-control)] px-2 py-1 font-mono text-[10px] tnum text-[var(--ink-muted)] sm:inline">
+                        {formatContextWindow(m.contextWindow)}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -1648,7 +1687,7 @@ function WorkspaceCanvas({
 
   return (
     <main className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 md:px-8 md:pt-12">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:px-8 md:pt-12">
         <div className="mx-auto w-full max-w-[820px]">
           {isEmpty ? (
             <EmptyState
@@ -1734,27 +1773,30 @@ function EmptyState({
   onPickPrompt: (text: string) => void;
 }) {
   return (
-    <div className="flex flex-col items-center pt-4 pb-8 text-center md:pt-12">
-      <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-[var(--hub-active)] text-[var(--hub-accent)]">
+    <div className="flex flex-col items-center pb-5 pt-[min(7vh,2.75rem)] text-center md:pt-12">
+      <div className="mb-4 grid h-14 w-14 place-items-center rounded-[1.35rem] bg-[var(--hub-active)] text-[var(--hub-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] md:h-12 md:w-12 md:rounded-2xl">
         <Sparkles className="h-7 w-7" />
       </div>
-      <h1 className="font-display text-[clamp(1.85rem,8vw,3.25rem)] leading-tight text-[var(--ink-primary)] md:leading-none">
+      <h1 className="font-display text-[2rem] font-semibold leading-tight text-[var(--ink-primary)] sm:text-[2.4rem] md:text-[clamp(1.85rem,8vw,3.25rem)] md:leading-none">
         {greeting}，{nickname}
       </h1>
-      <p className="mt-3 text-sm text-[var(--ink-secondary)] md:text-[var(--fs-lede)]">
-        有什么可以帮你构建的？输入问题或点选下方建议开始。
+      <p className="mt-2 max-w-[21rem] text-[14px] leading-6 text-[var(--ink-secondary)] md:mt-3 md:max-w-none md:text-[var(--fs-lede)]">
+        输入问题，或点选建议开始。
       </p>
 
-      <div className="mt-8 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:gap-3">
-        {promptChips.map((chip) => (
+      <div className="mt-6 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:mt-8 md:gap-3">
+        {promptChips.map((chip, index) => (
           <button
             key={chip}
             type="button"
             onClick={() => onPickPrompt(chip)}
-            className="surface-leaf rounded-xl px-4 py-3 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+            className="group surface-leaf flex min-h-[3.35rem] items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] md:min-h-0 md:rounded-xl md:px-4"
             data-interactive
           >
-            <span className="line-clamp-2">{chip}</span>
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] font-mono text-[10px] tnum text-[var(--ink-muted)] transition-colors group-hover:bg-[var(--hub-active)] group-hover:text-[var(--hub-accent-text)]">
+              {String(index + 1).padStart(2, '0')}
+            </span>
+            <span className="line-clamp-2 min-w-0 flex-1">{chip}</span>
           </button>
         ))}
       </div>
@@ -2581,10 +2623,9 @@ function Composer({
   const selectedArticleCount = selectedArticles.length;
   const selectedTagCount = selectedTags.length;
   const selectedContextCount = selectedArticleCount + selectedTagCount;
+  const selectedContextVisible = selectedContextCount > 0;
+  const compactSelectedContext = picker !== null && selectedContextCount > 1;
   const trayScrollEnabled = selectedContextCount > 6;
-  const activeShortcut =
-    SEND_SHORTCUT_OPTIONS.find((option) => option.value === sendShortcut) ??
-    SEND_SHORTCUT_OPTIONS[0];
   const canSend = !!value.trim() && !streaming;
 
   useEffect(() => {
@@ -2606,7 +2647,7 @@ function Composer({
 
   useEffect(() => {
     const el = chipTrayRef.current;
-    if (!el || selectedContextCount === 0 || !trayScrollEnabled) return;
+    if (!el || !selectedContextVisible || !trayScrollEnabled) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const scrollToBottom = (behavior: ScrollBehavior) => {
       el.scrollTo({ top: el.scrollHeight, behavior });
@@ -2621,46 +2662,72 @@ function Composer({
       window.cancelAnimationFrame(frame);
       window.clearTimeout(settle);
     };
-  }, [selectedContextCount, trayScrollEnabled]);
+  }, [selectedContextCount, selectedContextVisible, trayScrollEnabled]);
 
   return (
-    <div className="shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 md:px-8 md:pb-4 md:pt-3">
+    <div className="shrink-0 px-4 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-1 md:px-8 md:pb-4 md:pt-3">
       <div className="relative mx-auto w-full max-w-[820px]">
         <motion.div
           layout
           transition={{ layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
           className={cn(
-            'rounded-3xl bg-[var(--hub-panel-strong)] p-3 transition-[box-shadow,border-color] duration-300 md:p-4',
+            'rounded-[1.75rem] bg-[var(--hub-panel-strong)] p-2.5 transition-[box-shadow,border-color] duration-300 md:rounded-3xl md:p-4',
             'border',
             focused
               ? 'border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] shadow-[0_10px_32px_-12px_color-mix(in_oklch,var(--aurora-1)_38%,transparent),0_0_0_4px_color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
-              : 'border-[var(--hub-border)] shadow-[0_4px_18px_-12px_rgba(0,0,0,0.25)]',
+              : 'border-[var(--hub-border)] shadow-[0_14px_44px_-30px_rgba(0,0,0,0.45)] md:shadow-[0_4px_18px_-12px_rgba(0,0,0,0.25)]',
           )}
         >
-          {/* mentions chips —— @ 选中的文章,内嵌在输入面板中,与首页灵境保持同一承载关系。 */}
+          <ArticlePicker
+            open={picker === 'article'}
+            anchorRef={atBtnRef}
+            selectedIds={new Set(selectedArticles.map((a) => a.id))}
+            onClose={() => setPicker(null)}
+            onPick={(a) => onPickArticle(a)}
+          />
+          <TagPicker
+            open={picker === 'tag'}
+            anchorRef={hashBtnRef}
+            selectedSlugs={new Set(selectedTags.map((t) => t.slug))}
+            onClose={() => setPicker(null)}
+            onPick={(tag) => onPickTag(tag)}
+          />
+          <SlashPicker
+            open={picker === 'slash'}
+            anchorRef={slashBtnRef}
+            onClose={() => setPicker(null)}
+            onPick={(cmd) => {
+              setPicker(null);
+              onSlashCommand(cmd);
+            }}
+          />
+
           <AnimatePresence initial={false}>
-            {selectedContextCount > 0 && (
+            {selectedContextVisible && (
               <motion.div
-                key="selected-articles-tray"
+                key="selected-context-rail"
                 layout
-                initial={{ opacity: 0, scale: 0.985, y: 8, filter: 'blur(2px)' }}
-                animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, scale: 0.985, y: -4, filter: 'blur(2px)' }}
+                initial={{ opacity: 0, y: 5, filter: 'blur(2px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -3, filter: 'blur(2px)' }}
                 transition={{
-                  layout: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
-                  opacity: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
-                  scale: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
-                  y: { type: 'spring', stiffness: 420, damping: 34, mass: 0.8 },
-                  filter: { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+                  layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
+                  opacity: { duration: 0.16, ease: [0.16, 1, 0.3, 1] },
+                  y: { type: 'spring', stiffness: 440, damping: 36, mass: 0.7 },
+                  filter: { duration: 0.16, ease: [0.16, 1, 0.3, 1] },
                 }}
-                className="mb-2 overflow-visible pt-1"
+                className={cn('pb-1', picker && 'mb-1')}
               >
                 <motion.div
                   ref={chipTrayRef}
                   layout
-                  className={`agent-thumb-scroll flex max-h-[120px] flex-wrap gap-1.5 px-2 py-1.5 ${
-                    trayScrollEnabled ? 'overflow-y-auto overscroll-contain' : 'overflow-visible'
-                  }`}
+                  className={cn(
+                    'agent-thumb-scroll flex gap-1.5 px-1 pb-1 pt-0.5',
+                    picker
+                      ? 'max-h-[76px] flex-wrap overflow-y-auto overscroll-contain'
+                      : 'overflow-x-auto overscroll-x-contain sm:flex-wrap sm:overflow-visible',
+                    !picker && trayScrollEnabled && 'sm:max-h-[76px] sm:overflow-y-auto sm:overscroll-contain',
+                  )}
                   aria-label="已选择上下文"
                   style={{
                     scrollbarGutter: 'stable',
@@ -2671,23 +2738,30 @@ function Composer({
                       <motion.span
                         key={`art-${a.id}`}
                         layout
-                        initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                        initial={{ opacity: 0, scale: 0.98, y: 4 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -3 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
-                        className="inline-flex max-w-[18rem] items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] py-1 pl-2.5 pr-1 text-[11.5px] text-[var(--aurora-1)]"
+                        className={cn(
+                          'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_7%,transparent)]',
+                          compactSelectedContext
+                            ? 'max-w-[calc(50%_-_0.1875rem)] flex-[0_1_auto]'
+                            : picker
+                              ? 'max-w-[min(17rem,calc(100%-0.25rem))] flex-[0_1_auto]'
+                              : 'max-w-[min(17rem,72vw)] shrink-0',
+                        )}
                       >
-                        <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        <span className="truncate" title={a.title}>
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-1)]" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate" title={a.title}>
                           {a.title}
                         </span>
                         <button
                           type="button"
                           onClick={() => onRemoveArticle(a.id)}
-                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-1)]/75 transition-colors hover:bg-[var(--aurora-1)] hover:text-[var(--hub-on-accent)]"
+                          className="inline-flex !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                           aria-label={`移除引用 ${a.title}`}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </motion.span>
                     ))}
@@ -2695,23 +2769,30 @@ function Composer({
                       <motion.span
                         key={`tag-${tag.slug}`}
                         layout
-                        initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                        initial={{ opacity: 0, scale: 0.98, y: 4 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -3 }}
                         transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
-                        className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_12%,transparent)] py-1 pl-2.5 pr-1 text-[11.5px] text-[var(--aurora-2)]"
+                        className={cn(
+                          'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_7%,transparent)]',
+                          compactSelectedContext
+                            ? 'max-w-[calc(50%_-_0.1875rem)] flex-[0_1_auto]'
+                            : picker
+                              ? 'max-w-[min(14rem,calc(100%-0.25rem))] flex-[0_1_auto]'
+                              : 'max-w-[min(14rem,58vw)] shrink-0',
+                        )}
                       >
-                        <Hash className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        <span className="truncate" title={tag.name}>
+                        <Hash className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-2)]" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate" title={tag.name}>
                           {tag.name}
                         </span>
                         <button
                           type="button"
                           onClick={() => onRemoveTag(tag.slug)}
-                          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[var(--aurora-2)]/75 transition-colors hover:bg-[var(--aurora-2)] hover:text-[var(--hub-on-accent)]"
+                          className="inline-flex !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                           aria-label={`移除标签 ${tag.name}`}
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </motion.span>
                     ))}
@@ -2730,18 +2811,19 @@ function Composer({
             onBlur={() => setFocused(false)}
             rows={1}
             disabled={streaming}
-            placeholder="提问、创建或开始任务。@ 引用文章 · # 圈定标签 · / 调用命令"
+            placeholder="问灵境，@ 文章 · # 标签 · / 命令"
             spellCheck={false}
             autoComplete="off"
             className={cn(
-              'block w-full resize-none bg-transparent px-1 py-1.5 text-[15px] leading-[1.55] text-[var(--ink-primary)]',
+              'block max-h-[132px] w-full resize-none bg-transparent px-1.5 text-[15px] leading-[1.5] text-[var(--ink-primary)] md:max-h-[240px] md:px-1',
+              picker ? 'py-1.5' : 'py-2',
               'placeholder:text-[var(--ink-muted)] placeholder:opacity-70',
               'border-0 outline-none focus:border-0 focus:outline-none focus:ring-0',
               'disabled:opacity-60 md:text-[var(--fs-body)]',
             )}
             style={{ boxShadow: 'none' }}
           />
-          <div className="mt-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:min-h-10">
+          <div className="mt-1.5 grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:mt-2 md:min-h-10">
             <div className="flex min-w-0 items-center gap-1 overflow-visible">
               <ModelPickerButton
                 activeSession={activeSession}
@@ -2787,7 +2869,7 @@ function Composer({
               <button
                 type="button"
                 onClick={onAbort}
-                className="inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)] px-3 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95"
+                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)] px-3 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95 md:h-11"
                 aria-label="停止生成"
                 title="停止生成"
               >
@@ -2798,7 +2880,7 @@ function Composer({
               <div
                 ref={sendMenuRef}
                 className={cn(
-                  'relative flex h-11 shrink-0 items-center overflow-visible rounded-full border transition-colors',
+                  'relative flex h-10 shrink-0 items-center overflow-visible rounded-full border transition-colors md:h-11',
                   canSend
                     ? 'border-transparent text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)]'
                     : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]',
@@ -2809,11 +2891,11 @@ function Composer({
                   onClick={() => onSend(value)}
                   disabled={!canSend}
                   className={cn(
-                    'grid h-11 w-11 place-items-center transition-colors active:scale-95',
+                    'grid h-10 w-10 place-items-center transition-colors active:scale-95 md:h-11 md:w-11',
                     !canSend && 'cursor-not-allowed text-[var(--ink-muted)]',
                   )}
                   aria-label="发送"
-                  title={`发送（${activeShortcut.label}）`}
+                  title="发送"
                 >
                   <ArrowUp className="h-5 w-5" />
                 </button>
@@ -2825,7 +2907,7 @@ function Composer({
                   aria-label="选择发送方式"
                   title="选择发送方式"
                   className={cn(
-                    'grid h-11 w-9 place-items-center border-l transition-colors active:scale-95',
+                    'hidden h-11 w-9 place-items-center border-l transition-colors active:scale-95 md:grid',
                     canSend
                       ? 'border-[color-mix(in_oklch,var(--hub-on-accent)_22%,transparent)]'
                       : 'border-[var(--hub-border)] hover:bg-[var(--hub-control-hover)]',
@@ -2845,7 +2927,7 @@ function Composer({
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="absolute bottom-full right-0 z-40 mb-3 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl"
+                      className="absolute bottom-full right-0 z-40 mb-3 hidden w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:block"
                     >
                       <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
                         发送方式
@@ -2889,29 +2971,6 @@ function Composer({
             )}
           </div>
 
-          <ArticlePicker
-            open={picker === 'article'}
-            anchorRef={atBtnRef}
-            selectedIds={new Set(selectedArticles.map((a) => a.id))}
-            onClose={() => setPicker(null)}
-            onPick={(a) => onPickArticle(a)}
-          />
-          <TagPicker
-            open={picker === 'tag'}
-            anchorRef={hashBtnRef}
-            selectedSlugs={new Set(selectedTags.map((t) => t.slug))}
-            onClose={() => setPicker(null)}
-            onPick={(tag) => onPickTag(tag)}
-          />
-          <SlashPicker
-            open={picker === 'slash'}
-            anchorRef={slashBtnRef}
-            onClose={() => setPicker(null)}
-            onPick={(cmd) => {
-              setPicker(null);
-              onSlashCommand(cmd);
-            }}
-          />
         </motion.div>
       </div>
     </div>
@@ -2937,21 +2996,178 @@ const ToolButton = forwardRef<
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-200 active:scale-95 md:h-9 md:w-9',
+        'relative inline-flex !h-9 !w-9 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 transition-all duration-200 before:absolute before:-inset-1 before:content-[""] active:scale-95',
         active
-          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
+          ? 'bg-[var(--hub-control)] text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_26%,transparent)]'
           : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]',
       )}
     >
       {children}
       {!!count && count > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[var(--aurora-1)] px-1 font-mono text-[9px] leading-4 text-[var(--hub-on-accent)]">
+        <span className="absolute -right-1 -top-1 grid !h-4 min-w-4 place-items-center rounded-full bg-[var(--ink-primary)] px-1 font-mono text-[9px] leading-4 text-[var(--bg-void)] ring-2 ring-[var(--hub-panel-strong)]">
           {count > 9 ? '9+' : count}
         </span>
       )}
     </button>
   );
 });
+
+const PICKER_MOBILE_DEFAULT_HEIGHT = 360;
+const PICKER_MOBILE_MIN_HEIGHT = 260;
+const PICKER_MOBILE_MAX_HEIGHT = 620;
+
+function clampPickerMobileHeight(value: number) {
+  if (typeof window === 'undefined') {
+    return Math.max(PICKER_MOBILE_MIN_HEIGHT, Math.min(PICKER_MOBILE_MAX_HEIGHT, value));
+  }
+  const viewportMax = Math.max(300, window.innerHeight - 168);
+  return Math.max(
+    PICKER_MOBILE_MIN_HEIGHT,
+    Math.min(Math.min(PICKER_MOBILE_MAX_HEIGHT, viewportMax), value),
+  );
+}
+
+function useMobilePickerResize(open: boolean) {
+  const [mobileHeight, setMobileHeight] = useState(PICKER_MOBILE_DEFAULT_HEIGHT);
+
+  useEffect(() => {
+    if (open) setMobileHeight(clampPickerMobileHeight(PICKER_MOBILE_DEFAULT_HEIGHT));
+  }, [open]);
+
+  const handleResizeStart = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches) {
+        return;
+      }
+      event.preventDefault();
+      const startY = event.clientY;
+      const startHeight = mobileHeight;
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const delta = startY - moveEvent.clientY;
+        setMobileHeight(clampPickerMobileHeight(startHeight + delta));
+      };
+
+      const handleEnd = () => {
+        window.removeEventListener('pointermove', handleMove);
+        window.removeEventListener('pointerup', handleEnd);
+        window.removeEventListener('pointercancel', handleEnd);
+      };
+
+      window.addEventListener('pointermove', handleMove);
+      window.addEventListener('pointerup', handleEnd);
+      window.addEventListener('pointercancel', handleEnd);
+    },
+    [mobileHeight],
+  );
+
+  return { mobileHeight, handleResizeStart };
+}
+
+function PickerResizeHandle({
+  onPointerDown,
+}: {
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="拖动调整面板高度"
+      title="拖动调整面板高度"
+      onPointerDown={onPointerDown}
+      className="group absolute left-1/2 top-1.5 z-10 flex !h-5 !w-16 !min-h-0 !min-w-0 -translate-x-1/2 touch-none cursor-row-resize items-center justify-center rounded-full p-0 text-[var(--ink-muted)] active:cursor-grabbing sm:hidden"
+    >
+      <span className="h-1 w-9 rounded-full bg-[var(--hub-border)] transition-colors group-active:bg-[var(--ink-muted)]" />
+    </button>
+  );
+}
+
+function PickerPanelHeader({
+  title,
+  description,
+  query,
+  onQueryChange,
+  placeholder,
+  inputRef,
+}: {
+  title: string;
+  description: string;
+  query: string;
+  onQueryChange: (value: string) => void;
+  placeholder: string;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [inputRef, searchOpen]);
+
+  const handleCloseSearch = () => {
+    onQueryChange('');
+    setSearchOpen(false);
+  };
+
+  return (
+    <div className="shrink-0 border-b border-[var(--hub-border)] px-4 pb-2 pt-5 sm:p-3">
+      <div className="flex h-9 items-center gap-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">{title}</div>
+          <div className={cn('mt-0.5 truncate text-[11px] text-[var(--ink-muted)]', searchOpen && 'hidden sm:block')}>
+            {description}
+          </div>
+        </div>
+        <div
+          className={cn(
+            'shrink-0 overflow-hidden transition-[width] duration-200 ease-out',
+            searchOpen ? 'w-[min(9.25rem,36vw)]' : 'w-8',
+          )}
+        >
+          {searchOpen ? (
+            <div className="flex h-8 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[var(--ink-muted)] shadow-none transition-colors focus-within:border-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] focus-within:bg-[var(--hub-panel-strong)] focus-within:shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_14%,transparent)]">
+              <Search className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') handleCloseSearch();
+                }}
+                aria-label={placeholder}
+                placeholder=""
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-[var(--ink-primary)] shadow-none outline-none focus:border-0 focus:outline-none focus:ring-0"
+              />
+              <button
+                type="button"
+                onClick={handleCloseSearch}
+                aria-label="收起搜索"
+                title="收起搜索"
+                className="grid !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 place-items-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-label={`搜索${title}`}
+              title={`搜索${title}`}
+              className="relative grid !h-8 !w-8 !min-h-0 !min-w-0 place-items-center rounded-full bg-[var(--hub-control)] p-0 text-[var(--ink-secondary)] transition-colors before:absolute before:-inset-1.5 before:content-[''] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // =============================================================================
 // PickerPopover —— 通用弹层
@@ -2973,6 +3189,7 @@ function PickerPopover({
   children: ReactNode;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const { mobileHeight, handleResizeStart } = useMobilePickerResize(open);
 
   useEffect(() => {
     if (!open) return;
@@ -3001,6 +3218,11 @@ function PickerPopover({
           role="dialog"
           aria-modal="false"
           aria-label={ariaLabel}
+          style={
+            {
+              '--hub-picker-height': `${mobileHeight}px`,
+            } as React.CSSProperties
+          }
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 6 }}
@@ -3011,10 +3233,12 @@ function PickerPopover({
             layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] },
           }}
           className={cn(
-            'relative z-40 mb-3 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:absolute sm:bottom-full sm:left-0',
+            'relative z-40 mb-2 flex h-[min(var(--hub-picker-height),calc(100dvh-18rem))] min-h-[260px] flex-col overflow-hidden rounded-[1.45rem] border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_22px_54px_-24px_rgba(0,0,0,0.48)] backdrop-blur-2xl',
+            'sm:absolute sm:bottom-full sm:left-0 sm:right-auto sm:mb-3 sm:h-auto sm:min-h-0 sm:max-h-none sm:rounded-xl sm:shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)]',
             className,
           )}
         >
+          <PickerResizeHandle onPointerDown={handleResizeStart} />
           {children}
         </motion.div>
       )}
@@ -3053,8 +3277,6 @@ function ArticlePicker({
     if (!open) return;
     setQuery('');
     setPage(1);
-    const id = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(id);
   }, [open]);
 
   useEffect(() => {
@@ -3075,29 +3297,18 @@ function ArticlePicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="引用文章"
-      className="w-[min(360px,calc(100vw-1.5rem))]"
+      className="w-full sm:w-[min(360px,calc(100vw-1.5rem))]"
     >
-      <div className="border-b border-[var(--hub-border)] p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索文章…"
-            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-        <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-          <span>§ {isSearching ? 'Search' : 'Articles'}</span>
-          <span>{total} 条</span>
-        </div>
-      </div>
+      <PickerPanelHeader
+        title="引用文章"
+        description="把文章加入当前上下文"
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="搜索文章…"
+        inputRef={inputRef}
+      />
       {/* 列表区域固定高度 —— 内容数量变化不影响 modal 整体尺寸。 */}
-      <div className="relative h-[300px] overflow-y-auto py-1">
+      <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:h-[300px] sm:max-h-none sm:flex-none sm:py-1">
         {showInitialLoading && (
           <div className="absolute inset-x-3 top-4 space-y-2" aria-label="搜索中">
             <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
@@ -3133,7 +3344,7 @@ function ArticlePicker({
                   }}
                   aria-disabled={selected}
                   className={cn(
-                    'flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors',
+                    'flex w-full items-start gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors sm:rounded-none sm:py-2',
                     selected
                       ? 'cursor-default text-[var(--aurora-1)]'
                       : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
@@ -3221,8 +3432,6 @@ function TagPicker({
   useEffect(() => {
     if (!open) return;
     setQuery('');
-    const id = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(id);
   }, [open]);
 
   const showInitialLoading = loading && items.length === 0;
@@ -3233,28 +3442,17 @@ function TagPicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择标签"
-      className="w-[min(320px,calc(100vw-1.5rem))]"
+      className="w-full sm:w-[min(320px,calc(100vw-1.5rem))]"
     >
-      <div className="border-b border-[var(--hub-border)] p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索标签…"
-            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-        <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-          <span>§ Tags</span>
-          <span className="tnum">{visible.length} 个</span>
-        </div>
-      </div>
-      <div className="relative max-h-[320px] overflow-y-auto py-1">
+      <PickerPanelHeader
+        title="圈定标签"
+        description="限定这次对话的内容范围"
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="搜索标签…"
+        inputRef={inputRef}
+      />
+      <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:max-h-[320px] sm:flex-none sm:py-1">
         {showInitialLoading && (
           <div className="space-y-2 px-3 py-3" aria-label="标签加载中">
             <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
@@ -3286,15 +3484,17 @@ function TagPicker({
                   }}
                   aria-disabled={selected}
                   className={cn(
-                    'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
+                    'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors sm:rounded-none sm:py-2',
                     selected
                       ? 'cursor-default text-[var(--aurora-2)]'
                       : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
                   )}
                 >
-                  <Hash className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{tag.name}</span>
-                  <span className="tnum shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--ink-muted)]">
+                    <Hash className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm sm:text-[13px]">{tag.name}</span>
+                  <span className="tnum shrink-0 rounded-full bg-[var(--hub-control)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
                     {tag.postCount}
                   </span>
                   {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
@@ -3329,8 +3529,7 @@ function SlashPicker({
 
   useEffect(() => {
     if (!open) return;
-    const id = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(id);
+    setQuery('');
   }, [open]);
 
   return (
@@ -3339,27 +3538,17 @@ function SlashPicker({
       onClose={onClose}
       anchorRef={anchorRef}
       ariaLabel="选择命令"
-      className="w-[min(320px,calc(100vw-1.5rem))]"
+      className="w-full sm:w-[min(320px,calc(100vw-1.5rem))]"
     >
-      <div className="border-b border-[var(--hub-border)] p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索命令…"
-            className="w-full rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] py-2 pl-8 pr-2 text-[12.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-        <div className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-          § Commands · {SLASH_COMMANDS.length}
-        </div>
-      </div>
-      <div className="max-h-[320px] overflow-y-auto py-1">
+      <PickerPanelHeader
+        title="调用命令"
+        description="选择一个写作或构建动作"
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="搜索命令…"
+        inputRef={inputRef}
+      />
+      <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto py-1.5 sm:max-h-[320px] sm:flex-none sm:py-1">
         {visible.length === 0 && (
           <div className="px-3 py-6 text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
             没有匹配的命令
@@ -3370,16 +3559,18 @@ function SlashPicker({
             key={cmd.command}
             type="button"
             onClick={() => onPick(cmd)}
-            className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            className="flex w-full items-start gap-3 rounded-2xl px-3 py-2.5 text-left text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] sm:rounded-none sm:py-2"
           >
-            <SlashSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" />
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--ink-muted)]">
+              <SlashSquare className="h-3.5 w-3.5" />
+            </span>
             <div className="min-w-0 flex-1">
-              <div className="font-mono text-[12.5px] tracking-[-0.01em]">{cmd.command}</div>
+              <div className="font-mono text-[13px] tracking-[-0.01em]">{cmd.command}</div>
               <div className="mt-0.5 text-[11.5px] leading-snug text-[var(--ink-muted)]">
                 {cmd.description}
               </div>
             </div>
-            <span className="mt-0.5 shrink-0 font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            <span className="mt-1 shrink-0 rounded-full bg-[var(--hub-control)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
               {cmd.kind === 'local' ? '本地' : '模板'}
             </span>
           </button>

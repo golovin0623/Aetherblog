@@ -19,8 +19,11 @@ const RANK_STYLES = [
   'bg-gradient-to-br from-[color-mix(in_oklch,var(--dashboard-aurora-7)_24%,transparent)] to-[color-mix(in_oklch,var(--dashboard-aurora-11)_12%,transparent)] text-[var(--dashboard-aurora-7)] border border-[color-mix(in_oklch,var(--dashboard-aurora-7)_34%,transparent)] shadow-[0_0_10px_color-mix(in_oklch,var(--dashboard-aurora-7)_20%,transparent)]',
 ];
 
+const TOP_POSTS_VISIBLE_LIMIT = 8;
+
 export function TopPosts({ posts, loading }: TopPostsProps) {
   const navigate = useNavigate();
+  const visiblePosts = posts.slice(0, TOP_POSTS_VISIBLE_LIMIT);
 
   const handleViewAll = () => {
     navigate('/posts?sortBy=viewCount&sortOrder=desc&from=dashboard');
@@ -66,7 +69,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
         </button>
       </div>
       <div className="space-y-2 flex-1 overflow-y-auto">
-        {posts.map((post, index) => (
+        {visiblePosts.map((post, index) => (
             <button
               key={post.id}
               type="button"
@@ -93,7 +96,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
             </button>
         ))}
 
-        {posts.length === 0 && (
+        {visiblePosts.length === 0 && (
           <div className="text-center py-10 text-[var(--text-muted)] text-sm">
             暂无热门文章数据
           </div>

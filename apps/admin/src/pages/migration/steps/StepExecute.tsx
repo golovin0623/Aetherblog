@@ -74,8 +74,8 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
   const phaseOrder = ['categories', 'tags', 'articles', 'post_tags'];
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <div className="rounded-2xl surface-raised p-4 sm:p-6">
+    <div className="migration-step-stack">
+      <div className="migration-execute-card">
         <div className="flex items-center gap-3">
           {state.executing ? (
             <Loader2 className="h-5 w-5 animate-spin text-[var(--aurora-1)] shrink-0" />
@@ -96,7 +96,7 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
           </div>
         )}
 
-        <div className="mt-5 space-y-3">
+        <div className="migration-phase-list">
           {phaseOrder.map((name) => {
             const p = state.phases[name];
             const total = p?.total || 0;
@@ -117,9 +117,9 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
                     {done}/{total || '?'}
                   </span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-secondary)]">
+                <div className="migration-phase-track">
                   <div
-                    className="h-full rounded-full bg-[var(--aurora-1)] transition-all duration-300"
+                    className="migration-phase-fill"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -130,11 +130,11 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
       </div>
 
       {/* 滚动日志 */}
-      <div className="rounded-2xl surface-leaf p-3 sm:p-4">
-        <div className="mb-2 text-xs uppercase tracking-wide text-[var(--text-muted)]">
+      <div className="migration-log-card">
+        <div className="migration-section-title">
           最近事件 (保留末尾 80 条)
         </div>
-        <div className="max-h-56 sm:max-h-64 overflow-auto rounded-xl bg-[var(--bg-secondary)] p-2.5 sm:p-3 font-mono text-[11px] sm:text-xs">
+        <div className="migration-log-stream">
           {state.recentItems.length === 0 && (
             <div className="text-[var(--text-muted)]">—</div>
           )}

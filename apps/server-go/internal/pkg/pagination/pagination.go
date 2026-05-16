@@ -8,10 +8,12 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+const defaultMaxPageSize = 100
+
 // Params 保存从查询字符串解析得到的分页参数。
 type Params struct {
 	// PageNum 当前页码，从 1 开始
-	PageNum  int
+	PageNum int
 	// PageSize 每页返回的记录数
 	PageSize int
 }
@@ -38,8 +40,22 @@ func Parse(c echo.Context) Params {
 //   - pageNum 最小值为 1
 //   - pageSize 最小值为 1，最大值为 100（防止超大翻页导致性能问题）
 func ParseWithDefaults(c echo.Context, defaultPage, defaultSize int) Params {
+	return ParseWithDefaultsAndMax(c, defaultPage, defaultSize, defaultMaxPageSize)
+}
+
+// ParseWithDefaultsAndMax 从请求的查询字符串中提取 pageNum 和 pageSize 参数，
+// 并支持调用方按具体业务场景指定 pageSize 上限。
+// 参数边界约束：
+//   - pageNum 最小值为 1
+//   - pageSize 最小值为 1
+//   - pageSize 最大值为 maxSize；maxSize 无效时回退到默认上限 100
+func ParseWithDefaultsAndMax(c echo.Context, defaultPage, defaultSize, maxSize int) Params {
 	pageNum := queryInt(c, "pageNum", defaultPage)
 	pageSize := queryInt(c, "pageSize", defaultSize)
+
+	if maxSize < 1 {
+		maxSize = defaultMaxPageSize
+	}
 
 	// 页码不能小于 1
 	if pageNum < 1 {
@@ -49,9 +65,9 @@ func ParseWithDefaults(c echo.Context, defaultPage, defaultSize int) Params {
 	if pageSize < 1 {
 		pageSize = defaultSize
 	}
-	// 每页大小上限为 100，防止一次查询过多数据
-	if pageSize > 100 {
-		pageSize = 100
+	// 每页大小上限由调用方指定，防止一次查询过多数据
+	if pageSize > maxSize {
+		pageSize = maxSize
 	}
 
 	return Params{PageNum: pageNum, PageSize: pageSize}

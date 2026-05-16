@@ -21,6 +21,8 @@ type AccessService struct {
 	repo *repository.AccessRepo
 }
 
+const maxBatchContentShares = 1000
+
 // NewAccessService 创建 AccessService。
 func NewAccessService(repo *repository.AccessRepo) *AccessService {
 	return &AccessService{repo: repo}
@@ -345,22 +347,59 @@ func (s *AccessService) ListContentShares(ctx context.Context, f repository.Cont
 	return out, nil
 }
 
+// ListShareableResources 返回可用于内容共享授权的真实资源选择项。
+func (s *AccessService) ListShareableResources(ctx context.Context, f repository.ShareableResourceFilter) ([]dto.ShareableResourceVO, error) {
+	rows, err := s.repo.ListShareableResources(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ShareableResourceVO, len(rows))
+	for i := range rows {
+		out[i] = shareableResourceVO(rows[i])
+	}
+	return out, nil
+}
+
 // CreateContentShare 创建或覆盖内容共享授权。
 func (s *AccessService) CreateContentShare(ctx context.Context, req dto.CreateContentShareRequest, actorID *int64) (*dto.ContentShareVO, error) {
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
-		t, err := parseAccessTime(*req.ExpiresAt)
-		if err != nil {
-			return nil, fmt.Errorf("过期时间格式错误")
-		}
-		expiresAt = &t
+	resourceType, err := normalizeSharedResourceType(req.ResourceType)
+	if err != nil {
+		return nil, err
+	}
+	principalType, err := normalizeSharePrincipalType(req.PrincipalType)
+	if err != nil {
+		return nil, err
+	}
+	permissionLevel, err := normalizeContentPermissionLevel(req.PermissionLevel)
+	if err != nil {
+		return nil, err
+	}
+
+	resourceExists, err := s.repo.ShareableResourceExists(ctx, resourceType, req.ResourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !resourceExists {
+		return nil, fmt.Errorf("共享资源不存在")
+	}
+	principalExists, err := s.repo.SharePrincipalExists(ctx, principalType, req.PrincipalID)
+	if err != nil {
+		return nil, err
+	}
+	if !principalExists {
+		return nil, fmt.Errorf("授权对象不存在或不可用")
+	}
+
+	expiresAt, err := parseContentShareExpiresAt(req.ExpiresAt)
+	if err != nil {
+		return nil, err
 	}
 	share, err := s.repo.UpsertContentShare(ctx, &model.ContentShare{
-		ResourceType:    strings.ToUpper(req.ResourceType),
+		ResourceType:    resourceType,
 		ResourceID:      req.ResourceID,
-		PrincipalType:   strings.ToUpper(req.PrincipalType),
+		PrincipalType:   principalType,
 		PrincipalID:     req.PrincipalID,
-		PermissionLevel: strings.ToUpper(req.PermissionLevel),
+		PermissionLevel: permissionLevel,
 		GrantedBy:       actorID,
 		ExpiresAt:       expiresAt,
 	})
@@ -369,6 +408,167 @@ func (s *AccessService) CreateContentShare(ctx context.Context, req dto.CreateCo
 	}
 	vo := contentShareVO(*share)
 	return &vo, nil
+}
+
+// BatchCreateContentShares 批量创建或覆盖内容共享授权。
+func (s *AccessService) BatchCreateContentShares(ctx context.Context, req dto.BatchCreateContentSharesRequest, actorID *int64) (*dto.BatchCreateContentSharesVO, error) {
+	resourceType, err := normalizeSharedResourceType(req.ResourceType)
+	if err != nil {
+		return nil, err
+	}
+	principalType, err := normalizeSharePrincipalType(req.PrincipalType)
+	if err != nil {
+		return nil, err
+	}
+	permissionLevel, err := normalizeContentPermissionLevel(req.PermissionLevel)
+	if err != nil {
+		return nil, err
+	}
+
+	principalExists, err := s.repo.SharePrincipalExists(ctx, principalType, req.PrincipalID)
+	if err != nil {
+		return nil, err
+	}
+	if !principalExists {
+		return nil, fmt.Errorf("授权对象不存在或不可用")
+	}
+
+	resourceIDs, err := s.resolveBatchShareResourceIDs(ctx, resourceType, req)
+	if err != nil {
+		return nil, err
+	}
+	expiresAt, err := parseContentShareExpiresAt(req.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+
+	shares := make([]model.ContentShare, 0, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		shares = append(shares, model.ContentShare{
+			ResourceType:    resourceType,
+			ResourceID:      resourceID,
+			PrincipalType:   principalType,
+			PrincipalID:     req.PrincipalID,
+			PermissionLevel: permissionLevel,
+			GrantedBy:       actorID,
+			ExpiresAt:       expiresAt,
+		})
+	}
+
+	rows, err := s.repo.UpsertContentShares(ctx, shares)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ContentShareVO, len(rows))
+	for i := range rows {
+		out[i] = contentShareVO(rows[i])
+	}
+	return &dto.BatchCreateContentSharesVO{
+		Total:  len(out),
+		Shares: out,
+	}, nil
+}
+
+func (s *AccessService) resolveBatchShareResourceIDs(ctx context.Context, resourceType string, req dto.BatchCreateContentSharesRequest) ([]int64, error) {
+	if req.SelectAllMatching {
+		search := ""
+		if req.ResourceSearch != nil {
+			search = strings.TrimSpace(*req.ResourceSearch)
+		}
+		ids, err := s.repo.ListShareableResourceIDs(ctx, repository.ShareableResourceFilter{
+			ResourceType: resourceType,
+			Search:       search,
+		}, maxBatchContentShares+1)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("当前筛选条件下没有可授权资源")
+		}
+		if len(ids) > maxBatchContentShares {
+			return nil, fmt.Errorf("批量授权最多支持 %d 个资源，请缩小搜索条件", maxBatchContentShares)
+		}
+		return ids, nil
+	}
+
+	ids := dedupePositiveInt64(req.ResourceIDs)
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("请选择至少一个共享资源")
+	}
+	if len(ids) > maxBatchContentShares {
+		return nil, fmt.Errorf("批量授权最多支持 %d 个资源", maxBatchContentShares)
+	}
+	existingIDs, err := s.repo.ExistingShareableResourceIDs(ctx, resourceType, ids)
+	if err != nil {
+		return nil, err
+	}
+	existing := make(map[int64]struct{}, len(existingIDs))
+	for _, id := range existingIDs {
+		existing[id] = struct{}{}
+	}
+	for _, id := range ids {
+		if _, ok := existing[id]; !ok {
+			return nil, fmt.Errorf("部分共享资源不存在或不可授权")
+		}
+	}
+	return ids, nil
+}
+
+func dedupePositiveInt64(values []int64) []int64 {
+	seen := map[int64]struct{}{}
+	out := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func parseContentShareExpiresAt(value *string) (*time.Time, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil, nil
+	}
+	t, err := parseAccessTime(*value)
+	if err != nil {
+		return nil, fmt.Errorf("过期时间格式错误")
+	}
+	return &t, nil
+}
+
+func normalizeSharedResourceType(value string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	switch normalized {
+	case "POST", "MEDIA_FILE", "MEDIA_FOLDER":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("不支持的资源类型")
+	}
+}
+
+func normalizeSharePrincipalType(value string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	switch normalized {
+	case "USER", "TEAM", "ROLE":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("不支持的授权对象类型")
+	}
+}
+
+func normalizeContentPermissionLevel(value string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	switch normalized {
+	case "VIEW", "COMMENT", "EDIT", "MANAGE":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("不支持的权限级别")
+	}
 }
 
 // DeleteContentShare 删除内容共享授权。
@@ -383,6 +583,11 @@ func (s *AccessService) UserCanAccessContent(ctx context.Context, userID int64, 
 		return false, err
 	}
 	return contentPermissionAllows(level, requiredLevel), nil
+}
+
+// ListAccessiblePostIDs 返回用户通过共享授权可访问的已发布文章 ID。
+func (s *AccessService) ListAccessiblePostIDs(ctx context.Context, userID int64, legacyRole string, requiredLevel string, pageNum, pageSize int) ([]int64, int64, error) {
+	return s.repo.ListAccessiblePostIDs(ctx, userID, legacyRole, requiredLevel, pageNum, pageSize)
 }
 
 func parseAccessTime(raw string) (time.Time, error) {
@@ -576,5 +781,16 @@ func contentShareVO(s model.ContentShare) dto.ContentShareVO {
 		ExpiresAt:       s.ExpiresAt,
 		CreatedAt:       s.CreatedAt,
 		UpdatedAt:       s.UpdatedAt,
+	}
+}
+
+func shareableResourceVO(row repository.ShareableResourceRow) dto.ShareableResourceVO {
+	return dto.ShareableResourceVO{
+		ResourceType: row.ResourceType,
+		ID:           row.ID,
+		Title:        row.Title,
+		Subtitle:     row.Subtitle,
+		Status:       row.Status,
+		UpdatedAt:    row.UpdatedAt,
 	}
 }

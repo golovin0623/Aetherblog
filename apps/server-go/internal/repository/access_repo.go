@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
@@ -689,6 +690,257 @@ type ContentShareFilter struct {
 	PrincipalID   int64
 }
 
+// ShareableResourceFilter 是共享授权资源选择器过滤条件。
+type ShareableResourceFilter struct {
+	ResourceType string
+	Search       string
+	Limit        int
+}
+
+// ShareableResourceRow 是可共享资源选择器的统一投影。
+type ShareableResourceRow struct {
+	ResourceType string     `db:"resource_type"`
+	ID           int64      `db:"id"`
+	Title        string     `db:"title"`
+	Subtitle     *string    `db:"subtitle"`
+	Status       *string    `db:"status"`
+	UpdatedAt    *time.Time `db:"updated_at"`
+}
+
+const maxShareableResourceListLimit = 1000
+
+// ListShareableResources 返回可绑定共享授权的真实资源列表。
+func (r *AccessRepo) ListShareableResources(ctx context.Context, f ShareableResourceFilter) ([]ShareableResourceRow, error) {
+	resourceType, err := normalizeContentResourceType(f.ResourceType)
+	if err != nil {
+		return nil, err
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > maxShareableResourceListLimit {
+		limit = maxShareableResourceListLimit
+	}
+	search := strings.TrimSpace(f.Search)
+	args := []any{}
+	searchWhere := ""
+	if search != "" {
+		args = append(args, "%"+dbutil.EscapeLike(search)+"%")
+		searchWhere = " AND %s"
+	}
+	args = append(args, limit)
+
+	var query string
+	switch resourceType {
+	case "POST":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(p.title ILIKE $1 OR p.slug ILIKE $1 OR COALESCE(p.summary, '') ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT 'POST' AS resource_type,
+			       p.id,
+			       p.title,
+			       p.slug AS subtitle,
+		       p.status,
+		       p.updated_at
+			FROM posts p
+			WHERE p.deleted = false AND p.status = 'PUBLISHED'%s
+			ORDER BY p.updated_at DESC, p.id DESC
+			LIMIT $%d`, filter, len(args))
+	case "MEDIA_FILE":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(mf.original_name ILIKE $1 OR mf.filename ILIKE $1 OR COALESCE(mf.mime_type, '') ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT 'MEDIA_FILE' AS resource_type,
+			       mf.id,
+			       COALESCE(NULLIF(mf.original_name, ''), mf.filename) AS title,
+			       COALESCE(mf.mime_type, mf.file_type, mf.storage_type) AS subtitle,
+			       mf.file_type AS status,
+			       mf.created_at AS updated_at
+			FROM media_files mf
+			WHERE mf.deleted = false%s
+			ORDER BY mf.created_at DESC NULLS LAST, mf.id DESC
+			LIMIT $%d`, filter, len(args))
+	case "MEDIA_FOLDER":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(mf.name ILIKE $1 OR mf.path ILIKE $1 OR mf.slug ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT 'MEDIA_FOLDER' AS resource_type,
+			       mf.id,
+			       mf.name AS title,
+			       mf.path AS subtitle,
+			       mf.visibility AS status,
+			       mf.updated_at
+			FROM media_folders mf
+			WHERE 1 = 1%s
+			ORDER BY mf.updated_at DESC NULLS LAST, mf.id DESC
+			LIMIT $%d`, filter, len(args))
+	default:
+		return nil, fmt.Errorf("不支持的资源类型")
+	}
+
+	var rows []ShareableResourceRow
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ListShareableResourceIDs 返回匹配选择器过滤条件的资源 ID，用于“全部匹配”批量授权。
+func (r *AccessRepo) ListShareableResourceIDs(ctx context.Context, f ShareableResourceFilter, limit int) ([]int64, error) {
+	resourceType, err := normalizeContentResourceType(f.ResourceType)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = maxShareableResourceListLimit
+	}
+	search := strings.TrimSpace(f.Search)
+	args := []any{}
+	searchWhere := ""
+	if search != "" {
+		args = append(args, "%"+dbutil.EscapeLike(search)+"%")
+		searchWhere = " AND %s"
+	}
+	args = append(args, limit)
+
+	var query string
+	switch resourceType {
+	case "POST":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(p.title ILIKE $1 OR p.slug ILIKE $1 OR COALESCE(p.summary, '') ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT p.id
+			FROM posts p
+			WHERE p.deleted = false AND p.status = 'PUBLISHED'%s
+			ORDER BY p.updated_at DESC, p.id DESC
+			LIMIT $%d`, filter, len(args))
+	case "MEDIA_FILE":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(mf.original_name ILIKE $1 OR mf.filename ILIKE $1 OR COALESCE(mf.mime_type, '') ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT mf.id
+			FROM media_files mf
+			WHERE mf.deleted = false%s
+			ORDER BY mf.created_at DESC NULLS LAST, mf.id DESC
+			LIMIT $%d`, filter, len(args))
+	case "MEDIA_FOLDER":
+		filter := ""
+		if searchWhere != "" {
+			filter = fmt.Sprintf(searchWhere, "(mf.name ILIKE $1 OR mf.path ILIKE $1 OR mf.slug ILIKE $1)")
+		}
+		query = fmt.Sprintf(`
+			SELECT mf.id
+			FROM media_folders mf
+			WHERE 1 = 1%s
+			ORDER BY mf.updated_at DESC NULLS LAST, mf.id DESC
+			LIMIT $%d`, filter, len(args))
+	default:
+		return nil, fmt.Errorf("不支持的资源类型")
+	}
+
+	var ids []int64
+	if err := r.db.SelectContext(ctx, &ids, query, args...); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// ExistingShareableResourceIDs 返回指定 ID 中真实存在且可共享的资源 ID。
+func (r *AccessRepo) ExistingShareableResourceIDs(ctx context.Context, resourceType string, resourceIDs []int64) ([]int64, error) {
+	if len(resourceIDs) == 0 {
+		return nil, nil
+	}
+	resourceType, err := normalizeContentResourceType(resourceType)
+	if err != nil {
+		return nil, err
+	}
+
+	var query string
+	switch resourceType {
+	case "POST":
+		query = `SELECT id FROM posts WHERE deleted=false AND status='PUBLISHED' AND id IN (?)`
+	case "MEDIA_FILE":
+		query = `SELECT id FROM media_files WHERE deleted=false AND id IN (?)`
+	case "MEDIA_FOLDER":
+		query = `SELECT id FROM media_folders WHERE id IN (?)`
+	default:
+		return nil, fmt.Errorf("不支持的资源类型")
+	}
+
+	query, args, err := sqlx.In(query, resourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+	var ids []int64
+	if err := r.db.SelectContext(ctx, &ids, query, args...); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// ShareableResourceExists 判断共享授权绑定的资源是否真实存在。
+func (r *AccessRepo) ShareableResourceExists(ctx context.Context, resourceType string, resourceID int64) (bool, error) {
+	if resourceID <= 0 {
+		return false, nil
+	}
+	resourceType, err := normalizeContentResourceType(resourceType)
+	if err != nil {
+		return false, err
+	}
+	var query string
+	switch resourceType {
+	case "POST":
+		query = `SELECT EXISTS (SELECT 1 FROM posts WHERE id=$1 AND deleted=false AND status='PUBLISHED')`
+	case "MEDIA_FILE":
+		query = `SELECT EXISTS (SELECT 1 FROM media_files WHERE id=$1 AND deleted=false)`
+	case "MEDIA_FOLDER":
+		query = `SELECT EXISTS (SELECT 1 FROM media_folders WHERE id=$1)`
+	default:
+		return false, fmt.Errorf("不支持的资源类型")
+	}
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, query, resourceID); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// SharePrincipalExists 判断共享授权的被授权对象是否真实存在。
+func (r *AccessRepo) SharePrincipalExists(ctx context.Context, principalType string, principalID int64) (bool, error) {
+	if principalID <= 0 {
+		return false, nil
+	}
+	principalType = strings.ToUpper(strings.TrimSpace(principalType))
+	var query string
+	switch principalType {
+	case "USER":
+		query = `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND status='ACTIVE')`
+	case "TEAM":
+		query = `SELECT EXISTS (SELECT 1 FROM teams WHERE id=$1)`
+	case "ROLE":
+		query = `SELECT EXISTS (SELECT 1 FROM roles WHERE id=$1)`
+	default:
+		return false, fmt.Errorf("不支持的授权对象类型")
+	}
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, query, principalID); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // ListContentShares 返回内容共享授权。
 func (r *AccessRepo) ListContentShares(ctx context.Context, f ContentShareFilter) ([]model.ContentShare, error) {
 	where := []string{}
@@ -720,21 +972,56 @@ func (r *AccessRepo) ListContentShares(ctx context.Context, f ContentShareFilter
 	return shares, err
 }
 
+const upsertContentShareSQL = `
+	INSERT INTO content_shares (resource_type, resource_id, principal_type, principal_id, permission_level, granted_by, expires_at, created_at, updated_at)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+	ON CONFLICT (resource_type, resource_id, principal_type, principal_id)
+	DO UPDATE SET permission_level=EXCLUDED.permission_level,
+	              granted_by=EXCLUDED.granted_by,
+	              expires_at=EXCLUDED.expires_at,
+	              updated_at=NOW()
+	RETURNING *`
+
 // UpsertContentShare 创建或覆盖共享授权。
 func (r *AccessRepo) UpsertContentShare(ctx context.Context, s *model.ContentShare) (*model.ContentShare, error) {
 	var out model.ContentShare
-	err := r.db.QueryRowxContext(ctx, `
-		INSERT INTO content_shares (resource_type, resource_id, principal_type, principal_id, permission_level, granted_by, expires_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
-		ON CONFLICT (resource_type, resource_id, principal_type, principal_id)
-		DO UPDATE SET permission_level=EXCLUDED.permission_level,
-		              granted_by=EXCLUDED.granted_by,
-		              expires_at=EXCLUDED.expires_at,
-		              updated_at=NOW()
-		RETURNING *`,
+	err := r.db.QueryRowxContext(ctx, upsertContentShareSQL,
 		s.ResourceType, s.ResourceID, s.PrincipalType, s.PrincipalID, s.PermissionLevel, s.GrantedBy, s.ExpiresAt,
 	).StructScan(&out)
 	return &out, err
+}
+
+// UpsertContentShares 在同一事务中创建或覆盖一批共享授权。
+func (r *AccessRepo) UpsertContentShares(ctx context.Context, shares []model.ContentShare) ([]model.ContentShare, error) {
+	if len(shares) == 0 {
+		return []model.ContentShare{}, nil
+	}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	out := make([]model.ContentShare, 0, len(shares))
+	for i := range shares {
+		var row model.ContentShare
+		if err := tx.QueryRowxContext(ctx, upsertContentShareSQL,
+			shares[i].ResourceType,
+			shares[i].ResourceID,
+			shares[i].PrincipalType,
+			shares[i].PrincipalID,
+			shares[i].PermissionLevel,
+			shares[i].GrantedBy,
+			shares[i].ExpiresAt,
+		).StructScan(&row); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // DeleteContentShare 删除共享授权。
@@ -808,6 +1095,115 @@ func (r *AccessRepo) UserContentPermissionLevel(ctx context.Context, userID int6
 		return "", nil
 	}
 	return level.String, nil
+}
+
+// ListAccessiblePostIDs 返回当前用户通过直接、团队或角色共享可访问的已发布文章 ID。
+func (r *AccessRepo) ListAccessiblePostIDs(ctx context.Context, userID int64, _ string, requiredLevel string, pageNum, pageSize int) ([]int64, int64, error) {
+	minRank := contentSharePermissionRank(requiredLevel)
+	if minRank == 0 {
+		return nil, 0, fmt.Errorf("不支持的权限级别")
+	}
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (pageNum - 1) * pageSize
+
+	const cte = `
+		WITH active_user AS (
+			SELECT id
+			FROM users
+			WHERE id = $1 AND status = 'ACTIVE'
+		),
+		user_role_ids AS (
+			SELECT r.id
+			FROM active_user au
+			JOIN user_roles ur ON ur.user_id = au.id
+			JOIN roles r ON r.id = ur.role_id
+			UNION
+			SELECT r.id
+			FROM active_user au
+			JOIN users u ON u.id = au.id
+			JOIN roles r ON r.code = u.role
+		),
+		user_team_ids AS (
+			SELECT tm.team_id
+			FROM active_user au
+			JOIN team_members tm ON tm.user_id = au.id
+			WHERE tm.status = 'ACTIVE'
+		),
+		accessible_posts AS (
+			SELECT cs.resource_id,
+			       MAX(CASE cs.permission_level
+			           WHEN 'MANAGE' THEN 4
+			           WHEN 'EDIT' THEN 3
+			           WHEN 'COMMENT' THEN 2
+			           WHEN 'VIEW' THEN 1
+			           ELSE 0
+			       END) AS permission_rank
+			FROM content_shares cs
+			JOIN posts p ON p.id = cs.resource_id
+			WHERE cs.resource_type = 'POST'
+			  AND p.deleted = false
+			  AND p.status = 'PUBLISHED'
+			  AND (cs.expires_at IS NULL OR cs.expires_at > NOW())
+			  AND (
+				(cs.principal_type = 'USER' AND cs.principal_id = $1 AND EXISTS (SELECT 1 FROM active_user))
+				OR (cs.principal_type = 'TEAM' AND cs.principal_id IN (SELECT team_id FROM user_team_ids))
+				OR (cs.principal_type = 'ROLE' AND cs.principal_id IN (SELECT id FROM user_role_ids))
+			  )
+			GROUP BY cs.resource_id
+		)`
+
+	var total int64
+	if err := r.db.GetContext(ctx, &total, cte+`
+		SELECT COUNT(*)
+		FROM accessible_posts
+		WHERE permission_rank >= $2`, userID, minRank); err != nil {
+		return nil, 0, err
+	}
+
+	var ids []int64
+	if err := r.db.SelectContext(ctx, &ids, cte+`
+		SELECT ap.resource_id
+		FROM accessible_posts ap
+		JOIN posts p ON p.id = ap.resource_id
+		WHERE ap.permission_rank >= $2
+		ORDER BY p.published_at DESC NULLS LAST, p.id DESC
+		LIMIT $3 OFFSET $4`, userID, minRank, pageSize, offset); err != nil {
+		return nil, 0, err
+	}
+	return ids, total, nil
+}
+
+func normalizeContentResourceType(resourceType string) (string, error) {
+	rt := strings.ToUpper(strings.TrimSpace(resourceType))
+	switch rt {
+	case "POST", "MEDIA_FILE", "MEDIA_FOLDER":
+		return rt, nil
+	default:
+		return "", fmt.Errorf("不支持的资源类型")
+	}
+}
+
+func contentSharePermissionRank(level string) int {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "VIEW":
+		return 1
+	case "COMMENT":
+		return 2
+	case "EDIT":
+		return 3
+	case "MANAGE":
+		return 4
+	default:
+		return 0
+	}
 }
 
 // HashPassword 仅供 AccessService 创建/重置用户时复用同一 bcrypt cost。

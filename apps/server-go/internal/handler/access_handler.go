@@ -49,7 +49,9 @@ func (h *AccessHandler) Mount(g *echo.Group, require func(permissionCode string)
 
 	shares := g.Group("/content-shares")
 	shares.GET("", h.ListContentShares, require("content.shares.manage"))
+	shares.GET("/resources", h.ListShareableResources, require("content.shares.manage"))
 	shares.POST("", h.CreateContentShare, require("content.shares.manage"))
+	shares.POST("/batch", h.BatchCreateContentShares, require("content.shares.manage"))
 	shares.DELETE("/:id", h.DeleteContentShare, require("content.shares.manage"))
 }
 
@@ -273,6 +275,19 @@ func (h *AccessHandler) ListContentShares(c echo.Context) error {
 	return response.OK(c, shares)
 }
 
+func (h *AccessHandler) ListShareableResources(c echo.Context) error {
+	filter := repository.ShareableResourceFilter{
+		ResourceType: c.QueryParam("resourceType"),
+		Search:       c.QueryParam("search"),
+		Limit:        parseIntDefault(c.QueryParam("limit"), 20),
+	}
+	resources, err := h.svc.ListShareableResources(c.Request().Context(), filter)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, resources)
+}
+
 func (h *AccessHandler) CreateContentShare(c echo.Context) error {
 	var req dto.CreateContentShareRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -284,6 +299,24 @@ func (h *AccessHandler) CreateContentShare(c echo.Context) error {
 	}
 	h.recordAccessActivity(c, "content.share_upsert", "维护内容共享授权", fmt.Sprintf("%s #%d -> %s #%d", req.ResourceType, req.ResourceID, req.PrincipalType, req.PrincipalID))
 	return response.OK(c, share)
+}
+
+func (h *AccessHandler) BatchCreateContentShares(c echo.Context) error {
+	var req dto.BatchCreateContentSharesRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	result, err := h.svc.BatchCreateContentShares(c.Request().Context(), req, actorID(c))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	h.recordAccessActivity(
+		c,
+		"content.share_batch_upsert",
+		"批量维护内容共享授权",
+		fmt.Sprintf("%s %d 项 -> %s #%d", req.ResourceType, result.Total, req.PrincipalType, req.PrincipalID),
+	)
+	return response.OK(c, result)
 }
 
 func (h *AccessHandler) DeleteContentShare(c echo.Context) error {

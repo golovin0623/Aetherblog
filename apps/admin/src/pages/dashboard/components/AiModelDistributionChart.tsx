@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import type { AiModelDistribution } from '@/services/analyticsService';
@@ -18,6 +18,8 @@ const formatPercent = (value: number | undefined | null): string => {
 
 export function AiModelDistributionChart({ data, loading = false }: AiModelDistributionChartProps) {
   const [page, setPage] = useState(0);
+  const chartFrameRef = useRef<HTMLDivElement>(null);
+  const [chartSize, setChartSize] = useState(220);
 
   const sortedData = useMemo(() => {
     return [...data].sort((a, b) => (b.calls ?? 0) - (a.calls ?? 0));
@@ -34,6 +36,21 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
   useEffect(() => {
     setPage(0);
   }, [sortedData.length]);
+
+  useEffect(() => {
+    const node = chartFrameRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+
+    const updateSize = () => {
+      const rect = node.getBoundingClientRect();
+      setChartSize(Math.min(rect.width, rect.height));
+    };
+    updateSize();
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const currentPage = Math.min(page, totalPages - 1);
   const visibleModels = sortedData.slice(
@@ -67,13 +84,18 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
   }));
 
   const hasData = chartData.length > 0 && totalCalls > 0;
+  const showCenterCount = chartSize >= 132;
+  const showCenterLabels = chartSize >= 176;
 
   return (
     <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[420px] md:h-[420px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">模型调用占比</h3>
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 items-center gap-5">
         {/* 左侧：增强环形图 —— 与模型列表各占一半 */}
-        <div className="relative mx-auto w-[220px] h-[220px] md:w-full md:h-full md:max-h-[300px] aspect-square">
+        <div
+          ref={chartFrameRef}
+          className="relative mx-auto h-[220px] w-[220px] md:h-full md:max-h-[300px] md:w-full md:aspect-square"
+        >
           {hasData ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
@@ -160,15 +182,21 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
               </ResponsiveContainer>
               {/* 中心覆盖层：总调用次数 —— z-index 低于 tooltip */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-                  总调用
-                </div>
-                <div className="text-2xl font-semibold text-[var(--text-primary)] leading-tight">
-                  {totalCalls.toLocaleString()}
-                </div>
-                <div className="text-[10px] text-[var(--text-tertiary)]">
-                  {sortedData.length} 个模型
-                </div>
+                {showCenterLabels && (
+                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                    总调用
+                  </div>
+                )}
+                {showCenterCount && (
+                  <div className="text-2xl font-semibold leading-tight text-[var(--text-primary)]">
+                    {totalCalls.toLocaleString()}
+                  </div>
+                )}
+                {showCenterLabels && (
+                  <div className="text-[10px] text-[var(--text-tertiary)]">
+                    {sortedData.length} 个模型
+                  </div>
+                )}
               </div>
             </>
           ) : (

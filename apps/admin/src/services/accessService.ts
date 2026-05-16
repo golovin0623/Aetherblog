@@ -1,6 +1,8 @@
 import api from './api';
 import type { R, PageResult } from '@/types';
 import type {
+  BatchCreateContentSharesRequest,
+  BatchCreateContentSharesResult,
   ContentShare,
   CreateContentShareRequest,
   CreateManagedUserRequest,
@@ -8,6 +10,7 @@ import type {
   ManagedUser,
   Permission,
   Role,
+  ShareableResource,
   Team,
   TeamMember,
   UpdateManagedUserRequest,
@@ -32,6 +35,12 @@ export interface ContentShareQueryParams {
   resourceId?: number;
   principalType?: string;
   principalId?: number;
+}
+
+export interface ShareableResourceQueryParams {
+  resourceType: string;
+  search?: string;
+  limit?: number;
 }
 
 export const accessService = {
@@ -80,8 +89,14 @@ export const accessService = {
   listContentShares: (params?: ContentShareQueryParams): Promise<R<ContentShare[]>> =>
     api.get<R<ContentShare[]>>('/v1/admin/content-shares', { params }),
 
+  listShareableResources: (params: ShareableResourceQueryParams): Promise<R<ShareableResource[]>> =>
+    api.get<R<ShareableResource[]>>('/v1/admin/content-shares/resources', { params }),
+
   createContentShare: (data: CreateContentShareRequest): Promise<R<ContentShare>> =>
     api.post<R<ContentShare>>('/v1/admin/content-shares', data),
+
+  createContentSharesBatch: (data: BatchCreateContentSharesRequest): Promise<R<BatchCreateContentSharesResult>> =>
+    api.post<R<BatchCreateContentSharesResult>>('/v1/admin/content-shares/batch', data),
 
   deleteContentShare: (id: number): Promise<R<void>> =>
     api.delete<R<void>>(`/v1/admin/content-shares/${id}`),

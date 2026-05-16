@@ -87,6 +87,72 @@ func TestAccessRepoUserContentPermissionLevelDoesNotTrustLegacyAdminClaim(t *tes
 	}
 }
 
+func TestAccessRepoListShareableResourcesUsesRealPostRecords(t *testing.T) {
+	repo, mock, cleanup := newAccessRepoMock(t)
+	defer cleanup()
+
+	now := time.Now()
+	mock.ExpectQuery(`(?s)SELECT 'POST' AS resource_type.*FROM posts p.*p\.title ILIKE \$1.*LIMIT \$2`).
+		WithArgs("%launch%", 20).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"resource_type",
+			"id",
+			"title",
+			"subtitle",
+			"status",
+			"updated_at",
+		}).AddRow("POST", int64(42), "Launch Plan", "launch-plan", "PUBLISHED", now))
+
+	rows, err := repo.ListShareableResources(t.Context(), ShareableResourceFilter{
+		ResourceType: "post",
+		Search:       "launch",
+	})
+	if err != nil {
+		t.Fatalf("ListShareableResources returned error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != 42 || rows[0].ResourceType != "POST" {
+		t.Fatalf("ListShareableResources rows = %#v, want POST #42", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestAccessRepoListAccessiblePostIDsUsesContentShareGraph(t *testing.T) {
+	repo, mock, cleanup := newAccessRepoMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(`(?s)WITH active_user AS .*accessible_posts AS .*SELECT COUNT\(\*\).*permission_rank >= \$2`).
+		WithArgs(int64(7), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+	mock.ExpectQuery(`(?s)WITH active_user AS .*SELECT ap\.resource_id.*JOIN posts p ON p\.id = ap\.resource_id.*LIMIT \$3 OFFSET \$4`).
+		WithArgs(int64(7), 1, 10, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"resource_id"}).AddRow(int64(42)).AddRow(int64(41)))
+
+	ids, total, err := repo.ListAccessiblePostIDs(t.Context(), 7, "USER", "VIEW", 1, 10)
+	if err != nil {
+		t.Fatalf("ListAccessiblePostIDs returned error: %v", err)
+	}
+	if total != 2 || len(ids) != 2 || ids[0] != 42 || ids[1] != 41 {
+		t.Fatalf("ListAccessiblePostIDs = ids:%v total:%d, want [42 41] total 2", ids, total)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestAccessRepoListAccessiblePostIDsRejectsUnknownPermission(t *testing.T) {
+	repo, mock, cleanup := newAccessRepoMock(t)
+	defer cleanup()
+
+	if _, _, err := repo.ListAccessiblePostIDs(t.Context(), 7, "USER", "OWNER", 1, 10); err == nil {
+		t.Fatal("ListAccessiblePostIDs accepted unknown permission level")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func teamRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id",

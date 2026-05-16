@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowRight, KeyRound, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Files, KeyRound, ShieldCheck } from 'lucide-react';
 
 interface Props {
   isVisible: boolean;
@@ -52,6 +52,13 @@ export default function EnterSection({ isVisible, siteTitle }: Props) {
           >
             <KeyRound className="w-4 h-4" />
             先登录
+          </Link>
+          <Link
+            href="/agent/shared"
+            className="inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl border border-[var(--ink-subtle)]/30 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 transition-colors font-medium"
+          >
+            <Files className="w-4 h-4" />
+            共享内容
           </Link>
         </motion.div>
 

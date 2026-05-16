@@ -74,9 +74,17 @@ func (r *CommentRepo) findWithFilter(ctx context.Context, f dto.CommentFilter) (
 		args = append(args, *f.PostID)
 		idx++
 	}
-	// 关键字同时模糊匹配评论内容和昵称（不区分大小写）
+	// 关键字同时模糊匹配评论内容、昵称、邮箱和文章标题（不区分大小写）
 	if f.Keyword != "" {
-		sb.WriteString(fmt.Sprintf(" AND (content ILIKE $%d OR nickname ILIKE $%d)", idx, idx))
+		sb.WriteString(fmt.Sprintf(` AND (
+			content ILIKE $%d
+			OR nickname ILIKE $%d
+			OR COALESCE(email, '') ILIKE $%d
+			OR EXISTS (
+				SELECT 1 FROM posts p
+				WHERE p.id = comments.post_id AND p.title ILIKE $%d
+			)
+		)`, idx, idx, idx, idx))
 		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}

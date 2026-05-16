@@ -106,6 +106,15 @@ export interface ContentShare {
   updatedAt: string;
 }
 
+export interface ShareableResource {
+  resourceType: SharedResourceType;
+  id: number;
+  title: string;
+  subtitle?: string;
+  status?: string;
+  updatedAt?: string;
+}
+
 export interface CreateContentShareRequest {
   resourceType: SharedResourceType;
   resourceId: number;
@@ -113,4 +122,20 @@ export interface CreateContentShareRequest {
   principalId: number;
   permissionLevel: ContentPermissionLevel;
   expiresAt?: string;
+}
+
+export interface BatchCreateContentSharesRequest {
+  resourceType: SharedResourceType;
+  resourceIds?: number[];
+  resourceSearch?: string;
+  selectAllMatching?: boolean;
+  principalType: SharePrincipalType;
+  principalId: number;
+  permissionLevel: ContentPermissionLevel;
+  expiresAt?: string;
+}
+
+export interface BatchCreateContentSharesResult {
+  total: number;
+  shares: ContentShare[];
 }

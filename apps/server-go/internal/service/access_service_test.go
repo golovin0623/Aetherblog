@@ -3,10 +3,12 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
@@ -18,6 +20,21 @@ func newAccessServiceMock(t *testing.T) (*AccessService, sqlmock.Sqlmock, func()
 	}
 	cleanup := func() { _ = db.Close() }
 	return NewAccessService(repository.NewAccessRepo(sqlx.NewDb(db, "sqlmock"))), mock, cleanup
+}
+
+func contentShareRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id",
+		"resource_type",
+		"resource_id",
+		"principal_type",
+		"principal_id",
+		"permission_level",
+		"granted_by",
+		"expires_at",
+		"created_at",
+		"updated_at",
+	})
 }
 
 func TestContentPermissionAllowsHierarchy(t *testing.T) {
@@ -78,6 +95,69 @@ func TestNormalizeRoleCodesDeduplicatesAndUppercases(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("normalizeRoleCodes[%d] = %q, want %q; full=%#v", i, got[i], want[i], got)
 		}
+	}
+}
+
+func TestCreateContentShareRejectsMissingResource(t *testing.T) {
+	svc, mock, cleanup := newAccessServiceMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(`SELECT EXISTS \(SELECT 1 FROM posts WHERE id=\$1 AND deleted=false AND status='PUBLISHED'\)`).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	_, err := svc.CreateContentShare(t.Context(), dto.CreateContentShareRequest{
+		ResourceType:    "POST",
+		ResourceID:      42,
+		PrincipalType:   "USER",
+		PrincipalID:     7,
+		PermissionLevel: "VIEW",
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "共享资源不存在") {
+		t.Fatalf("CreateContentShare error = %v, want missing resource error", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestBatchCreateContentSharesSelectsAllMatchingResources(t *testing.T) {
+	svc, mock, cleanup := newAccessServiceMock(t)
+	defer cleanup()
+
+	now := time.Now()
+	search := "launch"
+	mock.ExpectQuery(`SELECT EXISTS \(SELECT 1 FROM users WHERE id=\$1 AND status='ACTIVE'\)`).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery(`(?s)SELECT p\.id.*FROM posts p.*p\.title ILIKE \$1.*LIMIT \$2`).
+		WithArgs("%launch%", maxBatchContentShares+1).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(42)).AddRow(int64(41)))
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)INSERT INTO content_shares .*ON CONFLICT .*RETURNING \*`).
+		WithArgs("POST", int64(42), "USER", int64(7), "VIEW", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(contentShareRows().AddRow(int64(101), "POST", int64(42), "USER", int64(7), "VIEW", nil, nil, now, now))
+	mock.ExpectQuery(`(?s)INSERT INTO content_shares .*ON CONFLICT .*RETURNING \*`).
+		WithArgs("POST", int64(41), "USER", int64(7), "VIEW", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(contentShareRows().AddRow(int64(102), "POST", int64(41), "USER", int64(7), "VIEW", nil, nil, now, now))
+	mock.ExpectCommit()
+
+	got, err := svc.BatchCreateContentShares(t.Context(), dto.BatchCreateContentSharesRequest{
+		ResourceType:      "post",
+		ResourceSearch:    &search,
+		SelectAllMatching: true,
+		PrincipalType:     "user",
+		PrincipalID:       7,
+		PermissionLevel:   "view",
+	}, nil)
+	if err != nil {
+		t.Fatalf("BatchCreateContentShares returned error: %v", err)
+	}
+	if got.Total != 2 || len(got.Shares) != 2 || got.Shares[0].ResourceID != 42 || got.Shares[1].ResourceID != 41 {
+		t.Fatalf("BatchCreateContentShares = %#v, want two matching shares", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }
 
