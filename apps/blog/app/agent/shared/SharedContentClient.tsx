@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, CalendarDays, FileText, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, FileText, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react';
+import { formatDate } from '@aetherblog/utils';
 import { useAgentAuth } from '../lib/agentAuth';
 
 interface PostListItem {
@@ -39,6 +40,8 @@ export default function SharedContentClient() {
   const { state } = useAgentAuth();
   const [items, setItems] = useState<PostListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [pageNum, setPageNum] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +56,7 @@ export default function SharedContentClient() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/collaboration/posts?pageNum=1&pageSize=${PAGE_SIZE}`, {
+    fetch(`/api/v1/collaboration/posts?pageNum=${pageNum}&pageSize=${PAGE_SIZE}`, {
       credentials: 'include',
       cache: 'no-store',
       signal: controller.signal,
@@ -65,23 +68,32 @@ export default function SharedContentClient() {
         const data = json.data;
         setItems(Array.isArray(data?.list) ? data.list : []);
         setTotal(typeof data?.total === 'number' ? data.total : 0);
+        setTotalPages(Math.max(1, typeof data?.pages === 'number' ? data.pages : 1));
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : '加载失败');
         setItems([]);
         setTotal(0);
+        setTotalPages(1);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [state.status]);
+  }, [pageNum, state.status]);
+
+  useEffect(() => {
+    if (pageNum > totalPages) setPageNum(totalPages);
+  }, [pageNum, totalPages]);
 
   const userLabel = useMemo(() => {
     if (state.status !== 'authed') return '正在确认身份';
     return state.user.nickname || state.user.username;
   }, [state]);
+
+  const rangeStart = total === 0 ? 0 : (pageNum - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(pageNum * PAGE_SIZE, total);
 
   if (state.status !== 'authed') {
     return (
@@ -116,7 +128,7 @@ export default function SharedContentClient() {
             <div className="grid min-w-[13rem] grid-cols-2 overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-leaf)]">
               <div className="border-r border-[var(--border-subtle)] p-4">
                 <div className="text-xs text-[var(--ink-muted)]">授权文章</div>
-                <div className="mt-1 font-mono text-2xl font-semibold">{total}</div>
+                <div className="tnum mt-1 font-mono text-2xl font-semibold">{total}</div>
               </div>
               <div className="p-4">
                 <div className="text-xs text-[var(--ink-muted)]">当前身份</div>
@@ -139,11 +151,22 @@ export default function SharedContentClient() {
             ))}
           </div>
         ) : items.length > 0 ? (
-          <section className="grid gap-3 md:grid-cols-2">
-            {items.map((post) => (
-              <SharedPostCard key={post.id} post={post} />
-            ))}
-          </section>
+          <>
+            <section className="grid gap-3 md:grid-cols-2">
+              {items.map((post) => (
+                <SharedPostCard key={post.id} post={post} />
+              ))}
+            </section>
+            <SharedPagination
+              pageNum={pageNum}
+              totalPages={totalPages}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              total={total}
+              onPrev={() => setPageNum((page) => Math.max(1, page - 1))}
+              onNext={() => setPageNum((page) => Math.min(totalPages, page + 1))}
+            />
+          </>
         ) : (
           <section className="rounded-lg border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)] p-10 text-center">
             <ShieldCheck className="mx-auto h-8 w-8 text-[var(--ink-muted)]" />
@@ -159,11 +182,7 @@ export default function SharedContentClient() {
 }
 
 function SharedPostCard({ post }: { post: PostListItem }) {
-  const dateText = post.publishedAt
-    ? new Date(post.publishedAt).toLocaleDateString('zh-CN')
-    : post.createdAt
-      ? new Date(post.createdAt).toLocaleDateString('zh-CN')
-      : '未记录日期';
+  const dateText = formatSharedDate(post.publishedAt || post.createdAt);
 
   return (
     <article className="group rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm transition-colors hover:border-[var(--aurora-1)]/40">
@@ -173,7 +192,7 @@ function SharedPostCard({ post }: { post: PostListItem }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-muted)]">
-            <span className="inline-flex items-center gap-1">
+            <span className="tnum inline-flex items-center gap-1 font-mono">
               <CalendarDays className="h-3.5 w-3.5" />
               {dateText}
             </span>
@@ -207,4 +226,65 @@ function SharedPostCard({ post }: { post: PostListItem }) {
       </div>
     </article>
   );
+}
+
+function SharedPagination({
+  pageNum,
+  totalPages,
+  rangeStart,
+  rangeEnd,
+  total,
+  onPrev,
+  onNext,
+}: {
+  pageNum: number;
+  totalPages: number;
+  rangeStart: number;
+  rangeEnd: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  if (total <= PAGE_SIZE && totalPages <= 1) return null;
+  return (
+    <nav className="flex flex-col gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="tnum text-xs font-semibold text-[var(--ink-muted)]">
+        显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
+        <span className="mx-2 text-[var(--ink-subtle)]">/</span>
+        共 <span className="text-[var(--ink-secondary)]">{total}</span> 篇
+        <span className="mx-2 text-[var(--ink-subtle)]">·</span>
+        第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> / {totalPages} 页
+      </p>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onPrev}
+          disabled={pageNum <= 1}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label="上一页"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="tnum min-w-8 px-2 text-center text-sm font-semibold text-[var(--ink-secondary)]">
+          {pageNum}
+        </span>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={pageNum >= totalPages}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label="下一页"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function formatSharedDate(value?: string): string {
+  if (!value) return '未记录日期';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '未记录日期';
+  return formatDate(date, 'yyyy-MM-dd');
 }

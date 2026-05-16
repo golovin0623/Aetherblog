@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, CalendarDays, Eye, LockKeyhole, RefreshCw } from 'lucide-react';
+import { formatDate } from '@aetherblog/utils';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import TableOfContents from '@/app/components/TableOfContents';
 import { useAgentAuth } from '../../lib/agentAuth';
@@ -78,11 +79,7 @@ export default function SharedPostClient({ id }: { id: string }) {
   }, [post?.tags]);
 
   const content = post?.content ?? '';
-  const dateText = post?.publishedAt
-    ? new Date(post.publishedAt).toLocaleDateString('zh-CN')
-    : post?.createdAt
-      ? new Date(post.createdAt).toLocaleDateString('zh-CN')
-      : '未记录日期';
+  const dateText = formatSharedDate(post?.publishedAt || post?.createdAt);
   const readingMinutes = Math.max(1, Math.ceil(content.length / 500));
 
   if (state.status !== 'authed' || loading) {
@@ -138,12 +135,12 @@ export default function SharedPostClient({ id }: { id: string }) {
           </h1>
 
           <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-[var(--ink-muted)]">
-            <span className="inline-flex items-center gap-1.5">
+            <span className="tnum inline-flex items-center gap-1.5 font-mono">
               <CalendarDays className="h-4 w-4" />
               {dateText}
             </span>
-            <span>{readingMinutes} min</span>
-            <span className="inline-flex items-center gap-1.5">
+            <span className="tnum font-mono">{readingMinutes} min</span>
+            <span className="tnum inline-flex items-center gap-1.5 font-mono">
               <Eye className="h-4 w-4" />
               {post.viewCount ?? 0}
             </span>
@@ -179,4 +176,11 @@ export default function SharedPostClient({ id }: { id: string }) {
       </div>
     </main>
   );
+}
+
+function formatSharedDate(value?: string): string {
+  if (!value) return '未记录日期';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '未记录日期';
+  return formatDate(date, 'yyyy-MM-dd');
 }

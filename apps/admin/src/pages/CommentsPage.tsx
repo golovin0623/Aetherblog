@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type ComponentType,
   type CSSProperties,
@@ -32,7 +31,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Select, type SelectOption } from '@aetherblog/ui';
 import { useDebounce } from '@aetherblog/hooks';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { commentService, Comment, CommentStatus } from '@/services/commentService';
 import { logger } from '@/lib/logger';
@@ -204,7 +203,18 @@ function formatCommentDate(dateStr: string): string {
 function formatAbsoluteDate(dateStr: string): string {
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return '时间未知';
-  return date.toLocaleString('zh-CN');
+  return formatDateTime(dateStr);
+}
+
+function matchesCommentSearch(comment: Comment, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    comment.content,
+    comment.nickname,
+    comment.email,
+    comment.post?.title,
+  ].some((value) => (value ?? '').toLowerCase().includes(q));
 }
 
 export default function CommentsPage() {
@@ -237,13 +247,15 @@ export default function CommentsPage() {
       const status = selectedStatus === 'all'
         ? undefined
         : (selectedStatus.toUpperCase() as CommentStatus);
-      const res = await commentService.listAll(status, pageNum, pageSize);
+      const res = await commentService.listAll(status, pageNum, pageSize, debouncedSearch || undefined);
 
       if (res.code === 200 && res.data) {
         setComments(res.data.list);
         setTotal(res.data.total);
       } else {
-        const mockFiltered = mockComments.filter(c => status === undefined || c.status === status);
+        const mockFiltered = mockComments.filter(
+          (c) => (status === undefined || c.status === status) && matchesCommentSearch(c, debouncedSearch)
+        );
         setComments(mockFiltered);
         setTotal(mockFiltered.length);
       }
@@ -252,7 +264,9 @@ export default function CommentsPage() {
       const status = selectedStatus === 'all'
         ? undefined
         : (selectedStatus.toUpperCase() as CommentStatus);
-      const mockFiltered = mockComments.filter(c => status === undefined || c.status === status);
+      const mockFiltered = mockComments.filter(
+        (c) => (status === undefined || c.status === status) && matchesCommentSearch(c, debouncedSearch)
+      );
       setComments(mockFiltered);
       setTotal(mockFiltered.length);
     } finally {
@@ -262,7 +276,7 @@ export default function CommentsPage() {
         setLoading(false);
       }
     }
-  }, [pageNum, pageSize, selectedStatus]);
+  }, [debouncedSearch, pageNum, pageSize, selectedStatus]);
 
   useEffect(() => {
     fetchComments();
@@ -293,6 +307,11 @@ export default function CommentsPage() {
     const nextSize = Number(nextValue);
     if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
     setPageSize(nextSize);
+    setPageNum(1);
+  };
+
+  const handleSearchChange = (nextValue: string) => {
+    setSearchQuery(nextValue);
     setPageNum(1);
   };
 
@@ -385,27 +404,22 @@ export default function CommentsPage() {
   };
 
   const handleReply = async (id: number) => {
-    if (!replyContent.trim()) return;
+    const content = replyContent.trim();
+    if (!content) return;
     try {
-      toast.success('回复已发送');
-      setReplyingTo(null);
-      setReplyContent('');
-      fetchComments({ preserveList: true });
+      const res = await commentService.reply(id, content);
+      if (res.code === 200) {
+        toast.success('回复已发送');
+        setReplyingTo(null);
+        setReplyContent('');
+        fetchComments({ preserveList: true });
+        return;
+      }
+      toast.error(res.message || '回复失败');
     } catch (error) {
       toast.error('回复失败');
     }
   };
-
-  const filteredComments = useMemo(() => {
-    const q = debouncedSearch.toLowerCase();
-    if (!q) return comments;
-    return comments.filter((comment) => (
-      comment.content.toLowerCase().includes(q) ||
-      comment.nickname.toLowerCase().includes(q) ||
-      comment.email.toLowerCase().includes(q) ||
-      comment.post?.title.toLowerCase().includes(q)
-    ));
-  }, [comments, debouncedSearch]);
 
   type ActiveChip = {
     key: string;
@@ -432,7 +446,7 @@ export default function CommentsPage() {
       icon: SearchIcon,
       label: '关键词',
       value: debouncedSearch,
-      onRemove: () => setSearchQuery(''),
+      onRemove: () => handleSearchChange(''),
     });
   }
 
@@ -452,7 +466,7 @@ export default function CommentsPage() {
           description="集中审核、回复与清理文章评论，保持内容互动质量。"
           icon={MessageSquare}
           currentLabel={listRefreshing ? '同步中' : '审核队列'}
-          activeSummary={`当前匹配 ${filteredComments.length} 条评论，第 ${pageNum}/${totalPages} 页`}
+          activeSummary={`当前匹配 ${total} 条评论，第 ${pageNum}/${totalPages} 页`}
           actions={
             <button
               type="button"
@@ -476,7 +490,7 @@ export default function CommentsPage() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="搜索评论内容、昵称、邮箱或文章标题"
                 aria-label="评论关键词搜索"
                 className={cn(
@@ -492,7 +506,7 @@ export default function CommentsPage() {
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => handleSearchChange('')}
                   aria-label="清空搜索"
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
                 >
@@ -578,7 +592,7 @@ export default function CommentsPage() {
                   </button>
                 </div>
                 <div className="mt-2 text-xs text-[var(--ink-muted)]">
-                  匹配 <span className="tnum font-medium text-[var(--ink-primary)]">{filteredComments.length}</span> 条评论
+                  匹配 <span className="tnum font-medium text-[var(--ink-primary)]">{total}</span> 条评论
                 </div>
               </motion.div>
             )}
@@ -628,7 +642,7 @@ export default function CommentsPage() {
               </div>
             </div>
             <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {loading ? '加载中' : listRefreshing ? '刷新中' : `${filteredComments.length}/${total}`}
+              {loading ? '加载中' : listRefreshing ? '刷新中' : `${comments.length}/${total}`}
             </span>
           </div>
 
@@ -645,7 +659,7 @@ export default function CommentsPage() {
                 </div>
               ))}
             </div>
-          ) : filteredComments.length === 0 ? (
+          ) : comments.length === 0 ? (
             <div className="py-16 text-center">
               <AlertCircle className="mx-auto mb-4 h-16 w-16 text-[var(--ink-muted)] opacity-50" />
               <p className="text-[var(--ink-secondary)]">
@@ -671,7 +685,7 @@ export default function CommentsPage() {
                 transition={{ duration: 0.2 }}
                 className="divide-y divide-[var(--border-subtle)]"
               >
-                {filteredComments.map((comment, index) => {
+                {comments.map((comment, index) => {
                   const statusKey = getStatusKey(comment.status);
                   const config = statusConfig[statusKey];
                   const StatusIcon = config.icon;

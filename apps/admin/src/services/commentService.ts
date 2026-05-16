@@ -35,8 +35,13 @@ export interface Comment {
 }
 
 class CommentService {
-  async listAll(status?: CommentStatus, pageNum: number = 1, pageSize: number = 10): Promise<R<PageResult<Comment>>> {
-    const params = { status, pageNum, pageSize };
+  async listAll(
+    status?: CommentStatus,
+    pageNum: number = 1,
+    pageSize: number = 10,
+    keyword?: string
+  ): Promise<R<PageResult<Comment>>> {
+    const params = { status, pageNum, pageSize, keyword };
     return api.get<R<PageResult<Comment>>>('/v1/admin/comments', { params });
   }
 
@@ -78,6 +83,10 @@ class CommentService {
 
   async batchApprove(ids: number[]): Promise<R<void>> {
     return api.patch<R<void>>('/v1/admin/comments/batch/approve', { data: ids });
+  }
+
+  async reply(id: number, content: string): Promise<R<Comment>> {
+    return api.post<R<Comment>>(`/v1/admin/comments/${id}/reply`, { content });
   }
 }
 

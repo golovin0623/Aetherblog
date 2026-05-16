@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Select, type SelectOption } from '@aetherblog/ui';
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layout/AdminModuleHeader';
 import { accessService } from '@/services/accessService';
 import { getMediaUrl } from '@/services/mediaService';
@@ -111,6 +111,7 @@ const resourceTypeLabelMap = new Map(resourceTypeOptions.map((item) => [item.val
 const principalTypeLabelMap = new Map(principalTypeOptions.map((item) => [item.value, item.label]));
 const contentPermissionLabelMap = new Map(contentPermissionOptions.map((item) => [item.value, item.label]));
 const shareResourceLoadLimit = 1000;
+const userPickerPageSize = 100;
 
 const inputClass = cn(
   'h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
@@ -130,7 +131,7 @@ const shellClass = cn(
 
 const toDateTime = (value?: string | null) => {
   if (!value) return '尚无记录';
-  return new Date(value).toLocaleString('zh-CN');
+  return formatDateTime(value);
 };
 
 const userDisplayName = (user: ManagedUser | TeamMember) => {
@@ -153,6 +154,26 @@ const makeUserOptions = (users: ManagedUser[]): SelectOption[] => [
     description: `#${user.id} · ${(user.roles?.length ? user.roles : [user.role]).map(roleLabel).join(' / ')}`,
   })),
 ];
+
+async function listAllUsersForPicker(): Promise<ManagedUser[]> {
+  const first = await accessService.listUsers({ pageNum: 1, pageSize: userPickerPageSize });
+  if (first.code !== 200 || !first.data) return [];
+  const pages = Math.max(1, first.data.pages || Math.ceil(first.data.total / first.data.pageSize));
+  if (pages <= 1) return first.data.list;
+
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) =>
+      accessService.listUsers({ pageNum: index + 2, pageSize: userPickerPageSize })
+    )
+  );
+  const byId = new Map<number, ManagedUser>();
+  for (const user of first.data.list) byId.set(user.id, user);
+  for (const res of rest) {
+    if (res.code !== 200 || !res.data) continue;
+    for (const user of res.data.list) byId.set(user.id, user);
+  }
+  return Array.from(byId.values());
+}
 
 const makeResourceKey = (resourceType: SharedResourceType, id: number) => `${resourceType}:${id}`;
 
@@ -398,7 +419,7 @@ function UserTableRow({ user, onEdit }: { user: ManagedUser; onEdit: () => void 
         )}
       </td>
       <td className="px-4 py-4 text-xs text-[var(--ink-muted)]">
-        <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <div className="tnum flex items-center gap-1.5 whitespace-nowrap font-mono">
           <CalendarClock className="h-3.5 w-3.5 shrink-0" />
           {toDateTime(user.lastLoginAt)}
         </div>
@@ -784,10 +805,7 @@ function TeamsPanel() {
 
   const usersQuery = useQuery({
     queryKey: ['access-users', 'picker'],
-    queryFn: async () => {
-      const res = await accessService.listUsers({ pageNum: 1, pageSize: 100 });
-      return res.code === 200 ? res.data.list : [];
-    },
+    queryFn: listAllUsersForPicker,
   });
 
   const users = usersQuery.data ?? [];
@@ -1081,10 +1099,7 @@ function SharesPanel() {
 
   const usersQuery = useQuery({
     queryKey: ['access-users', 'share-picker'],
-    queryFn: async () => {
-      const res = await accessService.listUsers({ pageNum: 1, pageSize: 100 });
-      return res.code === 200 ? res.data.list : [];
-    },
+    queryFn: listAllUsersForPicker,
   });
 
   const teamsQuery = useQuery({
@@ -1481,7 +1496,11 @@ function ShareItem({
         <SmallPill>{share.expiresAt ? '限时' : '永久'}</SmallPill>
       </div>
       <div className="mt-3 text-xs text-[var(--ink-muted)]">
-        {share.expiresAt ? `过期: ${new Date(share.expiresAt).toLocaleString('zh-CN')}` : '永不过期'}
+        {share.expiresAt ? (
+          <>
+            过期: <span className="tnum font-mono">{toDateTime(share.expiresAt)}</span>
+          </>
+        ) : '永不过期'}
       </div>
     </article>
   );
