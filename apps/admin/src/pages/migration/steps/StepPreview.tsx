@@ -115,9 +115,9 @@ export function StepPreview({
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="migration-step-stack">
       {/* 总体汇总 */}
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4">
+      <section className="migration-summary-grid">
         <SummaryCard label="将新建文章" value={counts.willCreatePosts} />
         <SummaryCard label="将覆盖" value={counts.willOverwritePosts} />
         <SummaryCard label="将跳过重复" value={counts.willSkipDuplicates} />
@@ -129,12 +129,12 @@ export function StepPreview({
       </section>
 
       {state.analysis.unsupported.length > 0 && (
-        <section className="rounded-xl surface-leaf p-4">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[var(--text-muted)]">
+        <section className="migration-notice">
+          <div className="migration-notice-title">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>备份含以下数据但不会导入</span>
           </div>
-          <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+          <ul className="migration-notice-list">
             {state.analysis.unsupported.map((u) => (
               <li key={u}>· {u}</li>
             ))}
@@ -143,19 +143,22 @@ export function StepPreview({
       )}
 
       {/* 文章计划表 */}
-      <section className="overflow-hidden rounded-2xl surface-leaf">
-        <div className="flex flex-col gap-2 border-b border-[var(--border-subtle)] px-4 sm:px-5 py-3 text-xs uppercase tracking-wide text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
-          <span>文章计划 ({state.analysis.articlePlans.length})</span>
-          <div className="flex gap-2">
+      <section className="migration-plan-panel">
+        <div className="migration-plan-toolbar">
+          <div>
+            <span className="migration-section-title">文章计划</span>
+            <span className="migration-plan-count">{state.analysis.articlePlans.length} 条</span>
+          </div>
+          <div className="migration-plan-actions">
             <button
               onClick={() => toggleAll(true)}
-              className="flex-1 sm:flex-none rounded-lg bg-[var(--bg-secondary)] px-3 py-1.5 sm:py-1 text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
+              className="migration-button migration-button-compact"
             >
               全选可导入
             </button>
             <button
               onClick={() => toggleAll(false)}
-              className="flex-1 sm:flex-none rounded-lg bg-[var(--bg-secondary)] px-3 py-1.5 sm:py-1 text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
+              className="migration-button migration-button-compact migration-button-secondary"
             >
               全不选
             </button>
@@ -163,50 +166,47 @@ export function StepPreview({
         </div>
 
         {/* 桌面端表格 */}
-        <div className="hidden sm:block max-h-[50vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-[var(--bg-card)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
-              <tr>
-                <th className="w-10 px-4 py-2"></th>
-                <th className="w-16 px-2 py-2 text-left">ID</th>
-                <th className="px-2 py-2 text-left">标题</th>
-                <th className="px-2 py-2 text-left">分类</th>
-                <th className="px-2 py-2 text-left">动作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.analysis.articlePlans.map((p) => {
-                const selectable =
-                  p.action === 'create' || p.action === 'overwrite' || p.action === 'rename';
-                const numericId = parseNumericSourceId(p.sourceId);
-                return (
-                  <tr key={p.sourceKey} className="border-t border-[var(--border-subtle)]">
-                    <td className="px-4 py-2">
-                      <input
-                        type="checkbox"
-                        disabled={!selectable}
-                        checked={selectedInternal.has(p.sourceKey)}
-                        onChange={() => toggleOne(p.sourceKey, numericId)}
-                      />
-                    </td>
-                    <td className="px-2 py-2 font-mono text-xs text-[var(--text-muted)]">{p.sourceId}</td>
-                    <td className="px-2 py-2 text-[var(--text-primary)]">
-                      <div className="truncate max-w-md">{p.title}</div>
-                      <div className="text-xs text-[var(--text-muted)]">{p.slug}</div>
-                    </td>
-                    <td className="px-2 py-2 text-[var(--text-secondary)]">{p.category || '—'}</td>
-                    <td className="px-2 py-2">
-                      <ActionBadge action={p.action} reason={p.reason} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="migration-plan-table" role="table" aria-label="文章导入计划">
+          <div className="migration-plan-head" role="row">
+            <span aria-hidden="true" />
+            <span>ID</span>
+            <span>标题</span>
+            <span>分类</span>
+            <span>动作</span>
+          </div>
+          <div className="migration-plan-scroll">
+            {state.analysis.articlePlans.map((p) => {
+              const selectable =
+                p.action === 'create' || p.action === 'overwrite' || p.action === 'rename';
+              const numericId = parseNumericSourceId(p.sourceId);
+              return (
+                <div key={p.sourceKey} className="migration-plan-row" role="row" data-selectable={selectable}>
+                  <div className="migration-plan-check">
+                    <input
+                      type="checkbox"
+                      disabled={!selectable}
+                      checked={selectedInternal.has(p.sourceKey)}
+                      onChange={() => toggleOne(p.sourceKey, numericId)}
+                      aria-label={`选择 ${p.title}`}
+                    />
+                  </div>
+                  <div className="migration-plan-id">{p.sourceId}</div>
+                  <div className="migration-plan-title">
+                    <div className="migration-plan-title-main">{p.title}</div>
+                    <div className="migration-plan-title-sub">{p.slug}</div>
+                  </div>
+                  <div className="migration-plan-category">{p.category || '—'}</div>
+                  <div className="migration-plan-action">
+                    <ActionBadge action={p.action} reason={p.reason} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* 移动端卡片列表 */}
-        <div className="sm:hidden max-h-[55vh] overflow-auto divide-y divide-[var(--border-subtle)]">
+        <div className="migration-plan-mobile">
           {state.analysis.articlePlans.map((p) => {
             const selectable =
               p.action === 'create' || p.action === 'overwrite' || p.action === 'rename';
@@ -230,8 +230,8 @@ export function StepPreview({
                     {p.slug && <span className="truncate max-w-[60%]">{p.slug}</span>}
                     {p.category && <span>· {p.category}</span>}
                   </div>
-                  <div className="mt-2">
-                    <ActionBadge action={p.action} reason={p.reason} />
+                <div className="mt-2">
+                  <ActionBadge action={p.action} reason={p.reason} />
                   </div>
                 </div>
               </label>
@@ -241,22 +241,22 @@ export function StepPreview({
       </section>
 
       {/* 分类/标签 create vs reuse */}
-      <section className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+      <section className="migration-entity-grid">
         <EntityPlanList title="分类" plans={state.analysis.categoryPlans} />
         <EntityPlanList title="标签" plans={state.analysis.tagPlans} />
       </section>
 
-      <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-between sm:gap-0">
+      <div className="migration-wizard-actions migration-wizard-actions-between">
         <button
           onClick={onBack}
-          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-secondary"
         >
           上一步
         </button>
         <button
           onClick={onNext}
           disabled={counts.importableArticles === 0}
-          className="rounded-xl bg-[var(--aurora-1)] px-6 py-3 sm:py-2.5 text-sm font-medium text-white disabled:opacity-50 active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-primary"
         >
           开始导入 ({counts.importableArticles})
         </button>
@@ -278,22 +278,19 @@ function EntityPlanList({
   plans: { name: string; action: 'create' | 'reuse' }[];
 }) {
   return (
-    <div className="rounded-xl surface-leaf p-4">
-      <div className="mb-2 text-xs uppercase tracking-wide text-[var(--text-muted)]">
+    <div className="migration-entity-card">
+      <div className="migration-section-title">
         {title} ({plans.length})
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="migration-entity-tags">
         {plans.map((p) => (
           <span
             key={p.name}
-            className={`rounded-full px-2.5 py-0.5 text-xs ${
-              p.action === 'create'
-                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]'
-                : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'
-            }`}
+            className="migration-entity-tag"
+            data-action={p.action}
           >
             {p.name}
-            {p.action === 'create' ? ' ✚' : ' ↻'}
+            <span>{p.action === 'create' ? '新建' : '复用'}</span>
           </span>
         ))}
       </div>
@@ -347,7 +344,8 @@ function ActionBadge({ action, reason }: { action: ArticleAction; reason?: strin
   const m = map[action];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${m.cls}`}
+      className={`migration-action-badge ${m.cls}`}
+      data-action={action}
       title={reason || ''}
     >
       {m.icon}
@@ -358,9 +356,9 @@ function ActionBadge({ action, reason }: { action: ArticleAction; reason?: strin
 
 function SummaryCard({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className={`rounded-xl p-3 sm:p-4 ${highlight ? 'surface-raised' : 'bg-[var(--bg-secondary)]'}`}>
-      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-[var(--text-muted)] truncate">{label}</div>
-      <div className="mt-1 font-display text-2xl sm:text-3xl tnum text-[var(--text-primary)]">{value}</div>
+    <div className="migration-summary-card" data-highlight={highlight || undefined}>
+      <div className="migration-summary-label">{label}</div>
+      <div className="migration-summary-value">{value}</div>
     </div>
   );
 }
@@ -375,7 +373,7 @@ function CenterBox({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl surface-leaf px-6 py-16 text-center text-[var(--text-primary)]">
+    <div className="migration-center-box">
       <div>{icon}</div>
       <div className="text-sm">{text}</div>
       {action}

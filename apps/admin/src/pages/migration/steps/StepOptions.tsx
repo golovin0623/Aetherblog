@@ -13,34 +13,40 @@ interface Props {
 export function StepOptions({ state, onChange, onBack, onNext }: Props) {
   const o = state.options;
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <section className="rounded-2xl surface-leaf p-4 sm:p-6">
-        <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">冲突策略</h3>
-        <div className="mt-3 sm:mt-4 grid gap-2.5 sm:gap-3 sm:grid-cols-3">
+    <div className="migration-step-stack">
+      <section className="migration-config-section">
+        <h3 className="migration-section-title">冲突策略</h3>
+        <div className="migration-strategy-grid">
           <StrategyCard
             active={o.conflictStrategy === 'skip'}
-            title="Skip"
-            desc="source_key 已存在时跳过，默认推荐。"
+            code="Skip"
+            title="跳过重复"
+            desc="source_key 已存在时不写入新数据，适合首次迁移后的复跑校验。"
+            hint="默认推荐"
             onClick={() => onChange({ conflictStrategy: 'skip' })}
           />
           <StrategyCard
             active={o.conflictStrategy === 'overwrite'}
-            title="Overwrite"
-            desc="以 VanBlog 数据覆盖现有记录，标签重建。"
+            code="Overwrite"
+            title="覆盖现有"
+            desc="用 VanBlog 内容更新命中文章，分类、标签和正文会重新对齐。"
+            hint="谨慎使用"
             onClick={() => onChange({ conflictStrategy: 'overwrite' })}
           />
           <StrategyCard
             active={o.conflictStrategy === 'rename'}
-            title="Rename"
-            desc="作为新记录导入（source_key 追加时间戳后缀）。"
+            code="Rename"
+            title="另存新记录"
+            desc="重复文章以新的 source_key 导入，适合保留两份历史版本。"
+            hint="保留副本"
             onClick={() => onChange({ conflictStrategy: 'rename' })}
           />
         </div>
       </section>
 
-      <section className="rounded-2xl surface-leaf p-4 sm:p-6">
-        <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">开关</h3>
-        <div className="mt-3 sm:mt-4 grid gap-3 sm:gap-4 sm:grid-cols-2">
+      <section className="migration-config-section">
+        <h3 className="migration-section-title">导入选项</h3>
+        <div className="migration-toggle-grid">
           <ToggleRow
             label="保留 createdAt / updatedAt"
             desc="关闭则导入时全部取 NOW()。"
@@ -74,16 +80,16 @@ export function StepOptions({ state, onChange, onBack, onNext }: Props) {
         </div>
       </section>
 
-      <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2.5 sm:gap-0">
+      <div className="migration-wizard-actions migration-wizard-actions-between">
         <button
           onClick={onBack}
-          className="rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-secondary"
         >
           上一步
         </button>
         <button
           onClick={onNext}
-          className="rounded-xl bg-[var(--aurora-1)] px-6 py-3 sm:py-2.5 text-sm font-medium text-white active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-primary"
         >
           下一步：预览分析
         </button>
@@ -94,26 +100,31 @@ export function StepOptions({ state, onChange, onBack, onNext }: Props) {
 
 function StrategyCard({
   active,
+  code,
   title,
   desc,
+  hint,
   onClick,
 }: {
   active: boolean;
+  code: string;
   title: string;
   desc: string;
+  hint: string;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-xl border p-3.5 sm:p-4 text-left transition active:scale-[0.99] touch-manipulation ${
-        active
-          ? 'border-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'
-          : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] hover:border-[var(--aurora-1)]/50'
-      }`}
+      data-active={active}
+      className="migration-strategy-card"
     >
-      <div className="font-display text-base sm:text-lg text-[var(--text-primary)]">{title}</div>
-      <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">{desc}</div>
+      <div className="migration-strategy-topline">
+        <span className="migration-strategy-code">{code}</span>
+        <span className="migration-strategy-hint">{hint}</span>
+      </div>
+      <div className="migration-strategy-title">{title}</div>
+      <div className="migration-strategy-desc">{desc}</div>
     </button>
   );
 }
@@ -130,7 +141,7 @@ function ToggleRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 sm:gap-4 rounded-xl bg-[var(--bg-secondary)] px-3.5 sm:px-4 py-3">
+    <div className="migration-toggle-row">
       <div className="min-w-0 flex-1">
         <div className="text-sm text-[var(--text-primary)]">{label}</div>
         <div className="mt-0.5 text-xs text-[var(--text-muted)] leading-relaxed">{desc}</div>

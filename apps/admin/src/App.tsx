@@ -22,6 +22,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AIToolsPage = lazy(() => import('./pages/AIToolsPage'));
 const AgentWorkflowsPage = lazy(() => import('./pages/agent-workflows/AgentWorkflowsPage'));
 const MonitorPage = lazy(() => import('./pages/MonitorPage'));
+const SystemSecurityPage = lazy(() => import('./pages/security/SystemSecurityPage'));
 const FolderPermissionsPage = lazy(() => import('./pages/media/FolderPermissionsPage'));
 const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const GlobalPricingPage = lazy(() => import('./pages/global-pricing/GlobalPricingPage'));
@@ -115,6 +116,7 @@ function App() {
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="access" element={<AccessControlPage />} />
+              <Route path="security" element={<SystemSecurityPage />} />
             </Route>
           </Routes>
         </Suspense>

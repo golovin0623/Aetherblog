@@ -18,6 +18,9 @@ import {
   Sun,
   Moon,
   CornerDownLeft,
+  Coins,
+  Workflow,
+  ShieldCheck,
 } from 'lucide-react';
 import { useTheme } from '@/hooks';
 import { useAuthStore } from '@/stores';
@@ -49,7 +52,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   const go = useCallback((path: string) => {
     // 先 urgent 关闭命令面板，再把路由切换降级为低优先级更新，
-    // 避免老页面(媒体库/AI 配置等)的 unmount 阻塞面板的收起 paint。
+    // 避免老页面(媒体库/模型中心等)的 unmount 阻塞面板的收起 paint。
     onClose();
     startTransition(() => {
       navigate(path);
@@ -58,16 +61,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   const items = useMemo<CommandItem[]>(() => [
     { id: 'nav-dashboard', label: '前往 · 仪表盘', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['dashboard', 'home', '首页'], run: () => go('/dashboard') },
-    { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats', 'ai'], run: () => go('/analytics') },
     { id: 'nav-posts', label: '前往 · 文章管理', group: 'NAVIGATE', icon: FileText, keywords: ['posts', 'articles'], run: () => go('/posts') },
     { id: 'nav-media', label: '前往 · 媒体库', group: 'NAVIGATE', icon: Image, keywords: ['media', 'images'], run: () => go('/media') },
     { id: 'nav-categories', label: '前往 · 分类标签', group: 'NAVIGATE', icon: FolderTree, keywords: ['categories', 'tags'], run: () => go('/categories') },
     { id: 'nav-comments', label: '前往 · 评论管理', group: 'NAVIGATE', icon: MessageSquare, keywords: ['comments'], run: () => go('/comments') },
     { id: 'nav-friends', label: '前往 · 友情链接', group: 'NAVIGATE', icon: Link2, keywords: ['friends', 'links'], run: () => go('/friends') },
-    { id: 'nav-ai-tools', label: '前往 · AI 工具', group: 'NAVIGATE', icon: Sparkles, keywords: ['ai', 'tools'], run: () => go('/ai-tools') },
-    { id: 'nav-ai-config', label: '前往 · AI 配置', group: 'NAVIGATE', icon: Bot, keywords: ['ai', 'config'], run: () => go('/ai-config') },
+    { id: 'nav-aetherhub', label: '前往 · 灵境', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['aetherhub', 'chat', 'agent'], run: () => go('/aetherhub') },
+    { id: 'nav-agent-workflows', label: '前往 · 智能编排', group: 'NAVIGATE', icon: Workflow, keywords: ['agent', 'workflow'], run: () => go('/agent-workflows') },
+    { id: 'nav-ai-tools', label: '前往 · 写作助手', group: 'NAVIGATE', icon: Sparkles, keywords: ['ai', 'tools', 'writing'], run: () => go('/ai-tools') },
+    { id: 'nav-global-pricing', label: '前往 · 全局价格', group: 'NAVIGATE', icon: Coins, keywords: ['pricing', 'price', 'model'], run: () => go('/ai-config/pricing') },
+    { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats', 'ai'], run: () => go('/analytics') },
     { id: 'nav-search', label: '前往 · 搜索配置', group: 'NAVIGATE', icon: Search, keywords: ['search'], run: () => go('/search-config') },
+    { id: 'nav-ai-config', label: '前往 · 模型中心', group: 'NAVIGATE', icon: Bot, keywords: ['ai', 'config', 'model'], run: () => go('/ai-config') },
     { id: 'nav-monitor', label: '前往 · 系统监控', group: 'NAVIGATE', icon: Activity, keywords: ['monitor'], run: () => go('/monitor') },
+    { id: 'nav-security', label: '前往 · 系统安全', group: 'NAVIGATE', icon: ShieldCheck, keywords: ['security', 'jwt', '安全'], run: () => go('/security') },
     { id: 'nav-settings', label: '前往 · 系统设置', group: 'NAVIGATE', icon: Settings, keywords: ['settings'], run: () => go('/settings') },
     { id: 'create-post', label: '新建文章', hint: 'New Post', group: 'CREATE', icon: PenLine, keywords: ['new', 'create', 'write'], run: () => go('/posts/new') },
     {

@@ -47,7 +47,7 @@ func (h *ActivityHandler) Recent(c echo.Context) error {
 //   - startTime / endTime  RFC3339 时间区间限定 created_at
 //   - pageNum / pageSize   分页参数
 func (h *ActivityHandler) List(c echo.Context) error {
-	p := pagination.ParseWithDefaults(c, 1, 20)
+	p := pagination.ParseWithDefaultsAndMax(c, 1, 10, 200)
 
 	category := c.QueryParam("category")
 	eventType := c.QueryParam("eventType")
@@ -95,7 +95,7 @@ func (h *ActivityHandler) ByUser(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的用户ID")
 	}
-	p := pagination.ParseWithDefaults(c, 1, 20)
+	p := pagination.ParseWithDefaultsAndMax(c, 1, 10, 200)
 	pr, err := h.svc.GetByUser(c.Request().Context(), userID, p)
 	if err != nil {
 		return response.Error(c, err)

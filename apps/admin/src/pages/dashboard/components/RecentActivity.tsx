@@ -1,80 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText,
-  MessageSquare,
-  User,
-  Settings,
-  Link,
-  Image,
-  Sparkles,
-  AlertTriangle,
   Clock,
   ArrowUpRight
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { activityService, ActivityEvent } from '@/services/activityService';
-
-/**
- * 事件类别配置
- * 定义每种事件类别的图标、颜色等视觉属性
- */
-const categoryConfig = {
-  post: {
-    icon: FileText,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-1)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-1)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-1)]',
-  },
-  comment: {
-    icon: MessageSquare,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-3)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-3)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-3)]',
-  },
-  user: {
-    icon: User,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-5)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-5)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-5)]',
-  },
-  system: {
-    icon: Settings,
-    bgColor: 'bg-[var(--bg-tertiary)]',
-    borderColor: 'border-[var(--border-default)]',
-    textColor: 'text-[var(--text-muted)]',
-  },
-  friend: {
-    icon: Link,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-7)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-7)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-7)]',
-  },
-  media: {
-    icon: Image,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-9)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-9)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-9)]',
-  },
-  ai: {
-    icon: Sparkles,
-    bgColor: 'bg-[color-mix(in_oklch,var(--dashboard-aurora-11)_12%,transparent)]',
-    borderColor: 'border-[color-mix(in_oklch,var(--dashboard-aurora-11)_28%,transparent)]',
-    textColor: 'text-[var(--dashboard-aurora-11)]',
-  },
-};
-
-/**
- * 状态颜色配置
- */
-const statusColors = {
-  INFO: 'text-[var(--text-muted)]',
-  SUCCESS: 'text-status-success',
-  WARNING: 'text-status-warning',
-  ERROR: 'text-status-danger',
-};
+import { activityService } from '@/services/activityService';
+import { activityToneStyle, getActivityVisual } from '@/lib/activityVisuals';
 
 interface RecentActivityProps {
   loading?: boolean;
@@ -101,29 +34,6 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
 
   const loading = externalLoading || isLoading;
   const visibleActivities = (activities || []).slice(0, 8);
-
-  const getIcon = (category: ActivityEvent['eventCategory'], status: string) => {
-    // 警告和错误状态使用警告图标
-    if (status === 'WARNING' || status === 'ERROR') {
-      return <AlertTriangle className={cn('w-4 h-4', statusColors[status as keyof typeof statusColors])} />;
-    }
-    
-    const config = categoryConfig[category] || categoryConfig.system;
-    const Icon = config.icon;
-    return <Icon className={cn('w-4 h-4', config.textColor)} />;
-  };
-
-  const getColors = (category: ActivityEvent['eventCategory'], status: string) => {
-    // 警告和错误状态使用特殊颜色
-    if (status === 'WARNING') {
-      return { bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border' };
-    }
-    if (status === 'ERROR') {
-      return { bgColor: 'bg-status-danger-light', borderColor: 'border-status-danger-border' };
-    }
-    
-    return categoryConfig[category] || categoryConfig.system;
-  };
 
   const handleViewAll = () => {
     navigate('/activities?from=dashboard');
@@ -188,22 +98,25 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
       <div className="flex-1 overflow-hidden">
         <div className="relative h-full overflow-y-auto pr-2 pl-10">
           {visibleActivities.map((item, index) => {
-            const colors = getColors(item.eventCategory, item.status);
+            const visual = getActivityVisual(item.eventCategory, item.status);
+            const Icon = visual.icon;
             const isLast = index === visibleActivities.length - 1;
             
             return (
               <div key={item.id} className="relative pb-5 last:pb-0">
                 {!isLast && (
-                  <div className="absolute left-[-20px] top-3 bottom-[-1.25rem] w-px bg-[var(--border-subtle)]" />
+                  <div className="absolute left-[-21px] top-3.5 bottom-[-1.25rem] w-px bg-[var(--border-subtle)]" />
                 )}
 
                 {/* 时间轴节点 */}
-                <div className={cn(
-                  "absolute left-[-32px] top-0 w-6 h-6 rounded-full border flex items-center justify-center bg-[var(--bg-card)] backdrop-blur-sm z-10",
-                  colors.bgColor,
-                  colors.borderColor
-                )}>
-                  {getIcon(item.eventCategory, item.status)}
+                <div
+                  className="absolute left-[-34px] top-0 z-10 flex h-7 w-7 items-center justify-center rounded-xl border bg-[color-mix(in_oklch,var(--activity-tone)_12%,transparent)] text-[var(--activity-tone)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--activity-tone)_18%,transparent)] border-[color-mix(in_oklch,var(--activity-tone)_30%,transparent)] backdrop-blur-sm"
+                  style={activityToneStyle(visual.tone)}
+                  data-activity-icon
+                  data-category={item.eventCategory}
+                  data-status={item.status}
+                >
+                  <Icon className="w-3.5 h-3.5" />
                 </div>
 
                 <div className="space-y-1 pl-2">

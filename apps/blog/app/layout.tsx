@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Playfair_Display, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
@@ -23,10 +22,6 @@ export const viewport: Viewport = {
     { media: '(prefers-color-scheme: dark)', color: THEME_DARK_BG },
   ],
 };
-
-const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
-const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '700'] });
-const notoSerifSC = Noto_Serif_SC({ display: 'swap', variable: '--font-noto-serif-sc', weight: ['400', '700'], preload: false });
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
@@ -106,7 +101,7 @@ export default async function RootLayout({
           <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap" />
         )}
       </head>
-      <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
+      <body className="bg-background text-foreground antialiased" suppressHydrationWarning>
         <Providers>
           <SiteSettingsProvider settings={settings}>
             <FontProvider initialFont={fontFamily}>

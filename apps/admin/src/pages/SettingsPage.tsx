@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type, Cloud, Check, ChevronDown } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type, Cloud, Check, ChevronDown, Settings2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import { useFontPreview } from '@/contexts/FontPreviewContext';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Toggle } from '@aetherblog/ui';
 import {
   isNeutralPrimaryColor,
@@ -146,6 +147,18 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     icon: Cloud,
     fields: [] // 特殊 tab：直接加载 StorageProviderSettings 组件 (对象存储 rollout - Phase 2)
   }
+};
+
+const SETTING_GROUP_DESCRIPTIONS: Record<string, string> = {
+  general: '站点标识、Logo、地址、备案与首页基础信息。',
+  author: '博主资料、头像、邮箱与社交链接展示。',
+  welcome: '首页欢迎页文案、行动按钮与入口开关。',
+  appearance: '主题色、字体、暗黑模式、文章分页与自定义样式。',
+  seo: '搜索引擎抓取、站点地图与统计代码配置。',
+  comment: '评论入口和审核策略。',
+  advanced: '注册、上传、编辑器压缩、存储类型与 AI 开关。',
+  migration: '导入历史博客数据并跟踪迁移进度。',
+  storage: '管理本地、S3 兼容与云对象存储提供商。',
 };
 
 /** 图片上传字段组件 */
@@ -766,130 +779,154 @@ export default function SettingsPage() {
     applyPreview(fontId);
   }, [applyPreview]);
 
+  const activeGroup = SETTING_GROUPS[activeTab];
+  const ActiveGroupIcon = activeGroup.icon;
+  const activeGroupDescription = SETTING_GROUP_DESCRIPTIONS[activeTab] || `管理您的${activeGroup.label}`;
+  const activeGroupFieldCount = activeGroup.fields.length;
+  const isSpecialTab = activeTab === 'migration' || activeTab === 'storage';
+  const settingsActions = hasChanges ? (
+    <motion.div
+      key="settings-actions"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      className="settings-header-actions"
+    >
+      <button
+        type="button"
+        onClick={handleReset}
+        className="settings-action-button"
+      >
+        <RefreshCw className="h-4 w-4" />
+        重置
+      </button>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saveMutation.isPending}
+        className="settings-action-button settings-action-button-primary"
+      >
+        {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        保存更改
+      </button>
+    </motion.div>
+  ) : undefined;
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="admin-grid-page settings-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+          <div className="access-surface flex min-h-[360px] items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--aurora-1)]" />
+          </div>
+        </div>
       </div>
     );
   }
 
-  const activeGroup = SETTING_GROUPS[activeTab];
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">系统设置</h1>
-          <p className="text-[var(--text-muted)] mt-1">配置博客系统参数</p>
-        </div>
-        <div className="flex items-center gap-3">
-           <AnimatePresence>
-             {hasChanges && (
-               <motion.div
-                 initial={{ opacity: 0, x: 20 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: 20 }}
-                 className="flex items-center gap-2"
-               >
-                 <button
-                    onClick={handleReset}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm"
-                 >
-                   <RefreshCw className="w-4 h-4" /> 重置
-                 </button>
-                 <button
-                    onClick={handleSave}
-                    disabled={saveMutation.isPending}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm shadow-lg shadow-primary/20"
-                 >
-                   {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                   保存更改
-                 </button>
-               </motion.div>
-             )}
-           </AnimatePresence>
-        </div>
-      </div>
+    <div className="admin-grid-page settings-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="系统设置"
+          icon={Settings2}
+          currentLabel={activeGroup.label}
+          description="统一维护站点基础、外观、SEO、评论、存储与高级运行参数。"
+          activeSummary={`当前工作区：${activeGroup.label} · ${activeGroupDescription}${hasChanges ? ' · 存在未保存更改' : ''}`}
+          actions={settingsActions}
+        />
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* 侧边栏导航 */}
-        <div className="w-full lg:w-48 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
-          {Object.entries(SETTING_GROUPS).map(([key, group]) => {
-            const Icon = group.icon;
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap lg:whitespace-normal shrink-0',
-                  'transition-all duration-200',
-                  activeTab === key
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {group.label}
-              </button>
-            );
-          })}
-        </div>
+        <div className="settings-layout">
+          <aside className="settings-nav-panel access-surface rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" aria-label="系统设置分类">
+            <div className="settings-nav-heading">
+              <span>设置分类</span>
+              <small>{Object.keys(SETTING_GROUPS).length} 个模块</small>
+            </div>
+            <nav className="settings-nav-list">
+              {Object.entries(SETTING_GROUPS).map(([key, group]) => {
+                const Icon = group.icon;
+                const active = activeTab === key;
+                const countText = group.fields.length > 0 ? `${group.fields.length} 项` : '模块';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveTab(key)}
+                    data-active={active}
+                    className="settings-nav-button"
+                  >
+                    <span className="settings-nav-icon">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="settings-nav-copy">
+                      <span className="settings-nav-label">{group.label}</span>
+                      <span className="settings-nav-description">{SETTING_GROUP_DESCRIPTIONS[key]}</span>
+                    </span>
+                    <span className="settings-nav-count">{countText}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
 
-        {/* 主要内容区域 */}
-        <div className="flex-1">
-          <motion.div
+          <motion.section
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className={cn(
-              "rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]",
-              activeTab !== 'migration' && activeTab !== 'storage' && "p-4 sm:p-6 space-y-6"
-            )}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="settings-detail-panel access-surface rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+            aria-label={activeGroup.label}
           >
-            {activeTab === 'migration' ? (
-              <Suspense fallback={
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                </div>
-              }>
-                <div className="p-4 sm:p-6">
-                  <MigrationPage />
-                </div>
-              </Suspense>
-            ) : activeTab === 'storage' ? (
-              <Suspense fallback={
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                </div>
-              }>
-                <div className="p-4 sm:p-6">
-                  <StorageProviderSettings />
-                </div>
-              </Suspense>
-            ) : (
-              <>
-                <div>
-                  <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2 mb-1">
-                    <activeGroup.icon className="w-5 h-5 text-[var(--text-muted)]" />
-                    {activeGroup.label}
-                  </h2>
-                  <p className="text-sm text-[var(--text-muted)]">
-                    管理您的{activeGroup.label}。所有更改需点击右上角保存按钮生效。
-                  </p>
-                </div>
-
-                <div className="space-y-5">
-                  {activeGroup.fields.map((field) => {
-                    const isOn = formData[field.key] === 'true' || formData[field.key] === true;
-                    return (
-                    <div key={field.key} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-[var(--text-secondary)]">
-                          {field.label}
-                        </label>
+            <div className="settings-detail-inner">
+              {isSpecialTab ? (
+                activeTab === 'migration' ? (
+                  <Suspense fallback={
+                    <div className="settings-panel-loading">
+                      <Loader2 className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
+                    </div>
+                  }>
+                    <MigrationPage />
+                  </Suspense>
+                ) : (
+                  <Suspense fallback={
+                    <div className="settings-panel-loading">
+                      <Loader2 className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
+                    </div>
+                  }>
+                    <StorageProviderSettings />
+                  </Suspense>
+                )
+              ) : (
+                <>
+                  <div className="settings-detail-header">
+                    <div className="settings-detail-title-row">
+                      <span className="settings-detail-icon" aria-hidden="true">
+                        <ActiveGroupIcon className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <h2 className="settings-detail-title">{activeGroup.label}</h2>
+                        <p className="settings-detail-description">
+                          {activeGroupDescription} 所有更改需保存后生效。
+                        </p>
                       </div>
+                    </div>
+                    <span className="settings-detail-count">{activeGroupFieldCount} 项配置</span>
+                  </div>
+
+                  <div className="settings-field-list">
+                    {activeGroup.fields.map((field) => {
+                      const isOn = formData[field.key] === 'true' || formData[field.key] === true;
+                      return (
+                        <div key={field.key} className="settings-field-row" data-field-type={field.type}>
+                          <div className="settings-field-copy">
+                            <label className="settings-field-label">
+                              {field.label}
+                            </label>
+                            {field.description && (
+                              <p className="settings-field-description">{field.description}</p>
+                            )}
+                          </div>
+                          <div className="settings-field-control">
 
                       {/* 动态字段渲染 */}
                       {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
@@ -1061,17 +1098,15 @@ export default function SettingsPage() {
                           </div>
                         </div>
                       ) : null}
-
-                      {field.description && (
-                        <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
-                      )}
-                    </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </motion.div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.section>
         </div>
       </div>
 

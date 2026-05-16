@@ -34,6 +34,7 @@ type PostService struct {
 	rdb           *redis.Client
 	aiClient      *AIClient
 	settingSvc    *SiteSettingService
+	accessSvc     *AccessService
 	internalToken string
 }
 
@@ -50,6 +51,11 @@ func NewPostService(
 	internalToken string,
 ) *PostService {
 	return &PostService{repo: repo, catRepo: catRepo, tagRepo: tagRepo, rdb: rdb, aiClient: aiClient, settingSvc: settingSvc, internalToken: internalToken}
+}
+
+// SetAccessService 注入身份共享授权服务，供协作内容读取入口复用统一授权判定。
+func (s *PostService) SetAccessService(accessSvc *AccessService) {
+	s.accessSvc = accessSvc
 }
 
 // --- 管理后台接口 ---
@@ -410,6 +416,56 @@ func (s *PostService) GetPublicBySlug(ctx context.Context, slug, password string
 		}
 		detail.PasswordRequired = false
 	}
+	return detail, nil
+}
+
+// GetSharedForUser 返回当前用户通过直接、团队或角色共享可访问的文章列表。
+func (s *PostService) GetSharedForUser(ctx context.Context, userID int64, legacyRole string, p pagination.Params) (*response.PageResult, error) {
+	if s.accessSvc == nil {
+		return nil, errors.New("内容共享服务未初始化")
+	}
+	ids, total, err := s.accessSvc.ListAccessiblePostIDs(ctx, userID, legacyRole, "VIEW", p.PageNum, p.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.repo.FindPublishedSharedByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	postIDs := make([]int64, len(rows))
+	for i, r := range rows {
+		postIDs[i] = r.ID
+	}
+	tagsMap, _ := s.repo.FindTagsByPostIDs(ctx, postIDs)
+	items := make([]dto.PostListItem, len(rows))
+	for i, r := range rows {
+		items[i] = toListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
+		items[i].PasswordRequired = false
+	}
+	pr := response.NewPageResult(items, total, p.PageNum, p.PageSize)
+	return &pr, nil
+}
+
+// GetSharedByIDForUser 返回当前用户被授权读取的文章详情。共享入口允许读取隐藏文章，
+// 但仍要求文章已发布且未删除；草稿不会通过身份共享端点泄漏。
+func (s *PostService) GetSharedByIDForUser(ctx context.Context, userID int64, legacyRole string, id int64) (*dto.PostDetail, error) {
+	if s.accessSvc == nil {
+		return nil, errors.New("内容共享服务未初始化")
+	}
+	ok, err := s.accessSvc.UserCanAccessContent(ctx, userID, legacyRole, "POST", id, "VIEW")
+	if err != nil || !ok {
+		return nil, err
+	}
+	p, err := s.repo.FindPublishedSharedByID(ctx, id)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	detail, err := s.enrichDetail(ctx, p, false)
+	if err != nil {
+		return nil, err
+	}
+	// 共享入口本身就是登录态 + 授权校验，显式授权用户不再被公开访问密码二次阻断。
+	detail.PasswordRequired = false
 	return detail, nil
 }
 

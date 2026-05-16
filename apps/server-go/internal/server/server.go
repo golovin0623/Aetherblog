@@ -221,6 +221,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	aiClient := service.NewAIClient(s.Config.AI)
 	internalToken := s.Config.AI.InternalServiceToken
 	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc, internalToken)
+	postSvc.SetAccessService(accessSvc)
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
@@ -266,6 +267,11 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	postPublic.POST("/:slug/verify-password", postHandler.VerifyPassword, middleware.RateLimitByIP(s.Redis, "rate:postpwd", 10, time.Minute))
 
 	handler.NewArchiveHandler(postSvc).Mount(public.Group("/archives"))
+
+	// --- 登录用户协作内容路由 ---
+	// 内容共享授权由 /v1/admin/content-shares 管理，这里提供被授权用户的实际消费入口。
+	collaboration := api.Group("/v1/collaboration", authMW, pwdRotated)
+	handler.NewPostHandler(postSvc, nil).MountShared(collaboration.Group("/posts"))
 
 	commentPublic := public.Group("/comments")
 	commentHandler := handler.NewCommentHandler(commentSvc, nil)

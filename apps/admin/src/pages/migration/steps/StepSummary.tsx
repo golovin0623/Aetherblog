@@ -12,13 +12,13 @@ export function StepSummary({ state, onRestart }: Props) {
   const s = state.summary;
   if (state.fatalError && !s) {
     return (
-      <div className="space-y-4 rounded-2xl surface-leaf p-6 sm:p-8 text-center">
+      <div className="migration-result-card migration-result-card-error">
         <XCircle className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-red-400" />
         <h3 className="font-display text-xl sm:text-2xl text-[var(--text-primary)]">导入未完成</h3>
         <p className="text-sm text-[var(--text-secondary)] break-all">{state.fatalError}</p>
         <button
           onClick={onRestart}
-          className="rounded-xl bg-[var(--aurora-1)] px-5 py-2.5 sm:py-2 text-sm text-white active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-primary"
         >
           重新开始
         </button>
@@ -27,7 +27,7 @@ export function StepSummary({ state, onRestart }: Props) {
   }
   if (!s) {
     return (
-      <div className="rounded-2xl surface-leaf p-6 sm:p-8 text-center text-[var(--text-secondary)]">
+      <div className="migration-center-box">
         还在等待服务端 summary…
       </div>
     );
@@ -41,8 +41,8 @@ export function StepSummary({ state, onRestart }: Props) {
     .slice(-10);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <div className="rounded-2xl surface-raised p-5 sm:p-8">
+    <div className="migration-step-stack">
+      <div className="migration-result-card">
         <div className="flex items-center gap-3">
           {ok ? (
             <CheckCircle2 className="h-7 w-7 sm:h-8 sm:w-8 text-emerald-400 shrink-0" />
@@ -53,7 +53,7 @@ export function StepSummary({ state, onRestart }: Props) {
             {ok ? '导入成功' : '部分完成'}
           </h3>
         </div>
-        <div className="mt-5 sm:mt-6 grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-4">
+        <div className="migration-summary-grid">
           <Stat label="新建文章" value={s.createdPosts} />
           <Stat label="覆盖文章" value={s.overwrittenPosts} />
           <Stat label="跳过" value={s.skippedPosts} />
@@ -70,8 +70,8 @@ export function StepSummary({ state, onRestart }: Props) {
       </div>
 
       {createdLinks.length > 0 && (
-        <section className="rounded-2xl surface-leaf p-4 sm:p-6">
-          <div className="mb-3 text-xs uppercase tracking-wide text-[var(--text-muted)]">
+        <section className="migration-entity-card">
+          <div className="migration-section-title">
             最近导入的文章 (点击跳转编辑)
           </div>
           <ul className="space-y-2">
@@ -91,9 +91,9 @@ export function StepSummary({ state, onRestart }: Props) {
       )}
 
       {(s.warnings.length > 0 || s.errors.length > 0) && (
-        <section className="grid gap-3 sm:gap-4 sm:grid-cols-2">
+        <section className="migration-entity-grid">
           {s.warnings.length > 0 && (
-            <div className="rounded-2xl surface-leaf p-4">
+            <div className="migration-entity-card">
               <div className="mb-2 text-xs uppercase tracking-wide text-amber-300">Warnings</div>
               <ul className="space-y-1 text-sm">
                 {s.warnings.map((w, i) => (
@@ -103,7 +103,7 @@ export function StepSummary({ state, onRestart }: Props) {
             </div>
           )}
           {s.errors.length > 0 && (
-            <div className="rounded-2xl surface-leaf p-4">
+            <div className="migration-entity-card">
               <div className="mb-2 text-xs uppercase tracking-wide text-red-300">Errors</div>
               <ul className="space-y-1 text-sm">
                 {s.errors.map((w, i) => (
@@ -115,10 +115,10 @@ export function StepSummary({ state, onRestart }: Props) {
         </section>
       )}
 
-      <div className="flex sm:justify-end gap-3">
+      <div className="migration-wizard-actions">
         <button
           onClick={onRestart}
-          className="w-full sm:w-auto rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"
+          className="migration-button migration-button-secondary"
         >
           再次迁移
         </button>
@@ -129,9 +129,9 @@ export function StepSummary({ state, onRestart }: Props) {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl bg-[var(--bg-secondary)] px-3 sm:px-4 py-2.5 sm:py-3">
-      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-[var(--text-muted)] truncate">{label}</div>
-      <div className="mt-1 font-display text-2xl sm:text-3xl tnum text-[var(--text-primary)]">{value}</div>
+    <div className="migration-summary-card">
+      <div className="migration-summary-label">{label}</div>
+      <div className="migration-summary-value">{value}</div>
     </div>
   );
 }

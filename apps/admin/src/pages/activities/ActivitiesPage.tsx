@@ -1,73 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FileText,
-  MessageSquare,
-  User,
-  Settings,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  Sparkles,
-  Shield,
-  AlertTriangle,
   Clock,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ArrowLeft,
   Search as SearchIcon,
   X,
   Layers,
   Activity as ActivityIcon,
   Tag as TagIcon,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { useDebounce } from '@aetherblog/hooks';
 import { Select, DateRangePicker, type DateRangeValue, type SelectOption } from '@aetherblog/ui';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { activityService, ActivityEvent, ActivityQueryParams } from '@/services/activityService';
+import { activityService, type ActivityQueryParams } from '@/services/activityService';
+import {
+  activityCategoryConfig,
+  activityStatusConfig,
+  activityStatusPillStyle,
+  activityToneStyle,
+  getActivityStatusConfig,
+  getActivityVisual,
+  type ActivityCategoryKey,
+  type ActivityStatusKey,
+} from '@/lib/activityVisuals';
 
-/* -----------------------------------------------------------
- * 事件类别配置 —— 颜色与图标
- * 颜色用 token，避免 hard-code hex
- * ----------------------------------------------------------- */
-const categoryConfig = {
-  post:     { icon: FileText,      label: '文章',  bgColor: 'bg-status-info-light',    borderColor: 'border-status-info-border',    textColor: 'text-status-info' },
-  comment:  { icon: MessageSquare, label: '评论',  bgColor: 'bg-status-success-light', borderColor: 'border-status-success-border', textColor: 'text-status-success' },
-  user:     { icon: User,          label: '用户',  bgColor: 'bg-accent/10',            borderColor: 'border-accent/20',             textColor: 'text-accent' },
-  system:   { icon: Settings,      label: '系统',  bgColor: 'bg-[var(--bg-tertiary)]', borderColor: 'border-[var(--border-default)]', textColor: 'text-[var(--text-muted)]' },
-  friend:   { icon: LinkIcon,      label: '友链',  bgColor: 'bg-pink-500/10',          borderColor: 'border-pink-500/20',           textColor: 'text-pink-400' },
-  media:    { icon: ImageIcon,     label: '媒体',  bgColor: 'bg-cyan-500/10',          borderColor: 'border-cyan-500/20',           textColor: 'text-cyan-400' },
-  ai:       { icon: Sparkles,      label: 'AI',    bgColor: 'bg-primary/10',           borderColor: 'border-primary/20',            textColor: 'text-primary' },
-  security: { icon: Shield,        label: '安全',  bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border', textColor: 'text-status-warning' },
-} as const;
-
-type CategoryKey = keyof typeof categoryConfig;
-
-const statusConfig = {
-  INFO:    { label: '信息', color: 'text-[var(--text-muted)]', bgColor: 'bg-[var(--bg-tertiary)]' },
-  SUCCESS: { label: '成功', color: 'text-status-success',      bgColor: 'bg-status-success-light' },
-  WARNING: { label: '警告', color: 'text-status-warning',      bgColor: 'bg-status-warning-light' },
-  ERROR:   { label: '错误', color: 'text-status-danger',       bgColor: 'bg-status-danger-light' },
-} as const;
-
-type StatusKey = keyof typeof statusConfig;
-
-const categories: Array<'all' | CategoryKey> = [
+const categories: Array<'all' | ActivityCategoryKey> = [
   'all', 'post', 'comment', 'user', 'system', 'friend', 'media', 'ai', 'security',
 ];
 
-const statuses: Array<'all' | StatusKey> = ['all', 'INFO', 'SUCCESS', 'WARNING', 'ERROR'];
+const statuses: Array<'all' | ActivityStatusKey> = ['all', 'INFO', 'SUCCESS', 'WARNING', 'ERROR'];
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
+const PAGE_SIZE_SELECT_OPTIONS: SelectOption[] = PAGE_SIZE_OPTIONS.map((size) => ({
+  value: String(size),
+  label: String(size),
+}));
+
+const activityPanelClass = cn(
+  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-4'
+);
+
+const activityShellClass = cn(
+  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
 
 /**
  * 各分类下的细分事件类型 —— 用于 category 选中后的二级 eventType 下拉。
  * 取值与后端 handler 中实际写入的 EventType 严格一致；
  * 新增事件类型时请同步追加，避免下拉框选中后查不到记录。
  */
-const eventTypeOptions: Record<CategoryKey, Array<{ value: string; label: string }>> = {
+const eventTypeOptions: Record<ActivityCategoryKey, Array<{ value: string; label: string }>> = {
   post: [
     { value: 'post.create',  label: '创建文章' },
     { value: 'post.update',  label: '更新文章' },
@@ -118,11 +112,11 @@ const eventTypeOptions: Record<CategoryKey, Array<{ value: string; label: string
  */
 function categoryChipClass(isSelected: boolean): string {
   return cn(
-    'shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium',
+    'shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-sm font-medium',
     'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
     'border',
     isSelected
-      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent)]'
+      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent),0_6px_18px_-14px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
       : 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] hover:text-[var(--ink-primary)]'
   );
 }
@@ -158,13 +152,16 @@ export default function ActivitiesPage() {
   const [searchParams] = useSearchParams();
   const fromDashboard = searchParams.get('from') === 'dashboard';
 
-  const [selectedCategory, setSelectedCategory] = useState<'all' | CategoryKey>('all');
-  const [selectedStatus, setSelectedStatus] = useState<'all' | StatusKey>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | ActivityCategoryKey>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | ActivityStatusKey>('all');
   const [selectedEventType, setSelectedEventType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRangeValue>({ startTime: '', endTime: '' });
   const [pageNum, setPageNum] = useState(1);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [refreshPulse, setRefreshPulse] = useState(0);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const debouncedSearch = useDebounce(searchTerm.trim(), 350);
 
@@ -187,19 +184,50 @@ export default function ActivitiesPage() {
     endTime: dateRange.endTime || undefined,
     pageNum,
     pageSize,
-  }), [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, dateRange.startTime, dateRange.endTime, pageNum]);
+  }), [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, dateRange.startTime, dateRange.endTime, pageNum, pageSize]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['activities', queryParams],
     queryFn: async () => {
       const res = await activityService.getActivities(queryParams);
-      return res.code === 200 ? res.data : { list: [], total: 0 };
+      return res.code === 200 ? res.data : { list: [], total: 0, pageNum, pageSize, pages: 0 };
     },
+    placeholderData: (previousData) => previousData,
   });
 
   const activities = data?.list || [];
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : (pageNum - 1) * pageSize + 1;
+  const rangeEnd = Math.min(pageNum * pageSize, total);
+  const listRefreshing = (isFetching && !isLoading) || manualRefreshing;
+
+  useEffect(() => {
+    if (pageNum > totalPages) {
+      setPageNum(totalPages);
+    }
+  }, [pageNum, totalPages]);
+
+  const handleRefresh = async () => {
+    if (manualRefreshing) return;
+    setManualRefreshing(true);
+    setRefreshPulse((value) => value + 1);
+    try {
+      await Promise.all([
+        refetch(),
+        new Promise((resolve) => window.setTimeout(resolve, 520)),
+      ]);
+    } finally {
+      setManualRefreshing(false);
+    }
+  };
+
+  const handlePageSizeChange = (nextValue: string) => {
+    const nextSize = Number(nextValue);
+    if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
+    setPageSize(nextSize);
+    setPageNum(1);
+  };
 
   /* -----------------------------------------------------------
    * 激活筛选可视化 —— 把所有非默认值收集为可单独移除的 chip
@@ -207,7 +235,7 @@ export default function ActivitiesPage() {
    * ----------------------------------------------------------- */
   type ActiveChip = {
     key: string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: ComponentType<{ className?: string }>;
     label: string;
     value: string;
     onRemove: () => void;
@@ -215,7 +243,7 @@ export default function ActivitiesPage() {
 
   const activeChips: ActiveChip[] = [];
   if (selectedCategory !== 'all') {
-    const cfg = categoryConfig[selectedCategory];
+    const cfg = activityCategoryConfig[selectedCategory];
     activeChips.push({
       key: 'category',
       icon: cfg.icon,
@@ -229,7 +257,7 @@ export default function ActivitiesPage() {
       key: 'status',
       icon: ActivityIcon,
       label: '状态',
-      value: statusConfig[selectedStatus].label,
+      value: activityStatusConfig[selectedStatus].label,
       onRemove: () => setSelectedStatus('all'),
     });
   }
@@ -273,296 +301,462 @@ export default function ActivitiesPage() {
     setSelectedEventType('');
     setSearchTerm('');
     setDateRange({ startTime: '', endTime: '' });
+    setMobileFiltersOpen(false);
   };
 
-  const lookupCategory = (category: string): typeof categoryConfig.system => {
-    const map = categoryConfig as unknown as Record<string, typeof categoryConfig.system>;
-    return map[category] ?? categoryConfig.system;
-  };
-
-  const getIcon = (category: ActivityEvent['eventCategory'], status: string) => {
-    if (status === 'WARNING' || status === 'ERROR') {
-      return <AlertTriangle className={cn('w-5 h-5', status === 'WARNING' ? 'text-status-warning' : 'text-status-danger')} />;
-    }
-    const config = lookupCategory(category);
-    const Icon = config.icon;
-    return <Icon className={cn('w-5 h-5', config.textColor)} />;
-  };
-
-  const getColors = (category: ActivityEvent['eventCategory'], status: string) => {
-    if (status === 'WARNING') return { bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border' };
-    if (status === 'ERROR')   return { bgColor: 'bg-status-danger-light',  borderColor: 'border-status-danger-border' };
-    return lookupCategory(category);
-  };
-
-  // 当前分类下的事件类型 → Select 选项
+  // 当前分类下的事件类型 → Select 选项；空值代表“不按事件类型过滤”。
   const eventTypeSelectOptions: SelectOption[] = useMemo(() => {
-    if (selectedCategory === 'all') return [];
-    return eventTypeOptions[selectedCategory].map((o) => ({
-      value: o.value,
-      label: o.label,
-      description: o.value,
-    }));
+    const allOption: SelectOption = {
+      value: '',
+      label: '所有事件类型',
+      description: selectedCategory === 'all' ? '不按分类或事件类型过滤' : '不限制当前分类下的事件类型',
+    };
+
+    if (selectedCategory === 'all') return [allOption];
+
+    return [
+      allOption,
+      ...eventTypeOptions[selectedCategory].map((o) => ({
+        value: o.value,
+        label: o.label,
+        description: o.value,
+      })),
+    ];
   }, [selectedCategory]);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {fromDashboard && (
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
-              title="返回仪表盘"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-          )}
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">活动记录</h1>
-            <p className="text-[var(--text-secondary)] mt-1">查看系统中的所有活动事件</p>
-          </div>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
-        >
-          <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
-          刷新
-        </button>
-      </div>
-
-      {/* ===========================================================
-           筛选卡片 —— 三层结构（搜索行 / segmented 行 / 激活筛选行）
-           =========================================================== */}
-      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-4">
-        {/* 行 1 · 主搜索 + 时间 + 事件类型 */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          {/* 搜索栏 */}
-          <div className="md:col-span-5 relative">
-            <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)] pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="搜索标题或描述"
-              aria-label="关键词搜索"
-              className={cn(
-                'w-full h-10 pl-9 pr-9 rounded-lg text-sm',
-                'bg-[var(--bg-leaf)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
-                'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
-                'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-                'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
-                'focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
-                'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="活动记录"
+          description="记录账号、内容、媒体、AI 与安全事件，支持快速回溯。"
+          icon={ActivityIcon}
+          currentLabel={isFetching ? '同步中' : '事件流'}
+          activeSummary={`当前匹配 ${total} 条记录，第 ${pageNum}/${totalPages} 页`}
+          actions={
+            <>
+              {fromDashboard && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard')}
+                  className="admin-module-action-button"
+                  title="返回仪表盘"
+                  aria-label="返回仪表盘"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  返回仪表盘
+                </button>
               )}
-            />
-            {searchTerm && (
               <button
                 type="button"
-                onClick={() => setSearchTerm('')}
-                aria-label="清空搜索"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors"
+                onClick={handleRefresh}
+                disabled={manualRefreshing}
+                className="admin-module-action-button activity-refresh-button"
+                data-refreshing={listRefreshing}
+                title={listRefreshing ? '正在刷新' : '刷新'}
+                aria-label="刷新活动记录"
+                aria-busy={listRefreshing}
               >
-                <X className="w-3.5 h-3.5" />
+                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
+                {listRefreshing ? '刷新中' : '刷新'}
               </button>
-            )}
+            </>
+          }
+        />
+
+        {/* ===========================================================
+             筛选卡片 —— 移动端默认折叠，避免挤占事件流首屏空间
+             =========================================================== */}
+        <div className={cn(activityPanelClass, 'space-y-3 md:space-y-4')}>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 md:grid-cols-12 md:gap-3">
+            <div className="relative md:col-span-5">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="搜索标题或描述"
+                aria-label="关键词搜索"
+                className={cn(
+                  'h-10 w-full rounded-lg pl-9 pr-9 text-sm',
+                  'border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+                  'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                  'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                  'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                  'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] focus:outline-none',
+                  'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                )}
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  aria-label="清空搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen((value) => !value)}
+              className={cn(
+                'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold md:hidden',
+                'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)]',
+                'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                'active:scale-[0.98]',
+                mobileFiltersOpen || activeFilterCount > 0
+                  ? 'border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_2px_color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'
+                  : 'hover:border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+              )}
+              aria-expanded={mobileFiltersOpen}
+              aria-label={mobileFiltersOpen ? '收起筛选项' : '展开筛选项'}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              <span>筛选</span>
+              {activeFilterCount > 0 && (
+                <span className="tnum inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] px-1.5 text-[11px] text-[var(--aurora-1)]">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', mobileFiltersOpen && 'rotate-180')} />
+            </button>
+
+            <div className="hidden md:col-span-4 md:block">
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                placeholder="选择时间范围"
+                ariaLabel="时间范围筛选"
+              />
+            </div>
+
+            <div className="hidden md:col-span-3 md:block">
+              <Select
+                value={selectedEventType}
+                onValueChange={setSelectedEventType}
+                options={eventTypeSelectOptions}
+                placeholder="所有事件类型"
+                prefix={<TagIcon />}
+                ariaLabel="事件类型"
+              />
+            </div>
           </div>
 
-          {/* 时间范围 */}
-          <div className="md:col-span-4">
-            <DateRangePicker
-              value={dateRange}
-              onChange={setDateRange}
-              placeholder="选择时间范围"
-              ariaLabel="时间范围筛选"
-            />
-          </div>
-
-          {/* 事件类型 */}
-          <div className="md:col-span-3">
-            <Select
-              value={selectedEventType}
-              onValueChange={setSelectedEventType}
-              options={eventTypeSelectOptions}
-              placeholder={
-                selectedCategory === 'all'
-                  ? '先选择分类'
-                  : eventTypeSelectOptions.length === 0
-                    ? '该分类暂无细分'
-                    : '所有事件类型'
-              }
-              disabled={selectedCategory === 'all' || eventTypeSelectOptions.length === 0}
-              disabledHint={
-                selectedCategory === 'all'
-                  ? '先选择分类'
-                  : eventTypeSelectOptions.length === 0
-                    ? '该分类暂无细分'
-                    : undefined
-              }
-              prefix={<TagIcon />}
-              ariaLabel="事件类型"
-            />
-          </div>
-        </div>
-
-        {/* 行 2 · 分类 —— 「全部」固定在左，其余 chips 在一行内左右滚动 */}
-        <div className="flex items-center gap-2 min-w-0" role="group" aria-label="分类筛选">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] shrink-0">
-            <Layers className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">分类</span>
-            <span className="sr-only sm:hidden">分类</span>
-          </div>
-
-          {/* 「全部」固定锚点 */}
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={categoryChipClass(selectedCategory === 'all')}
-          >
-            全部
-          </button>
-
-          {/* 视觉分隔 */}
-          <div className="shrink-0 w-px h-5 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" aria-hidden />
-
-          {/* 其余分类 —— 单行横向滚动；右侧渐隐遮罩提示可滑动 */}
           <div
-            className="flex-1 min-w-0 overflow-x-auto overscroll-x-contain no-scrollbar touch-pan-x [scrollbar-width:none] [-webkit-mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)] [mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)]"
-            style={{ WebkitOverflowScrolling: 'touch' }}
+            className={cn(
+              'grid transition-[grid-template-rows,opacity,transform] duration-200 ease-[var(--ease-out)] md:hidden',
+              mobileFiltersOpen
+                ? 'grid-rows-[1fr] translate-y-0 opacity-100'
+                : 'pointer-events-none grid-rows-[0fr] -translate-y-1 opacity-0'
+            )}
+            aria-hidden={!mobileFiltersOpen}
           >
-            <div className="flex items-center gap-1.5 flex-nowrap pr-5">
-              {categories.filter((c): c is CategoryKey => c !== 'all').map((cat) => {
-                const config = categoryConfig[cat];
-                const isSelected = selectedCategory === cat;
-                const Icon = config.icon;
+            <div className="min-h-0 overflow-hidden">
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-2">
+                  <DateRangePicker
+                    value={dateRange}
+                    onChange={setDateRange}
+                    placeholder="选择时间范围"
+                    ariaLabel="时间范围筛选"
+                  />
+                  <Select
+                    value={selectedEventType}
+                    onValueChange={setSelectedEventType}
+                    options={eventTypeSelectOptions}
+                    placeholder="所有事件类型"
+                    prefix={<TagIcon />}
+                    ariaLabel="事件类型"
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_72%,transparent)] p-2.5">
+                  <div className="flex min-w-0 items-center gap-2" role="group" aria-label="分类筛选">
+                    <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      <Layers className="h-3.5 w-3.5" />
+                      <span className="sr-only">分类</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('all')}
+                      className={categoryChipClass(selectedCategory === 'all')}
+                      aria-pressed={selectedCategory === 'all'}
+                    >
+                      全部
+                    </button>
+                    <div className="h-5 w-px shrink-0 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" aria-hidden />
+                    <div
+                      className="no-scrollbar my-[-4px] min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 touch-pan-x [scrollbar-width:none] [-webkit-mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)] [mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)]"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
+                      <div className="flex flex-nowrap items-center gap-1.5 pr-5">
+                        {categories.filter((c): c is ActivityCategoryKey => c !== 'all').map((cat) => {
+                          const config = activityCategoryConfig[cat];
+                          const isSelected = selectedCategory === cat;
+                          const Icon = config.icon;
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => setSelectedCategory(cat)}
+                              className={categoryChipClass(isSelected)}
+                              aria-pressed={isSelected}
+                            >
+                              <Icon
+                                className="h-3.5 w-3.5"
+                                style={{ color: isSelected ? config.tone : 'var(--ink-muted)' }}
+                              />
+                              {config.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      <ActivityIcon className="h-3.5 w-3.5" />
+                      <span className="sr-only">状态</span>
+                    </div>
+                    <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto [scrollbar-width:none]">
+                      <div className="inline-flex items-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
+                        {statuses.map((s) => {
+                          const isSelected = selectedStatus === s;
+                          const cfg = s === 'all' ? null : activityStatusConfig[s];
+                          return (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setSelectedStatus(s)}
+                              className={cn(
+                                'h-7 rounded-full px-3 text-xs font-medium',
+                                'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                                isSelected
+                                  ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+                                  : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                              )}
+                            >
+                              {s === 'all' ? '全部' : cfg?.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden min-w-0 items-center gap-2 md:flex" role="group" aria-label="分类筛选">
+            <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              <Layers className="h-3.5 w-3.5" />
+              <span>分类</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('all')}
+              className={categoryChipClass(selectedCategory === 'all')}
+              aria-pressed={selectedCategory === 'all'}
+            >
+              全部
+            </button>
+
+            <div className="h-5 w-px shrink-0 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" aria-hidden />
+
+            <div
+              className="no-scrollbar my-[-4px] min-w-0 flex-1 overflow-x-auto overscroll-x-contain py-1 touch-pan-x [scrollbar-width:none] [-webkit-mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)] [mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)]"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              <div className="flex flex-nowrap items-center gap-1.5 pr-5">
+                {categories.filter((c): c is ActivityCategoryKey => c !== 'all').map((cat) => {
+                  const config = activityCategoryConfig[cat];
+                  const isSelected = selectedCategory === cat;
+                  const Icon = config.icon;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={categoryChipClass(isSelected)}
+                      aria-pressed={isSelected}
+                    >
+                      <Icon
+                        className="h-3.5 w-3.5"
+                        style={{ color: isSelected ? config.tone : 'var(--ink-muted)' }}
+                      />
+                      {config.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
+            <div className="flex min-w-[60px] items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              <ActivityIcon className="h-3.5 w-3.5" />
+              <span>状态</span>
+            </div>
+            <div className="inline-flex items-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
+              {statuses.map((s) => {
+                const isSelected = selectedStatus === s;
+                const cfg = s === 'all' ? null : activityStatusConfig[s];
                 return (
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={categoryChipClass(isSelected)}
+                    key={s}
+                    type="button"
+                    onClick={() => setSelectedStatus(s)}
+                    className={cn(
+                      'h-7 rounded-full px-3 text-xs font-medium',
+                      'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                      isSelected
+                        ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+                        : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                    )}
                   >
-                    <Icon className={cn('w-3.5 h-3.5', isSelected ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} />
-                    {config.label}
+                    {s === 'all' ? '全部' : cfg?.label}
                   </button>
                 );
               })}
             </div>
           </div>
-        </div>
 
-        {/* 行 3 · 状态 segmented chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] min-w-[60px]">
-            <ActivityIcon className="w-3.5 h-3.5" />
-            <span>状态</span>
-          </div>
-          <div className="inline-flex items-center p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-            {statuses.map((s) => {
-              const isSelected = selectedStatus === s;
-              const cfg = s === 'all' ? null : statusConfig[s];
-              return (
-                <button
-                  key={s}
-                  onClick={() => setSelectedStatus(s)}
-                  className={cn(
-                    'h-7 px-3 rounded-full text-xs font-medium',
-                    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-                    isSelected
-                      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
-                      : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
-                  )}
-                >
-                  {s === 'all' ? '全部' : cfg?.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 行 4 · 已激活筛选 chips（条件渲染） */}
-        <AnimatePresence initial={false}>
-          {activeFilterCount > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-              animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
-              exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
-              transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <div className="pt-3 pb-0.5 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
-                <span className="tnum text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-                  已应用 {activeFilterCount}
-                </span>
-                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-                  {activeChips.map((chip) => {
-                    const Icon = chip.icon;
-                    return (
-                      <motion.span
-                        key={chip.key}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                        className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-xs"
-                      >
-                        <Icon className="w-3 h-3 text-[var(--aurora-1)] shrink-0" />
-                        <span className="text-[var(--ink-muted)] font-mono">{chip.label}</span>
-                        <span className="text-[var(--ink-primary)] font-medium max-w-[180px] truncate">
-                          {chip.value}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={chip.onRemove}
-                          aria-label={`移除${chip.label}筛选`}
-                          className="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+          <AnimatePresence initial={false}>
+            {activeFilterCount > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="flex items-center gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-0.5 pt-2 md:flex-wrap md:pt-3">
+                  <span className="tnum shrink-0 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    已应用 {activeFilterCount}
+                  </span>
+                  <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5 md:flex-wrap md:overflow-visible md:py-0">
+                    {activeChips.map((chip) => {
+                      const Icon = chip.icon;
+                      return (
+                        <motion.span
+                          key={chip.key}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] pl-2.5 pr-1 text-xs"
                         >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </motion.span>
-                    );
-                  })}
+                          <Icon className="h-3 w-3 shrink-0 text-[var(--aurora-1)]" />
+                          <span className="font-mono text-[var(--ink-muted)]">{chip.label}</span>
+                          <span className="max-w-[140px] truncate font-medium text-[var(--ink-primary)] md:max-w-[180px]">
+                            {chip.value}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={chip.onRemove}
+                            aria-label={`移除${chip.label}筛选`}
+                            className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)]"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </motion.span>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] hover:text-[var(--signal-danger)]"
+                  >
+                    <X className="h-3 w-3" />
+                    <span className="hidden sm:inline">全部清空</span>
+                    <span className="sm:hidden">清空</span>
+                  </button>
                 </div>
-                <button
-                  onClick={resetFilters}
-                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] hover:text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                  全部清空
-                </button>
-              </div>
-              <div className="mt-2 text-xs text-[var(--ink-muted)]">
-                匹配 <span className="text-[var(--ink-primary)] font-medium tnum">{total}</span> 条记录
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+                <div className="mt-1.5 text-xs text-[var(--ink-muted)] md:mt-2">
+                  匹配 <span className="tnum font-medium text-[var(--ink-primary)]">{total}</span> 条记录
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-      {/* 活动列表 */}
-      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-subtle)] overflow-hidden">
+        {/* 活动列表 */}
+        <div className={cn(activityShellClass, 'relative')} data-refreshing={listRefreshing}>
+          <AnimatePresence>
+            {listRefreshing && (
+              <>
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-[3.65rem] z-20 h-px overflow-hidden bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <motion.span
+                    className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-transparent via-[var(--aurora-1)] to-transparent"
+                    initial={{ x: '-100%' }}
+                    animate={{ x: '220%' }}
+                    transition={{ duration: 1.05, repeat: Infinity, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                </motion.div>
+                <motion.div
+                  className="pointer-events-none absolute right-4 top-[4.35rem] z-20 inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_88%,transparent)] px-2.5 text-xs font-semibold text-[var(--ink-secondary)] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.45)] backdrop-blur"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--aurora-1)]" />
+                  刷新中
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                <ActivityIcon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">事件流</p>
+                <p className="text-xs text-[var(--ink-muted)]">按时间倒序记录系统操作与安全状态</p>
+              </div>
+            </div>
+            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
+              {isLoading ? '加载中' : listRefreshing ? '刷新中' : `${activities.length}/${total}`}
+            </span>
+          </div>
+
         {isLoading ? (
           <div className="p-8 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-start gap-4 animate-pulse">
-                <div className="w-10 h-10 rounded-full bg-[var(--bg-secondary)]" />
+            {[...Array(Math.min(pageSize, 10))].map((_, i) => (
+              <div key={i} className="flex animate-pulse items-start gap-4">
+                <div className="h-11 w-11 rounded-2xl bg-[var(--bg-secondary)]" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 w-3/4 bg-[var(--bg-secondary)] rounded" />
-                  <div className="h-3 w-1/2 bg-[var(--bg-secondary)] rounded" />
+                  <div className="h-4 w-3/4 rounded bg-[var(--bg-secondary)]" />
+                  <div className="h-3 w-1/2 rounded bg-[var(--bg-secondary)]" />
                 </div>
               </div>
             ))}
           </div>
         ) : activities.length === 0 ? (
           <div className="py-16 text-center">
-            <Clock className="w-16 h-16 mx-auto text-[var(--text-muted)] opacity-50 mb-4" />
-            <p className="text-[var(--text-secondary)]">
+            <Clock className="mx-auto mb-4 h-16 w-16 text-[var(--ink-muted)] opacity-50" />
+            <p className="text-[var(--ink-secondary)]">
               {activeFilterCount > 0 ? '当前筛选条件下暂无活动记录' : '暂无活动记录'}
             </p>
             {activeFilterCount > 0 && (
               <button
                 onClick={resetFilters}
-                className="mt-3 text-sm text-primary hover:underline"
+                className="mt-3 text-sm font-semibold text-[var(--aurora-1)] hover:underline"
               >
                 清空筛选条件
               </button>
@@ -571,16 +765,17 @@ export default function ActivitiesPage() {
         ) : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={`${selectedCategory}-${selectedStatus}-${selectedEventType}-${debouncedSearch}-${dateRange.startTime}-${dateRange.endTime}-${pageNum}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              key={`${selectedCategory}-${selectedStatus}-${selectedEventType}-${debouncedSearch}-${dateRange.startTime}-${dateRange.endTime}-${pageNum}-${pageSize}-${refreshPulse}`}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: listRefreshing ? 0.62 : 1, y: listRefreshing ? 2 : 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="divide-y divide-[var(--border-subtle)]"
             >
               {activities.map((item, index) => {
-                const colors = getColors(item.eventCategory, item.status);
-                const statusCfg = statusConfig[item.status];
+                const visual = getActivityVisual(item.eventCategory, item.status);
+                const Icon = visual.icon;
+                const statusCfg = getActivityStatusConfig(item.status);
 
                 return (
                   <motion.div
@@ -588,48 +783,58 @@ export default function ActivitiesPage() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.03 }}
-                    className="p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
+                    className="group p-4 transition-colors hover:bg-[var(--bg-card-hover)]"
                   >
                     <div className="flex items-start gap-4">
                       {/* 图标 */}
-                      <div className={cn(
-                        'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0',
-                        colors.bgColor,
-                        'border',
-                        colors.borderColor
-                      )}>
-                        {getIcon(item.eventCategory, item.status)}
+                      <div
+                        className={cn(
+                          'w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0',
+                          'border bg-[color-mix(in_oklch,var(--activity-tone)_12%,transparent)]',
+                          'border-[color-mix(in_oklch,var(--activity-tone)_30%,transparent)]',
+                          'text-[var(--activity-tone)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--activity-tone)_18%,transparent)]',
+                          'transition-transform duration-200 group-hover:scale-[1.03]'
+                        )}
+                        style={activityToneStyle(visual.tone)}
+                        data-activity-icon
+                        data-category={item.eventCategory}
+                        data-status={item.status}
+                      >
+                        <Icon className="w-5 h-5" />
                       </div>
 
                       {/* 内容 */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
-                            <p className="text-[var(--text-primary)] font-medium">{item.title}</p>
+                            <p className="font-medium text-[var(--ink-primary)]">{item.title}</p>
                             {item.description && (
-                              <p className="text-sm text-[var(--text-secondary)] mt-1 line-clamp-2">
+                              <p className="mt-1 line-clamp-2 text-sm text-[var(--ink-secondary)]">
                                 {item.description}
                               </p>
                             )}
-                            <div className="flex items-center gap-3 mt-2 text-xs text-[var(--text-muted)] flex-wrap">
-                              <span className="font-mono text-[var(--text-muted)]">{item.eventType}</span>
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-muted)]">
+                              <span className="font-mono text-[var(--ink-muted)]">{item.eventType}</span>
                               {item.user && (
                                 <span>
-                                  操作者: <span className="text-[var(--text-secondary)]">{item.user.nickname || item.user.username}</span>
+                                  操作者: <span className="text-[var(--ink-secondary)]">{item.user.nickname || item.user.username}</span>
                                 </span>
                               )}
                               {item.ip && (
                                 <span>IP: {item.ip}</span>
                               )}
-                              <span className={cn('px-1.5 py-0.5 rounded text-xs', statusCfg.bgColor, statusCfg.color)}>
+                              <span
+                                className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium"
+                                style={activityStatusPillStyle(statusCfg.tone)}
+                              >
                                 {statusCfg.label}
                               </span>
                             </div>
                           </div>
 
                           {/* 时间 */}
-                          <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] flex-shrink-0">
-                            <Clock className="w-3 h-3" />
+                          <div className="flex flex-shrink-0 items-center gap-1.5 text-xs text-[var(--ink-muted)]">
+                            <Clock className="h-3 w-3" />
                             <span>
                               {formatDistanceToNow(new Date(item.createdAt), {
                                 addSuffix: true,
@@ -646,35 +851,57 @@ export default function ActivitiesPage() {
             </motion.div>
           </AnimatePresence>
         )}
-      </div>
 
-      {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-[var(--text-muted)]">
-            共 {total} 条记录，第 {pageNum}/{totalPages} 页
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPageNum(p => Math.max(1, p - 1))}
-              disabled={pageNum <= 1}
-              className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 text-sm text-[var(--text-secondary)]">
-              {pageNum}
-            </span>
-            <button
-              onClick={() => setPageNum(p => Math.min(totalPages, p + 1))}
-              disabled={pageNum >= totalPages}
-              className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+          {(total > 0 || totalPages > 1) && (
+            <div className="flex flex-col gap-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="tnum text-xs font-semibold text-[var(--ink-muted)]">
+                显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
+                <span className="mx-2 text-[var(--ink-subtle)]">/</span>
+                共 <span className="text-[var(--ink-secondary)]">{total}</span> 条
+                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
+                第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> / {totalPages} 页
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
+                  <span>每页</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={handlePageSizeChange}
+                    options={PAGE_SIZE_SELECT_OPTIONS}
+                    size="sm"
+                    fullWidth={false}
+                    ariaLabel="每页条数"
+                    className="!h-8 w-[76px] !rounded-lg !px-3 !font-mono !text-xs"
+                  />
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPageNum((p) => Math.max(1, p - 1))}
+                    disabled={pageNum <= 1}
+                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="上一页"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="tnum min-w-8 px-2 text-center text-sm font-semibold text-[var(--ink-secondary)]">
+                    {pageNum}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPageNum((p) => Math.min(totalPages, p + 1))}
+                    disabled={pageNum >= totalPages}
+                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="下一页"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+      </div>
+      </div>
     </div>
   );
 }

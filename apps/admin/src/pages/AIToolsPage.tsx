@@ -422,13 +422,13 @@ export default function AIToolsPage() {
   ];
 
   return (
-    <div className="ai-tools-page h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6rem)] overflow-hidden flex flex-col md:flex-row gap-3 md:gap-5 relative isolate">
+    <div className="ai-tools-page relative isolate flex min-h-[calc(100dvh-6rem)] flex-col gap-3 overflow-visible md:h-[calc(100dvh-6rem)] md:min-h-0 md:flex-row md:gap-5 md:overflow-hidden">
       {/* 移动端：顶部工具标签栏 */}
-      <div className="ai-tools-mobile-rail md:hidden sticky top-0 z-40 flex items-center h-[68px] pt-[env(safe-area-inset-top)] overflow-hidden flex-shrink-0 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
+      <div className="ai-tools-mobile-rail sticky top-0 z-40 flex h-14 flex-shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-sm md:hidden">
         {/* 菜单按钮 - 固定在左侧 */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex-shrink-0 w-12 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex h-full w-11 flex-shrink-0 items-center justify-center border-r border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
           aria-label="打开工具导航"
         >
           <Menu className="w-6 h-6" />
@@ -448,14 +448,14 @@ export default function AIToolsPage() {
                   data-tool-id={tool.code}
                   onClick={() => handleMobileToolSelect(tool.code)}
                   className={cn(
-                    "flex-shrink-0 snap-start flex items-center justify-center w-11 h-11 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95",
+                    "flex h-10 w-10 flex-shrink-0 snap-start items-center justify-center rounded-xl border text-xs font-bold shadow-sm transition-all active:scale-95",
                     isSelected
                       ? "bg-[var(--ink-primary)] text-[var(--bg-void)] border-[var(--ink-primary)] shadow-[0_12px_28px_-18px_color-mix(in_oklch,var(--aurora-1)_70%,black)]"
                       : "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
                   )}
                   title={tool.name}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="h-5 w-5" />
                 </button>
               );
             })}
@@ -478,7 +478,7 @@ export default function AIToolsPage() {
             setEditingTool(null);
             setShowToolModal(true);
           }}
-          className="flex-shrink-0 w-12 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
+          className="flex h-full w-11 flex-shrink-0 items-center justify-center border-l border-[var(--border-subtle)] text-[var(--text-primary)] transition-colors active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
           aria-label="新建工具"
         >
           <Plus className="w-6 h-6" />
@@ -727,7 +727,7 @@ export default function AIToolsPage() {
       </div>
 
       {/* 主内容区：工作台 */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="min-w-0 overflow-visible md:min-h-0 md:flex-1 md:overflow-hidden">
         <AIToolsWorkspace
           selectedTool={{
             id: selectedTool.code,

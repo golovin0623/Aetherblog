@@ -98,7 +98,7 @@ export function JwtRotationCard({ className }: { className?: string }) {
       transition={{ duration: 0.4 }}
       className={`surface-leaf surface-admin-panel p-5 sm:p-6 ${className || ''}`}
     >
-      <div className="flex items-start justify-between gap-3 sm:gap-4 mb-5">
+      <div className="flex items-start gap-3 sm:gap-4 mb-5">
         <div className="flex items-start gap-3 min-w-0">
           <div className="p-2 rounded-xl bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] shrink-0">
             <ShieldCheck className="w-5 h-5 text-[var(--aurora-1)]" />
@@ -112,22 +112,6 @@ export function JwtRotationCard({ className }: { className?: string }) {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setConfirmOpen(true)}
-          disabled={loading || rotating}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-[0.18em] rounded-lg shrink-0
-            border border-[var(--border-subtle)]
-            bg-transparent text-[var(--ink-secondary)]
-            hover:text-[var(--signal-warn)]
-            hover:border-[color-mix(in_oklch,var(--signal-warn)_32%,transparent)]
-            hover:bg-[color-mix(in_oklch,var(--signal-warn)_8%,transparent)]
-            transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--signal-warn)_40%,transparent)]"
-        >
-          {rotating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
-          {rotating ? '轮换中' : '立即轮换'}
-        </button>
       </div>
 
       {loading ? (
@@ -178,6 +162,26 @@ export function JwtRotationCard({ className }: { className?: string }) {
           未能获取 JWT 元数据,请检查后端日志。
         </div>
       )}
+
+      <div className="mt-5 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pt-4">
+        <button
+          type="button"
+          onClick={() => setConfirmOpen(true)}
+          disabled={loading || rotating}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border
+            border-[color-mix(in_oklch,var(--signal-warn)_26%,var(--border-subtle))]
+            bg-[color-mix(in_oklch,var(--signal-warn)_8%,var(--bg-leaf))]
+            px-4 py-2.5 text-sm font-semibold text-[var(--ink-primary)]
+            shadow-[inset_0_1px_0_rgb(from_var(--bg-raised)_r_g_b_/_0.48)]
+            transition-all hover:-translate-y-0.5 hover:border-[color-mix(in_oklch,var(--signal-warn)_42%,transparent)]
+            hover:bg-[color-mix(in_oklch,var(--signal-warn)_12%,var(--bg-leaf))]
+            disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--signal-warn)_40%,transparent)]"
+        >
+          {rotating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
+          {rotating ? '轮换中' : '立即轮换 JWT 签名密钥'}
+        </button>
+      </div>
 
       <ConfirmModal
         isOpen={confirmOpen}

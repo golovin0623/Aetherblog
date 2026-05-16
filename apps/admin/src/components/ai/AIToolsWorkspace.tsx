@@ -635,16 +635,16 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 `;
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3 md:gap-4 animate-in fade-in duration-500 overflow-y-auto 2xl:overflow-hidden">
+    <div className="flex min-h-0 flex-col gap-3 overflow-visible animate-in fade-in duration-500 md:h-full md:gap-4 md:overflow-y-auto 2xl:overflow-hidden">
       {/* 注入 Markdown 样式 */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
-      <section className="ai-workspace-brief surface-leaf surface-admin-panel relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] p-3 md:p-4">
-        <div className="flex flex-col gap-3">
+      <section className="ai-workspace-brief surface-leaf surface-admin-panel relative shrink-0 overflow-hidden rounded-xl border border-[var(--border-subtle)] p-2.5 sm:rounded-2xl sm:p-3 md:p-4">
+        <div className="flex flex-col gap-2 sm:gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-sm">
-                <Workflow className="h-5 w-5" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-sm md:h-11 md:w-11">
+                <Workflow className="h-4 w-4 md:h-5 md:w-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
@@ -655,17 +655,17 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   <span className="text-[var(--text-muted)]/50">/</span>
                   <span>{selectedTool.applyTarget || '文章应用'}</span>
                 </div>
-                <h2 className="mt-1 truncate text-lg md:text-xl font-bold text-[var(--text-primary)]">
+                <h2 className="mt-0.5 truncate text-base font-bold text-[var(--text-primary)] md:mt-1 md:text-xl">
                   {selectedTool.label}
                 </h2>
-                <p className="mt-0.5 line-clamp-2 text-xs md:text-sm leading-relaxed text-[var(--text-muted)]">
+                <p className="mt-0.5 hidden text-xs leading-relaxed text-[var(--text-muted)] sm:line-clamp-2 sm:block md:text-sm">
                   {selectedTool.desc}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="hidden grid-cols-2 gap-2 sm:grid sm:grid-cols-4">
             {workflowSignals.map((item) => {
               const Icon = item.icon;
               return (
@@ -692,7 +692,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
       </section>
 
-      <div className="flex flex-col gap-4 2xl:grid 2xl:min-h-0 2xl:flex-1 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:gap-5 2xl:overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-4 2xl:grid 2xl:min-h-0 2xl:flex-1 2xl:shrink 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:gap-5 2xl:overflow-hidden">
       {/* 输入列（左侧） */}
       <div className="surface-leaf surface-admin-panel flex flex-col min-h-[50vh] 2xl:min-h-0 2xl:h-full rounded-2xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative overflow-hidden">
         {/* 顶部光泽效果 */}

@@ -846,6 +846,33 @@ wait_for_blog_http() {
     wait_for_http "http://localhost:3000/agent/workspace" "博客前台灵境" "$log_file" || return 1
 }
 
+start_detached_process() {
+    local cwd=$1
+    local log_path=$2
+    shift 2
+
+    "$PYTHON_BIN" - "$cwd" "$log_path" "$@" <<'PY'
+import subprocess
+import sys
+
+cwd = sys.argv[1]
+log_path = sys.argv[2]
+cmd = sys.argv[3:]
+
+with open(log_path, "ab", buffering=0) as log:
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+print(proc.pid)
+PY
+}
+
 # 确保 Docker 已运行 (需要 Docker 时使用)
 ensure_docker_running() {
     if docker info &> /dev/null; then
@@ -1064,8 +1091,8 @@ start_backend() {
             export AETHERBLOG_LOG_PATH="$LOG_DIR"
 
             echo -e "${BLUE}   启动后端服务...${NC}"
-            nohup "$BACKEND_DIR/bin/server" > "$LOG_DIR/backend.log" 2>&1 &
-            local backend_pid=$!
+            local backend_pid
+            backend_pid=$(start_detached_process "$BACKEND_DIR" "$LOG_DIR/backend.log" "$BACKEND_DIR/bin/server")
             echo $backend_pid > "$PID_DIR/backend.pid"
 
             if ! wait_for_process "$backend_pid" "后端服务" "$LOG_DIR/backend.log"; then
@@ -1175,8 +1202,8 @@ start_ai_service() {
             export AI_INTERNAL_SERVICE_TOKEN="$AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN"
         fi
 
-        nohup .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "$LOG_DIR/ai-service.log" 2>&1 &
-        local ai_pid=$!
+        local ai_pid
+        ai_pid=$(start_detached_process "$AI_DIR" "$LOG_DIR/ai-service.log" ".venv/bin/uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
         echo $ai_pid > "$PID_DIR/ai-service.pid"
         sleep 1
 
@@ -1237,26 +1264,7 @@ start_blog() {
         # 安装依赖并启动
         pnpm install --silent
         local blog_pid
-        blog_pid=$("$PYTHON_BIN" - "$BLOG_DIR" "$LOG_DIR/blog.log" <<'PY'
-import subprocess
-import sys
-
-cwd = sys.argv[1]
-log_path = sys.argv[2]
-
-with open(log_path, "ab", buffering=0) as log:
-    proc = subprocess.Popen(
-        ["./node_modules/.bin/next", "dev", "--port", "3000", "--turbopack"],
-        cwd=cwd,
-        stdin=subprocess.DEVNULL,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-
-print(proc.pid)
-PY
-)
+        blog_pid=$(start_detached_process "$BLOG_DIR" "$LOG_DIR/blog.log" "./node_modules/.bin/next" "dev" "--port" "3000" "--turbopack")
         echo $blog_pid > "$PID_DIR/blog.pid"
 
         if ! wait_for_process "$blog_pid" "博客前台" "$LOG_DIR/blog.log"; then
@@ -1305,8 +1313,8 @@ start_admin() {
 
         # 安装依赖并启动
         pnpm install --silent
-        nohup pnpm dev < /dev/null > "$LOG_DIR/admin.log" 2>&1 &
-        local admin_pid=$!
+        local admin_pid
+        admin_pid=$(start_detached_process "$ADMIN_DIR" "$LOG_DIR/admin.log" "./node_modules/.bin/vite")
         echo $admin_pid > "$PID_DIR/admin.pid"
 
         if ! wait_for_process "$admin_pid" "管理后台" "$LOG_DIR/admin.log"; then
