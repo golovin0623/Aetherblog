@@ -104,10 +104,10 @@ func (r *MediaTagRepo) IncrementUsageCount(ctx context.Context, tagID int64, del
 	return err
 }
 
-// CountFileTag 查询 media_file_tags 关联表中指定文件与标签的关联是否存在。
-// 返回 1 表示关联存在，返回 0 表示不存在。
-func (r *MediaTagRepo) CountFileTag(ctx context.Context, fileID int64, tagID int64) (int, error) {
-	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2`, fileID, tagID).Scan(&n)
-	return n, err
+// ExistsFileTag 查询 media_file_tags 关联表中指定文件与标签的关联是否存在。
+// 返回 true 表示关联存在，返回 false 表示不存在。
+func (r *MediaTagRepo) ExistsFileTag(ctx context.Context, fileID int64, tagID int64) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2)`, fileID, tagID)
+	return exists, err
 }

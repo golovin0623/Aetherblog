@@ -97,11 +97,11 @@ func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.
 func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []int64, taggedBy *int64) error {
 	for _, tagID := range tagIDs {
 		// 检查关联是否已存在，避免重复打标
-		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
+		exists, err := s.repo.ExistsFileTag(ctx, fileID, tagID)
 		if err != nil {
 			return err
 		}
-		if n > 0 {
+		if exists {
 			continue
 		}
 		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
@@ -118,11 +118,11 @@ func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []in
 // UntagFile 从媒体文件上移除指定标签，并将该标签的 usage_count 减 1。
 func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
 	// 先确认关联存在
-	n, err := s.repo.CountFileTag(ctx, fileID, tagID)
+	exists, err := s.repo.ExistsFileTag(ctx, fileID, tagID)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
+	if !exists {
 		return nil
 	}
 	if err := s.repo.UntagFile(ctx, fileID, tagID); err != nil {
@@ -136,11 +136,11 @@ func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int
 func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID int64, taggedBy *int64) error {
 	for _, fileID := range fileIDs {
 		// 检查关联是否已存在
-		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
+		exists, err := s.repo.ExistsFileTag(ctx, fileID, tagID)
 		if err != nil {
 			return err
 		}
-		if n > 0 {
+		if exists {
 			continue
 		}
 		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
