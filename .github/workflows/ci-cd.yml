@@ -34,6 +34,7 @@ concurrency:
 # 防止被篡改的 Action 偷偷利用 GITHUB_TOKEN 默认的读写权限。
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
