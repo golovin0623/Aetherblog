@@ -4,7 +4,7 @@
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect, DragEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, type DragEvent, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -14,22 +14,14 @@ import {
   List,
   Filter,
   Trash2,
-  Check,
   X,
-  Copy,
-  Download,
   Link2,
-  ChevronRight,
   RefreshCw,
-  Eye,
   Image as ImageIcon,
   Video as VideoIcon,
   Music as MusicIcon,
   FileText,
-  File,
   Upload,
-  Loader2,
-  CheckCircle2,
   FolderInput,
   Keyboard,
   FolderOpen,
@@ -47,22 +39,21 @@ import { MediaList } from './media/components/MediaList';
 import { MediaDetail } from './media/components/MediaDetail';
 import { MediaViewer } from './media/components/MediaViewer';
 import { UploadProgress } from './media/components/UploadProgress';
-import { MediaGridSkeleton } from './media/components/MediaGridSkeleton';
 import { FolderTree } from './media/components/FolderTree';
 import { FolderDialog } from './media/components/FolderDialog';
 import { MoveDialog } from './media/components/MoveDialog';
-import { TagFilterBar } from './media/components/TagFilterBar';
 import { VirtualMediaGrid } from './media/components/VirtualMediaGrid';
 import { KeyboardShortcutsPanel } from './media/components/KeyboardShortcutsPanel';
 import { TrashDialog } from './media/components/TrashDialog';
 import { SyncDialog } from './media/components/SyncDialog';
-import { MediaGridSkeleton as MediaSkeletonGrid, MediaListSkeleton, FolderTreeSkeleton } from '@/components/skeletons/MediaSkeleton';
+import { MediaGridSkeleton as MediaSkeletonGrid, MediaListSkeleton } from '@/components/skeletons/MediaSkeleton';
 import { useMediaKeyboardShortcuts } from '@/hooks/useMediaKeyboardShortcuts';
 import { Pagination } from '@/components/common/Pagination';
 import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import type { MediaFolder } from '@aetherblog/types';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 
 type PendingConfirm =
   | { kind: 'trash-file'; id: number; onSuccess?: () => void }
@@ -71,9 +62,60 @@ type PendingConfirm =
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
+type ActiveChip = {
+  key: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  onRemove: () => void;
+};
 
 function hasActiveMediaSync(items?: MediaItem[]): boolean {
   return items?.some((item) => item.syncStatus === 'PENDING' || item.syncStatus === 'SYNCING') ?? false;
+}
+
+const mediaPanelClass = cn(
+  'media-neutral-surface access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-3.5 lg:p-4'
+);
+
+const mediaShellClass = cn(
+  'media-neutral-surface access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
+
+function mediaChipClass(isSelected: boolean, compactOnMobile = false): string {
+  return cn(
+    'relative z-0 inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full text-xs font-medium',
+    'transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+    compactOnMobile ? 'h-11 w-11 gap-0 px-0 sm:h-7 sm:w-auto sm:gap-1.5 sm:px-3' : 'h-7 gap-1.5 px-3',
+    isSelected ? 'text-[var(--ink-primary)]' : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+  );
+}
+
+function SegmentThumb({ layoutId }: { layoutId: string }) {
+  return (
+    <motion.span
+      layoutId={layoutId}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-0 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+      transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.55 }}
+    />
+  );
+}
+
+function utilityButtonClass(tone: 'default' | 'danger' | 'primary' = 'default'): string {
+  return cn(
+    'inline-flex h-11 w-11 shrink-0 items-center justify-center gap-0 rounded-lg border p-0 text-xs font-semibold',
+    'transition-[border-color,background-color,color,transform] duration-[var(--dur-quick)] ease-[var(--ease-out)] active:translate-y-px',
+    'sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3',
+    tone === 'primary' &&
+      'border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]',
+    tone === 'danger' &&
+      'border-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)]',
+    tone === 'default' &&
+      'border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:text-[var(--ink-primary)]'
+  );
 }
 
 /**
@@ -153,7 +195,7 @@ export default function MediaPage() {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   // 文件夹面板可调整宽度
-  const [folderPanelWidth, setFolderPanelWidth] = useState(288);
+  const [folderPanelWidth, setFolderPanelWidth] = useState(280);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -172,7 +214,7 @@ export default function MediaPage() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeRef.current) return;
       const delta = e.clientX - resizeRef.current.startX;
-      const newWidth = Math.min(Math.max(resizeRef.current.startWidth + delta, 256), 520);
+      const newWidth = Math.min(Math.max(resizeRef.current.startWidth + delta, 248), 440);
       setFolderPanelWidth(newWidth);
     };
 
@@ -222,7 +264,7 @@ export default function MediaPage() {
     folderId: currentFolderId, // @ref Phase 1: 传递当前文件夹ID
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['media', 'list', params],
     queryFn: async () => {
       const res = await mediaService.getList(params);
@@ -232,7 +274,7 @@ export default function MediaPage() {
   });
 
   // @ref 回收站: 获取回收站文件数量
-  const { data: trashCountData } = useQuery({
+  const { data: trashCountData, refetch: refetchTrashCount } = useQuery({
     queryKey: ['media', 'trash', 'count'],
     queryFn: async () => {
       const res = await mediaService.getTrashCount();
@@ -240,6 +282,8 @@ export default function MediaPage() {
     },
   });
   const trashCount = trashCountData || 0;
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const listRefreshing = (isFetching && !isLoading) || manualRefreshing;
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => mediaService.delete(id),
@@ -268,6 +312,91 @@ export default function MediaPage() {
 
   const currentItems = data?.list || [];
   const currentMedia = currentItems.find((item: any) => item.id === selectedMedia);
+  const totalMedia = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalMedia / 20));
+  const activeUploadCount = uploadingFiles.filter((file) =>
+    file.status === 'queued' || file.status === 'uploading' || file.status === 'processing'
+  ).length;
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const handleRefresh = useCallback(async () => {
+    if (manualRefreshing) return;
+    setManualRefreshing(true);
+    try {
+      await Promise.all([
+        refetch(),
+        refetchTrashCount(),
+        new Promise((resolve) => window.setTimeout(resolve, 260)),
+      ]);
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [manualRefreshing, refetch, refetchTrashCount]);
+
+  const handleSearchChange = useCallback((nextValue: string) => {
+    setSearchQuery(nextValue);
+    setPage(1);
+  }, []);
+
+  const handleFilterTypeChange = useCallback((nextType: FilterType) => {
+    setFilterType(nextType);
+    setPage(1);
+  }, []);
+
+  const handleFolderSelect = useCallback((id: number | undefined) => {
+    setCurrentFolderId(id);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilterType('ALL');
+    setSearchQuery('');
+    setSelectedTagIds([]);
+    handleFolderSelect(undefined);
+  }, [handleFolderSelect]);
+
+  const activeChips: ActiveChip[] = [];
+  if (filterType !== 'ALL') {
+    const option = typeOptions.find((item) => item.value === filterType);
+    activeChips.push({
+      key: 'type',
+      icon: option?.icon ?? Filter,
+      label: '类型',
+      value: option?.label ?? filterType,
+      onRemove: () => handleFilterTypeChange('ALL'),
+    });
+  }
+  if (debouncedSearch.trim()) {
+    activeChips.push({
+      key: 'search',
+      icon: Search,
+      label: '关键词',
+      value: debouncedSearch.trim(),
+      onRemove: () => handleSearchChange(''),
+    });
+  }
+  if (currentFolderId !== undefined) {
+    activeChips.push({
+      key: 'folder',
+      icon: Folder,
+      label: '文件夹',
+      value: `#${currentFolderId}`,
+      onRemove: () => handleFolderSelect(undefined),
+    });
+  }
+  if (selectedTagIds.length > 0) {
+    activeChips.push({
+      key: 'tags',
+      icon: Filter,
+      label: '标签',
+      value: `${selectedTagIds.length} 个`,
+      onRemove: () => setSelectedTagIds([]),
+    });
+  }
+  const activeFilterCount = activeChips.length;
 
   const closeMediaDetail = useCallback(() => {
     setSelectedMedia(null);
@@ -511,412 +640,588 @@ export default function MediaPage() {
   };
 
   return (
-    <div 
-      className="p-4 lg:p-6 h-full flex flex-col gap-4 lg:gap-6 overflow-hidden"
+    <div
+      className="media-library-page admin-grid-page h-full overflow-hidden p-4 text-[var(--ink-primary)] md:p-6"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <header className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-[var(--text-primary)] mb-0.5 lg:mb-1">媒体库</h1>
-          <p className="text-xs lg:text-sm text-[var(--text-secondary)] hidden sm:block">管理您的图片、视频和文档资源</p>
-        </div>
-
-        <div className="flex items-center gap-2 lg:gap-3">
-          <button
-            onClick={() => setShowMobileFolders(true)}
-            className="lg:hidden p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title="文件夹"
-            aria-label="文件夹"
-          >
-            <Folder className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowShortcuts(true)}
-            className="p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title="键盘快捷键 (⌘ /)"
-            aria-label="键盘快捷键"
-          >
-            <Keyboard className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setSyncDialogOpen(true)}
-            className="p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title="备份到云 (Phase 4)"
-          >
-            <CloudUpload className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setTrashDialogOpen(true)}
-            className="relative p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            title="回收站"
-            aria-label={trashCount > 0 ? '回收站，' + (trashCount > 99 ? '超过 99' : trashCount) + ' 个项目' : '回收站'}
-          >
-            <Trash2 className="w-5 h-5" />
-            {trashCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-status-danger rounded-full">
-                {trashCount > 99 ? '99+' : trashCount}
-              </span>
-            )}
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            multiple
-            onChange={(e) => e.target.files && handleUpload(e.target.files)}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="ml-2 lg:ml-3 flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2 bg-primary hover:bg-primary/90 text-white rounded-lg lg:rounded-xl transition-all shadow-lg shadow-primary/20"
-          >
-            <Upload className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-            <span className="text-sm font-medium">上传</span>
-          </button>
-        </div>
-      </header>
-
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 shrink-0 bg-transparent lg:bg-[var(--bg-card)] lg:p-2 lg:rounded-2xl lg:border lg:border-[var(--border-subtle)]">
-        <div className="relative w-full lg:flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-          <input
-            type="text"
-            placeholder="搜索文件名..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-secondary)] focus:bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl pl-10 pr-4 py-2.5 lg:py-2 text-sm focus:border-primary/50 text-[var(--text-primary)] transition-all outline-none shadow-sm"
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-3 lg:contents">
-            {/* 类型过滤胶囊组 —— 自适应内容宽度,可横向滚动 */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] min-w-0 overflow-x-auto no-scrollbar">
-            {typeOptions.map((opt) => {
-                const Icon = opt.icon;
-                const active = filterType === opt.value;
-                return (
-                <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setFilterType(opt.value)}
-                    className={cn(
-                    'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-all shrink-0 whitespace-nowrap',
-                    active
-                        ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
-                        : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
-                    )}
-                >
-                    <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
-                    <span className="leading-none">{opt.label}</span>
-                </button>
-                );
-            })}
-            </div>
-
-            <div className="w-px h-6 bg-[var(--border-subtle)] hidden lg:block" />
-
-            {/* 视图切换 —— 正方形等宽,确保图标视觉居中 */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] shrink-0">
-            <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                aria-label="网格视图"
-                className={cn(
-                'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all',
-                viewMode === 'grid'
-                    ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
-                    : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
-                )}
-            >
-                <LayoutGrid className="w-4 h-4" strokeWidth={1.8} />
-            </button>
-            <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                aria-label="列表视图"
-                className={cn(
-                'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all',
-                viewMode === 'list'
-                    ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
-                    : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
-                )}
-            >
-                <List className="w-4 h-4" strokeWidth={1.8} />
-            </button>
-            </div>
-        </div>
-      </div>
-
-      {/* 主布局: 左侧文件夹树 + 右侧内容区 */}
-      <div className="flex-1 flex gap-4 lg:gap-6 overflow-hidden">
-        {/* 左侧文件夹树 - 可调整宽度 */}
-        <div
-          className="hidden lg:flex shrink-0 relative"
-          style={{ width: folderPanelWidth }}
-        >
-          <div className="flex-1 h-full surface-leaf surface-admin-panel !rounded-2xl flex flex-col overflow-hidden">
-            {/* 固定标题头 */}
-            <div className="px-4 py-3.5 flex items-center justify-between shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
-              <div className="flex items-center gap-2">
-                <span className="relative inline-flex items-center justify-center w-6 h-6">
-                  <span className="absolute inset-0 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]" />
-                  <FolderOpen className="relative w-3.5 h-3.5 text-[var(--aurora-1)]" strokeWidth={1.6} />
-                </span>
-                <h2 className="font-display text-[14px] font-semibold text-[var(--ink-primary)]">文件夹</h2>
-              </div>
+      <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-3 sm:gap-4">
+        <AdminModuleHeader
+          title="媒体库"
+          description="统一治理图片、视频、音频与文档资源，保留文件夹、预览、编辑、分享、备份与回收站闭环。"
+          icon={ImageIcon}
+          currentLabel={listRefreshing ? '同步中' : '资源工作台'}
+          activeSummary={`当前匹配 ${totalMedia} 个文件 · 已选 ${selectedIds.size} · 回收站 ${trashCount}${activeUploadCount > 0 ? ` · 上传中 ${activeUploadCount}` : ''}`}
+          actions={
+            <>
               <button
                 type="button"
-                onClick={() => handleCreateFolder()}
-                className="inline-flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--aurora-1)] transition-colors"
-                title="新建文件夹"
-                aria-label="新建文件夹"
+                onClick={handleRefresh}
+                disabled={manualRefreshing}
+                className="admin-module-action-button activity-refresh-button"
+                data-refreshing={listRefreshing}
+                title={listRefreshing ? '正在刷新' : '刷新媒体库'}
+                aria-label="刷新媒体库"
+                aria-busy={listRefreshing}
               >
-                <Plus className="w-4 h-4" strokeWidth={2} />
+                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
+                {listRefreshing ? '刷新中' : '刷新'}
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                onChange={(e) => e.target.files && handleUpload(e.target.files)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="admin-module-action-button"
+                aria-label="上传媒体文件"
+              >
+                <Upload className="h-4 w-4" />
+                上传
+              </button>
+            </>
+          }
+        />
+
+        <div className={cn(mediaPanelClass, 'flex flex-col gap-2.5 sm:gap-3')}>
+          <div className="order-2 grid grid-cols-1 gap-2.5 xl:order-1 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            <div className="relative min-w-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                type="text"
+                placeholder="搜索文件名、原始名称或媒体关键词"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                aria-label="媒体文件关键词搜索"
+                className={cn(
+                  'h-10 w-full rounded-lg pl-9 pr-9 text-sm',
+                  'border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+                  'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                  'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                  'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                  'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] focus:outline-none',
+                  'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                )}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => handleSearchChange('')}
+                  aria-label="清空搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="hidden min-w-[60px] items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] sm:flex">
+                <Filter className="h-3.5 w-3.5" />
+                <span>类型</span>
+              </div>
+              <div className="inline-flex max-w-full items-center overflow-x-auto rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
+                {typeOptions.map((opt) => {
+                  const Icon = opt.icon;
+                  const active = filterType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleFilterTypeChange(opt.value)}
+                      className={mediaChipClass(active, true)}
+                      title={`筛选${opt.label}`}
+                      aria-label={`筛选${opt.label}`}
+                    >
+                      {active && <SegmentThumb layoutId="media-type-segment-thumb" />}
+                      <Icon className="relative z-10 h-4 w-4 sm:h-3 sm:w-3" />
+                      <span className="relative z-10 hidden sm:inline">{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="order-1 flex flex-wrap items-center justify-between gap-2 xl:order-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMobileFolders(true)}
+                className={cn(utilityButtonClass('primary'), 'lg:hidden')}
+                title="文件夹"
+                aria-label="打开文件夹面板"
+              >
+                <Folder className="h-4 w-4" />
+                <span className="hidden sm:inline">文件夹</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowShortcuts(true)}
+                className={utilityButtonClass()}
+                title="键盘快捷键 (⌘ /)"
+                aria-label="键盘快捷键"
+              >
+                <Keyboard className="h-4 w-4" />
+                <span className="hidden sm:inline">快捷键</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSyncDialogOpen(true)}
+                className={utilityButtonClass('primary')}
+                title="备份同步"
+                aria-label="打开备份同步"
+              >
+                <CloudUpload className="h-4 w-4" />
+                <span className="hidden sm:inline">备份同步</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTrashDialogOpen(true)}
+                className={cn(utilityButtonClass(trashCount > 0 ? 'danger' : 'default'), 'relative')}
+                title="回收站"
+                aria-label={trashCount > 0 ? `回收站，${trashCount > 99 ? '超过 99' : trashCount} 个项目` : '回收站'}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="hidden sm:inline">回收站</span>
+                {trashCount > 0 && (
+                  <span className="tnum absolute -right-1 -top-1 inline-grid h-4 min-w-4 place-items-center rounded-full bg-status-danger px-1 text-[9px] font-bold leading-4 text-white sm:static sm:ml-0.5 sm:h-auto sm:min-w-0 sm:px-1.5 sm:py-0.5 sm:text-[10px] sm:leading-none">
+                    {trashCount > 99 ? '99+' : trashCount}
+                  </span>
+                )}
               </button>
             </div>
 
-            {/* 可滚动的文件树区域 - 隐藏滑轨 */}
-            <div className="flex-1 overflow-y-auto no-scrollbar px-2 py-2">
-              <FolderTree
-                selectedFolderId={currentFolderId}
-                onSelectFolder={(id: number | undefined) => setCurrentFolderId(id)}
-                onCreateFolder={handleCreateFolder}
-                onEditFolder={handleEditFolder}
-                onDeleteFolder={handleDeleteFolder}
-                onMoveFolder={handleMoveFolder}
-              />
-            </div>
-          </div>
-
-          {/* 拖拽调整宽度的手柄 - 优化位置和视觉 */}
-          <div
-            onMouseDown={handleResizeStart}
-            className={cn(
-              "absolute -right-5 top-0 bottom-0 w-6 cursor-col-resize z-20 group",
-              "flex items-center justify-center transition-all",
-              isResizing && "bg-primary/5"
-            )}
-          >
-            {/* 中心把手 */}
-            <div className={cn(
-              "w-1.5 h-10 rounded-full transition-all flex flex-col items-center justify-center gap-1",
-              isResizing
-                ? "bg-primary shadow-[0_0_15px_rgba(99,102,241,0.5)] h-14"
-                : "bg-[var(--bg-quaternary)] dark:bg-[var(--bg-tertiary)] group-hover:bg-primary group-hover:h-14"
-            )}>
-              {/* 抓取点装饰 */}
-              <div className="w-0.5 h-0.5 rounded-full bg-white/50" />
-              <div className="w-0.5 h-0.5 rounded-full bg-white/50" />
-              <div className="w-0.5 h-0.5 rounded-full bg-white/50" />
-            </div>
-          </div>
-        </div>
-
-      {/* 主内容区 + 抽屉式侧边栏 (完美同步) */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* 主内容区 - 自动调整宽度，移除 layout 属性以避免垂直抖动 */}
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-          {/* 将加载状态和内容包装在同一个容器中以避免布局跳动 */}
-          <div className="flex-1 flex flex-col h-full">
-            {isLoading ? (
-              <div className="flex-1 overflow-hidden p-1">
-                {/* @ref Phase 6: 使用新的骨架屏组件 */}
-                {viewMode === 'grid' ? (
-                  <MediaSkeletonGrid count={20} />
-                ) : (
-                  <MediaListSkeleton count={10} />
-                )}
-              </div>
-            ) : currentItems.length > 0 ? (
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-20 pr-0 lg:pr-4">
-              {/* @ref Phase 6: 使用虚拟滚动优化大列表性能 */}
-              {viewMode === 'grid' ? (
-                currentItems.length > 100 ? (
-                  <VirtualMediaGrid
-                    items={currentItems}
-                    selectedIds={selectedIds}
-                    onSelect={handleSelectMedia}
-                    onToggleSelect={handleToggleSelect}
-                    onPreview={(item) => handlePreview(item.id)}
-                    onDelete={(id) => handleDeleteConfirm(id)}
-                    onCopyUrl={handleCopyUrl}
-                    onDownload={(item) => handleDownload(getMediaUrl(item), item.originalName)}
-                  />
-                ) : (
-                  <MediaGrid
-                    items={currentItems}
-                    selectedIds={selectedIds}
-                    onSelect={handleSelectMedia}
-                    onToggleSelect={handleToggleSelect}
-                    onPreview={handlePreview}
-                    onDelete={(id) => handleDeleteConfirm(id)}
-                    onCopyUrl={handleCopyUrl}
-                    onDownload={handleDownload}
-                    onMove={handleMoveFile}
-                    selectionMode={selectedIds.size > 0}
-                    isCompact={!!selectedMedia}
-                  />
-                )
-              ) : (
-                <MediaList
-                  items={currentItems}
-                  selectedId={selectedMedia}
-                  selectedIds={selectedIds}
-                  onSelect={handleSelectMedia}
-                  onToggleSelect={handleToggleSelect}
-                  onPreview={handlePreview}
-                  onDelete={(id) => handleDeleteConfirm(id)}
-                  onCopyUrl={handleCopyUrl}
-                  onDownload={handleDownload}
-                  onMove={handleMoveFile}
-                />
-              )}
-              
-              {data && data.total > 20 && (
-                <div className="mt-8 flex justify-center">
-                  <Pagination
-                    page={page}
-                    total={data.total}
-                    pageSize={20}
-                    onPageChange={setPage}
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-3xl border border-dashed border-[var(--border-subtle)]">
-              <div className="w-20 h-20 rounded-3xl bg-[var(--bg-secondary)] flex items-center justify-center mb-4">
-                <ImageIcon className="w-10 h-10 text-[var(--text-muted)]" />
-              </div>
-              <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">暂无媒体文件</h3>
-              <p className="text-sm text-[var(--text-secondary)]">点击上方按钮或拖拽文件到此处上传</p>
-            </div>
-          )}
-          </div>
-        </div>
-
-      {/* 侧边详情栏 - 桌面端 (lg:block) */}
-        <AnimatePresence>
-          {selectedMedia && currentMedia && (
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: 384 }}
-              exit={{ width: 0 }}
-              transition={{
-                duration: 0.4,
-                ease: [0.32, 0.72, 0, 1]
-              }}
-              className="hidden lg:block shrink-0 overflow-hidden will-change-[width]"
-              style={{ willChange: 'width' }}
-            >
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 30 }}
-                transition={{
-                  duration: 0.35,
-                  ease: [0.32, 0.72, 0, 1],
-                  delay: 0.05
-                }}
-                className="w-96 h-full pl-6"
-              >
-                <div className="h-full bg-[var(--bg-card)] backdrop-blur-sm rounded-3xl border border-[var(--border-subtle)] p-6 overflow-hidden">
-                  <MediaDetail
-                    item={currentMedia}
-                    onClose={() => setSelectedMedia(null)}
-                    onDelete={(id) => handleDeleteConfirm(id)}
-                    onMove={handleMoveFile}
-                  />
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 底部详情板 - 移动端 (lg:hidden) */}
-        {typeof document !== 'undefined' && createPortal(
-          <AnimatePresence>
-            {selectedMedia && currentMedia && (
-              <motion.div
-                key={`mobile-media-detail-${selectedMedia}`}
-                initial="closed"
-                animate="open"
-                exit="closed"
-                variants={{
-                  open: { opacity: 1, pointerEvents: 'auto' },
-                  closed: { opacity: 0, pointerEvents: 'none' },
-                }}
-                transition={{ duration: 0.18 }}
-                className="lg:hidden fixed inset-0 z-50"
-              >
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] sm:inline">
+                视图
+              </span>
+              <div className="inline-flex items-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
                 <button
                   type="button"
-                  aria-label="关闭媒体详情"
-                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                  onClick={closeMediaDetail}
-                />
-
-                <motion.div
-                  variants={{
-                    open: { y: 0 },
-                    closed: { y: '100%' },
-                  }}
-                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  drag="y"
-                  dragConstraints={{ top: 0 }}
-                  dragElastic={0.2}
-                  onDragEnd={(_, info) => {
-                    if (info.offset.y > 100) {
-                      closeMediaDetail();
-                    }
-                  }}
-                  // 底部菜单 (Bottom Sheet)
-                  className="absolute bottom-0 left-0 right-0 z-10 h-[85vh] bg-[var(--bg-popover)] dark:bg-[var(--bg-primary)] text-[var(--text-primary)] backdrop-blur-xl rounded-t-3xl border-t border-[var(--border-default)] shadow-2xl overflow-hidden flex flex-col"
+                  onClick={() => setViewMode('grid')}
+                  title="网格视图"
+                  aria-label="网格视图"
+                  className={mediaChipClass(viewMode === 'grid', true)}
                 >
-                  {/* 拖拽手柄 */}
+                  {viewMode === 'grid' && <SegmentThumb layoutId="media-view-segment-thumb" />}
+                  <LayoutGrid className="relative z-10 h-4 w-4 sm:h-3 sm:w-3" />
+                  <span className="relative z-10 hidden sm:inline">网格</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  title="列表视图"
+                  aria-label="列表视图"
+                  className={mediaChipClass(viewMode === 'list', true)}
+                >
+                  {viewMode === 'list' && <SegmentThumb layoutId="media-view-segment-thumb" />}
+                  <List className="relative z-10 h-4 w-4 sm:h-3 sm:w-3" />
+                  <span className="relative z-10 hidden sm:inline">列表</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {activeFilterCount > 0 && (
+              <motion.div
+                className="order-3"
+                initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="flex flex-wrap items-center gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-0.5 pt-3">
+                  <span className="tnum text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    已应用 {activeFilterCount}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                    {activeChips.map((chip) => {
+                      const Icon = chip.icon;
+                      return (
+                        <motion.span
+                          key={chip.key}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] pl-2.5 pr-1 text-xs"
+                        >
+                          <Icon className="h-3 w-3 shrink-0 text-[var(--aurora-1)]" />
+                          <span className="font-mono text-[var(--ink-muted)]">{chip.label}</span>
+                          <span className="max-w-[180px] truncate font-medium text-[var(--ink-primary)]">
+                            {chip.value}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={chip.onRemove}
+                            aria-label={`移除${chip.label}筛选`}
+                            className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)]"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </motion.span>
+                      );
+                    })}
+                  </div>
                   <button
                     type="button"
-                    className="flex justify-center pt-3 pb-1 shrink-0"
-                    onClick={closeMediaDetail}
-                    aria-label="关闭媒体详情"
+                    onClick={resetFilters}
+                    className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] hover:text-[var(--signal-danger)]"
                   >
-                    <span className="w-12 h-1.5 bg-[var(--border-hover)] rounded-full" />
+                    <X className="h-3 w-3" />
+                    全部清空
                   </button>
-
-                  <div className="flex-1 overflow-y-auto p-4 pb-safe-area">
-                    <MediaDetail
-                      item={currentMedia}
-                      onClose={closeMediaDetail}
-                      onDelete={(id) => handleDeleteConfirm(id)}
-                      onMove={handleMoveFile}
-                    />
-                  </div>
-                </motion.div>
+                </div>
+                <div className="mt-2 text-xs text-[var(--ink-muted)]">
+                  匹配 <span className="tnum font-medium text-[var(--ink-primary)]">{totalMedia}</span> 个媒体文件
+                </div>
               </motion.div>
             )}
-          </AnimatePresence>,
-          document.body
-        )}
+          </AnimatePresence>
+        </div>
 
+        <div className={cn(mediaShellClass, 'relative flex min-h-0 flex-1 flex-col')} data-refreshing={listRefreshing}>
+          <AnimatePresence>
+            {listRefreshing && (
+              <>
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-[3.65rem] z-20 h-px overflow-hidden bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <motion.span
+                    className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-transparent via-[var(--aurora-1)] to-transparent"
+                    initial={{ x: '-100%' }}
+                    animate={{ x: '220%' }}
+                    transition={{ duration: 1.05, repeat: Infinity, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                </motion.div>
+                <motion.div
+                  className="pointer-events-none absolute right-4 top-[4.35rem] z-20 inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_88%,transparent)] px-2.5 text-xs font-semibold text-[var(--ink-secondary)] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.45)] backdrop-blur"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--aurora-1)]" />
+                  刷新中
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
-        {/* 拖拽上传遮罩 */}
-        <AnimatePresence>
-          {isDragging && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-3xl flex items-center justify-center"
-            >
-              <div className="bg-black/80 rounded-3xl p-8 flex flex-col items-center gap-4">
-                <Upload className="w-12 h-12 text-primary animate-bounce" />
-                <p className="text-xl font-bold text-white">松开上传到媒体库</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                <ImageIcon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">资源浏览</p>
+                <p className="truncate text-xs text-[var(--ink-muted)]">
+                  {currentFolderId === undefined ? '根目录与所有子资源视图' : `当前文件夹 #${currentFolderId}`}
+                  <span className="hidden sm:inline"> · {viewMode === 'grid' ? '网格预览' : '列表核对'}</span>
+                </p>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
+            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
+              {isLoading ? '加载中' : listRefreshing ? '刷新中' : `${currentItems.length}/${totalMedia}`}
+            </span>
+          </div>
+
+          <div className="min-h-0 flex-1 p-3 lg:p-4">
+            {/* 主布局: 左侧文件夹树 + 右侧内容区 */}
+            <div className="flex h-full gap-3 overflow-hidden lg:gap-4">
+              {/* 左侧文件夹树 - 可调整宽度 */}
+              <div
+                className="hidden shrink-0 lg:flex relative"
+                style={{ width: folderPanelWidth }}
+              >
+                <div className="media-neutral-pane flex h-full flex-1 flex-col overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_86%,var(--bg-substrate))]">
+                  {/* 固定标题头 */}
+                  <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-3.5 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative inline-flex h-6 w-6 items-center justify-center">
+                        <span className="absolute inset-0 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]" />
+                        <FolderOpen className="relative h-3.5 w-3.5 text-[var(--aurora-1)]" strokeWidth={1.6} />
+                      </span>
+                      <h2 className="font-display text-[14px] font-semibold text-[var(--ink-primary)]">文件夹</h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateFolder()}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] hover:text-[var(--aurora-1)]"
+                      title="新建文件夹"
+                      aria-label="新建文件夹"
+                    >
+                      <Plus className="h-4 w-4" strokeWidth={2} />
+                    </button>
+                  </div>
+
+                  {/* 可滚动的文件树区域 - 隐藏滑轨 */}
+                  <div className="flex-1 overflow-y-auto no-scrollbar px-2 py-2">
+                    <FolderTree
+                      selectedFolderId={currentFolderId}
+                      onSelectFolder={handleFolderSelect}
+                      onCreateFolder={handleCreateFolder}
+                      onEditFolder={handleEditFolder}
+                      onDeleteFolder={handleDeleteFolder}
+                      onMoveFolder={handleMoveFolder}
+                    />
+                  </div>
+                </div>
+
+                {/* 拖拽调整宽度的手柄 - 优化位置和视觉 */}
+                <div
+                  onMouseDown={handleResizeStart}
+                  className={cn(
+                    'absolute -right-4 bottom-0 top-0 z-20 flex w-5 cursor-col-resize items-center justify-center transition-all group',
+                    isResizing && 'bg-primary/5'
+                  )}
+                >
+                  {/* 中心把手 */}
+                  <div className={cn(
+                    'flex h-10 w-1.5 flex-col items-center justify-center gap-1 rounded-full transition-all',
+                    isResizing
+                      ? 'h-14 bg-primary shadow-[0_0_15px_rgba(99,102,241,0.5)]'
+                      : 'bg-[var(--bg-quaternary)] group-hover:h-14 group-hover:bg-primary dark:bg-[var(--bg-tertiary)]'
+                  )}>
+                    {/* 抓取点装饰 */}
+                    <div className="h-0.5 w-0.5 rounded-full bg-white/50" />
+                    <div className="h-0.5 w-0.5 rounded-full bg-white/50" />
+                    <div className="h-0.5 w-0.5 rounded-full bg-white/50" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 主内容区 + 抽屉式侧边栏 */}
+              <div className="relative flex min-w-0 flex-1 overflow-hidden">
+                {/* 主内容区 - 自动调整宽度，移除 layout 属性以避免垂直抖动 */}
+                <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+                  {/* 将加载状态和内容包装在同一个容器中以避免布局跳动 */}
+                  <div className="flex h-full min-h-0 flex-1 flex-col">
+                    {isLoading ? (
+                      <div className="flex-1 overflow-hidden p-1">
+                        {/* @ref Phase 6: 使用新的骨架屏组件 */}
+                        {viewMode === 'grid' ? (
+                          <MediaSkeletonGrid count={20} />
+                        ) : (
+                          <MediaListSkeleton count={10} />
+                        )}
+                      </div>
+                    ) : currentItems.length > 0 ? (
+                      <div className="flex-1 overflow-y-auto no-scrollbar pb-16 pr-0 lg:pr-2">
+                        {/* @ref Phase 6: 使用虚拟滚动优化大列表性能 */}
+                        {viewMode === 'grid' ? (
+                          currentItems.length > 100 ? (
+                            <VirtualMediaGrid
+                              items={currentItems}
+                              selectedIds={selectedIds}
+                              onSelect={handleSelectMedia}
+                              onToggleSelect={handleToggleSelect}
+                              onPreview={(item) => handlePreview(item.id)}
+                              onDelete={(id) => handleDeleteConfirm(id)}
+                              onCopyUrl={handleCopyUrl}
+                              onDownload={(item) => handleDownload(getMediaUrl(item), item.originalName)}
+                            />
+                          ) : (
+                            <MediaGrid
+                              items={currentItems}
+                              selectedIds={selectedIds}
+                              onSelect={handleSelectMedia}
+                              onToggleSelect={handleToggleSelect}
+                              onPreview={handlePreview}
+                              onDelete={(id) => handleDeleteConfirm(id)}
+                              onCopyUrl={handleCopyUrl}
+                              onDownload={handleDownload}
+                              onMove={handleMoveFile}
+                              selectionMode={selectedIds.size > 0}
+                              isCompact={!!selectedMedia}
+                            />
+                          )
+                        ) : (
+                          <MediaList
+                            items={currentItems}
+                            selectedId={selectedMedia}
+                            selectedIds={selectedIds}
+                            onSelect={handleSelectMedia}
+                            onToggleSelect={handleToggleSelect}
+                            onPreview={handlePreview}
+                            onDelete={(id) => handleDeleteConfirm(id)}
+                            onCopyUrl={handleCopyUrl}
+                            onDownload={handleDownload}
+                            onMove={handleMoveFile}
+                          />
+                        )}
+
+                        {data && data.total > 20 && (
+                          <div className="mt-6 flex justify-center">
+                            <Pagination
+                              page={page}
+                              total={data.total}
+                              pageSize={20}
+                              onPageChange={setPage}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="media-empty-state flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,var(--ink-primary)_3%)] px-4 text-center">
+                        <div className="media-empty-icon mb-3 flex h-16 w-16 items-center justify-center rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+                          <ImageIcon className="h-8 w-8 text-[var(--ink-muted)]" />
+                        </div>
+                        <h3 className="mb-1 text-lg font-semibold text-[var(--ink-primary)]">
+                          {activeFilterCount > 0 ? '没有匹配的媒体文件' : '暂无媒体文件'}
+                        </h3>
+                        <p className="max-w-sm text-sm leading-6 text-[var(--ink-muted)]">
+                          {activeFilterCount > 0 ? '调整搜索、类型或文件夹筛选后再查看。' : '点击上传按钮或拖拽文件到此处上传。'}
+                        </p>
+                        {activeFilterCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--ink-primary)] px-4 text-sm font-semibold text-[var(--bg-void)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_88%,var(--aurora-1)_12%)]"
+                          >
+                            <X className="h-4 w-4" />
+                            清空筛选
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 侧边详情栏 - 桌面端 (lg:block) */}
+                <AnimatePresence>
+                  {selectedMedia && currentMedia && (
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: 360 }}
+                      exit={{ width: 0 }}
+                      transition={{
+                        duration: 0.4,
+                        ease: [0.32, 0.72, 0, 1]
+                      }}
+                      className="hidden shrink-0 overflow-hidden will-change-[width] lg:block"
+                      style={{ willChange: 'width' }}
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, x: 30 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 30 }}
+                        transition={{
+                          duration: 0.35,
+                          ease: [0.32, 0.72, 0, 1],
+                          delay: 0.05
+                        }}
+                        className="h-full w-[360px] pl-4"
+                      >
+                        <div className="media-neutral-pane h-full overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_90%,var(--bg-substrate))] p-4">
+                          <MediaDetail
+                            item={currentMedia}
+                            onClose={() => setSelectedMedia(null)}
+                            onDelete={(id) => handleDeleteConfirm(id)}
+                            onMove={handleMoveFile}
+                          />
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* 底部详情板 - 移动端 (lg:hidden) */}
+                {typeof document !== 'undefined' && createPortal(
+                  <AnimatePresence>
+                    {selectedMedia && currentMedia && (
+                      <motion.div
+                        key={`mobile-media-detail-${selectedMedia}`}
+                        initial="closed"
+                        animate="open"
+                        exit="closed"
+                        variants={{
+                          open: { opacity: 1, pointerEvents: 'auto' },
+                          closed: { opacity: 0, pointerEvents: 'none' },
+                        }}
+                        transition={{ duration: 0.18 }}
+                        className="media-library-page fixed inset-0 z-50 lg:hidden"
+                      >
+                        <button
+                          type="button"
+                          aria-label="关闭媒体详情"
+                          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                          onClick={closeMediaDetail}
+                        />
+
+                        <motion.div
+                          variants={{
+                            open: { y: 0 },
+                            closed: { y: '100%' },
+                          }}
+                          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                          drag="y"
+                          dragConstraints={{ top: 0 }}
+                          dragElastic={0.2}
+                          onDragEnd={(_, info) => {
+                            if (info.offset.y > 100) {
+                              closeMediaDetail();
+                            }
+                          }}
+                          className="media-neutral-pane absolute bottom-0 left-0 right-0 z-10 flex max-h-[82vh] flex-col overflow-hidden rounded-t-2xl border-t border-[var(--border-default)] bg-[var(--bg-popover)] text-[var(--text-primary)] shadow-2xl backdrop-blur-xl"
+                        >
+                          {/* 拖拽手柄 */}
+                          <button
+                            type="button"
+                            className="flex shrink-0 justify-center pb-1 pt-3"
+                            onClick={closeMediaDetail}
+                            aria-label="关闭媒体详情"
+                          >
+                            <span className="h-1.5 w-12 rounded-full bg-[var(--border-hover)]" />
+                          </button>
+
+                          <div className="flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                            <MediaDetail
+                              item={currentMedia}
+                              onClose={closeMediaDetail}
+                              onDelete={(id) => handleDeleteConfirm(id)}
+                              onMove={handleMoveFile}
+                            />
+                          </div>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>,
+                  document.body
+                )}
+
+                {/* 拖拽上传遮罩 */}
+                <AnimatePresence>
+                  {isDragging && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-4 border-dashed border-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] backdrop-blur-sm"
+                    >
+                      <div className="flex flex-col items-center gap-4 rounded-3xl bg-black/80 p-8">
+                        <Upload className="h-12 w-12 animate-bounce text-[var(--aurora-1)]" />
+                        <p className="text-xl font-bold text-white">松开上传到媒体库</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {uploadingFiles.length > 0 && (
@@ -965,7 +1270,7 @@ export default function MediaPage() {
                   }}
                   title="复制全部链接"
                   aria-label="复制全部链接"
-                  className="flex items-center gap-2 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group shrink-0 p-2 sm:px-4 sm:py-2.5"
+                  className="group flex shrink-0 items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-2 text-[var(--ink-primary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] sm:rounded-2xl sm:px-4 sm:py-2.5"
                 >
                   <Link2 className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
                   <span className="hidden sm:inline text-xs font-semibold">复制全部</span>
@@ -979,7 +1284,7 @@ export default function MediaPage() {
                   }}
                   title="批量移动到文件夹"
                   aria-label="批量移动到文件夹"
-                  className="flex items-center gap-2 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group shrink-0 p-2 sm:px-4 sm:py-2.5"
+                  className="group flex shrink-0 items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-2 text-[var(--ink-primary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] sm:rounded-2xl sm:px-4 sm:py-2.5"
                 >
                   <FolderInput className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
                   <span className="hidden sm:inline text-xs font-semibold">批量移动</span>
@@ -1004,7 +1309,7 @@ export default function MediaPage() {
                 onClick={() => setSelectedIds(new Set())}
                 title="取消全选"
                 aria-label="取消全选"
-                className="flex items-center gap-1.5 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all shrink-0 p-2 sm:px-3 sm:py-2.5"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-2 text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] sm:rounded-2xl sm:px-3 sm:py-2.5"
               >
                 <X className="w-4 h-4" />
                 <span className="hidden sm:inline text-xs font-semibold">取消全选</span>
@@ -1058,7 +1363,7 @@ export default function MediaPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowMobileFolders(false)}
-              className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[60]"
+              className="fixed inset-x-0 bottom-0 top-14 bg-background/80 backdrop-blur-sm z-[110]"
             />
           )}
         </AnimatePresence>
@@ -1066,7 +1371,7 @@ export default function MediaPage() {
         {/* 抽屉内容 —— Codex surface-overlay,加宽到 88vw / 360px 以消除截断 */}
         <div
           className={cn(
-            "fixed left-0 top-0 bottom-0 w-[88vw] max-w-[360px] z-[70] flex flex-col",
+            "fixed left-0 top-14 bottom-0 w-[88vw] max-w-[360px] z-[120] flex flex-col",
             "surface-overlay !rounded-none !rounded-r-2xl",
             "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
             showMobileFolders ? "translate-x-0" : "-translate-x-full"
@@ -1112,7 +1417,7 @@ export default function MediaPage() {
             <FolderTree
               selectedFolderId={currentFolderId}
               onSelectFolder={(id: number | undefined) => {
-                setCurrentFolderId(id);
+                handleFolderSelect(id);
                 setShowMobileFolders(false);
               }}
               onCreateFolder={handleCreateFolder}

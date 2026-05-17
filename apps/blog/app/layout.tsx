@@ -17,6 +17,10 @@ import {
 // Next 13.3+ 推荐的 viewport 配置对象 —— themeColor 让移动端浏览器顶栏
 // 跟主题走,避免暗黑模式下 URL bar 显示白色。
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: THEME_LIGHT_BG },
     { media: '(prefers-color-scheme: dark)', color: THEME_DARK_BG },
@@ -44,11 +48,14 @@ export async function generateMetadata(): Promise<Metadata> {
     } : {}),
     appleWebApp: {
       capable: true,
-      statusBarStyle: 'default',
+      statusBarStyle: 'black-translucent',
       title: settings.siteTitle || 'AetherBlog',
     },
     formatDetection: {
       telephone: false,
+    },
+    other: {
+      'apple-mobile-web-app-capable': 'yes',
     },
   };
 }
@@ -79,29 +86,12 @@ export default async function RootLayout({
       className={isCustomFont ? 'font-override' : undefined}
       style={fontOverrideStyle}
     >
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-        {/* 双写:apple- 前缀供 iOS Safari,标准化版本供 Chrome —— 后者从 Chrome 90 起取代前者,
-            Chrome 控制台会对单独使用 apple- 前缀报 deprecation。两个并存以兼容所有浏览器。 */}
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        {/* theme-color 由 `export const viewport` 统一管理,无需手写 meta */}
-        {/* FOUC Guard —— 新标签页从 admin 跳过来时,外部 CSS 到达前先上色,防止白闪。
-            必须放在 themeInitScript 之前:script 加 .dark/.light class,class 立即匹配
-            本 <style> 里的规则。tokens 改变时需同步 packages/hooks/useTheme.tsx。 */}
-        <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
-        {/* 主题初始化脚本 - 防止 FOUC */}
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        {/* 非系统字体预加载 Google Fonts 样式表 */}
-        {isCustomFont && fontFamily === 'lora' && (
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap" />
-        )}
-        {isCustomFont && fontFamily === 'merriweather' && (
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap" />
-        )}
-      </head>
       <body className="bg-background text-foreground antialiased" suppressHydrationWarning>
+        {/* FOUC Guard —— 保持在 body 最前面，早于主题初始化脚本和应用内容执行。
+            viewport / PWA meta 由 Next metadata API 负责，避免 App Router 手写 head。
+            可配置 Google Fonts 由 FontProvider 在客户端按当前设置动态加载。 */}
+        <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <Providers>
           <SiteSettingsProvider settings={settings}>
             <FontProvider initialFont={fontFamily}>

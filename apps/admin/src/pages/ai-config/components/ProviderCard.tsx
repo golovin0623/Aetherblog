@@ -38,19 +38,21 @@ export default function ProviderCard({
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
-      className={`group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${provider.is_enabled
+      className={`ai-provider-card group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${provider.is_enabled
         ? 'bg-[var(--bg-card)] border-[var(--border-default)] shadow-xl z-10'
         : 'bg-[var(--bg-secondary)] border-[var(--border-subtle)] opacity-80 hover:opacity-100 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-default)]'
         }`}
       style={
         provider.is_enabled
           ? {
-            boxShadow: `0 10px 40px -10px ${brand.primary}40, 0 0 1px 1px ${brand.primary}10`,
+            boxShadow: `0 16px 36px -28px ${brand.primary}80, inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.42)`,
+            borderColor: 'var(--intelligence-border-strong)',
             transform: 'translateZ(0)',
             willChange: 'transform',
             WebkitBackfaceVisibility: 'hidden',
           }
           : {
+            borderColor: 'var(--intelligence-border)',
             transform: 'translateZ(0)',
             willChange: 'transform',
             WebkitBackfaceVisibility: 'hidden',
@@ -137,7 +139,7 @@ export default function ProviderCard({
       </div>
 
       {/* 启用开关 */}
-      <div className="relative z-10 flex justify-end mt-4" onClick={(e) => e.stopPropagation()}>
+      <div className="ai-provider-card-toggle relative z-10 flex justify-end mt-4" onClick={(e) => e.stopPropagation()}>
         <Toggle
           checked={provider.is_enabled}
           onChange={(en) => onToggle(en)}
@@ -172,12 +174,12 @@ export function ProviderGrid({
 }: ProviderGridProps) {
   const toneClass = tone === 'secondary' ? 'text-[var(--color-secondary)]' : 'text-primary';
   return (
-    <div className={className}>
-      <div className="flex items-center gap-2 mb-4">
+    <div className={`ai-provider-grid-section ${className}`}>
+      <div className="ai-provider-grid-heading flex items-center gap-2 mb-4">
         <h2 className={`text-sm font-medium ${toneClass}`}>{title}</h2>
         <span className="text-xs text-[var(--text-muted)]">{count}</span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="ai-provider-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {children}
       </div>
     </div>

@@ -329,3 +329,68 @@ func TestFilterListableObjectsDropsDirectoryMarkers(t *testing.T) {
 		}
 	}
 }
+
+func TestListVisibleObjectsFillsPageAfterFilteringMarkers(t *testing.T) {
+	lister := &fakePagedLister{
+		pages: map[string]fakeObjectPage{
+			"": {
+				objects: []storage.ObjectInfo{
+					{Key: "2026/05/", Size: 0},
+					{Key: "2026/05/a.png", Size: 10},
+				},
+				nextToken: "page-2",
+			},
+			"page-2": {
+				objects: []storage.ObjectInfo{
+					{Key: "2026/05/b.png", Size: 12},
+				},
+				nextToken: "page-3",
+			},
+		},
+	}
+
+	got, nextToken, err := listVisibleObjects(context.Background(), lister, "2026/05/", "", 2)
+	if err != nil {
+		t.Fatalf("listVisibleObjects: %v", err)
+	}
+	if nextToken != "page-3" {
+		t.Fatalf("nextToken = %q, want page-3", nextToken)
+	}
+	wantKeys := []string{"2026/05/a.png", "2026/05/b.png"}
+	if len(got) != len(wantKeys) {
+		t.Fatalf("visible length = %d, want %d (%v)", len(got), len(wantKeys), got)
+	}
+	for i, want := range wantKeys {
+		if got[i].Key != want {
+			t.Fatalf("visible[%d].Key = %q, want %q", i, got[i].Key, want)
+		}
+	}
+	if len(lister.calls) != 2 {
+		t.Fatalf("List calls = %d, want 2 (%v)", len(lister.calls), lister.calls)
+	}
+	if lister.calls[0].limit != 2 || lister.calls[1].limit != 1 {
+		t.Fatalf("List limits = %d, %d; want 2, 1", lister.calls[0].limit, lister.calls[1].limit)
+	}
+}
+
+type fakeObjectPage struct {
+	objects   []storage.ObjectInfo
+	nextToken string
+}
+
+type fakePagedLister struct {
+	pages map[string]fakeObjectPage
+	calls []fakePagedListerCall
+}
+
+type fakePagedListerCall struct {
+	prefix string
+	token  string
+	limit  int
+}
+
+func (f *fakePagedLister) List(_ context.Context, prefix, continuationToken string, limit int) ([]storage.ObjectInfo, string, error) {
+	f.calls = append(f.calls, fakePagedListerCall{prefix: prefix, token: continuationToken, limit: limit})
+	page := f.pages[continuationToken]
+	return page.objects, page.nextToken, nil
+}

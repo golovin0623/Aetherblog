@@ -180,10 +180,10 @@ export default function ProviderDetail({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="h-full flex flex-col bg-[var(--bg-primary)] lg:bg-[var(--bg-secondary)] overflow-hidden"
+      className="ai-provider-detail h-full flex flex-col bg-[var(--bg-primary)] lg:bg-[var(--bg-secondary)] overflow-hidden"
     >
       {/* 头部区域 */}
-      <div className="flex-none px-6 py-4 lg:px-8 bg-[var(--bg-primary)] border-b border-[var(--border-default)] z-20">
+      <div className="ai-provider-detail-header flex-none px-6 py-4 lg:px-8 bg-[var(--bg-primary)] border-b border-[var(--border-default)] z-20">
         <div className="flex items-start gap-4">
           {/* Logo */}
           <div
@@ -301,10 +301,10 @@ export default function ProviderDetail({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.2 }}
-                className="px-6 py-6 space-y-4"
+                className="ai-provider-detail-mobile-section px-6 py-6 space-y-4"
               >
                 {/* 配置项列表容器 */}
-                <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+                <div className="ai-provider-config-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
 
                   {/* 1. API Key 行 (输入框样式) */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
@@ -409,7 +409,7 @@ export default function ProviderDetail({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 transition={{ duration: 0.2 }}
-                className="px-6 py-6"
+                className="ai-provider-detail-mobile-section px-6 py-6"
               >
                 <ModelList
                   providerCode={provider.code}
@@ -428,9 +428,9 @@ export default function ProviderDetail({
         </div>
 
         {/* PC 端: 同时显示配置和模型列表 */}
-        <div className="hidden lg:block px-8 py-6 space-y-6">
+        <div className="ai-provider-detail-content hidden lg:block px-8 py-6 space-y-6">
           {/* 配置项列表容器 */}
-          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+          <div className="ai-provider-config-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
 
             {/* 1. API Key 行 (输入框样式) */}
             <div className="flex items-center justify-between gap-4 p-4">
@@ -518,7 +518,7 @@ export default function ProviderDetail({
           </div>
 
           {/* PC 端模型列表 */}
-          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-4">
+          <div className="ai-provider-model-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-4">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="w-4 h-4 text-[var(--text-muted)]" />
               <h3 className="font-medium text-sm text-[var(--text-primary)]">可用模型</h3>

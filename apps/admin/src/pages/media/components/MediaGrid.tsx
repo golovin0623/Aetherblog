@@ -57,8 +57,8 @@ export function MediaGrid({
     'grid justify-start content-start',
     // 根据实际容器宽度排布。详情栏打开后中间区域会变窄，不能继续使用视口断点列数。
     isCompact
-      ? 'grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),9.5rem))] gap-x-4 gap-y-5'
-      : 'grid-cols-[repeat(auto-fill,minmax(min(9.75rem,100%),11rem))] gap-x-5 gap-y-6'
+      ? 'grid-cols-[repeat(auto-fill,minmax(min(8rem,100%),9rem))] gap-x-3 gap-y-4'
+      : 'grid-cols-[repeat(auto-fill,minmax(min(9.25rem,100%),10.25rem))] gap-x-4 gap-y-5'
   );
 
   return (
@@ -94,7 +94,7 @@ export function MediaGrid({
               {/* 1. 媒体内容容器 (缩略图) */}
               <div
                 className={cn(
-                  'relative aspect-square rounded-2xl overflow-hidden cursor-pointer',
+                  'relative aspect-square rounded-xl overflow-hidden cursor-pointer',
                   'bg-[var(--bg-leaf,var(--bg-card))] border transition-[transform,box-shadow,border-color] duration-300 ease-out',
                   isSelected
                     ? 'border-[var(--aurora-1)] ring-2 ring-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] scale-[0.98]'
@@ -131,7 +131,7 @@ export function MediaGrid({
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]">
-                      <Icon className="w-16 h-16 text-[var(--ink-tertiary,var(--text-muted))] group-hover:scale-110 transition-transform duration-500" strokeWidth={1.25} />
+                      <Icon className="w-14 h-14 text-[var(--ink-tertiary,var(--text-muted))] group-hover:scale-110 transition-transform duration-500" strokeWidth={1.25} />
                     </div>
                   )}
 
@@ -159,7 +159,7 @@ export function MediaGrid({
                       'transition-[opacity,transform] duration-300 ease-out',
                       // 绕开 tokens.css 触屏 44×44 最小尺寸,缩略图里的浮标不能被放大成主操作按钮
                       '!min-w-0 !min-h-0',
-                      isCompact || isTouch ? 'w-8 h-8' : 'w-10 h-10'
+                      isCompact || isTouch ? 'w-8 h-8' : 'w-9 h-9'
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -167,7 +167,7 @@ export function MediaGrid({
                     }}
                     aria-label="预览"
                   >
-                    <Eye className={cn(isCompact || isTouch ? 'w-4 h-4' : 'w-5 h-5')} strokeWidth={1.7} />
+                    <Eye className="w-4 h-4" strokeWidth={1.7} />
                   </motion.button>
                 </div>
 

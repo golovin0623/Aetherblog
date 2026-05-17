@@ -1,13 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Cpu, DollarSign, Clock, Loader2, Repeat2, CheckCircle2 } from 'lucide-react';
-import { StatsCard } from '../dashboard/components/StatsCard';
+import {
+  AlertTriangle,
+  Archive,
+  BarChart3,
+  Cpu,
+  DollarSign,
+  Clock,
+  Loader2,
+  Repeat2,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   AiModelDistributionChart,
   AiTaskDistributionChart,
   AiUsageTrendChart,
   AiUsageRecordsTable,
 } from '../dashboard/components';
+import {
+  IntelligenceHeader,
+  IntelligenceMetric,
+  IntelligenceSegmented,
+  IntelligenceShell,
+  IntelligenceStatusStrip,
+} from '@/components/intelligence';
 import {
   analyticsService,
   type AiDashboardData,
@@ -20,6 +36,17 @@ import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
+
+interface AnalyticsFetchSnapshot {
+  days: 7 | 30 | 90;
+  page: number;
+  pageSize: number;
+  taskType: string;
+  modelId: string;
+  successFilter: 'all' | 'success' | 'failed';
+  keyword: string;
+  refreshNonce: number;
+}
 
 const EMPTY_DATA: AiDashboardData = {
   rangeDays: 30,
@@ -59,19 +86,61 @@ export function AnalyticsPage() {
   const [modelId, setModelId] = useState('');
   const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [keyword, setKeyword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [recordsRefreshing, setRecordsRefreshing] = useState(false);
+  const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [data, setData] = useState<AiDashboardData>(EMPTY_DATA);
   const [pricingGaps, setPricingGaps] = useState<AiPricingGap[]>([]);
+  const latestFetchIdRef = useRef(0);
+  const lastFetchSnapshotRef = useRef<AnalyticsFetchSnapshot | null>(null);
   // refreshNonce 让「归档后强制刷新」也走 useEffect 统一通道：
   // React 会把 setPage(1) + setRefreshNonce 批成一次渲染,effect 只触发一次,
   // 避免以前"setPage(1) 触发一次 + 手动 fetch 一次"的重复请求/竞态。
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
+    const keywordValue = keyword.trim();
+    const snapshot: AnalyticsFetchSnapshot = {
+      days,
+      page,
+      pageSize,
+      taskType,
+      modelId,
+      successFilter,
+      keyword: keywordValue,
+      refreshNonce,
+    };
+    const previousSnapshot = lastFetchSnapshotRef.current;
+    const isPaginationOnlyRefresh = Boolean(
+      previousSnapshot &&
+      previousSnapshot.days === snapshot.days &&
+      previousSnapshot.taskType === snapshot.taskType &&
+      previousSnapshot.modelId === snapshot.modelId &&
+      previousSnapshot.successFilter === snapshot.successFilter &&
+      previousSnapshot.keyword === snapshot.keyword &&
+      previousSnapshot.refreshNonce === snapshot.refreshNonce &&
+      (
+        previousSnapshot.page !== snapshot.page ||
+        previousSnapshot.pageSize !== snapshot.pageSize
+      )
+    );
+
+    lastFetchSnapshotRef.current = snapshot;
+    latestFetchIdRef.current += 1;
+    const fetchId = latestFetchIdRef.current;
+    let cancelled = false;
+
+    const isLatestFetch = () => !cancelled && latestFetchIdRef.current === fetchId;
+
     const fetchData = async () => {
       try {
-        setLoading(true);
+        if (isPaginationOnlyRefresh) {
+          setRecordsRefreshing(true);
+        } else {
+          setDashboardLoading(true);
+        }
+
         const success = successFilter === 'all' ? undefined : successFilter === 'success';
         const query = {
           days,
@@ -80,12 +149,30 @@ export function AnalyticsPage() {
           taskType: taskType || undefined,
           modelId: modelId || undefined,
           success,
-          keyword: keyword.trim() || undefined,
+          keyword: keywordValue || undefined,
         };
+
+        if (isPaginationOnlyRefresh) {
+          const response = await analyticsService.getAiDashboard(query);
+          if (!isLatestFetch()) return;
+
+          if (response.code === 200 && response.data) {
+            setData(current => ({
+              ...current,
+              records: response.data.records,
+            }));
+          } else {
+            toast.error('加载 AI 调用记录失败');
+          }
+          return;
+        }
+
         const [response, gapResponse] = await Promise.all([
           analyticsService.getAiDashboard(query),
           analyticsService.getAiPricingGaps(query),
         ]);
+
+        if (!isLatestFetch()) return;
 
         if (response.code === 200 && response.data) {
           setData(response.data);
@@ -100,15 +187,32 @@ export function AnalyticsPage() {
         }
       } catch (error) {
         logger.error('Failed to fetch AI analytics:', error);
-        toast.error('加载 AI 统计数据失败');
-        setData(EMPTY_DATA);
-        setPricingGaps([]);
+        if (!isLatestFetch()) return;
+
+        if (isPaginationOnlyRefresh) {
+          toast.error('加载 AI 调用记录失败');
+        } else {
+          toast.error('加载 AI 统计数据失败');
+          setData(EMPTY_DATA);
+          setPricingGaps([]);
+        }
       } finally {
-        setLoading(false);
+        if (isLatestFetch()) {
+          if (isPaginationOnlyRefresh) {
+            setRecordsRefreshing(false);
+          } else {
+            setDashboardLoading(false);
+            setHasLoadedDashboard(true);
+          }
+        }
       }
     };
 
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [days, page, pageSize, taskType, modelId, successFilter, keyword, refreshNonce]);
 
   const overview = data.overview || EMPTY_DATA.overview;
@@ -121,6 +225,8 @@ export function AnalyticsPage() {
     [data.taskDistribution],
   );
   const records: AiCallRecord[] = data.records?.list || [];
+  const isRecordsInitialLoading = dashboardLoading && !hasLoadedDashboard && records.length === 0;
+  const isRecordsRefreshing = recordsRefreshing || (dashboardLoading && hasLoadedDashboard);
   const responseRateSummary = getAiResponseRateSummary(
     overview.totalCalls,
     overview.successCalls,
@@ -155,43 +261,46 @@ export function AnalyticsPage() {
   };
 
   return (
-    <div className="dashboard-page space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">数据分析</h1>
-          <p className="text-[var(--text-muted)] mt-1">模型调用记录、占比、趋势和成本全链路追踪</p>
-        </div>
-
-        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] self-start">
-          {([7, 30, 90] as const).map(option => (
-            <button
-              key={option}
-              onClick={() => {
+    <IntelligenceShell className="analytics-page dashboard-page" contentClassName="gap-4">
+      <IntelligenceHeader
+        title="数据分析"
+        eyebrow="INTELLIGENCE · ANALYTICS"
+        description="模型调用记录、占比、趋势和成本全链路追踪。"
+        icon={BarChart3}
+        currentLabel={`${days} 天窗口`}
+        activeSummary={`调用 ${overview.totalCalls.toLocaleString()} 次 · 成功率 ${responseRateSummary.successRateValue} · 费用 $${overview.totalCost.toFixed(4)}`}
+        actions={
+          <>
+            <IntelligenceSegmented
+              value={days}
+              options={([7, 30, 90] as const).map(option => ({
+                value: option,
+                label: `${option}天`,
+              }))}
+              onChange={(option) => {
                 setDays(option);
                 setPage(1);
               }}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                days === option
-                  ? 'bg-primary text-white shadow'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              }`}
+              ariaLabel="统计时间窗口"
+            />
+            <button
+              onClick={handleArchive}
+              disabled={dashboardLoading || recordsRefreshing || archiving}
+              className="intelligence-action-button"
             >
-              {option}天
+              {archiving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Archive className="h-4 w-4" />
+              )}
+              归档当前筛选费用
             </button>
-          ))}
-        </div>
-        <button
-          onClick={handleArchive}
-          disabled={loading || archiving}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] disabled:opacity-50"
-        >
-          {(loading || archiving) ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
-          归档当前筛选费用
-        </button>
-      </div>
+          </>
+        }
+      />
 
       {pricingGaps.length > 0 && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+        <IntelligenceStatusStrip tone="warning" icon={AlertTriangle}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-amber-600">存在未配置价格的模型</div>
@@ -237,62 +346,53 @@ export function AnalyticsPage() {
               </Link>
             ))}
           </div>
-        </div>
+        </IntelligenceStatusStrip>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 [&>:last-child]:col-span-2 lg:[&>:last-child]:col-span-1">
-        <StatsCard
-          title="总调用"
-          value={overview.totalCalls}
-          change={overview.successRate}
-          changeLabel="成功率"
-          icon={<Repeat2 className="w-5 h-5" />}
-          color="indigo"
-          loading={loading}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <IntelligenceMetric
+          label="总调用"
+          value={dashboardLoading ? '...' : overview.totalCalls.toLocaleString()}
+          detail={`成功率 ${overview.successRate.toFixed(1)}%`}
+          icon={Repeat2}
+          tone="accent"
         />
-        <StatsCard
-          title="总 Tokens"
-          value={overview.totalTokens}
-          change={0}
-          changeLabel={`均次 ${Math.round(overview.avgTokensPerCall)} tokens`}
-          icon={<Cpu className="w-5 h-5" />}
-          color="cyan"
-          loading={loading}
+        <IntelligenceMetric
+          label="总 Tokens"
+          value={dashboardLoading ? '...' : overview.totalTokens.toLocaleString()}
+          detail={`均次 ${Math.round(overview.avgTokensPerCall)} tokens`}
+          icon={Cpu}
+          tone="neutral"
         />
-        <StatsCard
-          title="总费用"
-          value={`$${overview.totalCost.toFixed(4)}`}
-          change={0}
-          changeLabel={`均次 $${overview.avgCostPerCall.toFixed(6)}`}
-          icon={<DollarSign className="w-5 h-5" />}
-          color="emerald"
-          loading={loading}
+        <IntelligenceMetric
+          label="总费用"
+          value={dashboardLoading ? '...' : `$${overview.totalCost.toFixed(4)}`}
+          detail={`均次 $${overview.avgCostPerCall.toFixed(6)}`}
+          icon={DollarSign}
+          tone="success"
         />
-        <StatsCard
-          title="平均延迟"
-          value={`${Math.round(overview.avgLatencyMs)} ms`}
-          change={0}
-          changeLabel={`缓存命中 ${overview.cacheHitRate}%`}
-          icon={<Clock className="w-5 h-5" />}
-          color="blue"
-          loading={loading}
+        <IntelligenceMetric
+          label="平均延迟"
+          value={dashboardLoading ? '...' : `${Math.round(overview.avgLatencyMs)} ms`}
+          detail={`缓存命中 ${overview.cacheHitRate}%`}
+          icon={Clock}
+          tone="accent"
         />
-        <StatsCard
-          title="响应成功率"
-          value={responseRateSummary.successRateValue}
-          changeLabel={(
-            <div className="space-y-0.5 leading-5">
-              <div>{responseRateSummary.countLine}</div>
-              <div>{responseRateSummary.rateLine}</div>
-            </div>
+        <IntelligenceMetric
+          label="响应成功率"
+          value={dashboardLoading ? '...' : responseRateSummary.successRateValue}
+          detail={(
+            <span>
+              {responseRateSummary.countLine} · {responseRateSummary.rateLine}
+            </span>
           )}
-          icon={<CheckCircle2 className="w-5 h-5" />}
-          color="green"
-          loading={loading}
+          icon={CheckCircle2}
+          tone="success"
+          className="col-span-2 lg:col-span-1"
         />
       </div>
 
-      {loading && data.trend.length === 0 ? (
+      {dashboardLoading && data.trend.length === 0 ? (
         <div className="h-52 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center">
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
         </div>
@@ -300,22 +400,23 @@ export function AnalyticsPage() {
         <>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2">
-              <AiUsageTrendChart data={data.trend} loading={loading} />
+              <AiUsageTrendChart data={data.trend} loading={dashboardLoading} />
             </div>
             <div>
-              <AiModelDistributionChart data={data.modelDistribution} loading={loading} />
+              <AiModelDistributionChart data={data.modelDistribution} loading={dashboardLoading} />
             </div>
           </div>
           {/* P1.2: 任务费用下钻 — 让运营可立刻看出"哪个工具最贵 / ROI 最低" */}
-          <AiTaskDistributionChart data={data.taskDistribution} loading={loading} />
+          <AiTaskDistributionChart data={data.taskDistribution} loading={dashboardLoading} />
         </>
       )}
 
       <AiUsageRecordsTable
         records={records}
-        loading={loading}
-        page={data.records?.pageNum || page}
-        pageSize={data.records?.pageSize || pageSize}
+        loading={isRecordsInitialLoading}
+        refreshing={isRecordsRefreshing}
+        page={page}
+        pageSize={pageSize}
         total={data.records?.total || 0}
         onPageChange={(nextPage) => {
           if (nextPage < 1) {
@@ -355,7 +456,7 @@ export function AnalyticsPage() {
           setPage(1);
         }}
       />
-    </div>
+    </IntelligenceShell>
   );
 }
 

@@ -74,7 +74,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative group flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all overflow-hidden ${model.is_enabled
+      className={`ai-model-card relative group flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all overflow-hidden ${model.is_enabled
         ? 'border-[var(--border-default)]/60 bg-[var(--bg-card)] shadow-sm'
         : 'border-transparent bg-transparent opacity-70 hover:bg-[var(--bg-card-hover)]'
         }`}

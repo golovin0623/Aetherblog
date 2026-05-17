@@ -288,11 +288,10 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 	if !ok {
 		return nil, fmt.Errorf("provider %s does not support listing", p.ProviderType)
 	}
-	objs, nextTok, err := lister.List(ctx, prefix, token, limit)
+	objs, nextTok, err := listVisibleObjects(ctx, lister, prefix, token, limit)
 	if err != nil {
 		return nil, err
 	}
-	objs = filterListableObjects(objs)
 	if len(objs) == 0 {
 		return &ListObjectsResult{Objects: nil, NextToken: nextTok}, nil
 	}
@@ -324,6 +323,35 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 		listings[i] = l
 	}
 	return &ListObjectsResult{Objects: listings, NextToken: nextTok}, nil
+}
+
+func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, token string, limit int) ([]storage.ObjectInfo, string, error) {
+	if limit <= 0 {
+		objs, nextTok, err := lister.List(ctx, prefix, token, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		return filterListableObjects(objs), nextTok, nil
+	}
+
+	objects := make([]storage.ObjectInfo, 0, limit)
+	fetchToken := token
+	for len(objects) < limit {
+		remaining := limit - len(objects)
+		page, nextTok, err := lister.List(ctx, prefix, fetchToken, remaining)
+		if err != nil {
+			return nil, "", err
+		}
+		objects = append(objects, filterListableObjects(page)...)
+		if nextTok == "" {
+			return objects, "", nil
+		}
+		if nextTok == fetchToken {
+			return objects, nextTok, nil
+		}
+		fetchToken = nextTok
+	}
+	return objects, fetchToken, nil
 }
 
 // ImportObjects 把指定 keys 反向导入到 media_files catalog。

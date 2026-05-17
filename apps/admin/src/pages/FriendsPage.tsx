@@ -113,11 +113,22 @@ function getHost(url?: string): string {
 
 function statusChipClass(isSelected: boolean): string {
   return cn(
-    'inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium',
-    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+    'relative z-0 inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium',
+    'transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)]',
     isSelected
-      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+      ? 'text-[var(--ink-primary)]'
       : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+  );
+}
+
+function SegmentThumb({ layoutId }: { layoutId: string }) {
+  return (
+    <motion.span
+      layoutId={layoutId}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-0 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+      transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.55 }}
+    />
   );
 }
 
@@ -578,9 +589,10 @@ export default function FriendsPage() {
                     }}
                     className={statusChipClass(isSelected)}
                   >
-                    <Icon className="h-3 w-3" />
-                    <span>{option.label}</span>
-                    <span className="tnum text-[10px] opacity-70">{option.count}</span>
+                    {isSelected && <SegmentThumb layoutId="friend-status-segment-thumb" />}
+                    <Icon className="relative z-10 h-3 w-3" />
+                    <span className="relative z-10">{option.label}</span>
+                    <span className="tnum relative z-10 text-[10px] opacity-70">{option.count}</span>
                   </button>
                 );
               })}

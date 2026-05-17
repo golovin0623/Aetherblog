@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Select, DateRangePicker, type SelectOption, type DateRangeValue } from '@aetherblog/ui';
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
 import PostTableRow from '@/components/posts/PostTableRow';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
 
@@ -30,6 +31,115 @@ const VIEW_COUNT_PRESETS: Array<{ value: string; label: string; min?: number; ma
   { value: '10000:-',         label: '> 10k',           min: 10000 },
 ];
 
+const STATUS_FILTERS: Array<{ key: string | undefined; label: string }> = [
+  { key: undefined, label: '全部' },
+  { key: 'PUBLISHED', label: '已发布' },
+  { key: 'DRAFT', label: '草稿' },
+];
+
+const DEFAULT_POST_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS: SelectOption[] = [
+  { value: '10', label: '10 条/页' },
+  { value: '20', label: '20 条/页' },
+  { value: '50', label: '50 条/页' },
+  { value: '200', label: '200 条/页' },
+];
+const PAGINATION_FULL_RENDER_THRESHOLD = 100;
+const PAGINATION_EDGE_COUNT = 5;
+const PAGINATION_SIBLING_COUNT = 5;
+const POST_ROW_HEIGHT_CLASS = 'h-[76px]';
+const MOBILE_POST_CARD_CLASS = cn(
+  'grid h-[190px] grid-rows-[48px_20px_22px_44px] gap-2 p-4',
+  'transition-colors active:bg-[var(--bg-card-hover)]'
+);
+const MOBILE_POST_PLACEHOLDER_CLASS = 'h-[190px] pointer-events-none';
+
+type PaginationEllipsis = {
+  type: 'ellipsis';
+  key: string;
+  start: number;
+  end: number;
+};
+
+type PaginationItem = number | PaginationEllipsis;
+
+function pageRange(start: number, end: number): number[] {
+  if (end < start) return [];
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function isPaginationEllipsis(item: PaginationItem): item is PaginationEllipsis {
+  return typeof item !== 'number';
+}
+
+function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
+  if (totalPages <= 1) return [1];
+  if (totalPages <= PAGINATION_FULL_RENDER_THRESHOLD) {
+    return pageRange(1, totalPages);
+  }
+
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  const rawRanges = ([
+    [1, Math.min(PAGINATION_EDGE_COUNT, totalPages)],
+    [
+      Math.max(1, safeCurrentPage - PAGINATION_SIBLING_COUNT),
+      Math.min(totalPages, safeCurrentPage + PAGINATION_SIBLING_COUNT),
+    ],
+    [Math.max(1, totalPages - PAGINATION_EDGE_COUNT + 1), totalPages],
+  ] satisfies Array<[number, number]>).sort((a, b) => a[0] - b[0]);
+
+  const ranges = rawRanges.reduce<Array<[number, number]>>((merged, range) => {
+    const last = merged[merged.length - 1];
+    if (!last || range[0] > last[1] + 1) {
+      merged.push([...range]);
+      return merged;
+    }
+    last[1] = Math.max(last[1], range[1]);
+    return merged;
+  }, []);
+
+  const items: PaginationItem[] = [];
+  let lastPage = 0;
+  for (const [start, end] of ranges) {
+    if (start > lastPage + 1) {
+      if (start === lastPage + 2) {
+        items.push(lastPage + 1);
+      } else {
+        items.push({
+          type: 'ellipsis',
+          key: `ellipsis-${lastPage + 1}-${start - 1}`,
+          start: lastPage + 1,
+          end: start - 1,
+        });
+      }
+    }
+    items.push(...pageRange(start, end));
+    lastPage = end;
+  }
+
+  return items;
+}
+
+const postPanelClass = cn(
+  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-4'
+);
+
+const postShellClass = cn(
+  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
+
+function statusChipClass(isSelected: boolean): string {
+  return cn(
+    'inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium sm:h-7 sm:min-h-0',
+    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+    isSelected
+      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+      : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+  );
+}
+
 export default function PostsPage() {
   const navigate = useNavigate();
   // 尊重系统 prefers-reduced-motion；下面的 motion.div 共用这套 transition 预设。
@@ -41,9 +151,6 @@ export default function PostsPage() {
   const chipTransition = reduceMotion
     ? { duration: 0 }
     : { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const };
-  const tabSpring = reduceMotion
-    ? { duration: 0 }
-    : { type: 'spring' as const, stiffness: 320, damping: 30 };
 
   // URL ?search= 是搜索关键词的唯一事实源:
   // 既支持外部入口(侧边栏全局搜索)直接预填,也让浏览器后退/分享链接保持搜索状态。
@@ -52,7 +159,13 @@ export default function PostsPage() {
   const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(urlSearch);
   const [posts, setPosts] = useState<PostListItem[]>([]);
-  const [pagination, setPagination] = useState({ pageNum: 1, pageSize: 10, total: 0, pages: 0 });
+  const [pagination, setPagination] = useState({
+    pageNum: 1,
+    pageSize: DEFAULT_POST_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
+  const [pageSize, setPageSize] = useState(DEFAULT_POST_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | undefined>(undefined);
@@ -120,10 +233,8 @@ export default function PostsPage() {
 
   // 分页滚动条: 当前页跟随滚动并在可视区域居中显示, 边界时自然贴合首尾
   const pageStripRef = useRef<HTMLDivElement>(null);
-  const pageNumbers = useMemo(
-    () => Array.from({ length: pagination.pages }, (_, i) => i + 1),
-    [pagination.pages]
-  );
+  const [pageJumpTarget, setPageJumpTarget] = useState<string | null>(null);
+  const [pageJumpValue, setPageJumpValue] = useState('');
 
   // 点击外部区域时关闭标签弹出框
   useEffect(() => {
@@ -178,12 +289,19 @@ export default function PostsPage() {
     setDebouncedSearch(prev => (prev === urlSearch ? prev : urlSearch));
   }, [urlSearch]);
 
-  const fetchPosts = async (pageNum = 1, currentStatus?: string, keyword?: string, currentFilters = filters) => {
+  const fetchPosts = async (
+    pageNum = 1,
+    currentStatus?: string,
+    keyword?: string,
+    currentFilters = filters,
+    currentPageSize = pageSize,
+  ) => {
     try {
       setLoading(true);
+      setError(null);
       const res = await postService.getList({
         pageNum,
-        pageSize: 10,
+        pageSize: currentPageSize,
         status: currentStatus,
         keyword,
         ...currentFilters,
@@ -201,9 +319,9 @@ export default function PostsPage() {
       } else {
         setError(res.message || '获取文章列表失败');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error('Posts fetch error:', err);
-      setError(err.message || '网络错误');
+      setError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setLoading(false);
     }
@@ -211,8 +329,9 @@ export default function PostsPage() {
 
   // 初始加载及状态/搜索/筛选条件变更时重新加载
   useEffect(() => {
-    fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
-  }, [activeStatus, debouncedSearch, filters]);
+    setActiveTagPopover(null);
+    fetchPosts(1, activeStatus, debouncedSearch || undefined, filters, pageSize);
+  }, [activeStatus, debouncedSearch, filters, pageSize]);
 
   // 加载用于筛选的分类和标签数据
   useEffect(() => {
@@ -236,7 +355,39 @@ export default function PostsPage() {
   };
 
   const handlePageChange = (page: number) => {
-    fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
+    const maxPage = pagination.pages || 1;
+    const nextPage = Math.min(Math.max(page, 1), maxPage);
+    if (loading || nextPage === pagination.pageNum) return;
+    setActiveTagPopover(null);
+    setPageJumpTarget(null);
+    fetchPosts(nextPage, activeStatus, debouncedSearch || undefined, filters, pageSize);
+  };
+
+  const handleOpenPageJump = (entry: PaginationEllipsis) => {
+    const defaultPage =
+      pagination.pageNum >= entry.start && pagination.pageNum <= entry.end
+        ? pagination.pageNum
+        : entry.start;
+    setPageJumpTarget(entry.key);
+    setPageJumpValue(String(defaultPage));
+  };
+
+  const handlePageJumpSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!pageJumpValue.trim()) return;
+    const page = Number(pageJumpValue);
+    if (!Number.isFinite(page)) return;
+    handlePageChange(Math.trunc(page));
+  };
+
+  const handlePageSizeChange = (next: string) => {
+    const nextPageSize = Number(next);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option.value === next) || nextPageSize === pageSize) {
+      return;
+    }
+    setActiveTagPopover(null);
+    setPageJumpTarget(null);
+    setPageSize(nextPageSize);
   };
 
   // 处理删除操作
@@ -246,7 +397,7 @@ export default function PostsPage() {
       setActionLoading(confirmDialog.post.id);
       await postService.delete(confirmDialog.post.id);
       setConfirmDialog({ isOpen: false, type: 'delete', post: null });
-      fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
+      fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters, pageSize);
     } catch (err) {
       logger.error('删除失败:', err);
     } finally {
@@ -271,7 +422,7 @@ export default function PostsPage() {
           status: 'DRAFT',
         });
         setConfirmDialog({ isOpen: false, type: 'copy', post: null });
-        fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
+        fetchPosts(1, activeStatus, debouncedSearch || undefined, filters, pageSize);
       }
     } catch (err) {
       logger.error('复制失败:', err);
@@ -317,13 +468,13 @@ export default function PostsPage() {
       setActionLoading(selectedPost.id);
       await postService.updateProperties(selectedPost.id, data);
       setIsPropertiesModalOpen(false);
-      fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
+      fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters, pageSize);
     } catch (err) {
       logger.error('更新属性失败:', err);
     } finally {
       setActionLoading(null);
     }
-  }, [selectedPost, pagination.pageNum, activeStatus, debouncedSearch, filters]);
+  }, [selectedPost, pagination.pageNum, activeStatus, debouncedSearch, filters, pageSize]);
 
   // 处理标签弹窗切换 - 使用 callback 确保引用稳定，配合 React.memo 减少重复渲染
   const handleTogglePopover = useCallback((id: number) => {
@@ -463,310 +614,320 @@ export default function PostsPage() {
     setActiveStatus(undefined);
   }, []);
 
+  const activeStatusLabel = STATUS_FILTERS.find((item) => item.key === activeStatus)?.label ?? '全部';
+  const totalPages = pagination.pages || 1;
+  const currentPaginationPageSize = pagination.pageSize || pageSize;
+  const paginationItems = useMemo(
+    () => buildPaginationItems(pagination.pageNum, totalPages),
+    [pagination.pageNum, totalPages]
+  );
+  const placeholderCount = posts.length > 0
+    ? Math.max(0, currentPaginationPageSize - posts.length)
+    : 0;
+  const isInitialLoading = loading && posts.length === 0;
+  const isListRefreshing = loading && posts.length > 0;
+
   return (
-    <div className="flex flex-col">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)] leading-tight">文章管理</h1>
-          <div className="h-5 flex items-center mt-0.5">
-            {loading ? (
-              <div className="h-4 w-20 bg-[var(--bg-secondary)] rounded animate-pulse" />
-            ) : (
-              <p className="text-[var(--text-secondary)] text-sm">共 {pagination.total} 篇文章</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 主操作行 */}
-      <div className="flex flex-wrap items-center gap-3 mb-3">
-        {/* CTA 组 —— AI 协同写作 + 新建文章 */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate('/posts/ai-writing/new')}
-            className={cn(
-              'inline-flex items-center gap-2 h-10 px-3.5 rounded-lg text-sm font-medium',
-              'border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
-              'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
-              'text-[var(--aurora-1)]',
-              'hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]',
-              'transition-[background-color,border-color] duration-[var(--dur-quick)] ease-[var(--ease-out)]'
-            )}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>AI 协同写作</span>
-            <span className="px-1.5 py-px text-[10px] font-mono uppercase tracking-[0.12em] rounded bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]">
-              新
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('/posts/new')}
-            className={cn(
-              'group relative inline-flex items-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold text-white overflow-hidden',
-              'bg-[var(--color-primary)]',
-              'shadow-[0_4px_12px_-2px_color-mix(in_oklch,var(--aurora-1)_28%,transparent)]',
-              'hover:shadow-[0_6px_16px_-2px_color-mix(in_oklch,var(--aurora-1)_38%,transparent)]',
-              'transition-shadow duration-[var(--dur-quick)] ease-[var(--ease-out)]'
-            )}
-          >
-            <span
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-[var(--dur-flow)] ease-[var(--ease-out)]"
-            />
-            <Plus className="w-4 h-4 relative" />
-            <span className="relative">新建文章</span>
-          </button>
-        </div>
-
-        {/* 状态 segmented */}
-        <div className="surface-leaf flex items-center p-1 rounded-full">
-          {[
-            { key: undefined,    label: '全部' },
-            { key: 'PUBLISHED',  label: '已发布' },
-            { key: 'DRAFT',      label: '草稿' },
-          ].map((tab) => {
-            const isActive = activeStatus === tab.key;
-            return (
-              <button
-                key={tab.key ?? 'all'}
-                onClick={() => handleStatusChange(tab.key)}
-                className={cn(
-                  'relative h-8 px-4 rounded-full text-sm font-medium',
-                  'transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-                  isActive ? 'text-[var(--text-inverse)]' : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
-                )}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeStatusTab"
-                    className="absolute inset-0 bg-[var(--color-primary)] rounded-full"
-                    transition={tabSpring}
-                  />
-                )}
-                <span className="relative z-10">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 可见性切换 chip —— 三态循环：全部 → 仅隐藏 → 仅公开 → 全部 */}
-        <button
-          type="button"
-          onClick={() => {
-            setFilters((f) => ({
-              ...f,
-              hidden: f.hidden === undefined ? true : f.hidden === true ? false : undefined,
-            }));
-          }}
-          className={cn(
-            'inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-medium border',
-            'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-            filters.hidden === true
-              ? 'border-[color-mix(in_oklch,var(--signal-warn)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] text-[var(--signal-warn)]'
-              : filters.hidden === false
-                ? 'border-[color-mix(in_oklch,var(--signal-success)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
-                : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
-          )}
-          title="点击切换可见性筛选"
-        >
-          {filters.hidden === true
-            ? <><EyeOff className="w-3.5 h-3.5" /> 仅隐藏</>
-            : filters.hidden === false
-              ? <><Eye className="w-3.5 h-3.5" /> 仅公开</>
-              : <><Eye className="w-3.5 h-3.5" /> 全部可见性</>}
-        </button>
-
-        {/* 搜索框 */}
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] pointer-events-none" />
-          <input
-            type="text"
-            placeholder="搜索文章标题…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              'w-full h-10 pl-10 pr-9 rounded-lg text-sm',
-              'bg-[var(--bg-leaf)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
-              'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
-              'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-              'hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]',
-              'focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
-              'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
-            )}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              aria-label="清空搜索"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* 高级筛选切换 */}
-        <button
-          type="button"
-          onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-          className={cn(
-            'inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-sm font-medium border',
-            'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-            showAdvancedFilter
-              ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--ink-primary)]'
-              : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
-          )}
-        >
-          <Filter className="w-4 h-4" />
-          <span>高级筛选</span>
-          {activeFilterCount > 0 && (
-            <span className="tnum inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-semibold bg-[var(--aurora-1)] text-[var(--bg-void)]">
-              {activeFilterCount}
-            </span>
-          )}
-          <ChevronDown className={cn('w-4 h-4 transition-transform duration-[var(--dur-quick)]', showAdvancedFilter && 'rotate-180')} />
-        </button>
-      </div>
-
-      {/* 高级筛选面板 */}
-      <AnimatePresence initial={false}>
-        {showAdvancedFilter && (
-          <motion.div
-            key="advanced-panel"
-            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-            animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
-            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-            transition={heightTransition}
-            className="overflow-visible"
-          >
-            <div className="surface-leaf rounded-xl p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
-                    所属分类
-                  </label>
-                  <Select
-                    value={filters.categoryId ? String(filters.categoryId) : ''}
-                    onValueChange={(v) =>
-                      setFilters((f) => ({ ...f, categoryId: v ? Number(v) : undefined }))
-                    }
-                    options={categorySelectOptions}
-                    placeholder="全部分类"
-                    prefix={<FolderOpen />}
-                    ariaLabel="所属分类"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
-                    标签
-                  </label>
-                  <Select
-                    value={filters.tagId ? String(filters.tagId) : ''}
-                    onValueChange={(v) =>
-                      setFilters((f) => ({ ...f, tagId: v ? Number(v) : undefined }))
-                    }
-                    options={tagSelectOptions}
-                    placeholder="全部标签"
-                    prefix={<TagIcon />}
-                    ariaLabel="标签"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
-                    浏览量
-                  </label>
-                  <Select
-                    value={viewCountPreset}
-                    onValueChange={handleViewCountPresetChange}
-                    options={viewCountOptions}
-                    placeholder="全部浏览量"
-                    prefix={<BarChart3 />}
-                    ariaLabel="浏览量范围"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
-                    发布时间
-                  </label>
-                  <DateRangePicker
-                    value={dateRange}
-                    onChange={handleDateRangeChange}
-                    placeholder="选择时间范围"
-                    ariaLabel="发布时间筛选"
-                  />
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 激活筛选 chip 摘要 —— 让用户随时看清在筛什么 */}
-      <AnimatePresence initial={false}>
-        {activeFilterCount > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
-            animate={{ opacity: 1, height: 'auto', marginBottom: 12, transitionEnd: { overflow: 'visible' } }}
-            exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
-            transition={heightTransition}
-          >
-            <div className="flex items-center gap-2 flex-wrap py-0.5">
-              <span className="tnum text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-                已应用 {activeFilterCount}
-              </span>
-              <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-                {activeChips.map((chip) => {
-                  const Icon = chip.icon;
-                  return (
-                    <motion.span
-                      key={chip.key}
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={chipTransition}
-                      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-xs"
-                    >
-                      <Icon className="w-3 h-3 text-[var(--aurora-1)] shrink-0" />
-                      <span className="text-[var(--ink-muted)] font-mono">{chip.label}</span>
-                      <span className="text-[var(--ink-primary)] font-medium max-w-[180px] truncate">
-                        {chip.value}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={chip.onRemove}
-                        aria-label={`移除${chip.label}筛选`}
-                        className="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </motion.span>
-                  );
-                })}
-              </div>
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="文章管理"
+          description="管理文章发布、草稿、分类标签、可见性与内容属性。"
+          icon={FileText}
+          currentLabel={isInitialLoading ? '同步中' : activeStatusLabel}
+          activeSummary={
+            isInitialLoading
+              ? '正在同步文章列表'
+              : `当前匹配 ${pagination.total} 篇文章，第 ${pagination.pageNum}/${totalPages} 页`
+          }
+          actions={
+            <>
               <button
                 type="button"
-                onClick={resetAllFilters}
-                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] hover:text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] transition-colors"
+                onClick={() => navigate('/posts/ai-writing/new')}
+                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                aria-label="AI 协同写作"
               >
-                <X className="w-3 h-3" />
-                全部清空
+                <Sparkles className="h-4 w-4" />
+                AI 协同写作
               </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <button
+                type="button"
+                onClick={() => navigate('/posts/new')}
+                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                aria-label="新建文章"
+              >
+                <Plus className="h-4 w-4" />
+                新建
+              </button>
+            </>
+          }
+        />
 
-      {/* 文章列表 */}
-      <div className="surface-leaf surface-admin-card rounded-2xl overflow-hidden relative flex flex-col">
+        <div className={cn(postPanelClass, 'space-y-4')}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div className="relative md:col-span-12">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                type="text"
+                placeholder="搜索文章标题"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="文章关键词搜索"
+                className={cn(
+                  'h-11 w-full rounded-lg pl-9 pr-9 text-sm sm:h-10',
+                  'border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+                  'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                  'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                  'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                  'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] focus:outline-none',
+                  'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                )}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="清空搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-[60px] items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              <FileText className="h-3.5 w-3.5" />
+              <span>状态</span>
+            </div>
+            <div className="inline-flex max-w-full items-center overflow-x-auto rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
+              {STATUS_FILTERS.map((tab) => {
+                const isActive = activeStatus === tab.key;
+                return (
+                  <button
+                    key={tab.key ?? 'all'}
+                    type="button"
+                    onClick={() => handleStatusChange(tab.key)}
+                    className={statusChipClass(isActive)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setFilters((f) => ({
+                  ...f,
+                  hidden: f.hidden === undefined ? true : f.hidden === true ? false : undefined,
+                }));
+              }}
+              className={cn(
+                'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium sm:h-7 sm:min-h-0',
+                'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                filters.hidden === true
+                  ? 'border-[color-mix(in_oklch,var(--signal-warn)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] text-[var(--signal-warn)]'
+                  : filters.hidden === false
+                    ? 'border-[color-mix(in_oklch,var(--signal-success)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
+                    : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] hover:text-[var(--ink-primary)]'
+              )}
+              title="点击切换可见性筛选"
+            >
+              {filters.hidden === true
+                ? <><EyeOff className="h-3.5 w-3.5" /> 仅隐藏</>
+                : filters.hidden === false
+                  ? <><Eye className="h-3.5 w-3.5" /> 仅公开</>
+                  : <><Eye className="h-3.5 w-3.5" /> 全部可见性</>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+              aria-expanded={showAdvancedFilter}
+              aria-controls="posts-advanced-filter-panel"
+              className={cn(
+                'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium sm:h-8 sm:min-h-0',
+                'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                showAdvancedFilter
+                  ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--ink-primary)]'
+                  : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] hover:text-[var(--ink-primary)]'
+              )}
+            >
+              <Filter className="h-4 w-4" />
+              <span>高级筛选</span>
+              {activeFilterCount > 0 && (
+                <span className="tnum inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--aurora-1)] px-1 font-mono text-[10px] font-semibold text-[var(--bg-void)]">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown className={cn('h-4 w-4 transition-transform duration-[var(--dur-quick)]', showAdvancedFilter && 'rotate-180')} />
+            </button>
+          </div>
+
+          <div
+            id="posts-advanced-filter-panel"
+            aria-hidden={!showAdvancedFilter}
+            className={cn(
+              'grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-[var(--ease-out)] motion-reduce:transition-none',
+              showAdvancedFilter ? 'opacity-100' : 'pointer-events-none !mt-0 opacity-0'
+            )}
+            style={{ gridTemplateRows: showAdvancedFilter ? '1fr' : '0fr' }}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3 sm:p-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      所属分类
+                    </label>
+                    <Select
+                      value={filters.categoryId ? String(filters.categoryId) : ''}
+                      onValueChange={(v) =>
+                        setFilters((f) => ({ ...f, categoryId: v ? Number(v) : undefined }))
+                      }
+                      options={categorySelectOptions}
+                      placeholder="全部分类"
+                      prefix={<FolderOpen />}
+                      ariaLabel="所属分类"
+                      className="!h-11 sm:!h-10"
+                      disabled={!showAdvancedFilter}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      标签
+                    </label>
+                    <Select
+                      value={filters.tagId ? String(filters.tagId) : ''}
+                      onValueChange={(v) =>
+                        setFilters((f) => ({ ...f, tagId: v ? Number(v) : undefined }))
+                      }
+                      options={tagSelectOptions}
+                      placeholder="全部标签"
+                      prefix={<TagIcon />}
+                      ariaLabel="标签"
+                      className="!h-11 sm:!h-10"
+                      disabled={!showAdvancedFilter}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      浏览量
+                    </label>
+                    <Select
+                      value={viewCountPreset}
+                      onValueChange={handleViewCountPresetChange}
+                      options={viewCountOptions}
+                      placeholder="全部浏览量"
+                      prefix={<BarChart3 />}
+                      ariaLabel="浏览量范围"
+                      className="!h-11 sm:!h-10"
+                      disabled={!showAdvancedFilter}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      发布时间
+                    </label>
+                    <DateRangePicker
+                      value={dateRange}
+                      onChange={handleDateRangeChange}
+                      placeholder="选择时间范围"
+                      ariaLabel="发布时间筛选"
+                      className="!h-11 sm:!h-10"
+                      disabled={!showAdvancedFilter}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {activeFilterCount > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={heightTransition}
+              >
+                <div className="flex flex-wrap items-center gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-0.5 pt-3">
+                  <span className="tnum text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    已应用 {activeFilterCount}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                    {activeChips.map((chip) => {
+                      const Icon = chip.icon;
+                      return (
+                        <motion.span
+                          key={chip.key}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={chipTransition}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] pl-2.5 pr-1 text-xs"
+                        >
+                          <Icon className="h-3 w-3 shrink-0 text-[var(--aurora-1)]" />
+                          <span className="font-mono text-[var(--ink-muted)]">{chip.label}</span>
+                          <span className="max-w-[180px] truncate font-medium text-[var(--ink-primary)]">
+                            {chip.value}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={chip.onRemove}
+                            aria-label={`移除${chip.label}筛选`}
+                            className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)]"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </motion.span>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetAllFilters}
+                    className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] hover:text-[var(--signal-danger)]"
+                  >
+                    <X className="h-3 w-3" />
+                    全部清空
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-[var(--ink-muted)]">
+                  匹配 <span className="tnum font-medium text-[var(--ink-primary)]">{pagination.total}</span> 篇文章
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* 文章列表 */}
+        <div className={cn(postShellClass, 'relative flex flex-col')}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                <FileText className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">文章列表</p>
+                <p className="text-xs text-[var(--ink-muted)]">
+                  {hasAnyFilter ? '按当前筛选查看文章与属性操作' : '按发布时间倒序管理文章内容'}
+                </p>
+              </div>
+            </div>
+            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
+              {isInitialLoading ? '加载中' : `${posts.length}/${pagination.total}`}
+            </span>
+          </div>
+
         {/* 固定表头 - 仅桌面端显示 */}
         <table className="w-full table-fixed hidden md:table">
           <thead className="bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] text-[var(--text-muted)] text-xs font-semibold uppercase tracking-wider">
@@ -783,9 +944,9 @@ export default function PostsPage() {
         </table>
 
         {/* 表格内容区 - 带动画 */}
-        <div className="flex-1 overflow-auto">
+        <div className="relative flex-1 overflow-auto">
           <AnimatePresence mode="wait">
-            {loading ? (
+            {isInitialLoading ? (
               <motion.div
                 key="skeleton"
                 initial={{ opacity: 0 }}
@@ -798,15 +959,15 @@ export default function PostsPage() {
                 <div className="hidden md:block">
                   <table className="w-full table-fixed">
                     <tbody>
-                      {Array.from({ length: 10 }).map((_, i) => (
-                        <tr key={i} className="border-b border-[var(--border-subtle)] last:border-b-0">
-                          <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-20"><div className="h-5 bg-[var(--bg-secondary)] rounded-full w-14 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-24"><div className="h-6 bg-[var(--bg-secondary)] rounded-md w-16 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div></div></td>
-                          <td className="px-4 py-3.5 w-24"><div className="h-5 bg-[var(--bg-secondary)] rounded w-20 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-16"><div className="h-5 bg-[var(--bg-secondary)] rounded w-10 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div></td>
+                      {Array.from({ length: DEFAULT_POST_PAGE_SIZE }).map((_, i) => (
+                        <tr key={i} className={cn(POST_ROW_HEIGHT_CLASS, 'border-b border-[var(--border-subtle)] last:border-b-0')}>
+                          <td className="h-[76px] px-4 py-2 w-[40%] align-middle"><div className="h-5 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse"></div></td>
+                          <td className="h-[76px] px-4 py-2 w-20 align-middle"><div className="h-5 bg-[var(--bg-secondary)] rounded-full w-14 animate-pulse"></div></td>
+                          <td className="h-[76px] px-4 py-2 w-24 align-middle"><div className="h-6 bg-[var(--bg-secondary)] rounded-md w-16 animate-pulse"></div></td>
+                          <td className="h-[76px] px-4 py-2 w-40 align-middle"><div className="flex gap-1.5"><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div></div></td>
+                          <td className="h-[76px] px-4 py-2 w-24 align-middle"><div className="h-5 bg-[var(--bg-secondary)] rounded w-20 animate-pulse"></div></td>
+                          <td className="h-[76px] px-4 py-2 w-16 align-middle"><div className="h-5 bg-[var(--bg-secondary)] rounded w-10 animate-pulse"></div></td>
+                          <td className="h-[76px] px-4 py-2 w-28 align-middle"><div className="flex justify-end gap-1"><div className="h-8 w-8 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div><div className="h-8 w-8 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div></div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -826,7 +987,7 @@ export default function PostsPage() {
                   ))}
                 </div>
               </motion.div>
-            ) : error ? (
+            ) : error && posts.length === 0 ? (
               <motion.div
                 key="error"
                 initial={{ opacity: 0 }}
@@ -915,162 +1076,211 @@ export default function PostsPage() {
                           popoverRef={tagPopoverRef}
                         />
                       ))}
+                      {Array.from({ length: placeholderCount }).map((_, index) => (
+                        <tr
+                          key={`desktop-placeholder-${index}`}
+                          aria-hidden="true"
+                          className={cn(
+                            POST_ROW_HEIGHT_CLASS,
+                            'pointer-events-none border-b border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] last:border-b-0'
+                          )}
+                        >
+                          <td colSpan={7} className="h-[76px] px-4 py-2" />
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
 
                 {/* 移动端视图 - 列表卡片 */}
-                <div className="md:hidden divide-y divide-[var(--border-subtle)]">
+                <div className="md:hidden divide-y divide-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)]">
                   {posts.map((post) => (
-                    <div key={post.id} className="p-4 space-y-3 active:bg-[var(--bg-card-hover)] transition-colors">
-                      <div className="flex justify-between items-start gap-4">
+                    <div key={post.id} className={MOBILE_POST_CARD_CLASS}>
+                      <div className="grid h-12 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                         <button
+                          type="button"
                           onClick={(e) => handleEdit(post, e)}
-                          className="text-left flex-1"
+                          className="h-12 min-w-0 text-left"
                         >
-                          <h3 className="text-[var(--text-primary)] font-medium text-sm line-clamp-2 leading-relaxed">
+                          <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-[var(--ink-primary)]">
                             {post.title}
                           </h3>
                         </button>
                         <StatusBadge status={post.status} />
                       </div>
 
-                      {(post.isHidden || post.passwordRequired) && (
-                        <div className="flex items-center gap-2">
+                      <div className="flex h-5 items-center gap-2 overflow-hidden">
+                        {(post.isHidden || post.passwordRequired) && (
+                          <>
                           {post.isHidden && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-status-warning">
-                              <EyeOff className="w-3 h-3" />
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] text-status-warning">
+                              <EyeOff className="h-3 w-3" />
                               已隐藏
                             </span>
                           )}
                           {post.passwordRequired && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-status-info">
-                              <Lock className="w-3 h-3" />
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] text-status-info">
+                              <Lock className="h-3 w-3" />
                               已加密
                             </span>
                           )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-                        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-                          {post.categoryName || '-'}
-                        </span>
-                        <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
-                        <span>{formatDate(post.publishedAt || post.createdAt)}</span>
-                        <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
-                        <span>{post.viewCount} 浏览</span>
+                          </>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex flex-wrap gap-1.5 flex-1 mr-4">
+                      <div className="flex h-[22px] items-center gap-2 overflow-hidden text-[11px] text-[var(--ink-muted)]">
+                        <span className="max-w-[8rem] truncate rounded border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-1.5 py-0.5">
+                          {post.categoryName || '-'}
+                        </span>
+                        <span className="h-2.5 w-px shrink-0 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" />
+                        <span className="shrink-0">{formatDate(post.publishedAt || post.createdAt)}</span>
+                        <span className="h-2.5 w-px shrink-0 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" />
+                        <span className="tnum shrink-0">{post.viewCount} 浏览</span>
+                      </div>
+
+                      <div className="flex h-11 items-center justify-between gap-3">
+                        <div className="mr-1 flex h-11 min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                           {post.tagNames?.length > 0 ? (
                             <>
                               {post.tagNames.slice(0, 2).map((tag) => (
                                 <span
                                   key={tag}
-                                  className="px-1.5 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded text-primary-light/90 whitespace-nowrap"
+                                  className="max-w-[8rem] truncate rounded border border-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] px-1.5 py-0.5 text-[10px] text-[var(--aurora-1)]"
                                 >
                                   {tag}
                                 </span>
                               ))}
                               {post.tagNames.length > 2 && (
-                                <span className="px-1.5 py-0.5 text-[10px] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-[var(--text-muted)] font-mono">
+                                <span className="rounded border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
                                   +{post.tagNames.length - 2}
                                 </span>
                               )}
                             </>
                           ) : (
-                            <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
+                            <span className="text-[10px] text-[var(--ink-muted)]">无标签</span>
                           )}
                         </div>
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex shrink-0 items-center gap-1">
                           <button
+                            type="button"
                             onClick={(e) => handleOpenProperties(post, e)}
-                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors active:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] active:text-[var(--ink-primary)]"
+                            aria-label={`设置文章 ${post.title}`}
                           >
-                            <Settings className="w-4 h-4" />
+                            <Settings className="h-4 w-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => handleEdit(post, e)}
-                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors active:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] active:text-[var(--ink-primary)]"
+                            aria-label={`编辑文章 ${post.title}`}
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="h-4 w-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => handleCopyClick(post, e)}
                             disabled={actionLoading === post.id}
-                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)] disabled:opacity-50"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors active:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] active:text-[var(--ink-primary)] disabled:opacity-50"
+                            aria-label={`复制文章 ${post.title}`}
                           >
                             {actionLoading === post.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Copy className="w-4 h-4" />
+                              <Copy className="h-4 w-4" />
                             )}
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => handleDeleteClick(post, e)}
-                            className="p-2 text-[var(--text-muted)] active:text-status-danger"
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors active:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] active:text-status-danger"
+                            aria-label={`删除文章 ${post.title}`}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
                     </div>
                   ))}
+                  {Array.from({ length: placeholderCount }).map((_, index) => (
+                    <div
+                      key={`mobile-placeholder-${index}`}
+                      aria-hidden="true"
+                      className={MOBILE_POST_PLACEHOLDER_CLASS}
+                    />
+                  ))}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
+          {isListRefreshing && (
+            <div className="pointer-events-none absolute inset-0 z-10 bg-[var(--bg-leaf)]/35 backdrop-blur-[1px]">
+              <div className="absolute right-4 top-3 inline-flex h-8 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-3 text-xs font-medium text-[var(--ink-secondary)] shadow-sm">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                同步列表
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 分页 - 移动到 Card 内部底部 */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-2 py-3 px-4 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 min-h-[48px] md:min-h-[64px] relative">
+        <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:grid-cols-[minmax(0,1fr)_auto_auto] md:px-4 md:py-3">
           <AnimatePresence mode="wait">
-            {loading ? (
+            {isInitialLoading ? (
               <motion.div
                 key="stats-skeleton"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex items-center gap-2"
+                className="order-1 col-span-2 flex min-w-0 items-center md:col-span-1"
               >
-                <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                <div className="h-4 w-32 animate-pulse rounded bg-[var(--bg-secondary)]" />
               </motion.div>
             ) : (
               <motion.div
                 key="stats-real"
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"
+                className="tnum order-1 col-span-2 flex min-w-0 flex-wrap items-center justify-start gap-1.5 text-left text-[13px] font-semibold leading-5 text-[var(--ink-muted)] md:col-span-1 md:text-xs"
               >
                 <span>
-                  共 <span className="text-primary/70 font-semibold">{pagination.total}</span> 篇
+                  第 <span className="text-[var(--ink-secondary)]">{pagination.pageNum}</span> / {totalPages} 页
                 </span>
-                <span className="hidden md:inline">文章</span>
-                <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
+                <span className="mx-1 text-[var(--ink-subtle)]">·</span>
                 <span>
-                  {pagination.pageNum} / {pagination.pages || 1} 页
+                  共 <span className="text-[var(--ink-secondary)]">{pagination.total}</span> 篇
                 </span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="flex items-center">
-            {!loading && pagination.pages > 1 ? (
+          <Select
+            value={String(pageSize)}
+            onValueChange={handlePageSizeChange}
+            options={PAGE_SIZE_OPTIONS}
+            ariaLabel="每页文章数量"
+            size="sm"
+            fullWidth={false}
+            className="order-2 col-start-3 !h-10 !w-[112px] md:order-3 md:col-start-auto md:!h-8 md:!w-[132px]"
+            disabled={isInitialLoading || isListRefreshing}
+          />
+
+          <div className="order-3 col-span-3 flex w-full items-center justify-center md:order-2 md:col-span-1 md:w-auto md:justify-end">
+            {!isInitialLoading && pagination.pages > 1 ? (
               <motion.div
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-1.5"
+                className="grid w-full grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 md:flex md:w-auto md:gap-1.5"
               >
                 <button
+                  type="button"
                   onClick={() => handlePageChange(pagination.pageNum - 1)}
-                  disabled={pagination.pageNum <= 1}
+                  disabled={loading || pagination.pageNum <= 1}
                   className={cn(
-                    'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300',
-                    pagination.pageNum <= 1
-                      ? 'text-[var(--text-muted)]/50 cursor-not-allowed'
-                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
+                    loading || pagination.pageNum <= 1
+                      ? 'text-[var(--ink-muted)]/50'
+                      : 'text-[var(--ink-secondary)]'
                   )}
                   aria-label="上一页"
                 >
@@ -1078,24 +1288,75 @@ export default function PostsPage() {
                 </button>
                 <div
                   ref={pageStripRef}
-                  role="group"
+                  role="navigation"
                   aria-label="分页导航"
-                  className="flex items-center gap-1.5 px-0.5 overflow-x-auto overscroll-x-contain no-scrollbar min-w-0 max-w-[240px] sm:max-w-[360px] md:max-w-[520px] lg:max-w-[640px] snap-x snap-proximity scroll-smooth touch-pan-x [scrollbar-width:none]"
+                  className="flex min-w-0 max-w-none items-center gap-1.5 overflow-x-auto overscroll-x-contain px-1 no-scrollbar md:max-w-[520px] md:px-0.5 lg:max-w-[640px] xl:max-w-[760px] snap-x snap-proximity scroll-smooth touch-pan-x [scrollbar-width:none]"
                   style={{ WebkitOverflowScrolling: 'touch' }}
                 >
-                  {pageNumbers.map((entry) => {
+                  {paginationItems.map((entry) => {
+                    if (isPaginationEllipsis(entry)) {
+                      if (pageJumpTarget === entry.key) {
+                        return (
+                          <form
+                            key={entry.key}
+                            onSubmit={handlePageJumpSubmit}
+                            className="flex h-10 w-[104px] flex-shrink-0 items-center gap-1 rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[var(--bg-leaf)] p-1 md:h-8 md:w-[96px]"
+                            aria-label={`跳转到第 ${entry.start} 到 ${entry.end} 页`}
+                          >
+                            <input
+                              type="number"
+                              min={entry.start}
+                              max={entry.end}
+                              value={pageJumpValue}
+                              onChange={(event) => setPageJumpValue(event.target.value)}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                  setPageJumpTarget(null);
+                                }
+                              }}
+                              autoFocus
+                              inputMode="numeric"
+                              className="tnum h-full min-w-0 flex-1 rounded-md bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-1 text-center text-xs font-semibold text-[var(--ink-primary)] outline-none focus:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                              aria-label="输入页码"
+                            />
+                            <button
+                              type="submit"
+                              disabled={loading}
+                              className="h-full rounded-md px-2 text-xs font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              跳
+                            </button>
+                          </form>
+                        );
+                      }
+                      return (
+                        <button
+                          type="button"
+                          key={entry.key}
+                          onClick={() => handleOpenPageJump(entry)}
+                          disabled={loading}
+                          className="flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[var(--bg-leaf)] text-xs font-semibold text-[var(--ink-muted)] transition-all duration-200 hover:border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-9"
+                          aria-label={`跳转到第 ${entry.start} 到 ${entry.end} 页`}
+                        >
+                          ...
+                        </button>
+                      );
+                    }
                     const isActive = entry === pagination.pageNum;
                     return (
                       <button
+                        type="button"
                         key={entry}
                         onClick={() => handlePageChange(entry)}
+                        disabled={loading}
                         aria-current={isActive ? 'page' : undefined}
                         aria-label={`第 ${entry} 页`}
                         className={cn(
-                          'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center snap-center',
+                          'flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-8 md:text-xs',
                           isActive
-                            ? 'bg-primary text-white shadow-lg shadow-primary/25'
-                            : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                            ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[0_12px_24px_-20px_color-mix(in_oklch,var(--aurora-1)_55%,black)]'
+                            : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
                         )}
                       >
                         {entry}
@@ -1104,24 +1365,26 @@ export default function PostsPage() {
                   })}
                 </div>
                 <button
+                  type="button"
                   onClick={() => handlePageChange(pagination.pageNum + 1)}
-                  disabled={pagination.pageNum >= pagination.pages}
+                  disabled={loading || pagination.pageNum >= pagination.pages}
                   className={cn(
-                    'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300',
-                    pagination.pageNum >= pagination.pages
-                      ? 'text-[var(--text-muted)]/50 cursor-not-allowed'
-                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
+                    loading || pagination.pageNum >= pagination.pages
+                      ? 'text-[var(--ink-muted)]/50'
+                      : 'text-[var(--ink-secondary)]'
                   )}
                   aria-label="下一页"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </motion.div>
-            ) : !loading && (
+            ) : !isInitialLoading && (
               <div className="h-8" />
             )}
           </div>
         </div>
+      </div>
       </div>
 
       <ConfirmDialog

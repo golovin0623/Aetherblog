@@ -82,6 +82,30 @@ get_process_cwd() {
     return 1
 }
 
+is_known_aetherblog_process() {
+    local name=$1
+    local cmd=$2
+    local cwd=$3
+
+    case "$name" in
+        backend|*后端*)
+            [[ "$cmd" == *"/apps/server-go/bin/server"* || "$cwd" == *"/apps/server-go"* ]]
+            ;;
+        admin|*管理后台*)
+            [[ "$cmd" == *"vite"* && ( "$cwd" == *"/apps/admin"* || "$cmd" == *"/vite/bin/vite.js"* ) ]]
+            ;;
+        blog|*博客*)
+            [[ "$cmd" == *"next dev"* || "$cmd" == *"next-server"* || "$cwd" == *"/apps/blog"* ]]
+            ;;
+        ai-service|*AI*)
+            [[ "$cmd" == *"uvicorn app.main:app"* || ( "$cmd" == *"uvicorn"* && "$cwd" == *"/apps/ai-service"* ) ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # 防止并发停止
 acquire_lock() {
     if mkdir "$LOCK_PATH" 2>/dev/null; then
@@ -124,6 +148,9 @@ should_stop_cmd() {
     local cwd
     cwd=$(get_process_cwd "$pid" 2>/dev/null || true)
     if [ -n "$cwd" ] && [[ "$cwd" == *"$pattern"* ]]; then
+        return 0
+    fi
+    if is_known_aetherblog_process "$name" "$cmd" "$cwd"; then
         return 0
     fi
     echo -e "${YELLOW}⚠️  $name 进程与预期不匹配，跳过停止 (使用 --force 可强制)${NC}"
@@ -267,28 +294,28 @@ main() {
 
     echo -e "${BLUE}[1/6] 停止后端服务...${NC}"
     stop_service "backend" "$PROJECT_ROOT/apps/server-go"
-    if [ "$LAST_STOP_RESULT" != "stopped" ] && [ "$LAST_STOP_RESULT" != "skipped" ]; then
+    if [ "$LAST_STOP_RESULT" != "skipped" ]; then
         stop_by_port 8080 "后端 API" "$PROJECT_ROOT/apps/server-go"
     fi
     
     echo ""
     echo -e "${BLUE}[2/6] 停止 AI 服务...${NC}"
     stop_service "ai-service" "$PROJECT_ROOT/apps/ai-service"
-    if [ "$LAST_STOP_RESULT" != "stopped" ] && [ "$LAST_STOP_RESULT" != "skipped" ]; then
+    if [ "$LAST_STOP_RESULT" != "skipped" ]; then
         stop_by_port 8000 "AI 服务" "$PROJECT_ROOT/apps/ai-service"
     fi
 
     echo ""
     echo -e "${BLUE}[3/6] 停止博客前台...${NC}"
     stop_service "blog" "$PROJECT_ROOT/apps/blog"
-    if [ "$LAST_STOP_RESULT" != "stopped" ] && [ "$LAST_STOP_RESULT" != "skipped" ]; then
+    if [ "$LAST_STOP_RESULT" != "skipped" ]; then
         stop_by_port 3000 "博客前台" "$PROJECT_ROOT/apps/blog"
     fi
     
     echo ""
     echo -e "${BLUE}[4/6] 停止管理后台...${NC}"
     stop_service "admin" "$PROJECT_ROOT/apps/admin"
-    if [ "$LAST_STOP_RESULT" != "stopped" ] && [ "$LAST_STOP_RESULT" != "skipped" ]; then
+    if [ "$LAST_STOP_RESULT" != "skipped" ]; then
         stop_by_port 5173 "管理后台" "$PROJECT_ROOT/apps/admin"
     fi
     

@@ -122,9 +122,9 @@ export default function ModelList({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="ai-model-list space-y-4">
       {/* 头部 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="ai-model-list-toolbar flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 min-w-0">
           <h2 className="text-sm font-semibold text-[var(--text-secondary)] whitespace-nowrap">模型列表</h2>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
@@ -217,7 +217,7 @@ export default function ModelList({
       </div>
 
       {/* Tab 筛选 */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+      <div className="ai-model-list-tabs flex items-center gap-1 overflow-x-auto pb-1">
         {tabs.map((tab) => (
           <button
             key={tab.value}
@@ -235,7 +235,7 @@ export default function ModelList({
       </div>
 
       {/* 模型列表 */}
-      <div className="space-y-4">
+      <div className="ai-model-list-body space-y-4">
         {isLoading ? (
           <div className="text-center py-8 text-[var(--text-muted)] text-sm">加载中...</div>
         ) : enabled.length === 0 && disabled.length === 0 ? (

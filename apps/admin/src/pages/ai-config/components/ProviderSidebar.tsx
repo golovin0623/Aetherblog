@@ -73,9 +73,9 @@ export default function ProviderSidebar({
   }, [enabled, disabled, search]);
 
   const panel = (
-    <div className={`h-full min-w-0 flex flex-col overflow-x-hidden ${className}`}>
+    <div className={`ai-provider-sidebar-panel h-full min-w-0 flex flex-col overflow-x-hidden ${className}`}>
       {variant === 'drawer' && (
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
+        <div className="ai-provider-sidebar-drawer-header flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
           <div className="text-sm font-semibold text-[var(--text-primary)]">服务商列表</div>
           <button
             onClick={onClose}
@@ -87,7 +87,7 @@ export default function ProviderSidebar({
       )}
 
       {/* 头部：搜索 + 新增按钮 */}
-      <div className="p-3 border-b border-[var(--border-default)]">
+      <div className="ai-provider-sidebar-tools p-3 border-b border-[var(--border-default)]">
         {/* 隐藏的输入框用于阻止浏览器自动填充 (Autofill Trap) */}
         <div className="hidden" aria-hidden="true">
           <input type="text" name="fake-username-trap" autoComplete="username" tabIndex={-1} />
@@ -109,14 +109,14 @@ export default function ProviderSidebar({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索服务商..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+              className="ai-provider-sidebar-search w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
             />
           </div>
           <motion.button
             onClick={onAddProvider}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.9 }}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
+            className="ai-provider-sidebar-add w-9 h-9 flex items-center justify-center rounded-xl bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
             title="添加服务商"
           >
             <Plus className="w-4 h-4" />
@@ -125,7 +125,7 @@ export default function ProviderSidebar({
       </div>
 
       {/* 供应商列表 */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 pr-1 scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
+      <div className="ai-provider-sidebar-list flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 pr-1 scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
         {isLoading ? (
           <div className="flex items-center justify-center h-32 text-[var(--text-muted)] text-sm">
             加载中...
@@ -136,7 +136,7 @@ export default function ProviderSidebar({
             <motion.button
               onClick={() => onSelect(null)}
               whileTap={{ scale: 0.97 }}
-              className={`w-full min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all ${
+              className={`ai-provider-sidebar-item w-full min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 selectedCode === null
                   ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] font-medium'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
@@ -217,7 +217,7 @@ export default function ProviderSidebar({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: '-100%', opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="absolute left-0 top-0 h-full w-[280px] border-r border-[var(--border-default)] bg-[var(--bg-secondary)] shadow-2xl flex flex-col overflow-hidden"
+              className="ai-provider-sidebar-drawer absolute left-0 top-0 h-full w-[280px] border-r border-[var(--border-default)] bg-[var(--bg-secondary)] shadow-2xl flex flex-col overflow-hidden"
             >
               {panel}
             </motion.div>
@@ -228,7 +228,7 @@ export default function ProviderSidebar({
   }
 
   return (
-    <div className={`w-72 h-full flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-secondary)] overflow-hidden ${className}`}>
+    <div className={`ai-provider-sidebar-shell w-72 h-full flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-secondary)] overflow-hidden ${className}`}>
       {panel}
     </div>
   );
@@ -249,8 +249,8 @@ function ProviderGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mt-3">
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card-hover)] text-xs text-[var(--text-muted)] min-h-[36px]">
+    <div className="ai-provider-group mt-3">
+      <div className="ai-provider-group-header flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card-hover)] text-xs text-[var(--text-muted)] min-h-[36px]">
         <motion.button
           onClick={onToggle}
           whileTap={{ scale: 0.95 }}
@@ -297,7 +297,7 @@ function ProviderItem({
     <motion.button
       onClick={onClick}
       whileTap={{ scale: 0.97 }}
-      className={`relative w-full min-w-0 min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all group ${
+      className={`ai-provider-sidebar-item relative w-full min-w-0 min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all group ${
         selected
           ? 'bg-white dark:bg-[var(--bg-secondary)] shadow-sm text-[var(--text-primary)] font-bold'
           : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
