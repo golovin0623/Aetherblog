@@ -30,7 +30,6 @@ import type {
 import {
   useApplyGlobalPricing,
   useDeleteGlobalPricing,
-  useEnabledModelIds,
   useGlobalPricingCoverage,
   useGlobalPricingList,
 } from './hooks';
@@ -90,7 +89,6 @@ export default function GlobalPricingPage() {
   const listQuery = useGlobalPricingList();
   const applyMutation = useApplyGlobalPricing();
   const deleteMutation = useDeleteGlobalPricing();
-  const enabledModelIdsQuery = useEnabledModelIds();
 
   const [filter, setFilter] = useState<FilterMode>('all');
   const [search, setSearch] = useState('');
@@ -102,12 +100,12 @@ export default function GlobalPricingPage() {
   const deferredFilter = useDeferredValue(filter);
 
   const hasCoverageData = coverageQuery.data !== undefined;
-  const hasEnabledModelData = enabledModelIdsQuery.data !== undefined;
+  const hasListData = listQuery.data !== undefined;
   const isInitialLoading =
     (coverageQuery.isLoading && !hasCoverageData) ||
-    (enabledModelIdsQuery.isLoading && !hasEnabledModelData);
+    (listQuery.isLoading && !hasListData);
   const isRefreshing =
-    coverageQuery.isFetching || listQuery.isFetching || enabledModelIdsQuery.isFetching;
+    coverageQuery.isFetching || listQuery.isFetching;
 
   const globalByModelId = useMemo(() => {
     const map = new Map<string, GlobalPricing>();
@@ -118,9 +116,7 @@ export default function GlobalPricingPage() {
   const filteredRows = useMemo(() => {
     const rows = coverageQuery.data || [];
     const lower = deferredSearch.trim().toLowerCase();
-    const enabledModelIds = enabledModelIdsQuery.data ?? new Set<string>();
     return rows.filter((row) => {
-      if (!enabledModelIds.has(row.model_id)) return false;
       if (lower) {
         const haystack =
           `${row.model_id} ${row.display_name ?? ''} ${row.providers.join(' ')}`.toLowerCase();
@@ -137,7 +133,7 @@ export default function GlobalPricingPage() {
           return true;
       }
     });
-  }, [coverageQuery.data, deferredFilter, deferredSearch, enabledModelIdsQuery.data]);
+  }, [coverageQuery.data, deferredFilter, deferredSearch]);
 
   const stats = useMemo(() => {
     let configured = 0;
@@ -164,16 +160,13 @@ export default function GlobalPricingPage() {
   const handleRefresh = () => {
     coverageQuery.refetch();
     listQuery.refetch();
-    enabledModelIdsQuery.refetch();
   };
 
   const editingRow = editingModelId
     ? coverageQuery.data?.find((r) => r.model_id === editingModelId) ?? null
     : null;
 
-  const renderResetKey =
-    `${coverageQuery.dataUpdatedAt}:${enabledModelIdsQuery.dataUpdatedAt}:` +
-    `${deferredFilter}:${deferredSearch}`;
+  const renderResetKey = `${deferredFilter}:${deferredSearch}`;
 
   useEffect(() => {
     setRenderLimit(INITIAL_ROW_RENDER_LIMIT);
@@ -279,7 +272,7 @@ export default function GlobalPricingPage() {
               <div className="text-sm">没有符合条件的模型</div>
             </div>
           ) : (
-            <table className="global-pricing-table w-full min-w-[980px] text-sm">
+            <table className="global-pricing-table tnum w-full min-w-[980px] text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="text-left text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
                   <th className="font-medium">Model ID</th>

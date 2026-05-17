@@ -1423,7 +1423,7 @@ start_admin() {
                             record_failure "管理后台"
                             return
                         fi
-                        if ! wait_for_http "http://127.0.0.1:5173/admin/" "管理后台" "$LOG_DIR/admin.log" 1 0; then
+                        if ! wait_for_http "http://127.0.0.1:5173/admin/" "管理后台" "$LOG_DIR/admin.log"; then
                             record_failure "管理后台"
                             return
                         fi

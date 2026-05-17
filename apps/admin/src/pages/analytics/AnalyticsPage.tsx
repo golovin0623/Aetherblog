@@ -85,6 +85,7 @@ export function AnalyticsPage() {
   const [taskType, setTaskType] = useState('');
   const [modelId, setModelId] = useState('');
   const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [recordsRefreshing, setRecordsRefreshing] = useState(false);
@@ -93,6 +94,9 @@ export function AnalyticsPage() {
   const [data, setData] = useState<AiDashboardData>(EMPTY_DATA);
   const [pricingGaps, setPricingGaps] = useState<AiPricingGap[]>([]);
   const latestFetchIdRef = useRef(0);
+  const latestDashboardFetchIdRef = useRef(0);
+  const latestRecordsFetchIdRef = useRef(0);
+  const mountedRef = useRef(true);
   const lastFetchSnapshotRef = useRef<AnalyticsFetchSnapshot | null>(null);
   // refreshNonce 让「归档后强制刷新」也走 useEffect 统一通道：
   // React 会把 setPage(1) + setRefreshNonce 批成一次渲染,effect 只触发一次,
@@ -100,7 +104,26 @@ export function AnalyticsPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
-    const keywordValue = keyword.trim();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const nextKeyword = keywordInput.trim();
+      setKeyword((current) => {
+        if (current === nextKeyword) return current;
+        setPage(1);
+        return nextKeyword;
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [keywordInput]);
+
+  useEffect(() => {
+    const keywordValue = keyword;
     const snapshot: AnalyticsFetchSnapshot = {
       days,
       page,
@@ -134,10 +157,16 @@ export function AnalyticsPage() {
     const isLatestFetch = () => !cancelled && latestFetchIdRef.current === fetchId;
 
     const fetchData = async () => {
+      let dashboardFetchId = 0;
+      let recordsFetchId = 0;
       try {
         if (isPaginationOnlyRefresh) {
+          latestRecordsFetchIdRef.current += 1;
+          recordsFetchId = latestRecordsFetchIdRef.current;
           setRecordsRefreshing(true);
         } else {
+          latestDashboardFetchIdRef.current += 1;
+          dashboardFetchId = latestDashboardFetchIdRef.current;
           setDashboardLoading(true);
         }
 
@@ -197,10 +226,13 @@ export function AnalyticsPage() {
           setPricingGaps([]);
         }
       } finally {
-        if (isLatestFetch()) {
-          if (isPaginationOnlyRefresh) {
+        if (!mountedRef.current) return;
+        if (isPaginationOnlyRefresh) {
+          if (latestRecordsFetchIdRef.current === recordsFetchId) {
             setRecordsRefreshing(false);
-          } else {
+          }
+        } else {
+          if (latestDashboardFetchIdRef.current === dashboardFetchId) {
             setDashboardLoading(false);
             setHasLoadedDashboard(true);
           }
@@ -438,7 +470,7 @@ export function AnalyticsPage() {
         selectedTaskType={taskType}
         selectedModelId={modelId}
         selectedSuccess={successFilter}
-        selectedKeyword={keyword}
+        selectedKeyword={keywordInput}
         onTaskTypeChange={(value) => {
           setTaskType(value);
           setPage(1);
@@ -452,8 +484,7 @@ export function AnalyticsPage() {
           setPage(1);
         }}
         onKeywordChange={(value) => {
-          setKeyword(value);
-          setPage(1);
+          setKeywordInput(value);
         }}
       />
     </IntelligenceShell>

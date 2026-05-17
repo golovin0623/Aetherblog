@@ -44,7 +44,7 @@ const PAGE_SIZE_OPTIONS: SelectOption[] = [
   { value: '50', label: '50 条/页' },
   { value: '200', label: '200 条/页' },
 ];
-const PAGINATION_FULL_RENDER_THRESHOLD = 100;
+const PAGINATION_FULL_RENDER_THRESHOLD = 10;
 const PAGINATION_EDGE_COUNT = 5;
 const PAGINATION_SIBLING_COUNT = 5;
 const POST_ROW_HEIGHT_CLASS = 'h-[76px]';

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -370,6 +371,37 @@ func TestListVisibleObjectsFillsPageAfterFilteringMarkers(t *testing.T) {
 	}
 	if lister.calls[0].limit != 2 || lister.calls[1].limit != 1 {
 		t.Fatalf("List limits = %d, %d; want 2, 1", lister.calls[0].limit, lister.calls[1].limit)
+	}
+}
+
+func TestListVisibleObjectsCapsFetchesWhenMarkersDominate(t *testing.T) {
+	pages := make(map[string]fakeObjectPage)
+	token := ""
+	for i := 0; i < maxVisibleObjectListFetches+2; i++ {
+		nextToken := fmt.Sprintf("page-%d", i+1)
+		pages[token] = fakeObjectPage{
+			objects: []storage.ObjectInfo{
+				{Key: fmt.Sprintf("2026/%02d/", i+1), Size: 0},
+			},
+			nextToken: nextToken,
+		}
+		token = nextToken
+	}
+	lister := &fakePagedLister{pages: pages}
+
+	got, nextToken, err := listVisibleObjects(context.Background(), lister, "2026/", "", 2)
+	if err != nil {
+		t.Fatalf("listVisibleObjects: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("visible length = %d, want 0 (%v)", len(got), got)
+	}
+	wantNextToken := fmt.Sprintf("page-%d", maxVisibleObjectListFetches)
+	if nextToken != wantNextToken {
+		t.Fatalf("nextToken = %q, want %q", nextToken, wantNextToken)
+	}
+	if len(lister.calls) != maxVisibleObjectListFetches {
+		t.Fatalf("List calls = %d, want %d", len(lister.calls), maxVisibleObjectListFetches)
 	}
 }
 

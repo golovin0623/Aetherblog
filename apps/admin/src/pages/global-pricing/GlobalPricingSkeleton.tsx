@@ -101,7 +101,7 @@ export function GlobalPricingTableSkeletonRows({ rows = 8 }: { rows?: number }) 
 
 export function GlobalPricingTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <table className="global-pricing-table w-full min-w-[980px] text-sm" aria-hidden="true">
+    <table className="global-pricing-table tnum w-full min-w-[980px] text-sm" aria-hidden="true">
       <thead className="sticky top-0 z-10">
         <tr className="text-left text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
           {TABLE_HEADERS.map((header) => (

@@ -325,6 +325,8 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 	return &ListObjectsResult{Objects: listings, NextToken: nextTok}, nil
 }
 
+const maxVisibleObjectListFetches = 8
+
 func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, token string, limit int) ([]storage.ObjectInfo, string, error) {
 	if limit <= 0 {
 		objs, nextTok, err := lister.List(ctx, prefix, token, limit)
@@ -336,7 +338,7 @@ func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, toke
 
 	objects := make([]storage.ObjectInfo, 0, limit)
 	fetchToken := token
-	for len(objects) < limit {
+	for attempts := 0; len(objects) < limit && attempts < maxVisibleObjectListFetches; attempts++ {
 		remaining := limit - len(objects)
 		page, nextTok, err := lister.List(ctx, prefix, fetchToken, remaining)
 		if err != nil {
