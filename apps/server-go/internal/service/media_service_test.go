@@ -304,6 +304,34 @@ func TestPublicAccessURLForMediaUsesFreshVerifiedBackup(t *testing.T) {
 	}
 }
 
+func TestPublicAccessURLForMediaCanonicalizesFreshBackupURL(t *testing.T) {
+	cdnURL := "/api/uploads/2026/03/photo.png"
+	backupURL := "https://vanlog-1258312217.cos.ap-shanghai.myqcloud.com/media/2026/05/a.jpg"
+	currentURL := "https://data.golovin.cn/media/2026/05/a.jpg"
+	verifiedAt := time.Now()
+	backupProviderID := int64(7)
+	store := &failingBackupStore{key: "media/2026/05/a.jpg", publicURL: currentURL}
+	svc := NewMediaService(nil, store, nil, "")
+
+	got, err := svc.publicAccessURLForMedia(context.Background(), &model.MediaFile{
+		ID:               42,
+		FilePath:         "2026/03/photo.png",
+		FileURL:          "2026/03/photo.png",
+		StorageType:      "LOCAL",
+		SyncStatus:       "SYNCED",
+		CdnURL:           &cdnURL,
+		BackupProviderID: &backupProviderID,
+		BackupURL:        &backupURL,
+		LastVerifiedAt:   &verifiedAt,
+	})
+	if err != nil {
+		t.Fatalf("publicAccessURLForMedia: %v", err)
+	}
+	if got != currentURL {
+		t.Fatalf("publicAccessURLForMedia() = %q, want canonical backup %q", got, currentURL)
+	}
+}
+
 func TestPublicAccessURLForMediaFallsBackWhenBackupMissing(t *testing.T) {
 	cdnURL := "/api/uploads/primary/photo.png"
 	backupURL := "/backup/2026/03/photo.png"

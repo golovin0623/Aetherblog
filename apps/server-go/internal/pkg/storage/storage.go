@@ -65,3 +65,10 @@ type Existser interface {
 type PublicURLKeyResolver interface {
 	KeyFromURL(rawURL string) (key string, err error)
 }
+
+// PublicURLCandidateProvider 是 Storage 的可选扩展接口,用于返回同一个 key
+// 在当前配置和历史公开域名配置下可能对应的 URL。云端 catalog 反查用它兼容
+// CustomURL/URLPrefix 切换前已经落库的 backup_url,同时避免全表扫描。
+type PublicURLCandidateProvider interface {
+	PublicURLCandidates(key string) []string
+}

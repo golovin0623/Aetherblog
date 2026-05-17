@@ -466,15 +466,13 @@ func (s *StorageProviderService) lookupCatalog(ctx context.Context, providerID i
 	keyByBackupURL := make(map[string]string, len(keys))
 	backupURLs := make([]string, 0, len(keys))
 	for _, key := range keys {
-		backupURL := strings.TrimSpace(st.GetURL(key))
-		if backupURL == "" {
-			continue
+		for _, backupURL := range publicURLCandidates(st, key) {
+			if _, exists := keyByBackupURL[backupURL]; exists {
+				continue
+			}
+			keyByBackupURL[backupURL] = key
+			backupURLs = append(backupURLs, backupURL)
 		}
-		if _, exists := keyByBackupURL[backupURL]; exists {
-			continue
-		}
-		keyByBackupURL[backupURL] = key
-		backupURLs = append(backupURLs, backupURL)
 	}
 	backupRows, err := s.repo.LookupBackupCatalogByURLs(ctx, providerID, backupURLs)
 	if err != nil {
@@ -491,6 +489,17 @@ func (s *StorageProviderService) lookupCatalog(ctx context.Context, providerID i
 		rows[key] = mediaID
 	}
 	return rows, nil
+}
+
+func publicURLCandidates(st storage.Storage, key string) []string {
+	if candidateProvider, ok := st.(storage.PublicURLCandidateProvider); ok {
+		return candidateProvider.PublicURLCandidates(key)
+	}
+	publicURL := strings.TrimSpace(st.GetURL(key))
+	if publicURL == "" {
+		return nil
+	}
+	return []string{publicURL}
 }
 
 func filterListableObjects(objects []storage.ObjectInfo) []storage.ObjectInfo {

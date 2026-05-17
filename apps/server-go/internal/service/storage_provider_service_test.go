@@ -263,6 +263,54 @@ func TestStorageProviderServiceLookupCatalogIncludesBackupURL(t *testing.T) {
 	}
 }
 
+func TestStorageProviderServiceLookupCatalogMatchesHistoricalProviderBackupURL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	repo := repository.NewStorageProviderRepoWithKeystore(sqlx.NewDb(db, "sqlmock"), nil)
+	svc := NewStorageProviderService(repo, nil)
+	st, err := storage.NewS3Storage(`{
+		"bucket":"vanlog-1258312217",
+		"region":"ap-shanghai",
+		"path":"media/",
+		"customUrl":"https://data.golovin.cn",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	keys := []string{"2026/05/backup.png", "2026/05/native.png"}
+	currentBackupURL := "https://data.golovin.cn/media/2026/05/backup.png"
+	historicalBackupURL := "https://vanlog-1258312217.cos.ap-shanghai.myqcloud.com/media/2026/05/backup.png"
+	currentNativeURL := "https://data.golovin.cn/media/2026/05/native.png"
+	historicalNativeURL := "https://vanlog-1258312217.cos.ap-shanghai.myqcloud.com/media/2026/05/native.png"
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, file_path FROM media_files WHERE storage_provider_id = ? AND file_path IN (?, ?)`)).
+		WithArgs(int64(5), keys[0], keys[1]).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "file_path"}).AddRow(int64(7), keys[1]))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, backup_url FROM media_files WHERE backup_provider_id = ? AND backup_url IN (?, ?, ?, ?)`)).
+		WithArgs(int64(5), currentBackupURL, historicalBackupURL, currentNativeURL, historicalNativeURL).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "backup_url"}).AddRow(int64(42), historicalBackupURL))
+
+	got, err := svc.lookupCatalog(context.Background(), 5, keys, st)
+	if err != nil {
+		t.Fatalf("lookupCatalog: %v", err)
+	}
+	if got[keys[0]] != 42 {
+		t.Fatalf("historical backup key media id = %d, want 42", got[keys[0]])
+	}
+	if got[keys[1]] != 7 {
+		t.Fatalf("native key media id = %d, want 7", got[keys[1]])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestFilterListableObjectsDropsDirectoryMarkers(t *testing.T) {
 	got := filterListableObjects([]storage.ObjectInfo{
 		{Key: "", Size: 0},

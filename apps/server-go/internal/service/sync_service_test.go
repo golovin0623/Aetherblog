@@ -301,12 +301,56 @@ func TestBackupStorageKeyUsesPersistedBackupURL(t *testing.T) {
 	}
 }
 
+func TestVerifyOneRefreshesBackupURLToCurrentStoreURL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	mediaID := int64(42)
+	backupProviderID := int64(20)
+	backupURL := "https://vanlog-1258312217.cos.ap-shanghai.myqcloud.com/media/2026/05/a.jpg"
+	currentURL := "https://data.golovin.cn/media/2026/05/a.jpg"
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE media_files
+		SET sync_status='SYNCED',
+		    backup_url=$1,
+		    backup_error=NULL,
+		    last_verified_at=$2
+		WHERE id=$3`)).
+		WithArgs(currentURL, sqlmock.AnyArg(), mediaID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	repo := repository.NewMediaRepo(sqlx.NewDb(db, "sqlmock"))
+	store := &failingBackupStore{key: "media/2026/05/a.jpg", exists: true, publicURL: currentURL}
+	svc := &SyncService{
+		mediaRepo: repo,
+		mediaSvc:  NewMediaService(repo, store, nil, ""),
+	}
+
+	err = svc.verifyOne(context.Background(), &repository.BackupVerifyTarget{
+		ID:               mediaID,
+		FilePath:         "current/a.jpg",
+		BackupProviderID: &backupProviderID,
+		BackupURL:        &backupURL,
+	}, false)
+	if err != nil {
+		t.Fatalf("verifyOne: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func syncTestStringPtr(v string) *string { return &v }
 
 type failingBackupStore struct {
 	key       string
 	keyErr    error
 	deleteErr error
+	exists    bool
+	publicURL string
 }
 
 func (s *failingBackupStore) Upload(context.Context, string, io.Reader, int64, string) (string, error) {
@@ -320,7 +364,12 @@ func (s *failingBackupStore) Delete(_ context.Context, key string) error {
 	return s.deleteErr
 }
 
-func (s *failingBackupStore) GetURL(key string) string { return "https://backup.example.com/" + key }
+func (s *failingBackupStore) GetURL(key string) string {
+	if s.publicURL != "" {
+		return s.publicURL
+	}
+	return "https://backup.example.com/" + key
+}
 
 func (s *failingBackupStore) Type() string { return "COS" }
 
@@ -333,6 +382,13 @@ func (s *failingBackupStore) KeyFromURL(string) (string, error) {
 		return "", s.keyErr
 	}
 	return s.key, nil
+}
+
+func (s *failingBackupStore) Exists(_ context.Context, key string) (bool, error) {
+	if key != s.key {
+		return false, errors.New("unexpected exists key: " + key)
+	}
+	return s.exists, nil
 }
 
 func syncMediaFileRows(m model.MediaFile) *sqlmock.Rows {

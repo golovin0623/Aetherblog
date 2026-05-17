@@ -187,6 +187,62 @@ func TestS3Storage_KeyFromURLUsesPersistedBackupLocation(t *testing.T) {
 	}
 }
 
+func TestS3Storage_KeyFromURLAcceptsProviderURLWhenCustomURLConfigured(t *testing.T) {
+	cfg := `{
+		"bucket":"vanlog-1258312217",
+		"region":"ap-shanghai",
+		"path":"media/",
+		"customUrl":"https://data.golovin.cn",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		rawURL  string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:   "current custom domain",
+			rawURL: "https://data.golovin.cn/media/2026/05/a.jpg",
+			want:   "2026/05/a.jpg",
+		},
+		{
+			name:   "historical provider domain",
+			rawURL: "https://vanlog-1258312217.cos.ap-shanghai.myqcloud.com/media/2026/05/a.jpg",
+			want:   "2026/05/a.jpg",
+		},
+		{
+			name:    "unrelated domain",
+			rawURL:  "https://attacker.example.com/media/2026/05/a.jpg",
+			wantErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := st.KeyFromURL(c.rawURL)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("KeyFromURL() expected error, got key %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("KeyFromURL: %v", err)
+			}
+			if got != c.want {
+				t.Fatalf("KeyFromURL()=%q want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestS3Storage_KeyFromURLSupportsPathStyleEndpoint(t *testing.T) {
 	cfg := `{
 		"bucket":"example-bucket",

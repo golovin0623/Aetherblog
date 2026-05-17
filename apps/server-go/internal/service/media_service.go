@@ -629,7 +629,7 @@ func (s *MediaService) PublicAccessURLByPath(ctx context.Context, filePath strin
 }
 
 func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.MediaFile) (string, error) {
-	if backupURL, ok := verifiedBackupAccessURL(m); ok {
+	if backupURL, ok := s.verifiedBackupAccessURL(ctx, m); ok {
 		return backupURL, nil
 	}
 
@@ -648,7 +648,34 @@ func (s *MediaService) publicAccessURLForMedia(ctx context.Context, m *model.Med
 	return store.GetURL(m.FilePath), nil
 }
 
-func verifiedBackupAccessURL(m *model.MediaFile) (string, bool) {
+func (s *MediaService) verifiedBackupAccessURL(ctx context.Context, m *model.MediaFile) (string, bool) {
+	backupURL, ok := freshVerifiedBackupURL(m)
+	if !ok {
+		return "", false
+	}
+	if m.BackupProviderID == nil {
+		return backupURL, true
+	}
+	store, _, err := s.resolveStore(ctx, m.BackupProviderID)
+	if err != nil {
+		return backupURL, true
+	}
+	resolver, ok := store.(storage.PublicURLKeyResolver)
+	if !ok {
+		return backupURL, true
+	}
+	key, err := resolver.KeyFromURL(backupURL)
+	if err != nil {
+		return backupURL, true
+	}
+	currentURL := strings.TrimSpace(store.GetURL(key))
+	if currentURL == "" {
+		return backupURL, true
+	}
+	return currentURL, true
+}
+
+func freshVerifiedBackupURL(m *model.MediaFile) (string, bool) {
 	if m == nil ||
 		!strings.EqualFold(m.StorageType, "LOCAL") ||
 		!strings.EqualFold(m.SyncStatus, "SYNCED") ||

@@ -436,9 +436,10 @@ func (s *S3Storage) Delete(ctx context.Context, key string) error {
 }
 
 // GetURL 返回指定 key 对应文件的公开访问 URL，优先级如下：
-//  1. 若配置了 URLPrefix（如 CDN 域名），则直接拼接返回
-//  2. 若配置了自定义 Endpoint，根据 ForcePathStyle 选择路径风格或虚拟主机风格
-//  3. 默认构造标准 AWS S3 公开访问 URL
+//  1. 若配置了 CustomURL（图床/自定义域名），则直接拼接返回
+//  2. 若配置了 URLPrefix（如 CDN 域名），则直接拼接返回
+//  3. 若配置了自定义 Endpoint，根据 ForcePathStyle 选择路径风格或虚拟主机风格
+//  4. 默认构造标准 AWS S3 公开访问 URL
 func (s *S3Storage) GetURL(key string) string {
 	objectKey, err := s.objectKey(key)
 	if err != nil {
@@ -465,7 +466,46 @@ func (s *S3Storage) GetURL(key string) string {
 	return appendURLOptions(fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.cfg.Bucket, s.cfg.Region, objectKey), s.cfg.Options)
 }
 
+// PublicURLCandidates 返回当前 key 可能对应的公开 URL,用于跨 CustomURL/URLPrefix
+// 配置切换后的 catalog 反查。第一个候选始终与 GetURL(key) 一致。
+func (s *S3Storage) PublicURLCandidates(key string) []string {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
+		return nil
+	}
+	bases := s.publicURLBases()
+	if len(bases) == 0 {
+		if publicURL := strings.TrimSpace(s.GetURL(key)); publicURL != "" {
+			return []string{publicURL}
+		}
+		return nil
+	}
+
+	urls := make([]string, 0, len(bases)*2)
+	add := func(rawURL string) {
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" {
+			return
+		}
+		for _, existing := range urls {
+			if existing == rawURL {
+				return
+			}
+		}
+		urls = append(urls, rawURL)
+	}
+
+	for _, base := range bases {
+		rawURL := joinURLPath(base, objectKey)
+		add(appendURLOptions(rawURL, s.cfg.Options))
+		add(rawURL)
+	}
+	return urls
+}
+
 // KeyFromURL 从 GetURL 生成的公开 URL 反解出业务 key。
+// 当存储后来配置了 CustomURL/URLPrefix 时,历史落库的供应商原始公开 URL
+// 仍然属于同一个 bucket,也应能反解,否则备份校验/删除会被域名切换卡住。
 func (s *S3Storage) KeyFromURL(rawURL string) (string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -479,20 +519,7 @@ func (s *S3Storage) KeyFromURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("s3 url: missing object path")
 	}
 
-	var objectKey string
-	publicBase := s.cfg.CustomURL
-	if publicBase == "" {
-		publicBase = s.cfg.URLPrefix
-	}
-	if publicBase != "" {
-		objectKey, err = stripURLBasePath(u, publicBase)
-	} else if s.cfg.Endpoint != "" && s.cfg.ForcePathStyle {
-		objectKey, err = stripURLBasePath(u, joinURLPath(s.cfg.Endpoint, s.cfg.Bucket))
-	} else if s.cfg.Endpoint != "" {
-		objectKey, err = stripURLBasePath(u, virtualHostedURL(s.cfg.Endpoint, s.cfg.Bucket, ""))
-	} else {
-		objectKey = strings.TrimLeft(u.Path, "/")
-	}
+	objectKey, err := s.objectKeyFromURL(u)
 	if err != nil {
 		return "", err
 	}
@@ -504,6 +531,56 @@ func (s *S3Storage) KeyFromURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("s3 url: missing key")
 	}
 	return key, nil
+}
+
+func (s *S3Storage) objectKeyFromURL(u *url.URL) (string, error) {
+	bases := s.publicURLBases()
+	if len(bases) == 0 {
+		return strings.TrimLeft(u.Path, "/"), nil
+	}
+
+	var firstErr error
+	for _, base := range bases {
+		objectKey, err := stripURLBasePath(u, base)
+		if err == nil {
+			return objectKey, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return "", firstErr
+}
+
+func (s *S3Storage) publicURLBases() []string {
+	var bases []string
+	add := func(base string) {
+		base = strings.TrimSpace(base)
+		if base == "" {
+			return
+		}
+		for _, existing := range bases {
+			if existing == base {
+				return
+			}
+		}
+		bases = append(bases, base)
+	}
+
+	add(s.cfg.CustomURL)
+	add(s.cfg.URLPrefix)
+	if s.cfg.Endpoint != "" {
+		if s.cfg.ForcePathStyle {
+			add(joinURLPath(s.cfg.Endpoint, s.cfg.Bucket))
+		} else {
+			add(virtualHostedURL(s.cfg.Endpoint, s.cfg.Bucket, ""))
+		}
+		return bases
+	}
+	if s.cfg.Bucket != "" && s.cfg.Region != "" {
+		add(fmt.Sprintf("https://%s.s3.%s.amazonaws.com", s.cfg.Bucket, s.cfg.Region))
+	}
+	return bases
 }
 
 func stripURLBasePath(u *url.URL, rawBase string) (string, error) {

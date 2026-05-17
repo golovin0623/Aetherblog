@@ -406,6 +406,23 @@ func (r *MediaRepo) MarkBackupVerified(ctx context.Context, id int64, at time.Ti
 	return err
 }
 
+// MarkBackupVerifiedWithURL 校验成功,并把 backup_url 刷新成当前存储配置生成的公开地址。
+// 用于配置 CustomURL/URLPrefix 后把历史供应商原始域名切换到当前规范域名。
+func (r *MediaRepo) MarkBackupVerifiedWithURL(ctx context.Context, id int64, at time.Time, backupURL string) error {
+	backupURL = strings.TrimSpace(backupURL)
+	if backupURL == "" {
+		return r.MarkBackupVerified(ctx, id, at)
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_files
+		SET sync_status='SYNCED',
+		    backup_url=$1,
+		    backup_error=NULL,
+		    last_verified_at=$2
+		WHERE id=$3`, backupURL, at, id)
+	return err
+}
+
 // MarkBackupMissing 校验确认云端 404 —— 把 sync_status 置 MISSING,记录原因和校验时间。
 // 主文件 / 备份位置等其他字段保留,详情页可继续展示"上次备份位置(已失效)"。
 func (r *MediaRepo) MarkBackupMissing(ctx context.Context, id int64, at time.Time, reason string) error {

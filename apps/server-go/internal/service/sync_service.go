@@ -889,7 +889,7 @@ func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyT
 	}
 	now := time.Now()
 	if exists {
-		if err := s.restoreBackupVerified(ctx, t.ID, now); err != nil {
+		if err := s.restoreBackupVerified(ctx, t.ID, now, store.GetURL(backupKey)); err != nil {
 			return fmt.Errorf("mark backup verified: %w", err)
 		}
 		return nil
@@ -901,8 +901,8 @@ func (s *SyncService) verifyOne(ctx context.Context, t *repository.BackupVerifyT
 	return nil
 }
 
-func (s *SyncService) restoreBackupVerified(ctx context.Context, mediaID int64, at time.Time) error {
-	return s.mediaRepo.MarkBackupVerified(ctx, mediaID, at)
+func (s *SyncService) restoreBackupVerified(ctx context.Context, mediaID int64, at time.Time, backupURL string) error {
+	return s.mediaRepo.MarkBackupVerifiedWithURL(ctx, mediaID, at, backupURL)
 }
 
 // IsVerifyRunning 当前 verify worker 是否在执行(供 admin 状态摘要)。
