@@ -134,19 +134,19 @@ chown -R webhook:webhook /var/lib/aetherblog/repo
 
 # 3.1) 私有仓库访问: deploy-webhook.service 以 webhook 用户运行,
 #      不能复用 /root/.ssh。给 webhook 用户配置只读 GitHub Deploy Key。
-install -d -m 0700 -o webhook -g webhook /var/lib/aetherblog/webhook/.ssh
+sudo install -d -m 0700 -o webhook -g webhook /var/lib/aetherblog/webhook/.ssh
 sudo -u webhook -H ssh-keygen -t ed25519 \
   -C "aetherblog-deploy-webhook" \
   -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 \
   -N ""
 sudo -u webhook -H cat /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
 # 把上面公钥添加到 GitHub 仓库 Settings -> Deploy keys, 不勾选 write access。
-sudo -u webhook -H ssh-keyscan github.com | tee -a /var/lib/aetherblog/webhook/.ssh/known_hosts >/dev/null
-chown -R webhook:webhook /var/lib/aetherblog/webhook/.ssh
-chmod 0700 /var/lib/aetherblog/webhook/.ssh
-chmod 0600 /var/lib/aetherblog/webhook/.ssh/id_ed25519
-chmod 0644 /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
-chmod 0644 /var/lib/aetherblog/webhook/.ssh/known_hosts
+sudo -u webhook -H ssh-keyscan github.com | sudo tee -a /var/lib/aetherblog/webhook/.ssh/known_hosts >/dev/null
+sudo chown -R webhook:webhook /var/lib/aetherblog/webhook/.ssh
+sudo chmod 0700 /var/lib/aetherblog/webhook/.ssh
+sudo chmod 0600 /var/lib/aetherblog/webhook/.ssh/id_ed25519
+sudo chmod 0644 /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
+sudo chmod 0644 /var/lib/aetherblog/webhook/.ssh/known_hosts
 
 # CentOS 7 自带 Git 可能不支持 `git -C`; 排障与验证统一使用 cd 写法。
 sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote set-url origin git@github.com:golovin0623/Aetherblog.git'
