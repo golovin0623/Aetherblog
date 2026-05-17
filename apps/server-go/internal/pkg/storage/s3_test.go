@@ -202,10 +202,10 @@ func TestS3Storage_KeyFromURLAcceptsProviderURLWhenCustomURLConfigured(t *testin
 	}
 
 	cases := []struct {
-		name    string
-		rawURL  string
-		want    string
-		wantErr bool
+		name            string
+		rawURL          string
+		want            string
+		wantErrContains string
 	}{
 		{
 			name:   "current custom domain",
@@ -218,18 +218,21 @@ func TestS3Storage_KeyFromURLAcceptsProviderURLWhenCustomURLConfigured(t *testin
 			want:   "2026/05/a.jpg",
 		},
 		{
-			name:    "unrelated domain",
-			rawURL:  "https://attacker.example.com/media/2026/05/a.jpg",
-			wantErr: true,
+			name:            "unrelated domain",
+			rawURL:          "https://attacker.example.com/media/2026/05/a.jpg",
+			wantErrContains: "no configured public base matched",
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := st.KeyFromURL(c.rawURL)
-			if c.wantErr {
+			if c.wantErrContains != "" {
 				if err == nil {
 					t.Fatalf("KeyFromURL() expected error, got key %q", got)
+				}
+				if !strings.Contains(err.Error(), c.wantErrContains) {
+					t.Fatalf("KeyFromURL() error = %q, want to contain %q", err.Error(), c.wantErrContains)
 				}
 				return
 			}

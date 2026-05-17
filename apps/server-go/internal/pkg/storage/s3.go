@@ -540,6 +540,7 @@ func (s *S3Storage) objectKeyFromURL(u *url.URL) (string, error) {
 	}
 
 	var firstErr error
+	var sameHostErr error
 	for _, base := range bases {
 		objectKey, err := stripURLBasePath(u, base)
 		if err == nil {
@@ -548,8 +549,25 @@ func (s *S3Storage) objectKeyFromURL(u *url.URL) (string, error) {
 		if firstErr == nil {
 			firstErr = err
 		}
+		if sameHostErr == nil && urlBaseHostMatches(u, base) {
+			sameHostErr = err
+		}
+	}
+	if len(bases) > 1 {
+		if sameHostErr != nil {
+			return "", fmt.Errorf("s3 url: host matched a configured public base but path did not: %w", sameHostErr)
+		}
+		return "", fmt.Errorf("s3 url: no configured public base matched %q: %w", u.Host, firstErr)
 	}
 	return "", firstErr
+}
+
+func urlBaseHostMatches(u *url.URL, rawBase string) bool {
+	base, err := url.Parse(strings.TrimSpace(rawBase))
+	if err != nil || !base.IsAbs() {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, base.Scheme) && strings.EqualFold(u.Host, base.Host)
 }
 
 func (s *S3Storage) publicURLBases() []string {

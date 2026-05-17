@@ -656,6 +656,9 @@ func (s *MediaService) verifiedBackupAccessURL(ctx context.Context, m *model.Med
 	if m.BackupProviderID == nil {
 		return backupURL, true
 	}
+	// Keep this read path free of remote I/O: resolveStore is cached after the
+	// first provider lookup, and KeyFromURL/GetURL only canonicalize strings.
+	// That avoids leaking an old provider domain until the next verify pass.
 	store, _, err := s.resolveStore(ctx, m.BackupProviderID)
 	if err != nil {
 		return backupURL, true
