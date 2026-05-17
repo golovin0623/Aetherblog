@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
@@ -91,10 +92,67 @@ func (r *MediaTagRepo) TagFile(ctx context.Context, fileID int64, tagID int64, t
 	return err
 }
 
+// TagFileWithUsage 批量为单个媒体文件绑定多个标签，并在同一事务中同步 usage_count。
+// 已存在的关联会被跳过，只对本次真正新增的关联递增计数。
+func (r *MediaTagRepo) TagFileWithUsage(ctx context.Context, fileID int64, tagIDs []int64, taggedBy *int64) error {
+	tagIDs = uniqueInt64s(tagIDs)
+	if len(tagIDs) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		WITH inserted AS (
+			INSERT INTO media_file_tags (media_file_id, tag_id, tagged_by, source)
+			SELECT $1, tag_id, $3, 'MANUAL'
+			FROM unnest($2::bigint[]) AS tag_id
+			ON CONFLICT (media_file_id, tag_id) DO NOTHING
+			RETURNING tag_id
+		)
+		UPDATE media_tags AS t
+		SET usage_count = usage_count + 1
+		FROM inserted
+		WHERE t.id = inserted.tag_id`, fileID, pq.Array(tagIDs), taggedBy)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // UntagFile 从 media_file_tags 关联表中移除媒体文件与指定标签的关联关系。
 func (r *MediaTagRepo) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2`, fileID, tagID)
 	return err
+}
+
+// UntagFileWithUsage 移除单个文件标签关联，并在同一事务中递减 usage_count。
+// 关联不存在时保持幂等，不修改计数。
+func (r *MediaTagRepo) UntagFileWithUsage(ctx context.Context, fileID int64, tagID int64) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		WITH deleted AS (
+			DELETE FROM media_file_tags
+			WHERE media_file_id=$1 AND tag_id=$2
+			RETURNING tag_id
+		)
+		UPDATE media_tags AS t
+		SET usage_count = GREATEST(usage_count - 1, 0)
+		FROM deleted
+		WHERE t.id = deleted.tag_id`, fileID, tagID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // IncrementUsageCount 对 media_tags 表中指定标签的 usage_count 字段进行原子性增减操作。
@@ -104,10 +162,60 @@ func (r *MediaTagRepo) IncrementUsageCount(ctx context.Context, tagID int64, del
 	return err
 }
 
-// CountFileTag 查询 media_file_tags 关联表中指定文件与标签的关联是否存在。
-// 返回 1 表示关联存在，返回 0 表示不存在。
-func (r *MediaTagRepo) CountFileTag(ctx context.Context, fileID int64, tagID int64) (int, error) {
-	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2`, fileID, tagID).Scan(&n)
-	return n, err
+// BatchTagWithUsage 批量为多个媒体文件绑定同一个标签，并按新增关联数量同步 usage_count。
+func (r *MediaTagRepo) BatchTagWithUsage(ctx context.Context, fileIDs []int64, tagID int64, taggedBy *int64) error {
+	fileIDs = uniqueInt64s(fileIDs)
+	if len(fileIDs) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		WITH inserted AS (
+			INSERT INTO media_file_tags (media_file_id, tag_id, tagged_by, source)
+			SELECT file_id, $2, $3, 'MANUAL'
+			FROM unnest($1::bigint[]) AS file_id
+			ON CONFLICT (media_file_id, tag_id) DO NOTHING
+			RETURNING 1
+		),
+		inserted_count AS (
+			SELECT COUNT(*) AS count FROM inserted
+		)
+		UPDATE media_tags AS t
+		SET usage_count = usage_count + inserted_count.count::int
+		FROM inserted_count
+		WHERE t.id = $2 AND inserted_count.count > 0`, pq.Array(fileIDs), tagID, taggedBy)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ExistsFileTag 查询 media_file_tags 关联表中指定文件与标签的关联是否存在。
+// 返回 true 表示关联存在，返回 false 表示不存在。
+func (r *MediaTagRepo) ExistsFileTag(ctx context.Context, fileID int64, tagID int64) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2)`, fileID, tagID)
+	return exists, err
+}
+
+func uniqueInt64s(ids []int64) []int64 {
+	if len(ids) < 2 {
+		return ids
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	unique := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
 }

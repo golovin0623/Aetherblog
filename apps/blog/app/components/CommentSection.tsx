@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, memo, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
-import { Button, Avatar } from '@aetherblog/ui';
+import { Button, Avatar, Tooltip } from '@aetherblog/ui';
 import { useIntersectionObserver } from '@aetherblog/hooks';
 import { sanitizeUrl } from '../lib/sanitizeUrl';
 import {
@@ -68,9 +68,11 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                 </span>
 
                 {comment.website && (
-                  <a href={sanitizeUrl(comment.website)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1">
-                    <Globe className="w-3 h-3" />
-                  </a>
+                  <Tooltip content="访问网站" side="top">
+                    <a href={sanitizeUrl(comment.website)} target="_blank" rel="noopener noreferrer" aria-label="访问网站" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)] focus-visible:rounded-sm">
+                      <Globe className="w-3 h-3" />
+                    </a>
+                  </Tooltip>
                 )}
               </div>
 

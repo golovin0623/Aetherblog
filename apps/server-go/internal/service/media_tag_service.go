@@ -95,63 +95,17 @@ func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.
 // TagFile 将多个标签关联到指定媒体文件，已存在的关联会被跳过。
 // 每次成功新增关联时，对应标签的 usage_count 会加 1。
 func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []int64, taggedBy *int64) error {
-	for _, tagID := range tagIDs {
-		// 检查关联是否已存在，避免重复打标
-		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
-		if err != nil {
-			return err
-		}
-		if n > 0 {
-			continue
-		}
-		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
-			return err
-		}
-		// 递增该标签的使用计数
-		if err := s.repo.IncrementUsageCount(ctx, tagID, 1); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.repo.TagFileWithUsage(ctx, fileID, tagIDs, taggedBy)
 }
 
 // UntagFile 从媒体文件上移除指定标签，并将该标签的 usage_count 减 1。
 func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
-	// 先确认关联存在
-	n, err := s.repo.CountFileTag(ctx, fileID, tagID)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return nil
-	}
-	if err := s.repo.UntagFile(ctx, fileID, tagID); err != nil {
-		return err
-	}
-	// 递减该标签的使用计数
-	return s.repo.IncrementUsageCount(ctx, tagID, -1)
+	return s.repo.UntagFileWithUsage(ctx, fileID, tagID)
 }
 
 // BatchTag 将单个标签批量关联到多个媒体文件，已存在的关联会被跳过。
 func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID int64, taggedBy *int64) error {
-	for _, fileID := range fileIDs {
-		// 检查关联是否已存在
-		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
-		if err != nil {
-			return err
-		}
-		if n > 0 {
-			continue
-		}
-		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
-			return err
-		}
-		// 递增使用计数
-		if err := s.repo.IncrementUsageCount(ctx, tagID, 1); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.repo.BatchTagWithUsage(ctx, fileIDs, tagID, taggedBy)
 }
 
 // --- 内部辅助函数 ---
