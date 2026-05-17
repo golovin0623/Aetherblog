@@ -36,3 +36,32 @@ func TestMediaRepoMarkBackupVerifiedRestoresSyncedState(t *testing.T) {
 		t.Fatalf("unmet expectations: %v", err)
 	}
 }
+
+func TestMediaRepoMarkBackupVerifiedWithURLRefreshesBackupURL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMediaRepo(sqlx.NewDb(db, "sqlmock"))
+	at := time.Date(2026, 5, 17, 10, 42, 0, 0, time.UTC)
+	backupURL := "https://data.golovin.cn/media/2026/05/a.jpg"
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE media_files
+		SET sync_status='SYNCED',
+		    backup_url=$1,
+		    backup_error=NULL,
+		    last_verified_at=$2
+		WHERE id=$3`)).
+		WithArgs(backupURL, at, int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := repo.MarkBackupVerifiedWithURL(context.Background(), 42, at, backupURL); err != nil {
+		t.Fatalf("MarkBackupVerifiedWithURL: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
