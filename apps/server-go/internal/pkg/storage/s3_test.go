@@ -246,6 +246,48 @@ func TestS3Storage_KeyFromURLAcceptsProviderURLWhenCustomURLConfigured(t *testin
 	}
 }
 
+func TestS3Storage_KeyFromURLRejectsAbsoluteURLAgainstRelativePrefix(t *testing.T) {
+	cfg := `{
+		"bucket":"vanlog-1258312217",
+		"region":"ap-shanghai",
+		"path":"media/",
+		"customUrl":"https://data.golovin.cn",
+		"urlPrefix":"/api/uploads",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+
+	if got, err := st.KeyFromURL("https://attacker.example.com/api/uploads/media/2026/05/a.jpg"); err == nil {
+		t.Fatalf("KeyFromURL() expected error for unrelated host, got key %q", got)
+	} else if !strings.Contains(err.Error(), "no configured public base matched") {
+		t.Fatalf("KeyFromURL() error = %q, want no configured public base matched", err.Error())
+	}
+
+	relativeURLPrefixOnly := `{
+		"bucket":"vanlog-1258312217",
+		"region":"ap-shanghai",
+		"path":"media/",
+		"urlPrefix":"/api/uploads",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	relativeStore, err := NewS3Storage(relativeURLPrefixOnly, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS) relative prefix: %v", err)
+	}
+	got, err := relativeStore.KeyFromURL("/api/uploads/media/2026/05/a.jpg")
+	if err != nil {
+		t.Fatalf("KeyFromURL() relative URL: %v", err)
+	}
+	if got != "2026/05/a.jpg" {
+		t.Fatalf("KeyFromURL()=%q want 2026/05/a.jpg", got)
+	}
+}
+
 func TestS3Storage_KeyFromURLSupportsPathStyleEndpoint(t *testing.T) {
 	cfg := `{
 		"bucket":"example-bucket",

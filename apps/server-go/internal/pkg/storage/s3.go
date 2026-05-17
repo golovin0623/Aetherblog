@@ -610,6 +610,8 @@ func stripURLBasePath(u *url.URL, rawBase string) (string, error) {
 		if !strings.EqualFold(u.Scheme, base.Scheme) || !strings.EqualFold(u.Host, base.Host) {
 			return "", fmt.Errorf("url host %q does not match base %q", u.Host, base.Host)
 		}
+	} else if u.IsAbs() || u.Host != "" {
+		return "", fmt.Errorf("url host %q cannot be matched by relative base %q", u.Host, strings.TrimSpace(rawBase))
 	}
 	path := strings.TrimLeft(u.Path, "/")
 	basePath := strings.Trim(base.Path, "/")
