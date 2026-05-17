@@ -27,6 +27,8 @@ COPY apps/admin ./apps/admin
 
 # Build the application (uses relative /api path, nginx proxies to backend)
 ENV NODE_ENV=production
+# Vite can exceed Node's default ~2GB heap in CI/buildx when bundling the admin app.
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm --filter @aetherblog/admin build
 
 # Stage 2: Production with Nginx (unprivileged)
