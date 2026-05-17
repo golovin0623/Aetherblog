@@ -274,7 +274,7 @@ DEPLOY_MODE=rollback ROLLBACK_VERSION=v1.1.1 ./ops/webhook/deploy.sh
 
 webhook systemd 单元文件见 `ops/webhook/deploy-webhook.service`，部署与认证令牌设置详见 `.github/CICD_GUIDE.md`。
 仓库切为 private 后, repo sync 权限必须按 `webhook` 用户验证:
-`sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'`。
+`sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch --quiet --tags origin main'`。
 root 用户下的 SSH 测试成功不代表 `deploy-webhook.service` 能拉代码。
 
 ---

@@ -65,7 +65,7 @@ CI: {"services": "backend gateway"} → webhook → deploy.sh incremental
 |--------|------|------|
 | `DOCKER_USERNAME` | Docker Hub 用户名 | `golovin0623` |
 | `DOCKER_PASSWORD` | Docker Hub Access Token | (在 Docker Hub → Account Settings → Security 创建) |
-| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `https://deploy.example.com/deploy`（必须 HTTPS 或仅内网/VPN 可达；内网直连需带 `:7868`） |
+| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | 当前直连形态: `http://<server-public-ip>:7868/deploy`; 若已配置 nginx/HTTPS 反代, 用 `https://deploy.example.com/deploy` |
 | `DEPLOY_WEBHOOK_SECRET` | webhook HMAC 密钥 | `openssl rand -hex 32` 生成的 64 位 hex |
 
 ## Webhook 部署配置（服务器端）
@@ -101,8 +101,8 @@ sudo ./ops/bootstrap-webhook.sh
 
 # 3. 按脚本输出同步 GitHub Actions Secrets
 #    Settings -> Secrets and variables -> Actions:
-#    DEPLOY_WEBHOOK_URL    = https://<your-domain>/deploy
-#      或仅内网/VPN 地址; 内网直连需带 :7868
+#    DEPLOY_WEBHOOK_URL    = http://<server-public-ip>:7868/deploy
+#      若已配置 nginx/HTTPS 反代, 用 https://<your-domain>/deploy
 #    DEPLOY_WEBHOOK_SECRET = /etc/aetherblog/webhook.env 中 WEBHOOK_SECRET 的值
 
 # 4. 验证 systemd 进程
@@ -113,7 +113,7 @@ journalctl -u deploy-webhook -n 50 --no-pager
 旧 root 模式迁移时, `--from` 会把旧仓库 rsync 到 `/var/lib/aetherblog/repo`,
 清理历史 `systemctl edit` override, 并切到 `webhook` 用户运行形态。
 
-> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。生产环境必须使用 HTTPS，或放在仅内网/VPN 可达的私网入口并配合防火墙/反向代理。
+> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。当前 unit 默认 `WEBHOOK_BIND=0.0.0.0:7868`, 因此 `DEPLOY_WEBHOOK_URL` 可先用 `http://<server-public-ip>:7868/deploy`。更稳妥的生产形态是后续加 nginx/HTTPS 反代或限制为内网/VPN 入口, 但不能只改 URL, 还要同步落地反代路由与 GitHub Secret。
 
 > 旧文档中的 `/root/Aetherblog/webhook` 软链接方式已经不是推荐生产形态。当前 unit 使用 `User=webhook` 和 `ProtectHome=true`, 不应继续依赖 `/root/.ssh`、`/root/.pyenv` 或 `/root/Aetherblog/webhook` 作为运行时资源。
 
@@ -127,14 +127,17 @@ journalctl -u deploy-webhook -n 50 --no-pager
 这一步是 private repo 的分支处理: 公共仓库可以跳过; 私有仓库必须让
 `webhook` 用户本身具备只读拉取权限。
 
-给 `webhook` 用户配置只读 GitHub Deploy Key:
+给 `webhook` 用户配置只读 GitHub Deploy Key。若 key 已存在, 不要覆盖, 直接查看
+现有 `.pub` 并确认它已添加到 GitHub:
 
 ```bash
 sudo install -d -m 0700 -o webhook -g webhook /var/lib/aetherblog/webhook/.ssh
-sudo -u webhook -H ssh-keygen -t ed25519 \
-  -C "aetherblog-deploy-webhook" \
-  -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 \
-  -N ""
+if [ ! -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 ]; then
+  sudo -u webhook -H ssh-keygen -t ed25519 \
+    -C "aetherblog-deploy-webhook" \
+    -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 \
+    -N ""
+fi
 sudo -u webhook -H cat /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
 ```
 
@@ -150,8 +153,9 @@ sudo chmod 0644 /var/lib/aetherblog/webhook/.ssh/known_hosts
 
 # CentOS 7 Git 可能不支持 `git -C`, 用 cd 写法验证真实运行身份。
 sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote set-url origin git@github.com:golovin0623/Aetherblog.git'
-sudo -u webhook -H ssh -T git@github.com
-sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+# 可选: 观察 GitHub SSH 认证输出; GitHub 不提供 shell, 这条可能非 0, 不作为最终判定。
+sudo -u webhook -H ssh -T git@github.com || true
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch --quiet --tags origin main'
 ```
 
 最后一条成功后, CI webhook 才具备私有仓库读取权限。
@@ -237,7 +241,7 @@ tail -n 50 /var/log/aetherblog/deploy.log
 journalctl -u deploy-webhook -n 50 --no-pager
 
 # 如果响应体包含 Permission denied (publickey), 必须用 webhook 用户验证:
-sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch --quiet --tags origin main'
 ```
 
 ### 构建超时
