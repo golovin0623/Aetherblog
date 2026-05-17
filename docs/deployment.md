@@ -235,7 +235,7 @@ REDIS_PORT=6999  # 你的 Redis 端口
                         ai_providers/ai_models 计数、backend 日志纯净)
 ```
 
-失败时 preflight 阻断发布 (`exit 1`)，webhook 返回 5xx；所有步骤日志追加到 `/var/log/aetherblog-deploy.log`。
+失败时 preflight 阻断发布 (`exit 1`)，webhook 返回 5xx；所有步骤日志追加到 `/var/log/aetherblog/deploy.log`。
 
 ### 关键安全与可靠性设计
 
@@ -273,6 +273,9 @@ DEPLOY_MODE=rollback ROLLBACK_VERSION=v1.1.1 ./ops/webhook/deploy.sh
 ```
 
 webhook systemd 单元文件见 `ops/webhook/deploy-webhook.service`，部署与认证令牌设置详见 `.github/CICD_GUIDE.md`。
+仓库切为 private 后, repo sync 权限必须按 `webhook` 用户验证:
+`sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'`。
+root 用户下的 SSH 测试成功不代表 `deploy-webhook.service` 能拉代码。
 
 ---
 

@@ -132,6 +132,26 @@ if [ ! -d /var/lib/aetherblog/repo/.git ]; then
 fi
 chown -R webhook:webhook /var/lib/aetherblog/repo
 
+# 3.1) 私有仓库访问: deploy-webhook.service 以 webhook 用户运行,
+#      不能复用 /root/.ssh。给 webhook 用户配置只读 GitHub Deploy Key。
+install -d -m 0700 -o webhook -g webhook /var/lib/aetherblog/webhook/.ssh
+sudo -u webhook -H ssh-keygen -t ed25519 \
+  -C "aetherblog-deploy-webhook" \
+  -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 \
+  -N ""
+sudo -u webhook -H cat /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
+# 把上面公钥添加到 GitHub 仓库 Settings -> Deploy keys, 不勾选 write access。
+sudo -u webhook -H ssh-keyscan github.com | tee -a /var/lib/aetherblog/webhook/.ssh/known_hosts >/dev/null
+chown -R webhook:webhook /var/lib/aetherblog/webhook/.ssh
+chmod 0700 /var/lib/aetherblog/webhook/.ssh
+chmod 0600 /var/lib/aetherblog/webhook/.ssh/id_ed25519
+chmod 0644 /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
+chmod 0644 /var/lib/aetherblog/webhook/.ssh/known_hosts
+
+# CentOS 7 自带 Git 可能不支持 `git -C`; 排障与验证统一使用 cd 写法。
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote set-url origin git@github.com:golovin0623/Aetherblog.git'
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+
 # 4) 同步 webhook 代码到 ExecStart 路径
 #    只复制 webhook server 启动需要的文件, 仓库元数据和其它无关文件不要进 webhook 目录
 install -m 0755 -o webhook -g webhook \
@@ -294,7 +314,20 @@ tail -n 100 /var/log/aetherblog/deploy.log
    sudo journalctl -u deploy-webhook.service --since "10 minutes ago" --no-pager
    ```
 
-3. **本机 curl 卡住且没有 journal 日志**:
+3. **repo sync 失败是不是 webhook 用户没有私有仓库权限**:
+   ```bash
+   sudo systemctl show deploy-webhook.service -p User -p Environment
+   sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote -v'
+   sudo -u webhook -H ssh -T git@github.com
+   sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+   ```
+   如果 CI 返回 `Repo sync failed: Permission denied (publickey)`, 但 root
+   下手动 fetch 成功, 说明 SSH key 配到了 `/root/.ssh`。当前 unit 使用
+   `User=webhook` 且 `ProtectHome=true`, 必须把只读 deploy key 放到
+   `/var/lib/aetherblog/webhook/.ssh/` 并授权给 `webhook:webhook`。CentOS 7
+   老 Git 不支持 `git -C`, 所以这里用 `sh -lc 'cd ... && git ...'`。
+
+4. **本机 curl 卡住且没有 journal 日志**:
    ```bash
    env | grep -i proxy || true
    curl --noproxy '*' -i --max-time 5 -X POST http://127.0.0.1:7868/deploy
@@ -304,7 +337,7 @@ tail -n 100 /var/log/aetherblog/deploy.log
    `--noproxy '*'` 排除代理；仍不返回时再 `systemctl restart deploy-webhook.service`
    恢复入口, 并确认 `webhook_server.py` 已包含线程 server + 请求体超时保护。
 
-4. **数据库迁移到底卡在哪**:
+5. **数据库迁移到底卡在哪**:
    ```bash
    docker exec aetherblog-postgres psql -U aetherblog -d aetherblog \
      -c "SELECT version, dirty FROM schema_migrations;"

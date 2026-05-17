@@ -233,9 +233,55 @@ deploy-webhook.service 重启 → 加载新 webhook_server.py
 | `DEPLOY_WEBHOOK_SECRET` | 与 `/etc/aetherblog/webhook.env` 内 `WEBHOOK_SECRET` 同值 |
 | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | Docker Hub 凭据 |
 
-### 5.4 Git 系统配置 (`/etc/gitconfig`)
+### 5.4 Git remote 与认证
 
-`webhook` 用户没 SSH key, 走 HTTPS + clash 代理:
+`deploy-webhook.service` 以 `User=webhook` 运行, repo sync 使用的是
+`PROJECT_DIR=/var/lib/aetherblog/repo`, 不是 root shell 当前目录。仓库改成
+private 后, 任何验证都必须用 `webhook` 用户和真实部署目录执行; root 下
+`ssh -T git@github.com` 或 `git fetch` 成功不能证明 CI webhook 能成功。
+
+推荐给仓库配置只读 Deploy Key:
+
+```bash
+sudo install -d -m 0700 -o webhook -g webhook /var/lib/aetherblog/webhook/.ssh
+
+sudo -u webhook -H ssh-keygen -t ed25519 \
+  -C "aetherblog-deploy-webhook" \
+  -f /var/lib/aetherblog/webhook/.ssh/id_ed25519 \
+  -N ""
+
+sudo -u webhook -H cat /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
+```
+
+把输出的公钥整行添加到 GitHub 仓库:
+
+```
+Settings -> Deploy keys -> Add deploy key
+```
+
+只需要部署拉代码时不要勾选 write access。然后固定 known_hosts 与权限:
+
+```bash
+sudo -u webhook -H ssh-keyscan github.com | sudo tee -a /var/lib/aetherblog/webhook/.ssh/known_hosts >/dev/null
+sudo chown -R webhook:webhook /var/lib/aetherblog/webhook/.ssh
+sudo chmod 0700 /var/lib/aetherblog/webhook/.ssh
+sudo chmod 0600 /var/lib/aetherblog/webhook/.ssh/id_ed25519
+sudo chmod 0644 /var/lib/aetherblog/webhook/.ssh/id_ed25519.pub
+sudo chmod 0644 /var/lib/aetherblog/webhook/.ssh/known_hosts
+```
+
+CentOS 7 自带 Git 可能不支持 `git -C <dir>`。统一使用 `cd` 写法验证:
+
+```bash
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote -v'
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote set-url origin git@github.com:golovin0623/Aetherblog.git'
+sudo -u webhook -H ssh -T git@github.com
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+```
+
+最后一条成功才算 webhook 部署链路具备私有仓库读取权限。
+
+HTTPS + 代理仅作为无法使用 Deploy Key 时的 fallback:
 
 ```
 [http]
@@ -244,7 +290,9 @@ deploy-webhook.service 重启 → 加载新 webhook_server.py
     proxy = http://127.0.0.1:7890
 ```
 
-`/var/lib/aetherblog/repo/.git/config` 的 `remote.origin.url` 必须是 HTTPS (不是 SSH), 否则 webhook user 拉不到。
+使用 HTTPS fallback 时, `/var/lib/aetherblog/repo/.git/config` 的
+`remote.origin.url` 必须是 HTTPS, 并确保 credential/helper 或 token 方案不把
+密钥写进仓库。
 
 ---
 
@@ -311,27 +359,38 @@ sudo ss -tlnp | grep 7868
 # 看 Recv-Q 列, 大于 0 表明有未 accept 的连接堆积
 ```
 
-### 7.3 webhook 返回 `Repo sync failed: Encountered end of file`
+### 7.3 webhook 返回 `Repo sync failed`
 
-**症状**: git fetch 中途被 GFW 截断 / 没有代理。
+**症状**: webhook 已通过 HMAC 校验, 但部署前 repo sync 失败。常见错误包括
+`Permission denied (publickey)`、`Encountered end of file`、`Could not read from
+remote repository`。
 
 **检查顺序**:
 ```bash
-# 1. 验证 webhook user 能直接 git fetch
-cd /var/lib/aetherblog/repo
-runuser -u webhook -- git fetch origin main
-echo "exit: $?"
+# 1. 确认 systemd 实际运行身份与 PROJECT_DIR
+systemctl show deploy-webhook -p User -p Environment
 
-# 2. 看 system gitconfig 有没有配代理
+# 2. 验证 webhook user 能直接 git fetch
+#    用 sh -lc + cd 兼容 CentOS 7 老 Git, 不要依赖 `git -C`.
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git remote -v'
+sudo -u webhook -H ssh -T git@github.com
+sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'
+
+# 3. 如果是 HTTPS fallback, 看 system gitconfig 有没有配代理
 git config --system --get-regexp '^http'
 
-# 3. 看代理本身是否在跑
+# 4. 看代理本身是否在跑
 ss -tlnp | grep 7890   # clash / v2ray 默认 7890
 
-# 4. 如果未配, 配上
+# 5. 如果未配, 配上
 git config --system http.proxy "http://127.0.0.1:7890"
 git config --system https.proxy "http://127.0.0.1:7890"
 ```
+
+`Permission denied (publickey)` 的关键判断: root 用户下生成的
+`/root/.ssh/id_ed25519` 对 webhook 服务无效。当前 unit 使用
+`User=webhook` 且 `ProtectHome=true`, 运行进程读不到 `/root/.ssh`。需要把
+deploy key 放在 `/var/lib/aetherblog/webhook/.ssh/` 并授权给 `webhook:webhook`。
 
 ### 7.4 webhook 跑老代码 (运行副本不是仓库最新)
 
@@ -464,9 +523,12 @@ A: 生产是 CentOS 7 / systemd 219, 不识别 systemd 232+ 的指令 (LogsDirec
 
 A: 仓库 nginx 配置没有 `/deploy` → 127.0.0.1:7868 反代; CI workflow 的 `DEPLOY_WEBHOOK_URL` 是直连公网 7868。切 127.0.0.1 必须在同一 PR 里同时落 nginx 反代 + 改 GitHub secret + 验证一次, 否则会断 CI 自己。短期靠 HMAC + ThreadingMixIn + settimeout 兜底。
 
-### Q: 为什么 git remote 用 HTTPS 而不是 SSH?
+### Q: 私有仓库应该用 SSH 还是 HTTPS?
 
-A: webhook user 没 SSH key (没有 home 也没有 .ssh), HTTPS + clash 代理 (`/etc/gitconfig`) 是最小依赖配置。
+A: 推荐 SSH Deploy Key。当前 `webhook` 用户的 home 是
+`/var/lib/aetherblog/webhook`, 可以在
+`/var/lib/aetherblog/webhook/.ssh/id_ed25519` 放只读 deploy key。HTTPS + 代理
+仍可作为 fallback, 但要避免把 token 或密码写进仓库配置。
 
 ### Q: 为什么主仓库还在 `/root/Aetherblog`?
 
@@ -486,6 +548,7 @@ A: 你想保留 cd 习惯。建议加 symlink: `ln -sfn /var/lib/aetherblog/repo
 | 2026-05-05 | PR #605 后 self-restart 无权限 (User=webhook) | sudo 被 NoNewPrivileges 拦死 | PR #605 commit 4591eca (sentinel + path-unit) |
 | 2026-05-05 | PR #617 (text=True 修复) 没进 PR #605 merge | 推 commit 时 PR 已合 | PR #617 (cherry-pick) |
 | 2026-05-06 | webhook user git fetch 失败 (SSH key 没了) | ProtectHome=true 拦 /root/.ssh; 没配代理 | 改 HTTPS remote + git system http.proxy |
+| 2026-05-18 | 仓库改 private 后 CI deploy 最后一步 500: `Permission denied (publickey)` | 只给 root 配了 SSH key; `deploy-webhook.service` 实际用 `webhook` 用户, 且 CentOS 7 Git 不支持 `git -C` 排障命令 | 给 `/var/lib/aetherblog/webhook/.ssh/` 配只读 Deploy Key; 用 `sudo -u webhook -H sh -lc 'cd /var/lib/aetherblog/repo && git fetch origin main'` 验证 |
 | 2026-05-06 | ops/webhook/** 改动不触发 CI deploy | path filter 没覆盖 | PR #618 |
 
 ---
