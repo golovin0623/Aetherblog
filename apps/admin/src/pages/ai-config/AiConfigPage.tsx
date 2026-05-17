@@ -3,9 +3,14 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RefreshCw, Plus, PanelLeft, PowerOff } from 'lucide-react';
+import { BrainCircuit, RefreshCw, Plus, PanelLeft, PowerOff } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import {
+  IntelligenceHeader,
+  IntelligenceMetric,
+  IntelligenceShell,
+} from '@/components/intelligence';
 import type { AiProvider } from '@/services/aiProviderService';
 import {
   useProviders,
@@ -132,11 +137,11 @@ export default function AiConfigPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] min-h-0">
-      <div className="h-full min-h-0 flex rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] shadow-sm overflow-hidden relative">
+    <IntelligenceShell mode="workspace" className="ai-config-page" contentClassName="ai-config-shell-content">
+      <div className="intelligence-workspace-frame ai-config-workspace-frame h-full min-h-0 flex overflow-hidden relative">
         {/* 左侧供应商列表 */}
         <ProviderSidebar
-          className="hidden lg:flex"
+          className="ai-config-sidebar hidden lg:flex"
           providers={providers}
           selectedCode={selectedProviderCode}
           onSelect={handleSelectProvider}
@@ -149,13 +154,13 @@ export default function AiConfigPage() {
         />
 
         {/* 右侧内容区 */}
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <div className="ai-config-content flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {/* 移动端顶部栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] bg-[var(--bg-primary)] lg:hidden">
+          <div className="intelligence-workspace-bar ai-config-mobile-bar flex items-center justify-between px-4 py-3 lg:hidden">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+                className="intelligence-action-button h-10 w-10 p-0"
               >
                 <PanelLeft className="w-4 h-4" />
               </button>
@@ -175,7 +180,7 @@ export default function AiConfigPage() {
                 <motion.button
                   onClick={handleRefresh}
                   whileTap={{ scale: 0.9 }}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+                  className="intelligence-action-button h-10 w-10 p-0"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </motion.button>
@@ -185,7 +190,7 @@ export default function AiConfigPage() {
                     setShowProviderDialog(true);
                   }}
                   whileTap={{ scale: 0.9 }}
-                  className="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
+                  className="intelligence-action-button intelligence-action-button-primary h-10 px-4 text-xs"
                 >
                   添加
                 </motion.button>
@@ -195,61 +200,86 @@ export default function AiConfigPage() {
 
           {/* 头部 (仅网格视图) */}
           {viewMode === 'grid' && (
-            <div className="hidden lg:flex items-center justify-between p-6 border-b border-[var(--border-default)]">
-              <div>
-                <h1 className="text-xl font-semibold text-[var(--text-primary)]">
-                  AI 配置中心
-                </h1>
-                <p className="text-sm text-[var(--text-muted)] mt-1">
-                  管理 AI 服务商、模型和凭证配置
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {enabled.length > 0 && (
-                  <motion.button
-                    onClick={handleBatchDisable}
-                    disabled={batchToggleMutation.isPending}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-status-danger hover:text-status-danger hover:bg-status-danger-light dark:hover:bg-status-danger-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <PowerOff className={`w-4 h-4 ${batchToggleMutation.isPending ? 'animate-pulse' : ''}`} />
-                    全部禁用
-                  </motion.button>
-                )}
-                <motion.button
-                  onClick={handleRefresh}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all group"
-                >
-                  <motion.div
-                    animate={isLoading ? { rotate: 360 } : { rotate: 0 }}
-                    transition={{ duration: 0.5, repeat: isLoading ? Infinity : 0, ease: "linear" }}
-                    className="group-active:rotate-45 transition-transform"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </motion.div>
-                  刷新
-                </motion.button>
-                <motion.button
-                  onClick={() => {
-                    setEditingProvider(null);
-                    setShowProviderDialog(true);
-                  }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm hover:opacity-90 transition-all shadow-sm active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  添加供应商
-                </motion.button>
+            <div className="intelligence-workspace-bar ai-config-topbar hidden flex-col gap-4 p-5 lg:flex">
+              <IntelligenceHeader
+                title="AI 配置中心"
+                eyebrow="INTELLIGENCE · PROVIDERS"
+                description="管理 AI 服务商、模型和凭证配置。"
+                icon={BrainCircuit}
+                currentLabel={`${enabled.length} 个已启用`}
+                activeSummary={`服务商 ${providers.length} · 未启用 ${disabled.length}`}
+                className="border-0 bg-transparent p-0 shadow-none"
+                actions={
+                  <div className="flex items-center gap-3">
+                    {enabled.length > 0 && (
+                      <motion.button
+                        onClick={handleBatchDisable}
+                        disabled={batchToggleMutation.isPending}
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        className="intelligence-action-button text-status-danger hover:text-status-danger"
+                      >
+                        <PowerOff className={`w-4 h-4 ${batchToggleMutation.isPending ? 'animate-pulse' : ''}`} />
+                        全部禁用
+                      </motion.button>
+                    )}
+                    <motion.button
+                      onClick={handleRefresh}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="intelligence-action-button group"
+                    >
+                      <motion.div
+                        animate={isLoading ? { rotate: 360 } : { rotate: 0 }}
+                        transition={{ duration: 0.5, repeat: isLoading ? Infinity : 0, ease: "linear" }}
+                        className="group-active:rotate-45 transition-transform"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </motion.div>
+                      刷新
+                    </motion.button>
+                    <motion.button
+                      onClick={() => {
+                        setEditingProvider(null);
+                        setShowProviderDialog(true);
+                      }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="intelligence-action-button intelligence-action-button-primary"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加供应商
+                    </motion.button>
+                  </div>
+                }
+              />
+              <div className="ai-config-summary-grid grid grid-cols-3 gap-3">
+                <IntelligenceMetric
+                  label="服务商总数"
+                  value={providers.length}
+                  icon={BrainCircuit}
+                  detail="服务商、凭证与模型入口"
+                />
+                <IntelligenceMetric
+                  label="已启用"
+                  value={enabled.length}
+                  icon={RefreshCw}
+                  tone="success"
+                  detail="当前可参与模型路由"
+                />
+                <IntelligenceMetric
+                  label="未启用"
+                  value={disabled.length}
+                  icon={PowerOff}
+                  tone="warning"
+                  detail="保留配置但不参与调用"
+                />
               </div>
             </div>
           )}
 
           {/* 主内容 */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent pr-1">
+          <div className="ai-config-main-scroll flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
             {/* mode="wait" 确保"离开的 provider → 进入的 provider"顺序执行；
                  旧的 popLayout 会把 exit 节点设成 position:absolute，ProviderDetail
                  的根 h-full 在 overflow-hidden 滚动容器里坍缩成 0，表现为切到
@@ -261,7 +291,7 @@ export default function AiConfigPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="p-6 space-y-8"
+                  className="ai-config-grid-view p-4 sm:p-5 lg:p-6 space-y-6"
                 >
                   {isLoading ? (
                     <div className="flex items-center justify-center h-64 text-[var(--text-muted)]">
@@ -278,7 +308,7 @@ export default function AiConfigPage() {
                     <>
                       {/* 已启用 */}
                       {enabled.length > 0 && (
-                        <ProviderGrid title="已启用服务商" count={enabled.length} tone="primary">
+                        <ProviderGrid title="已启用服务商" count={enabled.length} tone="primary" className="ai-provider-grid-section">
                           {enabled.map((provider) => (
                             <ProviderCard
                               key={provider.id}
@@ -293,7 +323,7 @@ export default function AiConfigPage() {
 
                       {/* 未启用 */}
                       {disabled.length > 0 && (
-                        <ProviderGrid title="未启用服务商" count={disabled.length} tone="secondary">
+                        <ProviderGrid title="未启用服务商" count={disabled.length} tone="secondary" className="ai-provider-grid-section">
                           {disabled.map((provider) => (
                             <ProviderCard
                               key={provider.id}
@@ -400,6 +430,6 @@ export default function AiConfigPage() {
         onConfirm={handleBatchDisableConfirm}
         onCancel={() => setShowBatchDisableConfirm(false)}
       />
-    </div>
+    </IntelligenceShell>
   );
 }

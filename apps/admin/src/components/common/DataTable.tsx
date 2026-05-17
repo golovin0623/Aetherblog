@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Select, type SelectOption } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
-import { StyledSelect } from './StyledSelect';
 
 interface Column<T> {
   key: keyof T | string;
@@ -15,6 +15,7 @@ interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
   loading?: boolean;
+  refreshing?: boolean;
   onSort?: (key: string, direction: 'asc' | 'desc') => void;
   page?: number;
   pageSize?: number;
@@ -24,10 +25,42 @@ interface DataTableProps<T> {
   onPageSizeChange?: (pageSize: number) => void;
 }
 
+type PaginationItem = number | 'start-ellipsis' | 'end-ellipsis';
+
+function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
+  if (totalPages <= 1) return [1];
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  let windowStart = Math.max(2, safeCurrentPage - 1);
+  let windowEnd = Math.min(totalPages - 1, safeCurrentPage + 1);
+
+  if (safeCurrentPage <= 4) {
+    windowStart = 2;
+    windowEnd = Math.min(totalPages - 1, 5);
+  } else if (safeCurrentPage >= totalPages - 3) {
+    windowStart = Math.max(2, totalPages - 4);
+    windowEnd = totalPages - 1;
+  }
+
+  const items: PaginationItem[] = [1];
+  if (windowStart > 2) items.push('start-ellipsis');
+  for (let pageNumber = windowStart; pageNumber <= windowEnd; pageNumber += 1) {
+    items.push(pageNumber);
+  }
+  if (windowEnd < totalPages - 1) items.push('end-ellipsis');
+  items.push(totalPages);
+
+  return items;
+}
+
 export function DataTable<T extends { id: number | string }>({
   data,
   columns,
-  loading,
+  loading = false,
+  refreshing = false,
   onSort,
   page = 1,
   pageSize = 10,
@@ -47,14 +80,30 @@ export function DataTable<T extends { id: number | string }>({
   };
 
   const totalPages = Math.ceil(total / pageSize);
-
-  // 页脚的极光态导航按钮 —— DataTable 落在 surface-leaf 上,故 ring-offset 跟随 --bg-leaf。
-  const navButtonClass =
-    'group relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 text-[var(--text-muted)] transition-[transform,border-color,background-color,color,box-shadow,opacity] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-default))] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_60%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]';
+  const safeTotalPages = Math.max(totalPages, 1);
+  const paginationItems = buildPaginationItems(page, safeTotalPages);
+  const reservedRowCount = total > 0 ? Math.min(pageSize, total) : 0;
+  const emptyRowCount = !loading && data.length > 0
+    ? Math.max(reservedRowCount - data.length, 0)
+    : 0;
+  const showLoadingRow = loading && data.length === 0;
+  const pageSizeSelectOptions: SelectOption[] = (pageSizeOptions || []).map((opt) => ({
+    value: String(opt),
+    label: `${opt} 条/页`,
+  }));
+  const paginationBusy = loading || refreshing;
 
   return (
-    <div className="surface-leaf surface-dashboard-card rounded-xl overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="surface-leaf surface-dashboard-card relative overflow-hidden rounded-xl" aria-busy={loading || refreshing}>
+      <div className="relative overflow-x-auto">
+        {refreshing && data.length > 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 bg-[var(--bg-leaf)]/35 backdrop-blur-[1px]">
+            <div className="absolute right-4 top-3 inline-flex h-8 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-3 text-xs font-medium text-[var(--ink-secondary)] shadow-sm">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              同步列表
+            </div>
+          </div>
+        )}
         <table className="w-full tnum">
           <thead>
             <tr className="border-b border-[var(--border-subtle)]">
@@ -96,7 +145,7 @@ export function DataTable<T extends { id: number | string }>({
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {showLoadingRow ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-8 text-center text-[var(--text-muted)]">
                   加载中...
@@ -109,45 +158,58 @@ export function DataTable<T extends { id: number | string }>({
                 </td>
               </tr>
             ) : (
-              data.map((item) => (
-                <tr
-                  key={item.id}
-                  className="group relative border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
-                  data-interactive="true"
-                >
-                  {/* 极光左带装饰作为首列 <td> 的子元素渲染 —— 不能再单独
-                      插一个 <td>,否则 tbody 比 thead 多一个 cell,在 iOS
-                      Safari 等把 position:absolute 的 <td> 仍计入列数的
-                      浏览器里会造成列错位(时间→任务格、任务→模型格...)。 */}
-                  {columns.map((column, columnIndex) => (
-                    <td
-                      key={String(column.key)}
-                      className={cn(
-                        'px-6 py-4 text-[var(--text-primary)]',
-                        columnIndex === 0 && 'relative',
-                      )}
-                    >
-                      {columnIndex === 0 && (
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] overflow-hidden"
-                        >
+              <>
+                {data.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="group relative h-[84px] border-b border-[var(--border-subtle)] transition-colors hover:bg-[var(--bg-card-hover)]"
+                    data-interactive="true"
+                  >
+                    {/* 极光左带装饰作为首列 <td> 的子元素渲染 —— 不能再单独
+                        插一个 <td>,否则 tbody 比 thead 多一个 cell,在 iOS
+                        Safari 等把 position:absolute 的 <td> 仍计入列数的
+                        浏览器里会造成列错位(时间→任务格、任务→模型格...)。 */}
+                    {columns.map((column, columnIndex) => (
+                      <td
+                        key={String(column.key)}
+                        className={cn(
+                          'px-6 py-4 text-[var(--text-primary)]',
+                          columnIndex === 0 && 'relative',
+                        )}
+                      >
+                        {columnIndex === 0 && (
                           <span
-                            className="absolute inset-0 origin-top scale-y-0 rounded-full transition-transform duration-300 ease-out group-hover:scale-y-100"
-                            style={{
-                              background:
-                                'linear-gradient(to bottom, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)), var(--aurora-3, var(--color-primary, #818CF8)))',
-                            }}
-                          />
-                        </span>
-                      )}
-                      {column.render
-                        ? column.render(item)
-                        : String(item[column.key as keyof T] ?? '')}
+                            aria-hidden="true"
+                            className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] overflow-hidden"
+                          >
+                            <span
+                              className="absolute inset-0 origin-top scale-y-0 rounded-full transition-transform duration-300 ease-out group-hover:scale-y-100"
+                              style={{
+                                background:
+                                  'linear-gradient(to bottom, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)), var(--aurora-3, var(--color-primary, #818CF8)))',
+                              }}
+                            />
+                          </span>
+                        )}
+                        {column.render
+                          ? column.render(item)
+                          : String(item[column.key as keyof T] ?? '')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {Array.from({ length: emptyRowCount }, (_, index) => (
+                  <tr
+                    key={`reserved-row-${index}`}
+                    aria-hidden="true"
+                    className="h-[84px] border-b border-[var(--border-subtle)]"
+                  >
+                    <td colSpan={columns.length} className="px-6 py-4">
+                      &nbsp;
                     </td>
-                  ))}
-                </tr>
-              ))
+                  </tr>
+                ))}
+              </>
             )}
           </tbody>
         </table>
@@ -155,57 +217,106 @@ export function DataTable<T extends { id: number | string }>({
 
       {/* 分页 */}
       {(totalPages > 1 || (pageSizeOptions && pageSizeOptions.length > 0 && total > 0)) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-4 border-t border-[var(--border-subtle)]">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)] tnum">
-            共 <span className="text-[var(--text-secondary)]">{total.toLocaleString()}</span> 条
-            <span className="mx-2 text-[var(--ink-subtle,var(--border-default))]">·</span>
-            第 <span className="text-[var(--text-secondary)]">{page}</span>
-            <span className="opacity-60"> / {Math.max(totalPages, 1)}</span> 页
+        <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:grid-cols-[minmax(0,1fr)_auto_auto] md:px-4 md:py-3">
+          <span className="tnum order-1 col-span-2 flex min-w-0 flex-wrap items-center justify-start gap-1.5 text-left text-[13px] font-semibold leading-5 text-[var(--ink-muted)] md:col-span-1 md:text-xs">
+            <span>
+              第 <span className="text-[var(--ink-secondary)]">{page}</span> / {safeTotalPages} 页
+            </span>
+            <span className="mx-1 text-[var(--ink-subtle)]">·</span>
+            <span>
+              共 <span className="text-[var(--ink-secondary)]">{total.toLocaleString()}</span> 条
+            </span>
           </span>
-          <div className="flex items-center gap-2">
-            {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-              <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                <span className="hidden sm:inline">每页</span>
-                <StyledSelect
-                  value={String(pageSize)}
-                  onChange={(nextValue) => onPageSizeChange(Number(nextValue))}
-                  options={pageSizeOptions.map((opt) => ({
-                    value: String(opt),
-                    label: String(opt),
-                  }))}
-                  ariaLabel="每页条数"
-                  className="w-[72px]"
-                  buttonClassName="!h-8 !rounded-lg !px-3 !text-[12px] !font-mono !tracking-wider hover:!shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_24%,transparent),0_4px_14px_-6px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-                  menuClassName="!rounded-xl"
-                />
-              </label>
+
+          {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
+            <Select
+              value={String(pageSize)}
+              onValueChange={(nextValue) => onPageSizeChange(Number(nextValue))}
+              options={pageSizeSelectOptions}
+              ariaLabel="每页条数"
+              size="sm"
+              fullWidth={false}
+              className="order-2 col-start-3 !h-10 !w-[112px] md:order-3 md:col-start-auto md:!h-8 md:!w-[132px]"
+              disabled={paginationBusy}
+            />
+          )}
+
+          <div className="order-3 col-span-3 flex w-full items-center justify-center md:order-2 md:col-span-1 md:w-auto md:justify-end">
+            {totalPages > 1 ? (
+              <div className="grid w-full grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 md:flex md:w-auto md:gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(page - 1)}
+                  disabled={paginationBusy || page <= 1}
+                  className={cn(
+                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
+                    paginationBusy || page <= 1
+                      ? 'text-[var(--ink-muted)]/50'
+                      : 'text-[var(--ink-secondary)]'
+                  )}
+                  aria-label="上一页"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <div
+                  role="navigation"
+                  aria-label="分页导航"
+                  className="no-scrollbar flex min-w-0 max-w-none snap-x snap-proximity items-center gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth px-1 touch-pan-x [scrollbar-width:none] md:max-w-[520px] md:px-0.5 lg:max-w-none"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  {paginationItems.map((entry) => {
+                    if (typeof entry !== 'number') {
+                      return (
+                        <span
+                          key={entry}
+                          aria-hidden="true"
+                          className="flex h-10 w-7 flex-shrink-0 items-center justify-center text-xs font-semibold text-[var(--ink-muted)] md:h-8 md:w-7"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    const isActive = entry === page;
+                    return (
+                      <button
+                        key={entry}
+                        type="button"
+                        onClick={() => {
+                          if (!paginationBusy && !isActive) onPageChange?.(entry);
+                        }}
+                        disabled={paginationBusy}
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-label={`第 ${entry} 页`}
+                        className={cn(
+                          'flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-8 md:text-xs',
+                          isActive
+                            ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[0_12px_24px_-20px_color-mix(in_oklch,var(--aurora-1)_55%,black)]'
+                            : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
+                        )}
+                      >
+                        {entry}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(page + 1)}
+                  disabled={paginationBusy || page >= totalPages}
+                  className={cn(
+                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
+                    paginationBusy || page >= totalPages
+                      ? 'text-[var(--ink-muted)]/50'
+                      : 'text-[var(--ink-secondary)]'
+                  )}
+                  aria-label="下一页"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="h-8" />
             )}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => onPageChange?.(page - 1)}
-                disabled={page <= 1}
-                className={navButtonClass}
-                aria-label="上一页"
-              >
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 translate-x-full bg-gradient-to-r from-transparent via-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] to-transparent opacity-0 transition-[transform,opacity] duration-[520ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-full group-hover:opacity-100"
-                />
-                <ChevronLeft className="relative h-4 w-4 transition-transform duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-0.5 group-active:-translate-x-1" />
-              </button>
-              <button
-                onClick={() => onPageChange?.(page + 1)}
-                disabled={page >= totalPages}
-                className={navButtonClass}
-                aria-label="下一页"
-              >
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] to-transparent opacity-0 transition-[transform,opacity] duration-[520ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-full group-hover:opacity-100"
-                />
-                <ChevronRight className="relative h-4 w-4 transition-transform duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-0.5 group-active:translate-x-1" />
-              </button>
-            </div>
           </div>
         </div>
       )}

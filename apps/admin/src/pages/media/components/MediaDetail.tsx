@@ -66,6 +66,17 @@ const typeLabels: Record<MediaType, string> = {
 
 type DetailTab = 'info' | 'tags' | 'versions';
 
+const detailPanelClass = cn(
+  'media-detail-card rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[color-mix(in_oklch,var(--bg-leaf)_84%,var(--ink-primary)_4%)]'
+);
+
+const detailSoftButtonClass = cn(
+  'media-detail-control flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
+  'border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]',
+  'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
+);
+
 function getRecordProp(value: unknown, key: string): unknown {
   if (!value || typeof value !== 'object') return undefined;
   return (value as Record<string, unknown>)[key];
@@ -161,21 +172,22 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   ];
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full flex-col text-[var(--ink-primary)]">
       {/* 顶部关闭按钮 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-primary" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]">
+            <Icon className="h-5 w-5 text-[var(--aurora-1)]" />
           </div>
           <div>
-            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">{typeLabels[media.fileType]}</p>
-            <p className="text-sm font-semibold text-[var(--text-primary)]">文件详情</p>
+            <p className="text-xs uppercase tracking-wider text-[var(--ink-muted)]">{typeLabels[media.fileType]}</p>
+            <p className="text-sm font-semibold text-[var(--ink-primary)]">文件详情</p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          className="rounded-xl p-2 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]"
+          aria-label="关闭媒体详情"
         >
           <X className="w-5 h-5" />
         </button>
@@ -185,7 +197,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative aspect-video rounded-2xl overflow-hidden bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 mb-4 group"
+        className="group relative mb-4 aspect-video overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]"
       >
         {media.fileType === 'IMAGE' ? (
           <img
@@ -201,20 +213,21 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
           />
         ) : media.fileType === 'AUDIO' ? (
           <div className="w-full h-full flex flex-col items-center justify-center p-4">
-            <Music className="w-12 h-12 text-primary/60 mb-3" />
+            <Music className="mb-3 h-12 w-12 text-[color-mix(in_oklch,var(--aurora-1)_72%,transparent)]" />
             <audio src={fullUrl} controls className="w-full" />
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Icon className="w-16 h-16 text-[var(--text-muted)]" />
+            <Icon className="h-16 w-16 text-[var(--ink-muted)]" />
           </div>
         )}
         
         {/* 悬停放大按钮 */}
         <button
           onClick={handleOpenInNewTab}
-          className="absolute top-2 right-2 p-2 rounded-lg bg-[var(--bg-card)]/80 backdrop-blur-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-all"
+          className="absolute right-2 top-2 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_86%,transparent)] p-2 text-[var(--ink-secondary)] opacity-0 backdrop-blur-md transition-all hover:text-[var(--ink-primary)] group-hover:opacity-100"
           title="在新窗口打开"
+          aria-label="在新窗口打开"
         >
           <Maximize2 className="w-4 h-4" />
         </button>
@@ -225,7 +238,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
         {isImage && (
           <button
             onClick={() => setImageEditorOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+            className={detailSoftButtonClass}
           >
             <Edit3 className="w-3.5 h-3.5" />
             编辑
@@ -233,7 +246,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
         )}
         <button
           onClick={() => setShareDialogOpen(true)}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+          className={detailSoftButtonClass}
         >
           <Share2 className="w-3.5 h-3.5" />
           分享
@@ -241,7 +254,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
         {onMove && (
           <button
             onClick={() => onMove(media.id, media.originalName)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+            className={detailSoftButtonClass}
           >
             <Move className="w-3.5 h-3.5" />
             移动
@@ -250,22 +263,22 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       </div>
 
       {/* Tab 导航 */}
-      <div className="relative flex items-center gap-1 p-1 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-subtle)] mb-4 overflow-hidden">
+      <div className="media-detail-control relative mb-4 flex items-center gap-1 overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'relative z-10 flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
+              'relative z-10 flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
               activeTab === tab.id
-                ? 'text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                ? 'text-[var(--ink-primary)]'
+                : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]'
             )}
           >
             {activeTab === tab.id && (
               <motion.span
                 layoutId={`media-detail-tab-bg-${media.id}`}
-                className="absolute inset-0 -z-10 rounded-lg bg-[var(--bg-popover)] dark:bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] shadow-sm"
+                className="absolute inset-0 -z-10 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shadow-sm"
                 transition={{ type: 'spring', bounce: 0.18, duration: 0.42 }}
               />
             )}
@@ -289,9 +302,9 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
             >
               {/* 文件名 */}
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">文件名</p>
+                <p className="mb-1 text-[10px] uppercase text-[var(--ink-muted)]">文件名</p>
                 <p 
-                  className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed hover:text-primary transition-colors cursor-help"
+                  className="cursor-help break-all text-sm font-medium leading-relaxed text-[var(--ink-primary)] transition-colors hover:text-[var(--aurora-1)]"
                   title={media.originalName || media.filename}
                 >
                   {media.originalName || media.filename || '未知文件名'}
@@ -300,52 +313,53 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
 
               {/* 元信息网格 */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className={cn(detailPanelClass, 'p-3')}>
                   <div className="flex items-center gap-2 mb-1">
-                    <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
-                    <span className="text-[10px] text-[var(--text-secondary)] uppercase">大小</span>
+                    <HardDrive className="h-3 w-3 text-[var(--ink-muted)]" />
+                    <span className="text-[10px] uppercase text-[var(--ink-secondary)]">大小</span>
                   </div>
-                  <p className="text-sm text-[var(--text-primary)] font-medium">{formatFileSize(media.fileSize)}</p>
+                  <p className="text-sm font-medium text-[var(--ink-primary)]">{formatFileSize(media.fileSize)}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className={cn(detailPanelClass, 'p-3')}>
                   <div className="flex items-center gap-2 mb-1">
-                    <Calendar className="w-3 h-3 text-[var(--text-muted)]" />
-                    <span className="text-[10px] text-[var(--text-secondary)] uppercase">上传时间</span>
+                    <Calendar className="h-3 w-3 text-[var(--ink-muted)]" />
+                    <span className="text-[10px] uppercase text-[var(--ink-secondary)]">上传时间</span>
                   </div>
-                  <p className="text-sm text-[var(--text-primary)] font-medium">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
+                  <p className="text-sm font-medium text-[var(--ink-primary)]">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
                 </div>
               </div>
 
               {/* MIME 类型 */}
               {media.mimeType && (
-                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
-                  <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">MIME 类型</p>
-                  <p className="text-xs text-[var(--text-primary)] font-mono">{media.mimeType}</p>
+                <div className={cn(detailPanelClass, 'p-3')}>
+                  <p className="mb-1 text-[10px] uppercase text-[var(--ink-muted)]">MIME 类型</p>
+                  <p className="font-mono text-xs text-[var(--ink-primary)]">{media.mimeType}</p>
                 </div>
               )}
 
               {/* 尺寸 */}
               {(media.width && media.height) && (
-                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
-                  <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">尺寸</p>
-                  <p className="text-sm text-[var(--text-primary)] font-medium">{media.width} × {media.height} px</p>
+                <div className={cn(detailPanelClass, 'p-3')}>
+                  <p className="mb-1 text-[10px] uppercase text-[var(--ink-muted)]">尺寸</p>
+                  <p className="text-sm font-medium text-[var(--ink-primary)]">{media.width} × {media.height} px</p>
                 </div>
               )}
 
               {/* URL 复制区 */}
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] uppercase mb-2">文件地址</p>
+                <p className="mb-2 text-[10px] uppercase text-[var(--ink-muted)]">文件地址</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={fullUrl}
                     readOnly
-                    className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
+                    className="flex-1 truncate rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 py-2.5 font-mono text-xs text-[var(--ink-secondary)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus:outline-none"
                   />
                   <button
                     onClick={handleOpenInNewTab}
-                    className="p-2.5 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all"
+                    className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-2.5 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]"
                     title="新窗口打开"
+                    aria-label="新窗口打开"
                   >
                     <ExternalLink className="w-4 h-4" />
                   </button>
@@ -391,16 +405,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="pt-4 border-t border-[var(--border-subtle)] mt-auto"
+        className="mt-auto border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pt-4"
       >
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopyUrl}
             className={cn(
-              'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-all',
+              'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors',
               copied 
                 ? 'bg-status-success/20 text-status-success border border-status-success-border' 
-                : 'bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 hover:text-[var(--text-primary)]'
+                : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
             )}
             title="复制链接"
           >
@@ -410,7 +424,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
           
           <button
             onClick={handleDownload}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-primary/20 border border-primary/30 text-primary hover:bg-primary/30 transition-all"
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-3 py-2.5 text-xs font-medium text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]"
             title="下载文件"
           >
             <Download className="w-4 h-4" />
@@ -419,7 +433,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
 
           <button
             onClick={() => onDelete(media.id)}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-status-danger-light border border-status-danger-border text-status-danger hover:bg-status-danger/20 transition-all"
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-status-danger-border bg-status-danger-light px-3 py-2.5 text-xs font-medium text-status-danger transition-colors hover:bg-status-danger/20"
             title="删除文件"
           >
             <Trash2 className="w-4 h-4" />
@@ -502,10 +516,10 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
   const isMissing = status === 'MISSING';
 
   return (
-    <div className="rounded-xl bg-[var(--bg-secondary)]/30 dark:bg-white/[0.02] border border-black/5 dark:border-white/10 p-3 space-y-2.5">
-      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">存储信息</p>
+    <div className={cn(detailPanelClass, 'space-y-2.5 p-3')}>
+      <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">存储信息</p>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--text-secondary)]">云端状态</span>
+        <span className="text-xs text-[var(--ink-secondary)]">云端状态</span>
         <StorageStatusIcon
           storageType={media.storageType}
           syncStatus={status}
@@ -515,18 +529,18 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
       </div>
       {media.storageType && (
         <div className="flex items-center justify-between">
-          <span className="text-xs text-[var(--text-secondary)]">主存储</span>
-          <span className="text-[11px] font-mono text-[var(--text-muted)] tracking-wider">{media.storageType}</span>
+          <span className="text-xs text-[var(--ink-secondary)]">主存储</span>
+          <span className="font-mono text-[11px] tracking-wider text-[var(--ink-muted)]">{media.storageType}</span>
         </div>
       )}
       {media.cdnUrl && (
         <div>
-          <p className="text-[10px] text-[var(--text-muted)] mb-1">访问 URL</p>
+          <p className="mb-1 text-[10px] text-[var(--ink-muted)]">访问 URL</p>
           <a
             href={media.cdnUrl}
             target="_blank"
             rel="noreferrer"
-            className="block text-xs font-mono text-primary hover:underline break-all"
+            className="block break-all font-mono text-xs text-[var(--aurora-1)] hover:underline"
           >
             {media.cdnUrl}
           </a>
@@ -534,12 +548,12 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
       )}
       {media.backupUrl && status !== 'MISSING' && (
         <div>
-          <p className="text-[10px] text-[var(--text-muted)] mb-1">备份位置</p>
+          <p className="mb-1 text-[10px] text-[var(--ink-muted)]">备份位置</p>
           <a
             href={media.backupUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1 text-xs font-mono text-[var(--text-secondary)] hover:text-primary hover:underline break-all"
+            className="flex items-center gap-1 break-all font-mono text-xs text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] hover:underline"
           >
             {media.backupUrl}
             <ExternalLinkIcon className="w-3 h-3 shrink-0" />
@@ -547,7 +561,7 @@ function StorageInfoSection({ media }: { media: MediaItem }) {
         </div>
       )}
       {media.backupAt && (
-        <p className="text-[10px] text-[var(--text-muted)]">
+        <p className="text-[10px] text-[var(--ink-muted)]">
           最后备份: {format(new Date(media.backupAt), 'yyyy-MM-dd HH:mm:ss')}
         </p>
       )}

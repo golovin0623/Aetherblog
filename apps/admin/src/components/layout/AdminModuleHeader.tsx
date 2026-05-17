@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -42,35 +42,7 @@ export function AdminModuleHeader<T extends string>({
   const HeaderIcon = activeTab?.icon ?? HeaderIconProp;
   const currentText = activeTab ? `当前：${activeTab.label}` : currentLabel;
   const summaryText = activeTab?.description ?? activeSummary;
-  const tabsRef = useRef<HTMLElement | null>(null);
-  const buttonRefs = useRef<Map<T, HTMLButtonElement>>(new Map());
-  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false });
-
-  useLayoutEffect(() => {
-    if (!hasTabs || activeKey === undefined) return;
-
-    const syncIndicator = () => {
-      const activeButton = buttonRefs.current.get(activeKey);
-      if (!activeButton) return;
-      setIndicator({
-        left: activeButton.offsetLeft,
-        width: activeButton.offsetWidth,
-        ready: true,
-      });
-    };
-
-    syncIndicator();
-
-    const resizeObserver = new ResizeObserver(syncIndicator);
-    if (tabsRef.current) resizeObserver.observe(tabsRef.current);
-    buttonRefs.current.forEach((button) => resizeObserver.observe(button));
-    window.addEventListener('resize', syncIndicator);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', syncIndicator);
-    };
-  }, [activeKey, hasTabs, safeTabs]);
+  const tabIndicatorLayoutId = `admin-module-tab-indicator-${title}`;
 
   return (
     <header
@@ -99,28 +71,13 @@ export function AdminModuleHeader<T extends string>({
           <div className="admin-module-side">
             {actions && <div className="admin-module-actions">{actions}</div>}
             {hasTabs && (
-              <nav ref={tabsRef} className="admin-module-tabs" aria-label={`${title}视图`}>
-                <span
-                  className="admin-module-tab-indicator"
-                  style={{
-                    opacity: indicator.ready ? 1 : 0,
-                    transform: `translate3d(${indicator.left}px, 0, 0)`,
-                    width: `${indicator.width}px`,
-                  }}
-                />
+              <nav className="admin-module-tabs" aria-label={`${title}视图`}>
                 {safeTabs.map((item) => {
                   const Icon = item.icon;
                   const active = item.key === activeKey;
                   return (
                     <button
                       key={item.key}
-                      ref={(node) => {
-                        if (node) {
-                          buttonRefs.current.set(item.key, node);
-                        } else {
-                          buttonRefs.current.delete(item.key);
-                        }
-                      }}
                       type="button"
                       onClick={() => onTabChange?.(item.key)}
                       data-active={active}
@@ -131,9 +88,16 @@ export function AdminModuleHeader<T extends string>({
                           : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
                       )}
                     >
-                      <Icon className="h-4 w-4" />
-                      <span className="sm:hidden">{item.shortLabel || item.label}</span>
-                      <span className="hidden sm:inline">{item.label}</span>
+                      {active && (
+                        <motion.span
+                          layoutId={tabIndicatorLayoutId}
+                          className="admin-module-tab-indicator"
+                          transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.55 }}
+                        />
+                      )}
+                      <Icon className="relative z-10 h-4 w-4" />
+                      <span className="relative z-10 sm:hidden">{item.shortLabel || item.label}</span>
+                      <span className="relative z-10 hidden sm:inline">{item.label}</span>
                     </button>
                   );
                 })}

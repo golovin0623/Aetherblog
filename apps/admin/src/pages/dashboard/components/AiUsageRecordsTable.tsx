@@ -6,6 +6,7 @@ import type { AiCallRecord } from '@/services/analyticsService';
 interface AiUsageRecordsTableProps {
   records: AiCallRecord[];
   loading?: boolean;
+  refreshing?: boolean;
   page: number;
   pageSize: number;
   total: number;
@@ -43,6 +44,7 @@ function formatTask(task: string) {
 export function AiUsageRecordsTable({
   records,
   loading = false,
+  refreshing = false,
   page,
   pageSize,
   total,
@@ -238,6 +240,7 @@ export function AiUsageRecordsTable({
         data={records}
         columns={columns}
         loading={loading}
+        refreshing={refreshing}
         page={page}
         pageSize={pageSize}
         total={total}

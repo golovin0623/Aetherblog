@@ -9,17 +9,17 @@ interface MediaGridSkeletonProps {
 
 export function MediaGridSkeleton({ count = 12 }: MediaGridSkeletonProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className="grid content-start justify-start grid-cols-[repeat(auto-fill,minmax(min(9.25rem,100%),10.25rem))] gap-x-4 gap-y-5">
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl overflow-hidden"
+          className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur-2xl"
         >
           {/* 图片区域骨架 */}
           <div className="aspect-square bg-gradient-to-br from-white/5 to-white/10 animate-pulse" />
 
           {/* 信息区域骨架 */}
-          <div className="p-4 space-y-3">
+          <div className="space-y-2.5 p-3">
             {/* 文件名骨架 */}
             <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '80%' }} />
 
@@ -44,10 +44,10 @@ export function MediaListSkeleton({ count = 10 }: MediaGridSkeletonProps) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-4 p-4 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl"
+          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-2xl"
         >
           {/* 缩略图骨架 */}
-          <div className="w-16 h-16 bg-gradient-to-br from-white/5 to-white/10 rounded-lg animate-pulse" />
+          <div className="h-14 w-14 rounded-lg bg-gradient-to-br from-white/5 to-white/10 animate-pulse" />
 
           {/* 信息骨架 */}
           <div className="flex-1 space-y-2">

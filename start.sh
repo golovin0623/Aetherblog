@@ -846,6 +846,143 @@ wait_for_blog_http() {
     wait_for_http "http://localhost:3000/agent/workspace" "博客前台灵境" "$log_file" || return 1
 }
 
+get_process_cwd() {
+    local pid=$1
+    local cwd
+    if command -v lsof > /dev/null 2>&1; then
+        if cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'); then
+            if [ -n "$cwd" ]; then
+                printf '%s\n' "$cwd"
+                return 0
+            fi
+        fi
+    fi
+    if command -v pwdx > /dev/null 2>&1; then
+        if cwd=$(pwdx "$pid" 2>/dev/null | awk '{print $2}'); then
+            if [ -n "$cwd" ]; then
+                printf '%s\n' "$cwd"
+                return 0
+            fi
+        fi
+    fi
+    return 1
+}
+
+pid_listens_on_port() {
+    local pid=$1
+    local port=$2
+    lsof -Pan -p "$pid" -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+stop_pid_gracefully() {
+    local pid=$1
+    local name=$2
+
+    echo -e "${YELLOW}   停止${name}残留进程 PID: $pid${NC}"
+    kill "$pid" 2>/dev/null || true
+    for _ in {1..10}; do
+        if ! ps -p "$pid" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.3
+    done
+    if ps -p "$pid" > /dev/null 2>&1; then
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+}
+
+is_known_aetherblog_process() {
+    local service=$1
+    local cmd=$2
+    local cwd=$3
+
+    case "$service" in
+        backend)
+            [[ "$cmd" == *"/apps/server-go/bin/server"* || "$cwd" == *"/apps/server-go"* ]]
+            ;;
+        admin)
+            [[ "$cmd" == *"vite"* && ( "$cwd" == *"/apps/admin"* || "$cmd" == *"/vite/bin/vite.js"* ) ]]
+            ;;
+        blog)
+            [[ "$cmd" == *"next dev"* || "$cmd" == *"next-server"* || "$cwd" == *"/apps/blog"* ]]
+            ;;
+        ai-service)
+            [[ "$cmd" == *"uvicorn app.main:app"* || ( "$cmd" == *"uvicorn"* && "$cwd" == *"/apps/ai-service"* ) ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+stop_port_processes() {
+    local port=$1
+    local name=$2
+    local expected_dir=$3
+    local service=$4
+    local keep_pid=${5:-}
+    local pids pid cmd cwd failed=false
+
+    pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    if [ -z "$pids" ]; then
+        return 0
+    fi
+
+    for pid in $pids; do
+        if [ -n "$keep_pid" ] && [ "$pid" = "$keep_pid" ]; then
+            continue
+        fi
+        if ! ps -p "$pid" > /dev/null 2>&1; then
+            continue
+        fi
+
+        cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+        cwd=$(get_process_cwd "$pid" 2>/dev/null || true)
+
+        if [[ "$cwd" == "$expected_dir"* ]] || is_known_aetherblog_process "$service" "$cmd" "$cwd"; then
+            stop_pid_gracefully "$pid" "$name"
+        else
+            echo -e "${RED}❌ ${port} 端口被非${name}进程占用，跳过清理: PID $pid ($cmd)${NC}"
+            failed=true
+        fi
+    done
+
+    [ "$failed" = false ]
+}
+
+wait_for_pid_port() {
+    local pid=$1
+    local port=$2
+    local name=$3
+    local log_file=$4
+    local retries=${5:-$HEALTH_RETRIES}
+    local delay=${6:-2}
+
+    local attempt=1
+    while [ $attempt -le $retries ]; do
+        if ! ps -p "$pid" > /dev/null 2>&1; then
+            echo -e "${RED}❌ $name 进程已退出${NC}"
+            if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                echo -e "${RED}   最近日志:${NC}"
+                tail -n 20 "$log_file" 2>/dev/null || true
+            fi
+            return 1
+        fi
+        if pid_listens_on_port "$pid" "$port"; then
+            return 0
+        fi
+        sleep "$delay"
+        attempt=$((attempt + 1))
+    done
+
+    echo -e "${RED}❌ $name 未监听端口 $port${NC}"
+    if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+        echo -e "${RED}   最近日志:${NC}"
+        tail -n 20 "$log_file" 2>/dev/null || true
+    fi
+    return 1
+}
+
 start_detached_process() {
     local cwd=$1
     local log_path=$2
@@ -969,38 +1106,7 @@ install_deps() {
 }
 
 stop_blog_port_processes() {
-    local pids pid cmd cwd
-    pids=$(lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null || true)
-    if [ -z "$pids" ]; then
-        return 0
-    fi
-
-    echo -e "${YELLOW}⚠️  检测到 3000 端口已有进程，正在清理博客前台残留...${NC}"
-    for pid in $pids; do
-        if ! ps -p "$pid" > /dev/null 2>&1; then
-            continue
-        fi
-
-        cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
-        cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
-
-        if [[ "$cwd" == "$PROJECT_ROOT/apps/blog"* ]] || [[ "$cmd" == *"next-server"* ]] || [[ "$cmd" == *"next dev"* ]]; then
-            echo -e "${YELLOW}   停止博客前台残留进程 PID: $pid${NC}"
-            kill "$pid" 2>/dev/null || true
-            for _ in {1..10}; do
-                if ! ps -p "$pid" > /dev/null 2>&1; then
-                    break
-                fi
-                sleep 0.3
-            done
-            if ps -p "$pid" > /dev/null 2>&1; then
-                kill -9 "$pid" 2>/dev/null || true
-            fi
-        else
-            echo -e "${RED}❌ 3000 端口被非博客进程占用，跳过清理: PID $pid ($cmd)${NC}"
-            return 1
-        fi
-    done
+    stop_port_processes 3000 "博客前台" "$PROJECT_ROOT/apps/blog" "blog"
 }
 
 reset_blog_next_cache_if_needed() {
@@ -1044,12 +1150,30 @@ start_backend() {
             if [ -f "$PID_DIR/backend.pid" ]; then
                 if PID=$(read_pid "$PID_DIR/backend.pid"); then
                     if ps -p "$PID" > /dev/null 2>&1; then
-                        echo -e "${YELLOW}⚠️  后端已在运行 (PID: $PID)${NC}"
-                        return
+                        cmd=$(ps -p "$PID" -o command= 2>/dev/null || true)
+                        cwd=$(get_process_cwd "$PID" 2>/dev/null || true)
+                        if [[ "$cwd" == "$BACKEND_DIR"* || "$cmd" == *"$BACKEND_DIR/bin/server"* ]] && pid_listens_on_port "$PID" 8080; then
+                            if ! stop_port_processes 8080 "后端服务" "$BACKEND_DIR" "backend" "$PID"; then
+                                record_failure "后端服务"
+                                return
+                            fi
+                            echo -e "${YELLOW}⚠️  后端已在运行 (PID: $PID)${NC}"
+                            return
+                        fi
+                        echo -e "${YELLOW}⚠️  后端 PID 文件指向的进程不健康，准备清理 (PID: $PID)${NC}"
+                        if [[ "$cwd" == "$BACKEND_DIR"* || "$cmd" == *"$BACKEND_DIR/bin/server"* ]] || is_known_aetherblog_process "backend" "$cmd" "$cwd"; then
+                            stop_pid_gracefully "$PID" "后端服务"
+                        fi
                     fi
                 else
                     rm -f "$PID_DIR/backend.pid"
                 fi
+                rm -f "$PID_DIR/backend.pid"
+            fi
+
+            if ! stop_port_processes 8080 "后端服务" "$BACKEND_DIR" "backend"; then
+                record_failure "后端服务"
+                return
             fi
 
             # 加载 .env 环境变量
@@ -1100,7 +1224,12 @@ start_backend() {
                 return
             fi
 
-            if ! wait_for_http "http://localhost:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.log"; then
+            if ! wait_for_pid_port "$backend_pid" 8080 "后端服务" "$LOG_DIR/backend.log"; then
+                record_failure "后端服务"
+                return
+            fi
+
+            if ! wait_for_http "http://127.0.0.1:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.log"; then
                 record_failure "后端服务"
                 return
             fi
@@ -1296,12 +1425,36 @@ start_admin() {
         if [ -f "$PID_DIR/admin.pid" ]; then
             if PID=$(read_pid "$PID_DIR/admin.pid"); then
                 if ps -p "$PID" > /dev/null 2>&1; then
-                    echo -e "${YELLOW}⚠️  管理后台已在运行 (PID: $PID)${NC}"
-                    return
+                    cmd=$(ps -p "$PID" -o command= 2>/dev/null || true)
+                    cwd=$(get_process_cwd "$PID" 2>/dev/null || true)
+                    if [[ "$cwd" == "$ADMIN_DIR"* || "$cmd" == *"$ADMIN_DIR"* ]] && pid_listens_on_port "$PID" 5173; then
+                        if ! stop_port_processes 5173 "管理后台" "$ADMIN_DIR" "admin" "$PID"; then
+                            record_failure "管理后台"
+                            return
+                        fi
+                        if ! wait_for_http "http://127.0.0.1:5173/admin/" "管理后台" "$LOG_DIR/admin.log"; then
+                            record_failure "管理后台"
+                            return
+                        fi
+                        echo -e "${YELLOW}⚠️  管理后台已在运行 (PID: $PID)${NC}"
+                        return
+                    fi
+                    echo -e "${YELLOW}⚠️  管理后台 PID 文件指向的进程不健康，准备清理 (PID: $PID)${NC}"
+                    if [[ "$cwd" == "$ADMIN_DIR"* || "$cmd" == *"$ADMIN_DIR"* ]] || is_known_aetherblog_process "admin" "$cmd" "$cwd"; then
+                        stop_pid_gracefully "$PID" "管理后台"
+                    fi
+                    rm -f "$PID_DIR/admin.pid"
+                else
+                    rm -f "$PID_DIR/admin.pid"
                 fi
             else
                 rm -f "$PID_DIR/admin.pid"
             fi
+        fi
+
+        if ! stop_port_processes 5173 "管理后台" "$ADMIN_DIR" "admin"; then
+            record_failure "管理后台"
+            return
         fi
         
         # 加载根目录 .env (将 VITE_* 等变量注入到前端进程)
@@ -1322,12 +1475,12 @@ start_admin() {
             return
         fi
 
-        if ! wait_for_http "http://localhost:5173" "管理后台" "$LOG_DIR/admin.log"; then
+        if ! wait_for_http "http://127.0.0.1:5173/admin/" "管理后台" "$LOG_DIR/admin.log"; then
             record_failure "管理后台"
             return
         fi
 
-        echo -e "${GREEN}✅ 管理后台已启动 (PID: $admin_pid) - http://localhost:5173${NC}"
+        echo -e "${GREEN}✅ 管理后台已启动 (PID: $admin_pid) - http://localhost:5173/admin/${NC}"
     else
         echo -e "${YELLOW}⚠️  未找到管理后台项目${NC}"
     fi

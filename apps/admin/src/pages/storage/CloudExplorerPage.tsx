@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -27,8 +28,11 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderOpen,
   HardDrive,
   Import,
+  List,
+  ListTree,
   Loader2,
   RefreshCw,
   Search,
@@ -40,6 +44,7 @@ import { storageProviderService } from '@/services/storageProviderService';
 import { Button, ConfirmModal, Select, type SelectOption } from '@aetherblog/ui';
 import { cn, formatFileSize } from '@/lib/utils';
 import { toast } from 'sonner';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 
 interface ObjectListing {
   key: string;
@@ -52,8 +57,45 @@ interface ObjectListing {
 }
 
 type ObjectKind = 'folder' | 'image' | 'video' | 'audio' | 'archive' | 'document' | 'file';
+type ObjectViewMode = 'list' | 'tree';
 
-const PAGE_LIMIT = 100;
+interface ObjectTreeNode {
+  id: string;
+  type: 'folder' | 'object';
+  name: string;
+  path: string;
+  depth: number;
+  size: number;
+  objectCount: number;
+  orphanCount: number;
+  catalogCount: number;
+  lastModified?: string;
+  object?: ObjectListing;
+  children: ObjectTreeNode[];
+}
+
+interface MutableObjectTreeNode extends Omit<ObjectTreeNode, 'children'> {
+  children: MutableObjectTreeNode[];
+  childMap?: Map<string, MutableObjectTreeNode>;
+}
+
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+const EMPTY_OBJECTS: ObjectListing[] = [];
+const PAGE_SIZE_SELECT_OPTIONS: SelectOption[] = PAGE_SIZE_OPTIONS.map((size) => ({
+  value: String(size),
+  label: String(size),
+}));
+
+const cloudPanelClass = cn(
+  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-4'
+);
+
+const cloudShellClass = cn(
+  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
 
 function normalizePrefix(value: string): string {
   return value.trim().replace(/^\/+/, '');
@@ -93,6 +135,161 @@ function getObjectKind(key: string): ObjectKind {
   if (/\.(zip|rar|7z|tar|gz|tgz|bz2)$/.test(lower)) return 'archive';
   if (/\.(pdf|docx?|xlsx?|pptx?|md|txt|csv|json|xml)$/.test(lower)) return 'document';
   return 'file';
+}
+
+function prefixWithSlash(value: string): string {
+  const normalized = normalizePrefix(value);
+  return normalized && !normalized.endsWith('/') ? `${normalized}/` : normalized;
+}
+
+function getParentPrefix(value: string): string {
+  const parts = prefixWithSlash(value).split('/').filter(Boolean);
+  parts.pop();
+  return parts.length > 0 ? `${parts.join('/')}/` : '';
+}
+
+function getRelativeObjectKey(key: string, basePrefix: string): string {
+  const normalizedKey = key.replace(/^\/+/, '');
+  const normalizedPrefix = prefixWithSlash(basePrefix);
+  if (normalizedPrefix && normalizedKey.startsWith(normalizedPrefix)) {
+    return normalizedKey.slice(normalizedPrefix.length);
+  }
+  return normalizedKey;
+}
+
+function joinTreePath(basePrefix: string, segments: string[], trailingSlash = false): string {
+  const base = prefixWithSlash(basePrefix).replace(/\/$/, '');
+  const body = [base, ...segments].filter(Boolean).join('/');
+  if (!body) return '';
+  return trailingSlash && !body.endsWith('/') ? `${body}/` : body;
+}
+
+function newestObjectDate(current: string | undefined, next: string | undefined): string | undefined {
+  if (!next) return current;
+  if (!current) return next;
+  const currentTime = new Date(current).getTime();
+  const nextTime = new Date(next).getTime();
+  if (Number.isNaN(nextTime)) return current;
+  if (Number.isNaN(currentTime)) return next;
+  return nextTime > currentTime ? next : current;
+}
+
+function applyTreeAggregate(node: MutableObjectTreeNode, item: ObjectListing) {
+  node.size += item.size;
+  node.objectCount += 1;
+  if (item.status === 'ORPHAN') node.orphanCount += 1;
+  else node.catalogCount += 1;
+  node.lastModified = newestObjectDate(node.lastModified, item.lastModified);
+}
+
+function sortTreeNodes(nodes: MutableObjectTreeNode[]) {
+  nodes.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
+  });
+  nodes.forEach((node) => sortTreeNodes(node.children));
+}
+
+function buildObjectTree(objects: ObjectListing[], basePrefix: string): ObjectTreeNode[] {
+  const root: MutableObjectTreeNode = {
+    id: 'folder:root',
+    type: 'folder',
+    name: 'bucket 根目录',
+    path: prefixWithSlash(basePrefix),
+    depth: -1,
+    size: 0,
+    objectCount: 0,
+    orphanCount: 0,
+    catalogCount: 0,
+    children: [],
+    childMap: new Map(),
+  };
+
+  objects.forEach((item) => {
+    const relativeKey = getRelativeObjectKey(item.key, basePrefix);
+    const parts = relativeKey.split('/').filter(Boolean);
+    const safeParts = parts.length > 0 ? parts : [getObjectName(item.key)];
+    const folderParts = safeParts.slice(0, -1);
+    let cursor = root;
+    const aggregateTrail: MutableObjectTreeNode[] = [root];
+
+    folderParts.forEach((part, index) => {
+      const folderPath = joinTreePath(basePrefix, folderParts.slice(0, index + 1), true);
+      let folderNode = cursor.childMap?.get(folderPath);
+      if (!folderNode) {
+        folderNode = {
+          id: `folder:${folderPath}`,
+          type: 'folder',
+          name: part,
+          path: folderPath,
+          depth: index,
+          size: 0,
+          objectCount: 0,
+          orphanCount: 0,
+          catalogCount: 0,
+          children: [],
+          childMap: new Map(),
+        };
+        cursor.childMap?.set(folderPath, folderNode);
+        cursor.children.push(folderNode);
+      }
+      cursor = folderNode;
+      aggregateTrail.push(cursor);
+    });
+
+    aggregateTrail.forEach((node) => applyTreeAggregate(node, item));
+    cursor.children.push({
+      id: `object:${item.key}`,
+      type: 'object',
+      name: safeParts[safeParts.length - 1] || getObjectName(item.key),
+      path: item.key,
+      depth: folderParts.length,
+      size: item.size,
+      objectCount: 1,
+      orphanCount: item.status === 'ORPHAN' ? 1 : 0,
+      catalogCount: item.status === 'IN_CATALOG' ? 1 : 0,
+      lastModified: item.lastModified,
+      object: item,
+      children: [],
+    });
+  });
+
+  sortTreeNodes(root.children);
+  return root.children;
+}
+
+function collectExpandedTreePaths(nodes: ObjectTreeNode[]): Set<string> {
+  const expanded = new Set<string>();
+  const walk = (items: ObjectTreeNode[]) => {
+    items.forEach((node) => {
+      if (node.type !== 'folder') return;
+      expanded.add(node.path);
+      walk(node.children);
+    });
+  };
+  walk(nodes);
+  return expanded;
+}
+
+function flattenTreeNodes(nodes: ObjectTreeNode[], expandedPaths: Set<string>): ObjectTreeNode[] {
+  const flattened: ObjectTreeNode[] = [];
+  const walk = (items: ObjectTreeNode[]) => {
+    items.forEach((node) => {
+      flattened.push(node);
+      if (node.type === 'folder' && expandedPaths.has(node.path)) {
+        walk(node.children);
+      }
+    });
+  };
+  walk(nodes);
+  return flattened;
+}
+
+function countTreeFolders(nodes: ObjectTreeNode[]): number {
+  return nodes.reduce((count, node) => {
+    if (node.type !== 'folder') return count;
+    return count + 1 + countTreeFolders(node.children);
+  }, 0);
 }
 
 function ObjectIcon({ kind }: { kind: ObjectKind }) {
@@ -180,30 +377,24 @@ function EmptyState({ title, description }: { title: string; description: string
 
 function LoadingRows() {
   return (
-    <>
+    <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
       {Array.from({ length: 8 }).map((_, index) => (
-        <tr key={index} className="border-b border-[var(--border-subtle)]">
-          <td className="px-4 py-4">
-            <div className="h-4 w-4 rounded bg-[var(--bg-secondary)]" />
-          </td>
-          <td className="px-4 py-4">
-            <div className="h-4 w-64 max-w-full rounded bg-[var(--bg-secondary)]" />
-          </td>
-          <td className="px-4 py-4">
-            <div className="h-4 w-16 rounded bg-[var(--bg-secondary)]" />
-          </td>
-          <td className="px-4 py-4">
-            <div className="h-4 w-28 rounded bg-[var(--bg-secondary)]" />
-          </td>
-          <td className="px-4 py-4">
-            <div className="h-6 w-20 rounded-full bg-[var(--bg-secondary)]" />
-          </td>
-          <td className="px-4 py-4">
-            <div className="ml-auto h-8 w-32 rounded-lg bg-[var(--bg-secondary)]" />
-          </td>
-        </tr>
+        <div key={index} className="grid min-w-0 grid-cols-1 items-center gap-3 px-4 py-3 md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem]">
+          <div className="hidden h-4 w-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] md:block" />
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            <div className="space-y-2">
+              <div className="h-4 w-56 rounded bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+              <div className="h-3 w-36 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            </div>
+          </div>
+          <div className="h-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="h-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="h-6 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="ml-auto h-8 w-36 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -235,7 +426,10 @@ export default function CloudExplorerPage() {
   const [prefix, setPrefix] = useState('');
   const [currentToken, setCurrentToken] = useState('');
   const [tokenStack, setTokenStack] = useState<string[]>([]);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [objectViewMode, setObjectViewMode] = useState<ObjectViewMode>('list');
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [expandedTreePaths, setExpandedTreePaths] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: providersResp, isLoading: isProvidersLoading } = useQuery({
@@ -243,7 +437,7 @@ export default function CloudExplorerPage() {
     queryFn: () => storageProviderService.getAll(),
   });
 
-  const providers = providersResp?.data || [];
+  const providers = Array.isArray(providersResp?.data) ? providersResp.data : [];
   const selectedProvider = providers.find((provider) => provider.id === providerId);
   const providerOptions = useMemo<SelectOption[]>(() => {
     return providers.map((provider) => ({
@@ -264,16 +458,33 @@ export default function CloudExplorerPage() {
   }, [providers, providerId]);
 
   const { data: objectsResp, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['cloud-objects', providerId, prefix, currentToken],
-    queryFn: () => storageProviderService.listObjects(providerId!, { prefix, token: currentToken, limit: PAGE_LIMIT }),
+    queryKey: ['cloud-objects', providerId, prefix, currentToken, pageSize],
+    queryFn: () => storageProviderService.listObjects(providerId!, { prefix, token: currentToken, limit: pageSize }),
     enabled: !!providerId,
   });
 
-  const objects: ObjectListing[] = (objectsResp?.data?.objects || []) as ObjectListing[];
+  const objects: ObjectListing[] = Array.isArray(objectsResp?.data?.objects)
+    ? (objectsResp.data.objects as ObjectListing[])
+    : EMPTY_OBJECTS;
   const nextToken = objectsResp?.data?.nextToken || '';
   const orphanObjects = useMemo(() => objects.filter((item) => item.status === 'ORPHAN'), [objects]);
   const catalogObjects = objects.length - orphanObjects.length;
   const totalSize = useMemo(() => objects.reduce((sum, item) => sum + item.size, 0), [objects]);
+  const treeNodes = useMemo(() => buildObjectTree(objects, prefix), [objects, prefix]);
+  const treeFolderCount = useMemo(() => countTreeFolders(treeNodes), [treeNodes]);
+  const expandableTreePaths = useMemo(() => collectExpandedTreePaths(treeNodes), [treeNodes]);
+  const allTreeFoldersExpanded =
+    expandableTreePaths.size > 0 && Array.from(expandableTreePaths).every((path) => expandedTreePaths.has(path));
+  const listRefreshing = isFetching && !isLoading;
+  const pageNum = tokenStack.length + 1;
+  const rangeStart = objects.length === 0 ? 0 : tokenStack.length * pageSize + 1;
+  const rangeEnd = tokenStack.length * pageSize + objects.length;
+  const providerLabel = selectedProvider
+    ? `${selectedProvider.name} · ${selectedProvider.providerType}`
+    : isProvidersLoading
+      ? '加载中'
+      : '未选择';
+  const prefixLabel = prefix || 'bucket 根目录';
 
   useEffect(() => {
     const visibleOrphanKeys = new Set(orphanObjects.map((item) => item.key));
@@ -282,6 +493,10 @@ export default function CloudExplorerPage() {
       return next.size === prev.size ? prev : next;
     });
   }, [orphanObjects]);
+
+  useEffect(() => {
+    setExpandedTreePaths(new Set(expandableTreePaths));
+  }, [expandableTreePaths]);
 
   const selectedOrphans = useMemo(
     () => orphanObjects.filter((item) => selectedKeys.has(item.key)),
@@ -399,6 +614,29 @@ export default function CloudExplorerPage() {
     setSelectedKeys(new Set());
   };
 
+  const handlePageSizeChange = (nextValue: string) => {
+    const nextSize = Number(nextValue);
+    if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
+    setPageSize(nextSize);
+    resetPagingAndSelection();
+  };
+
+  const toggleTreeFolder = (path: string) => {
+    setExpandedTreePaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const toggleAllTreeFolders = () => {
+    setExpandedTreePaths((prev) => {
+      const shouldCollapse = expandableTreePaths.size > 0 && Array.from(expandableTreePaths).every((path) => prev.has(path));
+      return shouldCollapse ? new Set() : new Set(expandableTreePaths);
+    });
+  };
+
   const prefixSegments = useMemo(() => {
     const parts = prefix.split('/').filter(Boolean);
     return parts.map((part, index) => ({
@@ -406,232 +644,381 @@ export default function CloudExplorerPage() {
       value: parts.slice(0, index + 1).join('/') + '/',
     }));
   }, [prefix]);
+  const parentPrefix = useMemo(() => getParentPrefix(prefix), [prefix]);
 
   return (
-    <div className="flex min-h-full touch-pan-y flex-col px-4 py-4 lg:h-full lg:overflow-hidden lg:px-6 lg:py-5">
-      <header className="shrink-0 border-b border-[var(--border-subtle)] pb-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="云端浏览器"
+          description="审计 bucket 对象、识别孤儿文件，并把可保留对象纳入媒体库治理。"
+          icon={Cloud}
+          currentLabel={listRefreshing ? '同步中' : providerLabel}
+          activeSummary={`当前前缀：${prefixLabel} · 第 ${pageNum} 页 · 当前页 ${objects.length} 项 · 容量 ${formatFileSize(totalSize)}`}
+          actions={
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={!providerId || isFetching}
+              className="admin-module-action-button activity-refresh-button"
+              data-refreshing={listRefreshing}
+              title={listRefreshing ? '正在刷新' : '刷新'}
+              aria-label="刷新云端对象"
+              aria-busy={listRefreshing}
+            >
+              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {listRefreshing ? '刷新中' : '刷新'}
+            </button>
+          }
+        />
+
+        <div className={cn(cloudPanelClass, 'space-y-4')}>
+          <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(18rem,1.1fr)]">
+            <div>
+              <label htmlFor="cloud-provider-select" className="mb-1.5 block text-[11px] font-mono font-medium uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                Provider
+              </label>
+              <Select
+                id="cloud-provider-select"
+                ariaLabel="选择存储提供商"
+                value={providerId !== undefined ? String(providerId) : ''}
+                onValueChange={(next) => {
+                  if (!next) return;
+                  handleProviderChange(Number(next));
+                }}
+                options={providerOptions}
+                placeholder="选择存储提供商"
+                disabled={isProvidersLoading || providerOptions.length === 0}
+                disabledHint={isProvidersLoading ? '加载 provider...' : '暂无存储提供商'}
+                className="!h-10 bg-[var(--bg-input)]"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="cloud-prefix-input" className="mb-1.5 block text-[11px] font-mono font-medium uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                Prefix
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+                  <input
+                    id="cloud-prefix-input"
+                    type="text"
+                    value={prefixInput}
+                    onChange={(event) => setPrefixInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') applyPrefix();
+                    }}
+                    placeholder="2026/05/ 或留空查看当前 bucket"
+                    className={cn(
+                      'h-10 w-full rounded-lg pl-9 pr-10 text-sm',
+                      'border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+                      'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                      'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                      'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                      'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] focus:outline-none',
+                      'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                    )}
+                  />
+                  {prefixInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrefixInput('');
+                        applyPrefix('');
+                      }}
+                      className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+                      aria-label="清空前缀"
+                      title="清空前缀"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <Button onClick={() => applyPrefix()} variant="secondary" className="shrink-0 gap-1.5">
+                  <Search className="h-4 w-4" />
+                  查询
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-secondary)]">
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 font-semibold">
+              {selectedProvider?.providerType === 'LOCAL' ? <HardDrive className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
+              {providerLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => applyPrefix('')}
+              className={cn(
+                'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors',
+                prefix
+                  ? 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
+                  : 'border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--ink-primary)]'
+              )}
+            >
+              bucket 根目录
+            </button>
+            {prefix && (
+              <button
+                type="button"
+                data-cloud-parent-prefix={parentPrefix}
+                onClick={() => applyPrefix(parentPrefix)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs font-semibold text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                返回上一级
+              </button>
+            )}
+            {prefixSegments.map((segment) => (
+              <button
+                key={segment.value}
+                type="button"
+                onClick={() => applyPrefix(segment.value)}
+                className="inline-flex h-8 items-center rounded-full px-3 text-xs font-medium text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]"
+              >
+                / {segment.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <section className="grid shrink-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+          <Metric label="当前页对象" value={objects.length} helper={`${pageSize} 条/页`} icon={<Database className="h-4 w-4" />} />
+          <Metric label="孤儿对象" value={orphanObjects.length} helper="可导入或删除" icon={<AlertTriangle className="h-4 w-4" />} tone="warning" />
+          <Metric label="已入库" value={catalogObjects} helper="受媒体库保护" icon={<ShieldCheck className="h-4 w-4" />} tone="success" />
+          <Metric label="当前页容量" value={formatFileSize(totalSize)} helper={hasSelection ? `已选 ${formatFileSize(selectedSize)}` : '按对象大小汇总'} icon={<HardDrive className="h-4 w-4" />} />
+        </section>
+
+        <div className={cn(cloudPanelClass, 'grid shrink-0 items-center gap-3 lg:grid-cols-[1fr_auto]')}>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]">
-                <Cloud className="w-5 h-5" />
+            <p className="text-sm font-semibold text-[var(--ink-primary)]">
+              {hasSelection ? `已选择 ${selectedOrphans.length} 个孤儿对象` : '孤儿对象治理'}
+            </p>
+            <p className="mt-0.5 text-xs leading-5 text-[var(--ink-secondary)] lg:truncate">
+              {hasSelection
+                ? `合计 ${formatFileSize(selectedSize)}。已入库对象不会进入批量删除，避免绕过媒体库安全流程。`
+                : '云端对象分为“已入库”和“孤儿对象”。孤儿对象可导入媒体库或从云端清理，已入库对象请回媒体库处理。'}
+            </p>
+          </div>
+          {hasSelection && (
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <Button
+                disabled={selectedOrphans.length === 0 || importMutation.isPending}
+                onClick={() => importMutation.mutate(selectedOrphans.map((item) => item.key))}
+                className="gap-1.5"
+              >
+                <Import className="h-4 w-4" />
+                导入媒体库
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={selectedOrphans.length === 0}
+                onClick={() => copyText(selectedOrphans.map((item) => item.key).join('\n'), '对象 key')}
+                className="gap-1.5"
+              >
+                <Copy className="h-4 w-4" />
+                复制 key
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={selectedOrphans.length === 0 || deleteMutation.isPending}
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="gap-1.5 text-[var(--signal-danger)] hover:text-[var(--signal-danger)]"
+              >
+                <Trash2 className="h-4 w-4" />
+                删除孤儿
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <main className={cn(cloudShellClass, 'relative flex min-h-[420px] flex-col')}>
+          {listRefreshing && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-[3.65rem] z-20 h-px overflow-hidden bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+            >
+              <span className="absolute inset-y-0 w-1/2 animate-pulse rounded-full bg-gradient-to-r from-transparent via-[var(--aurora-1)] to-transparent" />
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                {selectedProvider?.providerType === 'LOCAL' ? <HardDrive className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}
               </span>
-              <div>
-                <h1 className="text-xl font-semibold leading-7 text-[var(--text-primary)] lg:text-2xl">云端浏览器</h1>
-                <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                  审计 bucket 对象、识别孤儿文件,并把可保留对象纳入媒体库治理。
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">对象清单</p>
+                <p className="truncate text-xs text-[var(--ink-muted)]">
+                  第 {pageNum} 页 · {prefixLabel}
+                  {nextToken ? ' · 可继续翻页' : ' · 当前游标已到末页'}
                 </p>
               </div>
             </div>
-          </div>
-          <Button onClick={() => refetch()} variant="secondary" className="gap-1.5 self-start" disabled={!providerId || isFetching}>
-            {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            刷新
-          </Button>
-        </div>
-
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(18rem,1fr)]">
-          <div>
-            <label htmlFor="cloud-provider-select" className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              Provider
-            </label>
-            <Select
-              id="cloud-provider-select"
-              ariaLabel="选择存储提供商"
-              value={providerId !== undefined ? String(providerId) : ''}
-              onValueChange={(next) => {
-                if (!next) return;
-                handleProviderChange(Number(next));
-              }}
-              options={providerOptions}
-              placeholder="选择存储提供商"
-              disabled={isProvidersLoading || providerOptions.length === 0}
-              disabledHint={isProvidersLoading ? '加载 provider...' : '暂无存储提供商'}
-              className="bg-[var(--bg-input)]"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="cloud-prefix-input" className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              Prefix
-            </label>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-                <input
-                  id="cloud-prefix-input"
-                  type="text"
-                  value={prefixInput}
-                  onChange={(event) => setPrefixInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') applyPrefix();
-                  }}
-                  placeholder="2026/05/ 或留空查看当前 bucket"
-                  className="h-10 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] pl-9 pr-10 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,var(--border-subtle))]"
-                />
-                {prefixInput && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPrefixInput('');
-                      applyPrefix('');
-                    }}
-                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-                    aria-label="清空前缀"
-                    title="清空前缀"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              <Button onClick={() => applyPrefix()} variant="secondary" className="shrink-0 gap-1.5">
-                <Search className="w-4 h-4" />
-                查询
-              </Button>
+            <div data-cloud-object-toolbar className="flex flex-wrap items-center justify-end gap-2">
+              <span className="inline-flex h-9 min-w-[4.75rem] items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 text-xs font-semibold text-[var(--ink-muted)]">
+                {isLoading
+                  ? '加载中'
+                  : listRefreshing
+                    ? '刷新中'
+                    : objectViewMode === 'tree'
+                      ? `${objects.length} 项 / ${treeFolderCount} 目录`
+                      : `${objects.length} 项`}
+              </span>
+              <ViewModeSegmented value={objectViewMode} onChange={setObjectViewMode} />
             </div>
           </div>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-2.5 py-1.5">
-            {selectedProvider?.providerType === 'LOCAL' ? <HardDrive className="w-3.5 h-3.5" /> : <Cloud className="w-3.5 h-3.5" />}
-            {selectedProvider ? `${selectedProvider.name} · ${selectedProvider.providerType}` : '未选择 provider'}
-          </span>
-          <button
-            type="button"
-            onClick={() => applyPrefix('')}
-            className={cn(
-              'rounded-lg px-2.5 py-1.5 transition-colors',
-              prefix ? 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]' : 'bg-[var(--bg-secondary)] text-[var(--text-primary)]'
+          <div className="min-w-0">
+            {!providerId ? (
+              <EmptyState title="请选择一个存储 provider" description="云端浏览器会直接读取 provider 对应 bucket，并与媒体库 catalog 做关联识别。" />
+            ) : isLoading ? (
+              <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                {objectViewMode === 'tree' ? (
+                  <ObjectTree
+                    nodes={[]}
+                    objects={[]}
+                    selectedKeys={selectedKeys}
+                    expandedPaths={expandedTreePaths}
+                    allOrphansSelected={allOrphansSelected}
+                    allFoldersExpanded={allTreeFoldersExpanded}
+                    parentPrefix={prefix ? parentPrefix : null}
+                    onToggleFolder={toggleTreeFolder}
+                    onToggleAllFolders={toggleAllTreeFolders}
+                    onToggleAllOrphans={toggleAllOrphans}
+                    onToggleObject={toggleObject}
+                    onOpenPrefix={applyPrefix}
+                    onCopyText={copyText}
+                    onImport={(item) => importMutation.mutate([item.key])}
+                    onDelete={(item) => {
+                      setSelectedKeys(new Set([item.key]));
+                      setDeleteConfirmOpen(true);
+                    }}
+                    onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
+                    loading
+                  />
+                ) : (
+                  <ObjectTable
+                    objects={[]}
+                    selectedKeys={selectedKeys}
+                    allOrphansSelected={allOrphansSelected}
+                    onToggleAllOrphans={toggleAllOrphans}
+                    onToggleObject={toggleObject}
+                    onOpenPrefix={applyPrefix}
+                    onCopyText={copyText}
+                    onImport={(item) => importMutation.mutate([item.key])}
+                    onDelete={(item) => {
+                      setSelectedKeys(new Set([item.key]));
+                      setDeleteConfirmOpen(true);
+                    }}
+                    onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
+                    loading
+                  />
+                )}
+              </div>
+            ) : objects.length === 0 ? (
+              <EmptyState title="当前前缀下没有对象" description="尝试清空 prefix、切换 provider，或确认对象存储配置中的 path / bucket 是否符合预期。" />
+            ) : (
+              <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                {objectViewMode === 'tree' ? (
+                  <ObjectTree
+                    nodes={treeNodes}
+                    objects={objects}
+                    selectedKeys={selectedKeys}
+                    expandedPaths={expandedTreePaths}
+                    allOrphansSelected={allOrphansSelected}
+                    allFoldersExpanded={allTreeFoldersExpanded}
+                    parentPrefix={prefix ? parentPrefix : null}
+                    onToggleFolder={toggleTreeFolder}
+                    onToggleAllFolders={toggleAllTreeFolders}
+                    onToggleAllOrphans={toggleAllOrphans}
+                    onToggleObject={toggleObject}
+                    onOpenPrefix={applyPrefix}
+                    onCopyText={copyText}
+                    onImport={(item) => importMutation.mutate([item.key])}
+                    onDelete={(item) => {
+                      setSelectedKeys(new Set([item.key]));
+                      setDeleteConfirmOpen(true);
+                    }}
+                    onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
+                    loading={false}
+                  />
+                ) : (
+                  <ObjectTable
+                    objects={objects}
+                    selectedKeys={selectedKeys}
+                    allOrphansSelected={allOrphansSelected}
+                    onToggleAllOrphans={toggleAllOrphans}
+                    onToggleObject={toggleObject}
+                    onOpenPrefix={applyPrefix}
+                    onCopyText={copyText}
+                    onImport={(item) => importMutation.mutate([item.key])}
+                    onDelete={(item) => {
+                      setSelectedKeys(new Set([item.key]));
+                      setDeleteConfirmOpen(true);
+                    }}
+                    onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
+                    loading={false}
+                  />
+                )}
+              </div>
             )}
-          >
-            bucket 根目录
-          </button>
-          {prefixSegments.map((segment) => (
-            <button
-              key={segment.value}
-              type="button"
-              onClick={() => applyPrefix(segment.value)}
-              className="rounded-lg px-2.5 py-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-            >
-              / {segment.label}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <section className="grid shrink-0 grid-cols-2 gap-2 py-3 sm:gap-3 sm:py-4 xl:grid-cols-4">
-        <Metric label="当前页对象" value={objects.length} helper={`${PAGE_LIMIT} 条/页`} icon={<Database className="w-4 h-4" />} />
-        <Metric label="孤儿对象" value={orphanObjects.length} helper="可导入或删除" icon={<AlertTriangle className="w-4 h-4" />} tone="warning" />
-        <Metric label="已入库" value={catalogObjects} helper="受媒体库保护" icon={<ShieldCheck className="w-4 h-4" />} tone="success" />
-        <Metric label="当前页容量" value={formatFileSize(totalSize)} helper={hasSelection ? `已选 ${formatFileSize(selectedSize)}` : '按对象大小汇总'} icon={<HardDrive className="w-4 h-4" />} />
-      </section>
-
-      <div className="mb-3 grid shrink-0 items-center gap-3 border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] px-3 py-2.5 lg:grid-cols-[1fr_auto] lg:px-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--ink-primary)]">
-            {hasSelection ? `已选择 ${selectedOrphans.length} 个孤儿对象` : '勾选孤儿对象后可批量治理'}
-          </p>
-          <p className="mt-0.5 text-xs leading-5 text-[var(--ink-secondary)] lg:truncate">
-            {hasSelection
-              ? `合计 ${formatFileSize(selectedSize)}。已入库对象不会进入批量删除,避免绕过媒体库安全流程。`
-              : '云端对象分为“已入库”和“孤儿对象”。孤儿对象可导入媒体库或从云端清理,已入库对象请回媒体库处理。'}
-          </p>
-        </div>
-        {hasSelection && (
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <Button
-              disabled={selectedOrphans.length === 0 || importMutation.isPending}
-              onClick={() => importMutation.mutate(selectedOrphans.map((item) => item.key))}
-              className="gap-1.5"
-            >
-              <Import className="w-4 h-4" />
-              导入媒体库
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={selectedOrphans.length === 0}
-              onClick={() => copyText(selectedOrphans.map((item) => item.key).join('\n'), '对象 key')}
-              className="gap-1.5"
-            >
-              <Copy className="w-4 h-4" />
-              复制 key
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={selectedOrphans.length === 0 || deleteMutation.isPending}
-              onClick={() => setDeleteConfirmOpen(true)}
-              className="gap-1.5 text-[var(--signal-danger)] hover:text-[var(--signal-danger)]"
-            >
-              <Trash2 className="w-4 h-4" />
-              删除孤儿
-            </Button>
           </div>
-        )}
+
+          {providerId && (objects.length > 0 || tokenStack.length > 0) && (
+            <footer className="flex shrink-0 flex-col gap-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="tnum text-xs font-semibold text-[var(--ink-muted)]">
+                显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
+                <span className="mx-2 text-[var(--ink-subtle)]">/</span>
+                游标分页
+                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
+                第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> 页
+                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
+                <span className="text-[var(--ink-secondary)]">{nextToken ? '仍有下一页' : '当前末页'}</span>
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
+                  <span>每页</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={handlePageSizeChange}
+                    options={PAGE_SIZE_SELECT_OPTIONS}
+                    size="sm"
+                    fullWidth={false}
+                    ariaLabel="每页对象数"
+                    className="!h-8 w-24 !rounded-lg !px-3 !font-mono !text-xs"
+                  />
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePrevPage}
+                    disabled={tokenStack.length === 0}
+                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="上一页"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="tnum min-w-8 px-2 text-center text-sm font-semibold text-[var(--ink-secondary)]">
+                    {pageNum}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleNextPage}
+                    disabled={!nextToken}
+                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="下一页"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </footer>
+          )}
+        </main>
       </div>
-
-      <main className="min-h-[520px] flex-1 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-leaf)] lg:min-h-0">
-        {!providerId ? (
-          <EmptyState title="请选择一个存储 provider" description="云端浏览器会直接读取 provider 对应 bucket,并与媒体库 catalog 做关联识别。" />
-        ) : isLoading ? (
-          <div className="h-full overflow-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
-            <ObjectTable
-              objects={[]}
-              selectedKeys={selectedKeys}
-              allOrphansSelected={allOrphansSelected}
-              onToggleAllOrphans={toggleAllOrphans}
-              onToggleObject={toggleObject}
-              onOpenPrefix={applyPrefix}
-              onCopyText={copyText}
-              onImport={(item) => importMutation.mutate([item.key])}
-              onDelete={(item) => {
-                setSelectedKeys(new Set([item.key]));
-                setDeleteConfirmOpen(true);
-              }}
-              onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
-              loading
-            />
-          </div>
-        ) : objects.length === 0 ? (
-          <EmptyState title="当前前缀下没有对象" description="尝试清空 prefix、切换 provider,或确认对象存储配置中的 path / bucket 是否符合预期。" />
-        ) : (
-          <div className="h-full overflow-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
-            <ObjectTable
-              objects={objects}
-              selectedKeys={selectedKeys}
-              allOrphansSelected={allOrphansSelected}
-              onToggleAllOrphans={toggleAllOrphans}
-              onToggleObject={toggleObject}
-              onOpenPrefix={applyPrefix}
-              onCopyText={copyText}
-              onImport={(item) => importMutation.mutate([item.key])}
-              onDelete={(item) => {
-                setSelectedKeys(new Set([item.key]));
-                setDeleteConfirmOpen(true);
-              }}
-              onViewMedia={(id) => navigate(`/media?highlight=${id}`)}
-              loading={false}
-            />
-          </div>
-        )}
-      </main>
-
-      <footer className="mt-3 flex shrink-0 flex-col gap-2 text-xs text-[var(--text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          {currentToken ? '当前为后续分页结果' : '当前为第一页'}
-          {nextToken ? ' · 仍有下一页' : ' · 已到当前前缀末尾'}
-        </span>
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" disabled={tokenStack.length === 0} onClick={handlePrevPage} className="gap-1">
-            <ChevronLeft className="w-4 h-4" />
-            上一页
-          </Button>
-          <Button variant="secondary" disabled={!nextToken} onClick={handleNextPage} className="gap-1">
-            下一页
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      </footer>
 
       <ConfirmModal
         isOpen={deleteConfirmOpen}
@@ -682,6 +1069,415 @@ function Metric({
   );
 }
 
+function ViewModeSegmented({
+  value,
+  onChange,
+}: {
+  value: ObjectViewMode;
+  onChange: (value: ObjectViewMode) => void;
+}) {
+  const options = [
+    { value: 'list' as const, label: '列表', icon: List },
+    { value: 'tree' as const, label: '树状', icon: ListTree },
+  ];
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="对象清单视图"
+      className="inline-flex h-9 items-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-1"
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]',
+              active
+                ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_8px_18px_-16px_rgba(0,0,0,0.45)]'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TreeLoadingRows() {
+  return (
+    <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div key={index} className="grid min-w-0 grid-cols-1 items-center gap-3 px-4 py-3 md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem]">
+          <div className="hidden h-4 w-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] md:block" />
+          <div className="flex items-center gap-3" style={{ paddingLeft: `${(index % 3) * 18}px` }}>
+            <div className="h-7 w-7 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            <div className="h-8 w-8 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            <div className="space-y-2">
+              <div className="h-4 w-56 rounded bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+              <div className="h-3 w-36 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            </div>
+          </div>
+          <div className="h-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="h-4 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="h-6 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <div className="ml-auto h-8 w-36 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ObjectTree({
+  nodes,
+  objects,
+  selectedKeys,
+  expandedPaths,
+  allOrphansSelected,
+  allFoldersExpanded,
+  parentPrefix,
+  onToggleFolder,
+  onToggleAllFolders,
+  onToggleAllOrphans,
+  onToggleObject,
+  onOpenPrefix,
+  onCopyText,
+  onImport,
+  onDelete,
+  onViewMedia,
+  loading,
+}: {
+  nodes: ObjectTreeNode[];
+  objects: ObjectListing[];
+  selectedKeys: Set<string>;
+  expandedPaths: Set<string>;
+  allOrphansSelected: boolean;
+  allFoldersExpanded: boolean;
+  parentPrefix: string | null;
+  onToggleFolder: (path: string) => void;
+  onToggleAllFolders: () => void;
+  onToggleAllOrphans: () => void;
+  onToggleObject: (item: ObjectListing) => void;
+  onOpenPrefix: (prefix: string) => void;
+  onCopyText: (value: string, label: string) => void;
+  onImport: (item: ObjectListing) => void;
+  onDelete: (item: ObjectListing) => void;
+  onViewMedia: (id: number) => void;
+  loading: boolean;
+}) {
+  const flattened = useMemo(() => flattenTreeNodes(nodes, expandedPaths), [nodes, expandedPaths]);
+  const allOrphanToggleDisabled = loading || objects.every((item) => item.status !== 'ORPHAN');
+  const folderToggleDisabled = loading || nodes.every((node) => node.type !== 'folder');
+
+  return (
+    <div className="min-w-0">
+      <div
+        data-cloud-tree-header
+        className="sticky top-0 z-10 grid min-h-14 min-w-0 grid-cols-1 items-center gap-2 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)] md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem] md:gap-3"
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            onChange={onToggleAllOrphans}
+            checked={allOrphansSelected}
+            disabled={allOrphanToggleDisabled}
+            title="选择当前页全部孤儿对象"
+            aria-label="选择当前页全部孤儿对象"
+            className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-40"
+          />
+          <span className="md:hidden">当前页孤儿</span>
+        </div>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0">对象层级</span>
+            <button
+              type="button"
+              onClick={onToggleAllFolders}
+              disabled={folderToggleDisabled}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 text-xs font-semibold normal-case tracking-normal text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              {allFoldersExpanded ? '全部折叠' : '全部展开'}
+            </button>
+            {parentPrefix !== null && (
+              <button
+                type="button"
+                data-cloud-parent-prefix-tree={parentPrefix}
+                onClick={() => onOpenPrefix(parentPrefix)}
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 text-xs font-semibold normal-case tracking-normal text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] hover:text-[var(--ink-primary)]"
+                aria-label="返回上一级目录"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                返回上一级
+              </button>
+            )}
+          </div>
+          <span className="hidden shrink-0 md:inline-flex">数量</span>
+        </div>
+        <span className="hidden text-right md:block">大小</span>
+        <span className="hidden md:block">最后修改</span>
+        <span className="hidden md:block">状态</span>
+        <span className="hidden text-right md:block">操作</span>
+      </div>
+
+      {loading ? (
+        <TreeLoadingRows />
+      ) : (
+        <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+          {flattened.map((node) =>
+            node.type === 'folder' ? (
+              <TreeFolderRow
+                key={node.id}
+                node={node}
+                expanded={expandedPaths.has(node.path)}
+                onToggleFolder={onToggleFolder}
+                onOpenPrefix={onOpenPrefix}
+                onCopyText={onCopyText}
+              />
+            ) : (
+              <TreeObjectRow
+                key={node.id}
+                node={node}
+                selected={node.object ? selectedKeys.has(node.object.key) : false}
+                onToggleObject={onToggleObject}
+                onOpenPrefix={onOpenPrefix}
+                onCopyText={onCopyText}
+                onImport={onImport}
+                onDelete={onDelete}
+                onViewMedia={onViewMedia}
+              />
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TreeFolderRow({
+  node,
+  expanded,
+  onToggleFolder,
+  onOpenPrefix,
+  onCopyText,
+}: {
+  node: ObjectTreeNode;
+  expanded: boolean;
+  onToggleFolder: (path: string) => void;
+  onOpenPrefix: (prefix: string) => void;
+  onCopyText: (value: string, label: string) => void;
+}) {
+  return (
+    <div
+      data-cloud-tree-folder-path={node.path}
+      className="grid min-w-0 grid-cols-1 items-center gap-2 bg-[color-mix(in_oklch,var(--signal-warn)_4%,transparent)] px-4 py-3 md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem] md:gap-3"
+    >
+      <div className="hidden items-center md:flex">
+        <span className="h-4 w-4" aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft: `${node.depth * 18}px` }}>
+            <button
+              type="button"
+              onClick={() => onToggleFolder(node.path)}
+              aria-label={expanded ? '收起目录' : '展开目录'}
+              title={expanded ? '收起目录' : '展开目录'}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+            >
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] text-[var(--signal-warn)]">
+              {expanded ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[var(--ink-primary)]" title={node.path}>
+                {node.name}
+              </p>
+              <p className="mt-0.5 truncate text-xs leading-5 text-[var(--ink-secondary)]" title={node.path}>
+                {node.path}
+              </p>
+            </div>
+          </div>
+          <TreeQuantityBadge count={node.objectCount} className="hidden shrink-0 md:inline-flex" />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 md:hidden" style={{ paddingLeft: `${node.depth * 18 + 36}px` }}>
+          <TreeQuantityBadge count={node.objectCount} />
+          <TreeStatusBadges node={node} />
+        </div>
+      </div>
+      <span className="hidden text-right text-sm font-medium text-[var(--ink-secondary)] tnum md:block">{formatFileSize(node.size)}</span>
+      <span className="hidden text-sm text-[var(--ink-secondary)] tnum md:block">{formatObjectDate(node.lastModified)}</span>
+      <div className="hidden md:flex md:flex-wrap md:items-center md:gap-1.5">
+        <TreeStatusBadges node={node} />
+      </div>
+      <div className="flex items-center justify-start gap-1.5 pl-9 md:justify-end md:pl-0">
+        <button
+          type="button"
+          data-cloud-tree-enter-prefix={node.path}
+          onClick={() => onOpenPrefix(node.path)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] px-2.5 text-xs font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          进入
+        </button>
+        <IconButton label="复制目录前缀" onClick={() => onCopyText(node.path, '目录前缀')}>
+          <Copy className="w-4 h-4" />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function TreeQuantityBadge({ count, className }: { count: number; className?: string }) {
+  return (
+    <span
+      data-cloud-tree-folder-count
+      className={cn(
+        'items-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2 py-0.5 text-[11px] font-semibold text-[var(--ink-secondary)] tnum',
+        className || 'inline-flex'
+      )}
+    >
+      {count} 项
+    </span>
+  );
+}
+
+function TreeStatusBadges({ node }: { node: ObjectTreeNode }) {
+  return (
+    <>
+      {node.orphanCount > 0 && (
+        <span className="inline-flex items-center rounded-full border border-[color-mix(in_oklch,var(--signal-warn)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--signal-warn)]">
+          {node.orphanCount} 孤儿
+        </span>
+      )}
+      {node.catalogCount > 0 && (
+        <span className="inline-flex items-center rounded-full border border-[color-mix(in_oklch,var(--signal-success)_24%,transparent)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--signal-success)]">
+          {node.catalogCount} 入库
+        </span>
+      )}
+    </>
+  );
+}
+
+function TreeObjectRow({
+  node,
+  selected,
+  onToggleObject,
+  onOpenPrefix,
+  onCopyText,
+  onImport,
+  onDelete,
+  onViewMedia,
+}: {
+  node: ObjectTreeNode;
+  selected: boolean;
+  onToggleObject: (item: ObjectListing) => void;
+  onOpenPrefix: (prefix: string) => void;
+  onCopyText: (value: string, label: string) => void;
+  onImport: (item: ObjectListing) => void;
+  onDelete: (item: ObjectListing) => void;
+  onViewMedia: (id: number) => void;
+}) {
+  const item = node.object;
+  if (!item) return null;
+
+  const kind = getObjectKind(item.key);
+  const protectedByCatalog = item.status === 'IN_CATALOG';
+  const path = getObjectPath(item.key);
+
+  return (
+    <div
+      data-cloud-tree-object-path={item.key}
+      className={cn(
+        'grid min-w-0 grid-cols-1 items-center gap-2 px-4 py-3 transition-colors md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem] md:gap-3',
+        selected ? 'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]' : 'hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]'
+      )}
+    >
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={protectedByCatalog}
+          onChange={() => onToggleObject(item)}
+          title={protectedByCatalog ? '已入库对象需在媒体库中管理' : '选择孤儿对象'}
+          aria-label={protectedByCatalog ? '已入库对象需在媒体库中管理' : `选择 ${item.key}`}
+          className="h-4 w-4 shrink-0 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-35"
+        />
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-start gap-3" style={{ paddingLeft: `${node.depth * 18}px` }}>
+          <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+            <ObjectIcon kind={kind} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-medium leading-5 text-[var(--ink-primary)]" title={item.key}>
+                {node.name}
+              </p>
+              {kind === 'folder' && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPrefix(item.key)}
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                >
+                  进入
+                </button>
+              )}
+            </div>
+            <p className="mt-0.5 truncate text-xs leading-5 text-[var(--ink-secondary)]" title={item.key}>
+              {path || 'bucket 根目录'}
+            </p>
+            {item.etag && (
+              <p className="mt-0.5 truncate text-[11px] leading-4 text-[var(--ink-muted)]" title={item.etag}>
+                ETag {item.etag.replaceAll('"', '')}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      <span className="pl-9 text-left text-sm text-[var(--ink-secondary)] tnum md:pl-0 md:text-right">{formatFileSize(item.size)}</span>
+      <span className="pl-9 text-sm text-[var(--ink-secondary)] tnum md:pl-0">{formatObjectDate(item.lastModified)}</span>
+      <div className="pl-9 md:pl-0">
+        <StatusBadge item={item} />
+      </div>
+      <div className="flex items-center justify-start gap-1 pl-9 md:justify-end md:pl-0">
+        {item.mediaFileId ? (
+          <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
+            <Database className="w-4 h-4" />
+          </IconButton>
+        ) : (
+          <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
+            <Import className="w-4 h-4" />
+          </IconButton>
+        )}
+        <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
+          <Copy className="w-4 h-4" />
+        </IconButton>
+        <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
+          <ExternalLink className="w-4 h-4" />
+        </IconButton>
+        <IconButton label="复制 URL" onClick={() => item.url && onCopyText(item.url, '对象 URL')} disabled={!item.url}>
+          <Cloud className="w-4 h-4" />
+        </IconButton>
+        <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
+          <Trash2 className="w-4 h-4" />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
 function ObjectTable({
   objects,
   selectedKeys,
@@ -710,7 +1506,7 @@ function ObjectTable({
   const allOrphanToggleDisabled = loading || objects.every((item) => item.status !== 'ORPHAN');
 
   return (
-    <div className="h-full">
+    <div className="min-w-0">
       <div className="md:hidden">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-4 py-3">
           <label className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--ink-secondary)]">
@@ -834,32 +1630,34 @@ function ObjectTable({
         )}
       </div>
 
-      <table className="hidden w-full min-w-[980px] table-fixed border-collapse text-sm md:table">
-        <thead className="sticky top-0 z-10 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
-          <tr>
-            <th className="w-12 px-4 py-3 text-left">
-              <input
-                type="checkbox"
-                onChange={onToggleAllOrphans}
-                checked={allOrphansSelected}
-                disabled={allOrphanToggleDisabled}
-                title="选择当前页全部孤儿对象"
-                aria-label="选择当前页全部孤儿对象"
-                className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-40"
-              />
-            </th>
-            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">对象</th>
-            <th className="w-28 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">大小</th>
-            <th className="w-40 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">最后修改</th>
-            <th className="w-32 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">状态</th>
-            <th className="w-56 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading ? (
-            <LoadingRows />
-          ) : (
-            objects.map((item) => {
+      <div className="hidden min-w-[900px] text-sm md:block">
+        <div
+          data-cloud-list-header
+          className="sticky top-0 z-10 grid min-h-14 min-w-0 grid-cols-1 items-center gap-2 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)] md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem] md:gap-3"
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              onChange={onToggleAllOrphans}
+              checked={allOrphansSelected}
+              disabled={allOrphanToggleDisabled}
+              title="选择当前页全部孤儿对象"
+              aria-label="选择当前页全部孤儿对象"
+              className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-40"
+            />
+          </div>
+          <span>对象</span>
+          <span className="text-right">大小</span>
+          <span>最后修改</span>
+          <span>状态</span>
+          <span className="text-right">操作</span>
+        </div>
+
+        {loading ? (
+          <LoadingRows />
+        ) : (
+          <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+            {objects.map((item) => {
               const kind = getObjectKind(item.key);
               const selected = selectedKeys.has(item.key);
               const protectedByCatalog = item.status === 'IN_CATALOG';
@@ -867,14 +1665,15 @@ function ObjectTable({
               const name = getObjectName(item.key);
 
               return (
-                <tr
+                <div
                   key={item.key}
+                  data-cloud-list-row
                   className={cn(
-                    'border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors last:border-b-0',
+                    'grid min-w-0 grid-cols-1 items-center gap-2 px-4 py-3 transition-colors md:min-w-[900px] md:grid-cols-[3rem_minmax(18rem,1fr)_6.5rem_9rem_7rem_12rem] md:gap-3',
                     selected ? 'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]' : 'hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]'
                   )}
                 >
-                  <td className="px-4 py-3 align-middle">
+                  <div className="flex items-center">
                     <input
                       type="checkbox"
                       checked={selected}
@@ -884,10 +1683,10 @@ function ObjectTable({
                       aria-label={protectedByCatalog ? '已入库对象需在媒体库中管理' : `选择 ${item.key}`}
                       className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-transparent accent-[var(--aurora-1)] disabled:opacity-35"
                     />
-                  </td>
-                  <td className="px-4 py-3 align-middle">
+                  </div>
+                  <div className="min-w-0">
                     <div className="flex min-w-0 items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+                      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
                         <ObjectIcon kind={kind} />
                       </span>
                       <div className="min-w-0">
@@ -915,47 +1714,41 @@ function ObjectTable({
                         )}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-right align-middle text-sm text-[var(--ink-secondary)] tnum">
-                    {formatFileSize(item.size)}
-                  </td>
-                  <td className="px-4 py-3 align-middle text-sm text-[var(--ink-secondary)] tnum">
-                    {formatObjectDate(item.lastModified)}
-                  </td>
-                  <td className="px-4 py-3 align-middle">
+                  </div>
+                  <span className="text-right text-sm text-[var(--ink-secondary)] tnum">{formatFileSize(item.size)}</span>
+                  <span className="text-sm text-[var(--ink-secondary)] tnum">{formatObjectDate(item.lastModified)}</span>
+                  <div>
                     <StatusBadge item={item} />
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <div className="flex items-center justify-end gap-1">
-                      {item.mediaFileId ? (
-                        <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
-                          <Database className="w-4 h-4" />
-                        </IconButton>
-                      ) : (
-                        <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
-                          <Import className="w-4 h-4" />
-                        </IconButton>
-                      )}
-                      <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
-                        <Copy className="w-4 h-4" />
+                  </div>
+                  <div className="flex items-center justify-end gap-1">
+                    {item.mediaFileId ? (
+                      <IconButton label="在媒体库查看" onClick={() => onViewMedia(item.mediaFileId!)}>
+                        <Database className="w-4 h-4" />
                       </IconButton>
-                      <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
-                        <ExternalLink className="w-4 h-4" />
+                    ) : (
+                      <IconButton label="导入到媒体库" onClick={() => onImport(item)}>
+                        <Import className="w-4 h-4" />
                       </IconButton>
-                      <IconButton label="复制 URL" onClick={() => item.url && onCopyText(item.url, '对象 URL')} disabled={!item.url}>
-                        <Cloud className="w-4 h-4" />
-                      </IconButton>
-                      <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
-                        <Trash2 className="w-4 h-4" />
-                      </IconButton>
-                    </div>
-                  </td>
-                </tr>
+                    )}
+                    <IconButton label="复制 key" onClick={() => onCopyText(item.key, '对象 key')}>
+                      <Copy className="w-4 h-4" />
+                    </IconButton>
+                    <IconButton label="打开对象 URL" onClick={() => item.url && window.open(item.url, '_blank')} disabled={!item.url}>
+                      <ExternalLink className="w-4 h-4" />
+                    </IconButton>
+                    <IconButton label="复制 URL" onClick={() => item.url && onCopyText(item.url, '对象 URL')} disabled={!item.url}>
+                      <Cloud className="w-4 h-4" />
+                    </IconButton>
+                    <IconButton label={protectedByCatalog ? '已入库对象不能在这里删除' : '删除云端孤儿对象'} onClick={() => onDelete(item)} disabled={protectedByCatalog} danger>
+                      <Trash2 className="w-4 h-4" />
+                    </IconButton>
+                  </div>
+                </div>
               );
-            })
-          )}
-        </tbody>
-      </table>
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

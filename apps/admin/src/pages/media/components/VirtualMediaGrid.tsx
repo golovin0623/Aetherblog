@@ -30,7 +30,7 @@ export function VirtualMediaGrid({
   items,
   selectedIds = new Set(),
   columnCount = 5,
-  itemSize = 240,
+  itemSize = 188,
   height = 600,
   onSelect,
   onToggleSelect,
@@ -59,10 +59,10 @@ export function VirtualMediaGrid({
             onClick={() => onSelect?.(item.id)}
             className={`
               relative group cursor-pointer
-              bg-white/5 backdrop-blur-2xl border rounded-2xl overflow-hidden
+              bg-[var(--bg-leaf)] backdrop-blur-2xl border rounded-xl overflow-hidden
               transition-all duration-300
-              hover:bg-white/10 hover:scale-[1.02]
-              ${isSelected ? 'border-primary/50 ring-2 ring-primary/30' : 'border-white/10'}
+              hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,var(--bg-leaf))]
+              ${isSelected ? 'border-primary/50 ring-2 ring-primary/30' : 'border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'}
             `}
           >
             {/* 选择复选框 */}
@@ -97,8 +97,8 @@ export function VirtualMediaGrid({
                   loading="lazy"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-4xl text-white/30">
+                <div className="w-full h-full flex items-center justify-center bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]">
+                  <span className="text-3xl text-[var(--ink-muted)]">
                     {item.fileType === 'VIDEO' && '🎬'}
                     {item.fileType === 'AUDIO' && '🎵'}
                     {item.fileType === 'DOCUMENT' && '📄'}
@@ -108,7 +108,7 @@ export function VirtualMediaGrid({
             </div>
 
             {/* 文件信息 */}
-            <div className="p-3">
+            <div className="p-2.5">
               <p className="text-sm text-[var(--text-primary)] truncate font-medium">
                 {item.originalName}
               </p>
@@ -131,7 +131,7 @@ export function VirtualMediaGrid({
       columnWidth={itemSize}
       height={height}
       rowCount={rowCount}
-      rowHeight={itemSize}
+      rowHeight={itemSize + 52}
       width="100%"
       className="scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
     >

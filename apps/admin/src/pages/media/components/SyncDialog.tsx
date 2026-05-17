@@ -161,7 +161,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
   const content = (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="media-library-page fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -174,32 +174,37 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
-            className="relative w-full max-w-2xl"
+            className="relative w-full sm:max-w-2xl"
           >
-            <div className="surface-overlay rounded-2xl">
-              <div className="flex items-center justify-between p-5 border-b border-[var(--border-subtle)]">
+            <div className="media-neutral-surface surface-overlay flex max-h-[82vh] flex-col overflow-hidden rounded-t-2xl sm:max-h-[88vh] sm:rounded-2xl">
+              <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4 sm:p-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
-                    <CloudUpload className="w-5 h-5 text-primary" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]">
+                    <CloudUpload className="h-5 w-5 text-[var(--aurora-1)]" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-[var(--text-primary)]">备份同步</h2>
-                    <p className="text-xs text-[var(--text-muted)]">把所有未与目标 provider 同步的文件加入备份队列</p>
+                    <h2 className="text-lg font-bold text-[var(--ink-primary)]">备份同步</h2>
+                    <p className="text-xs text-[var(--ink-muted)]">把所有未与目标 provider 同步的文件加入备份队列</p>
                   </div>
                 </div>
-                <button onClick={onClose} className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg p-2 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]"
+                  aria-label="关闭备份同步"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-5 space-y-4">
+              <div className="space-y-4 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5">
                 {/* 自动后台备份提示 */}
                 {autoEnabled !== undefined && (
                   <div
-                    className={`px-3 py-2 rounded-lg text-xs ${
+                    className={`rounded-lg px-3 py-2 text-xs ${
                       autoEnabled
                         ? 'bg-status-success/10 text-status-success border border-status-success/30'
-                        : 'bg-[var(--bg-secondary)]/40 text-[var(--text-muted)] border border-[var(--border-subtle)]'
+                        : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-muted)]'
                     }`}
                   >
                     {autoEnabled
@@ -210,7 +215,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
 
                 {/* 目标 provider 选择 */}
                 <div>
-                  <label htmlFor="sync-target-provider" className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">备份目标 (target provider)</label>
+                  <label htmlFor="sync-target-provider" className="mb-1.5 block text-sm font-medium text-[var(--ink-primary)]">备份目标 (target provider)</label>
                   <Select
                     id="sync-target-provider"
                     ariaLabel="备份目标 provider"
@@ -225,28 +230,28 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                       })),
                     ]}
                   />
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <p className="mt-1 text-xs text-[var(--ink-muted)]">
                     未指定时使用"存储管理"里的备份同步目标;也可在这里临时覆盖本次任务。
                   </p>
                 </div>
 
                 {/* 状态摘要 */}
-                <div className="rounded-xl bg-[var(--bg-secondary)]/40 border border-[var(--border-subtle)] p-4">
+                <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-medium text-[var(--text-primary)]">同步进度</p>
+                    <p className="text-sm font-medium text-[var(--ink-primary)]">同步进度</p>
                     {hasActiveJobs ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-primary">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--aurora-1)]">
                         <Loader2 className="w-3 h-3 animate-spin" /> 队列处理中
                       </span>
                     ) : workerRunning ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--ink-muted)]">
                         <CheckCircle2 className="w-3.5 h-3.5 text-status-success" /> Worker 待命
                       </span>
                     ) : (
-                      <span className="text-xs text-[var(--text-muted)]">队列空闲</span>
+                      <span className="text-xs text-[var(--ink-muted)]">队列空闲</span>
                     )}
                   </div>
-                  <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <Stat label="待处理" value={counts.pending} tint="text-amber-400" />
                     <Stat label="进行中" value={counts.running} tint="text-blue-400" />
                     <Stat label="已成功" value={counts.succeeded} tint="text-green-400" />
@@ -255,21 +260,21 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                   {/* 进度条 */}
                   {total > 0 && (
                     <>
-                      <div className="h-2 bg-[var(--bg-input)] rounded-full overflow-hidden">
+                      <div className="h-2 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
                         <motion.div
-                          className="h-full bg-gradient-to-r from-primary to-accent"
+                          className="h-full bg-gradient-to-r from-[var(--aurora-1)] to-[var(--signal-success)]"
                           initial={{ width: 0 }}
                           animate={{ width: `${progress}%` }}
                           transition={{ duration: 0.3 }}
                         />
                       </div>
-                      <p className="text-xs text-[var(--text-muted)] mt-1.5">{progress}% — 共 {total} 个 job</p>
+                      <p className="mt-1.5 text-xs text-[var(--ink-muted)]">{progress}% — 共 {total} 个 job</p>
                     </>
                   )}
                 </div>
 
                 {/* 操作按钮 */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <Button
                     onClick={() => startMutation.mutate()}
                     disabled={startMutation.isPending}
@@ -293,7 +298,7 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                 {counts.failed > 0 && (
                   <button
                     onClick={() => setShowFailed((v) => !v)}
-                    className="w-full text-left px-3 py-2 rounded-lg bg-status-danger/8 border border-status-danger/25 text-sm text-[var(--text-primary)] hover:bg-status-danger/15 transition-colors flex items-center gap-2"
+                    className="flex w-full items-center gap-2 rounded-lg border border-status-danger/25 bg-status-danger/8 px-3 py-2 text-left text-sm text-[var(--ink-primary)] transition-colors hover:bg-status-danger/15"
                   >
                     <AlertCircle className="w-4 h-4 text-status-danger" />
                     {showFailed ? '隐藏' : '查看'}失败列表 ({counts.failed})
@@ -301,25 +306,25 @@ export function SyncDialog({ open, onClose }: SyncDialogProps) {
                 )}
 
                 {showFailed && failedJobs.length > 0 && (
-                  <div className="rounded-xl border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] max-h-64 overflow-y-auto">
+                  <div className="max-h-64 divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] overflow-y-auto rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
                     {failedJobs.map((job) => (
                       <div key={job.id} className="flex items-start gap-3 p-3">
                         <AlertCircle className="w-4 h-4 text-status-danger shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-[var(--text-primary)]">媒体 #{job.mediaId} → provider {job.targetProviderId}</p>
+                          <p className="text-xs text-[var(--ink-primary)]">媒体 #{job.mediaId} → provider {job.targetProviderId}</p>
                           {job.lastError && (
-                            <p className="text-[10px] text-[var(--text-muted)] mt-0.5 break-all line-clamp-2 font-mono">
+                            <p className="mt-0.5 line-clamp-2 break-all font-mono text-[10px] text-[var(--ink-muted)]">
                               {job.lastError}
                             </p>
                           )}
-                          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                          <p className="mt-0.5 text-[10px] text-[var(--ink-muted)]">
                             尝试 {job.attempt} 次 · {job.finishedAt ? new Date(job.finishedAt).toLocaleString() : '-'}
                           </p>
                         </div>
                         <button
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={retryMutation.isPending}
-                          className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-primary hover:bg-primary/10 transition-colors"
+                          className="rounded-md p-1.5 text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] hover:text-[var(--aurora-1)]"
                           title="重试该任务"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -351,7 +356,7 @@ function Stat({ label, value, tint }: { label: string; value: number; tint: stri
   return (
     <div className="text-center">
       <p className={`text-xl font-semibold ${tint}`}>{value}</p>
-      <p className="text-[11px] text-[var(--text-muted)] uppercase tracking-wider">{label}</p>
+      <p className="text-[11px] uppercase tracking-wider text-[var(--ink-muted)]">{label}</p>
     </div>
   );
 }

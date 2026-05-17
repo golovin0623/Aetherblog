@@ -32,6 +32,10 @@ import {
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
+import {
+  IntelligenceHeader,
+  IntelligenceShell,
+} from '@/components/intelligence';
 import { ProfileManagementSection } from './search-config/ProfileManagementSection';
 import { ProfileActivationFlow } from './search-config/ProfileActivationFlow';
 import { ProfileDetailDrawer } from './search-config/ProfileDetailDrawer';
@@ -738,11 +742,20 @@ export default function SearchConfigPage() {
   const embeddingCredentialReady = currentRouting?.credential_configured !== false;
   const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
   const semanticEnabled = formData.semanticEnabled ?? false;
+  const diagnosticsTone =
+    diagnostics?.fallback.effectiveMode === 'disabled'
+      ? 'danger'
+      : diagnostics?.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
+        ? 'warning'
+        : 'accent';
+  const searchSummary = stats
+    ? `索引 ${stats.indexed_posts}/${stats.total_posts} · 失败 ${stats.failed_posts}`
+    : '语义搜索、关键词回退与索引任务控制';
 
   // --- 全页骨架屏 ---
   if (configLoading && statsLoading && embeddingLoading) {
     return (
-      <div className="space-y-6">
+      <IntelligenceShell className="search-config-page" contentClassName="gap-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="h-7 w-40 bg-[var(--bg-card-hover)] rounded animate-pulse" />
@@ -755,23 +768,20 @@ export default function SearchConfigPage() {
           <CardSkeleton />
           <CardSkeleton />
         </div>
-      </div>
+      </IntelligenceShell>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* 头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            搜索配置
-          </h1>
-          <p className="text-[var(--text-muted)] mt-1">
-            管理搜索功能、向量索引与访问限流
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <IntelligenceShell className="search-config-page" contentClassName="gap-4">
+      <IntelligenceHeader
+        title="搜索配置"
+        eyebrow="INTELLIGENCE · SEARCH"
+        description="管理搜索功能、向量索引与访问限流。"
+        icon={Search}
+        currentLabel={diagnostics ? `生效模式 ${diagnostics.fallback.effectiveMode}` : '诊断加载中'}
+        activeSummary={searchSummary}
+        actions={
           <AnimatePresence>
             {hasChanges && (
               <motion.div
@@ -782,14 +792,14 @@ export default function SearchConfigPage() {
               >
                 <button
                   onClick={handleReset}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm"
+                  className="intelligence-action-button"
                 >
                   <RefreshCw className="w-4 h-4" /> 重置
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm shadow-lg shadow-primary/20"
+                  className="intelligence-action-button intelligence-action-button-primary"
                 >
                   {saveMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -801,8 +811,8 @@ export default function SearchConfigPage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      </div>
+        }
+      />
 
       {/* Diagnostics strip — 一屏诊断搜索链路状态 */}
       {diagnostics && (
@@ -810,14 +820,8 @@ export default function SearchConfigPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className={cn(
-            'mb-6 rounded-xl border p-4',
-            diagnostics.fallback.effectiveMode === 'disabled'
-              ? 'bg-red-500/5 border-red-500/30'
-              : diagnostics.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
-              ? 'bg-amber-500/5 border-amber-500/30'
-              : 'bg-[var(--bg-card)] border-[var(--border-subtle)]'
-          )}
+          data-tone={diagnosticsTone}
+          className="intelligence-status-strip mb-2"
         >
           <div className="flex items-start gap-3">
             <Activity
@@ -894,7 +898,7 @@ export default function SearchConfigPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0 }}
-          className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 space-y-5 lg:col-span-2"
+          className="intelligence-panel p-6 space-y-5 lg:col-span-2"
         >
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-[var(--text-muted)]" />
@@ -1263,7 +1267,7 @@ export default function SearchConfigPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 space-y-5"
+          className="intelligence-panel p-6 space-y-5"
         >
           <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-[var(--text-muted)]" />
@@ -1349,7 +1353,7 @@ export default function SearchConfigPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
-          className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 space-y-5"
+          className="intelligence-panel p-6 space-y-5"
         >
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-[var(--text-muted)]" />
@@ -1428,7 +1432,7 @@ export default function SearchConfigPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.3 }}
-          className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 space-y-5 lg:col-span-2"
+          className="intelligence-panel p-6 space-y-5 lg:col-span-2"
         >
           <div className="flex items-center gap-2">
             <Zap className="w-5 h-5 text-[var(--text-muted)]" />
@@ -1537,6 +1541,6 @@ export default function SearchConfigPage() {
         onConfirm={handleDrawerDelete}
         onCancel={() => setPendingDrawerDelete(null)}
       />
-    </div>
+    </IntelligenceShell>
   );
 }

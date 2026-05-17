@@ -380,10 +380,10 @@ function DraggableFolderNode({
   });
 
   // 合并 refs
-  const setNodeRef = (node: HTMLElement | null) => {
+  const setNodeRef = useCallback((node: HTMLElement | null) => {
     setDraggableRef(node);
     setDroppableRef(node);
-  };
+  }, [setDraggableRef, setDroppableRef]);
 
   // 拖拽时不移动原元素，只通过 DragOverlay 显示预览
   // 所以这里不使用 transform

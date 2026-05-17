@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -7,17 +7,21 @@ import {
   Loader2,
   Trash2,
   Pencil,
-  Sparkles,
   Inbox,
+  RefreshCw,
+  Search,
+  X,
 } from 'lucide-react';
 import { spring, transition, variants } from '@aetherblog/ui';
 import { ConfirmModal } from '@aetherblog/ui';
+import { useDebounce } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { logger } from '@/lib/logger';
 import { getTagHex } from '@/lib/tagColor';
 import { toast } from 'sonner';
+import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layout/AdminModuleHeader';
 import { CreateItemModal } from './categories/CreateItemModal';
 
 type Tab = 'categories' | 'tags';
@@ -25,6 +29,40 @@ type EditTarget =
   | { kind: 'category'; data: Category }
   | { kind: 'tag'; data: Tag }
   | null;
+type ActiveChip = {
+  key: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  onRemove: () => void;
+};
+
+const taxonomyTabs: AdminModuleHeaderTab<Tab>[] = [
+  {
+    key: 'categories',
+    label: '分类管理',
+    shortLabel: '分类',
+    description: '组织文章主线，控制前台内容导航与归档结构。',
+    icon: Folder,
+  },
+  {
+    key: 'tags',
+    label: '标签管理',
+    shortLabel: '标签',
+    description: '维护跨分类主题标识，支持文章聚合和智能写作复用。',
+    icon: TagIcon,
+  },
+];
+
+const taxonomyPanelClass = cn(
+  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-4'
+);
+
+const taxonomyShellClass = cn(
+  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
 
 export default function CategoriesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('categories');
@@ -32,6 +70,10 @@ export default function CategoriesPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [refreshPulse, setRefreshPulse] = useState(0);
+  const debouncedSearch = useDebounce(searchQuery.trim(), 250);
 
   const [deleteTarget, setDeleteTarget] = useState<{
     id: number;
@@ -43,9 +85,9 @@ export default function CategoriesPage() {
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async ({ preserveList = false }: { preserveList?: boolean } = {}) => {
     try {
-      setLoading(true);
+      if (!preserveList) setLoading(true);
       setError(null);
 
       if (activeTab === 'categories') {
@@ -61,13 +103,13 @@ export default function CategoriesPage() {
       logger.error('Fetch error:', err);
       setError(err.message || '网络错误');
     } finally {
-      setLoading(false);
+      if (!preserveList) setLoading(false);
     }
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [fetchData]);
 
   /* close 时延迟清空 editTarget,让退场动画期间仍显示"编辑"标题/初值;
      用 ref 跟踪计时器,任一 open 路径必须先取消挂起的 reset,否则
@@ -181,191 +223,359 @@ export default function CategoriesPage() {
     }
   };
 
-  // 数据派生 —— 用作 header 摘要
-  const stats = useMemo(() => {
-    if (activeTab === 'categories') {
-      const total = categories.length;
-      const totalPosts = categories.reduce((s, c) => s + (c.postCount || 0), 0);
-      const top = [...categories].sort(
-        (a, b) => (b.postCount || 0) - (a.postCount || 0)
-      )[0];
-      return {
-        total,
-        totalPosts,
-        topName: top?.name ?? '—',
-        topCount: top?.postCount ?? 0,
-      };
+  const isCategoryTab = activeTab === 'categories';
+  const listRefreshing = manualRefreshing;
+
+  const handleRefresh = async () => {
+    setManualRefreshing(true);
+    try {
+      await fetchData({ preserveList: true });
+      setRefreshPulse((value) => value + 1);
+    } finally {
+      setManualRefreshing(false);
     }
-    const total = tags.length;
-    const totalPosts = tags.reduce((s, t) => s + (t.postCount || 0), 0);
-    const top = [...tags].sort(
-      (a, b) => (b.postCount || 0) - (a.postCount || 0)
-    )[0];
+  };
+
+  const handleTabChange = (nextTab: Tab) => {
+    if (nextTab === activeTab) return;
+    setActiveTab(nextTab);
+    setSearchQuery('');
+  };
+
+  const filteredCategories = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+    if (!query) return categories;
+    return categories.filter((category) =>
+      [category.name, category.slug, category.description]
+        .some((value) => value?.toLowerCase().includes(query))
+    );
+  }, [categories, debouncedSearch]);
+
+  const filteredTags = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+    if (!query) return tags;
+    return tags.filter((tag) =>
+      [tag.name, tag.slug].some((value) => value?.toLowerCase().includes(query))
+    );
+  }, [tags, debouncedSearch]);
+
+  // 数据派生 —— 用作 header 摘要和 shell 计数
+  const stats = useMemo(() => {
+    const source = activeTab === 'categories' ? categories : tags;
+    const filtered = activeTab === 'categories' ? filteredCategories : filteredTags;
+    const totalPosts = filtered.reduce((sum, item) => sum + (item.postCount || 0), 0);
+    const top = [...source].sort((a, b) => (b.postCount || 0) - (a.postCount || 0))[0];
+
     return {
-      total,
+      total: source.length,
+      filteredTotal: filtered.length,
       totalPosts,
       topName: top?.name ?? '—',
       topCount: top?.postCount ?? 0,
     };
-  }, [activeTab, categories, tags]);
+  }, [activeTab, categories, filteredCategories, filteredTags, tags]);
 
-  const isCategoryTab = activeTab === 'categories';
+  const activeChips: ActiveChip[] = [];
+  if (debouncedSearch) {
+    activeChips.push({
+      key: 'search',
+      icon: Search,
+      label: '关键词',
+      value: debouncedSearch,
+      onRemove: () => setSearchQuery(''),
+    });
+  }
+  const activeFilterCount = activeChips.length;
+
+  const resetFilters = () => {
+    setSearchQuery('');
+  };
 
   return (
-    <div className="space-y-6 sm:space-y-7">
-      {/* 页面标题区 */}
-      <motion.header
-        initial={variants.fadeUp.initial}
-        animate={variants.fadeUp.animate}
-        transition={transition.flow}
-        className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4"
-      >
-        <div className="space-y-2">
-          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-            <span className="text-[var(--aurora-1)]">●</span>{' '}
-            CONTENT · TAXONOMY
-          </p>
-          <h1
-            className="font-display text-[1.875rem] sm:text-[2.25rem] font-semibold leading-[1.1] text-[var(--ink-primary)] tracking-tight"
-            style={{ fontVariationSettings: '"opsz" 24, "SOFT" 50, "WONK" 0' }}
-          >
-            分类标签
-          </h1>
-          <div className="flex items-center gap-3 font-mono text-[12px] tracking-wide text-[var(--ink-muted)] tnum">
-            <span>
-              <span className="text-[var(--ink-primary)] font-medium">
-                {stats.total}
-              </span>{' '}
-              {isCategoryTab ? '个分类' : '个标签'}
-            </span>
-            <span className="opacity-40">·</span>
-            <span>
-              覆盖{' '}
-              <span className="text-[var(--ink-primary)] font-medium">
-                {stats.totalPosts}
-              </span>{' '}
-              篇
-            </span>
-            {stats.total > 0 && (
-              <>
-                <span className="opacity-40 hidden sm:inline">·</span>
-                <span className="hidden sm:inline truncate max-w-[160px]">
-                  最热{' '}
-                  <span className="text-[var(--ink-primary)] font-medium">
-                    {stats.topName}
-                  </span>{' '}
-                  ({stats.topCount})
-                </span>
-              </>
-            )}
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="分类标签"
+          description="统一维护文章分类与标签库，保持内容组织、检索和写作辅助的一致性。"
+          tabs={taxonomyTabs}
+          activeKey={activeTab}
+          onTabChange={handleTabChange}
+          currentLabel={listRefreshing ? '同步中' : isCategoryTab ? '分类库' : '标签库'}
+          activeSummary={`匹配 ${stats.filteredTotal} / ${stats.total} · 覆盖 ${stats.totalPosts} 篇`}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={listRefreshing || loading}
+                className="admin-module-action-button activity-refresh-button"
+                data-refreshing={listRefreshing}
+                title={listRefreshing ? '正在刷新' : '刷新'}
+                aria-label="刷新分类标签"
+                aria-busy={listRefreshing}
+              >
+                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
+                {listRefreshing ? '刷新中' : '刷新'}
+              </button>
+              <button
+                type="button"
+                onClick={openCreate}
+                className="admin-module-action-button"
+                aria-label={isCategoryTab ? '新建分类' : '新建标签'}
+              >
+                <Plus className="h-4 w-4" />
+                {isCategoryTab ? '新建分类' : '新建标签'}
+              </button>
+            </>
+          }
+        />
+
+        <div className={cn(taxonomyPanelClass, 'space-y-4')}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div className="relative md:col-span-12">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={isCategoryTab ? '搜索分类名称、slug 或描述' : '搜索标签名称或 slug'}
+                aria-label={isCategoryTab ? '分类关键词搜索' : '标签关键词搜索'}
+                className={cn(
+                  'h-10 w-full rounded-lg pl-9 pr-9 text-sm',
+                  'border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+                  'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                  'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                  'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                  'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] focus:outline-none',
+                  'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                )}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="清空搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-[60px] items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              {isCategoryTab ? <Folder className="h-3.5 w-3.5" /> : <TagIcon className="h-3.5 w-3.5" />}
+              <span>概览</span>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {[
+                { label: isCategoryTab ? '分类' : '标签', value: stats.total },
+                { label: '匹配', value: stats.filteredTotal },
+                { label: '文章', value: stats.totalPosts },
+                ...(stats.topCount > 0
+                  ? [{ label: '最热', value: `${stats.topName} (${stats.topCount})` }]
+                  : []),
+              ].map((item) => (
+                <span
+                  key={item.label}
+                  className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 text-xs"
+                >
+                  <span className="shrink-0 font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                    {item.label}
+                  </span>
+                  <span className="tnum min-w-0 truncate font-semibold text-[var(--ink-primary)]">
+                    {item.value}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {activeFilterCount > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                animate={{ opacity: 1, height: 'auto', transitionEnd: { overflow: 'visible' } }}
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="flex flex-wrap items-center gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-0.5 pt-3">
+                  <span className="tnum text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    已应用 {activeFilterCount}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                    {activeChips.map((chip) => {
+                      const Icon = chip.icon;
+                      return (
+                        <motion.span
+                          key={chip.key}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] pl-2.5 pr-1 text-xs"
+                        >
+                          <Icon className="h-3 w-3 shrink-0 text-[var(--aurora-1)]" />
+                          <span className="font-mono text-[var(--ink-muted)]">{chip.label}</span>
+                          <span className="max-w-[180px] truncate font-medium text-[var(--ink-primary)]">
+                            {chip.value}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={chip.onRemove}
+                            aria-label={`移除${chip.label}筛选`}
+                            className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)]"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </motion.span>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] hover:text-[var(--signal-danger)]"
+                  >
+                    <X className="h-3 w-3" />
+                    全部清空
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-[var(--ink-muted)]">
+                  匹配{' '}
+                  <span className="tnum font-medium text-[var(--ink-primary)]">
+                    {stats.filteredTotal}
+                  </span>{' '}
+                  个{isCategoryTab ? '分类' : '标签'}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <motion.button
-          whileHover={{ y: -1, scale: 1.01 }}
-          whileTap={{ scale: 0.97 }}
-          transition={spring.precise}
-          onClick={openCreate}
-          className={cn(
-            'group inline-flex items-center gap-2 px-4 sm:px-5 h-10 rounded-xl',
-            'bg-[var(--aurora-1)] text-white font-medium text-[13.5px]',
-            'shadow-[0_10px_28px_-10px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]',
-            'hover:brightness-110 transition-all'
-          )}
-        >
-          <Plus className="w-4 h-4" strokeWidth={2.2} />
-          {isCategoryTab ? '新建分类' : '新建标签'}
-          <Sparkles
-            className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:rotate-12 transition-all"
-            strokeWidth={1.8}
-          />
-        </motion.button>
-      </motion.header>
+        <div className={cn(taxonomyShellClass, 'relative')} data-refreshing={listRefreshing}>
+          <AnimatePresence>
+            {listRefreshing && (
+              <>
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-[3.65rem] z-20 h-px overflow-hidden bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <motion.span
+                    className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-transparent via-[var(--aurora-1)] to-transparent"
+                    initial={{ x: '-100%' }}
+                    animate={{ x: '220%' }}
+                    transition={{ duration: 1.05, repeat: Infinity, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                </motion.div>
+                <motion.div
+                  className="pointer-events-none absolute right-4 top-[4.35rem] z-20 inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_88%,transparent)] px-2.5 text-xs font-semibold text-[var(--ink-secondary)] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.45)] backdrop-blur"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--aurora-1)]" />
+                  刷新中
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
-      {/* 标签页切换 —— Codex segmented */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...transition.flow, delay: 0.04 }}
-        className="inline-flex items-center gap-1 p-1 rounded-xl surface-leaf"
-        style={{ width: 'fit-content' }}
-      >
-        {(
-          [
-            { key: 'categories' as const, label: '分类管理', Icon: Folder },
-            { key: 'tags' as const, label: '标签管理', Icon: TagIcon },
-          ]
-        ).map(({ key, label, Icon }) => {
-          const active = activeTab === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={cn(
-                'relative inline-flex items-center gap-1.5 px-3.5 sm:px-4 h-9 rounded-lg',
-                'text-[13px] font-medium transition-colors',
-                active
-                  ? 'text-white'
-                  : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
-              )}
-            >
-              {active && (
-                <motion.span
-                  layoutId="categories-tab-indicator"
-                  className="absolute inset-0 rounded-lg bg-[var(--aurora-1)] shadow-[0_4px_14px_-6px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]"
-                  transition={{ type: 'spring', stiffness: 480, damping: 36 }}
-                />
-              )}
-              <span className="relative z-10 inline-flex items-center gap-1.5">
-                <Icon className="w-4 h-4" strokeWidth={1.8} />
-                {label}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                {isCategoryTab ? <Folder className="h-4 w-4" /> : <TagIcon className="h-4 w-4" />}
               </span>
-            </button>
-          );
-        })}
-      </motion.div>
-
-      {/* 内容区 */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={transition.flow}
-        >
-          {loading ? (
-            <ContentSkeleton variant={isCategoryTab ? 'list' : 'grid'} />
-          ) : error ? (
-            <div className="surface-leaf p-10 text-center">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--signal-danger)]">
-                Error
-              </p>
-              <p className="mt-2 text-[var(--ink-secondary)] text-[14px]">
-                {error}
-              </p>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">
+                  {isCategoryTab ? '分类目录' : '标签集合'}
+                </p>
+                <p className="text-xs text-[var(--ink-muted)]">
+                  <span className="sm:hidden">
+                    {debouncedSearch ? '关键词筛选中' : isCategoryTab ? '文章主线' : '主题聚合'}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {debouncedSearch
+                      ? `正在按“${debouncedSearch}”筛选结果`
+                      : isCategoryTab
+                        ? '分类用于承载文章主线、导航入口和归档结构'
+                        : '标签用于连接跨分类主题、专题聚合和写作上下文'}
+                  </span>
+                </p>
+              </div>
             </div>
-          ) : isCategoryTab ? (
-            <CategoryList
-              categories={categories}
-              onEdit={openEditCategory}
-              onDelete={(c) =>
-                setDeleteTarget({ id: c.id, name: c.name, type: 'category' })
-              }
-              onCreate={openCreate}
-            />
+            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
+              {loading ? '加载中' : listRefreshing ? '刷新中' : `${stats.filteredTotal}/${stats.total}`}
+            </span>
+          </div>
+
+          {loading ? (
+            <div className="p-4 sm:p-5">
+              <ContentSkeleton variant={isCategoryTab ? 'list' : 'grid'} />
+            </div>
+          ) : error ? (
+            <div className="p-4 sm:p-5">
+              <div className="rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_20%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_7%,transparent)] px-6 py-10 text-center">
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--signal-danger)]">
+                  Error
+                </p>
+                <p className="mt-2 text-[14px] text-[var(--ink-secondary)]">{error}</p>
+              </div>
+            </div>
+          ) : stats.total === 0 ? (
+            <div className="p-4 sm:p-5">
+              <EmptyState type={isCategoryTab ? 'category' : 'tag'} onCreate={openCreate} />
+            </div>
+          ) : stats.filteredTotal === 0 ? (
+            <div className="p-4 sm:p-5">
+              <EmptyState
+                type={isCategoryTab ? 'category' : 'tag'}
+                onCreate={resetFilters}
+                title={isCategoryTab ? '没有匹配的分类' : '没有匹配的标签'}
+                description="调整关键词后再查看，或清空筛选返回完整列表。"
+                actionText="清空筛选"
+              />
+            </div>
           ) : (
-            <TagGrid
-              tags={tags}
-              onEdit={openEditTag}
-              onDelete={(t) =>
-                setDeleteTarget({ id: t.id, name: t.name, type: 'tag' })
-              }
-              onCreate={openCreate}
-            />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${activeTab}-${debouncedSearch}-${refreshPulse}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: listRefreshing ? 0.62 : 1, y: listRefreshing ? 2 : 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="p-4 sm:p-5"
+              >
+                {isCategoryTab ? (
+                  <CategoryList
+                    categories={filteredCategories}
+                    onEdit={openEditCategory}
+                    onDelete={(category) =>
+                      setDeleteTarget({ id: category.id, name: category.name, type: 'category' })
+                    }
+                    onCreate={openCreate}
+                  />
+                ) : (
+                  <TagGrid
+                    tags={filteredTags}
+                    onEdit={openEditTag}
+                    onDelete={(tag) =>
+                      setDeleteTarget({ id: tag.id, name: tag.name, type: 'tag' })
+                    }
+                    onCreate={openCreate}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
           )}
-        </motion.div>
-      </AnimatePresence>
+        </div>
+      </div>
 
       {/* 创建 / 编辑弹窗 */}
       <CreateItemModal
@@ -651,11 +861,25 @@ function TagGrid({
 function EmptyState({
   type,
   onCreate,
+  title,
+  description,
+  actionText,
 }: {
   type: 'category' | 'tag';
   onCreate: () => void;
+  title?: string;
+  description?: string;
+  actionText?: string;
 }) {
   const isCategory = type === 'category';
+  const resolvedTitle = title ?? (isCategory ? '尚未创建任何分类' : '标签库还很空旷');
+  const resolvedDescription =
+    description ??
+    (isCategory
+      ? '建立分类,让文章像图书馆一样井然有序。'
+      : '用标签为文章贴上标识,串起跨分类的脉络。');
+  const resolvedActionText = actionText ?? `创建第一个${isCategory ? '分类' : '标签'}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
@@ -691,12 +915,10 @@ function EmptyState({
         <h3
           className="font-editorial italic text-[1.5rem] text-[var(--ink-primary)] mt-3 leading-snug"
         >
-          {isCategory ? '尚未创建任何分类' : '标签库还很空旷'}
+          {resolvedTitle}
         </h3>
         <p className="text-[13px] text-[var(--ink-secondary)] mt-2">
-          {isCategory
-            ? '建立分类,让文章像图书馆一样井然有序。'
-            : '用标签为文章贴上标识,串起跨分类的脉络。'}
+          {resolvedDescription}
         </p>
         <motion.button
           whileHover={{ y: -1, scale: 1.02 }}
@@ -711,7 +933,7 @@ function EmptyState({
           )}
         >
           <Plus className="w-4 h-4" strokeWidth={2.2} />
-          创建第一个{isCategory ? '分类' : '标签'}
+          {resolvedActionText}
         </motion.button>
       </div>
     </motion.div>

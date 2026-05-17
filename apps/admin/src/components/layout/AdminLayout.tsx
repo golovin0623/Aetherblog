@@ -5,15 +5,43 @@ import { useSidebarStore } from '@/stores';
 import { MobileHeader } from './MobileHeader';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CommandPalette } from '@/components/common/CommandPalette';
+import { IntelligenceShell } from '@/components/intelligence';
+import { GlobalPricingSkeletonContent } from '@/pages/global-pricing/GlobalPricingSkeleton';
 
 import { useMediaQuery } from '@/hooks';
 import { cn } from '@/lib/utils';
+
+function AdminRouteFallback({ pathname }: { pathname: string }) {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+
+  if (normalizedPath === '/ai-config/pricing') {
+    return <GlobalPricingSkeletonContent />;
+  }
+
+  return (
+    <div className="flex h-full items-center justify-center min-h-[200px]">
+      <LoadingSpinner />
+    </div>
+  );
+}
+
+const INTELLIGENCE_LAYOUT_PATHS = new Set([
+  '/agent-workflows',
+  '/ai-tools',
+  '/ai-config',
+  '/ai-config/pricing',
+  '/analytics',
+  '/search-config',
+]);
 
 export function AdminLayout() {
   const { isCollapsed, isAutoCollapsed } = useSidebarStore();
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
+  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+  const isGlobalPricingRoute = normalizedPath === '/ai-config/pricing';
+  const isIntelligenceRoute = INTELLIGENCE_LAYOUT_PATHS.has(normalizedPath);
   // 自管布局/滚动的页面：媒体库 + AI 协同写作
   const isAppPage =
     location.pathname.startsWith('/media') ||
@@ -45,15 +73,20 @@ export function AdminLayout() {
         {/* 页面内容 */}
         <main className={cn(
           "flex-1 relative overflow-auto overscroll-contain",
+          isIntelligenceRoute && "admin-intelligence-canvas",
           isAppPage ? "p-0" : "p-4 md:p-6"
         )}>
-          <Suspense fallback={
-            <div className="flex h-full items-center justify-center min-h-[200px]">
-              <LoadingSpinner />
-            </div>
-          }>
-            <Outlet />
-          </Suspense>
+          {isGlobalPricingRoute ? (
+            <IntelligenceShell className="global-pricing-page" contentClassName="global-pricing-layout">
+              <Suspense fallback={<AdminRouteFallback pathname={location.pathname} />}>
+                <Outlet />
+              </Suspense>
+            </IntelligenceShell>
+          ) : (
+            <Suspense fallback={<AdminRouteFallback pathname={location.pathname} />}>
+              <Outlet />
+            </Suspense>
+          )}
         </main>
       </div>
 

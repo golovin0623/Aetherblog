@@ -170,11 +170,22 @@ function commentPillStyle(tone: string): CSSProperties {
 
 function statusChipClass(isSelected: boolean): string {
   return cn(
-    'h-7 shrink-0 whitespace-nowrap rounded-full px-3 text-xs font-medium',
-    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+    'relative z-0 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium',
+    'transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)]',
     isSelected
-      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+      ? 'text-[var(--ink-primary)]'
       : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+  );
+}
+
+function SegmentThumb({ layoutId }: { layoutId: string }) {
+  return (
+    <motion.span
+      layoutId={layoutId}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-0 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+      transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.55 }}
+    />
   );
 }
 
@@ -533,7 +544,8 @@ export default function CommentsPage() {
                     className={statusChipClass(isSelected)}
                     title={cfg?.description}
                   >
-                    {status === 'all' ? '全部' : cfg?.label}
+                    {isSelected && <SegmentThumb layoutId="comment-status-segment-thumb" />}
+                    <span className="relative z-10">{status === 'all' ? '全部' : cfg?.label}</span>
                   </button>
                 );
               })}
