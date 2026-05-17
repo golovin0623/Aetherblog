@@ -848,13 +848,22 @@ wait_for_blog_http() {
 
 get_process_cwd() {
     local pid=$1
+    local cwd
     if command -v lsof > /dev/null 2>&1; then
-        lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'
-        return 0
+        if cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'); then
+            if [ -n "$cwd" ]; then
+                printf '%s\n' "$cwd"
+                return 0
+            fi
+        fi
     fi
     if command -v pwdx > /dev/null 2>&1; then
-        pwdx "$pid" 2>/dev/null | awk '{print $2}'
-        return 0
+        if cwd=$(pwdx "$pid" 2>/dev/null | awk '{print $2}'); then
+            if [ -n "$cwd" ]; then
+                printf '%s\n' "$cwd"
+                return 0
+            fi
+        fi
     fi
     return 1
 }
