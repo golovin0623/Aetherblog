@@ -226,15 +226,16 @@ export function AnalyticsPage() {
           setPricingGaps([]);
         }
       } finally {
-        if (!mountedRef.current) return;
-        if (isPaginationOnlyRefresh) {
-          if (latestRecordsFetchIdRef.current === recordsFetchId) {
-            setRecordsRefreshing(false);
-          }
-        } else {
-          if (latestDashboardFetchIdRef.current === dashboardFetchId) {
-            setDashboardLoading(false);
-            setHasLoadedDashboard(true);
+        if (mountedRef.current) {
+          if (isPaginationOnlyRefresh) {
+            if (latestRecordsFetchIdRef.current === recordsFetchId) {
+              setRecordsRefreshing(false);
+            }
+          } else {
+            if (latestDashboardFetchIdRef.current === dashboardFetchId) {
+              setDashboardLoading(false);
+              setHasLoadedDashboard(true);
+            }
           }
         }
       }
