@@ -159,6 +159,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
             className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? '收起目录' : '展开目录'}
+            title={isExpanded ? '收起目录' : '展开目录'}
             aria-controls="toc-content-area" // 请将此 ID 与 motion.div 的 id 保持一致
           >
             <ChevronRight
