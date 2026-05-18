@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { Select, type SelectOption } from '@aetherblog/ui';
+import { ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AdminPagination } from './AdminPagination';
 
 interface Column<T> {
   key: keyof T | string;
@@ -23,37 +23,6 @@ interface DataTableProps<T> {
   onPageChange?: (page: number) => void;
   pageSizeOptions?: number[];
   onPageSizeChange?: (pageSize: number) => void;
-}
-
-type PaginationItem = number | 'start-ellipsis' | 'end-ellipsis';
-
-function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
-  if (totalPages <= 1) return [1];
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
-  let windowStart = Math.max(2, safeCurrentPage - 1);
-  let windowEnd = Math.min(totalPages - 1, safeCurrentPage + 1);
-
-  if (safeCurrentPage <= 4) {
-    windowStart = 2;
-    windowEnd = Math.min(totalPages - 1, 5);
-  } else if (safeCurrentPage >= totalPages - 3) {
-    windowStart = Math.max(2, totalPages - 4);
-    windowEnd = totalPages - 1;
-  }
-
-  const items: PaginationItem[] = [1];
-  if (windowStart > 2) items.push('start-ellipsis');
-  for (let pageNumber = windowStart; pageNumber <= windowEnd; pageNumber += 1) {
-    items.push(pageNumber);
-  }
-  if (windowEnd < totalPages - 1) items.push('end-ellipsis');
-  items.push(totalPages);
-
-  return items;
 }
 
 export function DataTable<T extends { id: number | string }>({
@@ -81,16 +50,11 @@ export function DataTable<T extends { id: number | string }>({
 
   const totalPages = Math.ceil(total / pageSize);
   const safeTotalPages = Math.max(totalPages, 1);
-  const paginationItems = buildPaginationItems(page, safeTotalPages);
   const reservedRowCount = total > 0 ? Math.min(pageSize, total) : 0;
   const emptyRowCount = !loading && data.length > 0
     ? Math.max(reservedRowCount - data.length, 0)
     : 0;
   const showLoadingRow = loading && data.length === 0;
-  const pageSizeSelectOptions: SelectOption[] = (pageSizeOptions || []).map((opt) => ({
-    value: String(opt),
-    label: `${opt} 条/页`,
-  }));
   const paginationBusy = loading || refreshing;
 
   return (
@@ -217,108 +181,16 @@ export function DataTable<T extends { id: number | string }>({
 
       {/* 分页 */}
       {(totalPages > 1 || (pageSizeOptions && pageSizeOptions.length > 0 && total > 0)) && (
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:grid-cols-[minmax(0,1fr)_auto_auto] md:px-4 md:py-3">
-          <span className="tnum order-1 col-span-2 flex min-w-0 flex-wrap items-center justify-start gap-1.5 text-left text-[13px] font-semibold leading-5 text-[var(--ink-muted)] md:col-span-1 md:text-xs">
-            <span>
-              第 <span className="text-[var(--ink-secondary)]">{page}</span> / {safeTotalPages} 页
-            </span>
-            <span className="mx-1 text-[var(--ink-subtle)]">·</span>
-            <span>
-              共 <span className="text-[var(--ink-secondary)]">{total.toLocaleString()}</span> 条
-            </span>
-          </span>
-
-          {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-            <Select
-              value={String(pageSize)}
-              onValueChange={(nextValue) => onPageSizeChange(Number(nextValue))}
-              options={pageSizeSelectOptions}
-              ariaLabel="每页条数"
-              size="sm"
-              fullWidth={false}
-              className="order-2 col-start-3 !h-10 !w-[112px] md:order-3 md:col-start-auto md:!h-8 md:!w-[132px]"
-              disabled={paginationBusy}
-            />
-          )}
-
-          <div className="order-3 col-span-3 flex w-full items-center justify-center md:order-2 md:col-span-1 md:w-auto md:justify-end">
-            {totalPages > 1 ? (
-              <div className="grid w-full grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 md:flex md:w-auto md:gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => onPageChange?.(page - 1)}
-                  disabled={paginationBusy || page <= 1}
-                  className={cn(
-                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
-                    paginationBusy || page <= 1
-                      ? 'text-[var(--ink-muted)]/50'
-                      : 'text-[var(--ink-secondary)]'
-                  )}
-                  aria-label="上一页"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <div
-                  role="navigation"
-                  aria-label="分页导航"
-                  className="no-scrollbar flex min-w-0 max-w-none snap-x snap-proximity items-center gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth px-1 touch-pan-x [scrollbar-width:none] md:max-w-[520px] md:px-0.5 lg:max-w-none"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                  {paginationItems.map((entry) => {
-                    if (typeof entry !== 'number') {
-                      return (
-                        <span
-                          key={entry}
-                          aria-hidden="true"
-                          className="flex h-10 w-7 flex-shrink-0 items-center justify-center text-xs font-semibold text-[var(--ink-muted)] md:h-8 md:w-7"
-                        >
-                          ...
-                        </span>
-                      );
-                    }
-                    const isActive = entry === page;
-                    return (
-                      <button
-                        key={entry}
-                        type="button"
-                        onClick={() => {
-                          if (!paginationBusy && !isActive) onPageChange?.(entry);
-                        }}
-                        disabled={paginationBusy}
-                        aria-current={isActive ? 'page' : undefined}
-                        aria-label={`第 ${entry} 页`}
-                        className={cn(
-                          'flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-8 md:text-xs',
-                          isActive
-                            ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[0_12px_24px_-20px_color-mix(in_oklch,var(--aurora-1)_55%,black)]'
-                            : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
-                        )}
-                      >
-                        {entry}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onPageChange?.(page + 1)}
-                  disabled={paginationBusy || page >= totalPages}
-                  className={cn(
-                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
-                    paginationBusy || page >= totalPages
-                      ? 'text-[var(--ink-muted)]/50'
-                      : 'text-[var(--ink-secondary)]'
-                  )}
-                  aria-label="下一页"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="h-8" />
-            )}
-          </div>
-        </div>
+        <AdminPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          totalPages={safeTotalPages}
+          pageSizeOptions={pageSizeOptions}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+          loading={paginationBusy}
+        />
       )}
     </div>
   );

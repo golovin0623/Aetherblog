@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   ArrowLeft,
   Search as SearchIcon,
@@ -33,6 +31,7 @@ import {
   type ActivityCategoryKey,
   type ActivityStatusKey,
 } from '@/lib/activityVisuals';
+import { AdminPagination } from '@/components/common/AdminPagination';
 
 const categories: Array<'all' | ActivityCategoryKey> = [
   'all', 'post', 'comment', 'user', 'system', 'friend', 'media', 'ai', 'security',
@@ -41,10 +40,6 @@ const categories: Array<'all' | ActivityCategoryKey> = [
 const statuses: Array<'all' | ActivityStatusKey> = ['all', 'INFO', 'SUCCESS', 'WARNING', 'ERROR'];
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
-const PAGE_SIZE_SELECT_OPTIONS: SelectOption[] = PAGE_SIZE_OPTIONS.map((size) => ({
-  value: String(size),
-  label: String(size),
-}));
 
 const activityPanelClass = cn(
   'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
@@ -198,8 +193,6 @@ export default function ActivitiesPage() {
   const activities = data?.list || [];
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const rangeStart = total === 0 ? 0 : (pageNum - 1) * pageSize + 1;
-  const rangeEnd = Math.min(pageNum * pageSize, total);
   const listRefreshing = (isFetching && !isLoading) || manualRefreshing;
 
   useEffect(() => {
@@ -222,8 +215,7 @@ export default function ActivitiesPage() {
     }
   };
 
-  const handlePageSizeChange = (nextValue: string) => {
-    const nextSize = Number(nextValue);
+  const handlePageSizeChange = (nextSize: number) => {
     if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
     setPageSize(nextSize);
     setPageNum(1);
@@ -853,52 +845,15 @@ export default function ActivitiesPage() {
         )}
 
           {(total > 0 || totalPages > 1) && (
-            <div className="flex flex-col gap-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="tnum text-xs font-semibold text-[var(--ink-muted)]">
-                显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
-                <span className="mx-2 text-[var(--ink-subtle)]">/</span>
-                共 <span className="text-[var(--ink-secondary)]">{total}</span> 条
-                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
-                第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> / {totalPages} 页
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
-                  <span>每页</span>
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={handlePageSizeChange}
-                    options={PAGE_SIZE_SELECT_OPTIONS}
-                    size="sm"
-                    fullWidth={false}
-                    ariaLabel="每页条数"
-                    className="!h-8 w-[76px] !rounded-lg !px-3 !font-mono !text-xs"
-                  />
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPageNum((p) => Math.max(1, p - 1))}
-                    disabled={pageNum <= 1}
-                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="上一页"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="tnum min-w-8 px-2 text-center text-sm font-semibold text-[var(--ink-secondary)]">
-                    {pageNum}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPageNum((p) => Math.min(totalPages, p + 1))}
-                    disabled={pageNum >= totalPages}
-                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="下一页"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <AdminPagination
+              page={pageNum}
+              total={total}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={setPageNum}
+              onPageSizeChange={handlePageSizeChange}
+            />
           )}
       </div>
       </div>
