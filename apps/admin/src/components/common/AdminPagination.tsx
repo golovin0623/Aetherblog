@@ -21,6 +21,7 @@ type PaginationShellProps = {
   pageSize?: number;
   pageSizeOptions?: number[];
   onPageSizeChange?: (pageSize: number) => void;
+  itemLabel?: string;
   pageSizeAriaLabel?: string;
   disabled?: boolean;
   className?: string;
@@ -53,6 +54,7 @@ export type AdminCursorPaginationProps = {
   pageSize?: number;
   pageSizeOptions?: number[];
   onPageSizeChange?: (pageSize: number) => void;
+  itemLabel?: string;
   pageSizeAriaLabel?: string;
   disabled?: boolean;
   className?: string;
@@ -120,14 +122,16 @@ function PaginationShell({
   pageSize,
   pageSizeOptions,
   onPageSizeChange,
-  pageSizeAriaLabel = '每页条数',
+  itemLabel = '条',
+  pageSizeAriaLabel,
   disabled = false,
   className,
   children,
 }: PaginationShellProps) {
+  const resolvedPageSizeAriaLabel = pageSizeAriaLabel ?? `每页${itemLabel}数`;
   const pageSizeSelectOptions: SelectOption[] = useMemo(
-    () => (pageSizeOptions || []).map((size) => ({ value: String(size), label: `${size} 条/页` })),
-    [pageSizeOptions]
+    () => (pageSizeOptions || []).map((size) => ({ value: String(size), label: `${size} ${itemLabel}/页` })),
+    [itemLabel, pageSizeOptions]
   );
   const showPageSizeSelect = Boolean(
     pageSize !== undefined &&
@@ -155,7 +159,7 @@ function PaginationShell({
             onPageSizeChange?.(nextSize);
           }}
           options={pageSizeSelectOptions}
-          ariaLabel={pageSizeAriaLabel}
+          ariaLabel={resolvedPageSizeAriaLabel}
           size="sm"
           fullWidth={false}
           className="order-2 col-start-3 !h-10 !w-[112px] md:order-3 md:col-start-auto md:!h-8 md:!w-[132px]"
@@ -213,7 +217,7 @@ export function AdminPagination({
   summaryLoading = false,
   disabled = false,
   className,
-  pageSizeAriaLabel = '每页条数',
+  pageSizeAriaLabel,
 }: AdminPaginationProps) {
   const computedTotalPages = totalPages ?? Math.ceil(total / pageSize);
   const safeTotalPages = Math.max(computedTotalPages, 1);
@@ -282,6 +286,7 @@ export function AdminPagination({
       pageSize={pageSize}
       pageSizeOptions={pageSizeOptions}
       onPageSizeChange={onPageSizeChange}
+      itemLabel={itemLabel}
       pageSizeAriaLabel={pageSizeAriaLabel}
       disabled={loading || disabled || summaryLoading}
       className={className}
@@ -332,6 +337,7 @@ export function AdminPagination({
                           }
                         }}
                         autoFocus
+                        disabled={isPageChangeDisabled}
                         inputMode="numeric"
                         className="tnum h-full min-w-0 flex-1 rounded-md bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-1 text-center text-xs font-semibold text-[var(--ink-primary)] outline-none focus:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
                         aria-label="输入页码"
@@ -412,7 +418,8 @@ export function AdminCursorPagination({
   pageSize,
   pageSizeOptions,
   onPageSizeChange,
-  pageSizeAriaLabel = '每页条数',
+  itemLabel = '条',
+  pageSizeAriaLabel,
   disabled = false,
   className,
 }: AdminCursorPaginationProps) {
@@ -422,6 +429,7 @@ export function AdminCursorPagination({
       pageSize={pageSize}
       pageSizeOptions={pageSizeOptions}
       onPageSizeChange={onPageSizeChange}
+      itemLabel={itemLabel}
       pageSizeAriaLabel={pageSizeAriaLabel}
       disabled={disabled}
       className={className}

@@ -973,6 +973,7 @@ export default function CloudExplorerPage() {
               pageSize={pageSize}
               pageSizeOptions={PAGE_SIZE_OPTIONS}
               onPageSizeChange={handlePageSizeChange}
+              itemLabel="个"
               pageSizeAriaLabel="每页对象数"
               className="shrink-0"
               summary={
