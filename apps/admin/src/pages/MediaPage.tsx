@@ -48,7 +48,7 @@ import { TrashDialog } from './media/components/TrashDialog';
 import { SyncDialog } from './media/components/SyncDialog';
 import { MediaGridSkeleton as MediaSkeletonGrid, MediaListSkeleton } from '@/components/skeletons/MediaSkeleton';
 import { useMediaKeyboardShortcuts } from '@/hooks/useMediaKeyboardShortcuts';
-import { Pagination } from '@/components/common/Pagination';
+import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -1064,14 +1064,13 @@ export default function MediaPage() {
                         )}
 
                         {data && data.total > 20 && (
-                          <div className="mt-6 flex justify-center">
-                            <Pagination
-                              page={page}
-                              total={data.total}
-                              pageSize={20}
-                              onPageChange={setPage}
-                            />
-                          </div>
+                          <AdminPagination
+                            page={page}
+                            total={data.total}
+                            pageSize={20}
+                            onPageChange={setPage}
+                            className="mt-6"
+                          />
                         )}
                       </div>
                     ) : (

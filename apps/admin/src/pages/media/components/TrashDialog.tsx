@@ -27,6 +27,7 @@ import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { formatFileSize, formatRelativeTime } from '@aetherblog/utils';
 import { DeleteMediaConfirmModal } from '@/components/media/DeleteMediaConfirmModal';
+import { AdminPagination } from '@/components/common/AdminPagination';
 
 interface TrashDialogProps {
   open: boolean;
@@ -419,25 +420,15 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
             {/* 分页 */}
             {data && data.total > 20 && (
-              <div className="flex items-center justify-center gap-2 px-6 py-4 border-t border-[var(--border-default)] dark:border-white/10 shrink-0">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                >
-                  上一页
-                </button>
-                <span className="text-sm text-[var(--text-muted)]">
-                  {page} / {Math.ceil(data.total / 20)}
-                </span>
-                <button
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page >= Math.ceil(data.total / 20)}
-                  className="px-3 py-1.5 text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                >
-                  下一页
-                </button>
-              </div>
+              <AdminPagination
+                page={page}
+                total={data.total}
+                totalPages={Math.ceil(data.total / 20)}
+                pageSize={20}
+                onPageChange={setPage}
+                itemLabel="个"
+                className="shrink-0"
+              />
             )}
           </motion.div>
         </div>

@@ -45,6 +45,7 @@ import { Button, ConfirmModal, Select, type SelectOption } from '@aetherblog/ui'
 import { cn, formatFileSize } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminCursorPagination } from '@/components/common/AdminPagination';
 
 interface ObjectListing {
   key: string;
@@ -82,10 +83,6 @@ interface MutableObjectTreeNode extends Omit<ObjectTreeNode, 'children'> {
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 const EMPTY_OBJECTS: ObjectListing[] = [];
-const PAGE_SIZE_SELECT_OPTIONS: SelectOption[] = PAGE_SIZE_OPTIONS.map((size) => ({
-  value: String(size),
-  label: String(size),
-}));
 
 const cloudPanelClass = cn(
   'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
@@ -614,8 +611,7 @@ export default function CloudExplorerPage() {
     setSelectedKeys(new Set());
   };
 
-  const handlePageSizeChange = (nextValue: string) => {
-    const nextSize = Number(nextValue);
+  const handlePageSizeChange = (nextSize: number) => {
     if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
     setPageSize(nextSize);
     resetPagingAndSelection();
@@ -968,54 +964,32 @@ export default function CloudExplorerPage() {
           </div>
 
           {providerId && (objects.length > 0 || tokenStack.length > 0) && (
-            <footer className="flex shrink-0 flex-col gap-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="tnum text-xs font-semibold text-[var(--ink-muted)]">
-                显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
-                <span className="mx-2 text-[var(--ink-subtle)]">/</span>
-                游标分页
-                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
-                第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> 页
-                <span className="mx-2 text-[var(--ink-subtle)]">·</span>
-                <span className="text-[var(--ink-secondary)]">{nextToken ? '仍有下一页' : '当前末页'}</span>
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-muted)]">
-                  <span>每页</span>
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={handlePageSizeChange}
-                    options={PAGE_SIZE_SELECT_OPTIONS}
-                    size="sm"
-                    fullWidth={false}
-                    ariaLabel="每页对象数"
-                    className="!h-8 w-24 !rounded-lg !px-3 !font-mono !text-xs"
-                  />
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handlePrevPage}
-                    disabled={tokenStack.length === 0}
-                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="上一页"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="tnum min-w-8 px-2 text-center text-sm font-semibold text-[var(--ink-secondary)]">
-                    {pageNum}
+            <AdminCursorPagination
+              page={pageNum}
+              hasPrevious={tokenStack.length > 0}
+              hasNext={Boolean(nextToken)}
+              onPrevious={handlePrevPage}
+              onNext={handleNextPage}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageSizeChange={handlePageSizeChange}
+              itemLabel="个"
+              pageSizeAriaLabel="每页对象数"
+              className="shrink-0"
+              summary={
+                <>
+                  <span>
+                    显示 <span className="text-[var(--ink-secondary)]">{rangeStart}-{rangeEnd}</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleNextPage}
-                    disabled={!nextToken}
-                    className="admin-module-action-button min-h-0 p-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="下一页"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </footer>
+                  <span className="mx-1 text-[var(--ink-subtle)]">·</span>
+                  <span>
+                    第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> 页
+                  </span>
+                  <span className="mx-1 text-[var(--ink-subtle)]">·</span>
+                  <span className="text-[var(--ink-secondary)]">{nextToken ? '仍有下一页' : '当前末页'}</span>
+                </>
+              }
+            />
           )}
         </main>
       </div>

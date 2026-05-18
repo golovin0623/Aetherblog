@@ -1,10 +1,9 @@
-import { useEffect, useState, useCallback, useRef, useMemo, type FormEvent } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown,
-  ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock, Eye,
-  FolderOpen, Tag as TagIcon, BarChart3, FileText,
+  Settings, Sparkles, EyeOff, Lock, Eye, FolderOpen, Tag as TagIcon, BarChart3, FileText,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -16,6 +15,7 @@ import { Select, DateRangePicker, type SelectOption, type DateRangeValue } from 
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
 import PostTableRow from '@/components/posts/PostTableRow';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminPagination } from '@/components/common/AdminPagination';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
 
@@ -38,87 +38,13 @@ const STATUS_FILTERS: Array<{ key: string | undefined; label: string }> = [
 ];
 
 const DEFAULT_POST_PAGE_SIZE = 10;
-const PAGE_SIZE_OPTIONS: SelectOption[] = [
-  { value: '10', label: '10 条/页' },
-  { value: '20', label: '20 条/页' },
-  { value: '50', label: '50 条/页' },
-  { value: '200', label: '200 条/页' },
-];
-const PAGINATION_FULL_RENDER_THRESHOLD = 10;
-const PAGINATION_EDGE_COUNT = 5;
-const PAGINATION_SIBLING_COUNT = 5;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
 const POST_ROW_HEIGHT_CLASS = 'h-[76px]';
 const MOBILE_POST_CARD_CLASS = cn(
   'grid h-[190px] grid-rows-[48px_20px_22px_44px] gap-2 p-4',
   'transition-colors active:bg-[var(--bg-card-hover)]'
 );
 const MOBILE_POST_PLACEHOLDER_CLASS = 'h-[190px] pointer-events-none';
-
-type PaginationEllipsis = {
-  type: 'ellipsis';
-  key: string;
-  start: number;
-  end: number;
-};
-
-type PaginationItem = number | PaginationEllipsis;
-
-function pageRange(start: number, end: number): number[] {
-  if (end < start) return [];
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
-}
-
-function isPaginationEllipsis(item: PaginationItem): item is PaginationEllipsis {
-  return typeof item !== 'number';
-}
-
-function buildPaginationItems(currentPage: number, totalPages: number): PaginationItem[] {
-  if (totalPages <= 1) return [1];
-  if (totalPages <= PAGINATION_FULL_RENDER_THRESHOLD) {
-    return pageRange(1, totalPages);
-  }
-
-  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
-  const rawRanges = ([
-    [1, Math.min(PAGINATION_EDGE_COUNT, totalPages)],
-    [
-      Math.max(1, safeCurrentPage - PAGINATION_SIBLING_COUNT),
-      Math.min(totalPages, safeCurrentPage + PAGINATION_SIBLING_COUNT),
-    ],
-    [Math.max(1, totalPages - PAGINATION_EDGE_COUNT + 1), totalPages],
-  ] satisfies Array<[number, number]>).sort((a, b) => a[0] - b[0]);
-
-  const ranges = rawRanges.reduce<Array<[number, number]>>((merged, range) => {
-    const last = merged[merged.length - 1];
-    if (!last || range[0] > last[1] + 1) {
-      merged.push([...range]);
-      return merged;
-    }
-    last[1] = Math.max(last[1], range[1]);
-    return merged;
-  }, []);
-
-  const items: PaginationItem[] = [];
-  let lastPage = 0;
-  for (const [start, end] of ranges) {
-    if (start > lastPage + 1) {
-      if (start === lastPage + 2) {
-        items.push(lastPage + 1);
-      } else {
-        items.push({
-          type: 'ellipsis',
-          key: `ellipsis-${lastPage + 1}-${start - 1}`,
-          start: lastPage + 1,
-          end: start - 1,
-        });
-      }
-    }
-    items.push(...pageRange(start, end));
-    lastPage = end;
-  }
-
-  return items;
-}
 
 const postPanelClass = cn(
   'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
@@ -231,11 +157,6 @@ export default function PostsPage() {
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
 
-  // 分页滚动条: 当前页跟随滚动并在可视区域居中显示, 边界时自然贴合首尾
-  const pageStripRef = useRef<HTMLDivElement>(null);
-  const [pageJumpTarget, setPageJumpTarget] = useState<string | null>(null);
-  const [pageJumpValue, setPageJumpValue] = useState('');
-
   // 点击外部区域时关闭标签弹出框
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -246,24 +167,6 @@ export default function PostsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // 当前页变化时将 active 按钮滚动到容器中心; 容器自身滚动, 不影响外层视口.
-  // 当 active 靠近首尾时, scrollLeft 被浏览器自动钳制在 [0, scrollWidth - clientWidth],
-  // 自然呈现 "近端跟随移动 / 中段始终居中" 的效果.
-  useEffect(() => {
-    const container = pageStripRef.current;
-    if (!container) return;
-    const activeBtn = container.querySelector<HTMLButtonElement>('[aria-current="page"]');
-    if (!activeBtn) return;
-    const containerRect = container.getBoundingClientRect();
-    const btnRect = activeBtn.getBoundingClientRect();
-    const target =
-      container.scrollLeft +
-      (btnRect.left + btnRect.width / 2) -
-      (containerRect.left + containerRect.width / 2);
-    container.scrollTo({ left: target, behavior: 'smooth' });
-  }, [pagination.pageNum, pagination.pages]);
-
 
   // 防抖搜索
   useEffect(() => {
@@ -359,34 +262,14 @@ export default function PostsPage() {
     const nextPage = Math.min(Math.max(page, 1), maxPage);
     if (loading || nextPage === pagination.pageNum) return;
     setActiveTagPopover(null);
-    setPageJumpTarget(null);
     fetchPosts(nextPage, activeStatus, debouncedSearch || undefined, filters, pageSize);
   };
 
-  const handleOpenPageJump = (entry: PaginationEllipsis) => {
-    const defaultPage =
-      pagination.pageNum >= entry.start && pagination.pageNum <= entry.end
-        ? pagination.pageNum
-        : entry.start;
-    setPageJumpTarget(entry.key);
-    setPageJumpValue(String(defaultPage));
-  };
-
-  const handlePageJumpSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!pageJumpValue.trim()) return;
-    const page = Number(pageJumpValue);
-    if (!Number.isFinite(page)) return;
-    handlePageChange(Math.trunc(page));
-  };
-
-  const handlePageSizeChange = (next: string) => {
-    const nextPageSize = Number(next);
-    if (!PAGE_SIZE_OPTIONS.some((option) => option.value === next) || nextPageSize === pageSize) {
+  const handlePageSizeChange = (nextPageSize: number) => {
+    if (!PAGE_SIZE_OPTIONS.includes(nextPageSize) || nextPageSize === pageSize) {
       return;
     }
     setActiveTagPopover(null);
-    setPageJumpTarget(null);
     setPageSize(nextPageSize);
   };
 
@@ -617,10 +500,6 @@ export default function PostsPage() {
   const activeStatusLabel = STATUS_FILTERS.find((item) => item.key === activeStatus)?.label ?? '全部';
   const totalPages = pagination.pages || 1;
   const currentPaginationPageSize = pagination.pageSize || pageSize;
-  const paginationItems = useMemo(
-    () => buildPaginationItems(pagination.pageNum, totalPages),
-    [pagination.pageNum, totalPages]
-  );
   const placeholderCount = posts.length > 0
     ? Math.max(0, currentPaginationPageSize - posts.length)
     : 0;
@@ -1223,167 +1102,19 @@ export default function PostsPage() {
           )}
         </div>
 
-        {/* 分页 - 移动到 Card 内部底部 */}
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:grid-cols-[minmax(0,1fr)_auto_auto] md:px-4 md:py-3">
-          <AnimatePresence mode="wait">
-            {isInitialLoading ? (
-              <motion.div
-                key="stats-skeleton"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="order-1 col-span-2 flex min-w-0 items-center md:col-span-1"
-              >
-                <div className="h-4 w-32 animate-pulse rounded bg-[var(--bg-secondary)]" />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="stats-real"
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="tnum order-1 col-span-2 flex min-w-0 flex-wrap items-center justify-start gap-1.5 text-left text-[13px] font-semibold leading-5 text-[var(--ink-muted)] md:col-span-1 md:text-xs"
-              >
-                <span>
-                  第 <span className="text-[var(--ink-secondary)]">{pagination.pageNum}</span> / {totalPages} 页
-                </span>
-                <span className="mx-1 text-[var(--ink-subtle)]">·</span>
-                <span>
-                  共 <span className="text-[var(--ink-secondary)]">{pagination.total}</span> 篇
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <Select
-            value={String(pageSize)}
-            onValueChange={handlePageSizeChange}
-            options={PAGE_SIZE_OPTIONS}
-            ariaLabel="每页文章数量"
-            size="sm"
-            fullWidth={false}
-            className="order-2 col-start-3 !h-10 !w-[112px] md:order-3 md:col-start-auto md:!h-8 md:!w-[132px]"
-            disabled={isInitialLoading || isListRefreshing}
-          />
-
-          <div className="order-3 col-span-3 flex w-full items-center justify-center md:order-2 md:col-span-1 md:w-auto md:justify-end">
-            {!isInitialLoading && pagination.pages > 1 ? (
-              <motion.div
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="grid w-full grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 md:flex md:w-auto md:gap-1.5"
-              >
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(pagination.pageNum - 1)}
-                  disabled={loading || pagination.pageNum <= 1}
-                  className={cn(
-                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
-                    loading || pagination.pageNum <= 1
-                      ? 'text-[var(--ink-muted)]/50'
-                      : 'text-[var(--ink-secondary)]'
-                  )}
-                  aria-label="上一页"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <div
-                  ref={pageStripRef}
-                  role="navigation"
-                  aria-label="分页导航"
-                  className="flex min-w-0 max-w-none items-center gap-1.5 overflow-x-auto overscroll-x-contain px-1 no-scrollbar md:max-w-[520px] md:px-0.5 lg:max-w-[640px] xl:max-w-[760px] snap-x snap-proximity scroll-smooth touch-pan-x [scrollbar-width:none]"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                  {paginationItems.map((entry) => {
-                    if (isPaginationEllipsis(entry)) {
-                      if (pageJumpTarget === entry.key) {
-                        return (
-                          <form
-                            key={entry.key}
-                            onSubmit={handlePageJumpSubmit}
-                            className="flex h-10 w-[104px] flex-shrink-0 items-center gap-1 rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[var(--bg-leaf)] p-1 md:h-8 md:w-[96px]"
-                            aria-label={`跳转到第 ${entry.start} 到 ${entry.end} 页`}
-                          >
-                            <input
-                              type="number"
-                              min={entry.start}
-                              max={entry.end}
-                              value={pageJumpValue}
-                              onChange={(event) => setPageJumpValue(event.target.value)}
-                              onFocus={(event) => event.currentTarget.select()}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') {
-                                  setPageJumpTarget(null);
-                                }
-                              }}
-                              autoFocus
-                              inputMode="numeric"
-                              className="tnum h-full min-w-0 flex-1 rounded-md bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-1 text-center text-xs font-semibold text-[var(--ink-primary)] outline-none focus:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
-                              aria-label="输入页码"
-                            />
-                            <button
-                              type="submit"
-                              disabled={loading}
-                              className="h-full rounded-md px-2 text-xs font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              跳
-                            </button>
-                          </form>
-                        );
-                      }
-                      return (
-                        <button
-                          type="button"
-                          key={entry.key}
-                          onClick={() => handleOpenPageJump(entry)}
-                          disabled={loading}
-                          className="flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[var(--bg-leaf)] text-xs font-semibold text-[var(--ink-muted)] transition-all duration-200 hover:border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-9"
-                          aria-label={`跳转到第 ${entry.start} 到 ${entry.end} 页`}
-                        >
-                          ...
-                        </button>
-                      );
-                    }
-                    const isActive = entry === pagination.pageNum;
-                    return (
-                      <button
-                        type="button"
-                        key={entry}
-                        onClick={() => handlePageChange(entry)}
-                        disabled={loading}
-                        aria-current={isActive ? 'page' : undefined}
-                        aria-label={`第 ${entry} 页`}
-                        className={cn(
-                          'flex h-10 w-10 flex-shrink-0 snap-center items-center justify-center rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 md:h-8 md:w-8 md:text-xs',
-                          isActive
-                            ? 'bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[0_12px_24px_-20px_color-mix(in_oklch,var(--aurora-1)_55%,black)]'
-                            : 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
-                        )}
-                      >
-                        {entry}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handlePageChange(pagination.pageNum + 1)}
-                  disabled={loading || pagination.pageNum >= pagination.pages}
-                  className={cn(
-                    'admin-module-action-button min-h-0 flex-shrink-0 p-2 disabled:cursor-not-allowed disabled:opacity-50 max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11',
-                    loading || pagination.pageNum >= pagination.pages
-                      ? 'text-[var(--ink-muted)]/50'
-                      : 'text-[var(--ink-secondary)]'
-                  )}
-                  aria-label="下一页"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </motion.div>
-            ) : !isInitialLoading && (
-              <div className="h-8" />
-            )}
-          </div>
-        </div>
+        <AdminPagination
+          page={pagination.pageNum}
+          total={pagination.total}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          itemLabel="篇"
+          loading={isListRefreshing}
+          summaryLoading={isInitialLoading}
+          pageSizeAriaLabel="每页文章数量"
+        />
       </div>
       </div>
 

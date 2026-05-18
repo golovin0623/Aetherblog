@@ -16,8 +16,6 @@ import {
   Zap,
   RotateCcw,
   FileText,
-  ChevronLeft,
-  ChevronRight,
   Activity,
   Clock,
   Square,
@@ -36,6 +34,7 @@ import {
   IntelligenceHeader,
   IntelligenceShell,
 } from '@/components/intelligence';
+import { AdminPagination } from '@/components/common/AdminPagination';
 import { ProfileManagementSection } from './search-config/ProfileManagementSection';
 import { ProfileActivationFlow } from './search-config/ProfileActivationFlow';
 import { ProfileDetailDrawer } from './search-config/ProfileDetailDrawer';
@@ -1231,27 +1230,15 @@ export default function SearchConfigPage() {
 
             {/* 分页 */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs text-[var(--text-muted)]">
-                  共 {postsTotal} 篇，第 {page + 1}/{totalPages} 页
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                    className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                    disabled={page >= totalPages - 1}
-                    className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+              <AdminPagination
+                page={page + 1}
+                total={postsTotal}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                onPageChange={(nextPage) => setPage(nextPage - 1)}
+                itemLabel="篇"
+                className="mt-1"
+              />
             )}
           </div>
         </motion.div>
