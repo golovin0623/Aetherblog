@@ -582,7 +582,7 @@ func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, o
 	err := r.db.SelectContext(ctx, &rows, `
 		WITH q AS (
 			SELECT plainto_tsquery('simple', lower($1)) AS tsq,
-			       '%' || lower($1) || '%' AS like_pat
+			       '%' || lower($2) || '%' AS like_pat
 		)
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
 			GREATEST(
@@ -605,8 +605,8 @@ func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, o
 				OR COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q)
 			)
 		ORDER BY rank DESC, p.published_at DESC NULLS LAST
-		LIMIT $2 OFFSET $3`,
-		keyword, limit, offset)
+		LIMIT $3 OFFSET $4`,
+		keyword, dbutil.EscapeLike(keyword), limit, offset)
 	return rows, err
 }
 

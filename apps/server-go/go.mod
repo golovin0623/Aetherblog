@@ -1,6 +1,6 @@
 module github.com/golovin0623/aetherblog-server
 
-go 1.24.1
+go 1.25.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -21,8 +21,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rs/zerolog v1.35.0
-	golang.org/x/crypto v0.46.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/crypto v0.51.0
+	golang.org/x/sync v0.20.0
 )
 
 require (
@@ -57,8 +57,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.3 // indirect
 	golang.org/x/image v0.35.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 )
