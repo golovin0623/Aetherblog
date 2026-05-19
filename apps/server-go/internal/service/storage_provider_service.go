@@ -327,6 +327,14 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 
 const maxVisibleObjectListFetches = 8
 
+// listVisibleObjects 透传 lister.List 并丢弃目录占位对象。
+//
+// 修复点(ref: review 2026-05-19):
+//  1. 目录占位密集的前缀(典型场景:从 OSS/COS 迁入的旧 bucket)可能整页都被过滤掉。
+//     若依旧返回 {len(objects)==0, nextToken!=""}, 前端会把"空页 + 有 token"等同
+//     "已经到底"——必须继续翻页直到拿到真实对象或翻完。
+//  2. 后端 (尤其 S3 兼容实现) 可能把 `limit` 当下限,返回多于请求数的条目。
+//     最终结果必须裁到 limit, 顺便回退一个能拿到漏掉那条的下次 token。
 func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, token string, limit int) ([]storage.ObjectInfo, string, error) {
 	if limit <= 0 {
 		objs, nextTok, err := lister.List(ctx, prefix, token, limit)
@@ -338,22 +346,50 @@ func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, toke
 
 	objects := make([]storage.ObjectInfo, 0, limit)
 	fetchToken := token
-	for attempts := 0; len(objects) < limit && attempts < maxVisibleObjectListFetches; attempts++ {
+	// 整页都被过滤掉时不消耗 attempts 配额,但仍设单次循环上限避免极端情况无限翻页。
+	const maxConsecutiveEmptyPages = 32
+	emptyPages := 0
+	for attempts := 0; attempts < maxVisibleObjectListFetches; attempts++ {
 		remaining := limit - len(objects)
+		if remaining <= 0 {
+			break
+		}
 		page, nextTok, err := lister.List(ctx, prefix, fetchToken, remaining)
 		if err != nil {
 			return nil, "", err
 		}
-		objects = append(objects, filterListableObjects(page)...)
+		filtered := filterListableObjects(page)
+		objects = append(objects, filtered...)
 		if nextTok == "" {
-			return objects, "", nil
+			return clampObjects(objects, limit), "", nil
 		}
 		if nextTok == fetchToken {
-			return objects, nextTok, nil
+			// 后端未推进 token —— 防御性退出,避免死循环
+			return clampObjects(objects, limit), nextTok, nil
 		}
 		fetchToken = nextTok
+		if len(objects) >= limit {
+			break
+		}
+		// 整页全是目录占位:不消耗 attempts(让目录占位密集的前缀也能翻到真实对象)
+		if len(page) > 0 && len(filtered) == 0 {
+			emptyPages++
+			if emptyPages >= maxConsecutiveEmptyPages {
+				break
+			}
+			attempts--
+			continue
+		}
+		emptyPages = 0
 	}
-	return objects, fetchToken, nil
+	return clampObjects(objects, limit), fetchToken, nil
+}
+
+func clampObjects(objects []storage.ObjectInfo, limit int) []storage.ObjectInfo {
+	if limit <= 0 || len(objects) <= limit {
+		return objects
+	}
+	return objects[:limit]
 }
 
 // ImportObjects 把指定 keys 反向导入到 media_files catalog。
@@ -532,11 +568,15 @@ func publicURLCandidates(st storage.Storage, key string) []string {
 	return []string{publicURL}
 }
 
+// filterListableObjects 返回去掉目录占位对象后的新切片。
+//
+// 注意:**不要**复用 objects 的底层数组(`objects[:0]` 风格)。某些 Lister 实现
+// 会跨 List 调用复用 buffer pool,就地过滤会污染下次返回的内容。
 func filterListableObjects(objects []storage.ObjectInfo) []storage.ObjectInfo {
 	if len(objects) == 0 {
-		return objects
+		return nil
 	}
-	filtered := objects[:0]
+	filtered := make([]storage.ObjectInfo, 0, len(objects))
 	for _, obj := range objects {
 		if isDirectoryMarkerObject(obj) {
 			continue
