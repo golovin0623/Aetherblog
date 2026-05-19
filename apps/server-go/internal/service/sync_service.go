@@ -51,7 +51,9 @@ type SyncService struct {
 	cfg          config.SyncConfig
 
 	running atomic.Bool
-	cancel  context.CancelFunc
+	// cancel 必须用原子指针存,Start/Stop 可能在两个 goroutine 中交叉访问,
+	// 与 verifyCancel 保持同一个模式; 重复 Start 后 Stop 才能拿到最新的 cancel。
+	cancel atomic.Pointer[context.CancelFunc]
 
 	// Phase 5: 独立的备份完整性 verify worker
 	verifyRunning atomic.Bool
@@ -69,6 +71,11 @@ func NewSyncService(mediaRepo *repository.MediaRepo, syncRepo *repository.MediaS
 	}
 	if cfg.RatePerSecond <= 0 {
 		cfg.RatePerSecond = 5
+	}
+	// 上限保护: time.NewTicker(time.Second/N) 在 N 接近或超过 1e9 时会得到 0 / 负数 duration
+	// 并直接 panic。1000/秒 已经远超任何对象存储 API 实际合理压力,够防御性即可。
+	if cfg.RatePerSecond > 1000 {
+		cfg.RatePerSecond = 1000
 	}
 	if cfg.MaxAttempt <= 0 {
 		cfg.MaxAttempt = 3
@@ -179,14 +186,14 @@ func (s *SyncService) Start(ctx context.Context) {
 	// 后台 worker 不能继承 HTTP request context;手动触发接口返回后 request context
 	// 会被 Echo 取消,否则刚入队的任务会在首个 tick 前退出。
 	workerCtx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
+	s.cancel.Store(&cancel)
 	go s.loop(workerCtx)
 }
 
 // Stop 通知 worker 优雅退出 — 当前批次跑完后停。
 func (s *SyncService) Stop() {
-	if s.cancel != nil {
-		s.cancel()
+	if cancel := s.cancel.Load(); cancel != nil {
+		(*cancel)()
 	}
 }
 
