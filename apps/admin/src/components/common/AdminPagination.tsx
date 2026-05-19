@@ -227,6 +227,7 @@ export function AdminPagination({
     [safePage, safeTotalPages]
   );
   const pageStripRef = useRef<HTMLDivElement>(null);
+  const isInitialScrollRef = useRef(true);
   const [pageJumpTarget, setPageJumpTarget] = useState<string | null>(null);
   const [pageJumpValue, setPageJumpValue] = useState('');
   const isPageChangeDisabled = loading || disabled || !onPageChange;
@@ -242,7 +243,17 @@ export function AdminPagination({
       container.scrollLeft +
       (btnRect.left + btnRect.width / 2) -
       (containerRect.left + containerRect.width / 2);
-    container.scrollTo({ left: target, behavior: 'smooth' });
+    // 已经居中(±1px 容差)时不重复触发滚动,避免触摸滚动中被打断或首屏多余动效。
+    if (Math.abs(target - container.scrollLeft) <= 1) {
+      isInitialScrollRef.current = false;
+      return;
+    }
+    // 首屏挂载时不要做 smooth 动画,瞬时落位即可。
+    container.scrollTo({
+      left: target,
+      behavior: isInitialScrollRef.current ? 'auto' : 'smooth',
+    });
+    isInitialScrollRef.current = false;
   }, [safePage, safeTotalPages]);
 
   const handlePageChange = (nextPage: number) => {
@@ -266,7 +277,16 @@ export function AdminPagination({
     if (!pageJumpValue.trim()) return;
     const nextPage = Number(pageJumpValue);
     if (!Number.isFinite(nextPage)) return;
-    handlePageChange(Math.trunc(nextPage));
+    const truncated = Math.trunc(nextPage);
+    // 输入框已经通过 min/max 限制在 entry 范围内; 提交时同样夹紧到当前 ellipsis 区间,
+    // 避免用户绕过 HTML5 校验提交超出区间的页码后被沉默接受。
+    const entry = paginationItems.find(
+      (item) => isPaginationEllipsis(item) && item.key === pageJumpTarget
+    ) as PaginationEllipsis | undefined;
+    const finalPage = entry
+      ? Math.min(Math.max(truncated, entry.start), entry.end)
+      : truncated;
+    handlePageChange(finalPage);
   };
 
   return (
