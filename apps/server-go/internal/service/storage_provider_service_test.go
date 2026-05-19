@@ -374,9 +374,14 @@ func TestListVisibleObjectsFillsPageAfterFilteringMarkers(t *testing.T) {
 	}
 }
 
-func TestListVisibleObjectsCapsFetchesWhenMarkersDominate(t *testing.T) {
+// TestListVisibleObjectsKeepsPagingThroughDirectoryMarkers 锁定行为:
+// 当连续多页都是目录占位对象时, listVisibleObjects 不能消耗 attempts 配额
+// 提前回 {Objects:[], NextToken!=""} —— 前端会把空页等同"已到底"。
+// 现在的合约是:一直翻到拿到真实对象, 或者翻完整个前缀返回空 token。
+func TestListVisibleObjectsKeepsPagingThroughDirectoryMarkers(t *testing.T) {
 	pages := make(map[string]fakeObjectPage)
 	token := ""
+	// 10 页连续目录占位, 第 11 页(终止页)留空且 nextToken="", 模拟"翻完整个前缀"。
 	for i := 0; i < maxVisibleObjectListFetches+2; i++ {
 		nextToken := fmt.Sprintf("page-%d", i+1)
 		pages[token] = fakeObjectPage{
@@ -396,13 +401,72 @@ func TestListVisibleObjectsCapsFetchesWhenMarkersDominate(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("visible length = %d, want 0 (%v)", len(got), got)
 	}
-	wantNextToken := fmt.Sprintf("page-%d", maxVisibleObjectListFetches)
-	if nextToken != wantNextToken {
-		t.Fatalf("nextToken = %q, want %q", nextToken, wantNextToken)
+	// 全是占位时应当翻完所有 token 再退出, 返回空 nextToken 让前端知道没有下一页。
+	if nextToken != "" {
+		t.Fatalf("nextToken = %q, want empty (paged through all markers)", nextToken)
 	}
-	if len(lister.calls) != maxVisibleObjectListFetches {
-		t.Fatalf("List calls = %d, want %d", len(lister.calls), maxVisibleObjectListFetches)
+	if len(lister.calls) <= maxVisibleObjectListFetches {
+		t.Fatalf("List calls = %d, want > %d (must keep paging past attempts cap when filter empties pages)", len(lister.calls), maxVisibleObjectListFetches)
 	}
+}
+
+// TestListVisibleObjectsBreaksOnConsecutiveEmptyPagesCap 锁定防御性上限:
+// 极端情况下(provider 一直返回占位且永远不到尽头), 必须有最终的 hard limit
+// 防止 worker 卡住。
+func TestListVisibleObjectsBreaksOnConsecutiveEmptyPagesCap(t *testing.T) {
+	// 让 fake lister 始终回非空 token —— 自己写一个无限源。
+	lister := &infiniteMarkerLister{}
+
+	got, nextToken, err := listVisibleObjects(context.Background(), lister, "2026/", "", 2)
+	if err != nil {
+		t.Fatalf("listVisibleObjects: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("visible length = %d, want 0", len(got))
+	}
+	if nextToken == "" {
+		t.Fatalf("nextToken = empty, want non-empty (infinite marker source must yield a continuation)")
+	}
+	// 防御性上限是 32 (maxConsecutiveEmptyPages); 校验不会无限循环即可。
+	if lister.calls > 64 {
+		t.Fatalf("List calls = %d, want bounded by maxConsecutiveEmptyPages", lister.calls)
+	}
+}
+
+// TestListVisibleObjectsClampsBackendOvershoot 锁定后端返回多于 remaining
+// 时不会把页面撑大。
+func TestListVisibleObjectsClampsBackendOvershoot(t *testing.T) {
+	lister := &fakePagedLister{
+		pages: map[string]fakeObjectPage{
+			"": {
+				objects: []storage.ObjectInfo{
+					{Key: "a.png", Size: 1},
+					{Key: "b.png", Size: 2},
+					{Key: "c.png", Size: 3},
+					{Key: "d.png", Size: 4},
+				},
+				nextToken: "page-2",
+			},
+		},
+	}
+
+	got, _, err := listVisibleObjects(context.Background(), lister, "", "", 2)
+	if err != nil {
+		t.Fatalf("listVisibleObjects: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("visible length = %d, want 2 (must clamp to limit)", len(got))
+	}
+}
+
+type infiniteMarkerLister struct {
+	calls int
+}
+
+func (l *infiniteMarkerLister) List(_ context.Context, _, continuationToken string, _ int) ([]storage.ObjectInfo, string, error) {
+	l.calls++
+	next := fmt.Sprintf("page-%d", l.calls+1)
+	return []storage.ObjectInfo{{Key: fmt.Sprintf("dir-%d/", l.calls), Size: 0}}, next, nil
 }
 
 type fakeObjectPage struct {
