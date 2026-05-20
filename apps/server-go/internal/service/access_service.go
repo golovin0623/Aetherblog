@@ -83,7 +83,7 @@ func (s *AccessService) CreateUser(ctx context.Context, req dto.CreateManagedUse
 		Email:              strings.TrimSpace(req.Email),
 		PasswordHash:       string(hash),
 		Nickname:           nickname,
-		Role:               roleCodes[0],
+		Role:               primaryLegacyRole(roleCodes),
 		Status:             status,
 		MustChangePassword: req.MustChangePassword,
 		RoleCodes:          roleCodes,
@@ -627,6 +627,23 @@ func normalizeRoleCodes(codes []string) []string {
 		return []string{"USER"}
 	}
 	return out
+}
+
+// primaryLegacyRole 在 users.role 这个旧列上挑权限最高的角色码,避免按输入顺序
+// 取首位时出现 RoleCodes=["USER","ADMIN"] 实际能力为 ADMIN 但 legacy 列写
+// "USER" 的情况 —— 任何仍读 users.role 的代码路径会判定为非管理员。
+//
+// 简单两档排序: ADMIN 优先, 其它按出现顺序;未来引入 EDITOR 等中间档时再扩展。
+func primaryLegacyRole(roleCodes []string) string {
+	if len(roleCodes) == 0 {
+		return "USER"
+	}
+	for _, c := range roleCodes {
+		if c == "ADMIN" {
+			return "ADMIN"
+		}
+	}
+	return roleCodes[0]
 }
 
 func normalizeRoleCodesForUpdate(codes []string) []string {

@@ -10,11 +10,34 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/agentworkflow"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
+
+// truncateForClient 把上游响应/错误信息按字符数截到适合返回给前端的长度,
+// 避免把完整堆栈或 DB 错误明文经客户端可见的 fmt.Errorf 透出去。完整内容
+// 保留到日志层供运维排查。
+//
+// 实现要点(#699 review): 用 for-range 按 rune 迭代而不是 s[:max] 直接按
+// 字节切;后者在多字节字符(中文)落入中间字节时会切出无效 UTF-8 序列。
+func truncateForClient(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 {
+		return s
+	}
+	count := 0
+	for i := range s {
+		if count == max {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
+}
 
 type AgentWorkflowService struct {
 	repo          *repository.AgentWorkflowRepo
@@ -391,9 +414,15 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 		return nil, err
 	}
 	defer respBody.Close()
-	respBytes, _ := io.ReadAll(respBody)
+	respBytes, readErr := io.ReadAll(respBody)
+	if readErr != nil {
+		return nil, fmt.Errorf("read AI workflow executor response: %w", readErr)
+	}
 	if statusCode != http.StatusOK {
-		return nil, fmt.Errorf("AI workflow executor returned HTTP %d: %s", statusCode, strings.TrimSpace(string(respBytes)))
+		// 上游可能在 body 中携带堆栈或数据库错误明文 —— 截短再回给客户端,
+		// 同时把完整 body 留到日志层供运维定位。
+		log.Warn().Int("status", statusCode).Str("body", string(respBytes)).Msg("agent workflow: upstream non-200")
+		return nil, fmt.Errorf("AI workflow executor returned HTTP %d: %s", statusCode, truncateForClient(string(respBytes), 200))
 	}
 
 	var envelope workflowExecuteEnvelope
@@ -408,7 +437,8 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 		if msg == "" {
 			msg = "AI workflow executor returned empty response"
 		}
-		return nil, fmt.Errorf("%s", msg)
+		log.Warn().Str("upstream_msg", msg).Msg("agent workflow: upstream reported failure")
+		return nil, fmt.Errorf("%s", truncateForClient(msg, 200))
 	}
 
 	status := normalizeRunStatus(envelope.Data.Status)

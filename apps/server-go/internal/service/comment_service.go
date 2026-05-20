@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
@@ -61,20 +63,20 @@ func (s *CommentService) GetByID(ctx context.Context, id int64) (*dto.CommentVO,
 
 // Approve 将评论状态设为 APPROVED（已通过）。
 // 审核通过后异步更新该文章的评论计数缓存。
-// 错误场景：评论不存在。
+// 错误场景：评论不存在;评论已被软删除(防止"复活"墓碑评论到公开列表)。
 func (s *CommentService) Approve(ctx context.Context, id int64) error {
-	c, err := s.repo.FindByID(ctx, id)
+	c, err := s.ensureExists(ctx, id)
 	if err != nil {
 		return err
 	}
-	if c == nil {
-		return errors.New("评论不存在")
+	if c.Status == "DELETED" {
+		return errors.New("评论已被删除,请先恢复后再审核")
 	}
 	if err := s.repo.UpdateStatus(ctx, id, "APPROVED"); err != nil {
 		return err
 	}
 	// 异步更新文章评论数，避免阻塞当前请求
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -88,7 +90,7 @@ func (s *CommentService) Reject(ctx context.Context, id int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, "REJECTED"); err != nil {
 		return err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -102,7 +104,7 @@ func (s *CommentService) MarkSpam(ctx context.Context, id int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, "SPAM"); err != nil {
 		return err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -116,7 +118,7 @@ func (s *CommentService) Restore(ctx context.Context, id int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, "PENDING"); err != nil {
 		return err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -130,7 +132,7 @@ func (s *CommentService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.SoftDelete(ctx, id); err != nil {
 		return err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -144,7 +146,7 @@ func (s *CommentService) PermanentDelete(ctx context.Context, id int64) error {
 	if err := s.repo.PermanentDelete(ctx, id); err != nil {
 		return err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 	return nil
 }
 
@@ -191,7 +193,7 @@ func (s *CommentService) ReplyAsAdmin(ctx context.Context, parentID int64, req d
 	if err := s.repo.Create(ctx, c); err != nil {
 		return nil, err
 	}
-	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
+	s.refreshPostCommentCountAsync(c.PostID)
 
 	vo := toCommentVO(*c)
 	vo.Parent = &dto.CommentParentRef{ID: parent.ID, Nickname: parent.Nickname}
@@ -266,6 +268,23 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 }
 
 // --- 内部辅助方法 ---
+
+// refreshPostCommentCountAsync 把"文章评论数刷新"放到 detached goroutine 跑。
+// 必须自带 panic recover —— 之前裸 `go s.repo.UpdatePostCommentCount(...)` 一旦
+// 仓储层 panic 会直接打掉整个进程。批量审核场景下也会同时拉起大量 goroutine,
+// 这里不做并发限流(单条请求最多 1 个 goroutine; 批量接口已经走 *Batch 同步路径)。
+func (s *CommentService) refreshPostCommentCountAsync(postID int64) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Interface("recover", r).Int64("post_id", postID).Msg("comment: update post comment count panicked")
+			}
+		}()
+		if err := s.repo.UpdatePostCommentCount(context.Background(), postID); err != nil {
+			log.Warn().Err(err).Int64("post_id", postID).Msg("comment: update post comment count failed")
+		}
+	}()
+}
 
 // ensureExists 查询评论是否存在，不存在时返回 "评论不存在" 错误。
 func (s *CommentService) ensureExists(ctx context.Context, id int64) (*model.Comment, error) {
