@@ -433,9 +433,12 @@ func TestListVisibleObjectsBreaksOnConsecutiveEmptyPagesCap(t *testing.T) {
 	}
 }
 
-// TestListVisibleObjectsClampsBackendOvershoot 锁定后端返回多于 remaining
-// 时不会把页面撑大。
-func TestListVisibleObjectsClampsBackendOvershoot(t *testing.T) {
+// TestListVisibleObjectsPreservesBackendOvershoot 锁定 overshoot 时不丢数据:
+// 后端把 limit 当下限返回了更多对象, listVisibleObjects 保留**整页**对象,
+// 因为 fetchToken 已经被后端推进到 overshoot 之后,截断尾部 = 静默丢数据。
+// limit 在 overshoot 场景下退化为软提示, 前端 lookupCatalog 走 IN(...) 查询
+// 能容忍 slight oversize (#699 P1 review)。
+func TestListVisibleObjectsPreservesBackendOvershoot(t *testing.T) {
 	lister := &fakePagedLister{
 		pages: map[string]fakeObjectPage{
 			"": {
@@ -450,12 +453,15 @@ func TestListVisibleObjectsClampsBackendOvershoot(t *testing.T) {
 		},
 	}
 
-	got, _, err := listVisibleObjects(context.Background(), lister, "", "", 2)
+	got, nextTok, err := listVisibleObjects(context.Background(), lister, "", "", 2)
 	if err != nil {
 		t.Fatalf("listVisibleObjects: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("visible length = %d, want 2 (must clamp to limit)", len(got))
+	if len(got) != 4 {
+		t.Fatalf("visible length = %d, want 4 (must preserve overshoot, fetchToken already advanced)", len(got))
+	}
+	if nextTok != "page-2" {
+		t.Fatalf("nextToken = %q, want %q", nextTok, "page-2")
 	}
 }
 

@@ -334,7 +334,10 @@ const maxVisibleObjectListFetches = 8
 //     若依旧返回 {len(objects)==0, nextToken!=""}, 前端会把"空页 + 有 token"等同
 //     "已经到底"——必须继续翻页直到拿到真实对象或翻完。
 //  2. 后端 (尤其 S3 兼容实现) 可能把 `limit` 当下限,返回多于请求数的条目。
-//     最终结果必须裁到 limit, 顺便回退一个能拿到漏掉那条的下次 token。
+//     这种情况下 limit 视为**软提示**: 我们停止继续翻页, 但保留本页全部对象一并返回 ——
+//     如果只截到 limit 而 fetchToken 已经推进到 overshoot 之后, 被截掉的尾部将永久
+//     无法被下一页拿到 (#699 P1 review)。前端 lookupCatalog 走 IN(...) 查询能容忍
+//     slight oversize, 远胜于静默丢数据。
 func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, token string, limit int) ([]storage.ObjectInfo, string, error) {
 	if limit <= 0 {
 		objs, nextTok, err := lister.List(ctx, prefix, token, limit)
@@ -361,11 +364,11 @@ func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, toke
 		filtered := filterListableObjects(page)
 		objects = append(objects, filtered...)
 		if nextTok == "" {
-			return clampObjects(objects, limit), "", nil
+			return objects, "", nil
 		}
 		if nextTok == fetchToken {
 			// 后端未推进 token —— 防御性退出,避免死循环
-			return clampObjects(objects, limit), nextTok, nil
+			return objects, nextTok, nil
 		}
 		fetchToken = nextTok
 		if len(objects) >= limit {
@@ -382,14 +385,7 @@ func listVisibleObjects(ctx context.Context, lister storage.Lister, prefix, toke
 		}
 		emptyPages = 0
 	}
-	return clampObjects(objects, limit), fetchToken, nil
-}
-
-func clampObjects(objects []storage.ObjectInfo, limit int) []storage.ObjectInfo {
-	if limit <= 0 || len(objects) <= limit {
-		return objects
-	}
-	return objects[:limit]
+	return objects, fetchToken, nil
 }
 
 // ImportObjects 把指定 keys 反向导入到 media_files catalog。
