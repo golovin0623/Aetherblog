@@ -54,6 +54,7 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import type { MediaFolder } from '@aetherblog/types';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 
 type PendingConfirm =
   | { kind: 'trash-file'; id: number; onSuccess?: () => void }
@@ -641,13 +642,14 @@ export default function MediaPage() {
 
   return (
     <div
-      className="media-library-page admin-grid-page h-full overflow-hidden p-4 text-[var(--ink-primary)] md:p-6"
+      className="media-library-page admin-grid-page min-h-full overflow-visible p-4 text-[var(--ink-primary)] md:h-full md:overflow-hidden md:p-6"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-3 sm:gap-4">
+      <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col gap-3 sm:gap-4 md:h-full">
         <AdminModuleHeader
+          className="media-balanced-actions-module-header"
           title="媒体库"
           description="统一治理图片、视频、音频与文档资源，保留文件夹、预览、编辑、分享、备份与回收站闭环。"
           icon={ImageIcon}
@@ -659,14 +661,14 @@ export default function MediaPage() {
                 type="button"
                 onClick={handleRefresh}
                 disabled={manualRefreshing}
-                className="admin-module-action-button activity-refresh-button"
+                className="admin-module-action-button activity-refresh-button media-header-action media-header-refresh-action"
                 data-refreshing={listRefreshing}
                 title={listRefreshing ? '正在刷新' : '刷新媒体库'}
                 aria-label="刷新媒体库"
                 aria-busy={listRefreshing}
               >
                 <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                {listRefreshing ? '刷新中' : '刷新'}
+                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
               </button>
               <input
                 type="file"
@@ -678,11 +680,11 @@ export default function MediaPage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="admin-module-action-button"
+                className="admin-module-action-button media-header-action media-header-upload-action"
                 aria-label="上传媒体文件"
               >
                 <Upload className="h-4 w-4" />
-                上传
+                <span>上传</span>
               </button>
             </>
           }
@@ -888,7 +890,7 @@ export default function MediaPage() {
           </AnimatePresence>
         </div>
 
-        <div className={cn(mediaShellClass, 'relative flex min-h-0 flex-1 flex-col')} data-refreshing={listRefreshing}>
+        <div className={cn(mediaShellClass, 'relative flex flex-col md:min-h-0 md:flex-1')} data-refreshing={listRefreshing}>
           <AnimatePresence>
             {listRefreshing && (
               <>
@@ -920,27 +922,21 @@ export default function MediaPage() {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                <ImageIcon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">资源浏览</p>
-                <p className="truncate text-xs text-[var(--ink-muted)]">
-                  {currentFolderId === undefined ? '根目录与所有子资源视图' : `当前文件夹 #${currentFolderId}`}
-                  <span className="hidden sm:inline"> · {viewMode === 'grid' ? '网格预览' : '列表核对'}</span>
-                </p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {isLoading ? '加载中' : listRefreshing ? '刷新中' : `${currentItems.length}/${totalMedia}`}
-            </span>
-          </div>
+          <AdminSectionHeader
+            icon={<ImageIcon className="h-4 w-4" />}
+            title="资源浏览"
+            description={
+              <>
+                {currentFolderId === undefined ? '根目录与所有子资源视图' : `当前文件夹 #${currentFolderId}`}
+                <span className="hidden sm:inline"> · {viewMode === 'grid' ? '网格预览' : '列表核对'}</span>
+              </>
+            }
+            aside={<AdminSectionCount>{isLoading ? '加载中' : listRefreshing ? '刷新中' : `${currentItems.length}/${totalMedia}`}</AdminSectionCount>}
+          />
 
-          <div className="min-h-0 flex-1 p-3 lg:p-4">
+          <div className="p-3 md:min-h-0 md:flex-1 lg:p-4">
             {/* 主布局: 左侧文件夹树 + 右侧内容区 */}
-            <div className="flex h-full gap-3 overflow-hidden lg:gap-4">
+            <div className="flex gap-3 overflow-visible md:h-full md:overflow-hidden lg:gap-4">
               {/* 左侧文件夹树 - 可调整宽度 */}
               <div
                 className="hidden shrink-0 lg:flex relative"
@@ -1004,13 +1000,13 @@ export default function MediaPage() {
               </div>
 
               {/* 主内容区 + 抽屉式侧边栏 */}
-              <div className="relative flex min-w-0 flex-1 overflow-hidden">
+              <div className="relative flex min-w-0 flex-1 overflow-visible md:overflow-hidden">
                 {/* 主内容区 - 自动调整宽度，移除 layout 属性以避免垂直抖动 */}
-                <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+                <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
                   {/* 将加载状态和内容包装在同一个容器中以避免布局跳动 */}
-                  <div className="flex h-full min-h-0 flex-1 flex-col">
+                  <div className="flex flex-col md:h-full md:min-h-0 md:flex-1">
                     {isLoading ? (
-                      <div className="flex-1 overflow-hidden p-1">
+                      <div className="p-1 md:flex-1 md:overflow-hidden">
                         {/* @ref Phase 6: 使用新的骨架屏组件 */}
                         {viewMode === 'grid' ? (
                           <MediaSkeletonGrid count={20} />
@@ -1019,7 +1015,7 @@ export default function MediaPage() {
                         )}
                       </div>
                     ) : currentItems.length > 0 ? (
-                      <div className="flex-1 overflow-y-auto no-scrollbar pb-16 pr-0 lg:pr-2">
+                      <div className="pb-6 pr-0 md:flex-1 md:overflow-y-auto md:pb-16 lg:pr-2">
                         {/* @ref Phase 6: 使用虚拟滚动优化大列表性能 */}
                         {viewMode === 'grid' ? (
                           currentItems.length > 100 ? (

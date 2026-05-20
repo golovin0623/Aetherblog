@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +19,8 @@ interface AdminModuleHeaderProps<T extends string> {
   icon?: LucideIcon;
   currentLabel?: string;
   activeSummary?: string;
+  showCurrentLabel?: boolean;
+  showActiveSummary?: boolean;
   actions?: ReactNode;
   className?: string;
 }
@@ -33,6 +34,8 @@ export function AdminModuleHeader<T extends string>({
   icon: HeaderIconProp,
   currentLabel,
   activeSummary,
+  showCurrentLabel = true,
+  showActiveSummary = true,
   actions,
   className,
 }: AdminModuleHeaderProps<T>) {
@@ -40,9 +43,8 @@ export function AdminModuleHeader<T extends string>({
   const hasTabs = safeTabs.length > 0 && activeKey !== undefined && onTabChange !== undefined;
   const activeTab = hasTabs ? safeTabs.find((item) => item.key === activeKey) ?? safeTabs[0] : undefined;
   const HeaderIcon = activeTab?.icon ?? HeaderIconProp;
-  const currentText = activeTab ? `当前：${activeTab.label}` : currentLabel;
-  const summaryText = activeTab?.description ?? activeSummary;
-  const tabIndicatorLayoutId = `admin-module-tab-indicator-${title}`;
+  const currentText = showCurrentLabel ? (activeTab ? `当前：${activeTab.label}` : currentLabel) : undefined;
+  const summaryText = showActiveSummary ? (activeTab?.description ?? activeSummary) : undefined;
 
   return (
     <header
@@ -88,13 +90,7 @@ export function AdminModuleHeader<T extends string>({
                           : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)]'
                       )}
                     >
-                      {active && (
-                        <motion.span
-                          layoutId={tabIndicatorLayoutId}
-                          className="admin-module-tab-indicator"
-                          transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.55 }}
-                        />
-                      )}
+                      {active && <span className="admin-module-tab-indicator" />}
                       <Icon className="relative z-10 h-4 w-4" />
                       <span className="relative z-10 sm:hidden">{item.shortLabel || item.label}</span>
                       <span className="relative z-10 hidden sm:inline">{item.label}</span>

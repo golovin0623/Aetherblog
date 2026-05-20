@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { useDebounce } from '@aetherblog/hooks';
 import { Select, DateRangePicker, type DateRangeValue, type SelectOption } from '@aetherblog/ui';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
@@ -320,6 +321,7 @@ export default function ActivitiesPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="activity-log-actions-module-header compact-actions-module-header"
           title="活动记录"
           description="记录账号、内容、媒体、AI 与安全事件，支持快速回溯。"
           icon={ActivityIcon}
@@ -336,7 +338,7 @@ export default function ActivitiesPage() {
                   aria-label="返回仪表盘"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  返回仪表盘
+                  <span className="sr-only">返回仪表盘</span>
                 </button>
               )}
               <button
@@ -350,7 +352,7 @@ export default function ActivitiesPage() {
                 aria-busy={listRefreshing}
               >
                 <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                {listRefreshing ? '刷新中' : '刷新'}
+                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
               </button>
             </>
           }
@@ -712,20 +714,12 @@ export default function ActivitiesPage() {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                <ActivityIcon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">事件流</p>
-                <p className="text-xs text-[var(--ink-muted)]">按时间倒序记录系统操作与安全状态</p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {isLoading ? '加载中' : listRefreshing ? '刷新中' : `${activities.length}/${total}`}
-            </span>
-          </div>
+          <AdminSectionHeader
+            icon={<ActivityIcon className="h-4 w-4" />}
+            title="事件流"
+            description="按时间倒序记录系统操作与安全状态"
+            aside={<AdminSectionCount>{isLoading ? '加载中' : listRefreshing ? '刷新中' : `${activities.length}/${total}`}</AdminSectionCount>}
+          />
 
         {isLoading ? (
           <div className="p-8 space-y-4">

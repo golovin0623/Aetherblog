@@ -45,6 +45,7 @@ import { Button, ConfirmModal, Select, type SelectOption } from '@aetherblog/ui'
 import { cn, formatFileSize } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { AdminCursorPagination } from '@/components/common/AdminPagination';
 
 interface ObjectListing {
@@ -474,6 +475,7 @@ export default function CloudExplorerPage() {
     expandableTreePaths.size > 0 && Array.from(expandableTreePaths).every((path) => expandedTreePaths.has(path));
   const listRefreshing = isFetching && !isLoading;
   const pageNum = tokenStack.length + 1;
+  const cursorPageTokens = useMemo(() => [...tokenStack, currentToken], [currentToken, tokenStack]);
   const rangeStart = objects.length === 0 ? 0 : tokenStack.length * pageSize + 1;
   const rangeEnd = tokenStack.length * pageSize + objects.length;
   const providerLabel = selectedProvider
@@ -611,6 +613,14 @@ export default function CloudExplorerPage() {
     setSelectedKeys(new Set());
   };
 
+  const handleCursorPageChange = (nextPage: number) => {
+    const nextTokenForPage = cursorPageTokens[nextPage - 1];
+    if (nextTokenForPage === undefined || nextPage === pageNum) return;
+    setTokenStack(cursorPageTokens.slice(0, nextPage - 1));
+    setCurrentToken(nextTokenForPage);
+    setSelectedKeys(new Set());
+  };
+
   const handlePageSizeChange = (nextSize: number) => {
     if (!PAGE_SIZE_OPTIONS.includes(nextSize) || nextSize === pageSize) return;
     setPageSize(nextSize);
@@ -646,6 +656,7 @@ export default function CloudExplorerPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="compact-actions-module-header"
           title="云端浏览器"
           description="审计 bucket 对象、识别孤儿文件，并把可保留对象纳入媒体库治理。"
           icon={Cloud}
@@ -663,7 +674,7 @@ export default function CloudExplorerPage() {
               aria-busy={listRefreshing}
             >
               {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {listRefreshing ? '刷新中' : '刷新'}
+              <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
             </button>
           }
         />
@@ -840,32 +851,25 @@ export default function CloudExplorerPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                {selectedProvider?.providerType === 'LOCAL' ? <HardDrive className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">对象清单</p>
-                <p className="truncate text-xs text-[var(--ink-muted)]">
-                  第 {pageNum} 页 · {prefixLabel}
-                  {nextToken ? ' · 可继续翻页' : ' · 当前游标已到末页'}
-                </p>
-              </div>
-            </div>
-            <div data-cloud-object-toolbar className="flex flex-wrap items-center justify-end gap-2">
-              <span className="inline-flex h-9 min-w-[4.75rem] items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 text-xs font-semibold text-[var(--ink-muted)]">
-                {isLoading
-                  ? '加载中'
-                  : listRefreshing
-                    ? '刷新中'
-                    : objectViewMode === 'tree'
-                      ? `${objects.length} 项 / ${treeFolderCount} 目录`
-                      : `${objects.length} 项`}
-              </span>
-              <ViewModeSegmented value={objectViewMode} onChange={setObjectViewMode} />
-            </div>
-          </div>
+          <AdminSectionHeader
+            icon={selectedProvider?.providerType === 'LOCAL' ? <HardDrive className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}
+            title="对象清单"
+            description={<>第 {pageNum} 页 · {prefixLabel}</>}
+            aside={
+              <>
+                <AdminSectionCount>
+                  {isLoading
+                    ? '加载中'
+                    : listRefreshing
+                      ? '刷新中'
+                      : objectViewMode === 'tree'
+                        ? `${objects.length} 项 / ${treeFolderCount} 目录`
+                        : `${objects.length} 项`}
+                </AdminSectionCount>
+                <ViewModeSegmented value={objectViewMode} onChange={setObjectViewMode} />
+              </>
+            }
+          />
 
           <div className="min-w-0">
             {!providerId ? (
@@ -966,8 +970,10 @@ export default function CloudExplorerPage() {
           {providerId && (objects.length > 0 || tokenStack.length > 0) && (
             <AdminCursorPagination
               page={pageNum}
+              knownPages={cursorPageTokens.length}
               hasPrevious={tokenStack.length > 0}
               hasNext={Boolean(nextToken)}
+              onPageChange={handleCursorPageChange}
               onPrevious={handlePrevPage}
               onNext={handleNextPage}
               pageSize={pageSize}
@@ -985,8 +991,6 @@ export default function CloudExplorerPage() {
                   <span>
                     第 <span className="text-[var(--ink-secondary)]">{pageNum}</span> 页
                   </span>
-                  <span className="mx-1 text-[var(--ink-subtle)]">·</span>
-                  <span className="text-[var(--ink-secondary)]">{nextToken ? '仍有下一页' : '当前末页'}</span>
                 </>
               }
             />

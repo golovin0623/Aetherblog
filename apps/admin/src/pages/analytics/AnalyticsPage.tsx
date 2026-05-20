@@ -296,6 +296,7 @@ export function AnalyticsPage() {
   return (
     <IntelligenceShell className="analytics-page dashboard-page" contentClassName="gap-4">
       <IntelligenceHeader
+        className="analytics-header"
         title="数据分析"
         eyebrow="INTELLIGENCE · ANALYTICS"
         description="模型调用记录、占比、趋势和成本全链路追踪。"
@@ -319,14 +320,19 @@ export function AnalyticsPage() {
             <button
               onClick={handleArchive}
               disabled={dashboardLoading || recordsRefreshing || archiving}
-              className="intelligence-action-button"
+              aria-label="归档当前筛选费用"
+              aria-busy={archiving}
+              data-archiving={archiving ? 'true' : 'false'}
+              title="归档当前筛选费用"
+              className="intelligence-action-button analytics-archive-action"
             >
               {archiving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Archive className="h-4 w-4" />
               )}
-              归档当前筛选费用
+              <span className="hidden sm:inline">归档当前筛选费用</span>
+              <span className="sm:hidden">归档筛选</span>
             </button>
           </>
         }

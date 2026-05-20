@@ -194,11 +194,14 @@ export default function AccessControlPage() {
     <div className="access-control-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="compact-tabs-module-header"
           title="身份与共享"
           description="统一管理账号、角色、团队与跨资源共享策略。"
           tabs={tabs}
           activeKey={tab}
           onTabChange={setTab}
+          showCurrentLabel={false}
+          showActiveSummary={false}
         />
 
         {tab === 'users' && <UsersPanel />}

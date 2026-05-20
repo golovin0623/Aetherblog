@@ -22,6 +22,7 @@ import { logger } from '@/lib/logger';
 import { getTagHex } from '@/lib/tagColor';
 import { toast } from 'sonner';
 import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { CreateItemModal } from './categories/CreateItemModal';
 
 type Tab = 'categories' | 'tags';
@@ -295,6 +296,7 @@ export default function CategoriesPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="taxonomy-module-header"
           title="分类标签"
           description="统一维护文章分类与标签库，保持内容组织、检索和写作辅助的一致性。"
           tabs={taxonomyTabs}
@@ -302,6 +304,8 @@ export default function CategoriesPage() {
           onTabChange={handleTabChange}
           currentLabel={listRefreshing ? '同步中' : isCategoryTab ? '分类库' : '标签库'}
           activeSummary={`匹配 ${stats.filteredTotal} / ${stats.total} · 覆盖 ${stats.totalPosts} 篇`}
+          showCurrentLabel={false}
+          showActiveSummary={false}
           actions={
             <>
               <button
@@ -315,16 +319,17 @@ export default function CategoriesPage() {
                 aria-busy={listRefreshing}
               >
                 <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                {listRefreshing ? '刷新中' : '刷新'}
+                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
               </button>
               <button
                 type="button"
                 onClick={openCreate}
-                className="admin-module-action-button"
+                className="admin-module-action-button taxonomy-header-icon-action"
                 aria-label={isCategoryTab ? '新建分类' : '新建标签'}
+                title={isCategoryTab ? '新建分类' : '新建标签'}
               >
                 <Plus className="h-4 w-4" />
-                {isCategoryTab ? '新建分类' : '新建标签'}
+                <span className="sr-only">{isCategoryTab ? '新建分类' : '新建标签'}</span>
               </button>
             </>
           }
@@ -487,33 +492,25 @@ export default function CategoriesPage() {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                {isCategoryTab ? <Folder className="h-4 w-4" /> : <TagIcon className="h-4 w-4" />}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">
-                  {isCategoryTab ? '分类目录' : '标签集合'}
-                </p>
-                <p className="text-xs text-[var(--ink-muted)]">
-                  <span className="sm:hidden">
-                    {debouncedSearch ? '关键词筛选中' : isCategoryTab ? '文章主线' : '主题聚合'}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {debouncedSearch
-                      ? `正在按“${debouncedSearch}”筛选结果`
-                      : isCategoryTab
-                        ? '分类用于承载文章主线、导航入口和归档结构'
-                        : '标签用于连接跨分类主题、专题聚合和写作上下文'}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {loading ? '加载中' : listRefreshing ? '刷新中' : `${stats.filteredTotal}/${stats.total}`}
-            </span>
-          </div>
+          <AdminSectionHeader
+            icon={isCategoryTab ? <Folder className="h-4 w-4" /> : <TagIcon className="h-4 w-4" />}
+            title={isCategoryTab ? '分类目录' : '标签集合'}
+            description={
+              <>
+                <span className="sm:hidden">
+                  {debouncedSearch ? '关键词筛选中' : isCategoryTab ? '文章主线' : '主题聚合'}
+                </span>
+                <span className="hidden sm:inline">
+                  {debouncedSearch
+                    ? `正在按“${debouncedSearch}”筛选结果`
+                    : isCategoryTab
+                      ? '分类用于承载文章主线、导航入口和归档结构'
+                      : '标签用于连接跨分类主题、专题聚合和写作上下文'}
+                </span>
+              </>
+            }
+            aside={<AdminSectionCount>{loading ? '加载中' : listRefreshing ? '刷新中' : `${stats.filteredTotal}/${stats.total}`}</AdminSectionCount>}
+          />
 
           {loading ? (
             <div className="p-4 sm:p-5">
