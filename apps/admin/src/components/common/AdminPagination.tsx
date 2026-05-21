@@ -380,13 +380,16 @@ export function AdminPagination({
     };
 
     measureControls();
-    const resizeObserver = new ResizeObserver(measureControls);
-    resizeObserver.observe(parent);
-    resizeObserver.observe(pageStrip);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(measureControls)
+        : null;
+    resizeObserver?.observe(parent);
+    resizeObserver?.observe(pageStrip);
     window.addEventListener('resize', measureControls);
 
     return () => {
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
       window.removeEventListener('resize', measureControls);
     };
   }, [paginationItems, safeTotalPages, summaryLoading]);
