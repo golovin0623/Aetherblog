@@ -27,14 +27,34 @@ interface Archive {
   }>;
 }
 
+interface TimelinePostItem {
+  id: number;
+  title: string;
+  slug: string;
+  publishedAt: string;
+  passwordRequired?: boolean;
+}
+
+interface TimelinePostsResponse {
+  data?: {
+    list?: TimelinePostItem[];
+  };
+}
+
 async function getTimelinePosts(): Promise<Post[]> {
   try {
-    const res = await fetch(`${SERVER_API_URL}/api/v1/public/posts?pageSize=100`, {
+    const res = await fetch(`${SERVER_API_URL}/api/v1/public/posts?pageNum=1&pageSize=100`, {
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return (json.data?.list || []).map((item: any) => ({
+
+    if (!res.ok) {
+      logger.error(`Failed to fetch timeline posts: ${res.status} ${res.statusText}`);
+      return [];
+    }
+
+    const json = (await res.json()) as TimelinePostsResponse;
+    return (json.data?.list || []).map((item) => ({
       id: item.id,
       title: item.title,
       slug: item.slug,
