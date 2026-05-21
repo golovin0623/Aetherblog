@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 
@@ -67,9 +68,24 @@ func (h *SiteHandler) Stats(c echo.Context) error {
 	ctx := c.Request().Context()
 	// 并行查询各统计项（忽略查询错误，降级为 0）
 	// 使用 Count 替代 FindAll 进行统计，避免全量数据加载和大量的内存分配
-	catsCount, _ := h.catRepo.Count(ctx)
-	tagsCount, _ := h.tagRepo.Count(ctx)
-	postCount, _ := h.postRepo.CountPublished(ctx)
+	var catsCount, tagsCount, postCount int64
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		catsCount, _ = h.catRepo.Count(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		tagsCount, _ = h.tagRepo.Count(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		postCount, _ = h.postRepo.CountPublished(ctx)
+	}()
+
+	wg.Wait()
 	return response.OK(c, map[string]any{
 		"posts":      postCount,
 		"categories": catsCount,
