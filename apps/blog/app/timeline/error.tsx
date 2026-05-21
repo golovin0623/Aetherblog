@@ -21,7 +21,7 @@ export default function TimelineError({ reset }: { error: Error & { digest?: str
           <button
             type="button"
             onClick={reset}
-            className="inline-flex items-center justify-center gap-2 mt-6 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
+            className="inline-flex items-center justify-center gap-2 mt-6 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]"
           >
             <RotateCcw className="w-4 h-4" />
             重试

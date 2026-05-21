@@ -49,7 +49,8 @@ async function getTimelinePosts(): Promise<Post[]> {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to fetch timeline posts: ${res.status} ${res.statusText}`);
+      logger.error(`Failed to fetch timeline posts: ${res.status} ${res.statusText}`);
+      return [];
     }
 
     const json = (await res.json()) as TimelinePostsResponse;
@@ -62,7 +63,7 @@ async function getTimelinePosts(): Promise<Post[]> {
     }));
   } catch (error) {
     logger.error('Failed to fetch timeline posts:', error);
-    throw error;
+    return [];
   }
 }
 
