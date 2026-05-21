@@ -122,6 +122,7 @@ export function GlobalPricingSkeletonContent() {
   return (
     <>
       <IntelligenceHeader
+        className="global-pricing-header"
         title="全局模型价格"
         eyebrow="INTELLIGENCE · PRICING"
         description="按 model_id 维护一份基准价格，可批量回填到所有同名供应商模型。"
@@ -129,9 +130,15 @@ export function GlobalPricingSkeletonContent() {
         currentLabel="读取中"
         activeSummary="正在加载价格覆盖状态"
         actions={
-          <button className="intelligence-action-button" disabled>
+          <button
+            aria-label="刷新全局模型价格"
+            data-refreshing="true"
+            title="刷新全局模型价格"
+            className="intelligence-action-button global-pricing-refresh-action"
+            disabled
+          >
             <RefreshCw className="w-4 h-4 animate-spin" />
-            刷新
+            <span className="sr-only">刷新</span>
           </button>
         }
       />

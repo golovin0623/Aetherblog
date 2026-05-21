@@ -30,6 +30,7 @@ import { friendService, FriendLink } from '@/services/friendService';
 import { toast } from 'sonner';
 import { useMediaQuery } from '@/hooks';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { AdminPagination } from '@/components/common/AdminPagination';
 import {
   DndContext,
@@ -495,6 +496,7 @@ export default function FriendsPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="compact-actions-module-header"
           title="友情链接"
           description="管理友链展示、排序与状态。"
           icon={Link2}
@@ -513,7 +515,7 @@ export default function FriendsPage() {
                 aria-busy={listRefreshing}
               >
                 <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                {listRefreshing ? '刷新中' : '刷新'}
+                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
               </button>
               <button
                 type="button"
@@ -522,7 +524,7 @@ export default function FriendsPage() {
                 aria-label="新增友链"
               >
                 <Plus className="h-4 w-4" />
-                新增
+                <span className="sr-only">新增友链</span>
               </button>
             </>
           }
@@ -681,25 +683,19 @@ export default function FriendsPage() {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                <Link2 className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">友链目录</p>
-                <p className="text-xs text-[var(--ink-muted)]">
-                  <span className="sm:hidden">{isReorderLocked ? '筛选中不可排序' : '拖拽排序'}</span>
-                  <span className="hidden sm:inline">
-                    {isReorderLocked ? '筛选视图中排序暂锁定，清空筛选后可拖拽调整' : '拖拽左侧手柄调整前台展示顺序'}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {isLoading ? '加载中' : listRefreshing ? '刷新中' : `${total}/${stats.total}`}
-            </span>
-          </div>
+          <AdminSectionHeader
+            icon={<Link2 className="h-4 w-4" />}
+            title="友链目录"
+            description={
+              <>
+                <span className="sm:hidden">{isReorderLocked ? '筛选中不可排序' : '拖拽排序'}</span>
+                <span className="hidden sm:inline">
+                  {isReorderLocked ? '筛选视图中排序暂锁定，清空筛选后可拖拽调整' : '拖拽左侧手柄调整前台展示顺序'}
+                </span>
+              </>
+            }
+            aside={<AdminSectionCount>{isLoading ? '加载中' : listRefreshing ? '刷新中' : `${total}/${stats.total}`}</AdminSectionCount>}
+          />
 
           {isLoading ? (
             <div className="space-y-4 p-8">

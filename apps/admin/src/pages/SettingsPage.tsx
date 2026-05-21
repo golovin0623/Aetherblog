@@ -655,6 +655,8 @@ function AnimatedSelectField({ value, options, onChange, disabled }: AnimatedSel
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
+  const settingsNavRef = useRef<HTMLElement | null>(null);
+  const settingsNavButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   // 本地状态表单数据（用于保存前编辑）
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -779,6 +781,41 @@ export default function SettingsPage() {
     applyPreview(fontId);
   }, [applyPreview]);
 
+  const syncSettingsNavSlider = useCallback((centerSelected = false) => {
+    const nav = settingsNavRef.current;
+    const button = settingsNavButtonRefs.current[activeTab];
+    if (!nav || !button) return;
+
+    nav.style.setProperty('--settings-nav-slider-x', `${button.offsetLeft}px`);
+    nav.style.setProperty('--settings-nav-slider-y', `${button.offsetTop}px`);
+    nav.style.setProperty('--settings-nav-slider-width', `${button.offsetWidth}px`);
+    nav.style.setProperty('--settings-nav-slider-height', `${button.offsetHeight}px`);
+
+    if (centerSelected) {
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      button.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    let frame = window.requestAnimationFrame(() => syncSettingsNavSlider(true));
+
+    const handleResize = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => syncSettingsNavSlider(false));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [syncSettingsNavSlider]);
+
   const activeGroup = SETTING_GROUPS[activeTab];
   const ActiveGroupIcon = activeGroup.icon;
   const activeGroupDescription = SETTING_GROUP_DESCRIPTIONS[activeTab] || `管理您的${activeGroup.label}`;
@@ -828,6 +865,7 @@ export default function SettingsPage() {
     <div className="admin-grid-page settings-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="settings-stateful-actions-module-header"
           title="系统设置"
           icon={Settings2}
           currentLabel={activeGroup.label}
@@ -842,7 +880,8 @@ export default function SettingsPage() {
               <span>设置分类</span>
               <small>{Object.keys(SETTING_GROUPS).length} 个模块</small>
             </div>
-            <nav className="settings-nav-list">
+            <nav ref={settingsNavRef} className="settings-nav-list">
+              <span className="settings-nav-slider" aria-hidden="true" />
               {Object.entries(SETTING_GROUPS).map(([key, group]) => {
                 const Icon = group.icon;
                 const active = activeTab === key;
@@ -850,9 +889,13 @@ export default function SettingsPage() {
                 return (
                   <button
                     key={key}
+                    ref={(node) => {
+                      settingsNavButtonRefs.current[key] = node;
+                    }}
                     type="button"
                     onClick={() => setActiveTab(key)}
                     data-active={active}
+                    aria-current={active ? 'page' : undefined}
                     className="settings-nav-button"
                   >
                     <span className="settings-nav-icon">
@@ -870,9 +913,7 @@ export default function SettingsPage() {
           </aside>
 
           <motion.section
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
+            layout="position"
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="settings-detail-panel access-surface rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
             aria-label={activeGroup.label}

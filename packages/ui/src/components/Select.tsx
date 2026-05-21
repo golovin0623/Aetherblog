@@ -51,6 +51,8 @@ export interface SelectProps {
   ariaLabel?: string;
   /** id 透传给 trigger，便于 <label htmlFor> */
   id?: string;
+  /** 隐藏选中项右侧勾选图标，适用于窄宽度数字菜单。 */
+  hideSelectedCheck?: boolean;
 }
 
 export function Select({
@@ -66,6 +68,7 @@ export function Select({
   prefix,
   ariaLabel,
   id,
+  hideSelectedCheck = false,
 }: SelectProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
@@ -344,7 +347,7 @@ export function Select({
                                 </span>
                               )}
                             </span>
-                            {isSelected && (
+                            {isSelected && !hideSelectedCheck && (
                               <Check className="w-4 h-4 text-[var(--aurora-1)] shrink-0" />
                             )}
                           </button>

@@ -193,6 +193,7 @@ export default function GlobalPricingPage() {
   return (
     <>
       <IntelligenceHeader
+        className="global-pricing-header"
         title="全局模型价格"
         eyebrow="INTELLIGENCE · PRICING"
         description="按 model_id 维护一份基准价格，可批量回填到所有同名供应商模型。"
@@ -206,14 +207,18 @@ export default function GlobalPricingPage() {
         actions={
           <motion.button
             onClick={handleRefresh}
+            aria-label="刷新全局模型价格"
+            aria-busy={isRefreshing}
+            data-refreshing={isRefreshing ? 'true' : 'false'}
+            title="刷新全局模型价格"
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            className="intelligence-action-button"
+            className="intelligence-action-button global-pricing-refresh-action"
           >
             <RefreshCw
               className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
             />
-            刷新
+            <span className="sr-only">刷新</span>
           </motion.button>
         }
       />

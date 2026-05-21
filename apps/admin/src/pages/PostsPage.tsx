@@ -15,6 +15,7 @@ import { Select, DateRangePicker, type SelectOption, type DateRangeValue } from 
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
 import PostTableRow from '@/components/posts/PostTableRow';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
@@ -510,6 +511,7 @@ export default function PostsPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="posts-primary-actions-module-header"
           title="文章管理"
           description="管理文章发布、草稿、分类标签、可见性与内容属性。"
           icon={FileText}
@@ -524,20 +526,21 @@ export default function PostsPage() {
               <button
                 type="button"
                 onClick={() => navigate('/posts/ai-writing/new')}
-                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                className="admin-module-action-button posts-header-action posts-header-action-ai"
                 aria-label="AI 协同写作"
               >
                 <Sparkles className="h-4 w-4" />
-                AI 协同写作
+                <span className="hidden sm:inline">AI 协同写作</span>
+                <span className="sm:hidden">AI 写作</span>
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/posts/new')}
-                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                className="admin-module-action-button posts-header-action posts-header-action-create"
                 aria-label="新建文章"
               >
                 <Plus className="h-4 w-4" />
-                新建
+                <span>新建</span>
               </button>
             </>
           }
@@ -790,22 +793,12 @@ export default function PostsPage() {
 
         {/* 文章列表 */}
         <div className={cn(postShellClass, 'relative flex flex-col')}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                <FileText className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--ink-primary)]">文章列表</p>
-                <p className="text-xs text-[var(--ink-muted)]">
-                  {hasAnyFilter ? '按当前筛选查看文章与属性操作' : '按发布时间倒序管理文章内容'}
-                </p>
-              </div>
-            </div>
-            <span className="rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-muted)]">
-              {isInitialLoading ? '加载中' : `${posts.length}/${pagination.total}`}
-            </span>
-          </div>
+          <AdminSectionHeader
+            icon={<FileText className="h-4 w-4" />}
+            title="文章列表"
+            description={hasAnyFilter ? '按当前筛选查看文章与属性操作' : '按发布时间倒序管理文章内容'}
+            aside={<AdminSectionCount>{isInitialLoading ? '加载中' : `${posts.length}/${pagination.total}`}</AdminSectionCount>}
+          />
 
         {/* 固定表头 - 仅桌面端显示 */}
         <table className="w-full table-fixed hidden md:table">
