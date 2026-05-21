@@ -359,6 +359,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
+                title="搜索"
                 onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
@@ -521,7 +522,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
-                title="Search (⌘ K)"
+                title="搜索 (Ctrl/⌘ K)"
                 onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
