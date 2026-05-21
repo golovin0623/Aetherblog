@@ -487,6 +487,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 aria-label="清空搜索关键词"
+                title="清空搜索关键词"
                 onClick={() => {
                   setQuery('');
                   inputRef.current?.focus();
