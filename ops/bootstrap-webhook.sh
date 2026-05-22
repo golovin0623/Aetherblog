@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AetherBlog deploy-webhook bootstrap installer.
+# AetherBlog 部署 webhook 启动安装程序。
 #
 # 把今天我们手工跑的 7 步迁移流程封装成一行命令。覆盖：
 #   - 创建无特权 `webhook` 系统用户 (加入 `docker` 组拿 docker.sock 权限)
@@ -34,7 +34,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Defaults & arg parsing
+# 默认值与参数解析
 # -----------------------------------------------------------------------------
 
 PROJECT_DIR_DEFAULT=/var/lib/aetherblog/repo
@@ -74,7 +74,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Locate repo root via this script's location
+# 通过此脚本的位置定位仓库根目录
 # -----------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

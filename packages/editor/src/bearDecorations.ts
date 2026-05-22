@@ -61,7 +61,7 @@ const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; b
   },
 };
 
-// ========== Widget Types ==========
+// ========== 组件类型 ==========
 
 /** 水平分割线 Widget —— aurora 渐变细线,替代硬 hex
  *  (theme 参数保留用于调用处签名兼容,内部色值由 CSS 变量解析) */

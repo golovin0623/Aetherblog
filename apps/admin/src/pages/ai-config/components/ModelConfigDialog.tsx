@@ -858,7 +858,7 @@ export default function ModelConfigDialog({
                         await syncToGlobalMutation.mutateAsync(initial.id);
                         await globalPricingQuery.refetch();
                       } catch {
-                        // toast handled in hook
+                        // toast 已在 hook 中处理
                       }
                     }}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

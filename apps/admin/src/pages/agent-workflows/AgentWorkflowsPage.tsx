@@ -953,7 +953,7 @@ export default function AgentWorkflowsPage() {
                             try {
                               updateSelectedNodeData('args', JSON.parse(nextText || '{}'));
                             } catch {
-                              // Keep invalid draft text visible; commit to node args only after it becomes valid JSON.
+                              // 保持无效的草稿文本可见；仅在其变为有效的 JSON 后才提交到节点参数。
                             }
                           }}
                           className="agent-workflow-field min-h-24 resize-y font-mono"

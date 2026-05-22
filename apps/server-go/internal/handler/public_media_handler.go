@@ -76,7 +76,7 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 	}
 
 	if h.svc != nil {
-		// Catalog lookup is best-effort for legacy paths; keep static fallback available on lookup failures.
+		// 目录查找对于遗留路径是尽力而为的；在查找失败时保持静态回退可用。
 		target, err := h.svc.PublicAccessURLByPath(c.Request().Context(), key)
 		if err == nil && target != "" && !h.pointsToUploadsKey(target, key) {
 			c.Response().Header().Set("Cache-Control", "public, max-age=60")
