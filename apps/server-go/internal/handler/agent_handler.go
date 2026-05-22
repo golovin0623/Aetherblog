@@ -1,4 +1,4 @@
-// Package handler · agent_handler.go
+// 包 handler · agent_handler.go
 //
 // AgentHandler 暴露 /api/v1/agent/* 端点，专供前台 /agent/workspace 使用。
 //

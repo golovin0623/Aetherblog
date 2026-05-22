@@ -1,4 +1,4 @@
-# ref: §5.1 - Provider API schema
+# 引用: §5.1 - 提供商 API schema
 """
 Provider API 端点对应的 Pydantic schema。
 """

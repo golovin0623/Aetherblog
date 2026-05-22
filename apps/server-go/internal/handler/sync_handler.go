@@ -103,7 +103,7 @@ func (h *SyncHandler) Failed(c echo.Context) error {
 	return response.OK(c, jobs)
 }
 
-// retryReq POST /sync/retry body
+// 重试请求 POST /sync/retry body
 type retryReq struct {
 	JobIDs []int64 `json:"jobIds"`
 }

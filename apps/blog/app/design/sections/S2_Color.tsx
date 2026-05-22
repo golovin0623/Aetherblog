@@ -16,9 +16,9 @@ export default function S2_Color({ isVisible }: Props) {
   const c = 0.15;
   // 派生公式(与 tokens.css 的 @supports 块对齐):
   // aurora-1 = 锚点
-  // aurora-2 = l+0.02, c*0.92, h+18
-  // aurora-3 = l+0.05, c*0.82, h+36
-  // aurora-4 = l+0.08, c*0.68, h+60
+  // aurora-2 = l+0.02, c*0.92, h+18 (极光-2)
+  // aurora-3 = l+0.05, c*0.82, h+36 (极光-3)
+  // aurora-4 = l+0.08, c*0.68, h+60 (极光-4)
   const swatches = [
     { label: 'aurora-1', l, c, h: hue, formula: '锚点 · primary' },
     { label: 'aurora-2', l: l + 0.02, c: c * 0.92, h: hue + 18, formula: 'h + 18° · c × 0.92' },

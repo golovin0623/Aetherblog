@@ -222,10 +222,10 @@ _MODE_SYSTEM_PROMPTS = {
 _FALLBACK_TASK_ALIASES = ("agent", "qa", "summary")
 _GEMINI_THINKING_ALLOWED_OPENAI_PARAMS = ["reasoning_effort", "extra_body"]
 _GEMINI_THINKING_EXTRA_BODY = {
-    # LiteLLM passes ``extra_body`` to the underlying OpenAI Python client as
-    # a client-side escape hatch. To make the OpenAI-compatible gateway receive
-    # a JSON body field named ``extra_body`` (which is what Gemini compat uses),
-    # it must be nested one level deeper here.
+    # LiteLLM 将 ``extra_body`` 传递给底层的 OpenAI Python 客户端作为
+    # 客户端的逃生舱。为了让兼容 OpenAI 的网关接收
+    # 一个名为 ``extra_body`` 的 JSON body 字段（这是 Gemini 兼容层所使用的），
+    # 这里必须嵌套更深一层。
     "extra_body": {"google": {"thinking_config": {"include_thoughts": True}}},
 }
 
@@ -292,13 +292,13 @@ def _agent_completion_kwargs(
         max_tokens=max_tokens,
     )
     if _is_gemini_model(model):
-        # Google OpenAI-compatible API requires include_thoughts=True to return
-        # visible thought summaries; reasoning_effort only controls budget/level.
+        # Google 兼容 OpenAI 的 API 要求 include_thoughts=True 来返回
+        # 可见的思维摘要；reasoning_effort 仅控制预算/级别。
         kwargs["reasoning_effort"] = "low"
         kwargs["extra_body"] = _GEMINI_THINKING_EXTRA_BODY
-        # LiteLLM validates params before forwarding OpenAI-compatible requests.
-        # Gemini's compat layer supports these fields even when LiteLLM routes via
-        # the generic "openai/" provider prefix.
+        # LiteLLM 在转发兼容 OpenAI 的请求前验证参数。
+        # Gemini 的兼容层支持这些字段，即使 LiteLLM 通过
+        # 通用的 "openai/" 提供商前缀路由。
         kwargs["allowed_openai_params"] = _GEMINI_THINKING_ALLOWED_OPENAI_PARAMS
     return kwargs
 

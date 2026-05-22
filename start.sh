@@ -264,7 +264,7 @@ gen_url_safe_secret() {
 # 显式 COMPOSE_PROJECT_NAME > docker compose config 输出中的 .name > 目录名
 # normalized（小写、剥掉非 [a-z0-9_-]）。bootstrap_env 用这个来定位 postgres
 # 数据卷，硬编码 `aetherblog_postgres_data` 在用户改了项目名时会漏判（codex
-# P2 review on PR #613）。
+# 在 PR 上的 P2 审核 #613）。
 docker_compose_project_name() {
     if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
         echo "$COMPOSE_PROJECT_NAME"

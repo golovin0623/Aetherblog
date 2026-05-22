@@ -1,7 +1,7 @@
-// Package agentworkflow contains the stable validation contract for the
-// Agent Workflow canvas. It is intentionally dependency-light so both handler
-// code and future background schedulers can reuse the same guardrails before a
-// workflow definition is saved, published, or executed.
+// 包 agentworkflow 包含 Agent Workflow 画布的稳定验证约束。
+// 它被有意设计为轻依赖，以便 handler
+// 代码和未来的后台调度器可以在工作流定义保存、发布或执行之前
+// 重用相同的保护机制。
 package agentworkflow
 
 import (
@@ -97,8 +97,8 @@ var supportedCodeLanguages = map[string]bool{
 	"javascript": true,
 }
 
-// Definition is the persisted canvas contract. DefinitionJSON in the database
-// should map to this shape after decoding.
+// Definition 是持久化的画布约束。数据库中的 DefinitionJSON
+// 解码后应映射到此结构。
 type Definition struct {
 	Version     int                  `json:"version"`
 	Name        string               `json:"name"`

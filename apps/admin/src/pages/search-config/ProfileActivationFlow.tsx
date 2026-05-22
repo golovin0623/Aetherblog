@@ -157,7 +157,7 @@ export function ProfileActivationFlow({
   );
 }
 
-// =============== Stepper Header ===============
+// =============== 步进器头部 ===============
 
 function StepperHeader({ step }: { step: Step }) {
   const steps: Array<{ key: Step | 'failed'; label: string }> = [
@@ -217,7 +217,7 @@ function StepperHeader({ step }: { step: Step }) {
   );
 }
 
-// =============== Confirm Step ===============
+// =============== 确认步骤 ===============
 
 function ConfirmStep({
   profile,
@@ -396,7 +396,7 @@ function ReindexingStep({
   );
 }
 
-// =============== Done Step ===============
+// =============== 完成步骤 ===============
 
 function DoneStep({
   profile,
@@ -445,7 +445,7 @@ function DoneStep({
   );
 }
 
-// =============== Failed Step ===============
+// =============== 失败步骤 ===============
 
 function FailedStep({
   stream,

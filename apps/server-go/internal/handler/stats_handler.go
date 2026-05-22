@@ -68,7 +68,7 @@ func parseAIDashboardFilter(c echo.Context) repository.AIDashboardFilter {
 // Dashboard 处理 GET /api/v1/admin/stats/dashboard 请求。
 // 聚合并返回前端 DashboardData 接口所需的全量数据，结构如下：
 //
-//	{ stats, topPosts, visitorTrend, archiveStats, deviceStats, trends }
+//	{ stats(统计), topPosts(热门文章), visitorTrend(访客趋势), archiveStats(归档统计), deviceStats(设备统计), trends(趋势) }
 //
 // AI 用量、趋势变化和设备统计均采用非阻塞方式获取，失败时降级为零值。
 func (h *StatsHandler) Dashboard(c echo.Context) error {
