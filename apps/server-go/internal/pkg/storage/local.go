@@ -187,7 +187,11 @@ func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string,
 	}
 	root := s.basePath
 	if prefix != "" {
-		root = filepath.Join(s.basePath, prefix)
+		var err error
+		root, err = getSafePath(s.basePath, prefix)
+		if err != nil {
+			return nil, "", err
+		}
 	}
 	if _, err := os.Stat(root); err != nil {
 		if os.IsNotExist(err) {
