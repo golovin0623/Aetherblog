@@ -164,6 +164,9 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	if dashErr != nil {
 		return response.Error(c, dashErr)
 	}
+	if dashboard == nil {
+		return response.Fail(c, "仪表盘统计数据不可用")
+	}
 
 	// 将各项数据映射为前端 DashboardData 结构
 	result := map[string]any{
