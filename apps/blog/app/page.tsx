@@ -112,7 +112,10 @@ export default async function HomePage() {
       )}
 
       {/* 叠层书页效果容器 */}
-      <div className={`relative z-20 pb-8 bg-[var(--bg-primary)] dark:bg-[#101018] ${showBanner ? '-mt-[100px] pt-[100px] rounded-t-[46px] shadow-[0_-4px_12px_rgba(0,0,0,0.03),0_-12px_32px_rgba(0,0,0,0.05),0_-32px_80px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_8px_rgba(255,255,255,0.04),0_-8px_24px_rgba(255,255,255,0.03),0_-24px_64px_rgba(255,255,255,0.02)] border-t border-[var(--border-subtle)]/50 dark:border-white/10' : ''}`}>
+      <div
+        data-theme-book-page
+        className={`relative z-20 pb-8 bg-[var(--bg-primary)] dark:bg-[#101018] ${showBanner ? '-mt-[100px] pt-[100px] rounded-t-[46px] shadow-[0_-4px_12px_rgba(0,0,0,0.03),0_-12px_32px_rgba(0,0,0,0.05),0_-32px_80px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_8px_rgba(255,255,255,0.04),0_-8px_24px_rgba(255,255,255,0.03),0_-24px_64px_rgba(255,255,255,0.02)] border-t border-[var(--border-subtle)]/50 dark:border-white/10' : ''}`}
+      >
         
         {/* 隐藏的可点击热区，覆盖顶部的圆角书页区域，实现点击空白区域自动下滑 */}
         {showBanner && (

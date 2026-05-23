@@ -1247,6 +1247,7 @@ function TopBar({
         </button>
         <button
           type="button"
+          data-theme-toggle
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
           title={isDark ? '切换到亮色模式' : '切换到暗色模式'}

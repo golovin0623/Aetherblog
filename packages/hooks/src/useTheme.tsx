@@ -70,6 +70,8 @@ function isSafariBrowser(): boolean {
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 }
 
+let themeTransitionInFlight = false;
+
 /**
  * 执行圆形遮罩主题切换动画
  * 使用 View Transitions API，从点击位置开始扩散/收缩
@@ -94,6 +96,8 @@ async function performCircularTransition(
   isDarkToLight: boolean,
   callback: () => void
 ): Promise<void> {
+  if (themeTransitionInFlight) return;
+
   // 检查浏览器是否支持 View Transitions API
   if (
     typeof document === 'undefined' ||
@@ -105,6 +109,7 @@ async function performCircularTransition(
     return;
   }
 
+  themeTransitionInFlight = true;
   const isSafari = isSafariBrowser();
 
   const Math_hypot = Math.hypot;
@@ -123,15 +128,44 @@ async function performCircularTransition(
   // 注入性能优化样式（动画期间生效，结束后移除）
   const perfStyle = document.createElement('style');
   perfStyle.textContent = `
+    html[data-theme-transition] {
+      scroll-behavior: auto !important;
+    }
     ::view-transition-old(root),
     ::view-transition-new(root) {
       will-change: clip-path;
       contain: layout;
     }
+    html[data-theme-transition] :where([style*="view-transition-name"]) {
+      view-transition-name: none !important;
+    }
     html[data-theme-transition] *,
     html[data-theme-transition] *::before,
     html[data-theme-transition] *::after {
       animation-play-state: paused !important;
+    }
+    html[data-theme-transition] :where(
+      header,
+      nav,
+      button,
+      a,
+      input,
+      textarea,
+      select,
+      [role="tab"],
+      [role="button"],
+      [role="menuitem"],
+      [data-theme-stable],
+      [class*="title"],
+      [class*="tab"]
+    ) {
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+    }
+    html[data-theme-transition] :where([data-theme-toggle], [data-theme-toggle] *) {
+      animation: none !important;
+      transition: none !important;
+      transform: none !important;
     }
   `;
   document.head.appendChild(perfStyle);
@@ -145,11 +179,11 @@ async function performCircularTransition(
     delete document.documentElement.dataset.themeTransition;
   }, totalDuration + 200);
 
-  const transition = document.startViewTransition(() => {
-    callback();
-  });
-
   try {
+    const transition = document.startViewTransition(() => {
+      callback();
+    });
+
     await transition.ready;
 
     const animOpts = {
@@ -187,19 +221,6 @@ async function performCircularTransition(
     // 1) root 层 — 覆盖全视口
     animateLayer('root', x, y, maxRadius);
 
-    // 2) mobile-menu-drawer — 局部视口，由于其隔离在新 VT 层，必须计算自身的最大对角线
-    const drawerEl = document.querySelector('.mobile-menu-drawer');
-    if (drawerEl) {
-      const rect = drawerEl.getBoundingClientRect();
-      const drawerX = x - rect.left;
-      const drawerY = y - rect.top;
-      const drawerRadius = Math_hypot(
-        Math_max(drawerX, rect.width - drawerX),
-        Math_max(drawerY, rect.height - drawerY)
-      );
-      animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
-    }
-
     // 等待动画跑完
     await new Promise((resolve) => setTimeout(resolve, totalDuration));
     await transition.finished;
@@ -210,6 +231,7 @@ async function performCircularTransition(
     clearTimeout(cleanupTimer);
     perfStyle.remove();
     delete document.documentElement.dataset.themeTransition;
+    themeTransitionInFlight = false;
   }
 }
 

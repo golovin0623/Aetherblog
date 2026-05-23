@@ -12,11 +12,13 @@ export function Header() {
       <div className="flex items-center gap-4">
         {/* 主题切换 */}
         <button
+          type="button"
+          data-theme-toggle
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           className={cn(
             'p-2 rounded-lg',
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
-            'transition-all duration-200'
+            'transition-colors duration-150'
           )}
           title={isDark ? '切换亮色模式' : '切换暗色模式'}
           aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}

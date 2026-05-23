@@ -291,10 +291,10 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed left-0 w-screen z-50 py-4 will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
+        className={`fixed left-0 top-0 w-screen z-50 pb-4 will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
           }`}
         style={{
-          top: 'env(safe-area-inset-top, 0px)',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
           background: 'var(--bg-overlay)',
           backdropFilter: 'blur(24px) saturate(140%)',
           // 替代硬边框 —— 底部用极光渐变细线(见 aurora-divider 伪元素)

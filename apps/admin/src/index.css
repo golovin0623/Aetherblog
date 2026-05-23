@@ -5351,6 +5351,57 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   view-transition-name: none;
 }
 
+/* 主题切换只保留 root 光圈层；侧边栏抽屉等具名层若参与会盖住光圈。 */
+html[data-theme-transition] [style*="view-transition-name"] {
+  view-transition-name: none !important;
+}
+
+/* 主题光圈切换期间只允许快照层做 clip-path，页面真实控件保持几何稳定。 */
+html[data-theme-transition] [class*="backdrop-blur"],
+html[data-theme-transition] header,
+html[data-theme-transition] aside,
+html[data-theme-transition] .auth-codex-page,
+html[data-theme-transition] .aetherhub-workspace {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-theme-transition] header,
+html[data-theme-transition] aside,
+html[data-theme-transition] .auth-codex-page .surface-overlay,
+html[data-theme-transition] .aetherhub-workspace header {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+html[data-theme-transition] :where(
+  .admin-module-header,
+  .admin-module-title,
+  .admin-module-tabs,
+  .admin-module-tab-button,
+  .dashboard-page,
+  .auth-codex-page h1,
+  .auth-codex-page .codex-submit-btn,
+  .aetherhub-workspace header,
+  .aetherhub-workspace button,
+  [data-theme-toggle]
+) {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+html[data-theme-transition] [data-theme-toggle],
+html[data-theme-transition] [data-theme-toggle] *,
+html[data-theme-transition] .codex-ambient-blob {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+html[data-theme-transition] .codex-ambient-blob {
+  opacity: 0 !important;
+}
+
 /* ============================================================
    Article Editor · Markdown Preview 排印升级
    跟 blog 前台的 .markdown-body 保持同等精致度,

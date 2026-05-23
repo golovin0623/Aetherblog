@@ -449,11 +449,35 @@ body {
   transition: color 0.3s ease, background-color 0.3s ease;
 }
 
+/* iPhone 刘海/状态栏安全区遮罩。
+   使用伪元素而不是真实 DOM，避免给 Client Component 增加新兄弟节点后
+   在 Next.js dev/HMR 下触发服务端 HTML 与客户端树的 hydration 顺序错位。
+   env 为 0 的设备高度为 0；刘海屏上始终覆盖标题栏上方的 safe-area，
+   即使文章详情页 header 收折，也不会露出滚动正文。 */
+@media (max-width: 767px) {
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 49;
+    height: env(safe-area-inset-top, 0px);
+    pointer-events: none;
+    background: var(--bg-overlay);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+  }
+}
+
 /* iOS PWA standalone 模式 — Safe Area 适配 */
 @media all and (display-mode: standalone) {
   body {
-    /* 为 iOS 状态栏留出空间 (配合 viewport-fit=cover + black-translucent) */
-    padding-top: env(safe-area-inset-top, 0px);
+    /* 顶部安全区由各自的 app chrome 管理：
+       BlogHeader 从 top:0 铺满并在内部让开刘海，灵境 workspace 也有自己的
+       safe-area 顶栏。这里不能再给 body 全局加 padding，否则 PWA 模式会出现
+       header 与正文之间的重复留白。 */
+    padding-top: 0;
   }
 }
 
@@ -1990,6 +2014,13 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   view-transition-name: mobile-menu-drawer;
 }
 
+/* 主题切换只允许 root 光圈参与 View Transition。
+   文章卡片和标题的 post-* 具名层用于路由 morph；如果主题切换时仍然保留，
+   它们会被提升到 root 光圈层之上，形成卡片压住光圈的灰色残影。 */
+html[data-theme-transition] :where([style*="view-transition-name"], .mobile-menu-drawer) {
+  view-transition-name: none !important;
+}
+
 /* ========================================
    多层 VT 的动画绑定与层级控制
    ======================================== */
@@ -2020,18 +2051,17 @@ html[data-theme-transition="to-dark"]::view-transition-new(mobile-menu-drawer) {
 /*
  * 性能优化（Performance Optimization）：
  * 移动端 GPU 无法在进行全屏 clip-path 动画的同时计算高昂的
- * backdrop-filter（毛玻璃）和复杂的 box-shadow。
+ * backdrop-filter（毛玻璃）。
  * 避免使用通配符 '*' 选择器，因为它会导致深度的 DOM 样式重排，本身就会引发卡顿。
- * 我们使用属性选择器精确制导移除滤镜和阴影，瞬间释放 GPU 算力！
+ * 我们只精确关闭滤镜，不再移除 box-shadow：阴影属于页面质感的一部分，
+ * 切换期间清空阴影会让欢迎页书页和文章卡在动画结束后出现延迟跳变。
  */
 html[data-theme-transition] [class*="backdrop-blur"],
-html[data-theme-transition] [class*="shadow"],
 html[data-theme-transition] header,
 html[data-theme-transition] .mobile-menu-drawer,
 html[data-theme-transition] .mobile-menu-backdrop {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: none !important;
 }
 
 /* 针对已知使用毛玻璃作为背景的元素，在失去毛玻璃时给予不透明底色兜底，防止完全透明或使用错误的 var(--bg-overlay) 半透明变暗 */
@@ -2071,6 +2101,64 @@ html[data-theme-transition] .mobile-menu-backdrop {
 html[data-theme-transition] .theme-transition-glow {
   opacity: 0 !important;
   transition: none !important;
+}
+
+/* 主题入口自身不参与 scale/rotate 等微交互,避免光圈过渡中按钮或图标形变。 */
+html[data-theme-transition] [data-theme-toggle],
+html[data-theme-transition] [data-theme-toggle] * {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+/* 移动端右下角主题按钮必须独立成 VT 层。
+   如果留在 root 快照里，光圈从按钮中心扩散/收缩时会把按钮自身裁掉，
+   用户会看到点击后按钮短暂消失。独立层只显示新快照并固定最高层级，
+   让按钮在动画全过程稳定留在原位。 */
+@media (max-width: 767px) {
+  .theme-toggle-vt {
+    view-transition-name: mobile-theme-toggle;
+    contain: layout paint style;
+  }
+}
+
+::view-transition-group(mobile-theme-toggle) {
+  animation: none !important;
+  mix-blend-mode: normal;
+  border-radius: 9999px;
+  overflow: hidden;
+  z-index: 2147483647;
+}
+
+::view-transition-image-pair(mobile-theme-toggle),
+::view-transition-old(mobile-theme-toggle),
+::view-transition-new(mobile-theme-toggle) {
+  animation: none !important;
+  border-radius: 9999px;
+  mix-blend-mode: normal;
+  overflow: hidden;
+}
+
+::view-transition-old(mobile-theme-toggle) {
+  opacity: 0;
+}
+
+::view-transition-new(mobile-theme-toggle) {
+  opacity: 1;
+}
+
+html[data-theme-transition] :where(
+  header,
+  nav,
+  button,
+  [role="tab"],
+  [role="menuitem"],
+  main h1,
+  .agent-thumb-scroll,
+  .mobile-menu-drawer
+) {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
 }
 
 /* 减少动画模式时禁用 View Transition */
