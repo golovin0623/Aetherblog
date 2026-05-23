@@ -225,11 +225,15 @@ export function MarkdownEditor({
         '&:not(.cm-focused) .cm-selectionLayer .cm-selectionBackground, &:not(.cm-focused) .cm-content ::selection': {
           backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 14%, transparent) !important',
         },
-        // 活动行 —— iA Writer 风:极淡 aurora 底
+        // 活动行 —— 单栏保留轻微写作焦点, 分屏避免出现类似输入框的横向色块
         '.cm-activeLine': {
-          minWidth: '100%',
-          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 2.5%, transparent) !important',
-          boxShadow: 'inset 2px 0 0 color-mix(in oklch, var(--aurora-1, var(--color-primary)) 28%, transparent)',
+          minWidth: contentCentered ? '100%' : 'auto',
+          backgroundColor: contentCentered
+            ? 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 2.5%, transparent) !important'
+            : 'transparent !important',
+          boxShadow: contentCentered
+            ? 'inset 2px 0 0 color-mix(in oklch, var(--aurora-1, var(--color-primary)) 28%, transparent)'
+            : 'none',
         },
         // Gutter(行号槽)—— 透明底,mono 字体
         '.cm-gutters': {
