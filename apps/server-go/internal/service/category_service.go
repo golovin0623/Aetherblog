@@ -24,7 +24,7 @@ func (s *CategoryService) ListTree(ctx context.Context) ([]dto.CategoryVO, error
 	if err != nil {
 		return nil, err
 	}
-	return buildTree(cats, nil), nil
+	return buildTree(cats), nil
 }
 
 // GetByID 通过主键查询单个分类，不存在时返回 nil, nil。
@@ -143,24 +143,35 @@ func generateSlugFromName(name string) string {
 	return s
 }
 
-// buildTree 递归地将平铺分类列表组装为树形结构。
-// parentID 为 nil 表示收集顶级分类（无父节点）。
-func buildTree(all []model.Category, parentID *int64) []dto.CategoryVO {
-	var result []dto.CategoryVO
-	for _, c := range all {
-		c := c
-		var matches bool
-		if parentID == nil {
-			matches = c.ParentID == nil
+// buildTree 将平铺的分类列表组装为嵌套树形结构。
+// 使用 O(N) 一次遍历哈希表分组，然后递归组装（避免 O(N^2) 多次遍历）。
+func buildTree(all []model.Category) []dto.CategoryVO {
+	if len(all) == 0 {
+		return nil
+	}
+
+	var roots []dto.CategoryVO
+	byParent := make(map[int64][]dto.CategoryVO)
+
+	for i := range all {
+		vo := categoryVO(&all[i])
+		if vo.ParentID == nil {
+			roots = append(roots, vo)
 		} else {
-			matches = c.ParentID != nil && *c.ParentID == *parentID
-		}
-		if matches {
-			vo := categoryVO(&c)
-			// 递归构建子树
-			vo.Children = buildTree(all, &c.ID)
-			result = append(result, vo)
+			pid := *vo.ParentID
+			byParent[pid] = append(byParent[pid], vo)
 		}
 	}
-	return result
+
+	var build func(nodes []dto.CategoryVO) []dto.CategoryVO
+	build = func(nodes []dto.CategoryVO) []dto.CategoryVO {
+		for i := range nodes {
+			if children, ok := byParent[nodes[i].ID]; ok {
+				nodes[i].Children = build(children)
+			}
+		}
+		return nodes
+	}
+
+	return build(roots)
 }
