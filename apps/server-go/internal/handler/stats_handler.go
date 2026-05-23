@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"sync"
-
+	"context"
 	"errors"
 	"strconv"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 
@@ -74,7 +74,8 @@ func parseAIDashboardFilter(c echo.Context) repository.AIDashboardFilter {
 //
 // AI 用量、趋势变化和设备统计均采用非阻塞方式获取，失败时降级为零值。
 func (h *StatsHandler) Dashboard(c echo.Context) error {
-	ctx := c.Request().Context()
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
 
 	var wg sync.WaitGroup
 
@@ -86,27 +87,22 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 		archiveStats []service.ArchiveMonthVO
 		aiTokens     int64
 		aiCost       float64
-		trendsMap    = map[string]any{
-			"posts":          0,
-			"categories":     0,
-			"views":          0,
-			"visitors":       0,
-			"comments":       0,
-			"words":          0,
-			"postsThisMonth": 0,
-		}
-		deviceStats any = []any{}
+		trends           = &service.TrendsVO{}
+		deviceStats  any = []any{}
 	)
 
-	wg.Add(7)
-
 	// 获取核心仪表盘汇总数据
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		dashboard, dashErr = h.svc.GetDashboard(ctx)
+		if dashErr != nil {
+			cancel()
+		}
 	}()
 
 	// 获取热门文章列表，失败时降级为空数组
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		topPosts, _ = h.svc.GetTopPosts(ctx)
@@ -116,6 +112,7 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	}()
 
 	// 获取最近 7 天的访客趋势，失败时降级为空数组
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		visitorTrend, _ = h.svc.GetVisitorTrend(ctx, 7)
@@ -125,6 +122,7 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	}()
 
 	// 获取按月归档的文章数量统计，失败时降级为空数组
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		archiveStats, _ = h.svc.GetArchiveStats(ctx)
@@ -134,6 +132,7 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	}()
 
 	// 获取 AI 用量统计（非阻塞——失败时使用零值）
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if aiDash, err := h.svc.GetAIDashboard(ctx); err == nil && aiDash != nil {
@@ -143,22 +142,16 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	}()
 
 	// 获取数据增长趋势（非阻塞——失败时全部使用零值）
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if trends, err := h.svc.GetTrends(ctx); err == nil && trends != nil {
-			trendsMap = map[string]any{
-				"posts":          trends.Posts,
-				"categories":     trends.Categories,
-				"views":          trends.Views,
-				"visitors":       trends.Visitors,
-				"comments":       trends.Comments,
-				"words":          trends.Words,
-				"postsThisMonth": trends.PostsThisMonth,
-			}
+		if loadedTrends, err := h.svc.GetTrends(ctx); err == nil && loadedTrends != nil {
+			trends = loadedTrends
 		}
 	}()
 
 	// 获取设备类型统计（非阻塞——失败时使用空数组）
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if ds, err := h.svc.GetDeviceStats(ctx); err == nil && ds != nil {
@@ -189,7 +182,7 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 		"visitorTrend": visitorTrend,
 		"archiveStats": archiveStats,
 		"deviceStats":  deviceStats,
-		"trends":       trendsMap,
+		"trends":       trends,
 	}
 
 	return response.OK(c, result)

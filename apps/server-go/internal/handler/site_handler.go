@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
@@ -70,19 +71,33 @@ func (h *SiteHandler) Stats(c echo.Context) error {
 	// 使用 Count 替代 FindAll 进行统计，避免全量数据加载和大量的内存分配
 	var catsCount, tagsCount, postCount int64
 	var wg sync.WaitGroup
-	wg.Add(3)
 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		catsCount, _ = h.catRepo.Count(ctx)
+		var err error
+		catsCount, err = h.catRepo.Count(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load category count failed")
+		}
 	}()
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		tagsCount, _ = h.tagRepo.Count(ctx)
+		var err error
+		tagsCount, err = h.tagRepo.Count(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load tag count failed")
+		}
 	}()
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		postCount, _ = h.postRepo.CountPublished(ctx)
+		var err error
+		postCount, err = h.postRepo.CountPublished(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load published post count failed")
+		}
 	}()
 
 	wg.Wait()

@@ -208,7 +208,6 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl"
-          aria-label="返回顶部"
         >
           <ArrowUp className="h-4 w-4" />
           <span>返回顶部</span>

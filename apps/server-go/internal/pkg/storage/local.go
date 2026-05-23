@@ -185,9 +185,12 @@ func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string,
 	if limit <= 0 {
 		limit = 100
 	}
-	root := s.basePath
+	baseRoot, err := getSafePath(s.basePath, "")
+	if err != nil {
+		return nil, "", err
+	}
+	root := baseRoot
 	if prefix != "" {
-		var err error
 		root, err = getSafePath(s.basePath, prefix)
 		if err != nil {
 			return nil, "", err
@@ -212,7 +215,7 @@ func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string,
 		if d.IsDir() {
 			return nil
 		}
-		rel, rerr := filepath.Rel(s.basePath, p)
+		rel, rerr := filepath.Rel(baseRoot, p)
 		if rerr != nil {
 			return nil
 		}

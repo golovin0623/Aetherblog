@@ -4,13 +4,14 @@
 // AI_CREDENTIAL_ENCRYPTION_KEYS 环境变量,Go 端落库 / Python 端解密(或反过来) 都可。
 //
 // Fernet 二进制格式 (RFC 草案):
-//   令牌 = base64url(version || timestamp || iv || ciphertext || hmac)
-//   版本号    = 0x80 (1 字节)
-//   timestamp  = 自 unix 纪元以来的大端秒数 uint64 (8 bytes)
-//   初始化向量(iv) = 16 字节
-//   密文 = AES-128-CBC(encryption_key, iv, PKCS7-pad(plaintext))
-//   哈希运算(hmac) = HMAC-SHA256(signing_key, version || timestamp || iv || ciphertext) (32 bytes)
-//   key (32B)  = signing_key(16) || encryption_key(16) ── urlsafe-base64 后 44 字符 (含 '=' 填充)
+//
+//	令牌 = base64url(version || timestamp || iv || ciphertext || hmac)
+//	版本号    = 0x80 (1 字节)
+//	timestamp  = 自 unix 纪元以来的网络字节序 uint64 秒数 (8 bytes)
+//	初始化向量(iv) = 16 字节
+//	密文 = AES-128-CBC(encryption_key, iv, PKCS7-pad(plaintext))
+//	消息认证码(hmac) = HMAC-SHA256(signing_key, version || timestamp || iv || ciphertext) (32 bytes)
+//	key (32B)  = signing_key(16) || encryption_key(16) ── urlsafe-base64 后 44 字符 (含 '=' 填充)
 package cryptkey
 
 import (

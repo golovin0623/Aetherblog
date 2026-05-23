@@ -1,4 +1,4 @@
-// 包 handler · agent_handler.go
+// Package handler · agent_handler.go
 //
 // AgentHandler 暴露 /api/v1/agent/* 端点，专供前台 /agent/workspace 使用。
 //
@@ -12,10 +12,11 @@
 //     validateSSELine 白名单（已加入 think / sources）。
 //
 // 端点：
-//   POST /chat              SSE 多轮对话（透传到 ai-service）
-//   GET  /models            可用模型列表（用户级隔离，透传到 ai-service）
-//   GET  /articles          文章选择器搜索（@ picker 用，本地 DB 查询）
-//   GET  /tags              标签选择器列表（# picker 用，本地 DB 查询）
+//
+//	POST /chat              SSE 多轮对话（透传到 ai-service）
+//	GET  /models            可用模型列表（用户级隔离，透传到 ai-service）
+//	GET  /articles          文章选择器搜索（@ picker 用，本地 DB 查询）
+//	GET  /tags              标签选择器列表（# picker 用，本地 DB 查询）
 package handler
 
 import (
@@ -260,16 +261,16 @@ type articleListResponse struct {
 //
 // 安全过滤（必读，不要在没读完之前合并）：
 //
-//   ai_articles 公共列表共有 4 类需要剔除：
-//     · deleted = TRUE                     —— 软删
-//     · status != 'PUBLISHED'              —— 草稿 / 定时未到 / 归档
-//     · is_hidden = TRUE                   —— 仅作者可见
-//     · password IS NOT NULL               —— 密码保护，正常访问要先验密码
+//	ai_articles 公共列表共有 4 类需要剔除：
+//	  · deleted = TRUE                     —— 软删
+//	  · status != 'PUBLISHED'              —— 草稿 / 定时未到 / 归档
+//	  · is_hidden = TRUE                   —— 仅作者可见
+//	  · password IS NOT NULL               —— 密码保护，正常访问要先验密码
 //
-//   FindPublishedNoPassword 一次性把 4 项全过滤了（SQL 层），分页 total 就
-//   是"用户可见"的真实数。SearchPublished 路径仍由 filterPublicArticleIDs
-//   做兜底密码过滤。ai-service 那边 _build_picker_context 也有
-//   `password IS NULL` 二次防御。
+//	FindPublishedNoPassword 一次性把 4 项全过滤了（SQL 层），分页 total 就
+//	是"用户可见"的真实数。SearchPublished 路径仍由 filterPublicArticleIDs
+//	做兜底密码过滤。ai-service 那边 _build_picker_context 也有
+//	`password IS NULL` 二次防御。
 func (h *AgentHandler) Articles(c echo.Context) error {
 	if middleware.GetLoginUser(c) == nil {
 		return response.FailWith(c, response.Unauthorized, "未登录")
