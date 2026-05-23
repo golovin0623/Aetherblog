@@ -14,6 +14,8 @@ const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage'))
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const PostsPage = lazy(() => import('./pages/PostsPage'));
 const CreatePostPage = lazy(() => import('./pages/posts/CreatePostPage'));
+const NotesPage = lazy(() => import('./pages/NotesPage'));
+const CreateNotePage = lazy(() => import('./pages/notes/CreateNotePage'));
 const MediaPage = lazy(() => import('./pages/MediaPage'));
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'));
 const CommentsPage = lazy(() => import('./pages/CommentsPage'));
@@ -97,6 +99,9 @@ function App() {
               <Route path="posts" element={<PostsPage />} />
               <Route path="posts/new" element={<CreatePostPage />} />
               <Route path="posts/:id/edit" element={<CreatePostPage />} />
+              <Route path="notes" element={<NotesPage />} />
+              <Route path="notes/new" element={<CreateNotePage />} />
+              <Route path="notes/:id/edit" element={<CreateNotePage />} />
               <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
               <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
               <Route path="media" element={<MediaPage />} />

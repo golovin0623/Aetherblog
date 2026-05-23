@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
+  BookOpen,
   FileText,
   Image,
   FolderTree,
@@ -66,6 +67,7 @@ const navSections: Array<{
     label: 'INTELLIGENCE',
     items: [
       { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
+      { path: '/notes', icon: BookOpen, label: '智能笔记' },
       { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
       { path: '/ai-tools', icon: Sparkles, label: '写作助手' },
       { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },

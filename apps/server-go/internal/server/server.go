@@ -168,6 +168,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	friendLinkRepo := repository.NewFriendLinkRepo(s.DB)
 	siteSettingRepo := repository.NewSiteSettingRepo(s.DB)
 	postRepo := repository.NewPostRepo(s.DB)
+	noteRepo := repository.NewNoteRepo(s.DB)
 	accessRepo := repository.NewAccessRepo(s.DB)
 	accessSvc := service.NewAccessService(accessRepo)
 
@@ -222,6 +223,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	internalToken := s.Config.AI.InternalServiceToken
 	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc, internalToken)
 	postSvc.SetAccessService(accessSvc)
+	noteSvc := service.NewNoteService(noteRepo, s.Redis)
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
@@ -251,6 +253,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 路由放在 /v1/admin/system/log-level 下,与现有日志查看 API 同源。
 	handler.NewLogLevelHandler(s.Config, aiClient).MountAdmin(systemGroup)
 	handler.NewPostHandler(postSvc, activitySvc).MountAdmin(admin.Group("/posts"))
+	noteHandler := handler.NewNoteHandler(noteSvc)
+	noteHandler.MountAdmin(admin.Group("/notes"))
+	noteHandler.MountFolders(admin.Group("/note-folders"))
+	noteHandler.MountTags(admin.Group("/note-tags"))
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)
 	handler.NewCommentHandler(commentSvc, activitySvc).MountAdmin(admin.Group("/comments"))
