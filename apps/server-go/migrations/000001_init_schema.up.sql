@@ -122,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_posts_deleted ON posts(deleted);
 CREATE INDEX IF NOT EXISTS idx_posts_embedding_status ON posts(embedding_status);
 CREATE INDEX IF NOT EXISTS idx_posts_pinned ON posts(is_pinned DESC, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at) WHERE scheduled_at IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_posts_fulltext ON posts USING gin(to_tsvector('simple', title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, '')));
+CREATE INDEX IF NOT EXISTS idx_posts_fulltext ON posts USING gin(to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000)));
 
 -- 文章标签关联表
 CREATE TABLE IF NOT EXISTS post_tags (
