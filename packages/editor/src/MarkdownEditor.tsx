@@ -40,6 +40,8 @@ export interface MarkdownEditorProps {
   additionalExtensions?: Extension[];
   /** 启用 Bear 风格 WYSIWYG 模式（隐藏非活跃行的 Markdown 标记） */
   bearMode?: boolean;
+  /** 是否处于左右分屏布局 */
+  splitMode?: boolean;
 }
 
 export function MarkdownEditor({
@@ -63,6 +65,7 @@ export function MarkdownEditor({
   theme = 'dark',
   additionalExtensions = [],
   bearMode = false,
+  splitMode = false,
 }: MarkdownEditorProps) {
   // CodeMirror 组件的内部引用
   const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
@@ -184,6 +187,14 @@ export function MarkdownEditor({
         '&.cm-focused': {
           outline: 'none !important',
         },
+        ...(splitMode
+          ? {
+              '.cm-content, .cm-content:focus, .cm-content:focus-visible, .cm-scroller:focus, .cm-scroller:focus-visible': {
+                outline: 'none !important',
+                boxShadow: 'none !important',
+              },
+            }
+          : {}),
         '.cm-scroller': {
           overflow: 'auto !important',
           fontFamily: 'inherit',
@@ -294,7 +305,7 @@ export function MarkdownEditor({
       // 添加外部传入的 Extensions
       ...additionalExtensions,
     ];},
-    [minHeight, showLineNumbers, contentCentered, fontSize, theme, additionalExtensions, bearMode]
+    [minHeight, showLineNumbers, contentCentered, fontSize, theme, additionalExtensions, bearMode, splitMode]
   );
 
   return (
