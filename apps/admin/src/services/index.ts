@@ -1,5 +1,6 @@
 export { default as api } from './api';
 export { postService } from './postService';
+export { noteService } from './noteService';
 export { authService } from './authService';
 export { accessService } from './accessService';
 export { mediaService } from './mediaService';

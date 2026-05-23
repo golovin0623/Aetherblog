@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, CornerDownLeft, FileText, FolderTree, Hash, Image as ImageIcon } from 'lucide-react';
+import { ArrowRight, BookOpen, CornerDownLeft, FileText, FolderTree, Hash, Image as ImageIcon, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { postService, PostListItem } from '@/services/postService';
 import { mediaService, MediaItem } from '@/services/mediaService';
@@ -250,6 +250,24 @@ export function SidebarSearchPalette({
         path: '/categories',
       })
     );
+    if ('智能笔记 notes note 笔记'.toLowerCase().includes(q.toLowerCase())) {
+      out.push({
+        key: 'nav-notes',
+        label: '前往 · 智能笔记',
+        meta: '后台笔记',
+        icon: BookOpen,
+        group: 'all',
+        path: '/notes',
+      });
+      out.push({
+        key: 'new-note',
+        label: '新建 · 智能笔记',
+        meta: '快速创建',
+        icon: Plus,
+        group: 'all',
+        path: '/notes/new',
+      });
+    }
     out.push({
       key: 'all',
       label: `查看 "${q}" 的全部文章`,
@@ -314,6 +332,7 @@ export function SidebarSearchPalette({
 
   const trimmedQuery = debouncedQuery.trim();
   const hasContent = items.some(it => it.group !== 'all');
+  const hasAnyResult = items.length > 0;
 
   const groups = GROUP_ORDER.map(g => ({
     group: g,
@@ -341,7 +360,7 @@ export function SidebarSearchPalette({
           }}
         >
           <div className="max-h-[60vh] overflow-y-auto py-1">
-            {loading && !hasContent && (
+            {loading && !hasAnyResult && (
               <div className="px-3 py-3 space-y-2" aria-live="polite">
                 {[0, 1, 2].map(i => (
                   <div
@@ -358,7 +377,7 @@ export function SidebarSearchPalette({
               </div>
             )}
 
-            {!loading && !error && trimmedQuery && !hasContent && (
+            {!loading && !error && trimmedQuery && !hasAnyResult && (
               <div className="px-4 pt-5 pb-3 text-center">
                 <p className="font-editorial italic text-sm text-[var(--text-secondary)] mb-1">
                   未找到与 "{trimmedQuery}" 匹配的内容

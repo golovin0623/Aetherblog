@@ -541,7 +541,6 @@ export function EditorWithPreview({
               : {
                   width: viewMode === 'edit' ? '100%' : viewMode === 'split' ? '50%' : '0%',
                   opacity: viewMode === 'preview' ? 0 : 1,
-                  borderRightWidth: viewMode === 'split' ? 1 : 0,
                 }
           }
           transition={
@@ -549,10 +548,15 @@ export function EditorWithPreview({
               ? { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
               : { type: 'spring', bounce: 0, duration: 0.4 }
           }
-          className={`h-full overflow-hidden flex flex-col min-w-0 border-[var(--border-subtle)] ${
+          className={`h-full overflow-hidden flex flex-col min-w-0 ${
+            viewMode === 'split' ? 'relative z-[1]' : ''
+          } ${
             useCrossfade && viewMode !== 'split' ? 'absolute inset-0 z-[2]' : ''
           }`}
           style={{
+            ...(viewMode === 'split'
+              ? { boxShadow: 'inset -1px 0 0 var(--border-subtle)' }
+              : { boxShadow: 'none' }),
             ...(useCrossfade && viewMode !== 'split' && viewMode === 'preview'
               ? { pointerEvents: 'none' as const }
               : {}),
@@ -576,6 +580,7 @@ export function EditorWithPreview({
               theme={theme}
               additionalExtensions={additionalExtensions}
               bearMode={bearMode}
+              splitMode={viewMode === 'split'}
             />
           </div>
         </motion.div>
@@ -600,7 +605,9 @@ export function EditorWithPreview({
               ? { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
               : { type: 'spring', bounce: 0, duration: 0.4 }
           }
-          className={`h-full overflow-hidden bg-[var(--bg-primary)] flex flex-col min-w-0 ${
+          className={`h-full overflow-hidden bg-transparent flex flex-col min-w-0 ${
+            viewMode === 'split' ? 'relative z-0' : ''
+          } ${
             useCrossfade && viewMode !== 'split' ? 'absolute inset-0 z-[1]' : ''
           }`}
           style={{

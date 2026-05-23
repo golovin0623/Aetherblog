@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Search,
   LayoutDashboard,
+  BookOpen,
   FileText,
   Image,
   FolderTree,
@@ -67,6 +68,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     { id: 'nav-comments', label: '前往 · 评论管理', group: 'NAVIGATE', icon: MessageSquare, keywords: ['comments'], run: () => go('/comments') },
     { id: 'nav-friends', label: '前往 · 友情链接', group: 'NAVIGATE', icon: Link2, keywords: ['friends', 'links'], run: () => go('/friends') },
     { id: 'nav-aetherhub', label: '前往 · 灵境', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['aetherhub', 'chat', 'agent'], run: () => go('/aetherhub') },
+    { id: 'nav-notes', label: '前往 · 智能笔记', group: 'NAVIGATE', icon: BookOpen, keywords: ['notes', 'note', '智能笔记', '笔记'], run: () => go('/notes') },
     { id: 'nav-agent-workflows', label: '前往 · 智能编排', group: 'NAVIGATE', icon: Workflow, keywords: ['agent', 'workflow'], run: () => go('/agent-workflows') },
     { id: 'nav-ai-tools', label: '前往 · 写作助手', group: 'NAVIGATE', icon: Sparkles, keywords: ['ai', 'tools', 'writing'], run: () => go('/ai-tools') },
     { id: 'nav-global-pricing', label: '前往 · 全局价格', group: 'NAVIGATE', icon: Coins, keywords: ['pricing', 'price', 'model'], run: () => go('/ai-config/pricing') },
@@ -77,6 +79,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     { id: 'nav-security', label: '前往 · 系统安全', group: 'NAVIGATE', icon: ShieldCheck, keywords: ['security', 'jwt', '安全'], run: () => go('/security') },
     { id: 'nav-settings', label: '前往 · 系统设置', group: 'NAVIGATE', icon: Settings, keywords: ['settings'], run: () => go('/settings') },
     { id: 'create-post', label: '新建文章', hint: 'New Post', group: 'CREATE', icon: PenLine, keywords: ['new', 'create', 'write'], run: () => go('/posts/new') },
+    { id: 'create-note', label: '新建笔记', hint: 'New Note', group: 'CREATE', icon: BookOpen, keywords: ['new', 'create', 'note', '笔记'], run: () => go('/notes/new') },
     {
       id: 'sys-theme',
       label: isDark ? '切换到亮色模式' : '切换到暗色模式',
