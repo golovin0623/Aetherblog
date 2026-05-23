@@ -47,13 +47,21 @@ func (h *NoteHandler) MountTags(g *echo.Group) {
 
 // AdminList 处理后台笔记列表。
 func (h *NoteHandler) AdminList(c echo.Context) error {
+	pageNum := parseIntDefault(c.QueryParam("pageNum"), 1)
+	pageSize := parseIntDefault(c.QueryParam("pageSize"), 10)
+	if pageNum < 1 {
+		return response.FailWith(c, response.BadRequest, "pageNum 必须大于 0")
+	}
+	if pageSize < 1 || pageSize > 100 {
+		return response.FailWith(c, response.BadRequest, "pageSize 必须在 1 到 100 之间")
+	}
 	f := dto.NoteFilter{
 		Keyword:    c.QueryParam("keyword"),
 		View:       c.QueryParam("view"),
 		Tag:        c.QueryParam("tag"),
 		SourceType: c.QueryParam("sourceType"),
-		PageNum:    parseIntDefault(c.QueryParam("pageNum"), 1),
-		PageSize:   parseIntDefault(c.QueryParam("pageSize"), 10),
+		PageNum:    pageNum,
+		PageSize:   pageSize,
 	}
 	if v := c.QueryParam("folderId"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
@@ -77,7 +85,7 @@ func (h *NoteHandler) AdminGet(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	note, err := h.svc.GetByID(c.Request().Context(), id)
+	note, err := h.svc.GetByID(c.Request().Context(), id, currentNoteUserID(c))
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -93,11 +101,7 @@ func (h *NoteHandler) Create(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
-	lu := middleware.GetLoginUser(c)
-	var authorID int64
-	if lu != nil {
-		authorID = lu.UserID
-	}
+	authorID := currentNoteUserID(c)
 	note, err := h.svc.Create(c.Request().Context(), req, authorID)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -115,7 +119,7 @@ func (h *NoteHandler) Update(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
-	note, err := h.svc.Update(c.Request().Context(), id, req)
+	note, err := h.svc.Update(c.Request().Context(), id, req, currentNoteUserID(c))
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
@@ -132,7 +136,7 @@ func (h *NoteHandler) UpdateProperties(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
-	note, err := h.svc.UpdateProperties(c.Request().Context(), id, req)
+	note, err := h.svc.UpdateProperties(c.Request().Context(), id, req, currentNoteUserID(c))
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
@@ -149,7 +153,7 @@ func (h *NoteHandler) AutoSave(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
-	if err := h.svc.AutoSave(c.Request().Context(), id, req); err != nil {
+	if err := h.svc.AutoSave(c.Request().Context(), id, currentNoteUserID(c), req); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -161,7 +165,7 @@ func (h *NoteHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
+	if err := h.svc.Delete(c.Request().Context(), id, currentNoteUserID(c)); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -173,11 +177,7 @@ func (h *NoteHandler) Duplicate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	lu := middleware.GetLoginUser(c)
-	var authorID int64
-	if lu != nil {
-		authorID = lu.UserID
-	}
+	authorID := currentNoteUserID(c)
 	note, err := h.svc.Duplicate(c.Request().Context(), id, authorID)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -253,4 +253,12 @@ func parseNoteID(c echo.Context) (int64, error) {
 		return 0, response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	return id, nil
+}
+
+func currentNoteUserID(c echo.Context) int64 {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return 0
+	}
+	return lu.UserID
 }

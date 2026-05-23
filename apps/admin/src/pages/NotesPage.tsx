@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDebounce } from '@aetherblog/hooks';
 import {
@@ -87,6 +87,7 @@ export default function NotesPage() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
+  const hasLoadedNotesRef = useRef(false);
 
   const pageNum = Math.max(1, Number(searchParams.get('pageNum') || '1'));
   const pageSize = Number(searchParams.get('pageSize') || DEFAULT_PAGE_SIZE);
@@ -123,7 +124,7 @@ export default function NotesPage() {
   }, []);
 
   const loadNotes = useCallback(async () => {
-    const isFirst = notes.length === 0;
+    const isFirst = !hasLoadedNotesRef.current;
     if (isFirst) setLoading(true);
     else setRefreshing(true);
     try {
@@ -144,10 +145,11 @@ export default function NotesPage() {
       toast.error(extractApiErrorMessage(error, '加载笔记失败'));
       setNotes([]);
     } finally {
+      hasLoadedNotesRef.current = true;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [debouncedKeyword, folderId, notes.length, pageNum, pageSize, sourceType, tag, view]);
+  }, [debouncedKeyword, folderId, pageNum, pageSize, sourceType, tag, view]);
 
   useEffect(() => {
     void loadMeta();

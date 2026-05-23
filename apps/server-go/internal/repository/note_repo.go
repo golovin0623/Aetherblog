@@ -91,6 +91,42 @@ func (r *NoteRepo) Create(ctx context.Context, n *model.Note) (*model.Note, erro
 	return &out, err
 }
 
+// CreateWithRelations 原子创建笔记、标签和 wiki 链接。
+func (r *NoteRepo) CreateWithRelations(ctx context.Context, n *model.Note, tagNames []string, links []ParsedNoteLink) (*model.Note, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var out model.Note
+	if err := tx.QueryRowxContext(ctx, `
+		INSERT INTO notes (
+			title, content_markdown, summary, folder_id, author_id,
+			source_type, source_url, source_title, source_meta,
+			is_pinned, is_favorite, archived, deleted, word_count, embedding_status,
+			created_at, updated_at
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false,false,$12,$13,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+		RETURNING *`,
+		n.Title, n.ContentMarkdown, n.Summary, n.FolderID, n.AuthorID,
+		n.SourceType, n.SourceURL, n.SourceTitle, n.SourceMeta,
+		n.IsPinned, n.IsFavorite, n.WordCount, n.EmbeddingStatus,
+	).StructScan(&out); err != nil {
+		return nil, err
+	}
+	if err := replaceTagsTx(ctx, tx, out.ID, tagNames); err != nil {
+		return nil, err
+	}
+	if err := replaceLinksTx(ctx, tx, out.ID, links); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Update 全量更新笔记主体字段。
 func (r *NoteRepo) Update(ctx context.Context, id int64, n *model.Note) (*model.Note, error) {
 	var out model.Note
@@ -107,6 +143,41 @@ func (r *NoteRepo) Update(ctx context.Context, id int64, n *model.Note) (*model.
 		n.IsPinned, n.IsFavorite, n.WordCount, n.EmbeddingStatus, id,
 	).StructScan(&out)
 	return &out, err
+}
+
+// UpdateWithRelations 原子保存笔记主体、标签和 wiki 链接。
+func (r *NoteRepo) UpdateWithRelations(ctx context.Context, id int64, n *model.Note, tagNames []string, links []ParsedNoteLink) (*model.Note, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var out model.Note
+	if err := tx.QueryRowxContext(ctx, `
+		UPDATE notes SET
+			title=$1, content_markdown=$2, summary=$3, folder_id=$4,
+			source_type=$5, source_url=$6, source_title=$7, source_meta=$8,
+			is_pinned=$9, is_favorite=$10, word_count=$11, embedding_status=$12,
+			updated_at=CURRENT_TIMESTAMP
+		WHERE id=$13 AND deleted=false
+		RETURNING *`,
+		n.Title, n.ContentMarkdown, n.Summary, n.FolderID,
+		n.SourceType, n.SourceURL, n.SourceTitle, n.SourceMeta,
+		n.IsPinned, n.IsFavorite, n.WordCount, n.EmbeddingStatus, id,
+	).StructScan(&out); err != nil {
+		return nil, err
+	}
+	if err := replaceTagsTx(ctx, tx, id, tagNames); err != nil {
+		return nil, err
+	}
+	if err := replaceLinksTx(ctx, tx, id, links); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 var allowedNoteColumns = map[string]bool{
@@ -175,6 +246,53 @@ func (r *NoteRepo) Duplicate(ctx context.Context, id int64, title string, author
 	return &out, err
 }
 
+// DuplicateWithRelations 原子复制笔记以及标签和 wiki 链接。
+func (r *NoteRepo) DuplicateWithRelations(ctx context.Context, id int64, title string, authorID *int64, links []ParsedNoteLink) (*model.Note, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var out model.Note
+	if err := tx.QueryRowxContext(ctx, `
+		INSERT INTO notes (
+			title, content_markdown, summary, folder_id, author_id,
+			source_type, source_url, source_title, source_meta,
+			is_pinned, is_favorite, archived, deleted, word_count, embedding_status,
+			created_at, updated_at
+		)
+		SELECT $1, content_markdown, summary, folder_id, $2,
+			source_type, source_url, source_title, source_meta,
+			false, is_favorite, false, false, word_count, 'PENDING',
+			CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		FROM notes
+		WHERE id=$3 AND deleted=false
+		RETURNING *`, title, authorID, id).StructScan(&out); err != nil {
+		return nil, err
+	}
+
+	var tags []string
+	if err := tx.SelectContext(ctx, &tags, `
+		SELECT nt.name
+		FROM note_tag_links ntl
+		JOIN note_tags nt ON nt.id = ntl.tag_id
+		WHERE ntl.note_id=$1
+		ORDER BY nt.name`, id); err != nil {
+		return nil, err
+	}
+	if err := replaceTagsTx(ctx, tx, out.ID, tags); err != nil {
+		return nil, err
+	}
+	if err := replaceLinksTx(ctx, tx, out.ID, links); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // FindForAdmin 返回后台笔记分页列表。
 func (r *NoteRepo) FindForAdmin(ctx context.Context, f AdminNoteFilter) ([]NoteListRow, int64, error) {
 	where, args := buildNoteAdminWhere(f)
@@ -235,17 +353,19 @@ func buildNoteAdminWhere(f AdminNoteFilter) (string, []any) {
 	if f.Archived != nil {
 		clauses = append(clauses, "n.archived="+placeholder(*f.Archived))
 	}
-	if f.Keyword != nil && *f.Keyword != "" {
-		pattern := "%" + dbutil.EscapeLike(*f.Keyword) + "%"
-		ph := placeholder(pattern)
+	if f.Keyword != nil && strings.TrimSpace(*f.Keyword) != "" {
+		keyword := strings.TrimSpace(*f.Keyword)
+		searchPh := placeholder(keyword)
+		likePh := placeholder("%" + dbutil.EscapeLike(keyword) + "%")
 		clauses = append(clauses, fmt.Sprintf(`(
-			n.title ILIKE %s OR n.content_markdown ILIKE %s OR n.summary ILIKE %s OR
+			to_tsvector('simple', n.title || ' ' || COALESCE(n.summary, '') || ' ' || n.content_markdown) @@ plainto_tsquery('simple', %s) OR
+			n.title ILIKE %s OR COALESCE(n.summary, '') ILIKE %s OR n.content_markdown ILIKE %s OR
 			EXISTS (
 				SELECT 1 FROM note_tag_links stl
 				JOIN note_tags st ON st.id = stl.tag_id
 				WHERE stl.note_id = n.id AND st.name ILIKE %s
 			)
-		)`, ph, ph, ph, ph))
+		)`, searchPh, likePh, likePh, likePh, likePh))
 	}
 	if f.FolderID != nil {
 		clauses = append(clauses, "n.folder_id="+placeholder(*f.FolderID))
@@ -270,6 +390,13 @@ func (r *NoteRepo) ReplaceTags(ctx context.Context, noteID int64, tagNames []str
 	}
 	defer tx.Rollback()
 
+	if err := replaceTagsTx(ctx, tx, noteID, tagNames); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func replaceTagsTx(ctx context.Context, tx *sqlx.Tx, noteID int64, tagNames []string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM note_tag_links WHERE note_id=$1`, noteID); err != nil {
 		return err
 	}
@@ -288,7 +415,7 @@ func (r *NoteRepo) ReplaceTags(ctx context.Context, noteID int64, tagNames []str
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // GetTagNames 返回指定笔记的标签名称。
@@ -311,6 +438,13 @@ func (r *NoteRepo) ReplaceLinks(ctx context.Context, noteID int64, links []Parse
 	}
 	defer tx.Rollback()
 
+	if err := replaceLinksTx(ctx, tx, noteID, links); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func replaceLinksTx(ctx context.Context, tx *sqlx.Tx, noteID int64, links []ParsedNoteLink) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM note_links WHERE source_note_id=$1`, noteID); err != nil {
 		return err
 	}
@@ -334,7 +468,7 @@ func (r *NoteRepo) ReplaceLinks(ctx context.Context, noteID int64, links []Parse
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // FindOutLinks 返回指定笔记的出链。
@@ -359,7 +493,7 @@ func (r *NoteRepo) FindBackLinks(ctx context.Context, noteID int64) ([]dto.NoteL
 		FROM note_links nl
 		JOIN notes sn ON sn.id = nl.source_note_id AND sn.deleted=false
 		JOIN notes target ON target.id = $1 AND target.deleted=false
-		WHERE nl.target_note_id=$1 OR nl.target_title=target.title
+		WHERE nl.target_note_id=$1 OR (nl.target_note_id IS NULL AND nl.target_title=target.title)
 		ORDER BY sn.updated_at DESC, nl.id`, noteID)
 	return links, err
 }

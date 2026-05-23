@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Save, X } from 'lucide-react';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { noteService } from '@/services/noteService';
@@ -26,30 +26,13 @@ export function QuickNoteDialog({ isOpen, folders, onClose, onCreated }: QuickNo
     return () => clearTimeout(t);
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-        event.preventDefault();
-        void handleSave(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  });
-
-  if (!isOpen) return null;
-
-  const resetText = () => {
+  const resetText = useCallback(() => {
     setTitle('');
     setContent('');
     setTags('');
-  };
+  }, []);
 
-  const handleSave = async (keepOpen: boolean) => {
+  const handleSave = useCallback(async (keepOpen: boolean) => {
     if (saving) return;
     setSaving(true);
     try {
@@ -74,7 +57,24 @@ export function QuickNoteDialog({ isOpen, folders, onClose, onCreated }: QuickNo
     } finally {
       setSaving(false);
     }
-  };
+  }, [content, folderId, onClose, onCreated, resetText, saving, tags, title]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        void handleSave(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleSave, isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm md:items-center md:p-4">
@@ -164,4 +164,3 @@ export function QuickNoteDialog({ isOpen, folders, onClose, onCreated }: QuickNo
 }
 
 export default QuickNoteDialog;
-

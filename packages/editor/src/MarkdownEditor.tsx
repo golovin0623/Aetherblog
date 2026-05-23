@@ -178,17 +178,24 @@ export function MarkdownEditor({
         },
         '&.cm-editor': {
           height: '100%',
+          backgroundColor: theme === 'light' ? 'var(--bg-leaf) !important' : 'transparent !important',
+          outline: 'none !important',
+        },
+        '&.cm-focused': {
+          outline: 'none !important',
         },
         '.cm-scroller': {
           overflow: 'auto !important',
           fontFamily: 'inherit',
+          backgroundColor: 'transparent !important',
         },
         '.cm-content': {
-          minHeight,
+          minHeight: `max(${minHeight}, 100%)`,
           padding: '16px 24px',
           paddingLeft: '28px',
           maxWidth: contentCentered ? '800px' : 'none',
           margin: contentCentered ? '0 auto' : '0',
+          backgroundColor: 'transparent !important',
           caretColor: 'var(--aurora-1, var(--color-primary))',
         },
         // 基线位于文本起始位置(第一个字符的左边缘)
@@ -220,12 +227,14 @@ export function MarkdownEditor({
         },
         // 活动行 —— iA Writer 风:极淡 aurora 底
         '.cm-activeLine': {
-          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 4%, transparent)',
+          minWidth: '100%',
+          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 2.5%, transparent) !important',
+          boxShadow: 'inset 2px 0 0 color-mix(in oklch, var(--aurora-1, var(--color-primary)) 28%, transparent)',
         },
         // Gutter(行号槽)—— 透明底,mono 字体
         '.cm-gutters': {
-          backgroundColor: 'transparent',
-          borderRight: 'none',
+          backgroundColor: 'transparent !important',
+          borderRight: 'none !important',
           paddingLeft: '12px',
           paddingRight: '8px',
           color: 'var(--ink-muted)',
@@ -245,9 +254,9 @@ export function MarkdownEditor({
         },
         // 活动行行号 —— aurora 高亮
         '.cm-activeLineGutter': {
-          backgroundColor: 'transparent',
-          color: 'var(--aurora-1, var(--color-primary))',
-          opacity: 1,
+          backgroundColor: 'transparent !important',
+          color: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 56%, var(--ink-muted))',
+          opacity: 0.88,
         },
         // 匹配括号 —— aurora 低饱和背景 + 描边
         '.cm-matchingBracket, .cm-nonmatchingBracket': {

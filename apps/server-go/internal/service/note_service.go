@@ -30,7 +30,7 @@ var allowedNoteSourceTypes = map[string]bool{
 }
 
 var (
-	inlineTagRE = regexp.MustCompile(`#([\p{L}\p{N}_-]+)`)
+	inlineTagRE = regexp.MustCompile(`(?:^|\s)#([\p{L}\p{N}_-]+)`)
 	noteLinkRE  = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
 )
 
@@ -89,13 +89,13 @@ func (s *NoteService) GetForAdmin(ctx context.Context, f dto.NoteFilter) (*respo
 }
 
 // GetByID 返回笔记详情, 包含 Redis 自动保存草稿。
-func (s *NoteService) GetByID(ctx context.Context, id int64) (*dto.NoteDetail, error) {
+func (s *NoteService) GetByID(ctx context.Context, id int64, userID int64) (*dto.NoteDetail, error) {
 	n, err := s.repo.FindByID(ctx, id)
 	if err != nil || n == nil {
 		return nil, err
 	}
 	_ = s.repo.MarkOpened(ctx, id, time.Now())
-	return s.enrichDetail(ctx, n)
+	return s.enrichDetail(ctx, n, userID)
 }
 
 // Create 创建笔记。
@@ -113,7 +113,7 @@ func (s *NoteService) Create(ctx context.Context, req dto.CreateNoteRequest, aut
 	if err != nil {
 		return nil, err
 	}
-	authorPtr := &authorID
+	authorPtr := noteAuthorPtr(authorID)
 	n := &model.Note{
 		Title:           title,
 		ContentMarkdown: content,
@@ -129,18 +129,15 @@ func (s *NoteService) Create(ctx context.Context, req dto.CreateNoteRequest, aut
 		WordCount:       countWords(content),
 		EmbeddingStatus: "PENDING",
 	}
-	out, err := s.repo.Create(ctx, n)
+	out, err := s.repo.CreateWithRelations(ctx, n, normalizeNoteTags(req.TagNames, content), parseNoteLinks(content))
 	if err != nil {
 		return nil, err
 	}
-	if err := s.replaceTagsAndLinks(ctx, out.ID, req.TagNames, out.ContentMarkdown); err != nil {
-		return nil, err
-	}
-	return s.GetByID(ctx, out.ID)
+	return s.GetByID(ctx, out.ID, authorID)
 }
 
 // Update 全量保存笔记内容。
-func (s *NoteService) Update(ctx context.Context, id int64, req dto.CreateNoteRequest) (*dto.NoteDetail, error) {
+func (s *NoteService) Update(ctx context.Context, id int64, req dto.CreateNoteRequest, userID int64) (*dto.NoteDetail, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
 		return nil, errors.New("笔记不存在")
@@ -172,18 +169,15 @@ func (s *NoteService) Update(ctx context.Context, id int64, req dto.CreateNoteRe
 		WordCount:       countWords(content),
 		EmbeddingStatus: "PENDING",
 	}
-	if _, err := s.repo.Update(ctx, id, n); err != nil {
+	if _, err := s.repo.UpdateWithRelations(ctx, id, n, normalizeNoteTags(req.TagNames, content), parseNoteLinks(content)); err != nil {
 		return nil, err
 	}
-	if err := s.replaceTagsAndLinks(ctx, id, req.TagNames, content); err != nil {
-		return nil, err
-	}
-	s.deleteDraft(ctx, id)
-	return s.GetByID(ctx, id)
+	s.deleteDraft(ctx, id, userID)
+	return s.GetByID(ctx, id, userID)
 }
 
 // UpdateProperties 局部更新笔记属性。
-func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.UpdateNotePropertiesRequest) (*dto.NoteDetail, error) {
+func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.UpdateNotePropertiesRequest, userID int64) (*dto.NoteDetail, error) {
 	fields := map[string]any{}
 	if req.Title != nil {
 		fields["title"] = strings.TrimSpace(*req.Title)
@@ -231,11 +225,11 @@ func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.Up
 			return nil, err
 		}
 	}
-	return s.GetByID(ctx, id)
+	return s.GetByID(ctx, id, userID)
 }
 
 // AutoSave 将笔记草稿保存到 Redis。
-func (s *NoteService) AutoSave(ctx context.Context, id int64, req dto.AutoSaveNoteRequest) error {
+func (s *NoteService) AutoSave(ctx context.Context, id int64, userID int64, req dto.AutoSaveNoteRequest) error {
 	if s.rdb == nil {
 		return nil
 	}
@@ -250,12 +244,12 @@ func (s *NoteService) AutoSave(ctx context.Context, id int64, req dto.AutoSaveNo
 	if err != nil {
 		return err
 	}
-	return s.rdb.Set(ctx, noteDraftKeyPrefix+fmt.Sprintf("%d", id), data, draftTTL).Err()
+	return s.rdb.Set(ctx, noteDraftKey(id, userID), data, draftTTL).Err()
 }
 
 // Delete 软删除笔记。
-func (s *NoteService) Delete(ctx context.Context, id int64) error {
-	s.deleteDraft(ctx, id)
+func (s *NoteService) Delete(ctx context.Context, id int64, userID int64) error {
+	s.deleteDraft(ctx, id, userID)
 	return s.repo.SoftDelete(ctx, id)
 }
 
@@ -266,15 +260,12 @@ func (s *NoteService) Duplicate(ctx context.Context, id int64, authorID int64) (
 		return nil, errors.New("笔记不存在")
 	}
 	title := existing.Title + " 副本"
-	authorPtr := &authorID
-	out, err := s.repo.Duplicate(ctx, id, title, authorPtr)
+	authorPtr := noteAuthorPtr(authorID)
+	out, err := s.repo.DuplicateWithRelations(ctx, id, title, authorPtr, parseNoteLinks(existing.ContentMarkdown))
 	if err != nil {
 		return nil, err
 	}
-	tags, _ := s.repo.GetTagNames(ctx, id)
-	_ = s.repo.ReplaceTags(ctx, out.ID, tags)
-	_ = s.repo.ReplaceLinks(ctx, out.ID, parseNoteLinks(out.ContentMarkdown))
-	return s.GetByID(ctx, out.ID)
+	return s.GetByID(ctx, out.ID, authorID)
 }
 
 // ListFolders 返回笔记文件夹。
@@ -323,7 +314,7 @@ func (s *NoteService) BackLinks(ctx context.Context, id int64) ([]dto.NoteLinkIt
 	return s.repo.FindBackLinks(ctx, id)
 }
 
-func (s *NoteService) enrichDetail(ctx context.Context, n *model.Note) (*dto.NoteDetail, error) {
+func (s *NoteService) enrichDetail(ctx context.Context, n *model.Note, userID int64) (*dto.NoteDetail, error) {
 	tags, _ := s.repo.GetTagNames(ctx, n.ID)
 	outLinks, _ := s.repo.FindOutLinks(ctx, n.ID)
 	backLinks, _ := s.repo.FindBackLinks(ctx, n.ID)
@@ -338,7 +329,7 @@ func (s *NoteService) enrichDetail(ctx context.Context, n *model.Note) (*dto.Not
 		BackLinks:       backLinks,
 	}
 	if s.rdb != nil {
-		if data, err := s.rdb.Get(ctx, noteDraftKeyPrefix+fmt.Sprintf("%d", n.ID)).Bytes(); err == nil && len(data) > 0 {
+		if data, err := s.rdb.Get(ctx, noteDraftKey(n.ID, userID)).Bytes(); err == nil && len(data) > 0 {
 			var draft dto.CreateNoteRequest
 			if json.Unmarshal(data, &draft) == nil {
 				detail.Draft = &draft
@@ -348,17 +339,21 @@ func (s *NoteService) enrichDetail(ctx context.Context, n *model.Note) (*dto.Not
 	return detail, nil
 }
 
-func (s *NoteService) replaceTagsAndLinks(ctx context.Context, noteID int64, explicitTags []string, content string) error {
-	if err := s.repo.ReplaceTags(ctx, noteID, normalizeNoteTags(explicitTags, content)); err != nil {
-		return err
+func (s *NoteService) deleteDraft(ctx context.Context, id int64, userID int64) {
+	if s.rdb != nil {
+		s.rdb.Del(ctx, noteDraftKey(id, userID))
 	}
-	return s.repo.ReplaceLinks(ctx, noteID, parseNoteLinks(content))
 }
 
-func (s *NoteService) deleteDraft(ctx context.Context, id int64) {
-	if s.rdb != nil {
-		s.rdb.Del(ctx, noteDraftKeyPrefix+fmt.Sprintf("%d", id))
+func noteDraftKey(noteID int64, userID int64) string {
+	return fmt.Sprintf("%s%d:user:%d", noteDraftKeyPrefix, noteID, userID)
+}
+
+func noteAuthorPtr(authorID int64) *int64 {
+	if authorID <= 0 {
+		return nil
 	}
+	return &authorID
 }
 
 func toNoteListItem(n *model.Note, folderName *string, tagNames []string) dto.NoteListItem {
@@ -426,12 +421,50 @@ func normalizeNoteTags(explicit []string, content string) []string {
 	for _, tag := range explicit {
 		add(tag)
 	}
-	for _, match := range inlineTagRE.FindAllStringSubmatch(content, -1) {
-		if len(match) > 1 {
-			add(match[1])
-		}
+	for _, tag := range extractInlineTags(content) {
+		add(tag)
 	}
 	return out
+}
+
+func extractInlineTags(content string) []string {
+	tags := []string{}
+	inFence := false
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		for _, match := range inlineTagRE.FindAllStringSubmatch(stripInlineCode(line), -1) {
+			if len(match) > 1 {
+				tags = append(tags, match[1])
+			}
+		}
+	}
+	return tags
+}
+
+func stripInlineCode(line string) string {
+	var b strings.Builder
+	b.Grow(len(line))
+	inCode := false
+	for _, r := range line {
+		if r == '`' {
+			inCode = !inCode
+			b.WriteRune(' ')
+			continue
+		}
+		if inCode {
+			b.WriteRune(' ')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func parseNoteLinks(content string) []ParsedNoteLink {

@@ -53,6 +53,16 @@ func TestNormalizeNoteTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeNoteTagsSkipsAnchorsAndCode(t *testing.T) {
+	content := "链接 https://example.com/#section 正文 #笔记 `#inline` \n```go\n#code\n```\n新行 #待办"
+	got := normalizeNoteTags(nil, content)
+	want := []string{"笔记", "待办"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("normalizeNoteTags() = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseNoteLinks(t *testing.T) {
 	got := parseNoteLinks("关联 [[项目计划]]、[[ AI 想法 ]]，重复 [[项目计划]]，空 [[]] 忽略。")
 	wantTitles := []string{
