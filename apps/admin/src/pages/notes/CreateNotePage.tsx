@@ -42,6 +42,7 @@ import {
   Table2,
   Underline,
   Undo2,
+  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -69,6 +70,15 @@ function nowLabel(value?: string | null) {
 }
 
 type InsertMode = 'wrap' | 'insert' | 'lineStart';
+
+const sourceOptions: Array<{ value: NonNullable<CreateNoteRequest['sourceType']>; label: string }> = [
+  { value: 'manual', label: '手动' },
+  { value: 'web', label: '网页' },
+  { value: 'article', label: '文章' },
+  { value: 'chat', label: '对话' },
+  { value: 'import', label: '导入' },
+  { value: 'api', label: 'API' },
+];
 
 export default function CreateNotePage() {
   const navigate = useNavigate();
@@ -681,25 +691,46 @@ function NoteInfoPanel({
   onArchiveToggle: () => void;
   onClose: () => void;
 }) {
+  const currentFolder = folders.find((folder) => String(folder.id) === folderId);
+  const tagCount = parseTags(tagInput).length;
+  const currentSource = sourceOptions.find((item) => item.value === sourceType)?.label || '手动';
+
   const content = (
     <aside className={cn(
-      'flex h-full w-full flex-col border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]',
-      isMobile ? 'max-h-[72vh] rounded-t-2xl border-l-0 border-t' : 'w-[360px]',
+      'flex h-full w-full flex-col border-l border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_94%,var(--aurora-1)_6%)]',
+      isMobile ? 'max-h-[74vh] rounded-t-2xl border-l-0 border-t' : 'w-[384px]',
     )}>
-      <header className="flex items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-        <div>
-          <h2 className="text-sm font-bold text-[var(--ink-primary)]">笔记信息</h2>
-          <p className="text-xs text-[var(--ink-muted)]">整理来源、标签与关联</p>
+      <header className="shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]">
+                <BookOpen className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-[var(--ink-primary)]">笔记信息</h2>
+                <p className="mt-0.5 text-xs text-[var(--ink-muted)]">来源 · 标签 · 关联</p>
+              </div>
+            </div>
+            <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+              <InfoPill>{currentFolder?.name || '未整理'}</InfoPill>
+              <InfoPill>{tagCount} 标签</InfoPill>
+              <InfoPill>{currentSource}</InfoPill>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]" aria-label="关闭信息面板">
+            {isMobile ? <ChevronDown className="h-4 w-4" /> : <X className="h-4 w-4" />}
+          </button>
         </div>
-        <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" aria-label="关闭信息面板">
-          <ChevronDown className="h-4 w-4" />
-        </button>
       </header>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
-        <PanelGroup title="基础">
-          <textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="摘要可选" rows={3} className="field min-h-20 resize-none" />
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        <PanelGroup title="整理">
+          <FieldLabel>摘要</FieldLabel>
+          <textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="摘要可选" rows={3} className="note-side-field min-h-24 resize-none leading-6" />
+
+          <FieldLabel>文件夹</FieldLabel>
           <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
-            <select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="field">
+            <select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="note-side-field">
               <option value="">未整理</option>
               {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
             </select>
@@ -708,48 +739,69 @@ function NoteInfoPanel({
               onClick={onCreateFolder}
               aria-label="新建文件夹"
               title="新建文件夹"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)] bg-[color-mix(in_oklch,var(--bg-card)_72%,transparent)] text-[var(--ink-secondary)] transition-colors hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] hover:text-[var(--aurora-1)]"
             >
               <FolderPlus className="h-4 w-4" />
             </button>
           </div>
-          <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} list="note-tag-options" placeholder="标签, 用逗号分隔" className="field" />
+
+          <FieldLabel>标签</FieldLabel>
+          <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} list="note-tag-options" placeholder="标签, 用逗号分隔" className="note-side-field" />
           <datalist id="note-tag-options">
             {tags.map((tag) => <option key={tag.id} value={tag.name} />)}
           </datalist>
-          <div className="grid grid-cols-2 gap-2">
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
             <ToggleButton active={isPinned} onClick={() => setIsPinned(!isPinned)} icon={<Pin className="h-4 w-4" />}>置顶</ToggleButton>
             <ToggleButton active={isFavorite} onClick={() => setIsFavorite(!isFavorite)} icon={<Star className="h-4 w-4" />}>收藏</ToggleButton>
           </div>
-          <button type="button" onClick={onArchiveToggle} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-sm font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]">
+          <button type="button" onClick={onArchiveToggle} className={cn(
+            'inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors',
+            archived
+              ? 'border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--aurora-1)]'
+              : 'border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--ink-primary)_16%,transparent)] hover:text-[var(--ink-primary)]',
+          )}>
             {archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
             {archived ? '恢复笔记' : '归档笔记'}
           </button>
         </PanelGroup>
 
         <PanelGroup title="来源">
-          <select value={sourceType} onChange={(event) => setSourceType(event.target.value as NonNullable<CreateNoteRequest['sourceType']>)} className="field">
-            <option value="manual">手动</option>
-            <option value="web">网页</option>
-            <option value="article">文章</option>
-            <option value="chat">对话</option>
-            <option value="import">导入</option>
-            <option value="api">API</option>
-          </select>
-          <input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} placeholder="来源标题" className="field" />
-          <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="来源 URL, 只保存不抓取" className="field" />
+          <div className="grid grid-cols-3 gap-1 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] bg-[color-mix(in_oklch,var(--bg-card)_64%,transparent)] p-1">
+            {sourceOptions.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setSourceType(item.value)}
+                className={cn(
+                  'h-8 rounded-lg text-xs font-medium transition-colors',
+                  sourceType === item.value
+                    ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]',
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} placeholder="来源标题" className="note-side-field" />
+          <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="来源 URL, 只保存不抓取" className="note-side-field" />
         </PanelGroup>
 
         <PanelGroup title="关联">
           {(note?.backLinks?.length || 0) === 0 ? (
-            <p className="rounded-lg border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] p-3 text-xs leading-5 text-[var(--ink-muted)]">
-              还没有反向链接。可以在其他笔记中输入 <span className="font-mono">[[{note?.title || '笔记标题'}]]</span> 建立关联。
-            </p>
+            <div className="rounded-xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-3 py-3">
+              <div className="flex items-center gap-2 text-sm text-[var(--ink-secondary)]">
+                <Link2 className="h-4 w-4 text-[var(--ink-muted)]" />
+                暂无反向链接
+              </div>
+              <p className="mt-1 pl-6 text-xs leading-5 text-[var(--ink-muted)]">等待其他笔记引用</p>
+            </div>
           ) : (
             <div className="space-y-2">
               {note?.backLinks.map((link) => (
-                <div key={link.id} className="rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-2 text-xs">
-                  <div className="flex items-center gap-1 text-[var(--ink-primary)]"><Link2 className="h-3.5 w-3.5" />{link.sourceTitle}</div>
+                <div key={link.id} className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] bg-[color-mix(in_oklch,var(--bg-card)_56%,transparent)] p-3 text-xs">
+                  <div className="flex items-center gap-1.5 text-[var(--ink-primary)]"><Link2 className="h-3.5 w-3.5" />{link.sourceTitle}</div>
                   <p className="mt-1 text-[var(--ink-muted)]">引用为 {link.linkText}</p>
                 </div>
               ))}
@@ -758,27 +810,36 @@ function NoteInfoPanel({
         </PanelGroup>
 
         <PanelGroup title="AI">
-          <div className="rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-3 text-xs text-[var(--ink-muted)]">
-            <div className="flex items-center justify-between">
-              <span>索引状态</span>
-              <span className="font-mono text-[var(--ink-primary)]">{note?.embeddingStatus || 'PENDING'}</span>
+          <div className="rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_5%,transparent)] p-3 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[var(--ink-muted)]">索引状态</span>
+              <span className="rounded-md bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-2 py-1 font-mono text-[11px] text-[var(--ink-primary)]">{note?.embeddingStatus || 'PENDING'}</span>
             </div>
-            <p className="mt-2 leading-5">首版只落底座。后续灵境引用会在这里显示索引和召回状态。</p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+              <span className="block h-full w-1/3 rounded-full bg-[var(--aurora-1)]" />
+            </div>
           </div>
         </PanelGroup>
       </div>
       <style>{`
-        .field {
+        .note-side-field {
           width: 100%;
-          border-radius: 0.5rem;
-          border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
-          background: var(--bg-card);
+          min-height: 2.5rem;
+          border-radius: 0.625rem;
+          border: 1px solid color-mix(in oklch, var(--ink-primary) 9%, transparent);
+          background: color-mix(in oklch, var(--bg-card) 72%, transparent);
           padding: 0.625rem 0.75rem;
           color: var(--ink-primary);
           font-size: 0.875rem;
           outline: none;
+          transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
         }
-        .field:focus { border-color: var(--aurora-1); }
+        .note-side-field::placeholder { color: var(--ink-muted); }
+        .note-side-field:focus {
+          border-color: color-mix(in oklch, var(--aurora-1) 42%, transparent);
+          background: color-mix(in oklch, var(--bg-card) 86%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 8%, transparent);
+        }
       `}</style>
     </aside>
   );
@@ -793,11 +854,23 @@ function NoteInfoPanel({
   );
 }
 
+function InfoPill({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex max-w-full items-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-card)_58%,transparent)] px-2 py-1 text-[11px] text-[var(--ink-muted)]">
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <label className="block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--ink-muted)]">{children}</label>;
+}
+
 function PanelGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h3 className="text-xs font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">{title}</h3>
-      <div className="space-y-2">{children}</div>
+    <section className="space-y-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] pt-5 first:border-t-0 first:pt-0">
+      <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">{title}</h3>
+      <div className="space-y-2.5">{children}</div>
     </section>
   );
 }
@@ -810,8 +883,8 @@ function ToggleButton({ active, icon, children, onClick }: { active: boolean; ic
       className={cn(
         'inline-flex h-10 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors',
         active
-          ? 'border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-void)]'
-          : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]',
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
+          : 'border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--ink-primary)_16%,transparent)] hover:text-[var(--ink-primary)]',
       )}
     >
       {active ? <Check className="h-4 w-4" /> : icon}
