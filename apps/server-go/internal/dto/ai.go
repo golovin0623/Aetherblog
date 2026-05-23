@@ -10,10 +10,10 @@ package dto
 //   保持严格一致，否则会误导前端开发者在客户端 TS 里面发一些 Python 根本
 //   不识别的字段。本次清理移除了一批"幽灵字段"——Python 从未存在却长期
 //   保留在 Go 侧的兼容别名：
-//     - SummaryRequest:  Model / Style
+//     - SummaryRequest:  Model / Style (模型 / 风格)
 //     - TagsRequest:     Model
-//     - TitlesRequest:   Count / Style / Model
-//     - PolishRequest:   PolishType / Style / Model
+//     - TitlesRequest:   Count / Style / Model (数量 / 风格 / 模型)
+//     - PolishRequest:   PolishType / Style / Model (润色类型 / 风格 / 模型)
 //     - OutlineRequest:  Model
 //   保留 ModelID + ProviderCode（Python schema 中存在），供用户级模型覆盖使用。
 

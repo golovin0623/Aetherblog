@@ -2,8 +2,10 @@ package handler
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
@@ -67,9 +69,38 @@ func (h *SiteHandler) Stats(c echo.Context) error {
 	ctx := c.Request().Context()
 	// 并行查询各统计项（忽略查询错误，降级为 0）
 	// 使用 Count 替代 FindAll 进行统计，避免全量数据加载和大量的内存分配
-	catsCount, _ := h.catRepo.Count(ctx)
-	tagsCount, _ := h.tagRepo.Count(ctx)
-	postCount, _ := h.postRepo.CountPublished(ctx)
+	var catsCount, tagsCount, postCount int64
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		catsCount, err = h.catRepo.Count(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load category count failed")
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		tagsCount, err = h.tagRepo.Count(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load tag count failed")
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		postCount, err = h.postRepo.CountPublished(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("load published post count failed")
+		}
+	}()
+
+	wg.Wait()
 	return response.OK(c, map[string]any{
 		"posts":      postCount,
 		"categories": catsCount,

@@ -15,7 +15,7 @@ from app.services.llm_router import LlmRouter
 logger = logging.getLogger("ai-service")
 
 
-# ref: §2.4.2.5, §4.4 · Plan V3 (migrations 000034 + 000041)
+# 引用: §2.4.2.5, §4.4 · 计划 V3 (数据迁移 000034 + 000041)
 #
 # 存储模型（profile 化，多 chunk，蓝绿切换）：
 #   - search_profiles 表存"完整索引配置单元"：(model + chunker + chunk_size + overlap)

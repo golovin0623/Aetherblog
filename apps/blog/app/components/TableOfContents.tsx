@@ -329,6 +329,7 @@ const TocItemComponent = React.memo(function TocItemComponent({
     <button
       type="button"
       onClick={() => scrollToHeading(heading.id)}
+      aria-label={`跳转到: ${heading.text}`}
       className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-lg ${isActive
         ? 'text-primary bg-primary/5 font-medium'
         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'

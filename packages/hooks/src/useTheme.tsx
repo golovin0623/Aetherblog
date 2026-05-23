@@ -475,7 +475,7 @@ export function useTheme(): UseThemeReturn {
   return context;
 }
 
-// themeInitScript / themeFoucGuardStyle / THEME_LIGHT_BG / THEME_DARK_BG
+// themeInitScript / themeFoucGuardStyle / THEME_LIGHT_BG / THEME_DARK_BG (主题初始化脚本 / 防止FOUC的样式 / 亮色背景 / 暗色背景)
 // 均已迁移到 ./themeConstants,从 @aetherblog/hooks 的 barrel 消费。
 
 export default useTheme;

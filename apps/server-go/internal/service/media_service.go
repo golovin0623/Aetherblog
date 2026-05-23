@@ -656,9 +656,9 @@ func (s *MediaService) verifiedBackupAccessURL(ctx context.Context, m *model.Med
 	if m.BackupProviderID == nil {
 		return backupURL, true
 	}
-	// Keep this read path free of remote I/O: resolveStore is cached after the
-	// first provider lookup, and KeyFromURL/GetURL only canonicalize strings.
-	// That avoids leaking an old provider domain until the next verify pass.
+	// 保持此读取路径无远程 I/O: resolveStore 在第一次
+	// 提供商查找后被缓存，且 KeyFromURL/GetURL 仅规范化字符串。
+	// 这避免了在下一次验证过程之前泄漏旧的提供商域名。
 	store, _, err := s.resolveStore(ctx, m.BackupProviderID)
 	if err != nil {
 		return backupURL, true
@@ -689,9 +689,9 @@ func freshVerifiedBackupURL(m *model.MediaFile) (string, bool) {
 	if backupURL == "" {
 		return "", false
 	}
-	// Keep public URL generation read-only and fast. Freshness is maintained by
-	// the verify worker/manual verify APIs, which perform the cloud HEAD and DB
-	// status writes outside the high-traffic read path.
+	// 保持公共 URL 的生成为只读且快速。新鲜度由
+	// 验证 worker/手动验证 API 维护，它们执行云端 HEAD 和数据库
+	// 状态写入，处于高流量读取路径之外。
 	if m.LastVerifiedAt != nil && time.Since(*m.LastVerifiedAt) < publicBackupVerificationFreshness {
 		return backupURL, true
 	}

@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"strconv"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 
@@ -68,70 +70,102 @@ func parseAIDashboardFilter(c echo.Context) repository.AIDashboardFilter {
 // Dashboard 处理 GET /api/v1/admin/stats/dashboard 请求。
 // 聚合并返回前端 DashboardData 接口所需的全量数据，结构如下：
 //
-//	{ stats, topPosts, visitorTrend, archiveStats, deviceStats, trends }
+//	{ stats(统计), topPosts(热门文章), visitorTrend(访客趋势), archiveStats(归档统计), deviceStats(设备统计), trends(趋势) }
 //
 // AI 用量、趋势变化和设备统计均采用非阻塞方式获取，失败时降级为零值。
 func (h *StatsHandler) Dashboard(c echo.Context) error {
-	ctx := c.Request().Context()
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+
+	var wg sync.WaitGroup
+
+	var (
+		dashboard    *service.DashboardVO
+		dashErr      error
+		topPosts     []service.TopPostVO
+		visitorTrend []service.DailyVisitVO
+		archiveStats []service.ArchiveMonthVO
+		aiTokens     int64
+		aiCost       float64
+		trends           = &service.TrendsVO{}
+		deviceStats  any = []any{}
+	)
 
 	// 获取核心仪表盘汇总数据
-	dashboard, err := h.svc.GetDashboard(ctx)
-	if err != nil {
-		return response.Error(c, err)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		dashboard, dashErr = h.svc.GetDashboard(ctx)
+		if dashErr != nil {
+			cancel()
+		}
+	}()
 
 	// 获取热门文章列表，失败时降级为空数组
-	topPosts, _ := h.svc.GetTopPosts(ctx)
-	if topPosts == nil {
-		topPosts = []service.TopPostVO{}
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		topPosts, _ = h.svc.GetTopPosts(ctx)
+		if topPosts == nil {
+			topPosts = []service.TopPostVO{}
+		}
+	}()
 
 	// 获取最近 7 天的访客趋势，失败时降级为空数组
-	visitorTrend, _ := h.svc.GetVisitorTrend(ctx, 7)
-	if visitorTrend == nil {
-		visitorTrend = []service.DailyVisitVO{}
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		visitorTrend, _ = h.svc.GetVisitorTrend(ctx, 7)
+		if visitorTrend == nil {
+			visitorTrend = []service.DailyVisitVO{}
+		}
+	}()
 
 	// 获取按月归档的文章数量统计，失败时降级为空数组
-	archiveStats, _ := h.svc.GetArchiveStats(ctx)
-	if archiveStats == nil {
-		archiveStats = []service.ArchiveMonthVO{}
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		archiveStats, _ = h.svc.GetArchiveStats(ctx)
+		if archiveStats == nil {
+			archiveStats = []service.ArchiveMonthVO{}
+		}
+	}()
 
 	// 获取 AI 用量统计（非阻塞——失败时使用零值）
-	var aiTokens int64
-	var aiCost float64
-	if aiDash, err := h.svc.GetAIDashboard(ctx); err == nil && aiDash != nil {
-		aiTokens = aiDash.Overview.TotalTokens
-		aiCost = aiDash.Overview.TotalCost
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if aiDash, err := h.svc.GetAIDashboard(ctx); err == nil && aiDash != nil {
+			aiTokens = aiDash.Overview.TotalTokens
+			aiCost = aiDash.Overview.TotalCost
+		}
+	}()
 
 	// 获取数据增长趋势（非阻塞——失败时全部使用零值）
-	trendsMap := map[string]any{
-		"posts":          0,
-		"categories":     0,
-		"views":          0,
-		"visitors":       0,
-		"comments":       0,
-		"words":          0,
-		"postsThisMonth": 0,
-	}
-	if trends, err := h.svc.GetTrends(ctx); err == nil && trends != nil {
-		trendsMap = map[string]any{
-			"posts":          trends.Posts,
-			"categories":     trends.Categories,
-			"views":          trends.Views,
-			"visitors":       trends.Visitors,
-			"comments":       trends.Comments,
-			"words":          trends.Words,
-			"postsThisMonth": trends.PostsThisMonth,
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if loadedTrends, err := h.svc.GetTrends(ctx); err == nil && loadedTrends != nil {
+			trends = loadedTrends
 		}
-	}
+	}()
 
 	// 获取设备类型统计（非阻塞——失败时使用空数组）
-	var deviceStats any = []any{}
-	if ds, err := h.svc.GetDeviceStats(ctx); err == nil && ds != nil {
-		deviceStats = ds
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if ds, err := h.svc.GetDeviceStats(ctx); err == nil && ds != nil {
+			deviceStats = ds
+		}
+	}()
+
+	wg.Wait()
+
+	if dashErr != nil {
+		return response.Error(c, dashErr)
+	}
+	if dashboard == nil {
+		return response.Fail(c, "仪表盘统计数据不可用")
 	}
 
 	// 将各项数据映射为前端 DashboardData 结构
@@ -151,7 +185,7 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 		"visitorTrend": visitorTrend,
 		"archiveStats": archiveStats,
 		"deviceStats":  deviceStats,
-		"trends":       trendsMap,
+		"trends":       trends,
 	}
 
 	return response.OK(c, result)

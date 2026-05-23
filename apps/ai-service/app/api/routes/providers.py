@@ -1,4 +1,4 @@
-# ref: §5.1 - Provider Management API
+# 引用: §5.1 - 提供商管理 API
 """
 AI provider 与凭证管理的 FastAPI 路由。
 """
