@@ -549,12 +549,13 @@ function SidebarContent({
               {/* 主题切换按钮 - 性能优化版 */}
               <button
                 type="button"
+                data-theme-toggle
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleThemeWithAnimation(e.clientX, e.clientY);
                 }}
                 className={cn(
-                  'p-1.5 rounded-md transform-gpu will-change-transform',
+                  'p-1.5 rounded-md',
                   'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
                   'transition-colors duration-150'
                 )}

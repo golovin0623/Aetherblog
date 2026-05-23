@@ -7,22 +7,15 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 /**
- * 移动端重页面列表：这些页面包含大量高成本环境光/毛玻璃效果。
- * 在移动端 GPU 算力有限时，clip-path 圆形扩散动画会与这些 blur filter 叠加，
- * 导致 GPU/主线程压力骤增、动画卡顿。
- * 对这些页面降级为 fade 过渡，以保证流畅性；PC 端不受影响（按钮本身 md:hidden）。
- */
-const MOBILE_HEAVY_PAGES = ['/', '/timeline', '/friends', '/posts'];
-
-/**
  * 全局移动端悬浮主题切换按钮
  * 位于屏幕右下角，视觉极弱，专职用于触发主题切换。
- * - 轻量页面（文章详情等）：使用 clip-path 圆形扩散动画
- * - 重量页面（首页/时间轴/友链/文章列表）：降级为 fade 过渡，避免移动端卡顿
+ * 所有页面统一使用 clip-path 圆形扩散动画。主题切换期间的性能兜底
+ * 在 globals.css/useTheme 中完成：隐藏环境光、关闭高成本 blur、禁用路由
+ * morph 的具名 View Transition 层，避免移动端看到卡片压住光圈。
  * 此按钮本身为 md:hidden，修改只影响移动端。
  */
 export default function FloatingThemeToggle() {
-  const { isDark, toggleThemeWithAnimation, toggleThemeWithFade } = useTheme();
+  const { isDark, toggleThemeWithAnimation } = useTheme();
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
 
@@ -36,56 +29,52 @@ export default function FloatingThemeToggle() {
   // 与 composer / FAB 相互遮挡。
   if (pathname.startsWith('/agent/workspace')) return null;
 
-  // 判断当前路由是否属于移动端重页面
-  const isHeavyPage = MOBILE_HEAVY_PAGES.includes(pathname);
-
   return (
     <button
       type="button"
+      data-theme-toggle
       onClick={(e) => {
         // 防止和底部导航或滚动冲突
         e.preventDefault();
-        if (isHeavyPage) {
-          // 移动端重页面：降级为 fade 过渡，避免 clip-path 动画与大量 blur/glow 叠加卡顿
-          toggleThemeWithFade();
-        } else {
-          const x = e.clientX;
-          const y = e.clientY;
-          toggleThemeWithAnimation(x, y);
-        }
+        const x = e.clientX;
+        const y = e.clientY;
+        toggleThemeWithAnimation(x, y);
       }}
       className="surface-raised !rounded-full md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px]
-        transition-all duration-300 hover:scale-110 active:scale-95
+        theme-toggle-vt
+        transition-[background-color,border-color,color,box-shadow,opacity] duration-200
         flex items-center justify-center group
         focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:outline-none overflow-hidden"
       aria-label={isDark ? '切换到亮色主题' : '切换到暗色主题'}
       title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        {isDark ? (
-          <motion.span
-            key="moon"
-            initial={{ rotate: -90, scale: 0, opacity: 0 }}
-            animate={{ rotate: 0, scale: 1, opacity: 1 }}
-            exit={{ rotate: 90, scale: 0, opacity: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center justify-center"
-          >
-            <Moon className="w-5 h-5 text-[var(--text-secondary)]" />
-          </motion.span>
-        ) : (
-          <motion.span
-            key="sun"
-            initial={{ rotate: 90, scale: 0, opacity: 0 }}
-            animate={{ rotate: 0, scale: 1, opacity: 1 }}
-            exit={{ rotate: -90, scale: 0, opacity: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center justify-center"
-          >
-            <Sun className="w-5 h-5 text-[var(--text-secondary)]" />
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <span className="relative block h-5 w-5" aria-hidden="true">
+        <AnimatePresence mode="wait" initial={false}>
+          {isDark ? (
+            <motion.span
+              key="moon"
+              initial={{ rotate: -35, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              exit={{ rotate: 35, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              <Moon className="w-5 h-5 text-[var(--text-secondary)]" />
+            </motion.span>
+          ) : (
+            <motion.span
+              key="sun"
+              initial={{ rotate: 35, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
+              exit={{ rotate: -35, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              <Sun className="w-5 h-5 text-[var(--text-secondary)]" />
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </span>
     </button>
   );
 }

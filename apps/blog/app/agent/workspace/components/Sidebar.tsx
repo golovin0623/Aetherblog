@@ -660,13 +660,14 @@ function ProfileMenuHeader({ user }: { user: AgentUser }) {
 }
 
 function ProfileMenuThemeToggle() {
-  const { isDark, setTheme } = useTheme();
+  const { isDark, toggleThemeWithAnimation } = useTheme();
   return (
     <button
       type="button"
       role="menuitem"
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="w-full flex items-center gap-2.5 px-3.5 py-3 text-[13px] text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-[0.985] transition-all"
+      data-theme-toggle
+      onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
+      className="w-full flex items-center gap-2.5 px-3.5 py-3 text-[13px] text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
     >
       {isDark ? (
         <Sun className="w-4 h-4 flex-shrink-0 text-[var(--aurora-2)]" />

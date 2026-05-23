@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User as UserIcon, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ThemeToggle } from '@aetherblog/hooks';
 import { spring, transition, variants, AetherMark } from '@aetherblog/ui';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
@@ -73,6 +74,13 @@ export function LoginPage() {
 
   return (
     <div className="auth-codex-page relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
+      <div className="fixed right-4 top-4 z-20 md:right-6 md:top-6">
+        <ThemeToggle
+          size="sm"
+          className="border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] text-[var(--ink-secondary)] shadow-[0_12px_30px_-20px_rgba(0,0,0,0.45)] backdrop-blur-xl hover:bg-[var(--bg-raised)]"
+        />
+      </div>
+
       {/* 环境光背景:
           ★ 亮主题:干脆不要 aurora 软色光晕 —— admin 的 --color-primary 是近黑,
             无论怎么 override specificity,渲染到暖米白底上都会是一块"灰污渍"。
