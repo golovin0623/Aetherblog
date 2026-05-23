@@ -14,7 +14,6 @@ import {
   Plus,
   Search,
   Star,
-  Tag,
   Trash2,
   X,
   Zap,
@@ -22,6 +21,7 @@ import {
 import { toast } from 'sonner';
 
 import { AdminPagination } from '@/components/common/AdminPagination';
+import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { noteService, type NoteListParams } from '@/services/noteService';
 import type { NoteFolderItem, NoteListItem, NoteTagItem } from '@/types/note';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
@@ -30,6 +30,35 @@ import { CreateFolderDialog } from './notes/components/CreateFolderDialog';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
+
+const notesPanelClass = cn(
+  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'p-3 shadow-sm sm:p-4'
+);
+
+const notesShellClass = cn(
+  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+);
+
+const notesControlClass = cn(
+  'h-11 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]',
+  'px-3 text-sm text-[var(--ink-primary)] outline-none placeholder:text-[var(--ink-muted)]',
+  'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+  'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+  'focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
+  'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+);
+
+function viewChipClass(isSelected: boolean): string {
+  return cn(
+    'inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium sm:h-7 sm:min-h-0',
+    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+    isSelected
+      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+      : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+  );
+}
 
 const noteViews = [
   { id: 'all', label: '全部' },
@@ -63,7 +92,7 @@ function tagList(tags: string[]) {
   return (
     <div className="flex min-w-0 flex-wrap gap-1.5">
       {tags.slice(0, 3).map((tag) => (
-        <span key={tag} className="max-w-[7rem] truncate rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--aurora-1)]">
+        <span key={tag} className="max-w-[7rem] truncate rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-1.5 py-0.5 text-[11px] text-[var(--ink-secondary)]">
           {tag}
         </span>
       ))}
@@ -210,24 +239,25 @@ export default function NotesPage() {
   };
 
   return (
-    <div className="min-h-full bg-[var(--bg-void)] px-4 py-4 md:px-6 md:py-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4">
-        <header className="surface-leaf surface-dashboard-card rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--ink-primary)] text-[var(--bg-void)]">
-                <BookOpen className="h-5 w-5" />
-              </span>
-              <div>
-                <h1 className="text-xl font-bold text-[var(--ink-primary)]">智能笔记</h1>
-                <p className="text-sm text-[var(--ink-muted)]">{currentViewLabel} · {loading ? '加载中' : `${total} 条笔记`}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <AdminModuleHeader
+          title="智能笔记"
+          description="轻量记录、整理素材与沉淀可检索的知识底座。"
+          icon={BookOpen}
+          currentLabel={currentViewLabel}
+          activeSummary={
+            loading
+              ? '正在同步笔记列表'
+              : `当前匹配 ${total} 条笔记，第 ${pageNum}/${Math.max(pages, 1)} 页`
+          }
+          actions={
+            <>
               <button
                 type="button"
                 onClick={() => setQuickOpen(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)] px-3 text-sm font-medium text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]"
+                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                aria-label="快速记录"
               >
                 <Zap className="h-4 w-4" />
                 快速记录
@@ -235,24 +265,26 @@ export default function NotesPage() {
               <button
                 type="button"
                 onClick={() => navigate('/notes/new')}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--ink-primary)] px-3 text-sm font-semibold text-[var(--bg-void)] transition-transform active:scale-[0.98]"
+                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                aria-label="新建笔记"
               >
                 <Plus className="h-4 w-4" />
-                新建笔记
+                新建
               </button>
               <button
                 type="button"
                 onClick={() => setFolderDialogOpen(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-3 text-sm font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+                className="admin-module-action-button max-sm:!h-11 max-sm:!min-h-11 max-sm:!w-11"
+                aria-label="新建文件夹"
               >
                 <Folder className="h-4 w-4" />
-                新建文件夹
+                文件夹
               </button>
-            </div>
-          </div>
-        </header>
+            </>
+          }
+        />
 
-        <section className="surface-leaf surface-dashboard-card rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
+        <section className={cn(notesPanelClass, 'space-y-4')}>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_160px_150px]">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
@@ -260,13 +292,13 @@ export default function NotesPage() {
                 value={keyword}
                 onChange={(event) => updateParams({ keyword: event.target.value, pageNum: 1 })}
                 placeholder="搜索标题、正文或标签..."
-                className="h-11 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-card)] pl-9 pr-3 text-sm text-[var(--ink-primary)] outline-none placeholder:text-[var(--ink-muted)] focus:border-[var(--aurora-1)]"
+                className={cn(notesControlClass, 'w-full pl-9 pr-3')}
               />
             </label>
             <select
               value={folderId}
               onChange={(event) => updateParams({ folderId: event.target.value, pageNum: 1 })}
-              className="h-11 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-card)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[var(--aurora-1)]"
+              className={notesControlClass}
             >
               <option value="">全部文件夹</option>
               {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
@@ -274,7 +306,7 @@ export default function NotesPage() {
             <select
               value={tag}
               onChange={(event) => updateParams({ tag: event.target.value, pageNum: 1 })}
-              className="h-11 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-card)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[var(--aurora-1)]"
+              className={notesControlClass}
             >
               <option value="">全部标签</option>
               {tags.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
@@ -282,7 +314,7 @@ export default function NotesPage() {
             <select
               value={sourceType}
               onChange={(event) => updateParams({ sourceType: event.target.value, pageNum: 1 })}
-              className="h-11 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-card)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[var(--aurora-1)]"
+              className={notesControlClass}
             >
               <option value="">全部来源</option>
               <option value="manual">手动</option>
@@ -293,27 +325,28 @@ export default function NotesPage() {
               <option value="api">API</option>
             </select>
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {noteViews.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => updateParams({ view: item.id === 'all' ? undefined : item.id, pageNum: 1 })}
-                className={cn(
-                  'inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-sm transition-colors',
-                  view === item.id || (view === 'all' && item.id === 'all')
-                    ? 'border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-void)]'
-                    : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]',
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-[52px] items-center gap-1.5 text-[11px] font-semibold text-[var(--ink-muted)]">
+              <BookOpen className="h-3.5 w-3.5" />
+              <span>视图</span>
+            </div>
+            <div className="inline-flex max-w-full items-center overflow-x-auto rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-0.5">
+              {noteViews.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => updateParams({ view: item.id === 'all' ? undefined : item.id, pageNum: 1 })}
+                  className={viewChipClass(view === item.id || (view === 'all' && item.id === 'all'))}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             {hasFilter && (
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm text-[var(--ink-muted)] hover:text-status-danger"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-medium text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] hover:text-[var(--signal-danger)] sm:h-7 sm:min-h-0"
               >
                 <X className="h-4 w-4" />
                 清空
@@ -322,13 +355,23 @@ export default function NotesPage() {
           </div>
         </section>
 
-        <section className="surface-leaf surface-dashboard-card relative overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-          <div className="flex items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-[var(--aurora-1)]" />
-              <span className="text-sm font-semibold text-[var(--ink-primary)]">笔记列表</span>
+        <section className={cn(notesShellClass, 'relative flex flex-col')}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ink-primary)] text-[var(--bg-void)]">
+                <BookOpen className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[var(--ink-primary)]">笔记列表</p>
+                <p className="text-xs text-[var(--ink-muted)]">
+                  {hasFilter ? '按当前筛选查看笔记与属性操作' : '按更新时间倒序管理笔记内容'}
+                </p>
+              </div>
             </div>
-            {refreshing && <Loader2 className="h-4 w-4 animate-spin text-[var(--ink-muted)]" />}
+            <span className="inline-flex h-8 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-2.5 text-xs font-semibold text-[var(--ink-muted)]">
+              {refreshing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {loading ? '加载中' : `${notes.length}/${total}`}
+            </span>
           </div>
 
           {loading ? (
@@ -351,7 +394,7 @@ export default function NotesPage() {
                     清空筛选
                   </button>
                 ) : (
-                  <button type="button" onClick={() => setQuickOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--ink-primary)] px-3 text-sm font-semibold text-[var(--bg-void)]">
+                  <button type="button" onClick={() => setQuickOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 text-sm font-semibold text-white shadow-[0_4px_12px_-2px_color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
                     <Zap className="h-4 w-4" />
                     快速记录
                   </button>
@@ -362,19 +405,19 @@ export default function NotesPage() {
             <>
               <div className="hidden md:block">
                 <table className="w-full table-fixed">
-                  <thead className="border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-left text-xs text-[var(--ink-muted)]">
+                  <thead className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-left text-xs font-semibold text-[var(--text-muted)]">
                     <tr>
-                      <th className="w-[38%] px-4 py-3 font-mono uppercase tracking-[0.16em]">标题</th>
-                      <th className="w-[18%] px-4 py-3 font-mono uppercase tracking-[0.16em]">标签</th>
-                      <th className="w-[14%] px-4 py-3 font-mono uppercase tracking-[0.16em]">文件夹</th>
-                      <th className="w-[10%] px-4 py-3 font-mono uppercase tracking-[0.16em]">来源</th>
-                      <th className="w-[12%] px-4 py-3 font-mono uppercase tracking-[0.16em]">更新</th>
-                      <th className="w-[8%] px-4 py-3 text-right font-mono uppercase tracking-[0.16em]">操作</th>
+                      <th className="w-[38%] px-4 py-3.5">标题</th>
+                      <th className="w-[18%] px-4 py-3.5">标签</th>
+                      <th className="w-[14%] px-4 py-3.5">文件夹</th>
+                      <th className="w-[10%] px-4 py-3.5">来源</th>
+                      <th className="w-[12%] px-4 py-3.5">更新</th>
+                      <th className="w-[8%] px-4 py-3.5 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody>
                     {notes.map((note) => (
-                      <tr key={note.id} className="group h-[76px] border-b border-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+                      <tr key={note.id} className="group h-[76px] border-b border-[var(--border-subtle)] transition-colors hover:bg-[var(--bg-card-hover)]">
                         <td className="px-4 py-3">
                           <button type="button" onClick={() => navigate(`/notes/${note.id}/edit`)} className="block min-w-0 text-left">
                             <div className="flex min-w-0 items-center gap-2">
@@ -387,7 +430,7 @@ export default function NotesPage() {
                         </td>
                         <td className="px-4 py-3">{tagList(note.tagNames)}</td>
                         <td className="px-4 py-3 text-sm text-[var(--ink-secondary)]">
-                          <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-2 py-1">
+                          <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] px-2 py-1">
                             <Folder className="h-3.5 w-3.5 shrink-0" />
                             <span className="truncate">{note.folderName || '未整理'}</span>
                           </span>
@@ -408,9 +451,9 @@ export default function NotesPage() {
                 </table>
               </div>
 
-              <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] md:hidden">
+              <div className="divide-y divide-[var(--border-subtle)] md:hidden">
                 {notes.map((note) => (
-                  <article key={note.id} className="p-4">
+                  <article key={note.id} className="p-4 transition-colors active:bg-[var(--bg-card-hover)]">
                     <button type="button" onClick={() => navigate(`/notes/${note.id}/edit`)} className="block w-full text-left">
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-[var(--ink-primary)]">{note.title}</h3>

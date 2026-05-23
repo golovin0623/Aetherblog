@@ -60,19 +60,19 @@ export function CreateFolderDialog({ isOpen, onClose, onCreated }: CreateFolderD
         aria-modal="true"
         aria-label="新建文件夹"
         className={cn(
-          'relative w-full overflow-hidden border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] shadow-2xl',
+          'relative w-full overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-popover)] shadow-2xl',
           'rounded-t-2xl md:max-w-md md:rounded-xl',
         )}
       >
-        <header className="flex items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">
+        <header className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3">
           <div>
-            <h2 className="text-sm font-bold text-[var(--ink-primary)]">新建文件夹</h2>
-            <p className="text-xs text-[var(--ink-muted)]">用于整理智能笔记</p>
+            <h2 className="text-sm font-bold text-[var(--text-primary)]">新建文件夹</h2>
+            <p className="text-xs text-[var(--text-muted)]">用于整理智能笔记</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             aria-label="关闭"
           >
             <X className="h-4 w-4" />
@@ -91,20 +91,20 @@ export function CreateFolderDialog({ isOpen, onClose, onCreated }: CreateFolderD
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="文件夹名称"
-            className="h-11 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-card)] px-3 text-sm text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[var(--aurora-1)]"
+            className="h-11 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-sm text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-muted)] focus:border-[color-mix(in_oklch,var(--color-primary)_48%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-primary)_16%,transparent)]"
           />
           <footer className="flex flex-col gap-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:flex-row md:justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-11 items-center justify-center rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-4 text-sm font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-[var(--border-subtle)] px-4 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={saving || !name.trim()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--ink-primary)] px-4 text-sm font-semibold text-[var(--bg-void)] transition-transform active:scale-[0.98] disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
               创建
