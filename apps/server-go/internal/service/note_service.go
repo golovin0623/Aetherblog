@@ -216,14 +216,16 @@ func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.Up
 	if req.Archived != nil {
 		fields["archived"] = *req.Archived
 	}
+	if req.TagNames != nil {
+		n, err := s.repo.UpdatePropertiesWithTags(ctx, id, fields, normalizeNoteTags(req.TagNames, ""))
+		if err != nil || n == nil {
+			return nil, err
+		}
+		return s.GetByID(ctx, id, userID)
+	}
 	n, err := s.repo.UpdateProperties(ctx, id, fields)
 	if err != nil || n == nil {
 		return nil, err
-	}
-	if req.TagNames != nil {
-		if err := s.repo.ReplaceTags(ctx, id, normalizeNoteTags(req.TagNames, "")); err != nil {
-			return nil, err
-		}
 	}
 	return s.GetByID(ctx, id, userID)
 }
@@ -315,9 +317,18 @@ func (s *NoteService) BackLinks(ctx context.Context, id int64) ([]dto.NoteLinkIt
 }
 
 func (s *NoteService) enrichDetail(ctx context.Context, n *model.Note, userID int64) (*dto.NoteDetail, error) {
-	tags, _ := s.repo.GetTagNames(ctx, n.ID)
-	outLinks, _ := s.repo.FindOutLinks(ctx, n.ID)
-	backLinks, _ := s.repo.FindBackLinks(ctx, n.ID)
+	tags, err := s.repo.GetTagNames(ctx, n.ID)
+	if err != nil {
+		return nil, fmt.Errorf("加载笔记标签失败: %w", err)
+	}
+	outLinks, err := s.repo.FindOutLinks(ctx, n.ID)
+	if err != nil {
+		return nil, fmt.Errorf("加载笔记出链失败: %w", err)
+	}
+	backLinks, err := s.repo.FindBackLinks(ctx, n.ID)
+	if err != nil {
+		return nil, fmt.Errorf("加载笔记反链失败: %w", err)
+	}
 	sourceMeta := unmarshalSourceMeta(n.SourceMeta)
 	detail := &dto.NoteDetail{
 		NoteListItem:    toNoteListItem(n, nil, tags),

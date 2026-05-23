@@ -192,12 +192,58 @@ func (r *NoteRepo) UpdateProperties(ctx context.Context, id int64, fields map[st
 	if len(fields) == 0 {
 		return r.FindByID(ctx, id)
 	}
+	query, args, err := buildNoteUpdatePropertiesSQL(id, fields)
+	if err != nil {
+		return nil, err
+	}
+	var out model.Note
+	err = r.db.QueryRowxContext(ctx, query, args...).StructScan(&out)
+	return &out, err
+}
+
+// UpdatePropertiesWithTags 在同一事务中局部更新笔记属性和标签。
+func (r *NoteRepo) UpdatePropertiesWithTags(ctx context.Context, id int64, fields map[string]any, tagNames []string) (*model.Note, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var out model.Note
+	if len(fields) == 0 {
+		err = tx.GetContext(ctx, &out, `SELECT * FROM notes WHERE id=$1 AND deleted=false`, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		query, args, err := buildNoteUpdatePropertiesSQL(id, fields)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.QueryRowxContext(ctx, query, args...).StructScan(&out); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := replaceTagsTx(ctx, tx, id, tagNames); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func buildNoteUpdatePropertiesSQL(id int64, fields map[string]any) (string, []any, error) {
 	setClauses := make([]string, 0, len(fields)+1)
 	args := make([]any, 0, len(fields)+1)
 	i := 1
 	for k, v := range fields {
 		if !allowedNoteColumns[k] {
-			return nil, fmt.Errorf("invalid column: %s", k)
+			return "", nil, fmt.Errorf("invalid column: %s", k)
 		}
 		setClauses = append(setClauses, fmt.Sprintf("%s=$%d", k, i))
 		args = append(args, v)
@@ -207,9 +253,7 @@ func (r *NoteRepo) UpdateProperties(ctx context.Context, id int64, fields map[st
 	args = append(args, id)
 	query := fmt.Sprintf("UPDATE notes SET %s WHERE id=$%d AND deleted=false RETURNING *",
 		strings.Join(setClauses, ","), i)
-	var out model.Note
-	err := r.db.QueryRowxContext(ctx, query, args...).StructScan(&out)
-	return &out, err
+	return query, args, nil
 }
 
 // SoftDelete 对笔记执行软删除。
