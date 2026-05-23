@@ -15,7 +15,6 @@ import { chromium } from 'playwright';
 
 const DEFAULT_BLOG_URL = 'http://127.0.0.1:3000';
 const DEFAULT_ADMIN_URL = 'http://127.0.0.1:5173/admin';
-const DEFAULT_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 function parseArgs(argv) {
   return argv.reduce((acc, arg) => {
@@ -572,9 +571,10 @@ async function main() {
   await assertReachable(options.blogUrl);
   await assertReachable(options.adminUrl);
 
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   const browser = await chromium.launch({
     headless: options.headless,
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || DEFAULT_CHROME,
+    ...(executablePath ? { executablePath } : {}),
   });
 
   const failures = [];

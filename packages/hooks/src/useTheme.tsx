@@ -136,7 +136,7 @@ async function performCircularTransition(
       will-change: clip-path;
       contain: layout;
     }
-    html[data-theme-transition] :where([style*="view-transition-name"], .mobile-menu-drawer) {
+    html[data-theme-transition] :where([style*="view-transition-name"]) {
       view-transition-name: none !important;
     }
     html[data-theme-transition] *,
@@ -220,19 +220,6 @@ async function performCircularTransition(
 
     // 1) root 层 — 覆盖全视口
     animateLayer('root', x, y, maxRadius);
-
-    // 2) mobile-menu-drawer — 局部视口，由于其隔离在新 VT 层，必须计算自身的最大对角线
-    const drawerEl = document.querySelector('.mobile-menu-drawer');
-    if (drawerEl) {
-      const rect = drawerEl.getBoundingClientRect();
-      const drawerX = x - rect.left;
-      const drawerY = y - rect.top;
-      const drawerRadius = Math_hypot(
-        Math_max(drawerX, rect.width - drawerX),
-        Math_max(drawerY, rect.height - drawerY)
-      );
-      animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
-    }
 
     // 等待动画跑完
     await new Promise((resolve) => setTimeout(resolve, totalDuration));
