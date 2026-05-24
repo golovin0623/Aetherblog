@@ -91,6 +91,69 @@ func TestBuildNoteAdminWhereCapsTsvectorInput(t *testing.T) {
 	}
 }
 
+func TestNoteRepoFindOutLinksScansLinkDTO(t *testing.T) {
+	repo, mock, cleanup := newNoteRepoMock(t)
+	defer cleanup()
+
+	targetID := int64(99)
+	rows := sqlmock.NewRows([]string{
+		"id", "source_note_id", "source_title", "target_note_id",
+		"target_title", "link_text", "position_start", "position_end",
+	}).AddRow(int64(7), int64(42), "Source", targetID, "Target", "[[Target]]", 3, 13)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT nl.id, nl.source_note_id")).
+		WithArgs(int64(42)).
+		WillReturnRows(rows)
+
+	links, err := repo.FindOutLinks(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("FindOutLinks returned error: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("FindOutLinks returned %d links, want 1", len(links))
+	}
+	got := links[0]
+	if got.ID != 7 || got.SourceNoteID != 42 || got.SourceTitle != "Source" ||
+		got.TargetNoteID == nil || *got.TargetNoteID != targetID ||
+		got.TargetTitle != "Target" || got.LinkText != "[[Target]]" ||
+		got.PositionStart == nil || *got.PositionStart != 3 ||
+		got.PositionEnd == nil || *got.PositionEnd != 13 {
+		t.Fatalf("FindOutLinks link = %#v", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestNoteRepoFindBackLinksScansLinkDTOWithNullTarget(t *testing.T) {
+	repo, mock, cleanup := newNoteRepoMock(t)
+	defer cleanup()
+
+	rows := sqlmock.NewRows([]string{
+		"id", "source_note_id", "source_title", "target_note_id",
+		"target_title", "link_text", "position_start", "position_end",
+	}).AddRow(int64(8), int64(41), "Back Source", nil, "Target", "Target", nil, nil)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT nl.id, nl.source_note_id")).
+		WithArgs(int64(42)).
+		WillReturnRows(rows)
+
+	links, err := repo.FindBackLinks(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("FindBackLinks returned error: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("FindBackLinks returned %d links, want 1", len(links))
+	}
+	got := links[0]
+	if got.ID != 8 || got.SourceNoteID != 41 || got.SourceTitle != "Back Source" ||
+		got.TargetNoteID != nil || got.TargetTitle != "Target" || got.LinkText != "Target" ||
+		got.PositionStart != nil || got.PositionEnd != nil {
+		t.Fatalf("FindBackLinks link = %#v", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestNoteFulltextMigrationRebuildsIndexWithCappedDocument(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

@@ -62,14 +62,14 @@ type NoteListItem struct {
 
 // NoteLinkItem 是出链/反链列表中的单条关系。
 type NoteLinkItem struct {
-	ID            int64  `json:"id"`
-	SourceNoteID  int64  `json:"sourceNoteId"`
-	SourceTitle   string `json:"sourceTitle"`
-	TargetNoteID  *int64 `json:"targetNoteId"`
-	TargetTitle   string `json:"targetTitle"`
-	LinkText      string `json:"linkText"`
-	PositionStart *int   `json:"positionStart"`
-	PositionEnd   *int   `json:"positionEnd"`
+	ID            int64  `json:"id" db:"id"`
+	SourceNoteID  int64  `json:"sourceNoteId" db:"source_note_id"`
+	SourceTitle   string `json:"sourceTitle" db:"source_title"`
+	TargetNoteID  *int64 `json:"targetNoteId" db:"target_note_id"`
+	TargetTitle   string `json:"targetTitle" db:"target_title"`
+	LinkText      string `json:"linkText" db:"link_text"`
+	PositionStart *int   `json:"positionStart" db:"position_start"`
+	PositionEnd   *int   `json:"positionEnd" db:"position_end"`
 }
 
 // NoteDetail 是笔记详情接口的完整响应。
