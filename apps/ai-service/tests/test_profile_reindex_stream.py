@@ -474,7 +474,16 @@ async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkey
 
 
 @pytest.mark.asyncio
-async def test_reindex_stream_cancel_cleans_up_pending_workers():
+async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
+    created_tasks: list[asyncio.Task] = []
+    original_create_task = asyncio.create_task
+
+    def track_create_task(coro, *args, **kwargs):
+        task = original_create_task(coro, *args, **kwargs)
+        created_tasks.append(task)
+        return task
+
+    monkeypatch.setattr(profiles_routes.asyncio, "create_task", track_create_task)
     pool = FakePool([
         {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
         {"id": 2, "title": "B", "slug": "b", "content_markdown": "beta"},
@@ -504,3 +513,4 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers():
     assert vs.cancelled == 3
     assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
     assert vs.calls[0]["embed_semaphore"] is vs.calls[2]["embed_semaphore"]
+    assert all(task.done() for task in created_tasks)

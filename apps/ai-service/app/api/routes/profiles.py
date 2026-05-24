@@ -453,19 +453,21 @@ async def reindex_profile_stream(
         # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
         # useReindexStream 能优雅处理（写 error state、停 isRunning）。
         pending: set[asyncio.Task[dict]] = set()
+        queue_waiters: set[asyncio.Task[dict]] = set()
         event_queue: asyncio.Queue[dict] = asyncio.Queue()
 
         async def enqueue_event(event: dict) -> None:
             await event_queue.put(event)
 
         async def cancel_pending_tasks() -> int:
-            if not pending:
+            tasks = tuple(pending | queue_waiters)
+            if not tasks:
                 return 0
-            tasks = tuple(pending)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             pending.clear()
+            queue_waiters.clear()
             return len(tasks)
 
         try:
@@ -587,6 +589,7 @@ async def reindex_profile_stream(
                     continue
 
                 queue_task = asyncio.create_task(event_queue.get())
+                queue_waiters.add(queue_task)
                 wait_set: set[asyncio.Task] = set(pending)
                 wait_set.add(queue_task)
                 done, _ = await asyncio.wait(
@@ -595,6 +598,7 @@ async def reindex_profile_stream(
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if not done:
+                    queue_waiters.discard(queue_task)
                     if queue_task.done():
                         yield _sse_pack(queue_task.result())
                         continue
@@ -611,9 +615,11 @@ async def reindex_profile_stream(
                     })
                     continue
                 if queue_task in done:
+                    queue_waiters.discard(queue_task)
                     yield _sse_pack(queue_task.result())
                     done.remove(queue_task)
                 else:
+                    queue_waiters.discard(queue_task)
                     if queue_task.done():
                         yield _sse_pack(queue_task.result())
                     else:
