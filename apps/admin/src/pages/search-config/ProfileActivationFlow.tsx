@@ -127,7 +127,7 @@ export function ProfileActivationFlow({
             counters={stream.counters}
             recent={stream.recent}
             heartbeat={stream.heartbeat}
-            chunkProgress={stream.chunkProgress}
+            chunkProgressItems={stream.chunkProgressItems}
             running={stream.isRunning}
             onAbort={() => {
               stream.abort();
@@ -305,7 +305,7 @@ function ReindexingStep({
   counters,
   recent,
   heartbeat,
-  chunkProgress,
+  chunkProgressItems,
   running,
   onAbort,
 }: {
@@ -313,7 +313,7 @@ function ReindexingStep({
   counters: ReindexCounters;
   recent: ReindexProgressEvent[];
   heartbeat: ReindexHeartbeat | null;
-  chunkProgress: ReindexChunkProgressEvent | null;
+  chunkProgressItems: ReindexChunkProgressEvent[];
   running: boolean;
   onAbort: () => void;
 }) {
@@ -326,9 +326,7 @@ function ReindexingStep({
 
   // recent 来自 hook 内部环形缓冲（最多 16 条），UI 只展示最新 5 条倒序
   const display = recent.slice(-5).reverse();
-  const chunkPercent = chunkProgress && chunkProgress.totalChunks > 0
-    ? Math.min(100, Math.round((chunkProgress.doneChunks / chunkProgress.totalChunks) * 100))
-    : 0;
+  const activeChunkProgress = chunkProgressItems.slice(0, 6);
 
   return (
     <div className="space-y-4">
@@ -377,20 +375,31 @@ function ReindexingStep({
         <span>平均 {avgMs}ms / 篇</span>
       </div>
 
-      {running && chunkProgress && chunkProgress.totalChunks > 0 && (
-        <div className="space-y-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2.5 py-2">
-          <div className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
-            <span className="min-w-0 truncate">
-              post #{chunkProgress.postId} · chunk {chunkProgress.doneChunks} / {chunkProgress.totalChunks}
-            </span>
-            <span className="font-mono tabular-nums text-[var(--text-muted)]">{chunkPercent}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-[var(--aurora-1)] transition-all"
-              style={{ width: `${chunkPercent}%` }}
-            />
-          </div>
+      {running && activeChunkProgress.length > 0 && (
+        <div className="space-y-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2.5 py-2">
+          {activeChunkProgress.map((item) => {
+            const chunkPercent = item.totalChunks > 0
+              ? Math.min(100, Math.round((item.doneChunks / item.totalChunks) * 100))
+              : 0;
+
+            return (
+              <div key={item.postId} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+                  <span className="min-w-0 truncate">
+                    post #{item.postId} · chunk {item.doneChunks} / {item.totalChunks}
+                    {item.status === 'resumed' ? ' · 已复用' : ''}
+                  </span>
+                  <span className="font-mono tabular-nums text-[var(--text-muted)]">{chunkPercent}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[var(--aurora-1)] transition-all"
+                    style={{ width: `${chunkPercent}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
