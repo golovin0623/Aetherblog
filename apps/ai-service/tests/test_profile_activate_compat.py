@@ -26,14 +26,20 @@ class _Tx:
 
 
 class FakeActivateConn:
-    def __init__(self, *, indexed_total: int | None) -> None:
+    def __init__(
+        self,
+        *,
+        indexed_total: int | None,
+        target_status: str = "shadow",
+    ) -> None:
         self.indexed_total = indexed_total
+        self.target_status = target_status
         self.coverage_sql: str | None = None
         self.executed: list[str] = []
 
     async def fetchrow(self, sql: str, *args):
         if "FROM search_profiles WHERE code" in sql:
-            return {"id": 42, "code": args[0], "status": "shadow"}
+            return {"id": 42, "code": args[0], "status": self.target_status}
 
         if "WITH current_posts" in sql:
             self.coverage_sql = sql
@@ -115,3 +121,18 @@ def test_activate_allows_legacy_rows_without_chunk_hash():
     assert "COALESCE(pe.chunk_count, 1)" in conn.coverage_sql
     assert "chunk_hash" not in conn.coverage_sql.lower()
     assert any("UPDATE search_profiles SET status = 'active'" in sql for sql in conn.executed)
+
+
+def test_activate_can_switch_back_to_deprecated_profile():
+    conn = FakeActivateConn(indexed_total=1, target_status="deprecated")
+    _install(FakeActivatePool(conn))
+
+    res = client.post("/api/v1/admin/search/profiles/old-v1/activate")
+
+    assert res.status_code == 200, res.text
+    assert conn.coverage_sql is not None
+    assert "pe.status IN ('active', 'shadow', 'deprecated')" in conn.coverage_sql
+    assert any(
+        "WHERE profile_id = $1 AND status IN ('shadow', 'deprecated')" in sql
+        for sql in conn.executed
+    )

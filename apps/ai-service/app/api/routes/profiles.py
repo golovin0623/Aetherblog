@@ -6,7 +6,7 @@
   - GET    /            列出所有 profile
   - POST   /            创建 profile（status='shadow'）
   - POST   /{code}/activate    把 profile 翻成 active 并触发指针翻转
-  - POST   /{code}/deprecate   把 profile 标 deprecated
+  - POST   /{code}/deprecate   把 profile 标 deprecated（inactive，可再次激活）
   - DELETE /{code}             删除 profile（仅当 deprecated 且无关联向量行）
 
 切换流程：
@@ -220,12 +220,6 @@ async def activate_profile(
                 "status": "noop",
                 "message": f"Profile '{code}' 已经是 active",
             })
-        if target["status"] == "deprecated":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Profile '{code}' 已被弃用，无法直接激活；请先创建新 profile。",
-            )
-
         # 检查 shadow 行覆盖：所有 PUBLISHED 文章都必须有完整 chunk 集合。
         # chunk_count 由写入端按当前切分结果记录；部分 chunk checkpoint
         # 不能被误判为可激活的完整文章。
@@ -241,9 +235,9 @@ async def activate_profile(
                 SELECT p.id AS post_id
                 FROM current_posts p
                 JOIN post_embeddings pe
-                  ON pe.post_id = p.id
+                 ON pe.post_id = p.id
                  AND pe.profile_id = $1
-                 AND pe.status IN ('active', 'shadow')
+                 AND pe.status IN ('active', 'shadow', 'deprecated')
                 GROUP BY p.id
                 HAVING COUNT(*) > 0
                    AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
@@ -292,7 +286,7 @@ async def activate_profile(
             )
             await conn.execute(
                 "UPDATE post_embeddings SET status = 'active' "
-                "WHERE profile_id = $1 AND status = 'shadow'",
+                "WHERE profile_id = $1 AND status IN ('shadow', 'deprecated')",
                 target["id"],
             )
 
@@ -443,8 +437,6 @@ async def reindex_profile_stream(
     profile = await vector_store._fetch_profile_by_code(code)
     if not profile:
         raise HTTPException(404, f"Profile '{code}' 不存在")
-    if profile.status == "deprecated":
-        raise HTTPException(400, f"Profile '{code}' 已弃用，无法重建索引")
     target_status = "active" if profile.status == "active" else "shadow"
 
     async def gen():
@@ -495,7 +487,7 @@ async def reindex_profile_stream(
                               FROM post_embeddings pe
                               WHERE pe.post_id = p.id
                                 AND pe.profile_id = $1
-                                AND pe.status IN ('active', 'shadow')
+                                AND pe.status IN ('active', 'shadow', 'deprecated')
                               GROUP BY pe.post_id
                               HAVING COUNT(*) > 0
                                  AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))

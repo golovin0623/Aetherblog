@@ -24,7 +24,7 @@ import type { SearchProfile } from '@/services/searchProfileService';
 type Step = 'confirm' | 'reindexing' | 'activating' | 'done' | 'failed';
 
 interface ProfileActivationFlowProps {
-  /** 待激活的目标 profile（必须 status='shadow'）。 */
+  /** 待激活的目标 profile（shadow 或 deprecated 都可切换为 active）。 */
   profile: SearchProfile;
   /** 当前 active profile（用于在 confirm 步骤展示 source → target）。 */
   activeProfile: SearchProfile | null;

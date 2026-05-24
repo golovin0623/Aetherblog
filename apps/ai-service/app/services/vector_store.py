@@ -446,7 +446,11 @@ class VectorStoreService:
         progress_cb: ChunkProgressCallback | None,
         content_len: int,
     ) -> dict[str, Any]:
-        """Shadow profile 专用：按 chunk 持久化，允许单篇文章内部断点续跑。"""
+        """Inactive profile 专用：按 chunk 持久化，允许单篇文章内部断点续跑。
+
+        新建 profile 预热时已有行通常是 ``shadow``；旧 profile 切回时已有行
+        可能是 ``deprecated``。两者都属于同一 profile 的可复用 checkpoint。
+        """
 
         chunk_count = len(chunks)
         expected_hashes = {c.index: _chunk_hash(c) for c in chunks}
@@ -459,7 +463,7 @@ class VectorStoreService:
                 FROM post_embeddings
                 WHERE post_id = $1
                   AND profile_id = $2
-                  AND status = 'shadow'
+                  AND status IN ('shadow', 'deprecated')
                 """,
                 post_id,
                 profile.id,

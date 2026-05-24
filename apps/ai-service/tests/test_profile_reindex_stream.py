@@ -3,7 +3,7 @@
 验证 ``POST /v1/admin/search/profiles/{code}/reindex/stream`` 的帧序列：
 - start → progress* → result → done
 - per-post 失败仍 yield progress(status=failed) 而非中断 stream
-- profile 不存在 / deprecated 的 4xx
+- profile 不存在的 4xx
 - DB 异常时 yield error 帧（不是 silent 502）
 """
 from __future__ import annotations
@@ -358,13 +358,18 @@ def test_reindex_stream_unknown_profile_returns_404():
     assert res.status_code == 404
 
 
-def test_reindex_stream_deprecated_profile_returns_400():
+def test_reindex_stream_deprecated_profile_can_be_revalidated_for_switchback():
     pool = FakePool([])
     vs = FakeVectorStore(profile=_profile(status="deprecated"), upsert_results=[])
     _install(pool=pool, vector_store=vs)
 
     res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
-    assert res.status_code == 400
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["data"]["target_status"] == "shadow"
+    assert result["data"]["indexed"] == 0
+    assert result["data"]["failed"] == 0
 
 
 def test_reindex_stream_post_deleted_midway_yields_failed_progress():
