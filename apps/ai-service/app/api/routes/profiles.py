@@ -23,7 +23,7 @@ import time
 from contextlib import suppress
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
@@ -411,6 +411,7 @@ async def delete_profile(
 @router.post("/{code}/reindex/stream")
 async def reindex_profile_stream(
     code: str,
+    request: Request,
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
     vector_store=Depends(get_vector_store),
@@ -557,6 +558,9 @@ async def reindex_profile_stream(
                         target_status=target_status,
                         embed_semaphore=embed_semaphore,
                         progress_cb=enqueue_event,
+                        user_id=getattr(user, "user_id", None),
+                        usage_endpoint=request.url.path,
+                        request_id=getattr(request.state, "request_id", None),
                     )
                     return {
                         "type": "progress",

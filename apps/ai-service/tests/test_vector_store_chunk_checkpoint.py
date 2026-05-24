@@ -90,7 +90,7 @@ class FakeLLM:
         self.fail_texts = fail_texts or set()
         self.calls: list[str] = []
 
-    async def embed(self, text: str, timeout_sec=None):
+    async def embed(self, text: str, timeout_sec=None, **_kwargs):
         self.calls.append(text)
         if text in self.fail_texts:
             raise RuntimeError(f"embed failed for {text}")

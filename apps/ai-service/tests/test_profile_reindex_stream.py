@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,6 +29,13 @@ client = TestClient(app)
 
 def _admin_user():
     return UserClaims(user_id="1", role="admin", scopes=[])
+
+
+def _request():
+    return SimpleNamespace(
+        url=SimpleNamespace(path="/api/v1/admin/search/profiles/new-v2/reindex/stream"),
+        state=SimpleNamespace(request_id="req-reindex-stream"),
+    )
 
 
 def _parse_sse(body_bytes: bytes) -> list[dict]:
@@ -423,6 +431,7 @@ async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatc
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -468,6 +477,7 @@ async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkey
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -512,6 +522,7 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -532,4 +543,7 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
     assert vs.cancelled == 3
     assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
     assert vs.calls[0]["embed_semaphore"] is vs.calls[2]["embed_semaphore"]
+    assert vs.calls[0]["user_id"] == "1"
+    assert vs.calls[0]["usage_endpoint"] == "/api/v1/admin/search/profiles/new-v2/reindex/stream"
+    assert vs.calls[0]["request_id"] == "req-reindex-stream"
     assert all(task.done() for task in created_tasks)
