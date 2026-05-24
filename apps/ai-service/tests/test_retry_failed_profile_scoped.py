@@ -4,7 +4,7 @@
 - profileCode=None：调用旧 SQL 路径（embedding_status='FAILED'）
 - profileCode=<code>：调用新 SQL 路径（NOT EXISTS active/shadow 行）
 - profile 不存在 → 404
-- profile 已 deprecated → 400
+- profile 已 deprecated → 可作为回滚目标补齐缺口
 """
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def test_retry_failed_unknown_profile_returns_404():
     assert "不存在" in res.json()["message"]
 
 
-def test_retry_failed_deprecated_profile_returns_400():
+def test_retry_failed_deprecated_profile_can_fill_missing_rows():
     profile = SearchProfile(
         id=99,
         code="old-v1",
@@ -166,13 +166,21 @@ def test_retry_failed_deprecated_profile_returns_400():
         chunk_overlap_tokens=64,
         status="deprecated",
     )
-    pool = FakePool(rows_returned=[])
-    vs = FakeVectorStore(profile=profile)
+    pool = FakePool(rows_returned=[
+        {"id": 7, "title": "Old", "slug": "old", "content_markdown": "body"},
+    ])
+    vs = FakeVectorStore(upsert_results=[True], profile=profile)
     _install_overrides(pool=pool, vector_store=vs)
 
     res = client.post("/api/v1/admin/search/retry-failed?profileCode=old-v1")
-    assert res.status_code == 400
-    assert "弃用" in res.json()["message"]
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    assert data["profile"] == "old-v1"
+    assert data["target_status"] == "shadow"
+    assert data["retried"] == 1
+    assert "deprecated" in (pool.conn.last_sql or "")
+    assert vs.upsert_calls[0]["profile"] is profile
+    assert vs.upsert_calls[0]["target_status"] == "shadow"
 
 
 def test_retry_failed_active_profile_writes_to_active_status():

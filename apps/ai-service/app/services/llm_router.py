@@ -26,6 +26,8 @@ from app.utils.url_validator import validate_external_url_async
 
 if TYPE_CHECKING:
     from app.services.model_router import ModelRouter, RoutingConfig
+    from app.services.metrics import MetricsStore
+    from app.services.usage_logger import UsageLogger
 
 logger = logging.getLogger("ai-service")
 
@@ -172,9 +174,16 @@ class LlmRouter:
     当数据库路由不可用时，会回退到环境变量配置。
     """
 
-    def __init__(self, model_router: "ModelRouter | None" = None) -> None:
+    def __init__(
+        self,
+        model_router: "ModelRouter | None" = None,
+        usage_logger: "UsageLogger | None" = None,
+        metrics: "MetricsStore | None" = None,
+    ) -> None:
         self.settings = get_settings()
         self.model_router = model_router
+        self.usage_logger = usage_logger
+        self.metrics = metrics
 
     def resolve_model(self, alias: str) -> str:
         """将模型别名解析为模型名（基于环境变量的回退）。"""
@@ -1014,8 +1023,10 @@ class LlmRouter:
     async def embed(
         self,
         text: str,
-        user_id: int | None = None,
+        user_id: int | str | None = None,
         timeout_sec: int | None = None,
+        usage_endpoint: str | None = None,
+        request_id: str | None = None,
     ) -> list[float]:
         """为文本生成 embedding 向量。"""
         routing = await self._get_routing("embedding", user_id)
@@ -1030,12 +1041,20 @@ class LlmRouter:
             source = "routing"
             provider_code = getattr(routing.credential, "provider_code", None) or \
                 getattr(getattr(routing, "model", None), "provider_code", None)
+            model_id = routing.model.model_id
+            input_cost_per_1m = routing.model.input_cost_per_1m
+            output_cost_per_1m = routing.model.output_cost_per_1m
+            cached_input_cost_per_1m = routing.model.cached_input_cost_per_1m
         else:
             model = self.resolve_model("embedding")
             api_key = self.settings.openai_api_key
             api_base = self.settings.openai_base_url
             source = "env_fallback"
             provider_code = "env_openai"
+            _provider, model_id = _normalize_model_parts(model)
+            input_cost_per_1m = None
+            output_cost_per_1m = None
+            cached_input_cost_per_1m = None
 
         # 观测点：记录这次 embed 调用实际指向哪个 model / api_base / 路由来源。
         # 路由来源为 env_fallback 时直接 WARNING —— 说明 ai_task_routing 表里没有
@@ -1062,10 +1081,10 @@ class LlmRouter:
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
 
-        # SECURITY (VULN-057)：embedding 调用也必须校验 api_base。
-        await self._guard_api_base(api_base)
         start = time.perf_counter()
         try:
+            # SECURITY (VULN-057)：embedding 调用也必须校验 api_base。
+            await self._guard_api_base(api_base)
             # 显式超时兜底：LiteLLM 默认不给 embedding 设 timeout。
             # 使用调用方传入的 timeout_sec（通常来自 search.index_post_timeout_sec
             # 搜索配置，默认 180s），保证和 Go backend 的 per-post context 对齐。
@@ -1086,13 +1105,29 @@ class LlmRouter:
             )
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - start) * 1000
+            error_code = f"{type(exc).__name__}: {exc}"
             logger.error(
                 "embed.failed",
                 extra={"data": {
                     **log_ctx,
                     "elapsed_ms": round(elapsed_ms, 2),
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error": error_code,
                 }},
+            )
+            await self._record_embedding_usage(
+                endpoint=usage_endpoint,
+                user_id=user_id,
+                request_id=request_id,
+                model=model,
+                provider_code=provider_code,
+                model_id=model_id,
+                input_cost_per_1m=input_cost_per_1m,
+                output_cost_per_1m=output_cost_per_1m,
+                cached_input_cost_per_1m=cached_input_cost_per_1m,
+                text=text,
+                elapsed_ms=elapsed_ms,
+                success=False,
+                error_code=error_code,
             )
             raise
 
@@ -1106,7 +1141,77 @@ class LlmRouter:
                 "vector_dim": len(embedding) if embedding else 0,
             }},
         )
+        await self._record_embedding_usage(
+            endpoint=usage_endpoint,
+            user_id=user_id,
+            request_id=request_id,
+            model=model,
+            provider_code=provider_code,
+            model_id=model_id,
+            input_cost_per_1m=input_cost_per_1m,
+            output_cost_per_1m=output_cost_per_1m,
+            cached_input_cost_per_1m=cached_input_cost_per_1m,
+            text=text,
+            elapsed_ms=elapsed_ms,
+            success=True,
+            error_code=None,
+        )
         return embedding
+
+    async def _record_embedding_usage(
+        self,
+        *,
+        endpoint: str | None,
+        user_id: int | str | None,
+        request_id: str | None,
+        model: str,
+        provider_code: str | None,
+        model_id: str | None,
+        input_cost_per_1m: float | None,
+        output_cost_per_1m: float | None,
+        cached_input_cost_per_1m: float | None,
+        text: str,
+        elapsed_ms: float,
+        success: bool,
+        error_code: str | None,
+    ) -> None:
+        if not endpoint or self.usage_logger is None:
+            return
+
+        from app.services.usage_logger import estimate_tokens
+
+        tokens_in = estimate_tokens(text or "")
+        if self.metrics is not None:
+            self.metrics.record(
+                endpoint=endpoint,
+                duration_ms=elapsed_ms,
+                success=success,
+                tokens_in=tokens_in,
+                tokens_out=0,
+                model=model,
+                cached=False,
+            )
+
+        await self.usage_logger.record(
+            user_id=str(user_id) if user_id is not None else "system",
+            endpoint=endpoint,
+            model=model,
+            request_chars=len(text or ""),
+            response_chars=0,
+            tokens_in=tokens_in,
+            tokens_out=0,
+            latency_ms=int(elapsed_ms),
+            success=success,
+            cached=False,
+            error_code=error_code,
+            request_id=request_id,
+            task_type="embedding",
+            provider_code=provider_code,
+            model_id=model_id,
+            input_cost_per_1m=input_cost_per_1m,
+            output_cost_per_1m=output_cost_per_1m,
+            cached_input_cost_per_1m=cached_input_cost_per_1m,
+        )
 
     # 推理轨迹（reasoning trace）标签识别。
     #

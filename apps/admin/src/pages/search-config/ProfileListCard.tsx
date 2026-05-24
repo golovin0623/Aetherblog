@@ -70,8 +70,9 @@ export function ProfileListCard({
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  // 操作约束：active profile 不能 deprecate / delete；deprecated 不能 activate
-  const canActivate = profile.status === 'shadow';
+  // 操作约束：active profile 不能再次 activate / deprecate / delete；
+  // shadow 和 deprecated 都是可切回的非 active 配置。
+  const canActivate = profile.status !== 'active';
   const canDeprecate = profile.status !== 'active' && profile.status !== 'deprecated';
   const canDelete = profile.status === 'deprecated';
 
@@ -141,9 +142,7 @@ export function ProfileListCard({
             <div className="absolute right-0 mt-1 z-30 min-w-[180px] surface-overlay !rounded-xl py-1 shadow-2xl">
               <MenuItem
                 disabled={!canActivate}
-                disabledHint={
-                  profile.status === 'active' ? '已是 active' : '已 deprecate, 不可激活'
-                }
+                disabledHint={profile.status === 'active' ? '已是 active' : undefined}
                 onClick={() => {
                   setMenuOpen(false);
                   onActivate(profile);

@@ -109,7 +109,12 @@ async def get_llm_router() -> LlmRouter:
     global _router
     if _router is None:
         model_router = await get_model_router()
-        _router = LlmRouter(model_router)
+        usage_logger = await get_usage_logger()
+        _router = LlmRouter(
+            model_router,
+            usage_logger=usage_logger,
+            metrics=get_metrics_store(),
+        )
     return _router
 
 

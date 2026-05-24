@@ -6,7 +6,7 @@
   - GET    /            列出所有 profile
   - POST   /            创建 profile（status='shadow'）
   - POST   /{code}/activate    把 profile 翻成 active 并触发指针翻转
-  - POST   /{code}/deprecate   把 profile 标 deprecated
+  - POST   /{code}/deprecate   把 profile 标 deprecated（inactive，可再次激活）
   - DELETE /{code}             删除 profile（仅当 deprecated 且无关联向量行）
 
 切换流程：
@@ -23,7 +23,7 @@ import time
 from contextlib import suppress
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
@@ -220,12 +220,6 @@ async def activate_profile(
                 "status": "noop",
                 "message": f"Profile '{code}' 已经是 active",
             })
-        if target["status"] == "deprecated":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Profile '{code}' 已被弃用，无法直接激活；请先创建新 profile。",
-            )
-
         # 检查 shadow 行覆盖：所有 PUBLISHED 文章都必须有完整 chunk 集合。
         # chunk_count 由写入端按当前切分结果记录；部分 chunk checkpoint
         # 不能被误判为可激活的完整文章。
@@ -241,9 +235,9 @@ async def activate_profile(
                 SELECT p.id AS post_id
                 FROM current_posts p
                 JOIN post_embeddings pe
-                  ON pe.post_id = p.id
+                 ON pe.post_id = p.id
                  AND pe.profile_id = $1
-                 AND pe.status IN ('active', 'shadow')
+                 AND pe.status IN ('active', 'shadow', 'deprecated')
                 GROUP BY p.id
                 HAVING COUNT(*) > 0
                    AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
@@ -292,7 +286,7 @@ async def activate_profile(
             )
             await conn.execute(
                 "UPDATE post_embeddings SET status = 'active' "
-                "WHERE profile_id = $1 AND status = 'shadow'",
+                "WHERE profile_id = $1 AND status IN ('shadow', 'deprecated')",
                 target["id"],
             )
 
@@ -417,6 +411,7 @@ async def delete_profile(
 @router.post("/{code}/reindex/stream")
 async def reindex_profile_stream(
     code: str,
+    request: Request,
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
     vector_store=Depends(get_vector_store),
@@ -443,8 +438,6 @@ async def reindex_profile_stream(
     profile = await vector_store._fetch_profile_by_code(code)
     if not profile:
         raise HTTPException(404, f"Profile '{code}' 不存在")
-    if profile.status == "deprecated":
-        raise HTTPException(400, f"Profile '{code}' 已弃用，无法重建索引")
     target_status = "active" if profile.status == "active" else "shadow"
 
     async def gen():
@@ -479,11 +472,13 @@ async def reindex_profile_stream(
             #      asyncpg 内部会复用 prepared statement，开销可控）
             # 这样即使 1 万篇博客也只会让 id 列表占 80KB 内存。
             async with pool.acquire() as conn:
-                if profile.status == "shadow":
-                    # 断点续跑：shadow profile 激活前若中途失败，已成功写入的
-                    # shadow rows 保留。posts.updated_at 会被浏览量、embedding_status
-                    # 等非内容更新刷新；在没有内容稳定时间戳/哈希前，只补齐缺失行，
-                    # 避免最后 1 篇失败时从第 1 篇重新消耗 embedding。
+                if profile.status != "active":
+                    # 断点续跑：非 active profile 激活前若中途失败，已成功写入的
+                    # shadow/deprecated rows 保留。posts.updated_at 会被浏览量、
+                    # embedding_status 等非内容更新刷新；在没有内容稳定时间戳/
+                    # 哈希前，只补齐缺失行，避免最后 1 篇失败时从第 1 篇重新消耗
+                    # embedding。deprecated profile 切回也走这里，否则会把完整
+                    # 的旧 profile 再按全量文章列表扫描一遍。
                     id_rows = await conn.fetch(
                         """
                         SELECT p.id
@@ -495,7 +490,7 @@ async def reindex_profile_stream(
                               FROM post_embeddings pe
                               WHERE pe.post_id = p.id
                                 AND pe.profile_id = $1
-                                AND pe.status IN ('active', 'shadow')
+                                AND pe.status IN ('active', 'shadow', 'deprecated')
                               GROUP BY pe.post_id
                               HAVING COUNT(*) > 0
                                  AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
@@ -528,6 +523,14 @@ async def reindex_profile_stream(
             async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
                 try:
+                    await enqueue_event({
+                        "type": "chunk_progress",
+                        "postId": post_id,
+                        "profile": code,
+                        "doneChunks": 0,
+                        "totalChunks": 0,
+                        "status": "started",
+                    })
                     # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
                     # 返回 None，跳过并标 failed（避免 KeyError）。
                     async with pool.acquire() as conn:
@@ -557,6 +560,9 @@ async def reindex_profile_stream(
                         target_status=target_status,
                         embed_semaphore=embed_semaphore,
                         progress_cb=enqueue_event,
+                        user_id=getattr(user, "user_id", None),
+                        usage_endpoint=request.url.path,
+                        request_id=getattr(request.state, "request_id", None),
                     )
                     return {
                         "type": "progress",

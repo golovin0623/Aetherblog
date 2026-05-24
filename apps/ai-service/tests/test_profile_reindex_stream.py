@@ -3,7 +3,7 @@
 验证 ``POST /v1/admin/search/profiles/{code}/reindex/stream`` 的帧序列：
 - start → progress* → result → done
 - per-post 失败仍 yield progress(status=failed) 而非中断 stream
-- profile 不存在 / deprecated 的 4xx
+- profile 不存在的 4xx
 - DB 异常时 yield error 帧（不是 silent 502）
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,6 +29,13 @@ client = TestClient(app)
 
 def _admin_user():
     return UserClaims(user_id="1", role="admin", scopes=[])
+
+
+def _request():
+    return SimpleNamespace(
+        url=SimpleNamespace(path="/api/v1/admin/search/profiles/new-v2/reindex/stream"),
+        state=SimpleNamespace(request_id="req-reindex-stream"),
+    )
 
 
 def _parse_sse(body_bytes: bytes) -> list[dict]:
@@ -239,8 +247,14 @@ def test_reindex_stream_success_yields_full_frame_sequence():
     assert res.headers.get("x-accel-buffering") == "no"
 
     events = _parse_sse(res.content)
-    assert len(events) == 5  # start + 2 progress + result + done
+    assert len(events) == 7  # start + 2 chunk_progress + 2 progress + result + done
     assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
+    started_by_post = {
+        event["postId"]: event for event in events if event["type"] == "chunk_progress"
+    }
+    assert started_by_post[1]["status"] == "started"
+    assert started_by_post[1]["totalChunks"] == 0
+    assert started_by_post[2]["status"] == "started"
     progress_by_post = {
         event["postId"]: event for event in events if event["type"] == "progress"
     }
@@ -324,6 +338,37 @@ def test_reindex_stream_shadow_profile_resumes_only_missing_posts():
     assert result["data"]["failed"] == 0
 
 
+def test_reindex_stream_deprecated_profile_resumes_only_missing_posts():
+    pool = ResumeAwareFakePool(
+        [
+            {"id": 1, "title": "A", "slug": "a", "content_markdown": "already indexed"},
+            {"id": 2, "title": "B", "slug": "b", "content_markdown": "metadata changed"},
+            {"id": 3, "title": "C", "slug": "c", "content_markdown": "missing"},
+        ],
+        resume_ids={3},
+    )
+    vs = FakeVectorStore(
+        profile=_profile(status="deprecated"),
+        upsert_results={
+            3: {"status": "indexed", "chunks": 1},
+        },
+    )
+    _install(pool=pool, vector_store=vs)
+
+    res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+
+    assert events[0] == {"type": "start", "total": 1, "profile": "new-v2"}
+    assert [call["post_id"] for call in vs.calls] == [3]
+    assert vs.calls[0]["target_status"] == "shadow"
+    assert any("post_embeddings" in sql for sql in pool.conn.fetch_sqls)
+    assert any("NOT EXISTS" in sql for sql in pool.conn.fetch_sqls)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["data"]["indexed"] == 1
+    assert result["data"]["failed"] == 0
+
+
 def test_reindex_stream_active_profile_writes_to_active_status():
     pool = FakePool([
         {"id": 1, "title": "A", "slug": "a", "content_markdown": "x"},
@@ -352,13 +397,18 @@ def test_reindex_stream_unknown_profile_returns_404():
     assert res.status_code == 404
 
 
-def test_reindex_stream_deprecated_profile_returns_400():
+def test_reindex_stream_deprecated_profile_can_be_revalidated_for_switchback():
     pool = FakePool([])
     vs = FakeVectorStore(profile=_profile(status="deprecated"), upsert_results=[])
     _install(pool=pool, vector_store=vs)
 
     res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
-    assert res.status_code == 400
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["data"]["target_status"] == "shadow"
+    assert result["data"]["indexed"] == 0
+    assert result["data"]["failed"] == 0
 
 
 def test_reindex_stream_post_deleted_midway_yields_failed_progress():
@@ -412,6 +462,7 @@ async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatc
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -422,6 +473,10 @@ async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatc
     try:
         first_frame = await iterator.__anext__()
         assert '"type": "start"' in first_frame
+
+        started = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in started
+        assert '"status": "started"' in started
 
         heartbeat = await asyncio.wait_for(iterator.__anext__(), timeout=1)
         assert '"type": "heartbeat"' in heartbeat
@@ -453,6 +508,7 @@ async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkey
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -463,6 +519,10 @@ async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkey
     try:
         first_frame = await iterator.__anext__()
         assert '"type": "start"' in first_frame
+
+        started_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in started_frame
+        assert '"status": "started"' in started_frame
 
         progress_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
         assert '"type": "chunk_progress"' in progress_frame
@@ -493,6 +553,7 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
 
     response = await reindex_profile_stream(
         "new-v2",
+        request=_request(),
         user=_admin_user(),
         pool=pool,
         vector_store=vs,
@@ -513,4 +574,7 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
     assert vs.cancelled == 3
     assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
     assert vs.calls[0]["embed_semaphore"] is vs.calls[2]["embed_semaphore"]
+    assert vs.calls[0]["user_id"] == "1"
+    assert vs.calls[0]["usage_endpoint"] == "/api/v1/admin/search/profiles/new-v2/reindex/stream"
+    assert vs.calls[0]["request_id"] == "req-reindex-stream"
     assert all(task.done() for task in created_tasks)

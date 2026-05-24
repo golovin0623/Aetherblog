@@ -24,12 +24,14 @@ import type { SearchProfile } from '@/services/searchProfileService';
 type Step = 'confirm' | 'reindexing' | 'activating' | 'done' | 'failed';
 
 interface ProfileActivationFlowProps {
-  /** 待激活的目标 profile（必须 status='shadow'）。 */
+  /** 待激活的目标 profile（shadow 或 deprecated 都可切换为 active）。 */
   profile: SearchProfile;
   /** 当前 active profile（用于在 confirm 步骤展示 source → target）。 */
   activeProfile: SearchProfile | null;
   onClose: () => void;
 }
+
+type PreviousActiveProfile = Pick<SearchProfile, 'code' | 'name'>;
 
 /**
  * Profile 激活四步向导：
@@ -48,12 +50,18 @@ export function ProfileActivationFlow({
   onClose,
 }: ProfileActivationFlowProps) {
   const [step, setStep] = useState<Step>('confirm');
+  const [previousActiveSnapshot, setPreviousActiveSnapshot] = useState<PreviousActiveProfile | null>(
+    activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+  );
   const stream = useReindexStream();
   const activateMut = useActivateProfile();
 
   const reset = () => {
     stream.reset();
     activateMut.reset();
+    setPreviousActiveSnapshot(
+      activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+    );
     setStep('confirm');
   };
 
@@ -82,7 +90,16 @@ export function ProfileActivationFlow({
       }
       setStep('activating');
       activateMut.mutate(profile.code, {
-        onSuccess: () => setStep('done'),
+        onSuccess: (res) => {
+          const previousCode = res.data.previousActive;
+          if (previousCode && previousCode !== previousActiveSnapshot?.code) {
+            setPreviousActiveSnapshot({
+              code: previousCode,
+              name: previousCode,
+            });
+          }
+          setStep('done');
+        },
         onError: () => setStep('failed'),
       });
     }
@@ -93,9 +110,13 @@ export function ProfileActivationFlow({
     stream.result,
     activateMut,
     profile.code,
+    previousActiveSnapshot?.code,
   ]);
 
   const startReindex = () => {
+    setPreviousActiveSnapshot(
+      activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+    );
     setStep('reindexing');
     stream.start(profile.code);
   };
@@ -145,7 +166,7 @@ export function ProfileActivationFlow({
         )}
 
         {step === 'done' && (
-          <DoneStep profile={profile} previousActive={activeProfile} onClose={onClose} />
+          <DoneStep profile={profile} previousActive={previousActiveSnapshot} onClose={onClose} />
         )}
 
         {step === 'failed' && (
@@ -381,12 +402,15 @@ function ReindexingStep({
             const chunkPercent = item.totalChunks > 0
               ? Math.min(100, Math.round((item.doneChunks / item.totalChunks) * 100))
               : 0;
+            const label = item.status === 'started'
+              ? '正在读取 / 拆分'
+              : `chunk ${item.doneChunks} / ${item.totalChunks}`;
 
             return (
               <div key={item.postId} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
                   <span className="min-w-0 truncate">
-                    post #{item.postId} · chunk {item.doneChunks} / {item.totalChunks}
+                    post #{item.postId} · {label}
                     {item.status === 'resumed' ? ' · 已复用' : ''}
                   </span>
                   <span className="font-mono tabular-nums text-[var(--text-muted)]">{chunkPercent}%</span>
@@ -449,7 +473,7 @@ function DoneStep({
   onClose,
 }: {
   profile: SearchProfile;
-  previousActive: SearchProfile | null;
+  previousActive: PreviousActiveProfile | null;
   onClose: () => void;
 }) {
   return (

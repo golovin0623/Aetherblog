@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from app.services.chunker import Chunk
-from app.services.vector_store import SearchProfile, VectorStoreService
+from app.services.vector_store import SearchProfile, VectorStoreService, _chunk_hash
 
 
 class FakeCheckpointConn:
@@ -18,7 +18,7 @@ class FakeCheckpointConn:
             for row in self.rows
             if row["post_id"] == post_id
             and row["profile_id"] == profile_id
-            and row["status"] == "shadow"
+            and row["status"] in {"shadow", "deprecated"}
         ]
 
     async def execute(self, sql: str, *args):
@@ -90,7 +90,7 @@ class FakeLLM:
         self.fail_texts = fail_texts or set()
         self.calls: list[str] = []
 
-    async def embed(self, text: str, timeout_sec=None):
+    async def embed(self, text: str, timeout_sec=None, **_kwargs):
         self.calls.append(text)
         if text in self.fail_texts:
             raise RuntimeError(f"embed failed for {text}")
@@ -161,3 +161,49 @@ async def test_shadow_checkpoint_reuses_finished_chunks_after_chunk_failure():
     assert result["chunks"] == 3
     assert {row["chunk_index"] for row in pool.conn.rows} == {0, 1, 2}
     assert {row["chunk_count"] for row in pool.conn.rows} == {3}
+
+
+@pytest.mark.asyncio
+async def test_shadow_checkpoint_reuses_deprecated_chunks_when_switching_back():
+    pool = FakeCheckpointPool()
+    chunks = _chunks()
+    pool.conn.rows = [
+        {
+            "post_id": 7,
+            "profile_id": 42,
+            "model_id": "m",
+            "dim": 2,
+            "embedding": [1.0, 1.0],
+            "status": "deprecated",
+            "chunk_index": chunk.index,
+            "chunk_text": chunk.text,
+            "parent_text": chunk.parent_text,
+            "chunk_hash": _chunk_hash(chunk),
+            "chunk_count": len(chunks),
+        }
+        for chunk in chunks[:2]
+    ]
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+    events: list[dict] = []
+
+    async def collect(event: dict):
+        events.append(event)
+
+    result = await store._upsert_shadow_chunks_with_checkpoint(
+        post_id=7,
+        profile=_profile(),
+        chunks=chunks,
+        timeout_sec=None,
+        embed_semaphore=None,
+        progress_cb=collect,
+        content_len=100,
+    )
+
+    assert llm.calls == ["gamma"]
+    assert result["reused_chunks"] == 2
+    assert result["embedded_chunks"] == 1
+    assert result["chunks"] == 3
+    assert events[0]["status"] == "resumed"
+    assert events[0]["doneChunks"] == 2
+    assert {row["chunk_index"] for row in pool.conn.rows} == {0, 1, 2}

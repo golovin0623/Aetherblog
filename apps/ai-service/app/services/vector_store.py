@@ -145,8 +145,20 @@ class VectorStoreService:
     # Search (read path) —— 多 chunk 召回 + 文档级聚合
     # ============================================================
 
-    async def semantic_search(self, query: str, limit: int) -> list[dict[str, Any]]:
-        embedding = await self.llm.embed(query)
+    async def semantic_search(
+        self,
+        query: str,
+        limit: int,
+        user_id: int | str | None = None,
+        usage_endpoint: str | None = None,
+        request_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        embedding = await self.llm.embed(
+            query,
+            user_id=user_id,
+            usage_endpoint=usage_endpoint,
+            request_id=request_id,
+        )
         dim = len(embedding) if embedding else 0
         # Defensive: `llm.embed()` 理论上不应返回空向量，但 provider 异常
         # (上游 500/empty body 被 LiteLLM 吞掉) 或模型路由配错都会让我们
@@ -242,6 +254,9 @@ class VectorStoreService:
         target_status: str = "active",
         embed_semaphore: asyncio.Semaphore | None = None,
         progress_cb: ChunkProgressCallback | None = None,
+        user_id: int | str | None = None,
+        usage_endpoint: str | None = None,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         """对单篇文章按 profile 配置切片 + embed + upsert。
 
@@ -302,6 +317,9 @@ class VectorStoreService:
                 embed_semaphore=embed_semaphore,
                 progress_cb=progress_cb,
                 content_len=content_len,
+                user_id=user_id,
+                usage_endpoint=usage_endpoint,
+                request_id=request_id,
             )
 
         # ---- 并发 embed 每个 chunk
@@ -310,7 +328,13 @@ class VectorStoreService:
 
         async def embed_chunk(c: Chunk) -> tuple[Chunk, list[float]]:
             async with semaphore:
-                vec = await self.llm.embed(c.text, timeout_sec=timeout_sec)
+                vec = await self.llm.embed(
+                    c.text,
+                    user_id=user_id,
+                    timeout_sec=timeout_sec,
+                    usage_endpoint=usage_endpoint,
+                    request_id=request_id,
+                )
                 return c, vec
 
         try:
@@ -445,8 +469,15 @@ class VectorStoreService:
         embed_semaphore: asyncio.Semaphore | None,
         progress_cb: ChunkProgressCallback | None,
         content_len: int,
+        user_id: int | str | None = None,
+        usage_endpoint: str | None = None,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
-        """Shadow profile 专用：按 chunk 持久化，允许单篇文章内部断点续跑。"""
+        """Inactive profile 专用：按 chunk 持久化，允许单篇文章内部断点续跑。
+
+        新建 profile 预热时已有行通常是 ``shadow``；旧 profile 切回时已有行
+        可能是 ``deprecated``。两者都属于同一 profile 的可复用 checkpoint。
+        """
 
         chunk_count = len(chunks)
         expected_hashes = {c.index: _chunk_hash(c) for c in chunks}
@@ -459,7 +490,7 @@ class VectorStoreService:
                 FROM post_embeddings
                 WHERE post_id = $1
                   AND profile_id = $2
-                  AND status = 'shadow'
+                  AND status IN ('shadow', 'deprecated')
                 """,
                 post_id,
                 profile.id,
@@ -532,7 +563,13 @@ class VectorStoreService:
             nonlocal completed_chunks, expected_dim
             chunk_start = time.perf_counter()
             async with semaphore:
-                vec = await self.llm.embed(c.text, timeout_sec=timeout_sec)
+                vec = await self.llm.embed(
+                    c.text,
+                    user_id=user_id,
+                    timeout_sec=timeout_sec,
+                    usage_endpoint=usage_endpoint,
+                    request_id=request_id,
+                )
 
             dim = len(vec) if vec else 0
             if dim <= 0:
