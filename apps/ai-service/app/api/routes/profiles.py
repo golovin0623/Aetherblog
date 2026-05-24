@@ -230,19 +230,26 @@ async def activate_profile(
         # 不能被误判为可激活的完整文章。
         coverage = await conn.fetchrow(
             """
-            WITH complete_posts AS (
-                SELECT pe.post_id
-                FROM post_embeddings pe
-                WHERE pe.profile_id = $1
-                  AND pe.status IN ('active', 'shadow')
-                GROUP BY pe.post_id
+            WITH current_posts AS (
+                SELECT id
+                FROM posts
+                WHERE deleted = FALSE
+                  AND status = 'PUBLISHED'
+            ),
+            complete_posts AS (
+                SELECT p.id AS post_id
+                FROM current_posts p
+                JOIN post_embeddings pe
+                  ON pe.post_id = p.id
+                 AND pe.profile_id = $1
+                 AND pe.status IN ('active', 'shadow')
+                GROUP BY p.id
                 HAVING COUNT(*) > 0
                    AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
                    AND MIN(COALESCE(pe.chunk_count, 1)) = MAX(COALESCE(pe.chunk_count, 1))
             )
             SELECT
-                (SELECT COUNT(*) FROM posts
-                 WHERE deleted = FALSE AND status = 'PUBLISHED') AS published_total,
+                (SELECT COUNT(*) FROM current_posts) AS published_total,
                 (SELECT COUNT(*) FROM complete_posts) AS indexed_total
             """,
             target["id"],
