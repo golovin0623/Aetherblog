@@ -161,6 +161,30 @@ class BlockingVectorStore(FakeVectorStore):
         return {"status": "indexed", "chunks": 1}
 
 
+class ChunkEventThenBlockingVectorStore(FakeVectorStore):
+    def __init__(self, *, profile: SearchProfile | None):
+        super().__init__(profile=profile, upsert_results=[])
+        self.cancelled = 0
+
+    async def upsert_post_embedding(self, **kw):
+        self.calls.append(kw)
+        await kw["progress_cb"]({
+            "type": "chunk_progress",
+            "postId": kw["post_id"],
+            "profile": kw["profile"].code,
+            "chunkIndex": 0,
+            "doneChunks": 1,
+            "totalChunks": 2,
+            "status": "ok",
+        })
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        return {"status": "indexed", "chunks": 2}
+
+
 class StreamSettings:
     reindex_stream_post_concurrency = 3
 
@@ -404,6 +428,49 @@ async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatc
         assert '"inFlight": 1' in heartbeat
     finally:
         await iterator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkeypatch):
+    monkeypatch.setattr(profiles_routes, "REINDEX_STREAM_HEARTBEAT_SEC", 0.01)
+    original_wait = asyncio.wait
+    wait_calls = 0
+
+    async def race_wait(wait_set, *, timeout=None, return_when=asyncio.ALL_COMPLETED):
+        nonlocal wait_calls
+        wait_calls += 1
+        if wait_calls == 1:
+            for _ in range(5):
+                await asyncio.sleep(0)
+            return set(), set(wait_set)
+        return await original_wait(wait_set, timeout=timeout, return_when=return_when)
+
+    monkeypatch.setattr(profiles_routes.asyncio, "wait", race_wait)
+    pool = FakePool([
+        {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
+    ])
+    vs = ChunkEventThenBlockingVectorStore(profile=_profile())
+
+    response = await reindex_profile_stream(
+        "new-v2",
+        user=_admin_user(),
+        pool=pool,
+        vector_store=vs,
+        settings=StreamSettings(),
+    )
+    iterator = response.body_iterator.__aiter__()
+
+    try:
+        first_frame = await iterator.__anext__()
+        assert '"type": "start"' in first_frame
+
+        progress_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in progress_frame
+        assert '"doneChunks": 1' in progress_frame
+    finally:
+        await iterator.aclose()
+
+    assert vs.cancelled == 1
 
 
 @pytest.mark.asyncio

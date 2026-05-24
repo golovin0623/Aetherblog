@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import time
+from contextlib import suppress
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -594,7 +595,12 @@ async def reindex_profile_stream(
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if not done:
+                    if queue_task.done():
+                        yield _sse_pack(queue_task.result())
+                        continue
                     queue_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await queue_task
                     yield _sse_pack({
                         "type": "heartbeat",
                         "profile": code,
@@ -608,7 +614,12 @@ async def reindex_profile_stream(
                     yield _sse_pack(queue_task.result())
                     done.remove(queue_task)
                 else:
-                    queue_task.cancel()
+                    if queue_task.done():
+                        yield _sse_pack(queue_task.result())
+                    else:
+                        queue_task.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await queue_task
                 for task in done:
                     pending.discard(task)
                     try:
@@ -655,6 +666,8 @@ async def reindex_profile_stream(
                 extra={"data": {"profile": code, "error": str(exc)[:200]}},
             )
             yield _sse_pack({"type": "error", "message": str(exc)[:200]})
+        finally:
+            await cancel_pending_tasks()
 
     return StreamingResponse(
         gen(),
