@@ -68,6 +68,36 @@ class FakePool:
         yield FakeConn(self._posts)
 
 
+class ResumeAwareFakeConn(FakeConn):
+    """模拟 shadow profile 断点续跑查询。
+
+    旧实现只查询所有已发布文章 id，导致失败后重进向导会从第一篇重跑。
+    这个 fake 在看到 profile-aware 的 post_embeddings 查询时才返回缺失/过期
+    的文章；否则返回全量，让回归测试能先红。
+    """
+
+    def __init__(self, posts, resume_ids):
+        super().__init__(posts)
+        self.resume_ids = set(resume_ids)
+        self.fetch_sqls: list[str] = []
+
+    async def fetch(self, sql, *args):
+        self.fetch_sqls.append(sql)
+        if "post_embeddings" in sql and "MAX(pe.indexed_at)" in sql and args:
+            return [p for p in self.posts if p["id"] in self.resume_ids]
+        return self.posts
+
+
+class ResumeAwareFakePool(FakePool):
+    def __init__(self, posts, resume_ids):
+        super().__init__(posts)
+        self.conn = ResumeAwareFakeConn(posts, resume_ids)
+
+    @asynccontextmanager
+    async def acquire(self):
+        yield self.conn
+
+
 class _SimplePool:
     """raise on acquire() —— 模拟 DB 不可用，让 gen() 走 fatal 分支。"""
 
@@ -236,6 +266,36 @@ def test_reindex_stream_per_post_failure_continues_emitting_progress():
     result = next(e for e in events if e["type"] == "result")
     assert result["data"]["indexed"] == 2
     assert result["data"]["failed"] == 1
+
+
+def test_reindex_stream_shadow_profile_resumes_only_missing_or_stale_posts():
+    pool = ResumeAwareFakePool(
+        [
+            {"id": 1, "title": "A", "slug": "a", "content_markdown": "already indexed"},
+            {"id": 2, "title": "B", "slug": "b", "content_markdown": "stale"},
+            {"id": 3, "title": "C", "slug": "c", "content_markdown": "missing"},
+        ],
+        resume_ids={2, 3},
+    )
+    vs = FakeVectorStore(
+        profile=_profile(status="shadow"),
+        upsert_results={
+            2: {"status": "indexed", "chunks": 4},
+            3: {"status": "indexed", "chunks": 1},
+        },
+    )
+    _install(pool=pool, vector_store=vs)
+
+    res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+
+    assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
+    assert [call["post_id"] for call in vs.calls] == [2, 3]
+    assert any("post_embeddings" in sql for sql in pool.conn.fetch_sqls)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["data"]["indexed"] == 2
+    assert result["data"]["failed"] == 0
 
 
 def test_reindex_stream_active_profile_writes_to_active_status():

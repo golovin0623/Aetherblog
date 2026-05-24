@@ -69,7 +69,7 @@
 | file:line | 符号 | 说明 |
 | --- | --- | --- |
 | `ai_client.go:17-21` | `AIClient` 结构 | 持 baseURL + 同步 client + 流式 client(共享 transport) |
-| `ai_client.go:26-47` | `NewAIClient` | TCP 连接超时 5s, 同步读 5min, 流式读 5min |
+| `ai_client.go:26-47` | `NewAIClient` | TCP 连接超时 5s, 同步读 5min, 流式读 30min |
 | `ai_client.go:50-58` | `AIClientError` | StatusCode + Message,被 `mapStatusToError` 解开 |
 | `ai_client.go:64-66` | `DoSync` | 提供给 `proxySyncRequest` `proxyGet` |
 | `ai_client.go:72-74` | `DoStream` | 提供给 SSE / index-batch / qa / reindex |
@@ -213,7 +213,7 @@ migration 增量在 `028_ai_pricing` / `029_ai_pricing_archive` / `030_ai_pricin
 | `AETHERBLOG_AI_BASE_URL` | `http://localhost:8000` | ai-service 入口,容器内通常 `http://ai-service:8000` |
 | `AETHERBLOG_AI_CONNECT_TIMEOUT` | `5s` | TCP 连接超时 |
 | `AETHERBLOG_AI_READ_TIMEOUT` | `5m` | 同步 LLM 读超时(与 nginx `/api/v1/ai/` proxy_read_timeout=600s 协调) |
-| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | `5m` | SSE 整流持续上限 |
+| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | `30m` | SSE 整流持续上限，覆盖 Search Profile reindex 长任务 |
 | `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` | (必填) | ≥32 字符,backend ↔ ai-service 信任令牌。`config.go:253-258` 强制非空且长度 ≥32,缺失则启动 fatal |
 
 代码:`apps/server-go/internal/config/config.go:165-171, 346-352`。`InternalServiceToken` 在 `Mount` AI 端点时不直接注入 admin 的 `/ai/*` 代理(它们用用户 JWT 透传),只在 Agent / Search / 内部循环里注入(`X-Internal-Service` header)。

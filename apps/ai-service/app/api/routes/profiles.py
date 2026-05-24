@@ -450,11 +450,42 @@ async def reindex_profile_stream(
             #      asyncpg 内部会复用 prepared statement，开销可控）
             # 这样即使 1 万篇博客也只会让 id 列表占 80KB 内存。
             async with pool.acquire() as conn:
-                id_rows = await conn.fetch(
-                    "SELECT id FROM posts "
-                    "WHERE deleted = FALSE AND status = 'PUBLISHED' "
-                    "ORDER BY id ASC"
-                )
+                if profile.status == "shadow":
+                    # 断点续跑：shadow profile 激活前若中途失败，已成功写入的
+                    # shadow rows 保留。下一次只补齐缺失或文章更新后变旧的行，
+                    # 避免最后 1 篇失败时从第 1 篇重新消耗 embedding。
+                    id_rows = await conn.fetch(
+                        """
+                        SELECT p.id
+                        FROM posts p
+                        LEFT JOIN LATERAL (
+                            SELECT MAX(pe.indexed_at) AS last_indexed_at
+                            FROM post_embeddings pe
+                            WHERE pe.post_id = p.id
+                              AND pe.profile_id = $1
+                              AND pe.status IN ('active', 'shadow')
+                        ) existing ON TRUE
+                        WHERE p.deleted = FALSE
+                          AND p.status = 'PUBLISHED'
+                          AND (
+                              existing.last_indexed_at IS NULL
+                              OR existing.last_indexed_at < COALESCE(
+                                  p.updated_at,
+                                  p.published_at,
+                                  p.created_at,
+                                  'epoch'::timestamp
+                              )
+                          )
+                        ORDER BY p.id ASC
+                        """,
+                        profile.id,
+                    )
+                else:
+                    id_rows = await conn.fetch(
+                        "SELECT id FROM posts "
+                        "WHERE deleted = FALSE AND status = 'PUBLISHED' "
+                        "ORDER BY id ASC"
+                    )
             total = len(id_rows)
             yield _sse_pack({"type": "start", "total": total, "profile": code})
 
