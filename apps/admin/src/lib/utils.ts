@@ -1,11 +1,27 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+interface ProviderCredentialLike {
+  provider_code: string;
+  is_default?: boolean;
+}
+
 /**
  * 合并 Tailwind CSS 类名
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function findCredentialForProvider<T extends ProviderCredentialLike>(
+  credentials: readonly T[],
+  providerCode: string | null | undefined
+): T | undefined {
+  if (!providerCode) return undefined;
+  return (
+    credentials.find((c) => c.provider_code === providerCode && c.is_default) ||
+    credentials.find((c) => c.provider_code === providerCode)
+  );
 }
 
 /**

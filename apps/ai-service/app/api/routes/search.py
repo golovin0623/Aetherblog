@@ -406,8 +406,7 @@ async def qa_search(
         )
         yield f"data: {error_data}\n\n"
 
-    has_qa_routing = getattr(llm_router, "has_task_routing", None)
-    if callable(has_qa_routing) and not await has_qa_routing("qa", user_id=None):
+    if not await llm_router.has_task_routing("qa", user_id=None):
         return StreamingResponse(
             generate_error(
                 "qa_routing_missing",

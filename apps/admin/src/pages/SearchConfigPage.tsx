@@ -21,7 +21,7 @@ import {
   Square,
   MessageSquare,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, findCredentialForProvider } from '@/lib/utils';
 import { Toggle, ConfirmModal } from '@aetherblog/ui';
 import {
   searchConfigService,
@@ -449,14 +449,8 @@ export default function SearchConfigPage() {
   const deleteProfileMutation = useDeleteProfile();
   const activeProfile = profilesQuery.data?.find((p) => p.status === 'active') ?? null;
 
-  const resolveCredentialIdForModel = useCallback((model: AiModel | null | undefined) => {
-    const providerCode = model?.provider_code;
-    if (!providerCode) return null;
-    const creds = credentialsQuery.data || [];
-    const match =
-      creds.find((c) => c.provider_code === providerCode && c.is_default) ||
-      creds.find((c) => c.provider_code === providerCode);
-    return match?.id ?? null;
+  const resolveCredentialForProvider = useCallback((providerCode: string | null | undefined) => {
+    return findCredentialForProvider(credentialsQuery.data || [], providerCode);
   }, [credentialsQuery.data]);
 
   // 更新向量化路由的 mutation
@@ -469,7 +463,7 @@ export default function SearchConfigPage() {
       const model = modelId != null
         ? (embeddingModelsQuery.data || []).find((m) => m.id === modelId)
         : null;
-      const credentialId = resolveCredentialIdForModel(model);
+      const credentialId = resolveCredentialForProvider(model?.provider_code)?.id ?? null;
       return aiProviderService.updateRouting('embedding', {
         primary_model_id: modelId,
         credential_id: credentialId,
@@ -492,7 +486,7 @@ export default function SearchConfigPage() {
       const model = modelId != null
         ? (chatModelsQuery.data || []).find((m) => m.id === modelId)
         : null;
-      const credentialId = resolveCredentialIdForModel(model);
+      const credentialId = resolveCredentialForProvider(model?.provider_code)?.id ?? null;
       return aiProviderService.updateRouting('qa', {
         primary_model_id: modelId,
         credential_id: credentialId,
@@ -796,9 +790,11 @@ export default function SearchConfigPage() {
   const embeddingModelSelected = !!currentRouting?.primary_model;
   const embeddingCredentialReady = currentRouting?.credential_configured !== false;
   const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
-  const qaModelSelected = !!currentQaRouting?.primary_model;
+  const currentQaModel = currentQaRouting?.primary_model;
+  const qaModelSelected = !!currentQaModel;
+  const qaModelChatReady = !!currentQaModel && isChatModel(currentQaModel);
   const qaCredentialReady = currentQaRouting?.credential_configured !== false;
-  const qaConfigured = qaModelSelected && qaCredentialReady;
+  const qaConfigured = qaModelChatReady && qaCredentialReady;
   const semanticEnabled = formData.semanticEnabled ?? false;
   const diagnosticsTone =
     diagnostics?.fallback.effectiveMode === 'disabled'
@@ -1022,10 +1018,7 @@ export default function SearchConfigPage() {
                  "未选择", 管理员完全不知道问题出在哪里. */}
             {!embeddingLoading && currentRouting?.primary_model && (() => {
               const m = currentRouting.primary_model!;
-              const creds = credentialsQuery.data || [];
-              const matched =
-                creds.find((c) => c.provider_code === m.provider_code && c.is_default) ||
-                creds.find((c) => c.provider_code === m.provider_code);
+              const matched = resolveCredentialForProvider(m.provider_code);
               const effectiveBase = matched?.base_url_override || '(provider 默认)';
               const credReady = embeddingCredentialReady;
               return (
@@ -1135,9 +1128,7 @@ export default function SearchConfigPage() {
 
             {!qaLoading && currentQaRouting?.primary_model && (() => {
               const m = currentQaRouting.primary_model!;
-              const matched =
-                (credentialsQuery.data || []).find((c) => c.provider_code === m.provider_code && c.is_default) ||
-                (credentialsQuery.data || []).find((c) => c.provider_code === m.provider_code);
+              const matched = resolveCredentialForProvider(m.provider_code);
               const effectiveBase = matched?.base_url_override || '(provider 默认)';
               const credReady = qaCredentialReady;
               return (
@@ -1497,7 +1488,12 @@ export default function SearchConfigPage() {
                       (需先选择对话模型)
                     </span>
                   )}
-                  {semanticEnabled && qaModelSelected && !qaCredentialReady && (
+                  {semanticEnabled && qaModelSelected && !qaModelChatReady && (
+                    <span className="text-amber-400 ml-1">
+                      (当前模型不是对话模型)
+                    </span>
+                  )}
+                  {semanticEnabled && qaModelChatReady && !qaCredentialReady && (
                     <span className="text-amber-400 ml-1">
                       (模型已选, 但缺少可用凭证)
                     </span>
