@@ -472,11 +472,13 @@ async def reindex_profile_stream(
             #      asyncpg 内部会复用 prepared statement，开销可控）
             # 这样即使 1 万篇博客也只会让 id 列表占 80KB 内存。
             async with pool.acquire() as conn:
-                if profile.status == "shadow":
-                    # 断点续跑：shadow profile 激活前若中途失败，已成功写入的
-                    # shadow rows 保留。posts.updated_at 会被浏览量、embedding_status
-                    # 等非内容更新刷新；在没有内容稳定时间戳/哈希前，只补齐缺失行，
-                    # 避免最后 1 篇失败时从第 1 篇重新消耗 embedding。
+                if profile.status != "active":
+                    # 断点续跑：非 active profile 激活前若中途失败，已成功写入的
+                    # shadow/deprecated rows 保留。posts.updated_at 会被浏览量、
+                    # embedding_status 等非内容更新刷新；在没有内容稳定时间戳/
+                    # 哈希前，只补齐缺失行，避免最后 1 篇失败时从第 1 篇重新消耗
+                    # embedding。deprecated profile 切回也走这里，否则会把完整
+                    # 的旧 profile 再按全量文章列表扫描一遍。
                     id_rows = await conn.fetch(
                         """
                         SELECT p.id

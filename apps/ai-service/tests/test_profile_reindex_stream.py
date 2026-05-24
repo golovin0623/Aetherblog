@@ -338,6 +338,37 @@ def test_reindex_stream_shadow_profile_resumes_only_missing_posts():
     assert result["data"]["failed"] == 0
 
 
+def test_reindex_stream_deprecated_profile_resumes_only_missing_posts():
+    pool = ResumeAwareFakePool(
+        [
+            {"id": 1, "title": "A", "slug": "a", "content_markdown": "already indexed"},
+            {"id": 2, "title": "B", "slug": "b", "content_markdown": "metadata changed"},
+            {"id": 3, "title": "C", "slug": "c", "content_markdown": "missing"},
+        ],
+        resume_ids={3},
+    )
+    vs = FakeVectorStore(
+        profile=_profile(status="deprecated"),
+        upsert_results={
+            3: {"status": "indexed", "chunks": 1},
+        },
+    )
+    _install(pool=pool, vector_store=vs)
+
+    res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+
+    assert events[0] == {"type": "start", "total": 1, "profile": "new-v2"}
+    assert [call["post_id"] for call in vs.calls] == [3]
+    assert vs.calls[0]["target_status"] == "shadow"
+    assert any("post_embeddings" in sql for sql in pool.conn.fetch_sqls)
+    assert any("NOT EXISTS" in sql for sql in pool.conn.fetch_sqls)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["data"]["indexed"] == 1
+    assert result["data"]["failed"] == 0
+
+
 def test_reindex_stream_active_profile_writes_to_active_status():
     pool = FakePool([
         {"id": 1, "title": "A", "slug": "a", "content_markdown": "x"},
