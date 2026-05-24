@@ -1,6 +1,6 @@
 import { MetadataRoute } from 'next';
 import { getSiteSettings } from './lib/services';
-import { getPreferredSiteIconUrl, getSiteIconMimeType } from './lib/siteIcon';
+import { getPreferredSiteIconUrl, getSiteIconMimeType } from '@aetherblog/utils';
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const settings = await getSiteSettings();
@@ -21,7 +21,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
           {
             src: iconUrl,
             sizes: 'any',
-            type: getSiteIconMimeType(iconUrl),
+            type: getSiteIconMimeType(iconUrl) || 'image/png',
           },
         ]
       : [],

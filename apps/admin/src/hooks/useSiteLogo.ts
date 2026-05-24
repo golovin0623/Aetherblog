@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
-import { resolveSiteAssetUrl } from '@/lib/siteAssets';
+import { resolveSiteAssetUrl } from '@aetherblog/utils';
 
 /**
  * 获取站点 Logo URL

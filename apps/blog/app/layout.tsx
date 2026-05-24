@@ -7,7 +7,7 @@ import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
-import { getPreferredSiteIconUrl } from './lib/siteIcon';
+import { getPreferredSiteIconUrl } from '@aetherblog/utils';
 import {
   themeInitScript,
   themeFoucGuardStyle,

@@ -1,6 +1,6 @@
 import api from './api';
 import { R } from '@/types';
-import type { SiteBrandingSettings } from '@/lib/siteAssets';
+import type { SiteBrandingSettings } from '@aetherblog/utils';
 
 export interface PublicSiteInfo extends SiteBrandingSettings {
   site_name?: string;
