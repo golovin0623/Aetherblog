@@ -7,6 +7,7 @@ import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
+import { getPreferredSiteIconUrl } from './lib/siteIcon';
 import {
   themeInitScript,
   themeFoucGuardStyle,
@@ -29,7 +30,7 @@ export const viewport: Viewport = {
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
-  const avatarUrl = settings.authorAvatar || settings.author_avatar;
+  const iconUrl = getPreferredSiteIconUrl(settings);
   
   return {
     title: {
@@ -40,10 +41,11 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: settings.siteKeywords?.split(/[,，]/).map(k => k.trim()) || ['blog', 'tech', 'ai'],
     authors: [{ name: settings.authorName || 'Admin' }],
     metadataBase: new URL(settings.siteUrl || 'http://localhost:3000'),
-    ...(avatarUrl ? {
+    ...(iconUrl ? {
       icons: {
-        icon: avatarUrl,
-        apple: avatarUrl,
+        icon: iconUrl,
+        shortcut: iconUrl,
+        apple: iconUrl,
       },
     } : {}),
     appleWebApp: {

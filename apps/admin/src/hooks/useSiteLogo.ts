@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
-import { getMediaUrl } from '@/services/mediaService';
+import { resolveSiteAssetUrl } from '@/lib/siteAssets';
 
 /**
  * 获取站点 Logo URL
@@ -15,5 +15,5 @@ export function useSiteLogo(): string {
 
   const raw = settings?.site_logo as string | undefined;
   if (!raw) return '';
-  return getMediaUrl(raw);
+  return resolveSiteAssetUrl(raw);
 }

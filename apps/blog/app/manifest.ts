@@ -1,9 +1,10 @@
 import { MetadataRoute } from 'next';
 import { getSiteSettings } from './lib/services';
+import { getPreferredSiteIconUrl, getSiteIconMimeType } from './lib/siteIcon';
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const settings = await getSiteSettings();
-  const avatarUrl = settings.authorAvatar || settings.author_avatar;
+  const iconUrl = getPreferredSiteIconUrl(settings);
 
   return {
     name: settings.siteTitle || 'AetherBlog',
@@ -15,12 +16,12 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     scope: '/',
     background_color: '#09090b',
     theme_color: '#09090b',
-    icons: avatarUrl
+    icons: iconUrl
       ? [
           {
-            src: avatarUrl,
+            src: iconUrl,
             sizes: 'any',
-            type: 'image/png',
+            type: getSiteIconMimeType(iconUrl),
           },
         ]
       : [],
