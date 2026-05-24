@@ -582,6 +582,10 @@ async def retry_failed_indexes(
                       WHERE pe.post_id = p.id
                         AND pe.profile_id = $1
                         AND pe.status IN ('active', 'shadow')
+                      GROUP BY pe.post_id
+                      HAVING COUNT(*) > 0
+                         AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
+                         AND MIN(COALESCE(pe.chunk_count, 1)) = MAX(COALESCE(pe.chunk_count, 1))
                   )
                 ORDER BY p.id
                 LIMIT 100

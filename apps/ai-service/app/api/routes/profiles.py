@@ -225,14 +225,25 @@ async def activate_profile(
                 detail=f"Profile '{code}' 已被弃用，无法直接激活；请先创建新 profile。",
             )
 
-        # 检查 shadow 行覆盖：所有 PUBLISHED 文章是否都有该 profile 下的向量
+        # 检查 shadow 行覆盖：所有 PUBLISHED 文章都必须有完整 chunk 集合。
+        # chunk_count 由写入端按当前切分结果记录；部分 chunk checkpoint
+        # 不能被误判为可激活的完整文章。
         coverage = await conn.fetchrow(
             """
+            WITH complete_posts AS (
+                SELECT pe.post_id
+                FROM post_embeddings pe
+                WHERE pe.profile_id = $1
+                  AND pe.status IN ('active', 'shadow')
+                GROUP BY pe.post_id
+                HAVING COUNT(*) > 0
+                   AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
+                   AND MIN(COALESCE(pe.chunk_count, 1)) = MAX(COALESCE(pe.chunk_count, 1))
+            )
             SELECT
                 (SELECT COUNT(*) FROM posts
                  WHERE deleted = FALSE AND status = 'PUBLISHED') AS published_total,
-                (SELECT COUNT(DISTINCT post_id) FROM post_embeddings
-                 WHERE profile_id = $1 AND status IN ('active', 'shadow')) AS indexed_total
+                (SELECT COUNT(*) FROM complete_posts) AS indexed_total
             """,
             target["id"],
         )
@@ -411,6 +422,7 @@ async def reindex_profile_stream(
     SSE 帧格式（与 admin ``useReindexStream`` 协商）：
         data: {"type":"start","total":N,"profile":<code>}
         data: {"type":"heartbeat","indexed":n,"failed":n,"total":N}
+        data: {"type":"chunk_progress","postId":<id>,"doneChunks":n,"totalChunks":N}
         data: {"type":"progress","postId":<id>,"index":i,"chunks":<n>,
                "status":"ok"|"failed","error"?:..,"elapsedMs":..}
         data: {"type":"result","data":{...}}
@@ -433,6 +445,10 @@ async def reindex_profile_stream(
         # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
         # useReindexStream 能优雅处理（写 error state、停 isRunning）。
         pending: set[asyncio.Task[dict]] = set()
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+        async def enqueue_event(event: dict) -> None:
+            await event_queue.put(event)
 
         async def cancel_pending_tasks() -> int:
             if not pending:
@@ -470,6 +486,10 @@ async def reindex_profile_stream(
                               WHERE pe.post_id = p.id
                                 AND pe.profile_id = $1
                                 AND pe.status IN ('active', 'shadow')
+                              GROUP BY pe.post_id
+                              HAVING COUNT(*) > 0
+                                 AND COUNT(*) = MAX(COALESCE(pe.chunk_count, 1))
+                                 AND MIN(COALESCE(pe.chunk_count, 1)) = MAX(COALESCE(pe.chunk_count, 1))
                           )
                         ORDER BY p.id ASC
                         """,
@@ -526,6 +546,7 @@ async def reindex_profile_stream(
                         profile=profile,
                         target_status=target_status,
                         embed_semaphore=embed_semaphore,
+                        progress_cb=enqueue_event,
                     )
                     return {
                         "type": "progress",
@@ -548,21 +569,25 @@ async def reindex_profile_stream(
                     }
 
             next_idx = 1
-            while next_idx <= total or pending:
+            while next_idx <= total or pending or not event_queue.empty():
                 while next_idx <= total and len(pending) < post_concurrency:
                     post_id = id_rows[next_idx - 1]["id"]
                     pending.add(asyncio.create_task(process_one(next_idx, post_id)))
                     next_idx += 1
 
-                if not pending:
+                if not pending and event_queue.empty():
                     continue
 
-                done, pending = await asyncio.wait(
-                    pending,
+                queue_task = asyncio.create_task(event_queue.get())
+                wait_set: set[asyncio.Task] = set(pending)
+                wait_set.add(queue_task)
+                done, _ = await asyncio.wait(
+                    wait_set,
                     timeout=REINDEX_STREAM_HEARTBEAT_SEC,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if not done:
+                    queue_task.cancel()
                     yield _sse_pack({
                         "type": "heartbeat",
                         "profile": code,
@@ -572,7 +597,13 @@ async def reindex_profile_stream(
                         "inFlight": len(pending),
                     })
                     continue
+                if queue_task in done:
+                    yield _sse_pack(queue_task.result())
+                    done.remove(queue_task)
+                else:
+                    queue_task.cancel()
                 for task in done:
+                    pending.discard(task)
                     try:
                         event = task.result()
                     except Exception as exc:
