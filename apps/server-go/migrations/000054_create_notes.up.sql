@@ -80,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_notes_source_type
 
 CREATE INDEX IF NOT EXISTS idx_notes_fulltext
     ON notes USING gin (
-        to_tsvector('simple', title || ' ' || COALESCE(summary, '') || ' ' || content_markdown)
+        to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000))
     );
 
 CREATE TABLE IF NOT EXISTS note_tag_links (
@@ -153,4 +153,3 @@ FROM roles r
 JOIN permissions p ON p.code = 'content.notes.manage'
 WHERE r.code = 'ADMIN'
 ON CONFLICT DO NOTHING;
-

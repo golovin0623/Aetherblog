@@ -570,24 +570,31 @@ type SearchResultRow struct {
 	PublishedAt  *time.Time `db:"published_at"`
 }
 
-// SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
-// 为兼容中文/CJK 查询，保留 ts_rank 打分的同时叠加 ILIKE 作为兜底匹配：
-// 'simple' 分词器以空白切分，无法切分中文整词，会导致 tsvector 路径对中文查询返回 0 结果；
-// ILIKE 子串匹配确保在这种情况下仍能命中。title/summary 命中给予更高加权。
-// 大小写兼容：在 CTE 里显式 lower($1),让 tsquery 的词位和 ILIKE 的子串模式都走
-// 小写分支;'simple' 分词器理论上已经 lowercase,但部分 PG 字典/本地化配置会打破
-// 这个假设,导致 "Docker" 与 "docker" 出不同结果。前置 lower 让两条查询等价。
-func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
-	var rows []SearchResultRow
-	err := r.db.SelectContext(ctx, &rows, `
+func postSearchDocumentSQL(alias string) string {
+	qualifier := ""
+	if alias != "" {
+		qualifier = alias + "."
+	}
+	return fmt.Sprintf(
+		"left(%stitle || ' ' || COALESCE(%ssummary, '') || ' ' || COALESCE(%scontent_markdown, ''), %d)",
+		qualifier,
+		qualifier,
+		qualifier,
+		fulltextSearchDocumentMaxChars,
+	)
+}
+
+func searchPublishedQuery() string {
+	searchDocument := postSearchDocumentSQL("p")
+	return fmt.Sprintf(`
 		WITH q AS (
 			SELECT plainto_tsquery('simple', lower($1)) AS tsq,
-			       '%' || lower($2) || '%' AS like_pat
+			       '%%' || lower($2) || '%%' AS like_pat
 		)
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
 			GREATEST(
 				ts_rank(
-					to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
+					to_tsvector('simple', %[1]s),
 					(SELECT tsq FROM q)
 				),
 				CASE WHEN p.title ILIKE (SELECT like_pat FROM q) THEN 0.5 ELSE 0 END,
@@ -598,15 +605,28 @@ func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, o
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
 			AND (
-				to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
+				to_tsvector('simple', %[1]s)
 					@@ (SELECT tsq FROM q)
 				OR p.title ILIKE (SELECT like_pat FROM q)
 				OR COALESCE(p.summary,'') ILIKE (SELECT like_pat FROM q)
 				OR COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q)
 			)
 		ORDER BY rank DESC, p.published_at DESC NULLS LAST
-		LIMIT $3 OFFSET $4`,
-		keyword, dbutil.EscapeLike(keyword), limit, offset)
+		LIMIT $3 OFFSET $4`, searchDocument)
+}
+
+// SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
+// 为兼容中文/CJK 查询，保留 ts_rank 打分的同时叠加 ILIKE 作为兜底匹配：
+// 'simple' 分词器以空白切分，无法切分中文整词，会导致 tsvector 路径对中文查询返回 0 结果；
+// ILIKE 子串匹配确保在这种情况下仍能命中。title/summary 命中给予更高加权。
+// 大小写兼容：在 CTE 里显式 lower($1),让 tsquery 的词位和 ILIKE 的子串模式都走
+// 小写分支;'simple' 分词器理论上已经 lowercase,但部分 PG 字典/本地化配置会打破
+// 这个假设,导致 "Docker" 与 "docker" 出不同结果。前置 lower 让两条查询等价。
+// PostgreSQL 对 tsvector 输入有约 1MB 限制，搜索索引只使用正文前段派生文本；
+// content_markdown 本身仍完整保存，ILIKE 兜底也继续覆盖全文。
+func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
+	var rows []SearchResultRow
+	err := r.db.SelectContext(ctx, &rows, searchPublishedQuery(), keyword, dbutil.EscapeLike(keyword), limit, offset)
 	return rows, err
 }
 

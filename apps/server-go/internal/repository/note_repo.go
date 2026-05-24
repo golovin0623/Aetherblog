@@ -371,6 +371,20 @@ func (r *NoteRepo) FindForAdmin(ctx context.Context, f AdminNoteFilter) ([]NoteL
 	return rows, total, err
 }
 
+func noteSearchDocumentSQL(alias string) string {
+	qualifier := ""
+	if alias != "" {
+		qualifier = alias + "."
+	}
+	return fmt.Sprintf(
+		"left(%stitle || ' ' || COALESCE(%ssummary, '') || ' ' || COALESCE(%scontent_markdown, ''), %d)",
+		qualifier,
+		qualifier,
+		qualifier,
+		fulltextSearchDocumentMaxChars,
+	)
+}
+
 func buildNoteAdminWhere(f AdminNoteFilter) (string, []any) {
 	clauses := []string{"n.deleted=false"}
 	args := []any{}
@@ -401,15 +415,16 @@ func buildNoteAdminWhere(f AdminNoteFilter) (string, []any) {
 		keyword := strings.TrimSpace(*f.Keyword)
 		searchPh := placeholder(keyword)
 		likePh := placeholder("%" + dbutil.EscapeLike(keyword) + "%")
+		searchDocument := noteSearchDocumentSQL("n")
 		clauses = append(clauses, fmt.Sprintf(`(
-			to_tsvector('simple', n.title || ' ' || COALESCE(n.summary, '') || ' ' || n.content_markdown) @@ plainto_tsquery('simple', %s) OR
+			to_tsvector('simple', %s) @@ plainto_tsquery('simple', %s) OR
 			n.title ILIKE %s OR COALESCE(n.summary, '') ILIKE %s OR n.content_markdown ILIKE %s OR
 			EXISTS (
 				SELECT 1 FROM note_tag_links stl
 				JOIN note_tags st ON st.id = stl.tag_id
 				WHERE stl.note_id = n.id AND st.name ILIKE %s
 			)
-		)`, searchPh, likePh, likePh, likePh, likePh))
+		)`, searchDocument, searchPh, likePh, likePh, likePh, likePh))
 	}
 	if f.FolderID != nil {
 		clauses = append(clauses, "n.folder_id="+placeholder(*f.FolderID))

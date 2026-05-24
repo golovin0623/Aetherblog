@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -63,5 +66,56 @@ func TestNoteRepoUpdatePropertiesWithTagsRollsBackOnTagFailure(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestBuildNoteAdminWhereCapsTsvectorInput(t *testing.T) {
+	keyword := "长笔记"
+
+	where, args := buildNoteAdminWhere(AdminNoteFilter{Keyword: &keyword})
+
+	if count := strings.Count(where, "to_tsvector('simple', left("); count != 1 {
+		t.Fatalf("note keyword search should cap the tsvector call, found %d capped calls in:\n%s", count, where)
+	}
+	if strings.Contains(where, "to_tsvector('simple', n.title ||") {
+		t.Fatalf("note keyword search must not build tsvector from the full note body:\n%s", where)
+	}
+	if !strings.Contains(where, "n.content_markdown ILIKE") {
+		t.Fatalf("note keyword search should keep full-body ILIKE fallback:\n%s", where)
+	}
+	if !strings.Contains(where, "COALESCE(n.content_markdown, '')") {
+		t.Fatalf("note keyword tsvector expression should coalesce content_markdown:\n%s", where)
+	}
+	if len(args) != 2 || args[0] != keyword || args[1] != "%长笔记%" {
+		t.Fatalf("unexpected keyword args: %#v", args)
+	}
+}
+
+func TestNoteFulltextMigrationRebuildsIndexWithCappedDocument(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	migrationPath := filepath.Join(filepath.Dir(filename), "..", "..", "migrations", "000055_limit_fulltext_tsvector_input.up.sql")
+
+	raw, err := os.ReadFile(migrationPath)
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(raw)
+
+	if !strings.Contains(sql, "DROP INDEX IF EXISTS idx_notes_fulltext;") {
+		t.Fatalf("migration should drop the old unsafe notes fulltext index:\n%s", sql)
+	}
+	if !strings.Contains(sql, "CREATE INDEX IF NOT EXISTS idx_notes_fulltext") {
+		t.Fatalf("migration should recreate idx_notes_fulltext:\n%s", sql)
+	}
+	wantExpr := "to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000))"
+	if !strings.Contains(sql, wantExpr) {
+		t.Fatalf("migration should use capped notes tsvector expression %q:\n%s", wantExpr, sql)
+	}
+	unsafeExpr := "to_tsvector('simple', title || ' ' || COALESCE(summary, '') || ' ' || content_markdown)"
+	if strings.Contains(sql, unsafeExpr) {
+		t.Fatalf("migration must not recreate the unsafe full-body notes tsvector expression:\n%s", sql)
 	}
 }
