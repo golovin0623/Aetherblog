@@ -700,6 +700,7 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['public-site-info'] });
       toast.success('设置已保存');
       setHasChanges(false);
     },

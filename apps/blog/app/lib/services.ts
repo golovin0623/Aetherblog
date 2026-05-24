@@ -19,6 +19,7 @@ export interface SiteSettings {
   comment_enabled?: boolean;
   // 站点Logo
   site_logo?: string;
+  site_favicon?: string;
   // 欢迎屏幕
   welcome_title?: string;
   welcome_subtitle?: string;
