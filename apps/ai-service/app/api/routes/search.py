@@ -399,6 +399,23 @@ async def qa_search(
 
     _enforce_content_limit(q)
 
+    async def generate_error(code: str, message: str):
+        error_data = _json.dumps(
+            {"type": "error", "code": code, "message": message},
+            ensure_ascii=False,
+        )
+        yield f"data: {error_data}\n\n"
+
+    has_qa_routing = getattr(llm_router, "has_task_routing", None)
+    if callable(has_qa_routing) and not await has_qa_routing("qa", user_id=None):
+        return StreamingResponse(
+            generate_error(
+                "qa_routing_missing",
+                "AI 问答模型未配置，请在搜索配置中选择对话模型并确认凭证可用",
+            ),
+            media_type="text/event-stream",
+        )
+
     # 第 1 步：语义检索得到上下文
     context_results = await vector_store.semantic_search(q, limit=3)
 
