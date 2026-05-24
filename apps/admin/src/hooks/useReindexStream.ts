@@ -213,6 +213,7 @@ export function useReindexStream(): UseReindexStreamReturn {
                 receivedAt: Date.now(),
               });
             } else if (obj.type === 'chunk_progress') {
+              setHeartbeat(null);
               setChunkProgress({
                 postId: obj.postId,
                 profile: obj.profile,
@@ -224,6 +225,7 @@ export function useReindexStream(): UseReindexStreamReturn {
                 receivedAt: Date.now(),
               });
             } else if (obj.type === 'progress') {
+              setHeartbeat(null);
               const evt = obj as ReindexProgressEvent;
               // counters: O(1) 累加
               setCounters((c) => ({
