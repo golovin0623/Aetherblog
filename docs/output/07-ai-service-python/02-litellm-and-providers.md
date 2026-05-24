@@ -146,7 +146,7 @@ return LlmRouter._ResolvedRoute(
 )
 ```
 
-`resolve_model("summary")` 返回 `MODEL_SUMMARY` 环境变量(默认 `gpt-5-mini`)。生产里这条路径基本不该走 — 出现就是"`ai_task_routing` 表里没该 task" 的信号。`embed()` 走这条会落一条 `embed.start_env_fallback` WARNING(`llm_router.py:1054`)。
+`resolve_model("summary")` 返回 `MODEL_SUMMARY` 环境变量(默认 `gpt-5-mini`)。Search QA 不提供独立 env fallback；必须通过 `ai_task_routing(code='qa')` 配置对话模型和凭证，未配置时 `/api/v1/search/qa` 会返回 `qa_routing_missing` SSE 错误。`embed()` 走 env fallback 会落一条 `embed.start_env_fallback` WARNING(`llm_router.py:1054`)。
 
 ### 2.4 agent 走另一条解析
 

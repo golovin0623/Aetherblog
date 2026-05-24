@@ -25,8 +25,10 @@ client = TestClient(app)
 class FakeVectorStore:
     def __init__(self, results):
         self.results = results
+        self.calls = 0
 
     async def semantic_search(self, q, limit):  # noqa: ARG002 — 与真实签名对齐
+        self.calls += 1
         return self.results
 
 
@@ -39,6 +41,9 @@ class FakeLlmRouter:
         self.last_call = {"prompt_variables": prompt_variables, "model_alias": model_alias}
         for chunk in self.chunks:
             yield chunk
+
+    async def has_task_routing(self, task_type, user_id=None):  # noqa: ARG002 — 与真实签名对齐
+        return True
 
 
 def _parse_sse_payloads(body: bytes) -> list[dict]:
@@ -124,6 +129,9 @@ def test_qa_emits_error_event_on_llm_failure():
     """LLM 异常时必须发 error 事件并附带 code/message, 不能裸抛或留空。"""
 
     class BoomLlmRouter:
+        async def has_task_routing(self, task_type, user_id=None):  # noqa: ARG002
+            return True
+
         async def stream_chat(self, **_kwargs):
             yield "first chunk"
             raise RuntimeError("upstream timeout")
@@ -154,3 +162,42 @@ def test_qa_emits_error_event_on_llm_failure():
     error_event = next(e for e in events if e.get("type") == "error")
     assert error_event.get("code") == "qa_error"
     assert "upstream timeout" in error_event.get("message", "")
+
+
+def test_qa_emits_config_error_when_routing_missing():
+    """QA 未配置对话模型路由时不能把 alias='qa' 交给 LiteLLM。"""
+
+    class MissingRoutingLlmRouter:
+        async def has_task_routing(self, task_type, user_id=None):  # noqa: ARG002
+            return False
+
+        async def stream_chat(self, **_kwargs):  # pragma: no cover - 若调用即说明前置 gate 失效
+            raise AssertionError("stream_chat must not run without qa routing")
+
+    vector_store = FakeVectorStore([])
+
+    async def mock_require_admin_or_internal():
+        return UserClaims(user_id="1", role="admin", scopes=None)
+
+    async def mock_get_vector_store():
+        return vector_store
+
+    async def mock_get_llm_router():
+        return MissingRoutingLlmRouter()
+
+    app.dependency_overrides[require_admin_or_internal] = mock_require_admin_or_internal
+    app.dependency_overrides[get_vector_store] = mock_get_vector_store
+    app.dependency_overrides[get_llm_router] = mock_get_llm_router
+
+    try:
+        response = client.get("/api/v1/search/qa", params={"q": "系统架构师需要什么能力"})
+    finally:
+        app.dependency_overrides = {}
+
+    assert response.status_code == 200
+    assert vector_store.calls == 0
+    events = _parse_sse_payloads(response.content)
+    assert events
+    assert events[0].get("type") == "error"
+    assert events[0].get("code") == "qa_routing_missing"
+    assert "搜索配置" in events[0].get("message", "")

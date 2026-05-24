@@ -19,8 +19,9 @@ import {
   Activity,
   Clock,
   Square,
+  MessageSquare,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, findCredentialForProvider } from '@/lib/utils';
 import { Toggle, ConfirmModal } from '@aetherblog/ui';
 import {
   searchConfigService,
@@ -112,6 +113,14 @@ const filterTabs = [
   { key: 'INDEXED', label: '已索引' },
   { key: 'FAILED', label: '失败' },
 ];
+
+const NON_CHAT_MODEL_TYPES = new Set(['embedding', 'audio', 'image', 'tts', 'stt', 'text2video', 'video']);
+
+function isChatModel(model: AiModel) {
+  const modelType = (model.model_type || 'chat').toLowerCase();
+  const capabilities = (model.capabilities || {}) as Record<string, unknown>;
+  return !NON_CHAT_MODEL_TYPES.has(modelType) && capabilities.chat !== false;
+}
 
 // --- 索引任务模型 ---
 // 进度面板必须按"本次触发的任务"精确范围展示，否则会出现"单篇重建却显示
@@ -386,10 +395,32 @@ export default function SearchConfigPage() {
     enabled: providersQuery.isSuccess,
   });
 
+  // 获取 AI 问答可用的对话模型 —— qa 是 RAG 回答任务, 不能使用 embedding 模型。
+  const chatModelsQuery = useQuery({
+    queryKey: ['qa-chat-models', enabledProviderCodes ? Array.from(enabledProviderCodes).sort().join(',') : ''],
+    queryFn: () => aiProviderService.listModels(undefined, undefined, true),
+    select: (res) => {
+      return (res.data || []).filter(
+        (m: AiModel) =>
+          m.is_enabled &&
+          isChatModel(m) &&
+          (!enabledProviderCodes || enabledProviderCodes.has(m.provider_code))
+      );
+    },
+    enabled: providersQuery.isSuccess,
+  });
+
   // 获取当前向量化路由配置
   const embeddingRoutingQuery = useQuery({
     queryKey: ['embedding-routing'],
     queryFn: () => aiProviderService.getRouting('embedding'),
+    select: (res) => res.data,
+  });
+
+  // 获取 AI 问答路由配置。Search QA 运行时必须命中这条 route, 不再走 env fallback。
+  const qaRoutingQuery = useQuery({
+    queryKey: ['qa-routing'],
+    queryFn: () => aiProviderService.getRouting('qa'),
     select: (res) => res.data,
   });
 
@@ -418,6 +449,10 @@ export default function SearchConfigPage() {
   const deleteProfileMutation = useDeleteProfile();
   const activeProfile = profilesQuery.data?.find((p) => p.status === 'active') ?? null;
 
+  const resolveCredentialForProvider = useCallback((providerCode: string | null | undefined) => {
+    return findCredentialForProvider(credentialsQuery.data || [], providerCode);
+  }, [credentialsQuery.data]);
+
   // 更新向量化路由的 mutation
   const updateRoutingMutation = useMutation({
     mutationFn: (modelId: number | null) => {
@@ -425,18 +460,10 @@ export default function SearchConfigPage() {
       //   1. 优先匹配同 provider 的 is_default=true 凭证
       //   2. 否则取同 provider 的第一条启用凭证
       // 这样一次保存既写入 primary_model_id 又写入 credential_id，路由完整。
-      let credentialId: number | null = null;
-      if (modelId != null) {
-        const model = (embeddingModelsQuery.data || []).find((m) => m.id === modelId);
-        const providerCode = model?.provider_code;
-        const creds = credentialsQuery.data || [];
-        if (providerCode) {
-          const match =
-            creds.find((c) => c.provider_code === providerCode && c.is_default) ||
-            creds.find((c) => c.provider_code === providerCode);
-          credentialId = match?.id ?? null;
-        }
-      }
+      const model = modelId != null
+        ? (embeddingModelsQuery.data || []).find((m) => m.id === modelId)
+        : null;
+      const credentialId = resolveCredentialForProvider(model?.provider_code)?.id ?? null;
       return aiProviderService.updateRouting('embedding', {
         primary_model_id: modelId,
         credential_id: credentialId,
@@ -452,6 +479,24 @@ export default function SearchConfigPage() {
       toast.success('向量化模型已更新');
     },
     onError: () => toast.error('更新失败'),
+  });
+
+  const updateQaRoutingMutation = useMutation({
+    mutationFn: (modelId: number | null) => {
+      const model = modelId != null
+        ? (chatModelsQuery.data || []).find((m) => m.id === modelId)
+        : null;
+      const credentialId = resolveCredentialForProvider(model?.provider_code)?.id ?? null;
+      return aiProviderService.updateRouting('qa', {
+        primary_model_id: modelId,
+        credential_id: credentialId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['qa-routing'] });
+      toast.success('AI 问答模型已更新');
+    },
+    onError: () => toast.error('AI 问答模型更新失败'),
   });
 
   const handleDrawerDeprecate = async () => {
@@ -483,9 +528,14 @@ export default function SearchConfigPage() {
 
   const embeddingLoading =
     providersQuery.isLoading || embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
+  const qaLoading =
+    providersQuery.isLoading || chatModelsQuery.isLoading || qaRoutingQuery.isLoading || credentialsQuery.isLoading;
   const embeddingModels = embeddingModelsQuery.data || [];
+  const chatModels = chatModelsQuery.data || [];
   const currentRouting = embeddingRoutingQuery.data;
+  const currentQaRouting = qaRoutingQuery.data;
   const currentEmbeddingModelId = currentRouting?.primary_model?.id ?? null;
+  const currentQaModelId = currentQaRouting?.primary_model?.id ?? null;
 
   const config = configRes?.data;
   const stats = statsRes?.data;
@@ -740,6 +790,11 @@ export default function SearchConfigPage() {
   const embeddingModelSelected = !!currentRouting?.primary_model;
   const embeddingCredentialReady = currentRouting?.credential_configured !== false;
   const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
+  const currentQaModel = currentQaRouting?.primary_model;
+  const qaModelSelected = !!currentQaModel;
+  const qaModelChatReady = !!currentQaModel && isChatModel(currentQaModel);
+  const qaCredentialReady = currentQaRouting?.credential_configured !== false;
+  const qaConfigured = qaModelChatReady && qaCredentialReady;
   const semanticEnabled = formData.semanticEnabled ?? false;
   const diagnosticsTone =
     diagnostics?.fallback.effectiveMode === 'disabled'
@@ -752,7 +807,7 @@ export default function SearchConfigPage() {
     : '语义搜索、关键词回退与索引任务控制';
 
   // --- 全页骨架屏 ---
-  if (configLoading && statsLoading && embeddingLoading) {
+  if (configLoading && statsLoading && embeddingLoading && qaLoading) {
     return (
       <IntelligenceShell className="search-config-page" contentClassName="gap-4">
         <div className="flex items-center justify-between">
@@ -892,7 +947,7 @@ export default function SearchConfigPage() {
 
       {/* 卡片网格 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Card 1: 向量化状态 */}
+        {/* Card 1: 模型配置与索引状态 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -902,7 +957,7 @@ export default function SearchConfigPage() {
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-[var(--text-muted)]" />
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
-              向量化状态
+              模型配置与索引状态
             </h2>
           </div>
 
@@ -963,10 +1018,7 @@ export default function SearchConfigPage() {
                  "未选择", 管理员完全不知道问题出在哪里. */}
             {!embeddingLoading && currentRouting?.primary_model && (() => {
               const m = currentRouting.primary_model!;
-              const creds = credentialsQuery.data || [];
-              const matched =
-                creds.find((c) => c.provider_code === m.provider_code && c.is_default) ||
-                creds.find((c) => c.provider_code === m.provider_code);
+              const matched = resolveCredentialForProvider(m.provider_code);
               const effectiveBase = matched?.base_url_override || '(provider 默认)';
               const credReady = embeddingCredentialReady;
               return (
@@ -1005,6 +1057,115 @@ export default function SearchConfigPage() {
                         <div className="text-[var(--ink-secondary)]">
                           运行时的向量化 / 语义搜索会降级到 env 默认配置, 可能调用
                           错误的 API 地址或失败. 请前往 AI 配置页绑定凭证.
+                        </div>
+                        <button
+                          onClick={() => navigate('/ai-config')}
+                          className="inline-flex items-center gap-1 mt-1 text-[var(--signal-warn)] hover:text-[var(--ink-primary)] underline underline-offset-2 transition-colors"
+                        >
+                          前往配置凭证
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* AI 问答模型选择器 */}
+          <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+              <label className="text-sm font-medium text-[var(--text-secondary)] shrink-0">
+                AI 问答模型
+              </label>
+              {qaLoading ? (
+                <div className="h-10 flex-1 max-w-xs surface-leaf !rounded-full animate-pulse" />
+              ) : chatModels.length > 0 ? (
+                <div className="flex-1 max-w-xs">
+                  <CodexModelPicker
+                    models={chatModels}
+                    providers={enabledProviders}
+                    value={
+                      chatModels.find((m) => m.id === currentQaModelId) ??
+                      currentQaRouting?.primary_model ??
+                      null
+                    }
+                    onChange={(nextModel) => {
+                      const nextId = nextModel?.id ?? null;
+                      if (nextId === currentQaModelId) return;
+                      updateQaRoutingMutation.mutate(nextId);
+                    }}
+                    disabled={updateQaRoutingMutation.isPending}
+                    placeholder="选择对话模型"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                      border: '1px solid color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                    }}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-[var(--signal-warn)]" />
+                    <span className="text-sm text-[var(--signal-warn)] font-medium">
+                      尚未添加可用对话模型
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => navigate('/ai-config')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    前往添加
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {!qaLoading && currentQaRouting?.primary_model && (() => {
+              const m = currentQaRouting.primary_model!;
+              const matched = resolveCredentialForProvider(m.provider_code);
+              const effectiveBase = matched?.base_url_override || '(provider 默认)';
+              const credReady = qaCredentialReady;
+              return (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    {credReady ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[var(--signal-success)]" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-[var(--signal-warn)]" />
+                    )}
+                    <span className="text-xs text-[var(--text-muted)]">
+                      当前问答: <span className="text-[var(--text-secondary)] font-medium">{m.display_name || m.model_id}</span>
+                      {' '}<span className="text-[var(--text-muted)]">·</span>{' '}
+                      <span className="font-mono text-[var(--text-secondary)]">{m.model_id}</span>
+                      {' '}({m.provider_code})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 pl-5">
+                    <span className="text-xs text-[var(--text-muted)] font-mono break-all">
+                      api_base: {effectiveBase}
+                    </span>
+                  </div>
+                  {!credReady && (
+                    <div
+                      className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg"
+                      style={{
+                        background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                        border: '1px solid color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                      }}
+                    >
+                      <AlertTriangle className="w-4 h-4 text-[var(--signal-warn)] shrink-0 mt-0.5" />
+                      <div className="text-xs space-y-1">
+                        <div className="font-medium text-[var(--signal-warn)]">
+                          该模型已保存, 但 provider <span className="font-mono">{m.provider_code}</span> 下没有可用凭证
+                        </div>
+                        <div className="text-[var(--ink-secondary)]">
+                          AI 问答不会回退到系统环境变量；请先在 AI 配置页绑定可用凭证。
                         </div>
                         <button
                           onClick={() => navigate('/ai-config')}
@@ -1322,14 +1483,29 @@ export default function SearchConfigPage() {
                       (需先开启语义搜索)
                     </span>
                   )}
+                  {semanticEnabled && !qaModelSelected && (
+                    <span className="text-amber-400 ml-1">
+                      (需先选择对话模型)
+                    </span>
+                  )}
+                  {semanticEnabled && qaModelSelected && !qaModelChatReady && (
+                    <span className="text-amber-400 ml-1">
+                      (当前模型不是对话模型)
+                    </span>
+                  )}
+                  {semanticEnabled && qaModelChatReady && !qaCredentialReady && (
+                    <span className="text-amber-400 ml-1">
+                      (模型已选, 但缺少可用凭证)
+                    </span>
+                  )}
                 </p>
               </div>
               <Toggle
                 checked={formData.aiQaEnabled ?? false}
                 onChange={(v) => updateField('aiQaEnabled', v)}
-                // 仅阻止"开启": 未启用语义搜索时无法打开 AI 问答;
+                // 仅阻止"开启": 未启用语义搜索或未配置 QA 对话模型时无法打开;
                 // 若已打开, 始终允许关闭
-                disabled={!formData.aiQaEnabled && !semanticEnabled}
+                disabled={!formData.aiQaEnabled && (!semanticEnabled || !qaConfigured)}
               />
             </div>
           </div>

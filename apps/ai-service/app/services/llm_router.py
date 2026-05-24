@@ -116,6 +116,14 @@ def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
     return provider_code, model_id
 
 
+def _is_chat_capable_model(model: Any) -> bool:
+    model_type = (getattr(model, "model_type", None) or "chat").lower()
+    capabilities = getattr(model, "capabilities", {}) or {}
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+    return model_type not in NON_CHAT_MODEL_TYPES and capabilities.get("chat") is not False
+
+
 # OpenAI 的 reasoning 系列 (gpt-5 全家 / o1 / o3 / o4-mini) 在 Chat Completions
 # 接口上 **拒绝任何非 1 的 temperature**，发出去会被 LiteLLM 直接 raise
 # ``UnsupportedParamsError: ... Only temperature=1 is supported.``。线上事故：
@@ -257,6 +265,17 @@ class LlmRouter:
                 logger.warning(f"Failed to get routing from DB, using env config: {e}")
         return None
 
+    async def has_task_routing(self, task_type: str, user_id: int | None = None) -> bool:
+        """Return whether a chat task has a fully resolvable DB route.
+
+        This intentionally checks the same resolved route used at runtime,
+        including credential availability and chat model compatibility. Search
+        QA depends on this to avoid falling through to the generic env fallback
+        with ``model="qa"``.
+        """
+        routing = await self._get_routing(task_type, user_id)
+        return bool(routing and _is_chat_capable_model(routing.model))
+
     async def _load_task_type_prompt(self, task_alias: str | None) -> str | None:
         """从 ``ai_task_types`` 单独取 prompt_template, 给 override / 回退路径使用。
 
@@ -313,15 +332,9 @@ class LlmRouter:
         if not model:
             raise ValueError("Requested model not found")
 
-        model_type = (model.model_type or "chat").lower()
-        capabilities = model.capabilities if isinstance(model.capabilities, dict) else {}
         # is_enabled 校验有意保留: provider_registry 的 _model_cache 不会因为
         # disable 操作主动失效, 这道闸是 stale-cache 命中后的最后兜底。
-        if (
-            not model.is_enabled
-            or model_type in NON_CHAT_MODEL_TYPES
-            or capabilities.get("chat") is False
-        ):
+        if not model.is_enabled or not _is_chat_capable_model(model):
             raise ValueError("Requested model is not available for agent chat")
 
         credential = await self.model_router.credential_resolver.get_credential(
@@ -375,6 +388,10 @@ class LlmRouter:
 
         routing = await self._get_routing(model_alias, user_id)
         if routing:
+            if not _is_chat_capable_model(routing.model):
+                raise ValueError(
+                    f"Configured model for task '{model_alias}' is not available for chat"
+                )
             # 加 provider 前缀，确保 LiteLLM 路由正确
             prefixed_model = self._prefix_model_for_litellm(
                 routing.model.model_id, routing.credential.api_type
