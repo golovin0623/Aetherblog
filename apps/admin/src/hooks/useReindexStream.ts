@@ -48,6 +48,15 @@ export interface ReindexResult {
   target_status: 'active' | 'shadow';
 }
 
+export interface ReindexHeartbeat {
+  profile?: string;
+  indexed: number;
+  failed: number;
+  total: number;
+  inFlight?: number;
+  receivedAt: number;
+}
+
 interface UseReindexStreamReturn {
   total: number;
   /**
@@ -57,6 +66,7 @@ interface UseReindexStreamReturn {
   counters: ReindexCounters;
   /** 最近 N 条事件（环形缓冲，按时间倒序提供）。 */
   recent: ReindexProgressEvent[];
+  heartbeat: ReindexHeartbeat | null;
   result: ReindexResult | null;
   isRunning: boolean;
   error: string | null;
@@ -93,6 +103,7 @@ export function useReindexStream(): UseReindexStreamReturn {
   const [total, setTotal] = useState(0);
   const [counters, setCounters] = useState<ReindexCounters>(EMPTY_COUNTERS);
   const [recent, setRecent] = useState<ReindexProgressEvent[]>([]);
+  const [heartbeat, setHeartbeat] = useState<ReindexHeartbeat | null>(null);
   const [result, setResult] = useState<ReindexResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +113,7 @@ export function useReindexStream(): UseReindexStreamReturn {
     setTotal(0);
     setCounters(EMPTY_COUNTERS);
     setRecent([]);
+    setHeartbeat(null);
     setResult(null);
     setError(null);
     setIsRunning(false);
@@ -112,6 +124,7 @@ export function useReindexStream(): UseReindexStreamReturn {
     abortRef.current?.abort();
     setCounters(EMPTY_COUNTERS);
     setRecent([]);
+    setHeartbeat(null);
     setResult(null);
     setError(null);
     setIsRunning(true);
@@ -175,6 +188,15 @@ export function useReindexStream(): UseReindexStreamReturn {
             const obj = JSON.parse(data);
             if (obj.type === 'start') {
               setTotal(obj.total ?? 0);
+            } else if (obj.type === 'heartbeat') {
+              setHeartbeat({
+                profile: obj.profile,
+                indexed: obj.indexed ?? 0,
+                failed: obj.failed ?? 0,
+                total: obj.total ?? 0,
+                inFlight: obj.inFlight,
+                receivedAt: Date.now(),
+              });
             } else if (obj.type === 'progress') {
               const evt = obj as ReindexProgressEvent;
               // counters: O(1) 累加
@@ -226,5 +248,5 @@ export function useReindexStream(): UseReindexStreamReturn {
     setIsRunning(false);
   }, []);
 
-  return { total, counters, recent, result, isRunning, error, start, abort, reset };
+  return { total, counters, recent, heartbeat, result, isRunning, error, start, abort, reset };
 }

@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 import pytest
 from fastapi.testclient import TestClient
 
+import app.api.routes.profiles as profiles_routes
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
 from app.api.routes.profiles import reindex_profile_stream
 from app.core.jwt import UserClaims
@@ -375,6 +376,34 @@ def test_reindex_stream_db_outage_yields_error_frame():
     assert any(e.get("type") == "error" for e in events), events
     err = next(e for e in events if e.get("type") == "error")
     assert "DB outage" in err["message"]
+
+
+@pytest.mark.asyncio
+async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatch):
+    monkeypatch.setattr(profiles_routes, "REINDEX_STREAM_HEARTBEAT_SEC", 0.01)
+    pool = FakePool([
+        {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
+    ])
+    vs = BlockingVectorStore(profile=_profile(), expected_started=1)
+
+    response = await reindex_profile_stream(
+        "new-v2",
+        user=_admin_user(),
+        pool=pool,
+        vector_store=vs,
+        settings=StreamSettings(),
+    )
+    iterator = response.body_iterator.__aiter__()
+
+    try:
+        first_frame = await iterator.__anext__()
+        assert '"type": "start"' in first_frame
+
+        heartbeat = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "heartbeat"' in heartbeat
+        assert '"inFlight": 1' in heartbeat
+    finally:
+        await iterator.aclose()
 
 
 @pytest.mark.asyncio

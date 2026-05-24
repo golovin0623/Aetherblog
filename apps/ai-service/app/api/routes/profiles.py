@@ -34,6 +34,8 @@ logger = logging.getLogger("ai-service")
 
 router = APIRouter(prefix="/api/v1/admin/search/profiles", tags=["search-profiles"])
 
+REINDEX_STREAM_HEARTBEAT_SEC = 15.0
+
 
 def _sse_pack(obj: dict) -> str:
     """SSE 帧序列化。``json.dumps`` 不要 escape 中文，让 admin UI 直接渲染。"""
@@ -408,6 +410,7 @@ async def reindex_profile_stream(
 
     SSE 帧格式（与 admin ``useReindexStream`` 协商）：
         data: {"type":"start","total":N,"profile":<code>}
+        data: {"type":"heartbeat","indexed":n,"failed":n,"total":N}
         data: {"type":"progress","postId":<id>,"index":i,"chunks":<n>,
                "status":"ok"|"failed","error"?:..,"elapsedMs":..}
         data: {"type":"result","data":{...}}
@@ -556,8 +559,19 @@ async def reindex_profile_stream(
 
                 done, pending = await asyncio.wait(
                     pending,
+                    timeout=REINDEX_STREAM_HEARTBEAT_SEC,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+                if not done:
+                    yield _sse_pack({
+                        "type": "heartbeat",
+                        "profile": code,
+                        "indexed": indexed,
+                        "failed": failed,
+                        "total": total,
+                        "inFlight": len(pending),
+                    })
+                    continue
                 for task in done:
                     try:
                         event = task.result()

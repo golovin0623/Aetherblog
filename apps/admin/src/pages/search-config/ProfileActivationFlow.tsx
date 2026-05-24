@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import {
   useReindexStream,
   type ReindexCounters,
+  type ReindexHeartbeat,
   type ReindexProgressEvent,
 } from '@/hooks/useReindexStream';
 import { useActivateProfile } from '@/hooks/useSearchProfiles';
@@ -124,6 +125,7 @@ export function ProfileActivationFlow({
             total={stream.total}
             counters={stream.counters}
             recent={stream.recent}
+            heartbeat={stream.heartbeat}
             running={stream.isRunning}
             onAbort={() => {
               stream.abort();
@@ -300,12 +302,14 @@ function ReindexingStep({
   total,
   counters,
   recent,
+  heartbeat,
   running,
   onAbort,
 }: {
   total: number;
   counters: ReindexCounters;
   recent: ReindexProgressEvent[];
+  heartbeat: ReindexHeartbeat | null;
   running: boolean;
   onAbort: () => void;
 }) {
@@ -334,6 +338,14 @@ function ReindexingStep({
             {failed > 0 && (
               <span className="text-red-400 ml-1.5">({failed} 失败)</span>
             )}
+            {running && heartbeat && (
+              <span className="ml-1.5 text-[var(--text-muted)]">
+                · 连接保持中
+                {typeof heartbeat.inFlight === 'number' && heartbeat.inFlight > 0
+                  ? ` · ${heartbeat.inFlight} 篇处理中`
+                  : ''}
+              </span>
+            )}
           </span>
         </div>
         {running && (
@@ -361,7 +373,7 @@ function ReindexingStep({
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {display.length === 0 && running && (
           <p className="text-xs text-[var(--text-muted)] text-center py-3">
-            等待第一条进度事件…
+            {heartbeat ? '当前文章仍在处理，等待完成事件…' : '等待第一条进度事件…'}
           </p>
         )}
         {display.map((p) => (
