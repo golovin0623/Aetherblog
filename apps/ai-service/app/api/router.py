@@ -2,7 +2,20 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import agent, ai, health, log_level, metrics, profiles, search, providers, prompts, tasks, workflows
+from app.api.routes import (
+    agent,
+    ai,
+    health,
+    knowledge_bases,
+    log_level,
+    metrics,
+    profiles,
+    providers,
+    prompts,
+    search,
+    tasks,
+    workflows,
+)
 
 
 router = APIRouter()
@@ -17,3 +30,4 @@ router.include_router(prompts.router)
 router.include_router(tasks.router)
 router.include_router(log_level.router)
 router.include_router(workflows.router)
+router.include_router(knowledge_bases.router)

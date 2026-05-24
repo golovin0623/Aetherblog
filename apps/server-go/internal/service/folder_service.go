@@ -56,6 +56,30 @@ func (s *FolderService) GetChildren(ctx context.Context, id int64) ([]dto.MediaF
 	return toFolderVOs(fs), nil
 }
 
+// EnsureFolderByPath 是 KB 等内部模块用的目录确保入口。详见 FolderRepo.EnsureFolderByPath。
+// 返回叶子目录的 VO；segments 不包含 "root"。
+func (s *FolderService) EnsureFolderByPath(ctx context.Context, segments []string, ownerID *int64, isSystem, undeletable bool) (*dto.MediaFolderVO, error) {
+	leaf, err := s.repo.EnsureFolderByPath(ctx, segments, ownerID, isSystem, undeletable)
+	if err != nil {
+		return nil, err
+	}
+	if leaf == nil {
+		return nil, nil
+	}
+	vo := toFolderVO(*leaf)
+	return &vo, nil
+}
+
+// FindByPath 按物化路径查询单个目录（含系统目录）。
+func (s *FolderService) FindByPath(ctx context.Context, path string) (*dto.MediaFolderVO, error) {
+	f, err := s.repo.FindByPath(ctx, path)
+	if err != nil || f == nil {
+		return nil, err
+	}
+	vo := toFolderVO(*f)
+	return &vo, nil
+}
+
 // Create 创建新文件夹。
 // 业务规则：未指定可见性时默认设为 PRIVATE。
 func (s *FolderService) Create(ctx context.Context, req dto.FolderRequest, ownerID *int64) (*dto.MediaFolderVO, error) {
@@ -123,6 +147,8 @@ func toFolderVO(f model.MediaFolder) dto.MediaFolderVO {
 		Visibility:  f.Visibility,
 		FileCount:   f.FileCount,
 		TotalSize:   f.TotalSize,
+		IsSystem:    f.IsSystem,
+		Undeletable: f.Undeletable,
 		CreatedAt:   f.CreatedAt,
 	}
 }

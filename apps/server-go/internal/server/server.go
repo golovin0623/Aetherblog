@@ -406,6 +406,31 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))
 
+	// --- 知识库（KB） ---
+	// 端到端流程：
+	//   1) Admin /v1/admin/kbs/* 维护 KB 元数据 / 成员 / profile / 文件上传 + 向量化触发
+	//   2) Agent /v1/agent/knowledge-bases 给灵境 picker 提供"我可见的 KB"列表
+	//   3) ai-service /api/v1/kb/* 执行文档解析、切片、embed、写入 kb_embeddings；
+	//      并在 /api/v1/agent/chat 根据 kbIds 召回 chunk 注入到 LLM 上下文。
+	kbRepo := repository.NewKBRepo(s.DB)
+	kbProfileRepo := repository.NewKBProfileRepo(s.DB)
+	kbMemberRepo := repository.NewKBMemberRepo(s.DB)
+	kbFileRepo := repository.NewKBFileRepo(s.DB)
+	kbIndexer := service.NewKBIndexerClient(s.Config.AI)
+	kbSvc := service.NewKBService(s.DB, kbRepo, kbProfileRepo, kbMemberRepo, kbFileRepo,
+		mediaSvc, folderSvc, kbIndexer, "")
+	kbHandler := handler.NewKBHandler(kbSvc, activitySvc)
+	// KB admin 组：所有写路径每用户 60/min（含上传 / 重建 / 创建 / 删除 / profile 切换 / 成员变更）。
+	// 读路径走管理员桶不再额外限流（避免 UI 列表/详情高频拉取触发误伤）。
+	kbWriteLimit := middleware.RateLimitByUser(s.Redis, "rate:kb:write", 60, time.Minute)
+	kbGroup := admin.Group("/kbs", kbWriteLimit)
+	kbHandler.Mount(kbGroup)
+	handler.NewKBProfileHandler(kbHandler, kbSvc).Mount(kbGroup)
+	handler.NewKBMemberHandler(kbHandler, kbSvc).Mount(kbGroup)
+	// agent picker（独立挂载到 /v1/agent，复用 picker 桶）
+	handler.NewKBAgentHandler(kbSvc).Mount(agentGroup,
+		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute))
+
 	// --- 搜索管理 ---
 	searchAdmin := admin.Group("/search")
 	searchAdmin.GET("/config", searchHandler.GetConfig)

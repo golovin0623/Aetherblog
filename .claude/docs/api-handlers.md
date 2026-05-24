@@ -39,6 +39,21 @@
 | `storage_provider_handler` | `/v1/admin/storage/*` | 11 路由：list、default、CRUD、set-default、test、**objects(list)**、**import**、**objects(delete)** —— 后三个为 Phase 5 云端浏览/反向导入 |
 | `sync_handler` | `/v1/admin/storage/sync/*` + `/v1/admin/media/:id/sync` | 5 路由：start（入队 + 启 worker）、cancel（优雅停）、status（workers + counts）、failed、retry；单文件入口 `POST /admin/media/:id/sync` |
 
+### 知识库（Knowledge Base）
+
+| Handler 文件 | 路由前缀 | 关键端点 |
+| --- | --- | --- |
+| `kb_handler` | `/v1/admin/kbs/*` | 12 路由：CRUD（list / create / get / update / delete）+ stats + 文件（list / upload / get / delete / reindex）+ 全库 reindex |
+| `kb_profile_handler` | `/v1/admin/kbs/:id/profiles/*` | 5 路由：list / create / update / activate（指针切）/ migrate（蓝绿）/ delete |
+| `kb_member_handler` | `/v1/admin/kbs/:id/members/*` | 3 路由：list（含 principalName 回填）/ upsert（USER/TEAM/ROLE）/ delete |
+| `kb_agent_handler` | `/v1/agent/knowledge-bases` | 1 路由：picker 用，按 USE 权限过滤当前用户可见 KB |
+
+KB 写路径速率桶：`rate:kb:write` 60/min/user；写操作落 `activity_events` 表 `kb.*` 事件家族（kb.create / kb.delete / kb.file.upload / kb.file.delete / kb.file.reindex / kb.reindex / kb.profile.activate / kb.profile.migrate / kb.member.upsert / kb.member.delete）。
+
+下游 ai-service：
+- `POST /api/v1/kb/{kb_id}/files/{fid}/index` — 单文件向量化（contentBytes base64 + mime；支持 targetProfileId / targetStatus=shadow 蓝绿写入）
+- `POST /api/v1/kb/{kb_id}/reindex` — 全库重建 ack
+
 ### AI
 
 | Handler 文件 | 路由前缀 | 关键端点 |

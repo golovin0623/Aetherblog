@@ -103,6 +103,9 @@ type MediaFilter struct {
 	Deleted  bool   // true 表示查询回收站（已软删除）文件
 	PageNum  int    // 页码（从 1 开始）
 	PageSize int    // 每页大小，默认 20
+	// IncludeSystemFolders 控制是否包含系统目录（is_system=TRUE）下的文件。
+	// 默认 false（仅给前端的 /media handler 使用），KB / 后台修复脚本传 true。
+	IncludeSystemFolders bool
 }
 
 // FindForAdmin 从 media_files 表返回经过过滤和分页的媒体文件列表及总数。
@@ -134,6 +137,11 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 		sb.WriteString(fmt.Sprintf(" AND (filename ILIKE $%d OR original_name ILIKE $%d)", idx, idx))
 		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
+	}
+	// 排除系统目录下的文件（KB 等内部模块通过 IncludeSystemFolders=true 显式打开）。
+	// folder_id IS NULL 永远保留（根目录文件本身不挂系统目录）。
+	if !f.IncludeSystemFolders {
+		sb.WriteString(" AND (folder_id IS NULL OR folder_id NOT IN (SELECT id FROM media_folders WHERE is_system = TRUE))")
 	}
 
 	base := sb.String()

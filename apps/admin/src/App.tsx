@@ -34,6 +34,8 @@ const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
 const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
+const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
+const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -117,6 +119,8 @@ function App() {
               <Route path="ai-config" element={<AiConfigPage />} />
               <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
               <Route path="search-config" element={<SearchConfigPage />} />
+              <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
+              <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />

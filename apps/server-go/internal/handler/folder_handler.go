@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -8,6 +9,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
+	"github.com/golovin0623/aetherblog-server/internal/repository"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
@@ -134,6 +136,9 @@ func (h *FolderHandler) Delete(c echo.Context) error {
 		return err
 	}
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
+		if errors.Is(err, repository.ErrFolderUndeletable) {
+			return response.FailWith(c, response.BadRequest, "该文件夹受保护不可删除")
+		}
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
