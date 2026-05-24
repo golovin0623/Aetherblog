@@ -452,29 +452,21 @@ async def reindex_profile_stream(
             async with pool.acquire() as conn:
                 if profile.status == "shadow":
                     # 断点续跑：shadow profile 激活前若中途失败，已成功写入的
-                    # shadow rows 保留。下一次只补齐缺失或文章更新后变旧的行，
+                    # shadow rows 保留。posts.updated_at 会被浏览量、embedding_status
+                    # 等非内容更新刷新；在没有内容稳定时间戳/哈希前，只补齐缺失行，
                     # 避免最后 1 篇失败时从第 1 篇重新消耗 embedding。
                     id_rows = await conn.fetch(
                         """
                         SELECT p.id
                         FROM posts p
-                        LEFT JOIN LATERAL (
-                            SELECT MAX(pe.indexed_at) AS last_indexed_at
-                            FROM post_embeddings pe
-                            WHERE pe.post_id = p.id
-                              AND pe.profile_id = $1
-                              AND pe.status IN ('active', 'shadow')
-                        ) existing ON TRUE
                         WHERE p.deleted = FALSE
                           AND p.status = 'PUBLISHED'
-                          AND (
-                              existing.last_indexed_at IS NULL
-                              OR existing.last_indexed_at < COALESCE(
-                                  p.updated_at,
-                                  p.published_at,
-                                  p.created_at,
-                                  'epoch'::timestamptz
-                              )
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM post_embeddings pe
+                              WHERE pe.post_id = p.id
+                                AND pe.profile_id = $1
+                                AND pe.status IN ('active', 'shadow')
                           )
                         ORDER BY p.id ASC
                         """,

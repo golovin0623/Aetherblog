@@ -72,7 +72,7 @@ class ResumeAwareFakeConn(FakeConn):
     """模拟 shadow profile 断点续跑查询。
 
     旧实现只查询所有已发布文章 id，导致失败后重进向导会从第一篇重跑。
-    这个 fake 在看到 profile-aware 的 post_embeddings 查询时才返回缺失/过期
+    这个 fake 在看到 profile-aware 的 post_embeddings 查询时才返回缺失
     的文章；否则返回全量，让回归测试能先红。
     """
 
@@ -83,7 +83,7 @@ class ResumeAwareFakeConn(FakeConn):
 
     async def fetch(self, sql, *args):
         self.fetch_sqls.append(sql)
-        if "post_embeddings" in sql and "MAX(pe.indexed_at)" in sql and args:
+        if "post_embeddings" in sql and "NOT EXISTS" in sql and args:
             return [p for p in self.posts if p["id"] in self.resume_ids]
         return self.posts
 
@@ -268,19 +268,18 @@ def test_reindex_stream_per_post_failure_continues_emitting_progress():
     assert result["data"]["failed"] == 1
 
 
-def test_reindex_stream_shadow_profile_resumes_only_missing_or_stale_posts():
+def test_reindex_stream_shadow_profile_resumes_only_missing_posts():
     pool = ResumeAwareFakePool(
         [
             {"id": 1, "title": "A", "slug": "a", "content_markdown": "already indexed"},
-            {"id": 2, "title": "B", "slug": "b", "content_markdown": "stale"},
+            {"id": 2, "title": "B", "slug": "b", "content_markdown": "metadata changed"},
             {"id": 3, "title": "C", "slug": "c", "content_markdown": "missing"},
         ],
-        resume_ids={2, 3},
+        resume_ids={3},
     )
     vs = FakeVectorStore(
         profile=_profile(status="shadow"),
         upsert_results={
-            2: {"status": "indexed", "chunks": 4},
             3: {"status": "indexed", "chunks": 1},
         },
     )
@@ -290,12 +289,13 @@ def test_reindex_stream_shadow_profile_resumes_only_missing_or_stale_posts():
     assert res.status_code == 200
     events = _parse_sse(res.content)
 
-    assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
-    assert [call["post_id"] for call in vs.calls] == [2, 3]
+    assert events[0] == {"type": "start", "total": 1, "profile": "new-v2"}
+    assert [call["post_id"] for call in vs.calls] == [3]
     assert any("post_embeddings" in sql for sql in pool.conn.fetch_sqls)
-    assert any("'epoch'::timestamptz" in sql for sql in pool.conn.fetch_sqls)
+    assert any("NOT EXISTS" in sql for sql in pool.conn.fetch_sqls)
+    assert not any("p.updated_at" in sql for sql in pool.conn.fetch_sqls)
     result = next(e for e in events if e["type"] == "result")
-    assert result["data"]["indexed"] == 2
+    assert result["data"]["indexed"] == 1
     assert result["data"]["failed"] == 0
 
 
