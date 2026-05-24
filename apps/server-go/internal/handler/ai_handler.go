@@ -543,11 +543,12 @@ func (h *AiHandler) DeleteTask(c echo.Context) error {
 // --- SSE 事件验证 ---
 
 // allowedSSETypes 定义了允许转发的 SSE 事件类型白名单。
-// `start` / `progress` 是 search profile reindex stream 端点专属，
+// `start` / `progress` / `chunk_progress` / `heartbeat`
+// 是 search profile reindex stream 端点专属，
 // 其他通用 AI 流（summary/tags/...）不会发送，对它们而言相当于 no-op。
 var allowedSSETypes = map[string]bool{
 	"delta": true, "result": true, "done": true, "error": true,
-	"start": true, "progress": true,
+	"start": true, "progress": true, "chunk_progress": true, "heartbeat": true,
 	// agent 多轮对话：think 段折叠展示，sources RAG 引用，与 search.qa 对齐。
 	"think": true, "sources": true,
 }

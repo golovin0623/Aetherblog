@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 import pytest
 from fastapi.testclient import TestClient
 
+import app.api.routes.profiles as profiles_routes
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
 from app.api.routes.profiles import reindex_profile_stream
 from app.core.jwt import UserClaims
@@ -158,6 +159,30 @@ class BlockingVectorStore(FakeVectorStore):
             self.cancelled += 1
             raise
         return {"status": "indexed", "chunks": 1}
+
+
+class ChunkEventThenBlockingVectorStore(FakeVectorStore):
+    def __init__(self, *, profile: SearchProfile | None):
+        super().__init__(profile=profile, upsert_results=[])
+        self.cancelled = 0
+
+    async def upsert_post_embedding(self, **kw):
+        self.calls.append(kw)
+        await kw["progress_cb"]({
+            "type": "chunk_progress",
+            "postId": kw["post_id"],
+            "profile": kw["profile"].code,
+            "chunkIndex": 0,
+            "doneChunks": 1,
+            "totalChunks": 2,
+            "status": "ok",
+        })
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        return {"status": "indexed", "chunks": 2}
 
 
 class StreamSettings:
@@ -378,7 +403,87 @@ def test_reindex_stream_db_outage_yields_error_frame():
 
 
 @pytest.mark.asyncio
-async def test_reindex_stream_cancel_cleans_up_pending_workers():
+async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatch):
+    monkeypatch.setattr(profiles_routes, "REINDEX_STREAM_HEARTBEAT_SEC", 0.01)
+    pool = FakePool([
+        {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
+    ])
+    vs = BlockingVectorStore(profile=_profile(), expected_started=1)
+
+    response = await reindex_profile_stream(
+        "new-v2",
+        user=_admin_user(),
+        pool=pool,
+        vector_store=vs,
+        settings=StreamSettings(),
+    )
+    iterator = response.body_iterator.__aiter__()
+
+    try:
+        first_frame = await iterator.__anext__()
+        assert '"type": "start"' in first_frame
+
+        heartbeat = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "heartbeat"' in heartbeat
+        assert '"inFlight": 1' in heartbeat
+    finally:
+        await iterator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkeypatch):
+    monkeypatch.setattr(profiles_routes, "REINDEX_STREAM_HEARTBEAT_SEC", 0.01)
+    original_wait = asyncio.wait
+    wait_calls = 0
+
+    async def race_wait(wait_set, *, timeout=None, return_when=asyncio.ALL_COMPLETED):
+        nonlocal wait_calls
+        wait_calls += 1
+        if wait_calls == 1:
+            for _ in range(5):
+                await asyncio.sleep(0)
+            return set(), set(wait_set)
+        return await original_wait(wait_set, timeout=timeout, return_when=return_when)
+
+    monkeypatch.setattr(profiles_routes.asyncio, "wait", race_wait)
+    pool = FakePool([
+        {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
+    ])
+    vs = ChunkEventThenBlockingVectorStore(profile=_profile())
+
+    response = await reindex_profile_stream(
+        "new-v2",
+        user=_admin_user(),
+        pool=pool,
+        vector_store=vs,
+        settings=StreamSettings(),
+    )
+    iterator = response.body_iterator.__aiter__()
+
+    try:
+        first_frame = await iterator.__anext__()
+        assert '"type": "start"' in first_frame
+
+        progress_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in progress_frame
+        assert '"doneChunks": 1' in progress_frame
+    finally:
+        await iterator.aclose()
+
+    assert vs.cancelled == 1
+
+
+@pytest.mark.asyncio
+async def test_reindex_stream_cancel_cleans_up_pending_workers(monkeypatch):
+    created_tasks: list[asyncio.Task] = []
+    original_create_task = asyncio.create_task
+
+    def track_create_task(coro, *args, **kwargs):
+        task = original_create_task(coro, *args, **kwargs)
+        created_tasks.append(task)
+        return task
+
+    monkeypatch.setattr(profiles_routes.asyncio, "create_task", track_create_task)
     pool = FakePool([
         {"id": 1, "title": "A", "slug": "a", "content_markdown": "alpha"},
         {"id": 2, "title": "B", "slug": "b", "content_markdown": "beta"},
@@ -408,3 +513,4 @@ async def test_reindex_stream_cancel_cleans_up_pending_workers():
     assert vs.cancelled == 3
     assert vs.calls[0]["embed_semaphore"] is vs.calls[1]["embed_semaphore"]
     assert vs.calls[0]["embed_semaphore"] is vs.calls[2]["embed_semaphore"]
+    assert all(task.done() for task in created_tasks)

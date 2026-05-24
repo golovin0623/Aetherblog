@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from fastapi import HTTPException
 
@@ -13,6 +14,8 @@ from app.services.chunker import Chunk, split as chunk_split
 from app.services.llm_router import LlmRouter
 
 logger = logging.getLogger("ai-service")
+
+ChunkProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 # 引用: §2.4.2.5, §4.4 · 计划 V3 (数据迁移 000034 + 000041)
@@ -44,6 +47,12 @@ class SearchProfile:
     chunk_size_tokens: int
     chunk_overlap_tokens: int
     status: str
+
+
+def _chunk_hash(chunk: Chunk) -> str:
+    """稳定标识当前 chunk 内容；parent_child 还要纳入 parent_text。"""
+    payload = "\x00".join((chunk.text or "", chunk.parent_text or ""))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class VectorStoreService:
@@ -232,6 +241,7 @@ class VectorStoreService:
         profile: SearchProfile | None = None,
         target_status: str = "active",
         embed_semaphore: asyncio.Semaphore | None = None,
+        progress_cb: ChunkProgressCallback | None = None,
     ) -> dict[str, Any]:
         """对单篇文章按 profile 配置切片 + embed + upsert。
 
@@ -244,6 +254,9 @@ class VectorStoreService:
 
         ``embed_semaphore``：批量重建时可传入跨文章共享的 semaphore，避免调用方
         的文章并发和这里的 chunk 并发相乘后打穿上游网关。
+
+        ``progress_cb``：profile shadow reindex 可传入 chunk 级进度回调，用于
+        SSE 展示单篇文章内部进度；普通 active 写入不依赖它。
         """
         profile = profile or await self.get_active_profile()
         content_len = len(content or "")
@@ -279,6 +292,17 @@ class VectorStoreService:
                 "model_id": profile.model_id,
                 "chunks": 0,
             }
+
+        if target_status == "shadow":
+            return await self._upsert_shadow_chunks_with_checkpoint(
+                post_id=post_id,
+                profile=profile,
+                chunks=chunks,
+                timeout_sec=timeout_sec,
+                embed_semaphore=embed_semaphore,
+                progress_cb=progress_cb,
+                content_len=content_len,
+            )
 
         # ---- 并发 embed 每个 chunk
         embed_start = time.perf_counter()
@@ -346,6 +370,8 @@ class VectorStoreService:
                             c.index,
                             c.text,
                             c.parent_text,
+                            _chunk_hash(c),
+                            len(chunks),
                         )
                         for c, vec in embed_results
                     ]
@@ -353,8 +379,9 @@ class VectorStoreService:
                         """
                         INSERT INTO post_embeddings
                             (post_id, profile_id, model_id, dim, embedding, status,
-                             chunk_index, chunk_text, parent_text, indexed_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                             chunk_index, chunk_text, parent_text, chunk_hash,
+                             chunk_count, indexed_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
                         """,
                         rows_to_insert,
                     )
@@ -406,6 +433,212 @@ class VectorStoreService:
             "model_id": profile.model_id,
             "dim": first_dim,
             "chunks": len(chunks),
+        }
+
+    async def _upsert_shadow_chunks_with_checkpoint(
+        self,
+        *,
+        post_id: int,
+        profile: SearchProfile,
+        chunks: list[Chunk],
+        timeout_sec: int | None,
+        embed_semaphore: asyncio.Semaphore | None,
+        progress_cb: ChunkProgressCallback | None,
+        content_len: int,
+    ) -> dict[str, Any]:
+        """Shadow profile 专用：按 chunk 持久化，允许单篇文章内部断点续跑。"""
+
+        chunk_count = len(chunks)
+        expected_hashes = {c.index: _chunk_hash(c) for c in chunks}
+        expected_indices = set(expected_hashes)
+
+        async with self.pool.acquire() as conn:
+            existing_rows = await conn.fetch(
+                """
+                SELECT chunk_index, chunk_hash, COALESCE(chunk_count, 1) AS chunk_count, dim
+                FROM post_embeddings
+                WHERE post_id = $1
+                  AND profile_id = $2
+                  AND status = 'shadow'
+                """,
+                post_id,
+                profile.id,
+            )
+
+        valid_indices: set[int] = set()
+        stale_indices: set[int] = set()
+        expected_dim: int | None = None
+        for row in existing_rows:
+            idx = int(row["chunk_index"])
+            is_valid = (
+                idx in expected_indices
+                and row["chunk_hash"] == expected_hashes[idx]
+                and int(row["chunk_count"] or 1) == chunk_count
+            )
+            if is_valid:
+                row_dim = int(row["dim"])
+                if expected_dim is None:
+                    expected_dim = row_dim
+                if row_dim == expected_dim:
+                    valid_indices.add(idx)
+                else:
+                    stale_indices.add(idx)
+            else:
+                stale_indices.add(idx)
+
+        if stale_indices:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    DELETE FROM post_embeddings
+                    WHERE post_id = $1
+                      AND profile_id = $2
+                      AND chunk_index = ANY($3::int[])
+                    """,
+                    post_id,
+                    profile.id,
+                    sorted(stale_indices),
+                )
+
+        completed_chunks = len(valid_indices)
+        if progress_cb:
+            await progress_cb({
+                "type": "chunk_progress",
+                "postId": post_id,
+                "profile": profile.code,
+                "doneChunks": completed_chunks,
+                "totalChunks": chunk_count,
+                "status": "resumed",
+            })
+
+        missing_chunks = [c for c in chunks if c.index not in valid_indices]
+        if not missing_chunks:
+            return {
+                "status": "indexed",
+                "profile": profile.code,
+                "model_id": profile.model_id,
+                "dim": expected_dim or 0,
+                "chunks": chunk_count,
+                "reused_chunks": completed_chunks,
+                "embedded_chunks": 0,
+            }
+
+        embed_start = time.perf_counter()
+        semaphore = embed_semaphore or asyncio.Semaphore(self._chunk_concurrency)
+        dim_lock = asyncio.Lock()
+        progress_lock = asyncio.Lock()
+
+        async def embed_and_store(c: Chunk) -> None:
+            nonlocal completed_chunks, expected_dim
+            chunk_start = time.perf_counter()
+            async with semaphore:
+                vec = await self.llm.embed(c.text, timeout_sec=timeout_sec)
+
+            dim = len(vec) if vec else 0
+            if dim <= 0:
+                raise ValueError(
+                    f"embedding returned empty vector for post {post_id} chunk {c.index}"
+                )
+
+            async with dim_lock:
+                if expected_dim is None:
+                    expected_dim = dim
+                elif dim != expected_dim:
+                    raise ValueError(
+                        f"chunk #{c.index} dim={dim} differs from expected dim "
+                        f"{expected_dim}; embedding model returned mixed-dim vectors"
+                    )
+
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO post_embeddings
+                        (post_id, profile_id, model_id, dim, embedding, status,
+                         chunk_index, chunk_text, parent_text, chunk_hash,
+                         chunk_count, indexed_at)
+                    VALUES ($1, $2, $3, $4, $5, 'shadow',
+                            $6, $7, $8, $9, $10, NOW())
+                    ON CONFLICT (post_id, profile_id, chunk_index) DO UPDATE
+                    SET model_id = EXCLUDED.model_id,
+                        dim = EXCLUDED.dim,
+                        embedding = EXCLUDED.embedding,
+                        status = EXCLUDED.status,
+                        chunk_text = EXCLUDED.chunk_text,
+                        parent_text = EXCLUDED.parent_text,
+                        chunk_hash = EXCLUDED.chunk_hash,
+                        chunk_count = EXCLUDED.chunk_count,
+                        indexed_at = EXCLUDED.indexed_at
+                    """,
+                    post_id,
+                    profile.id,
+                    profile.model_id,
+                    dim,
+                    vec,
+                    c.index,
+                    c.text,
+                    c.parent_text,
+                    expected_hashes[c.index],
+                    chunk_count,
+                )
+
+            async with progress_lock:
+                completed_chunks += 1
+                done_chunks = completed_chunks
+            if progress_cb:
+                await progress_cb({
+                    "type": "chunk_progress",
+                    "postId": post_id,
+                    "profile": profile.code,
+                    "chunkIndex": c.index,
+                    "doneChunks": done_chunks,
+                    "totalChunks": chunk_count,
+                    "status": "ok",
+                    "elapsedMs": round((time.perf_counter() - chunk_start) * 1000, 2),
+                })
+
+        results = await asyncio.gather(
+            *(embed_and_store(c) for c in missing_chunks),
+            return_exceptions=True,
+        )
+        errors = [r for r in results if isinstance(r, Exception)]
+        embed_ms = (time.perf_counter() - embed_start) * 1000
+        if errors:
+            logger.warning(
+                "upsert.shadow_checkpoint_partial_failed",
+                extra={"data": {
+                    "post_id": post_id,
+                    "profile": profile.code,
+                    "content_len": content_len,
+                    "chunks": chunk_count,
+                    "completed_chunks": completed_chunks,
+                    "embed_ms": round(embed_ms, 2),
+                    "error": str(errors[0])[:200],
+                }},
+            )
+            raise errors[0]
+
+        logger.info(
+            "upsert.shadow_checkpoint_ok",
+            extra={"data": {
+                "post_id": post_id,
+                "profile": profile.code,
+                "content_len": content_len,
+                "chunks": chunk_count,
+                "reused_chunks": len(valid_indices),
+                "embedded_chunks": len(missing_chunks),
+                "embed_ms": round(embed_ms, 2),
+                "vector_dim": expected_dim or 0,
+                "model_id": profile.model_id,
+            }},
+        )
+        return {
+            "status": "indexed",
+            "profile": profile.code,
+            "model_id": profile.model_id,
+            "dim": expected_dim or 0,
+            "chunks": chunk_count,
+            "reused_chunks": len(valid_indices),
+            "embedded_chunks": len(missing_chunks),
         }
 
     async def _mark_post_failed(self, post_id: int) -> None:

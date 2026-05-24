@@ -48,6 +48,26 @@ export interface ReindexResult {
   target_status: 'active' | 'shadow';
 }
 
+export interface ReindexHeartbeat {
+  profile?: string;
+  indexed: number;
+  failed: number;
+  total: number;
+  inFlight?: number;
+  receivedAt: number;
+}
+
+export interface ReindexChunkProgressEvent {
+  postId: number;
+  profile?: string;
+  chunkIndex?: number;
+  doneChunks: number;
+  totalChunks: number;
+  status: 'resumed' | 'ok';
+  elapsedMs?: number;
+  receivedAt: number;
+}
+
 interface UseReindexStreamReturn {
   total: number;
   /**
@@ -57,6 +77,10 @@ interface UseReindexStreamReturn {
   counters: ReindexCounters;
   /** 最近 N 条事件（环形缓冲，按时间倒序提供）。 */
   recent: ReindexProgressEvent[];
+  heartbeat: ReindexHeartbeat | null;
+  /** 当前仍在处理的文章 chunk 进度，按 postId 升序返回。 */
+  chunkProgressItems: ReindexChunkProgressEvent[];
+  chunkProgress: ReindexChunkProgressEvent | null;
   result: ReindexResult | null;
   isRunning: boolean;
   error: string | null;
@@ -93,6 +117,9 @@ export function useReindexStream(): UseReindexStreamReturn {
   const [total, setTotal] = useState(0);
   const [counters, setCounters] = useState<ReindexCounters>(EMPTY_COUNTERS);
   const [recent, setRecent] = useState<ReindexProgressEvent[]>([]);
+  const [heartbeat, setHeartbeat] = useState<ReindexHeartbeat | null>(null);
+  const [chunkProgress, setChunkProgress] = useState<ReindexChunkProgressEvent | null>(null);
+  const [chunkProgressByPost, setChunkProgressByPost] = useState<Record<number, ReindexChunkProgressEvent>>({});
   const [result, setResult] = useState<ReindexResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +129,9 @@ export function useReindexStream(): UseReindexStreamReturn {
     setTotal(0);
     setCounters(EMPTY_COUNTERS);
     setRecent([]);
+    setHeartbeat(null);
+    setChunkProgress(null);
+    setChunkProgressByPost({});
     setResult(null);
     setError(null);
     setIsRunning(false);
@@ -112,6 +142,9 @@ export function useReindexStream(): UseReindexStreamReturn {
     abortRef.current?.abort();
     setCounters(EMPTY_COUNTERS);
     setRecent([]);
+    setHeartbeat(null);
+    setChunkProgress(null);
+    setChunkProgressByPost({});
     setResult(null);
     setError(null);
     setIsRunning(true);
@@ -175,8 +208,41 @@ export function useReindexStream(): UseReindexStreamReturn {
             const obj = JSON.parse(data);
             if (obj.type === 'start') {
               setTotal(obj.total ?? 0);
+            } else if (obj.type === 'heartbeat') {
+              setHeartbeat({
+                profile: obj.profile,
+                indexed: obj.indexed ?? 0,
+                failed: obj.failed ?? 0,
+                total: obj.total ?? 0,
+                inFlight: obj.inFlight,
+                receivedAt: Date.now(),
+              });
+            } else if (obj.type === 'chunk_progress') {
+              setHeartbeat(null);
+              const evt: ReindexChunkProgressEvent = {
+                postId: obj.postId,
+                profile: obj.profile,
+                chunkIndex: obj.chunkIndex,
+                doneChunks: obj.doneChunks ?? 0,
+                totalChunks: obj.totalChunks ?? 0,
+                status: obj.status ?? 'ok',
+                elapsedMs: obj.elapsedMs,
+                receivedAt: Date.now(),
+              };
+              setChunkProgress(evt);
+              setChunkProgressByPost((items) => ({
+                ...items,
+                [evt.postId]: evt,
+              }));
             } else if (obj.type === 'progress') {
+              setHeartbeat(null);
               const evt = obj as ReindexProgressEvent;
+              setChunkProgressByPost((items) => {
+                if (!(evt.postId in items)) return items;
+                const next = { ...items };
+                delete next[evt.postId];
+                return next;
+              });
               // counters: O(1) 累加
               setCounters((c) => ({
                 done: c.done + 1,
@@ -226,5 +292,18 @@ export function useReindexStream(): UseReindexStreamReturn {
     setIsRunning(false);
   }, []);
 
-  return { total, counters, recent, result, isRunning, error, start, abort, reset };
+  return {
+    total,
+    counters,
+    recent,
+    heartbeat,
+    chunkProgressItems: Object.values(chunkProgressByPost).sort((a, b) => a.postId - b.postId),
+    chunkProgress,
+    result,
+    isRunning,
+    error,
+    start,
+    abort,
+    reset,
+  };
 }

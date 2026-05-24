@@ -96,3 +96,17 @@ func TestSettingsBatchEndpoint(t *testing.T) {
 		t.Errorf("expected 6 keys, got %d: %v", len(result), result)
 	}
 }
+
+func TestValidateSSELineAllowsReindexHeartbeat(t *testing.T) {
+	line := `data: {"type":"heartbeat","profile":"p","indexed":1,"failed":0,"total":2,"inFlight":1}`
+	if !validateSSELine(line) {
+		t.Fatal("expected reindex heartbeat SSE line to be forwarded")
+	}
+}
+
+func TestValidateSSELineAllowsReindexChunkProgress(t *testing.T) {
+	line := `data: {"type":"chunk_progress","postId":1,"doneChunks":2,"totalChunks":5,"status":"ok"}`
+	if !validateSSELine(line) {
+		t.Fatal("expected reindex chunk progress SSE line to be forwarded")
+	}
+}

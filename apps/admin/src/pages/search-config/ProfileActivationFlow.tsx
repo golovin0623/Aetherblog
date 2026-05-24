@@ -13,7 +13,9 @@ import { Modal } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
 import {
   useReindexStream,
+  type ReindexChunkProgressEvent,
   type ReindexCounters,
+  type ReindexHeartbeat,
   type ReindexProgressEvent,
 } from '@/hooks/useReindexStream';
 import { useActivateProfile } from '@/hooks/useSearchProfiles';
@@ -124,6 +126,8 @@ export function ProfileActivationFlow({
             total={stream.total}
             counters={stream.counters}
             recent={stream.recent}
+            heartbeat={stream.heartbeat}
+            chunkProgressItems={stream.chunkProgressItems}
             running={stream.isRunning}
             onAbort={() => {
               stream.abort();
@@ -300,12 +304,16 @@ function ReindexingStep({
   total,
   counters,
   recent,
+  heartbeat,
+  chunkProgressItems,
   running,
   onAbort,
 }: {
   total: number;
   counters: ReindexCounters;
   recent: ReindexProgressEvent[];
+  heartbeat: ReindexHeartbeat | null;
+  chunkProgressItems: ReindexChunkProgressEvent[];
   running: boolean;
   onAbort: () => void;
 }) {
@@ -318,6 +326,7 @@ function ReindexingStep({
 
   // recent 来自 hook 内部环形缓冲（最多 16 条），UI 只展示最新 5 条倒序
   const display = recent.slice(-5).reverse();
+  const activeChunkProgress = chunkProgressItems.slice(0, 6);
 
   return (
     <div className="space-y-4">
@@ -333,6 +342,14 @@ function ReindexingStep({
             {running ? 'reindex 进行中' : '已完成'} —— 已处理 {done} / {total}
             {failed > 0 && (
               <span className="text-red-400 ml-1.5">({failed} 失败)</span>
+            )}
+            {running && heartbeat && (
+              <span className="ml-1.5 text-[var(--text-muted)]">
+                · 连接保持中
+                {typeof heartbeat.inFlight === 'number' && heartbeat.inFlight > 0
+                  ? ` · ${heartbeat.inFlight} 篇处理中`
+                  : ''}
+              </span>
             )}
           </span>
         </div>
@@ -358,10 +375,38 @@ function ReindexingStep({
         <span>平均 {avgMs}ms / 篇</span>
       </div>
 
+      {running && activeChunkProgress.length > 0 && (
+        <div className="space-y-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2.5 py-2">
+          {activeChunkProgress.map((item) => {
+            const chunkPercent = item.totalChunks > 0
+              ? Math.min(100, Math.round((item.doneChunks / item.totalChunks) * 100))
+              : 0;
+
+            return (
+              <div key={item.postId} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+                  <span className="min-w-0 truncate">
+                    post #{item.postId} · chunk {item.doneChunks} / {item.totalChunks}
+                    {item.status === 'resumed' ? ' · 已复用' : ''}
+                  </span>
+                  <span className="font-mono tabular-nums text-[var(--text-muted)]">{chunkPercent}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[var(--aurora-1)] transition-all"
+                    style={{ width: `${chunkPercent}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {display.length === 0 && running && (
           <p className="text-xs text-[var(--text-muted)] text-center py-3">
-            等待第一条进度事件…
+            {heartbeat ? '当前文章仍在处理，等待完成事件…' : '等待第一条进度事件…'}
           </p>
         )}
         {display.map((p) => (
