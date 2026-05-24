@@ -478,14 +478,24 @@ func (h *SearchHandler) EmbeddingStatus(c echo.Context) error {
 // SSE 帧通过 nginx 时已在 ``/api/v1/admin/search`` location 配 ``proxy_buffering off``
 // + ``proxy_read_timeout 600s``，浏览器看到的延迟仅是 ai-service emit 间隔。
 func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
-	// 取 EscapedPath() 保留客户端原始编码
-	escapedFull := c.Request().URL.EscapedPath()
+	// 动态提取代理前缀：c.Path() = "/api/v1/admin/search/profiles/*" → 去掉 "*" 再去掉尾 "/"
+	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
+
+	// 使用 c.Param("*") 保留客户端原始编码（在 Echo 4.x 中有效），避免 EscapedPath 遭受绕过
+	param := c.Param("*")
+	encodedSubPath := ""
+	if param != "" {
+		encodedSubPath = "/" + param
+	} else if strings.HasSuffix(c.Request().URL.Path, "/") {
+		encodedSubPath = "/"
+	}
+
 	// AI service 的路由前缀已包含完整 ``/api/v1/admin/search/profiles``，
-	// 这里直接拿原始路径透传即可（escapedFull 已是 ``/api/v1/admin/search/profiles[/...]``）。
-	targetPath := escapedFull
+	// 直接拼接回完整路径
+	targetPath := proxyPrefix + encodedSubPath
 
 	// 多级解码尝试，发现 `..` 后整体拒绝（深度防御）
-	probe := targetPath
+	probe := encodedSubPath
 	for {
 		decoded, err := url.PathUnescape(probe)
 		if err != nil {
