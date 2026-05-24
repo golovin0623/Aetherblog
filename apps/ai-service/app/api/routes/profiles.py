@@ -528,6 +528,14 @@ async def reindex_profile_stream(
             async def process_one(i: int, post_id: int) -> dict:
                 t0 = time.perf_counter()
                 try:
+                    await enqueue_event({
+                        "type": "chunk_progress",
+                        "postId": post_id,
+                        "profile": code,
+                        "doneChunks": 0,
+                        "totalChunks": 0,
+                        "status": "started",
+                    })
                     # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
                     # 返回 None，跳过并标 failed（避免 KeyError）。
                     async with pool.acquire() as conn:

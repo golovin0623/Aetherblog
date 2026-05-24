@@ -63,7 +63,7 @@ export interface ReindexChunkProgressEvent {
   chunkIndex?: number;
   doneChunks: number;
   totalChunks: number;
-  status: 'resumed' | 'ok';
+  status: 'started' | 'resumed' | 'ok';
   elapsedMs?: number;
   receivedAt: number;
 }

@@ -239,8 +239,14 @@ def test_reindex_stream_success_yields_full_frame_sequence():
     assert res.headers.get("x-accel-buffering") == "no"
 
     events = _parse_sse(res.content)
-    assert len(events) == 5  # start + 2 progress + result + done
+    assert len(events) == 7  # start + 2 chunk_progress + 2 progress + result + done
     assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
+    started_by_post = {
+        event["postId"]: event for event in events if event["type"] == "chunk_progress"
+    }
+    assert started_by_post[1]["status"] == "started"
+    assert started_by_post[1]["totalChunks"] == 0
+    assert started_by_post[2]["status"] == "started"
     progress_by_post = {
         event["postId"]: event for event in events if event["type"] == "progress"
     }
@@ -423,6 +429,10 @@ async def test_reindex_stream_emits_heartbeat_while_post_is_in_flight(monkeypatc
         first_frame = await iterator.__anext__()
         assert '"type": "start"' in first_frame
 
+        started = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in started
+        assert '"status": "started"' in started
+
         heartbeat = await asyncio.wait_for(iterator.__anext__(), timeout=1)
         assert '"type": "heartbeat"' in heartbeat
         assert '"inFlight": 1' in heartbeat
@@ -463,6 +473,10 @@ async def test_reindex_stream_does_not_drop_chunk_event_on_heartbeat_race(monkey
     try:
         first_frame = await iterator.__anext__()
         assert '"type": "start"' in first_frame
+
+        started_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
+        assert '"type": "chunk_progress"' in started_frame
+        assert '"status": "started"' in started_frame
 
         progress_frame = await asyncio.wait_for(iterator.__anext__(), timeout=1)
         assert '"type": "chunk_progress"' in progress_frame

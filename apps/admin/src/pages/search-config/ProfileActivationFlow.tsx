@@ -381,12 +381,15 @@ function ReindexingStep({
             const chunkPercent = item.totalChunks > 0
               ? Math.min(100, Math.round((item.doneChunks / item.totalChunks) * 100))
               : 0;
+            const label = item.totalChunks > 0
+              ? `chunk ${item.doneChunks} / ${item.totalChunks}`
+              : '正在读取 / 拆分';
 
             return (
               <div key={item.postId} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
                   <span className="min-w-0 truncate">
-                    post #{item.postId} · chunk {item.doneChunks} / {item.totalChunks}
+                    post #{item.postId} · {label}
                     {item.status === 'resumed' ? ' · 已复用' : ''}
                   </span>
                   <span className="font-mono tabular-nums text-[var(--text-muted)]">{chunkPercent}%</span>
