@@ -31,6 +31,8 @@ interface ProfileActivationFlowProps {
   onClose: () => void;
 }
 
+type PreviousActiveProfile = Pick<SearchProfile, 'code' | 'name'>;
+
 /**
  * Profile 激活四步向导：
  *
@@ -48,12 +50,18 @@ export function ProfileActivationFlow({
   onClose,
 }: ProfileActivationFlowProps) {
   const [step, setStep] = useState<Step>('confirm');
+  const [previousActiveSnapshot, setPreviousActiveSnapshot] = useState<PreviousActiveProfile | null>(
+    activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+  );
   const stream = useReindexStream();
   const activateMut = useActivateProfile();
 
   const reset = () => {
     stream.reset();
     activateMut.reset();
+    setPreviousActiveSnapshot(
+      activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+    );
     setStep('confirm');
   };
 
@@ -82,7 +90,16 @@ export function ProfileActivationFlow({
       }
       setStep('activating');
       activateMut.mutate(profile.code, {
-        onSuccess: () => setStep('done'),
+        onSuccess: (res) => {
+          const previousCode = res.data.previousActive;
+          if (previousCode && previousCode !== previousActiveSnapshot?.code) {
+            setPreviousActiveSnapshot({
+              code: previousCode,
+              name: previousCode,
+            });
+          }
+          setStep('done');
+        },
         onError: () => setStep('failed'),
       });
     }
@@ -93,9 +110,13 @@ export function ProfileActivationFlow({
     stream.result,
     activateMut,
     profile.code,
+    previousActiveSnapshot?.code,
   ]);
 
   const startReindex = () => {
+    setPreviousActiveSnapshot(
+      activeProfile ? { code: activeProfile.code, name: activeProfile.name } : null
+    );
     setStep('reindexing');
     stream.start(profile.code);
   };
@@ -145,7 +166,7 @@ export function ProfileActivationFlow({
         )}
 
         {step === 'done' && (
-          <DoneStep profile={profile} previousActive={activeProfile} onClose={onClose} />
+          <DoneStep profile={profile} previousActive={previousActiveSnapshot} onClose={onClose} />
         )}
 
         {step === 'failed' && (
@@ -452,7 +473,7 @@ function DoneStep({
   onClose,
 }: {
   profile: SearchProfile;
-  previousActive: SearchProfile | null;
+  previousActive: PreviousActiveProfile | null;
   onClose: () => void;
 }) {
   return (
