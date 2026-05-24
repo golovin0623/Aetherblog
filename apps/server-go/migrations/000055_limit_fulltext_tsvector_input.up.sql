@@ -9,4 +9,4 @@ CREATE INDEX IF NOT EXISTS idx_posts_fulltext
 ON posts USING gin (to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000)));
 
 CREATE INDEX IF NOT EXISTS idx_notes_fulltext
-ON notes USING gin (to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || content_markdown, 200000)));
+ON notes USING gin (to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000)));

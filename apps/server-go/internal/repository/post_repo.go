@@ -576,7 +576,7 @@ func postSearchDocumentSQL(alias string) string {
 		qualifier = alias + "."
 	}
 	return fmt.Sprintf(
-		"left(%stitle || ' ' || COALESCE(%ssummary,'') || ' ' || COALESCE(%scontent_markdown,''), %d)",
+		"left(%stitle || ' ' || COALESCE(%ssummary, '') || ' ' || COALESCE(%scontent_markdown, ''), %d)",
 		qualifier,
 		qualifier,
 		qualifier,

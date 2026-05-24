@@ -17,7 +17,7 @@ func TestSearchPublishedQueryCapsTsvectorInput(t *testing.T) {
 	if strings.Contains(query, "to_tsvector('simple', p.title ||") {
 		t.Fatalf("SearchPublished must not build tsvector from the full post body:\n%s", query)
 	}
-	if !strings.Contains(query, "COALESCE(p.content_markdown,'')") {
+	if !strings.Contains(query, "COALESCE(p.content_markdown, '')") {
 		t.Fatalf("SearchPublished should still include content_markdown in the capped search document:\n%s", query)
 	}
 }

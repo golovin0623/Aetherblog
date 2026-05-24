@@ -83,6 +83,9 @@ func TestBuildNoteAdminWhereCapsTsvectorInput(t *testing.T) {
 	if !strings.Contains(where, "n.content_markdown ILIKE") {
 		t.Fatalf("note keyword search should keep full-body ILIKE fallback:\n%s", where)
 	}
+	if !strings.Contains(where, "COALESCE(n.content_markdown, '')") {
+		t.Fatalf("note keyword tsvector expression should coalesce content_markdown:\n%s", where)
+	}
 	if len(args) != 2 || args[0] != keyword || args[1] != "%长笔记%" {
 		t.Fatalf("unexpected keyword args: %#v", args)
 	}
@@ -107,7 +110,7 @@ func TestNoteFulltextMigrationRebuildsIndexWithCappedDocument(t *testing.T) {
 	if !strings.Contains(sql, "CREATE INDEX IF NOT EXISTS idx_notes_fulltext") {
 		t.Fatalf("migration should recreate idx_notes_fulltext:\n%s", sql)
 	}
-	wantExpr := "to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || content_markdown, 200000))"
+	wantExpr := "to_tsvector('simple', left(title || ' ' || COALESCE(summary, '') || ' ' || COALESCE(content_markdown, ''), 200000))"
 	if !strings.Contains(sql, wantExpr) {
 		t.Fatalf("migration should use capped notes tsvector expression %q:\n%s", wantExpr, sql)
 	}
