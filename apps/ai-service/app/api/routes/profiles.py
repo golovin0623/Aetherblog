@@ -473,7 +473,7 @@ async def reindex_profile_stream(
                                   p.updated_at,
                                   p.published_at,
                                   p.created_at,
-                                  'epoch'::timestamp
+                                  'epoch'::timestamptz
                               )
                           )
                         ORDER BY p.id ASC

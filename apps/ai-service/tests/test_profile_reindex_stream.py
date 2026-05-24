@@ -293,6 +293,7 @@ def test_reindex_stream_shadow_profile_resumes_only_missing_or_stale_posts():
     assert events[0] == {"type": "start", "total": 2, "profile": "new-v2"}
     assert [call["post_id"] for call in vs.calls] == [2, 3]
     assert any("post_embeddings" in sql for sql in pool.conn.fetch_sqls)
+    assert any("'epoch'::timestamptz" in sql for sql in pool.conn.fetch_sqls)
     result = next(e for e in events if e["type"] == "result")
     assert result["data"]["indexed"] == 2
     assert result["data"]["failed"] == 0
