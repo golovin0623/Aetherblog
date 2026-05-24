@@ -426,10 +426,10 @@ curl -X PUT http://ai-service:8000/api/v1/admin/log-level \
 | `AETHERBLOG_AI_BASE_URL` | `http://ai-service:8000` | server-go 转发的目标 |
 | `AETHERBLOG_AI_CONNECT_TIMEOUT` | `5s` | TCP 连接超时 |
 | `AETHERBLOG_AI_READ_TIMEOUT` | `5m` | 同步接口读取超时 |
-| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | `5m` | SSE 接口读取超时 |
+| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | `30m` | SSE 接口读取超时，覆盖 Search Profile reindex 长任务 |
 | `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` | (要求与 ai-service 一致) | `X-Internal-Service` 头 |
 
-> nginx 侧把 `proxy_read_timeout` 设到 `600s`(10min),给 server-go 的 5min 留一倍余量。详见 `docs/deployment.md` 与 `.claude/docs/deployment-cicd.md`。
+> nginx 侧 `proxy_read_timeout=600s` 是空闲读超时；profile reindex 会持续推 progress 帧，不应触发空闲超时。server-go 侧 `AETHERBLOG_AI_STREAM_READ_TIMEOUT` 是整条 SSE 的总读取超时，默认 30min。详见 `docs/deployment.md` 与 `.claude/docs/deployment-cicd.md`。
 
 ---
 

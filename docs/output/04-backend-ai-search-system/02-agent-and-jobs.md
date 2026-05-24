@@ -6,7 +6,7 @@
 
 - **鉴权放宽到「已登录用户」**,不再强制 `role=admin`。普通注册用户也能用 Agent。
 - **必须注入 `X-Internal-Service` token**。原因:ai-service 的 `/api/v1/agent/chat` 走 `require_admin_or_internal`,普通用户的 JWT 直接打过去会被拒;backend 这里把它代理成「内部服务身份」,确保任意用户都能用。
-- **走流式 SSE 长连接**,使用 `streamClient`(读超时 5min)而不是同步 client(同样 5min,但 transport 是 clone 的,SSE 连接不会和同步生成抢连接池)。
+- **走流式 SSE 长连接**,使用 `streamClient`(读超时 30min)而不是同步 client(5min,但 transport 是 clone 的,SSE 连接不会和同步生成抢连接池)。
 - **用户级限流**,30/min/user(chat)+ 120/min/user(picker)。
 
 本模块同时承担「长任务并发锁」的角色 —— 它和 `search_handler` 共用同一个 `atomic.Bool reindexing` 互斥锁(参见 03-search.md)。但 `agent_handler` 自己只做 SSE 同步阻塞流,没有后台 goroutine。「长任务」一节集中讨论 search 那边的几个 30 分钟级别后台索引任务。
@@ -133,7 +133,7 @@ Agent 自身不引入新表。它读 `posts` / `tags`,写 `activity_events`。
 | --- | --- |
 | `AETHERBLOG_AI_BASE_URL` | 指向 ai-service |
 | `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` | ≥32 字符,Agent 必须用,缺失启动 fatal |
-| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | SSE 整体超时,默认 5min |
+| `AETHERBLOG_AI_STREAM_READ_TIMEOUT` | SSE 整体超时,默认 30min |
 
 无 Agent 专用配置项;Chat 限流是硬编码 30/min,picker 是 120/min(`server.go:364-365`)。
 

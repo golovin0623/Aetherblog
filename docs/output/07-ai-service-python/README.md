@@ -52,7 +52,7 @@
 `apps/server-go/internal/service/ai_client.go:17-114`:
 
 - `syncClient` 用 `cfg.AI.ReadTimeout` (默认 5min);
-- `streamClient` 用 `cfg.AI.StreamReadTimeout` (默认 5min) — 共享底层 `Transport`,连接池复用;
+- `streamClient` 用 `cfg.AI.StreamReadTimeout` (默认 30min) — 共享底层 `Transport`,连接池复用;
 - 错误分类:`AIClientError{StatusCode}` 把 ctx canceled → 499、ctx deadline / netErr.Timeout() → 504、其它网络错误 → 502。
 - 轴心方法:`DoSync` / `DoStream`,前者用于 ApiResponse JSON 端点,后者用于 SSE。
 

@@ -20,18 +20,18 @@ import (
 // 所有子配置节直接对应 YAML 顶层键名。
 type Config struct {
 	Server   ServerConfig   `koanf:"server"`        // HTTP 服务器绑定地址与端口
-	Database DatabaseConfig `koanf:"database"`       // PostgreSQL 连接配置
-	Redis    RedisConfig    `koanf:"redis"`          // Redis 连接配置
-	JWT      JWTConfig      `koanf:"jwt"`            // JWT 签名密钥及令牌有效期
-	Auth     AuthConfig     `koanf:"auth"`           // 认证 Cookie 安全策略
-	CORS     CORSConfig     `koanf:"cors"`           // 跨域允许来源列表
-	Upload   UploadConfig   `koanf:"upload"`         // 本地文件上传目录及 URL 前缀
-	Media    MediaConfig    `koanf:"media"`          // 媒体管理配置（垃圾桶清理）
-	Sync     SyncConfig     `koanf:"sync"`           // 媒体同步备份 worker 配置 (Phase 4)
-	Log      LogConfig      `koanf:"log"`            // 日志输出路径及最低级别
-	AI       AIConfig       `koanf:"ai"`             // 外部 FastAPI AI 服务配置
-	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch 节点地址列表
-	Monitor  MonitorConfig  `koanf:"monitor"`        // 系统监控（容器/Docker）连接配置
+	Database DatabaseConfig `koanf:"database"`      // PostgreSQL 连接配置
+	Redis    RedisConfig    `koanf:"redis"`         // Redis 连接配置
+	JWT      JWTConfig      `koanf:"jwt"`           // JWT 签名密钥及令牌有效期
+	Auth     AuthConfig     `koanf:"auth"`          // 认证 Cookie 安全策略
+	CORS     CORSConfig     `koanf:"cors"`          // 跨域允许来源列表
+	Upload   UploadConfig   `koanf:"upload"`        // 本地文件上传目录及 URL 前缀
+	Media    MediaConfig    `koanf:"media"`         // 媒体管理配置（垃圾桶清理）
+	Sync     SyncConfig     `koanf:"sync"`          // 媒体同步备份 worker 配置 (Phase 4)
+	Log      LogConfig      `koanf:"log"`           // 日志输出路径及最低级别
+	AI       AIConfig       `koanf:"ai"`            // 外部 FastAPI AI 服务配置
+	ES       ESConfig       `koanf:"elasticsearch"` // Elasticsearch 节点地址列表
+	Monitor  MonitorConfig  `koanf:"monitor"`       // 系统监控（容器/Docker）连接配置
 }
 
 // MonitorConfig 控制系统监控模块如何访问 Docker Engine API。
@@ -93,9 +93,9 @@ func (r *RedisConfig) Addr() string {
 // 可通过后台 goroutine 定时轮换（见 jwtkeys.Store + migration 000033）。
 // 若表已存在 current 行，则启动时不会覆盖 —— seed 仅用于首次 bootstrap。
 type JWTConfig struct {
-	Secret            string        `koanf:"secret"`              // HMAC-SHA256 启动 seed；生产环境必须配置
-	Expiration        time.Duration `koanf:"expiration"`          // 访问令牌有效期（默认：24h）
-	RefreshExpiration time.Duration `koanf:"refresh_expiration"`  // 刷新令牌有效期，存储于 Redis（默认：7*24h）
+	Secret            string        `koanf:"secret"`             // HMAC-SHA256 启动 seed；生产环境必须配置
+	Expiration        time.Duration `koanf:"expiration"`         // 访问令牌有效期（默认：24h）
+	RefreshExpiration time.Duration `koanf:"refresh_expiration"` // 刷新令牌有效期，存储于 Redis（默认：7*24h）
 
 	// RotationInterval 控制 jwtkeys.Store 定时轮换签名密钥的节奏。
 	// 推荐值：7 * 24h（一周）。设为 0 可禁用自动轮换（不推荐）。
@@ -167,7 +167,7 @@ type AIConfig struct {
 	BaseURL              string        `koanf:"base_url"`               // FastAPI AI 服务的基础 URL（默认："http://localhost:8000"）
 	ConnectTimeout       time.Duration `koanf:"connect_timeout"`        // AI 服务请求的 TCP 连接超时时间（默认：5s）
 	ReadTimeout          time.Duration `koanf:"read_timeout"`           // 非流式 AI 响应的读取超时时间（默认：5m，与 nginx /api/v1/ai/ proxy_read_timeout=600s 留出余量；可通过 AETHERBLOG_AI_READ_TIMEOUT 覆盖）
-	StreamReadTimeout    time.Duration `koanf:"stream_read_timeout"`    // SSE 流式响应的读取超时时间（默认：5m）
+	StreamReadTimeout    time.Duration `koanf:"stream_read_timeout"`    // SSE 流式响应的整体读取超时时间（默认：30m，覆盖 profile reindex 长任务）
 	InternalServiceToken string        `koanf:"internal_service_token"` // 内部服务间通信令牌（必须通过环境变量设置，至少 32 字符）
 }
 
@@ -347,7 +347,7 @@ func defaultConfig() *Config {
 			BaseURL:              "http://localhost:8000",
 			ConnectTimeout:       5 * time.Second,
 			ReadTimeout:          5 * time.Minute,
-			StreamReadTimeout:    5 * time.Minute,
+			StreamReadTimeout:    30 * time.Minute,
 			InternalServiceToken: "", // 必须通过 AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN 环境变量设置
 		},
 		ES: ESConfig{
