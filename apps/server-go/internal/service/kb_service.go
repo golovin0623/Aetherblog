@@ -378,6 +378,18 @@ func (s *KBService) Update(ctx context.Context, id int64, req dto.UpdateKnowledg
 		sets["visibility"] = *req.Visibility
 	}
 	if req.ActiveProfileID != nil {
+		// review chatgpt-codex P1：activeProfileId 必须属于当前 KB。
+		// 否则 MANAGE 用户可借 Update 把 KB A 的 active_profile_id 指向 KB B 的
+		// profile —— Activate 事务仍会执行（旧 active deprecate + 新 profile active +
+		// 改 knowledge_bases.active_profile_id），但 active_profile_id 指向跨 KB
+		// 行，召回时 profile.kb_id != kb_id 错配，整个 KB 检索废掉。
+		targetProfile, perr := s.profileRepo.FindByID(ctx, *req.ActiveProfileID)
+		if perr != nil {
+			return nil, fmt.Errorf("verify active profile: %w", perr)
+		}
+		if targetProfile == nil || targetProfile.KBID != id {
+			return nil, ErrKBProfileNotFound
+		}
 		if err := s.profileRepo.Activate(ctx, id, *req.ActiveProfileID); err != nil {
 			return nil, fmt.Errorf("activate profile: %w", err)
 		}
