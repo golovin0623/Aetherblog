@@ -434,7 +434,7 @@ function FilesTab({
                 <th className="hidden px-4 py-2 text-right md:table-cell">分块</th>
                 <th className="px-4 py-2 text-right">状态</th>
                 <th className="hidden px-4 py-2 text-right lg:table-cell">时间</th>
-                {canEdit && <th className="w-24 px-4 py-2 text-right">操作</th>}
+                {canEdit && kb.kind !== 'SYSTEM_POSTS' && <th className="w-24 px-4 py-2 text-right">操作</th>}
               </tr>
             </thead>
             <tbody>
@@ -519,7 +519,10 @@ function FileRow({
       <td className="hidden px-4 py-3 text-right text-xs text-[var(--text-muted)] lg:table-cell">
         {new Date(file.updatedAt).toLocaleString('zh-CN')}
       </td>
-      {canEdit && (
+      {canEdit && !isSystem && (
+        // review chatgpt-codex P2：SYSTEM_POSTS 行的 id 是 post_id 而非 kb_files.id，
+        // 这些按钮调到后端会 404 / no-op，徒增困惑。系统库的索引由「搜索配置」管理，
+        // 顶部已经有「到搜索配置重建」入口；行内不再展示重建/删除。
         <td className="px-4 py-3 text-right">
           <div className="flex justify-end gap-1">
             <button

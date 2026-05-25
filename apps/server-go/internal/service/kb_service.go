@@ -1269,8 +1269,19 @@ func (s *KBService) MigrateProfile(ctx context.Context, kbID, profileID int64, u
 				if f.MediaFileID == nil {
 					continue
 				}
+				// review chatgpt-codex P2：每个文件落进度状态到 kb_files，admin UI
+				// 才能轮询观察 shadow reindex 进度 / 失败原因（之前 goroutine 全程
+				// 不写状态 → 失败时 abort 静默，操作员无从诊断）。
+				// 注：MarkRunning/MarkFailed/MarkSucceeded 写的是 vector_profile_id =
+				// 目标 profile（即 shadow profile），表达"该文件当前正在被该 profile
+				// 重建"。CommitBlueGreen 成功后这些状态自然成为 active。
+				if err := s.fileRepo.MarkRunning(bg, f.ID, profileID); err != nil {
+					log.Warn().Err(err).Int64("file_id", f.ID).Msg("kb migrate: mark running failed")
+				}
 				content, mime, filename, derr := s.mediaSvc.DownloadBytes(bg, *f.MediaFileID, kbMaxBytes)
 				if derr != nil {
+					_ = s.fileRepo.MarkFailed(bg, f.ID, truncate("迁移阶段下载失败: "+derr.Error(), 2048))
+					_ = s.kbRepo.RefreshStats(bg, kbID)
 					log.Error().Err(derr).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: download failed, abort")
 					return
 				}
@@ -1282,13 +1293,18 @@ func (s *KBService) MigrateProfile(ctx context.Context, kbID, profileID int64, u
 					TargetStatus:    model.KBProfileStatusShadow,
 				})
 				if ierr != nil {
+					_ = s.fileRepo.MarkFailed(bg, f.ID, truncate("迁移阶段索引调用失败: "+ierr.Error(), 2048))
+					_ = s.kbRepo.RefreshStats(bg, kbID)
 					log.Error().Err(ierr).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: index call failed, abort")
 					return
 				}
 				if result.Status == model.KBVectorStatusFailed || result.Error != "" {
+					_ = s.fileRepo.MarkFailed(bg, f.ID, truncate("迁移阶段索引返回失败: "+result.Error, 2048))
+					_ = s.kbRepo.RefreshStats(bg, kbID)
 					log.Error().Str("err", result.Error).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: index returned failed, abort")
 					return
 				}
+				_ = s.fileRepo.MarkSucceeded(bg, f.ID, result.ChunkCount, result.DocChars, result.DocTokens)
 				doneFiles++
 			}
 			if int64(page*200) >= total {
