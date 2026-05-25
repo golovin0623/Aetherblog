@@ -18,6 +18,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -539,6 +540,16 @@ func (s *KBService) ReindexFile(ctx context.Context, kbID, fileID int64, uc *KBU
 	if !s.canEdit(ctx, kb, uc) {
 		return ErrKBPermission
 	}
+	// SECURITY (review chatgpt-codex P1)：必须验证 fileID 属于本 KB，否则有 EDIT
+	// A 的用户可传入 KB B 的 fileID，把 B 的文件以 A 的 active profile 重新向量化，
+	// 跨 KB 污染 embeddings 所有权 + 召回时可能泄漏内容。
+	f, err := s.fileRepo.FindByID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+	if f == nil || f.KBID != kbID {
+		return fmt.Errorf("文件 %d 不属于该知识库", fileID)
+	}
 	s.scheduleIndex(kbID, fileID, kb.ActiveProfileID)
 	return nil
 }
@@ -587,20 +598,85 @@ func (s *KBService) ReindexAll(ctx context.Context, kbID int64, uc *KBUserContex
 	if len(fileIDs) == 0 {
 		return nil
 	}
-	// 异步顺序调度，避免在 HTTP timeout 内同步等待 N 个文件向量化
+	// 异步 worker pool 限制并发（review chatgpt-codex P2 修复）：
+	// scheduleIndex 内部本身是 goroutine 立即返回，外层循环串行 ≠ 串行执行
+	// —— 大库会瞬间触发 N 个并发下载/embed/upsert，打爆 LLM 速率限和 DB 写。
+	// 这里用 reindexBatchConcurrency 个 worker 串行消费 channel，每个 worker
+	// 等 scheduleIndex 真正落库后再拉下一个，确保稳定 throughput。
 	go func() {
 		bg := context.Background()
 		log.Info().Int64("kb_id", kbID).Int("files", len(fileIDs)).Msg("kb: reindex all started")
-		for _, fid := range fileIDs {
-			s.scheduleIndex(kbID, fid, activeProfile)
-			// scheduleIndex 内部又是 goroutine —— 这里串行调度是为了限制并发，
-			// 让向量化 goroutine 不会同时申请超过 1 个 LLM embed 配额（mediaSvc.DownloadBytes
-			// 本身串行；后续 ai-service 内每文件 5 chunk 并发已经够）。
+		jobs := make(chan int64)
+		var wg sync.WaitGroup
+		for w := 0; w < reindexBatchConcurrency; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for fid := range jobs {
+					// 同步版本：直接走 scheduleIndex 的内部流程而不再开新 goroutine。
+					s.runIndexJob(bg, kbID, fid, activeProfile)
+				}
+			}()
 		}
+		for _, fid := range fileIDs {
+			jobs <- fid
+		}
+		close(jobs)
+		wg.Wait()
 		_ = s.kbRepo.RefreshStats(bg, kbID)
-		log.Info().Int64("kb_id", kbID).Msg("kb: reindex all dispatched")
+		log.Info().Int64("kb_id", kbID).Int("files", len(fileIDs)).Msg("kb: reindex all completed")
 	}()
 	return nil
+}
+
+// reindexBatchConcurrency 是 ReindexAll 批量重建的 worker 数。
+// 太小则浪费 LLM 并发额度；太大则瞬间打爆中转网关 / 触发上游 429。
+// 3 这个值与 ai-service 端 chunk 并发（5/file）相乘约 15 并发，是绝大多数
+// embedding provider 默认账户的安全区间。如需在生产调高建议先观察 429 比例。
+const reindexBatchConcurrency = 3
+
+// runIndexJob 同步执行单个文件的"下载 → 调 ai-service → 写状态"流程，
+// 不再开 goroutine。给 worker pool 用，便于限制并发。
+// 与 scheduleIndex 的差别：scheduleIndex 自己开 goroutine 立即返回。
+func (s *KBService) runIndexJob(ctx context.Context, kbID, fileID int64, activeProfileID *int64) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	var profileID int64
+	if activeProfileID != nil {
+		profileID = *activeProfileID
+	}
+	if err := s.fileRepo.MarkRunning(ctx, fileID, profileID); err != nil {
+		log.Warn().Err(err).Int64("file_id", fileID).Msg("mark running failed")
+	}
+	f, err := s.fileRepo.FindByID(ctx, fileID)
+	if err != nil || f == nil || f.MediaFileID == nil {
+		msg := "找不到关联的媒体文件"
+		if err != nil {
+			msg = err.Error()
+		}
+		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate(msg, 2048))
+		return
+	}
+	content, mime, filename, err := s.mediaSvc.DownloadBytes(ctx, *f.MediaFileID, kbMaxBytes)
+	if err != nil {
+		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate("下载文件失败: "+err.Error(), 2048))
+		return
+	}
+	result, err := s.indexer.IndexFile(ctx, kbID, fileID, KBIndexPayload{
+		Filename: filename,
+		MimeType: mime,
+		Content:  content,
+	})
+	if err != nil {
+		log.Error().Err(err).Int64("kb_id", kbID).Int64("file_id", fileID).Msg("kb index failed (batch)")
+		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate(err.Error(), 2048))
+		return
+	}
+	if result.Status == model.KBVectorStatusFailed || result.Error != "" {
+		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate(result.Error, 2048))
+	} else {
+		_ = s.fileRepo.MarkSucceeded(ctx, fileID, result.ChunkCount, result.DocChars, result.DocTokens)
+	}
 }
 
 // =====================================================================
@@ -1214,6 +1290,18 @@ func (s *KBService) DeleteMember(ctx context.Context, kbID, memberID int64, uc *
 	}
 	if !s.canManage(ctx, kb, uc) {
 		return ErrKBPermission
+	}
+	// SECURITY (review chatgpt-codex P1)：必须验证 memberID 属于本 KB，否则 KB A
+	// 的 MANAGE 用户可猜测 ID 删除 KB B 的成员授权，造成跨 KB 权限篡改。
+	m, err := s.memberRepo.FindByID(ctx, memberID)
+	if err != nil {
+		return err
+	}
+	if m == nil {
+		return nil // 已不存在 → idempotent 成功
+	}
+	if m.KBID != kbID {
+		return fmt.Errorf("成员 %d 不属于该知识库", memberID)
 	}
 	return s.memberRepo.Delete(ctx, memberID)
 }
