@@ -188,6 +188,27 @@ func isKBUploadContext(ctx context.Context) bool {
 	return v
 }
 
+// kbAllowedMimeTypes 是 KB 上传通道的窄白名单 —— 仅文档类型（KB indexer 实际能解析的）。
+//
+// SECURITY (review chatgpt-codex P1)：以前对 KB 上传完全绕过 allowedMimeTypes，
+// 意味着 text/html / image/svg+xml 等 XSS 高风险类型可以落到 media_files。
+// 这些文件虽然落在隐藏的 _system_kb 子树，但仍可通过 /api/v1/public/media/{id}
+// 公共访问端点 serve 出来 → 浏览器拿到 text/html + 同源响应 → 存储型 XSS。
+//
+// 修复：KB 通道也走白名单，但限制在 indexer 解析支持的子集；text/html 故意不放行
+// （KB 用户应该上传 .txt / .md / .pdf / .docx，而不是原始 HTML 文件）。
+var kbAllowedMimeTypes = map[string]bool{
+	"text/plain":       true,
+	"text/markdown":    true,
+	"text/x-markdown":  true,
+	"text/csv":         true,
+	"application/json": true,
+	"application/pdf":  true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/msword": true,
+	"application/octet-stream": true, // 浏览器无法识别精确类型时的兜底（按文件名走后续 parse）
+}
+
 // assertFolderWritable 验证 uploaderID 是否有权写入目标文件夹。
 // 放行规则(自上而下短路):
 //  1. folderID 为空 → 放行(根目录)
@@ -364,10 +385,15 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 
 	mimeType := resolveMimeWithFallback(detectedMime, fh.Filename)
 	// 检查 MIME 类型是否在允许上传的白名单中。
-	// KB 上传通道（context 标记 kbUpload=true）绕过白名单 —— KB 自有解析白名单
-	// （txt/md/html/json 等文档型），且文件落到 _system_kb 隐藏子树不会被博客
-	// 媒体页/缩略图链路渲染，HTML 注入风险不成立。
-	if !allowedMimeTypes[mimeType] && !isKBUploadContext(ctx) {
+	// KB 上传通道（context 标记 kbUpload=true）走窄 KB 白名单（kbAllowedMimeTypes，
+	// 仅 txt/md/csv/json/pdf/docx 等文档类型）—— 而非完全绕过验证。
+	// 历史 bug（review chatgpt-codex P1）：原实现完全绕过 allowedMimeTypes，
+	// 允许 text/html 落到 media_files → 通过 /api/v1/public/media/{id} 可触发同源 XSS。
+	if isKBUploadContext(ctx) {
+		if !kbAllowedMimeTypes[mimeType] {
+			return nil, fmt.Errorf("KB 上传不允许该文件类型: %s（仅支持 txt/md/csv/json/pdf/docx）", mimeType)
+		}
+	} else if !allowedMimeTypes[mimeType] {
 		return nil, fmt.Errorf("不允许上传该文件类型: %s", mimeType)
 	}
 

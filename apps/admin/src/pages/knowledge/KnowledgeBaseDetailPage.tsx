@@ -321,7 +321,7 @@ function FilesTab({
             拖拽文件到此处，或点击选择
           </p>
           <p className="text-xs text-[var(--text-muted)]">
-            支持 txt / md / html / json / csv / pdf / docx（单文件 ≤ 10MB）
+            支持 txt / md / json / csv / pdf / docx（单文件 ≤ 10MB；HTML 出于 XSS 风险已禁用，请先转 markdown）
           </p>
           <input
             ref={fileInputRef}
