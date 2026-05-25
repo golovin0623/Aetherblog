@@ -343,7 +343,15 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 			log.Warn().Err(err).Int64("kb_id", kbID).Msg("create initial shadow profile failed (ignored)")
 		}
 	}
-	return s.GetByIDForUser(ctx, kbID, uc)
+	// review chatgpt-codex P2：最后的 GetByIDForUser 如果失败（ctx cancel /
+	// 临时 DB 抖动），也要把 KB 行回滚 —— 否则客户端收到错误以为创建失败，
+	// 重试会撞 slug uniq 冲突，留下"看不见的"已持久化 KB。
+	vo, err := s.GetByIDForUser(ctx, kbID, uc)
+	if err != nil {
+		createErr = fmt.Errorf("fetch created kb: %w", err)
+		return nil, createErr
+	}
+	return vo, nil
 }
 
 // Update 修改 KB 可变属性。仅 MANAGE 权限可用。

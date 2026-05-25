@@ -65,10 +65,12 @@ async def index_kb_file(
     # 显式 base64 解码 —— Go encoding/json 把 []byte 字段默认序列化为 base64 字符串。
     # pydantic v2 的 ``bytes`` 字段在 JSON 输入下并不会自动 base64 解码（会按 UTF-8 当成
     # 原始字符存进 bytes），所以必须在这里手动 decode。
+    # validate=True（review chatgpt-codex P2 修复）：不容忍非 base64 字符
+    # 静默剔除 —— 否则传输损坏 / caller 错误编码会得到诡异 chunks 而无任何错误信号。
     try:
-        content: bytes = base64.b64decode(req.contentBytes or "", validate=False)
+        content: bytes = base64.b64decode(req.contentBytes or "", validate=True)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"contentBytes base64 解码失败: {exc}")
+        raise HTTPException(status_code=400, detail=f"contentBytes base64 解码失败（含非法字符）: {exc}")
     # 上限保护：单文件 10MB（与 Go 端 kbMaxBytes 对齐）
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="文件过大，单文件向量化上限 10MB")
