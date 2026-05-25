@@ -309,32 +309,6 @@ class LlmRouter:
             )
             return await self._get_routing("embedding", _normalize_user_id(user_id))
 
-
-def _normalize_user_id(user_id: int | str | None) -> int | None:
-    """embed() 的 user_id 接受 str | int | None；_get_routing 要 int|None。"""
-    if user_id is None:
-        return None
-    if isinstance(user_id, int):
-        return user_id
-    try:
-        return int(user_id)
-    except (TypeError, ValueError):
-        return None
-
-
-class _AdHocRouting:
-    """duck-typed RoutingConfig：仅暴露 embed() 需要的 .model / .credential 字段。
-
-    用于 embedding_model_id 显式覆盖路径 —— 不走 ai_task_routing 表，
-    直接拿目标 model + provider credential 拼一个最小路由对象。
-    """
-
-    __slots__ = ("model", "credential")
-
-    def __init__(self, model, credential):
-        self.model = model
-        self.credential = credential
-
     async def has_task_routing(self, task_type: str, user_id: int | None = None) -> bool:
         """Return whether a chat task has a fully resolvable DB route.
 
@@ -1396,3 +1370,37 @@ class _AdHocRouting:
             in_think = not in_think
 
         yield {"type": "done"}
+
+
+# ============================================================
+# Module-level helpers (放在文件末尾以免破坏 LlmRouter class body)
+# ============================================================
+
+def _normalize_user_id(user_id: int | str | None) -> int | None:
+    """embed() 的 user_id 接受 str | int | None；_get_routing 要 int|None。"""
+    if user_id is None:
+        return None
+    if isinstance(user_id, int):
+        return user_id
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+
+class _AdHocRouting:
+    """duck-typed RoutingConfig：仅暴露 embed() 需要的 .model / .credential 字段。
+
+    用于 embedding_model_id 显式覆盖路径 —— 不走 ai_task_routing 表，
+    直接拿目标 model + provider credential 拼一个最小路由对象。
+
+    放在文件末尾（module-level）—— review chatgpt-codex P0 修复：之前把它放在
+    LlmRouter 中间位置导致后续所有方法（chat / stream_chat / _resolve_route 等）
+    被吸进 _AdHocRouting，整个 LlmRouter 实例运行时全部 AttributeError。
+    """
+
+    __slots__ = ("model", "credential")
+
+    def __init__(self, model, credential):
+        self.model = model
+        self.credential = credential

@@ -69,7 +69,17 @@ async def recall_kbs(
         dim = len(embedding) if embedding else 0
         if dim <= 0:
             return []
-        cast_type = "halfvec" if dim > 2000 else "vector"
+        # review chatgpt-codex P1：halfvec(>4000) 是非法 pgvector 语法（halfvec
+        # HNSW 列上限 4000）。对超 4000 维（例如 4096 维的 Qwen3-embed / bge-m3）
+        # 走纯 vector cast —— pgvector 的 vector 类型本身没有上限，只是 HNSW
+        # 索引不可用，会退化到顺序扫描。性能换正确性，绝不让 SQL 报错把召回
+        # 静默吞掉（外层 asyncio.gather 已 return_exceptions=True 会吃掉异常）。
+        if dim > 4000:
+            cast_type = "vector"
+        elif dim > 2000:
+            cast_type = "halfvec"
+        else:
+            cast_type = "vector"
         candidate_limit = min(max(profile.top_k * 3, 20), 100)
         async with pool.acquire() as conn:
             rows = await conn.fetch(
