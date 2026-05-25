@@ -72,7 +72,9 @@ type KBProfileCreateRequest struct {
 	ChunkSizeTokens    int
 	ChunkOverlapTokens int
 	TopK               int
-	ScoreThreshold     float64
+	// nil → repo 用 0.200 兜底；非 nil → 即便是 0 也按传入值写入。
+	// 这是为了让 admin 能合法设置 scoreThreshold=0（拉满召回不做相似度过滤）。
+	ScoreThreshold     *float64
 	Status             string // 默认 'shadow'；首次创建直接传 'active' 可一步到位
 }
 
@@ -86,9 +88,11 @@ func (r *KBProfileRepo) Create(ctx context.Context, req KBProfileCreateRequest) 
 	if topK <= 0 {
 		topK = 6
 	}
-	threshold := req.ScoreThreshold
-	if threshold <= 0 {
-		threshold = 0.200
+	// nil = "未提供" 走默认 0.200；非 nil 即便是显式 0 也尊重 caller
+	// （review chatgpt-codex P2 修复：之前 ScoreThreshold == 0 被误当缺省）。
+	threshold := 0.200
+	if req.ScoreThreshold != nil {
+		threshold = *req.ScoreThreshold
 	}
 	var id int64
 	err := r.db.QueryRowContext(ctx, `

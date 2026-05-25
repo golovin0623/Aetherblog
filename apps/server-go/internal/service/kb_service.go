@@ -273,7 +273,7 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 		ChunkSizeTokens:    512,
 		ChunkOverlapTokens: 64,
 		TopK:               6,
-		ScoreThreshold:     0.200,
+		ScoreThreshold:     ptrFloat(0.200),
 		Status:             model.KBProfileStatusActive,
 	})
 	if err != nil {
@@ -1432,6 +1432,8 @@ func slugFromName(name string) string {
 }
 
 func pStr(v string) *string { return &v }
+
+func ptrFloat(v float64) *float64 { return &v }
 
 func truncate(s string, n int) string {
 	if len(s) <= n {

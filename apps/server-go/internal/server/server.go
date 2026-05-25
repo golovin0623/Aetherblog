@@ -420,9 +420,12 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	kbSvc := service.NewKBService(s.DB, kbRepo, kbProfileRepo, kbMemberRepo, kbFileRepo,
 		mediaSvc, folderSvc, kbIndexer, "")
 	kbHandler := handler.NewKBHandler(kbSvc, activitySvc)
-	// KB admin 组：所有写路径每用户 60/min（含上传 / 重建 / 创建 / 删除 / profile 切换 / 成员变更）。
-	// 读路径走管理员桶不再额外限流（避免 UI 列表/详情高频拉取触发误伤）。
-	kbWriteLimit := middleware.RateLimitByUser(s.Redis, "rate:kb:write", 60, time.Minute)
+	// KB admin 组：写路径每用户 60/min（上传 / 重建 / 创建 / 删除 / profile 切换 / 成员变更）。
+	// 读路径（GET）不计入此桶 —— 列表/详情/统计/Profile/Member 拉取在 admin UI
+	// 中高频且来自轮询，被同一个桶吞会导致 UI 错误 429。
+	// review chatgpt-codex P2 修复：用 onlyMutating 包装让 limiter 仅对非 GET 请求生效。
+	kbWriteRaw := middleware.RateLimitByUser(s.Redis, "rate:kb:write", 60, time.Minute)
+	kbWriteLimit := onlyMutating(kbWriteRaw)
 	kbGroup := admin.Group("/kbs", kbWriteLimit)
 	kbHandler.Mount(kbGroup)
 	handler.NewKBProfileHandler(kbHandler, kbSvc).Mount(kbGroup)
@@ -519,4 +522,19 @@ func (s *Server) Start() error {
 
 	log.Info().Msg("server stopped")
 	return nil
+}
+
+// onlyMutating 把一个限流中间件包装成只对非 GET / HEAD / OPTIONS 请求生效的版本。
+// 用于"读路径不限流，写路径才计入桶"的场景（review chatgpt-codex P2 修复）。
+func onlyMutating(mw echo.MiddlewareFunc) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		wrapped := mw(next)
+		return func(c echo.Context) error {
+			m := c.Request().Method
+			if m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions {
+				return next(c)
+			}
+			return wrapped(c)
+		}
+	}
 }

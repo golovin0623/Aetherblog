@@ -87,9 +87,12 @@ type CreateKBProfileRequest struct {
 	ModelID            string  `json:"modelId"            validate:"required,max=120"`
 	ChunkerKind        string  `json:"chunkerKind"        validate:"required,oneof=recursive fixed markdown qa parent_child"`
 	ChunkSizeTokens    int     `json:"chunkSizeTokens"    validate:"required,min=64,max=8192"`
-	ChunkOverlapTokens int     `json:"chunkOverlapTokens" validate:"min=0"`
-	TopK               int     `json:"topK"               validate:"omitempty,min=1,max=50"`
-	ScoreThreshold     float64 `json:"scoreThreshold"     validate:"omitempty,min=0,max=1"`
+	ChunkOverlapTokens int      `json:"chunkOverlapTokens" validate:"min=0"`
+	TopK               int      `json:"topK"               validate:"omitempty,min=1,max=50"`
+	// 用 *float64 区分"未提供"和"显式 0"。0 是 valid 值（拉满召回不过滤）；
+	// 缺省时由 repo 用 0.200 兜底（review chatgpt-codex P2 修复：之前 float64
+	// 的 0 值被误当成缺省替换为 0.200）。
+	ScoreThreshold     *float64 `json:"scoreThreshold"     validate:"omitempty,min=0,max=1"`
 }
 
 type UpdateKBProfileRequest struct {

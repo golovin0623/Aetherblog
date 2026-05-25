@@ -728,17 +728,22 @@ function ProfilesTab({
               }}
               onMigrate={async () => {
                 if (!confirm(
-                  `蓝绿迁移会用「${p.name}」全量重建当前知识库的索引，可能需要数十秒到几分钟。\n` +
-                  `期间用户仍走旧 profile 检索；全部成功后原子切换。\n\n继续吗？`,
+                  `蓝绿迁移会用「${p.name}」全量重建当前知识库的索引，整库文件较多时需要数十秒到几分钟。\n` +
+                  `期间用户仍走旧 profile 检索；全部 shadow 写入完成后原子切换 active。\n\n继续吗？`,
                 )) return;
                 try {
-                  toast.loading(`正在迁移到「${p.name}」…`, { id: `mig-${p.id}` });
+                  // 后端 MigrateProfile 已改为异步 goroutine 调度，HTTP 立即返回 ack。
+                  // review chatgpt-codex P2 修复：toast 文案必须反映异步语义，不再写"已迁移并激活"
+                  // 否则 admin 看到该提示会误以为已完成，实际可能正在 reindex 或失败回滚。
                   await knowledgeBaseService.migrateProfile(kb.id, p.id);
-                  toast.success(`已迁移并激活「${p.name}」`, { id: `mig-${p.id}` });
+                  toast.success(
+                    `已开始迁移到「${p.name}」（后台 reindex 中）。请稍后在「索引档案」与文件列表观察 active 状态切换与文件向量化进度。`,
+                    { id: `mig-${p.id}`, duration: 6000 },
+                  );
                   await load();
                   onChanged();
                 } catch (err: any) {
-                  toast.error(err?.response?.data?.message || '迁移失败', { id: `mig-${p.id}` });
+                  toast.error(err?.response?.data?.message || '迁移启动失败', { id: `mig-${p.id}` });
                 }
               }}
               onDelete={async () => {
