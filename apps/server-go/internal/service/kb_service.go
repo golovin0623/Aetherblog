@@ -702,11 +702,22 @@ func (s *KBService) runIndexJob(ctx context.Context, kbID, fileID int64, activeP
 		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate("下载文件失败: "+err.Error(), 2048))
 		return
 	}
-	result, err := s.indexer.IndexFile(ctx, kbID, fileID, KBIndexPayload{
+	// review chatgpt-codex P1：显式把 snapshot 的 activeProfileID 传给 ai-service。
+	// 否则 ai-service 退化到"当前 active profile"，若批处理执行中 admin 切换了
+	// active 指针，已 dispatch 的剩余文件会写入新 profile → 新旧 profile 各持
+	// 部分文件向量 → 召回不一致。
+	// kbID > 0 时 ai-service 会做 profile.kb_id == kb_id 校验（同轮另一处修复），
+	// 既防错配又防迁移竞态。
+	payload := KBIndexPayload{
 		Filename: filename,
 		MimeType: mime,
 		Content:  content,
-	})
+	}
+	if activeProfileID != nil {
+		payload.TargetProfileID = *activeProfileID
+		payload.TargetStatus = model.KBProfileStatusActive
+	}
+	result, err := s.indexer.IndexFile(ctx, kbID, fileID, payload)
 	if err != nil {
 		log.Error().Err(err).Int64("kb_id", kbID).Int64("file_id", fileID).Msg("kb index failed (batch)")
 		_ = s.fileRepo.MarkFailed(ctx, fileID, truncate(err.Error(), 2048))
