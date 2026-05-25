@@ -204,8 +204,10 @@ var kbAllowedMimeTypes = map[string]bool{
 	"text/csv":         true,
 	"application/json": true,
 	"application/pdf":  true,
-	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
-	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true, // .docx (OOXML)
+	// 故意不放行 application/msword (.doc legacy) —— python-docx 只支持 OOXML，
+	// 接受 .doc 会让用户上传后必然 FAILED。需要 .doc 支持时另接 antiword/textract。
+	// （review chatgpt-codex P2 修复）
 	"application/octet-stream": true, // 浏览器无法识别精确类型时的兜底（按文件名走后续 parse）
 }
 

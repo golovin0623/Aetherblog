@@ -155,12 +155,13 @@ def parse_bytes_to_text(content: bytes, mime_type: str | None, filename: str | N
     if name.endswith(".pdf") or mime == "application/pdf":
         return _parse_pdf(content)
 
-    # 2. DOCX
-    if name.endswith(".docx") or mime in {
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/msword",
-    }:
+    # 2. DOCX —— OOXML 格式；legacy .doc (application/msword) 不走这里
+    # （python-docx 仅支持 OOXML；review chatgpt-codex P2：上游已从 KB
+    # 白名单移除 application/msword，indexer 也保持一致拒绝）。
+    if name.endswith(".docx") or mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         return _parse_docx(content)
+    if name.endswith(".doc") or mime == "application/msword":
+        raise ValueError("legacy .doc 格式不被支持，请用 Word 另存为 .docx 后重新上传")
 
     # 3. CSV
     if name.endswith(".csv") or mime == "text/csv":

@@ -140,6 +140,14 @@ func (h *KBHandler) handleSvcErr(c echo.Context, err error) error {
 		return response.FailWith(c, response.NotFound, "知识库文件不存在")
 	case errors.Is(err, service.ErrKBFileWrongKB), errors.Is(err, service.ErrKBMemberWrongKB):
 		return response.FailWith(c, response.BadRequest, err.Error())
+	case errors.Is(err, service.ErrKBMigrateInProgress):
+		// 用 409 语义：已有任务在进行中，重试前请等当前任务完成。
+		// 直接 c.JSON 输出（response 包没有定义 Conflict 常量）。
+		return c.JSON(http.StatusConflict, echo.Map{
+			"code":          http.StatusConflict,
+			"message":       err.Error(),
+			"errorCategory": "kb_migrate_in_progress",
+		})
 	default:
 		log.Warn().
 			Err(err).

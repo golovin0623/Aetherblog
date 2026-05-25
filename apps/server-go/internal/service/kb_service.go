@@ -33,16 +33,21 @@ import (
 // 错误定义
 // =====================================================================
 var (
-	ErrKBNotFound        = errors.New("知识库不存在")
-	ErrKBSlugConflict    = errors.New("知识库 slug 已存在")
-	ErrKBPermission      = errors.New("无权访问该知识库")
-	ErrKBForbidSystem    = errors.New("系统级知识库不可执行该操作")
-	ErrKBProfileNotFound = errors.New("索引档案不存在")
-	ErrKBProfileBadState = errors.New("索引档案当前状态不允许该操作")
-	ErrKBFileNotFound    = errors.New("知识库文件不存在")
-	ErrKBFileWrongKB     = errors.New("文件不属于该知识库")
-	ErrKBMemberWrongKB   = errors.New("成员不属于该知识库")
+	ErrKBNotFound          = errors.New("知识库不存在")
+	ErrKBSlugConflict      = errors.New("知识库 slug 已存在")
+	ErrKBPermission        = errors.New("无权访问该知识库")
+	ErrKBForbidSystem      = errors.New("系统级知识库不可执行该操作")
+	ErrKBProfileNotFound   = errors.New("索引档案不存在")
+	ErrKBProfileBadState   = errors.New("索引档案当前状态不允许该操作")
+	ErrKBFileNotFound      = errors.New("知识库文件不存在")
+	ErrKBFileWrongKB       = errors.New("文件不属于该知识库")
+	ErrKBMemberWrongKB     = errors.New("成员不属于该知识库")
+	ErrKBMigrateInProgress = errors.New("该知识库已有一个迁移任务在进行中，请稍后再试")
 )
+
+// kbMigrateAdvisoryClass 是 pg_try_advisory_lock 的 classid（key1）部分。
+// 用于隔离 KB 迁移锁与其他 advisory lock 业务命名空间（901 = 'KB' ASCII 之和 + offset）。
+const kbMigrateAdvisoryClass = 901
 
 // =====================================================================
 // 用户上下文（用于权限判定）
@@ -1171,11 +1176,42 @@ func (s *KBService) MigrateProfile(ctx context.Context, kbID, profileID int64, u
 		return ErrKBProfileBadState
 	}
 
+	// review chatgpt-codex P1：拿 PG advisory lock 防同 KB 并发迁移。
+	// 重复 /migrate 同 KB 会让两个 goroutine 同时改 (kb_file_id, profile_id) embeddings →
+	// 一方的 DELETE/INSERT 覆盖另一方 → CommitBlueGreen 时数据不一致甚至少行。
+	// 用 advisory lock 的好处：
+	//   - 多实例部署也安全（同 PG 集群锁是全局的）
+	//   - 连接关闭时自动释放，不会因 goroutine panic 而永久锁住
+	//   - 不需要 schema 修改
+	migrateConn, err := s.db.Connx(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire conn for migrate lock: %w", err)
+	}
+	var locked bool
+	if err := migrateConn.GetContext(ctx, &locked,
+		`SELECT pg_try_advisory_lock($1, $2)`, kbMigrateAdvisoryClass, kbID); err != nil {
+		_ = migrateConn.Close()
+		return fmt.Errorf("try advisory lock: %w", err)
+	}
+	if !locked {
+		_ = migrateConn.Close()
+		return ErrKBMigrateInProgress
+	}
+
 	// 立即异步调度。前端通过文件列表 vector_status 轮询观察 shadow 进度；
 	// 全部 shadow SUCCEEDED + CommitBlueGreen 完成后，profile 状态会翻成 active
 	// （前端 useEffect 在用户切回 profile tab 时拉新即可看到）。
 	go func() {
 		bg := context.Background()
+		// 释放 advisory lock + 关 conn（即便连 panic 也保证）
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Interface("panic", r).Int64("kb_id", kbID).Msg("kb migrate: panic, releasing lock")
+			}
+			_, _ = migrateConn.ExecContext(context.Background(),
+				`SELECT pg_advisory_unlock($1, $2)`, kbMigrateAdvisoryClass, kbID)
+			_ = migrateConn.Close()
+		}()
 		log.Info().Int64("kb_id", kbID).Int64("target_profile_id", profileID).Msg("kb: blue-green migration started")
 
 		// 全量分页迭代 kb_files（不再一次性 pageSize=10000 截断）
