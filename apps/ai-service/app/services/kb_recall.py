@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from app.services.llm_router import LlmRouter
 from app.services.kb_indexer import fetch_kb_active_profile
@@ -119,9 +118,20 @@ async def recall_kbs(
             for r in rows
         ]
 
-    chunks_of_hits = await asyncio.gather(*(recall_one(k) for k in kb_ids), return_exceptions=False)
-    for hits in chunks_of_hits:
-        results.extend(hits)
+    # review gemini medium：单个 KB 召回失败（DB 抖动 / profile 缺失）不应让整个
+    # RAG 流程崩；用 return_exceptions=True 收集，过滤掉异常分支。
+    chunks_of_hits = await asyncio.gather(
+        *(recall_one(k) for k in kb_ids),
+        return_exceptions=True,
+    )
+    for kb_id, item in zip(kb_ids, chunks_of_hits):
+        if isinstance(item, BaseException):
+            logger.warning(
+                "kb_recall.partial_failure",
+                extra={"data": {"kb_id": kb_id, "error": f"{type(item).__name__}: {item}"[:240]}},
+            )
+            continue
+        results.extend(item)
     results.sort(key=lambda h: h.similarity, reverse=True)
     return results[:top_k_total]
 

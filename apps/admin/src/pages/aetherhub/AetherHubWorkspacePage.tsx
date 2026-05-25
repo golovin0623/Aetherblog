@@ -4356,12 +4356,9 @@ function KbPickerBar({
             <button
               type="button"
               onClick={() => {
-                setOptions(null); // 强制刷新
-                setLoading(true);
-                fetchAgentKnowledgeBases()
-                  .then((res) => setOptions(res.data || []))
-                  .catch(() => setOptions([]))
-                  .finally(() => setLoading(false));
+                // 仅置空缓存触发 useEffect 重发请求，避免重复并发调用
+                // （review gemini medium：双请求竞态）
+                setOptions(null);
               }}
               className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
             >

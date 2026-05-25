@@ -543,7 +543,11 @@ func (s *KBService) ReindexFile(ctx context.Context, kbID, fileID int64, uc *KBU
 	return nil
 }
 
-// ReindexAll 触发整库重建（异步）。
+// ReindexAll 异步重建整库 —— 后台 goroutine 顺序对 KB 全部 kb_files 触发 scheduleIndex。
+// HTTP 立即返回 ack；进度通过文件列表的 vector_status 轮询观察（前端 UI 已支持）。
+//
+// 历史 bug（review chatgpt-codex P1）：曾经直接转发到 ai-service 的 /reindex 端点，
+// 而该端点只回 ack 不真正 reindex —— 这里改为 Go 端自己迭代 kb_files 调度。
 func (s *KBService) ReindexAll(ctx context.Context, kbID int64, uc *KBUserContext) error {
 	kb, err := s.kbRepo.FindByID(ctx, kbID)
 	if err != nil {
@@ -555,7 +559,48 @@ func (s *KBService) ReindexAll(ctx context.Context, kbID int64, uc *KBUserContex
 	if !s.canEdit(ctx, kb, uc) {
 		return ErrKBPermission
 	}
-	return s.indexer.ReindexAll(ctx, kbID)
+	if kb.Kind != model.KBKindCustom {
+		// SYSTEM_POSTS 的索引由 search 模块管理；本端点跳过不报错。
+		return nil
+	}
+	activeProfile := kb.ActiveProfileID
+	// 拉全量文件（分页迭代避免 OOM；当前 PageSize 5000，足够实际 admin 操作）
+	var fileIDs []int64
+	page := 1
+	for {
+		rows, total, err := s.fileRepo.ListByKB(ctx, repository.KBFileListFilter{
+			KBID: kbID, PageNum: page, PageSize: 500,
+		})
+		if err != nil {
+			return fmt.Errorf("list kb files (page %d): %w", page, err)
+		}
+		for _, f := range rows {
+			if f.MediaFileID != nil {
+				fileIDs = append(fileIDs, f.ID)
+			}
+		}
+		if int64(page*500) >= total || len(rows) == 0 {
+			break
+		}
+		page++
+	}
+	if len(fileIDs) == 0 {
+		return nil
+	}
+	// 异步顺序调度，避免在 HTTP timeout 内同步等待 N 个文件向量化
+	go func() {
+		bg := context.Background()
+		log.Info().Int64("kb_id", kbID).Int("files", len(fileIDs)).Msg("kb: reindex all started")
+		for _, fid := range fileIDs {
+			s.scheduleIndex(kbID, fid, activeProfile)
+			// scheduleIndex 内部又是 goroutine —— 这里串行调度是为了限制并发，
+			// 让向量化 goroutine 不会同时申请超过 1 个 LLM embed 配额（mediaSvc.DownloadBytes
+			// 本身串行；后续 ai-service 内每文件 5 chunk 并发已经够）。
+		}
+		_ = s.kbRepo.RefreshStats(bg, kbID)
+		log.Info().Int64("kb_id", kbID).Msg("kb: reindex all dispatched")
+	}()
+	return nil
 }
 
 // =====================================================================
@@ -776,6 +821,36 @@ func (s *KBService) Stats(ctx context.Context, kbID int64, uc *KBUserContext) (*
 // 灵境 picker
 // =====================================================================
 
+// FilterAuthorizedKBIDs 给灵境 chat 走 SECURITY 防线：客户端传上来的 kbIds
+// 必须先在服务端按当前用户权限（≥ USE）过滤，未授权的直接剔除。
+//
+// 这是为了防止已登录用户通过手工拼装 kbIds 注入不属于自己的私有库内容到 prompt
+// （review chatgpt-codex P1 修复）。SYSTEM_POSTS 库走 visibility=PUBLIC 兜底；其他
+// 私有库严格走 owner ∪ kb_members ≥ USE。
+func (s *KBService) FilterAuthorizedKBIDs(ctx context.Context, ids []int64, uc *KBUserContext) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	allowed := make([]int64, 0, len(ids))
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		kb, err := s.kbRepo.FindByID(ctx, id)
+		if err != nil || kb == nil {
+			continue
+		}
+		level := s.resolveEffectivePermission(ctx, kb, uc)
+		// USE / EDIT / MANAGE 都允许参与对话；VIEW 仅看清单不能用
+		if level == model.KBPermissionUse || level == model.KBPermissionEdit || level == model.KBPermissionManage {
+			allowed = append(allowed, id)
+		}
+	}
+	return allowed
+}
+
 // ListForPicker 返回用户在权限 ≥ USE 的 KB（含 SYSTEM_POSTS、用户自有、被授权的）。
 // 与 ListAccessible 不同：精简为 AgentKnowledgeBaseVO + 只过滤 USE 以上权限。
 func (s *KBService) ListForPicker(ctx context.Context, uc *KBUserContext, keyword string) ([]dto.AgentKnowledgeBaseVO, error) {
@@ -923,11 +998,14 @@ func (s *KBService) UpdateProfile(ctx context.Context, kbID, profileID int64, re
 
 // MigrateProfile 蓝绿迁移 + 激活：
 //   1. 校验：MANAGE 权限、profile 属于该 kb 且不是 active
-//   2. 遍历 KB 全部 kb_files：下载字节 → 用 target profile 索引到 status='shadow' 行
+//   2. 立即返回（HTTP 202 语义） —— 后台 goroutine 遍历 KB 全部 kb_files：
+//      下载字节 → 用 target profile 索引到 status='shadow' 行
 //   3. 全部成功后 CommitBlueGreen 事务做最终切换
+//   4. 任一文件失败：abort，部分 shadow 行保留，可重试（不影响 active）
 //
-// 任一文件失败：abort，状态保留为部分 shadow 行，后续可重试。
-// 同步执行（admin 在 UI 上等待）；大库适合 Phase3 改 SSE 推流式进度。
+// 修复评审：
+//   - chatgpt-codex P2：用 cursor 分页迭代全部文件，不再单页 10000 上限
+//   - gemini High：改为后台 goroutine 异步，避免大库超 Nginx 60s timeout
 func (s *KBService) MigrateProfile(ctx context.Context, kbID, profileID int64, uc *KBUserContext) error {
 	kb, err := s.kbRepo.FindByID(ctx, kbID)
 	if err != nil {
@@ -953,40 +1031,72 @@ func (s *KBService) MigrateProfile(ctx context.Context, kbID, profileID int64, u
 		return ErrKBProfileBadState
 	}
 
-	// 遍历 KB 文件并 shadow reindex
-	files, _, err := s.fileRepo.ListByKB(ctx, repository.KBFileListFilter{
-		KBID: kbID, PageNum: 1, PageSize: 10000,
-	})
-	if err != nil {
-		return fmt.Errorf("list kb files: %w", err)
-	}
-	for _, f := range files {
-		if f.MediaFileID == nil {
-			continue // SYSTEM_POSTS 等非媒体文件目前不参与迁移
+	// 立即异步调度。前端通过文件列表 vector_status 轮询观察 shadow 进度；
+	// 全部 shadow SUCCEEDED + CommitBlueGreen 完成后，profile 状态会翻成 active
+	// （前端 useEffect 在用户切回 profile tab 时拉新即可看到）。
+	go func() {
+		bg := context.Background()
+		log.Info().Int64("kb_id", kbID).Int64("target_profile_id", profileID).Msg("kb: blue-green migration started")
+
+		// 全量分页迭代 kb_files（不再一次性 pageSize=10000 截断）
+		page := 1
+		var totalFiles, doneFiles int
+		for {
+			rows, total, lerr := s.fileRepo.ListByKB(bg, repository.KBFileListFilter{
+				KBID: kbID, PageNum: page, PageSize: 200,
+			})
+			if lerr != nil {
+				log.Error().Err(lerr).Int64("kb_id", kbID).Int("page", page).Msg("kb migrate: list page failed, abort")
+				return
+			}
+			totalFiles = int(total)
+			if len(rows) == 0 {
+				break
+			}
+			for _, f := range rows {
+				if f.MediaFileID == nil {
+					continue
+				}
+				content, mime, filename, derr := s.mediaSvc.DownloadBytes(bg, *f.MediaFileID, kbMaxBytes)
+				if derr != nil {
+					log.Error().Err(derr).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: download failed, abort")
+					return
+				}
+				result, ierr := s.indexer.IndexFile(bg, kbID, f.ID, KBIndexPayload{
+					Filename:        filename,
+					MimeType:        mime,
+					Content:         content,
+					TargetProfileID: profileID,
+					TargetStatus:    model.KBProfileStatusShadow,
+				})
+				if ierr != nil {
+					log.Error().Err(ierr).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: index call failed, abort")
+					return
+				}
+				if result.Status == model.KBVectorStatusFailed || result.Error != "" {
+					log.Error().Str("err", result.Error).Int64("kb_id", kbID).Int64("file_id", f.ID).Msg("kb migrate: index returned failed, abort")
+					return
+				}
+				doneFiles++
+			}
+			if int64(page*200) >= total {
+				break
+			}
+			page++
 		}
-		content, mime, filename, derr := s.mediaSvc.DownloadBytes(ctx, *f.MediaFileID, kbMaxBytes)
-		if derr != nil {
-			return fmt.Errorf("download kb_file %d: %w", f.ID, derr)
+
+		if err := s.profileRepo.CommitBlueGreen(bg, kbID, profileID); err != nil {
+			log.Error().Err(err).Int64("kb_id", kbID).Msg("kb migrate: commit blue-green failed")
+			return
 		}
-		result, ierr := s.indexer.IndexFile(ctx, kbID, f.ID, KBIndexPayload{
-			Filename:        filename,
-			MimeType:        mime,
-			Content:         content,
-			TargetProfileID: profileID,
-			TargetStatus:    model.KBProfileStatusShadow, // 写入 shadow 行
-		})
-		if ierr != nil {
-			return fmt.Errorf("reindex kb_file %d: %w", f.ID, ierr)
-		}
-		if result.Status == model.KBVectorStatusFailed || result.Error != "" {
-			return fmt.Errorf("reindex kb_file %d failed: %s", f.ID, result.Error)
-		}
-	}
-	// 全部成功 → 最终切换事务
-	if err := s.profileRepo.CommitBlueGreen(ctx, kbID, profileID); err != nil {
-		return fmt.Errorf("commit blue-green: %w", err)
-	}
-	_ = s.kbRepo.RefreshStats(ctx, kbID)
+		_ = s.kbRepo.RefreshStats(bg, kbID)
+		log.Info().
+			Int64("kb_id", kbID).
+			Int64("target_profile_id", profileID).
+			Int("total", totalFiles).
+			Int("done", doneFiles).
+			Msg("kb: blue-green migration finished + activated")
+	}()
 	return nil
 }
 

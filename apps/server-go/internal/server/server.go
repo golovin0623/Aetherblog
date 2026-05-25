@@ -430,6 +430,9 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// agent picker（独立挂载到 /v1/agent，复用 picker 桶）
 	handler.NewKBAgentHandler(kbSvc).Mount(agentGroup,
 		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute))
+	// SECURITY: 给 agentHandler 注入 KBService，让 /agent/chat 在转发前按用户权限
+	// 过滤客户端塞进来的 kbIds（防止未授权 KB 注入）。
+	agentHandler.SetKBService(kbSvc)
 
 	// --- 搜索管理 ---
 	searchAdmin := admin.Group("/search")

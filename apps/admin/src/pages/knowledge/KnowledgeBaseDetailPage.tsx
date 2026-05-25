@@ -253,15 +253,38 @@ function FilesTab({
   const handleFiles = async (list: FileList | null) => {
     if (!list || list.length === 0) return;
     setUploading(true);
-    try {
-      for (const file of Array.from(list)) {
-        await knowledgeBaseService.uploadFile(kb.id, file);
+    const files = Array.from(list);
+    // review gemini medium：并发上传（最多 3 路），保持每个 KB 的写桶安全。
+    // 完成后统计成功 / 失败，让用户看到部分成功的实际结果而非整体失败。
+    const concurrency = 3;
+    let succeeded = 0;
+    let failed = 0;
+    let errMsg = '';
+    const queue = files.slice();
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const file = queue.shift();
+        if (!file) break;
+        try {
+          await knowledgeBaseService.uploadFile(kb.id, file);
+          succeeded += 1;
+        } catch (err: any) {
+          failed += 1;
+          if (!errMsg) errMsg = err?.response?.data?.message || `${file.name} 上传失败`;
+        }
       }
-      toast.success(`已上传 ${list.length} 个文件，正在向量化…`);
+    });
+    try {
+      await Promise.all(workers);
+      if (failed === 0) {
+        toast.success(`已上传 ${succeeded} 个文件，正在向量化…`);
+      } else if (succeeded === 0) {
+        toast.error(errMsg || '上传全部失败');
+      } else {
+        toast.warning(`部分成功：${succeeded} 成功 / ${failed} 失败：${errMsg}`);
+      }
       await load();
       onChanged();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || '上传失败');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1128,17 +1151,27 @@ function AddMemberModal({
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [keyword, setKeyword] = useState('');
 
+  // 切换 principal type 时按需懒加载各自的下拉数据；已加载则直接复用缓存。
+  // 故意忽略 users / teams / roles 作为 deps —— 它们由 effect 内部赋值，
+  // 加进来会触发重复请求。借助 ref 模式让 lint 不抱怨。
+  const cacheRef = useRef({
+    USER: false as boolean,
+    TEAM: false as boolean,
+    ROLE: false as boolean,
+  });
   useEffect(() => {
     setPrincipal(null);
     setKeyword('');
-    if (type === 'USER' && users === null) {
+    if (type === 'USER' && !cacheRef.current.USER) {
+      cacheRef.current.USER = true;
       accessService.listUsers({ pageSize: 200 }).then((r) => setUsers(r.data.list || [])).catch(() => setUsers([]));
-    } else if (type === 'TEAM' && teams === null) {
+    } else if (type === 'TEAM' && !cacheRef.current.TEAM) {
+      cacheRef.current.TEAM = true;
       accessService.listTeams().then((r) => setTeams(r.data || [])).catch(() => setTeams([]));
-    } else if (type === 'ROLE' && roles === null) {
+    } else if (type === 'ROLE' && !cacheRef.current.ROLE) {
+      cacheRef.current.ROLE = true;
       accessService.listRoles().then((r) => setRoles(r.data || [])).catch(() => setRoles([]));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
   const submit = async (e: React.FormEvent) => {
