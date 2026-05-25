@@ -108,7 +108,7 @@ export default function KnowledgeBaseDetailPage() {
             >
               <ArrowLeft className="h-4 w-4" /> 返回
             </button>
-            {canEdit && (
+            {canEdit && !isSystem && (
               <button
                 type="button"
                 onClick={async () => {
@@ -123,6 +123,16 @@ export default function KnowledgeBaseDetailPage() {
                 className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
               >
                 <RefreshCcw className="h-4 w-4" /> 重建索引
+              </button>
+            )}
+            {isSystem && (
+              <button
+                type="button"
+                onClick={() => navigate('/search-config')}
+                title="文章索引库的向量由搜索配置模块管理"
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+              >
+                <RefreshCcw className="h-4 w-4" /> 到搜索配置重建
               </button>
             )}
           </div>

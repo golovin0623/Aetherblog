@@ -130,7 +130,8 @@ func (h *KBHandler) handleSvcErr(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrKBSlugConflict):
 		return response.FailWith(c, response.BadRequest, "slug 已存在")
 	case errors.Is(err, service.ErrKBForbidSystem):
-		return response.FailWith(c, response.BadRequest, "系统知识库不可执行该操作")
+		return response.FailWith(c, response.BadRequest,
+			"系统知识库（文章索引库）不接受此操作；如需重建文章向量请到「搜索配置」页执行")
 	case errors.Is(err, service.ErrKBProfileNotFound):
 		return response.FailWith(c, response.NotFound, "索引档案不存在")
 	case errors.Is(err, service.ErrKBProfileBadState):

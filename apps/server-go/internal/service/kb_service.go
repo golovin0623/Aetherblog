@@ -593,8 +593,10 @@ func (s *KBService) ReindexAll(ctx context.Context, kbID int64, uc *KBUserContex
 		return ErrKBPermission
 	}
 	if kb.Kind != model.KBKindCustom {
-		// SYSTEM_POSTS 的索引由 search 模块管理；本端点跳过不报错。
-		return nil
+		// SYSTEM_POSTS 的索引由 search 模块管理；本端点显式返错而非 no-op
+		// 成功，避免 admin UI "重建索引" 弹 success toast 但实际什么都没做
+		// （review chatgpt-codex P2 修复：之前 return nil 让客户端误判为成功）。
+		return ErrKBForbidSystem
 	}
 	activeProfile := kb.ActiveProfileID
 	// 拉全量文件（分页迭代避免 OOM；当前 PageSize 5000，足够实际 admin 操作）
