@@ -78,6 +78,8 @@ type MediaFolderVO struct {
 	Visibility  string          `json:"visibility"`            // 可见性（PRIVATE/TEAM/PUBLIC）
 	FileCount   int             `json:"fileCount"`             // 文件夹内的文件数量
 	TotalSize   int64           `json:"totalSize"`             // 文件夹内所有文件的总大小（字节）
+	IsSystem    bool            `json:"isSystem"`              // 系统内部目录标记（前端通常不应渲染）
+	Undeletable bool            `json:"undeletable"`           // 受保护不可删除标记
 	CreatedAt   *time.Time      `json:"createdAt"`             // 创建时间
 	Children    []MediaFolderVO `json:"children,omitempty"`    // 子文件夹列表（树形结构时返回）
 }

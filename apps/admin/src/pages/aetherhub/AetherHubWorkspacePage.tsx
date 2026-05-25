@@ -56,6 +56,10 @@ import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
+import {
+  fetchAgentKnowledgeBases,
+  type AgentKnowledgeBase,
+} from '@/services/knowledgeBaseService';
 import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
@@ -206,9 +210,12 @@ export default function AetherHubWorkspacePage() {
   const abortRef = useRef<AbortController | null>(null);
   const [selectedArticles, setSelectedArticles] = useState<AgentArticle[]>([]);
   const [selectedTags, setSelectedTags] = useState<AgentTag[]>([]);
+  // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
+  const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
+    setSelectedKbs([]);
   }, [activeId]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
@@ -440,6 +447,7 @@ export default function AetherHubWorkspacePage() {
         providerCode,
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
+        kbIds: selectedKbs.length > 0 ? selectedKbs.map((k) => k.id) : null,
       };
 
       try {
@@ -673,6 +681,16 @@ export default function AetherHubWorkspacePage() {
               onOpenSessions={() => setMobileSessionOpen(true)}
               sessionSidebarCollapsed={sessionSidebarCollapsed}
               onToggleSessionSidebar={() => setSessionSidebarCollapsed((v) => !v)}
+            />
+
+            <KbPickerBar
+              selectedKbs={selectedKbs}
+              onAdd={(kb) =>
+                setSelectedKbs((prev) =>
+                  prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
+                )
+              }
+              onRemove={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
             />
 
             <WorkspaceCanvas
@@ -4212,4 +4230,150 @@ function formatRelativeShort(timestamp: number): string {
     new Date(now).toDateString() === d.toDateString();
   if (sameDay) return formatDate(d, 'HH:mm');
   return formatDate(d, 'MM-dd');
+}
+
+// ============================================================
+// KbPickerBar —— 灵境对话顶部的知识库 picker
+//
+// 设计：
+//   - 一行的 chip bar，展示已选 KB（点 X 取消），最右侧 "+ 知识库" 按钮打开 popover
+//   - popover 列出当前用户可访问（权限 >= USE）的 KB；点击即加入会话
+//   - 数据源：GET /v1/agent/knowledge-bases（picker 限流桶）
+//   - Phase 2 会把这个 picker 折叠进 composer 里（同 @ / # picker 同款交互）
+// ============================================================
+function KbPickerBar({
+  selectedKbs,
+  onAdd,
+  onRemove,
+}: {
+  selectedKbs: AgentKnowledgeBase[];
+  onAdd: (kb: AgentKnowledgeBase) => void;
+  onRemove: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<AgentKnowledgeBase[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open || options !== null) return;
+    setLoading(true);
+    fetchAgentKnowledgeBases()
+      .then((res) => setOptions(res.data || []))
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false));
+  }, [open, options]);
+
+  return (
+    <div className="relative flex shrink-0 items-center gap-2 border-b border-[var(--hub-border)]/40 bg-[var(--hub-control)]/40 px-3 py-2 text-xs">
+      <Brain className="h-3.5 w-3.5 text-[var(--aurora-3)]" aria-hidden="true" />
+      <span className="font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+        知识库
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        {selectedKbs.length === 0 && (
+          <span className="text-[var(--ink-muted)]">
+            未选择 · 选择后本轮对话会自动召回相关片段
+          </span>
+        )}
+        {selectedKbs.map((kb) => (
+          <span
+            key={kb.id}
+            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)]"
+          >
+            <BookOpen className="h-3 w-3 shrink-0 text-[var(--aurora-3)]" />
+            <span className="max-w-[12rem] truncate" title={kb.name}>
+              {kb.name}
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(kb.id)}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              aria-label={`移除知识库 ${kb.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <button
+        type="button"
+        ref={triggerRef}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[12px] font-medium text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        添加
+      </button>
+      {open && (
+        <div
+          className="absolute right-3 top-full z-40 mt-1 w-72 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-overlay,var(--bg-overlay))] p-2 shadow-xl backdrop-blur-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {loading && (
+            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">加载中…</div>
+          )}
+          {!loading && options && options.length === 0 && (
+            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">
+              暂无可用知识库
+            </div>
+          )}
+          {!loading && options && options.length > 0 && (
+            <ul className="max-h-72 overflow-y-auto">
+              {options.map((kb) => {
+                const picked = selectedKbs.find((k) => k.id === kb.id);
+                return (
+                  <li key={kb.id}>
+                    <button
+                      type="button"
+                      disabled={!!picked}
+                      onClick={() => {
+                        onAdd(kb);
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                        picked
+                          ? 'text-[var(--ink-muted)] opacity-60'
+                          : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]'
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{kb.name}</span>
+                        <span className="block truncate text-[11px] text-[var(--ink-muted)]">
+                          {kb.kind === 'SYSTEM_POSTS' ? '系统库' : '自定义'} · {kb.fileCount} 文件 ·{' '}
+                          {kb.chunkCount} 分块
+                        </span>
+                      </span>
+                      {picked && <Check className="h-4 w-4 text-status-success" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-1 flex items-center justify-end gap-2 border-t border-[var(--hub-border)] pt-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => {
+                // 仅置空缓存触发 useEffect 重发请求，避免重复并发调用
+                // （review gemini medium：双请求竞态）
+                setOptions(null);
+              }}
+              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+            >
+              刷新
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -406,6 +406,37 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))
 
+	// --- 知识库（KB） ---
+	// 端到端流程：
+	//   1) Admin /v1/admin/kbs/* 维护 KB 元数据 / 成员 / profile / 文件上传 + 向量化触发
+	//   2) Agent /v1/agent/knowledge-bases 给灵境 picker 提供"我可见的 KB"列表
+	//   3) ai-service /api/v1/kb/* 执行文档解析、切片、embed、写入 kb_embeddings；
+	//      并在 /api/v1/agent/chat 根据 kbIds 召回 chunk 注入到 LLM 上下文。
+	kbRepo := repository.NewKBRepo(s.DB)
+	kbProfileRepo := repository.NewKBProfileRepo(s.DB)
+	kbMemberRepo := repository.NewKBMemberRepo(s.DB)
+	kbFileRepo := repository.NewKBFileRepo(s.DB)
+	kbIndexer := service.NewKBIndexerClient(s.Config.AI)
+	kbSvc := service.NewKBService(s.DB, kbRepo, kbProfileRepo, kbMemberRepo, kbFileRepo,
+		mediaSvc, folderSvc, kbIndexer, "")
+	kbHandler := handler.NewKBHandler(kbSvc, activitySvc)
+	// KB admin 组：写路径每用户 60/min（上传 / 重建 / 创建 / 删除 / profile 切换 / 成员变更）。
+	// 读路径（GET）不计入此桶 —— 列表/详情/统计/Profile/Member 拉取在 admin UI
+	// 中高频且来自轮询，被同一个桶吞会导致 UI 错误 429。
+	// review chatgpt-codex P2 修复：用 onlyMutating 包装让 limiter 仅对非 GET 请求生效。
+	kbWriteRaw := middleware.RateLimitByUser(s.Redis, "rate:kb:write", 60, time.Minute)
+	kbWriteLimit := onlyMutating(kbWriteRaw)
+	kbGroup := admin.Group("/kbs", kbWriteLimit)
+	kbHandler.Mount(kbGroup)
+	handler.NewKBProfileHandler(kbHandler, kbSvc).Mount(kbGroup)
+	handler.NewKBMemberHandler(kbHandler, kbSvc).Mount(kbGroup)
+	// agent picker（独立挂载到 /v1/agent，复用 picker 桶）
+	handler.NewKBAgentHandler(kbSvc).Mount(agentGroup,
+		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute))
+	// SECURITY: 给 agentHandler 注入 KBService，让 /agent/chat 在转发前按用户权限
+	// 过滤客户端塞进来的 kbIds（防止未授权 KB 注入）。
+	agentHandler.SetKBService(kbSvc)
+
 	// --- 搜索管理 ---
 	searchAdmin := admin.Group("/search")
 	searchAdmin.GET("/config", searchHandler.GetConfig)
@@ -491,4 +522,19 @@ func (s *Server) Start() error {
 
 	log.Info().Msg("server stopped")
 	return nil
+}
+
+// onlyMutating 把一个限流中间件包装成只对非 GET / HEAD / OPTIONS 请求生效的版本。
+// 用于"读路径不限流，写路径才计入桶"的场景（review chatgpt-codex P2 修复）。
+func onlyMutating(mw echo.MiddlewareFunc) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		wrapped := mw(next)
+		return func(c echo.Context) error {
+			m := c.Request().Method
+			if m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions {
+				return next(c)
+			}
+			return wrapped(c)
+		}
+	}
 }

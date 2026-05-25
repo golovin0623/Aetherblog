@@ -78,6 +78,12 @@ type MediaFolder struct {
 	UpdatedBy   *int64     `db:"updated_by"`  // 最后更新者用户 ID，可为空
 	CreatedAt   *time.Time `db:"created_at"`  // 记录创建时间
 	UpdatedAt   *time.Time `db:"updated_at"`  // 记录最后更新时间
+	// 系统级标记（migration 000054）：
+	//  IsSystem    = TRUE 表示属于内部模块的隐藏目录（如知识库 _system_kb 子树），
+	//              媒体页 List/Tree 默认过滤掉；KB 等模块通过显式 IncludeSystem 读取。
+	//  Undeletable = TRUE 表示该目录禁止 DELETE（防呆开关）。
+	IsSystem    bool `db:"is_system"`
+	Undeletable bool `db:"undeletable"`
 }
 
 // StorageProvider 对应数据库 `storage_providers` 表，每条记录代表一个

@@ -169,6 +169,48 @@ var ErrFolderNotFound = errors.New("目标文件夹不存在")
 // 公共访问路由使用同一个错误隐藏"不存在"与"已删除"的差异,避免 ID 探测。
 var ErrMediaNotFound = errors.New("媒体文件不存在")
 
+// kbUploadContextKey 是 KB 上传通道在 ctx 中携带的标记键。
+// 仅有这个标记的请求才允许写入 is_system=TRUE 的目录（如 /root/_system_kb/...）。
+//
+// 这套机制保证 admin 端常规媒体上传 / move 永远不会落到 _system_kb 子树，
+// 哪怕前端伪造 folderId 也会被 assertFolderWritable 拒绝。
+type kbUploadCtxKey struct{}
+
+// WithKBUploadContext 在 ctx 上挂 KB 上传标记。KB 模块的 service 在调用 MediaService.Upload
+// 前调用这个函数包装 ctx。
+func WithKBUploadContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, kbUploadCtxKey{}, true)
+}
+
+// isKBUploadContext 返回 ctx 是否带 KB 上传标记。
+func isKBUploadContext(ctx context.Context) bool {
+	v, _ := ctx.Value(kbUploadCtxKey{}).(bool)
+	return v
+}
+
+// kbAllowedMimeTypes 是 KB 上传通道的窄白名单 —— 仅文档类型（KB indexer 实际能解析的）。
+//
+// SECURITY (review chatgpt-codex P1)：以前对 KB 上传完全绕过 allowedMimeTypes，
+// 意味着 text/html / image/svg+xml 等 XSS 高风险类型可以落到 media_files。
+// 这些文件虽然落在隐藏的 _system_kb 子树，但仍可通过 /api/v1/public/media/{id}
+// 公共访问端点 serve 出来 → 浏览器拿到 text/html + 同源响应 → 存储型 XSS。
+//
+// 修复：KB 通道也走白名单，但限制在 indexer 解析支持的子集；text/html 故意不放行
+// （KB 用户应该上传 .txt / .md / .pdf / .docx，而不是原始 HTML 文件）。
+var kbAllowedMimeTypes = map[string]bool{
+	"text/plain":       true,
+	"text/markdown":    true,
+	"text/x-markdown":  true,
+	"text/csv":         true,
+	"application/json": true,
+	"application/pdf":  true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true, // .docx (OOXML)
+	// 故意不放行 application/msword (.doc legacy) —— python-docx 只支持 OOXML，
+	// 接受 .doc 会让用户上传后必然 FAILED。需要 .doc 支持时另接 antiword/textract。
+	// （review chatgpt-codex P2 修复）
+	"application/octet-stream": true, // 浏览器无法识别精确类型时的兜底（按文件名走后续 parse）
+}
+
 // assertFolderWritable 验证 uploaderID 是否有权写入目标文件夹。
 // 放行规则(自上而下短路):
 //  1. folderID 为空 → 放行(根目录)
@@ -193,6 +235,15 @@ func (s *MediaService) assertFolderWritable(ctx context.Context, folderID *int64
 	}
 	if folder == nil {
 		return ErrFolderNotFound
+	}
+	// 系统目录（is_system=TRUE）必须通过 KB 上传通道写入，普通 media handler 一律拒绝。
+	// 这里的 owner_id 可以为 NULL（_system_kb 系统根）或具体 KB owner（CUSTOM 库的归档子目录）。
+	if folder.IsSystem {
+		if !isKBUploadContext(ctx) {
+			return ErrFolderForbidden
+		}
+		// KB 上传通道：跳过 owner / folder_permissions 校验，由上层 KB Service 自己负责 ACL。
+		return nil
 	}
 	if folder.OwnerID == nil {
 		return nil
@@ -335,8 +386,16 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	}
 
 	mimeType := resolveMimeWithFallback(detectedMime, fh.Filename)
-	// 检查 MIME 类型是否在允许上传的白名单中
-	if !allowedMimeTypes[mimeType] {
+	// 检查 MIME 类型是否在允许上传的白名单中。
+	// KB 上传通道（context 标记 kbUpload=true）走窄 KB 白名单（kbAllowedMimeTypes，
+	// 仅 txt/md/csv/json/pdf/docx 等文档类型）—— 而非完全绕过验证。
+	// 历史 bug（review chatgpt-codex P1）：原实现完全绕过 allowedMimeTypes，
+	// 允许 text/html 落到 media_files → 通过 /api/v1/public/media/{id} 可触发同源 XSS。
+	if isKBUploadContext(ctx) {
+		if !kbAllowedMimeTypes[mimeType] {
+			return nil, fmt.Errorf("KB 上传不允许该文件类型: %s（仅支持 txt/md/csv/json/pdf/docx）", mimeType)
+		}
+	} else if !allowedMimeTypes[mimeType] {
 		return nil, fmt.Errorf("不允许上传该文件类型: %s", mimeType)
 	}
 
@@ -587,6 +646,54 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	}
 	vo := toMediaFileVO(*m)
 	return &vo, nil
+}
+
+// DownloadBytes 读取媒体文件原始字节，附带 mime / 原始文件名。
+// maxBytes>0 时强制限制读取上限，超出报错。
+//
+// 主要给 KB 向量化使用：从存储后端拉文件后送进 ai-service 解析 + 切片 + embed。
+// 大文件场景（>10MB）会在 service 层就拒绝 —— 防止 OOM。
+func (s *MediaService) DownloadBytes(ctx context.Context, mediaID int64, maxBytes int64) ([]byte, string, string, error) {
+	m, err := s.repo.FindByID(ctx, mediaID)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if m == nil || m.Deleted {
+		return nil, "", "", ErrMediaNotFound
+	}
+	store, _, err := s.resolveStoreForMedia(ctx, m)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("resolve store: %w", err)
+	}
+	rc, size, mime, err := store.Get(ctx, m.FilePath)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("storage get: %w", err)
+	}
+	defer rc.Close()
+	if maxBytes > 0 && size > maxBytes {
+		return nil, "", "", fmt.Errorf("文件超出限制 (%d > %d)", size, maxBytes)
+	}
+	limited := rc
+	if maxBytes > 0 {
+		limited = readCloser{Reader: io.LimitReader(rc, maxBytes+1), Closer: rc}
+	}
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("read all: %w", err)
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, "", "", fmt.Errorf("文件超出限制 (%d > %d)", len(data), maxBytes)
+	}
+	if mime == "" && m.MimeType != nil {
+		mime = *m.MimeType
+	}
+	return data, mime, m.OriginalName, nil
+}
+
+// readCloser 把 io.Reader + io.Closer 组合为 io.ReadCloser（io.LimitReader 不实现 Closer）。
+type readCloser struct {
+	io.Reader
+	io.Closer
 }
 
 // PublicAccessURL 返回媒体文件的稳定公共访问路由最终应跳转到的地址。

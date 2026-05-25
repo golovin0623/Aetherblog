@@ -14,6 +14,12 @@ export interface ChatStreamRequest {
   providerCode?: string | null;
   articleIds?: number[] | null;
   tagSlugs?: string[] | null;
+  /**
+   * KB picker 选中的知识库 ID 列表。后端会用最后一条 user 消息当 query，
+   * 在选中的 KB 内做语义召回（每个 KB 的 active profile 决定 model / top_k / threshold），
+   * 把命中的 chunk 拼成额外 system 段注入 LLM。
+   */
+  kbIds?: number[] | null;
 }
 
 export interface ChatStreamHandlers {

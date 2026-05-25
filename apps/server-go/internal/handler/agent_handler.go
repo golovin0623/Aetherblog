@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,6 +54,9 @@ type AgentHandler struct {
 	postRepo      *repository.PostRepo
 	tagRepo       *repository.TagRepo
 	activitySvc   activityRecorder
+	// kbSvc 用于在转发 chat body 之前过滤 kbIds（SECURITY：防客户端拼装未授权 KB id）。
+	// nil 时跳过过滤（兼容旧 wire；正式部署必须注入）。
+	kbSvc *service.KBService
 }
 
 // NewAgentHandler 注入 AI client、token 与本地查询所需 repo（@/# picker 走本地 DB，
@@ -72,6 +76,11 @@ func NewAgentHandler(
 		tagRepo:       tagRepo,
 		activitySvc:   activitySvc,
 	}
+}
+
+// SetKBService 注入 KBService。server.go 在 wire 时调用一次。
+func (h *AgentHandler) SetKBService(kb *service.KBService) {
+	h.kbSvc = kb
 }
 
 // Mount 注册到给定的路由组（约定为 /api/v1/agent，已套上 JWT 中间件）。
@@ -119,6 +128,25 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 	if err != nil {
 		h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "请求体过大或无法读取")
 		return response.FailWith(c, response.BadRequest, "请求体过大或无法读取")
+	}
+
+	// SECURITY (review chatgpt-codex P1)：客户端可能塞任意 kbIds 绕过 picker 限制
+	// 把未授权库内容注入 prompt。在转发到 ai-service 前先把 kbIds 按当前用户
+	// 权限（≥ USE）过滤。
+	//
+	// SECURITY · fail-closed（review chatgpt-codex 第二轮）：filterBodyKBIDs 解析
+	// 失败时**绝不**透传原 body（否则攻击者可故意构造畸形 kbIds 让解析失败、
+	// 绕过权限过滤把未授权 KB 投放给 ai-service）。返回 400 拒绝整个请求。
+	if h.kbSvc != nil {
+		filtered, ferr := h.filterBodyKBIDs(c.Request().Context(), bodyBytes, lu.UserID, lu.Role)
+		if ferr != nil {
+			log.Warn().Err(ferr).Int64("user_id", lu.UserID).Msg("agent: kbIds permission filter failed, rejecting request")
+			h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "kbIds 解析或权限过滤失败")
+			return response.FailWith(c, response.BadRequest, "kbIds 字段格式无效或权限解析失败")
+		}
+		if filtered != nil {
+			bodyBytes = filtered
+		}
 	}
 
 	headers := map[string]string{
@@ -500,4 +528,64 @@ func formatTimePtr(t *time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02")
+}
+
+// filterBodyKBIDs 在转发到 ai-service 前，按当前用户权限过滤 chat 请求 body 里的 kbIds。
+//
+// 返回值约定：
+//   - (newBody, nil)：body 含 kbIds 且已被过滤（含过滤后为空数组的情形 → 显式 null）
+//   - (nil, nil)：body 不含 kbIds，或解析无意义字段（无需重写）
+//   - (nil, err)：JSON 解析失败 / 编码失败；调用方应回退到原 body 并 warn 日志
+//
+// 实现要点：使用 map[string]json.RawMessage 解析能保留未知字段顺序与精度（avoid
+// 反序列化丢失 float / 长 number），仅替换 kbIds 字段后重新编码。
+func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID int64, legacyRole string) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse chat body: %w", err)
+	}
+	kbField, exists := raw["kbIds"]
+	if !exists {
+		return nil, nil // 客户端未传 kbIds，原样转发
+	}
+	// kbIds 可能是 null / [] / [ids...]；null 与空数组直接保留不动
+	if string(kbField) == "null" || string(kbField) == "[]" {
+		return nil, nil
+	}
+	var ids []int64
+	if err := json.Unmarshal(kbField, &ids); err != nil {
+		return nil, fmt.Errorf("parse kbIds: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
+	if err != nil {
+		return nil, fmt.Errorf("build user context: %w", err)
+	}
+	allowed := h.kbSvc.FilterAuthorizedKBIDs(ctx, ids, uc)
+	if len(allowed) == len(ids) {
+		// 全部授权，不重写
+		return nil, nil
+	}
+	// 替换 kbIds 字段
+	if len(allowed) == 0 {
+		raw["kbIds"] = json.RawMessage("null")
+	} else {
+		buf, mErr := json.Marshal(allowed)
+		if mErr != nil {
+			return nil, fmt.Errorf("marshal allowed kbIds: %w", mErr)
+		}
+		raw["kbIds"] = json.RawMessage(buf)
+	}
+	rewrote, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode body: %w", err)
+	}
+	log.Info().
+		Int("client_kb_count", len(ids)).
+		Int("allowed_kb_count", len(allowed)).
+		Int64("user_id", userID).
+		Msg("agent: kbIds filtered by permission")
+	return rewrote, nil
 }

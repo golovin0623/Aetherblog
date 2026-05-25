@@ -79,6 +79,10 @@ class AgentChatRequest(BaseModel):
     # # picker 选中的标签 slug 列表 —— 注入对应标签下最近 5 篇文章标题，给 Agent
     # 一个"该话题下站点写过哪些文章"的概览。
     tagSlugs: list[str] | None = Field(default=None, max_length=8)
+    # KB picker 选中的知识库 ID 列表。后端会用最后一条 user 消息当 query，
+    # 在选中的 KB 内做语义召回（每 KB 的 active profile 决定 model + top_k + threshold），
+    # 把命中的 chunk 拼成额外 system 段注入给 LLM。
+    kbIds: list[int] | None = Field(default=None, max_length=10)
 
 
 class AgentModelItem(BaseModel):
@@ -538,6 +542,42 @@ _ARTICLE_EXCERPT_MAX_CHARS = 1800
 _TAG_POST_LIMIT = 5
 
 
+async def _build_kb_context_for_chat(
+    pool,
+    llm_router,
+    *,
+    kb_ids: list[int] | None,
+    messages: list[AgentChatMessage],
+) -> str | None:
+    """对灵境对话注入 KB 召回上下文。
+
+    步骤：
+      1. 取最后一条 user 消息当 query（多轮时这通常是最新提问）。
+      2. 调 kb_recall.recall_kbs 在 kb_ids 内做语义召回。
+      3. 渲染为 system message 文本，外层负责与 picker_context 拼接。
+
+    任一步骤失败都 swallow exception（不让对话失败），但会 warn 日志便于排查。
+    """
+    if not kb_ids:
+        return None
+    # 取最后一条 user 消息
+    query = ""
+    for m in reversed(messages):
+        if m.role == "user":
+            query = (m.content or "").strip()
+            break
+    if not query:
+        return None
+    try:
+        # 局部导入避免顶部循环依赖
+        from app.services.kb_recall import recall_kbs, render_kb_context
+        hits = await recall_kbs(pool, llm_router, kb_ids=kb_ids, query=query, top_k_total=12)
+    except Exception:
+        logger.warning("agent.kb_recall_failed", extra={"data": {"kb_ids": kb_ids}})
+        return None
+    return render_kb_context(hits)
+
+
 async def _build_picker_context(
     pool,
     *,
@@ -610,6 +650,7 @@ async def _build_picker_context(
                   AND p.deleted = FALSE
                   AND p.status = 'PUBLISHED'
                   AND p.is_hidden = FALSE
+                  AND p.password IS NULL
                 WHERE t.slug = ANY($1::text[])
                 GROUP BY t.id, t.name, t.slug
                 """,
@@ -1044,6 +1085,18 @@ async def agent_chat(
         article_ids=payload.articleIds,
         tag_slugs=payload.tagSlugs,
     )
+    # KB picker 选中后，按最后一条 user 消息做语义召回并拼一段 system 提示。
+    # 与 picker_context 各占独立 system message，便于 prompt 调试 + 不互相覆盖。
+    kb_context = await _build_kb_context_for_chat(
+        pool, llm_router,
+        kb_ids=payload.kbIds,
+        messages=payload.messages,
+    )
+    if kb_context:
+        if context_block:
+            context_block = context_block + "\n\n---\n\n" + kb_context
+        else:
+            context_block = kb_context
     chat_messages = _build_chat_messages(payload, context_block=context_block)
 
     # SSRF 守卫

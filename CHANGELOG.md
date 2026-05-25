@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 知识库（Knowledge Base）能力上线 (2026-05-25, branch codex/dev-fix-ui)
+
+INTELLIGENCE 板块新增「知识库」入口，对齐 LobeHub 资源库交互。灵境对话可勾选多个 KB
+按语义召回作为 RAG 上下文，回答时自动标注「chunk #N」来源。
+
+**Added — Migrations:**
+- `000054_media_folder_is_system` — media_folders 加 `is_system` / `undeletable` + seed `/root/_system_kb` 系统目录
+- `000055_knowledge_bases` — 5 张新表：`knowledge_bases / kb_profiles / kb_members / kb_files / kb_embeddings`，seed `slug='posts'` SYSTEM_POSTS 行
+- `000056_kb_default_profiles` — SYSTEM_POSTS 库默认 active profile（recursive/512/64）
+- `000057_kb_embedding_unconstrained` — `kb_embeddings.embedding` 改为不锁维度的 vector
+- `000058_kb_embedding_hnsw` — 按 dim×status='active' 的 partial HNSW（768/1024/1536/3072 四套）
+
+**Added — Backend (Go):**
+- `internal/model/knowledge_base.go`、`internal/dto/kb_dto.go`
+- `internal/repository/{kb_repo,kb_profile_repo,kb_member_repo,kb_file_repo}.go`
+- `internal/service/{kb_service,kb_indexer_client}.go` — CRUD + 自动归档 `/root/_system_kb/<slug>/<yyyy>/<mm>/<dd>/` + 后台 goroutine 触发 ai-service 向量化
+- `internal/handler/{kb_handler,kb_profile_handler,kb_member_handler,kb_agent_handler}.go`
+- 新路由：`/v1/admin/kbs/*`（CRUD + 文件 + Profile + 成员）+ `/v1/agent/knowledge-bases`（灵境 picker）
+- KB 写操作每用户 60/min 速率桶；审计写入 `activity_events` 表 `kb.*` 事件家族
+
+**Added — AI Service:**
+- `app/services/kb_indexer.py` — 文档解析（txt/md/html/json/csv/pdf/docx）+ chunker.split + 并发 embed + 单事务写 kb_embeddings
+- `app/services/kb_recall.py` — 多 KB 并行召回 + 全局 top-k 合并
+- `app/api/routes/knowledge_bases.py` — POST `/v1/kb/{id}/files/{fid}/index`（支持蓝绿 target_status=shadow）+ POST `/v1/kb/{id}/reindex`
+- `app/api/routes/agent.py` — `AgentChatRequest` 加 `kbIds`；`_build_kb_context_for_chat` 在 picker context 后追加 KB 召回段
+- 依赖：`pypdf`、`python-docx`、`trafilatura`
+
+**Added — Admin Frontend:**
+- INTELLIGENCE 导航新增「知识库」（lucide `Library`）
+- `pages/knowledge/KnowledgeBasePage.tsx` 列表（卡片栅格 + 新建弹窗）
+- `pages/knowledge/KnowledgeBaseDetailPage.tsx` 详情（资料文件 / 索引档案 / 成员授权 三 Tab，SYSTEM_POSTS 自动隐藏成员 Tab）
+- 文件 Tab：拖拽上传 + 状态过滤 + 时间桶 scrubber + 失败原因弹窗（含复制错误）+ 移动端 sticky 上传 CTA
+- Profile Tab：shadow profile 支持「直接激活」（指针切）/「迁移并激活」（蓝绿 reindex → 原子切）
+- 成员 Tab：用户 / 团队 / 角色 picker（接 accessService.listUsers/listTeams/listRoles）
+- `services/knowledgeBaseService.ts` 完整 REST 客户端
+- AetherHub 顶部新增 `KbPickerBar`：popover 多选可用 KB（权限 ≥ USE），发送时自动带 `kbIds`
+
+**Schema 高亮:**
+- `kb_members(principal_type IN USER/TEAM/ROLE, permission_level IN VIEW/USE/EDIT/MANAGE)`，与现有 RBAC 互补
+- `kb_profiles` 每 KB 独立，复用 search_profiles 蓝绿语义（partial unique active）
+- 文章索引库 = `knowledge_bases.kind='SYSTEM_POSTS'` 真实 row；files 视图动态聚合 posts/post_embeddings
+
 ### 头像与编辑器图片智能压缩 + 云端浏览器移动端可用性 (2026-05-15, branch codex/dev-fix-ui)
 
 **Changed — Admin / `apps/admin/src/pages/storage/CloudExplorerPage.tsx`:**

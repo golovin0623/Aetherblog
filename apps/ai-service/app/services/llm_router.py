@@ -265,6 +265,50 @@ class LlmRouter:
                 logger.warning(f"Failed to get routing from DB, using env config: {e}")
         return None
 
+    async def _resolve_routing_for_embedding(
+        self,
+        user_id: int | str | None,
+        embedding_model_id: str | None,
+    ) -> "RoutingConfig | None":
+        """给 embed() 用的路由解析。
+
+        embedding_model_id 提供时（KB profile 等场景），按 provider_registry
+        找出该 model + credential，临时构造 RoutingConfig 返回；不通过
+        _is_chat_capable_model 校验（embedding 模型本就不是 chat）。
+
+        找不到时 fall back 到默认 task=embedding 路由，并 WARN。
+        """
+        # 默认路径：按 task=embedding 走全局 routing
+        if not embedding_model_id:
+            return await self._get_routing("embedding", _normalize_user_id(user_id))
+
+        if not self.model_router:
+            logger.warning(
+                "embed.model_override_no_router",
+                extra={"data": {"requested": embedding_model_id}},
+            )
+            return await self._get_routing("embedding", _normalize_user_id(user_id))
+
+        try:
+            model = await self.model_router.provider_registry.get_model(embedding_model_id)
+            if not model or not model.is_enabled:
+                raise ValueError(f"model not found or disabled: {embedding_model_id}")
+            credential = await self.model_router.credential_resolver.get_credential(
+                model.provider_code,
+                user_id=_normalize_user_id(user_id),
+            )
+            if not credential:
+                raise ValueError(f"no credential for provider {model.provider_code}")
+            # 构造一个最小可用的 RoutingConfig duck-typed 对象 —— embed() 只用
+            # routing.model.model_id / routing.credential.* 几个字段，无需完整路由表行。
+            return _AdHocRouting(model=model, credential=credential)
+        except Exception as exc:
+            logger.warning(
+                "embed.model_override_failed",
+                extra={"data": {"requested": embedding_model_id, "error": str(exc)[:200]}},
+            )
+            return await self._get_routing("embedding", _normalize_user_id(user_id))
+
     async def has_task_routing(self, task_type: str, user_id: int | None = None) -> bool:
         """Return whether a chat task has a fully resolvable DB route.
 
@@ -1044,9 +1088,18 @@ class LlmRouter:
         timeout_sec: int | None = None,
         usage_endpoint: str | None = None,
         request_id: str | None = None,
+        embedding_model_id: str | None = None,
     ) -> list[float]:
-        """为文本生成 embedding 向量。"""
-        routing = await self._get_routing("embedding", user_id)
+        """为文本生成 embedding 向量。
+
+        embedding_model_id：可选；当 KB profile 等需要严格使用特定 embedding 模型
+        （绕过全局 ai_task_routing.embedding 路由）时传入。模型 + 凭证按
+        provider_registry / credential_resolver 顺序解析；找不到则降级到默认路由
+        并 WARN（行为不破坏）。
+        """
+        routing = await self._resolve_routing_for_embedding(
+            user_id=user_id, embedding_model_id=embedding_model_id,
+        )
 
         if routing:
             # 加 provider 前缀，确保 LiteLLM 路由正确（与 chat/stream_chat 一致）
@@ -1317,3 +1370,37 @@ class LlmRouter:
             in_think = not in_think
 
         yield {"type": "done"}
+
+
+# ============================================================
+# Module-level helpers (放在文件末尾以免破坏 LlmRouter class body)
+# ============================================================
+
+def _normalize_user_id(user_id: int | str | None) -> int | None:
+    """embed() 的 user_id 接受 str | int | None；_get_routing 要 int|None。"""
+    if user_id is None:
+        return None
+    if isinstance(user_id, int):
+        return user_id
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+
+class _AdHocRouting:
+    """duck-typed RoutingConfig：仅暴露 embed() 需要的 .model / .credential 字段。
+
+    用于 embedding_model_id 显式覆盖路径 —— 不走 ai_task_routing 表，
+    直接拿目标 model + provider credential 拼一个最小路由对象。
+
+    放在文件末尾（module-level）—— review chatgpt-codex P0 修复：之前把它放在
+    LlmRouter 中间位置导致后续所有方法（chat / stream_chat / _resolve_route 等）
+    被吸进 _AdHocRouting，整个 LlmRouter 实例运行时全部 AttributeError。
+    """
+
+    __slots__ = ("model", "credential")
+
+    def __init__(self, model, credential):
+        self.model = model
+        self.credential = credential

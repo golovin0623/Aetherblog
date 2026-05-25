@@ -190,6 +190,26 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 新增 `site_settings.editor_image_smart_compression_enabled`，默认 `false`、类型 `BOOLEAN`、分组 `advanced`。开启后 admin 文章编辑器上传超过 5MB 的 JPEG / PNG / WebP 图片时会在浏览器端自动智能压缩，上传成功后额外记录 `media.smart_compression` 活动，描述里写入原大小、压缩后大小与节省比例。
 
+### 000054 · `media_folder_is_system`
+
+媒体文件夹加 `is_system / undeletable` 两列。`is_system=TRUE` 的目录在 `/admin/media` 与文件夹树默认过滤掉；`undeletable=TRUE` 拒绝 DELETE。同时 seed `/root/_system_kb` 系统目录（用作知识库归档根）并把 root 目录标记为 undeletable。
+
+### 000055 · `knowledge_bases`
+
+知识库核心 schema，新建 5 张表：`knowledge_bases / kb_profiles / kb_members / kb_files / kb_embeddings`。详见 `CHANGELOG.md` 同期条目。同时 seed `slug='posts'` 的 SYSTEM_POSTS row 作为「文章索引库」。
+
+### 000056 · `kb_default_profiles`
+
+为 SYSTEM_POSTS 库 seed 默认 active profile（recursive/512/64，model 从 site_settings → ai_task_routing → 兜底 text-embedding-3-large 推导）。CUSTOM 库的默认 profile 由 KBService.Create 应用层创建。
+
+### 000057 · `kb_embedding_unconstrained`
+
+把 `kb_embeddings.embedding` 从 `vector(3072)` 改为不锁维度的 `vector`，对齐 post_embeddings 模式。首版 000055 误设硬约束导致 4096 维（Qwen / bge-m3 等）模型直接失败，本 migration 修复并兼容任意 dim。
+
+### 000058 · `kb_embedding_hnsw`
+
+按 dim × status='active' 创建 partial HNSW 索引：768 / 1024 / 1536 使用 vector_cosine_ops；3072 必须走 halfvec_cosine_ops（pgvector HNSW vector 上限 2000，halfvec 上限 4000）。> 4000 维当前 pgvector 不支持 HNSW，召回退化为顺序扫描；建议改用主流维度。
+
 ---
 
 ## 部署期 migration 自愈机制

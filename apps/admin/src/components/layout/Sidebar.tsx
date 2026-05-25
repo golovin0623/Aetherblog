@@ -27,6 +27,7 @@ import {
   Workflow,
   UsersRound,
   ShieldCheck,
+  Library,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -68,6 +69,7 @@ const navSections: Array<{
     items: [
       { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
       { path: '/notes', icon: BookOpen, label: '智能笔记' },
+      { path: '/intelligence/knowledge', icon: Library, label: '知识库' },
       { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
       { path: '/ai-tools', icon: Sparkles, label: '写作助手' },
       { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },
