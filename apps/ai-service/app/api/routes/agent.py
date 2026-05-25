@@ -650,6 +650,7 @@ async def _build_picker_context(
                   AND p.deleted = FALSE
                   AND p.status = 'PUBLISHED'
                   AND p.is_hidden = FALSE
+                  AND p.password IS NULL
                 WHERE t.slug = ANY($1::text[])
                 GROUP BY t.id, t.name, t.slug
                 """,
