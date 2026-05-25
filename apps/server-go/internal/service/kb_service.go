@@ -226,11 +226,23 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 	slug := strings.TrimSpace(req.Slug)
 	if slug == "" {
 		slug = slugFromName(req.Name)
+	} else {
+		// review chatgpt-codex P2 修复：用户显式 slug 不能盲信，可能含 `/`/空白/中文
+		// → 后面拼到 /root/_system_kb/<slug> 会污染路径，或 folder.slug 不规范。
+		// 用 slugifyStrict 规范化；若与原始不同（说明含非法字符），返错引导用户改正。
+		normalized := slugifyStrict(slug)
+		if normalized == "" {
+			return nil, fmt.Errorf("slug 必须为小写字母/数字/短横线，1-120 字符")
+		}
+		if normalized != slug {
+			return nil, fmt.Errorf("slug 含非法字符（仅允许小写字母/数字/短横线），建议改为 %q", normalized)
+		}
+		slug = normalized
 	}
 	if slug == "" {
 		return nil, fmt.Errorf("无法从名称推导 slug，请显式指定 slug")
 	}
-	// 唯一性预检
+	// 唯一性预检（仅排查常见冲突；并发场景靠 repo 层 ErrKBSlugDuplicate 兜底）
 	if existing, _ := s.kbRepo.FindBySlug(ctx, slug); existing != nil {
 		return nil, ErrKBSlugConflict
 	}
@@ -252,6 +264,10 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 		CreatedBy:   &uc.UserID,
 	})
 	if err != nil {
+		// 并发预检之外的 uniq 冲突 → 转为客户端可识别的业务错误（review chatgpt-codex P2）
+		if errors.Is(err, repository.ErrKBSlugDuplicate) {
+			return nil, ErrKBSlugConflict
+		}
 		return nil, fmt.Errorf("insert knowledge_base: %w", err)
 	}
 	// 补偿删除（review chatgpt-codex P1 修复）：插 KB row 后任何步骤失败都要
@@ -1437,6 +1453,36 @@ func toKBFileVO(f model.KBFile) dto.KBFileVO {
 }
 
 var slugReg = regexp.MustCompile(`[^a-z0-9-]+`)
+var slugStrictReg = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]?$`)
+
+// slugifyStrict 对显式 slug 做严格校验（不丢字符，只判合法）。
+// 合法：1-120 字符，全小写字母/数字/短横线，首尾非短横线。
+// 返回值：合法返回原 slug；不合法返回经 slugifySimple 清洗后的"建议值"
+// （由 caller 决定是接受清洗 vs 报错让用户修正）。
+//
+// 设计：分两步而非合一是为了让 caller 区分"未提供 vs 输入非法"两种语义。
+func slugifyStrict(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if slugStrictReg.MatchString(s) {
+		return s
+	}
+	// 不合法 → 返回 sanitize 后的建议值；caller 决定是否报错
+	return slugifySimple(s)
+}
+
+// slugifySimple 见 folder_repo.go（包内复用），这里仅声明引用占位避免 lint 抱怨。
+// 实际 import 已经在 service 包内通过 repository.slugifySimple 不可直接调用，
+// 因此我们在 service 包内复制一份等价实现 —— 见上方 slugFromName 已经走的清洗逻辑。
+func slugifySimple(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, " ", "-")
+	s = slugReg.ReplaceAllString(s, "")
+	s = strings.Trim(s, "-")
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return s
+}
 
 // slugFromName 派生 URL/路径友好 slug。
 // 兼容中文/特殊字符：当 ASCII 子集为空（如纯中文名）时，回退到 "kb-<unix秒>"，

@@ -9,9 +9,17 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
+
+// ErrKBSlugDuplicate 来自数据库 uniq 约束的语义版本。
+// service 层捕获后映射到面向客户端的 ErrKBSlugConflict。
+//
+// 触发条件：并发两个 Create 同 slug 绕过 service 层的 FindBySlug 预检
+// 同时到达 INSERT —— PG 抛 23505 (unique_violation)。
+var ErrKBSlugDuplicate = errors.New("kb slug duplicate (uniq violation)")
 
 // KBRepo 负责 knowledge_bases 表的访问。
 type KBRepo struct{ db *sqlx.DB }
@@ -167,6 +175,8 @@ type KBCreateRequest struct {
 }
 
 // Create 插入新 KB 行，返回 id。active_profile_id 在 profile 创建后单独 update。
+// 当 slug 唯一约束冲突（PG 23505）时返回 ErrKBSlugDuplicate，让 service 层
+// 映射到面向客户端的 ErrKBSlugConflict（避免 500，给出 400 + 明确文案）。
 func (r *KBRepo) Create(ctx context.Context, req KBCreateRequest) (int64, error) {
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
@@ -176,6 +186,12 @@ func (r *KBRepo) Create(ctx context.Context, req KBCreateRequest) (int64, error)
 		req.Slug, req.Name, req.Description, req.Icon, req.Color, req.Kind,
 		req.OwnerID, req.Visibility, req.FolderID, req.CreatedBy,
 	).Scan(&id)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return 0, ErrKBSlugDuplicate
+		}
+	}
 	return id, err
 }
 
