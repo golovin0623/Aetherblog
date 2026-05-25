@@ -322,7 +322,9 @@ class KBIndexerService:
 
         async def embed_chunk(c: Chunk) -> tuple[Chunk, list[float]]:
             async with semaphore:
-                vec = await self.llm.embed(c.text)
+                # review chatgpt-codex P2：必须用 profile.model_id 而非全局默认 embedding 路由。
+                # 否则蓝绿 / A-B 测试时 profile 切换形同虚设（向量仍用 ai_task_routing.embedding）。
+                vec = await self.llm.embed(c.text, embedding_model_id=profile.model_id)
                 return c, vec
 
         try:

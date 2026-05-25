@@ -59,7 +59,10 @@ async def recall_kbs(
             logger.warning("kb_recall.profile_missing", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
             return []
         try:
-            embedding = await llm.embed(query)
+            # review chatgpt-codex P2：用 profile.model_id 生成查询向量，确保维度
+            # 与 kb_embeddings 里 active 行一致。否则 embedding_dim 不匹配会让
+            # WHERE embedding_dim = $4 过滤掉所有候选 → 召回静默为空。
+            embedding = await llm.embed(query, embedding_model_id=profile.model_id)
         except Exception as exc:
             logger.warning("kb_recall.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
             return []

@@ -132,13 +132,19 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 
 	// SECURITY (review chatgpt-codex P1)：客户端可能塞任意 kbIds 绕过 picker 限制
 	// 把未授权库内容注入 prompt。在转发到 ai-service 前先把 kbIds 按当前用户
-	// 权限（≥ USE）过滤。filterBodyKBIDs 解析 → 过滤 → 重写 body；解析失败 / 无 kbIds
-	// 时返回原 body 不动。
+	// 权限（≥ USE）过滤。
+	//
+	// SECURITY · fail-closed（review chatgpt-codex 第二轮）：filterBodyKBIDs 解析
+	// 失败时**绝不**透传原 body（否则攻击者可故意构造畸形 kbIds 让解析失败、
+	// 绕过权限过滤把未授权 KB 投放给 ai-service）。返回 400 拒绝整个请求。
 	if h.kbSvc != nil {
 		filtered, ferr := h.filterBodyKBIDs(c.Request().Context(), bodyBytes, lu.UserID, lu.Role)
 		if ferr != nil {
-			log.Warn().Err(ferr).Msg("agent: kbIds permission filter failed, forwarding original body")
-		} else if filtered != nil {
+			log.Warn().Err(ferr).Int64("user_id", lu.UserID).Msg("agent: kbIds permission filter failed, rejecting request")
+			h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "kbIds 解析或权限过滤失败")
+			return response.FailWith(c, response.BadRequest, "kbIds 字段格式无效或权限解析失败")
+		}
+		if filtered != nil {
 			bodyBytes = filtered
 		}
 	}
