@@ -135,6 +135,10 @@ func (h *KBHandler) handleSvcErr(c echo.Context, err error) error {
 		return response.FailWith(c, response.NotFound, "索引档案不存在")
 	case errors.Is(err, service.ErrKBProfileBadState):
 		return response.FailWith(c, response.BadRequest, "档案当前状态不允许该操作")
+	case errors.Is(err, service.ErrKBFileNotFound):
+		return response.FailWith(c, response.NotFound, "知识库文件不存在")
+	case errors.Is(err, service.ErrKBFileWrongKB), errors.Is(err, service.ErrKBMemberWrongKB):
+		return response.FailWith(c, response.BadRequest, err.Error())
 	default:
 		log.Warn().
 			Err(err).

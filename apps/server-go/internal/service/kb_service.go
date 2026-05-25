@@ -39,6 +39,9 @@ var (
 	ErrKBForbidSystem    = errors.New("系统级知识库不可执行该操作")
 	ErrKBProfileNotFound = errors.New("索引档案不存在")
 	ErrKBProfileBadState = errors.New("索引档案当前状态不允许该操作")
+	ErrKBFileNotFound    = errors.New("知识库文件不存在")
+	ErrKBFileWrongKB     = errors.New("文件不属于该知识库")
+	ErrKBMemberWrongKB   = errors.New("成员不属于该知识库")
 )
 
 // =====================================================================
@@ -251,6 +254,20 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 	if err != nil {
 		return nil, fmt.Errorf("insert knowledge_base: %w", err)
 	}
+	// 补偿删除（review chatgpt-codex P1 修复）：插 KB row 后任何步骤失败都要
+	// rollback，否则会留下没 active_profile_id 的"孤儿 KB"，下次重试同 slug
+	// 会撞 uniq 冲突，admin 没办法清理。这里用 defer + named return 在出错路径
+	// 自动 DELETE。folder 留着无害（幂等可复用），不补偿。
+	var createErr error
+	defer func() {
+		if createErr != nil {
+			if delErr := s.kbRepo.Delete(context.Background(), kbID); delErr != nil {
+				log.Error().Err(delErr).Int64("kb_id", kbID).Msg("compensating delete on create-fail failed; leaving orphan KB row")
+			} else {
+				log.Info().Int64("kb_id", kbID).Str("reason", createErr.Error()).Msg("compensating delete: rolled back KB on create-fail")
+			}
+		}
+	}()
 
 	// Step 3+4：创建/复用归档根目录 /root/_system_kb/<slug>
 	folderVO, err := s.folderSvc.EnsureFolderByPath(ctx,
@@ -277,10 +294,12 @@ func (s *KBService) Create(ctx context.Context, req dto.CreateKnowledgeBaseReque
 		Status:             model.KBProfileStatusActive,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("insert default profile: %w", err)
+		createErr = fmt.Errorf("insert default profile: %w", err)
+		return nil, createErr
 	}
 	if err := s.kbRepo.SetActiveProfile(ctx, kbID, defaultProfile.ID); err != nil {
-		return nil, fmt.Errorf("set active profile: %w", err)
+		createErr = fmt.Errorf("set active profile: %w", err)
+		return nil, createErr
 	}
 
 	// 如果调用方还传了一个 initialProfile，再插一条 shadow 备选
@@ -547,8 +566,11 @@ func (s *KBService) ReindexFile(ctx context.Context, kbID, fileID int64, uc *KBU
 	if err != nil {
 		return err
 	}
-	if f == nil || f.KBID != kbID {
-		return fmt.Errorf("文件 %d 不属于该知识库", fileID)
+	if f == nil {
+		return ErrKBFileNotFound
+	}
+	if f.KBID != kbID {
+		return ErrKBFileWrongKB
 	}
 	s.scheduleIndex(kbID, fileID, kb.ActiveProfileID)
 	return nil
@@ -826,7 +848,7 @@ func (s *KBService) GetFile(ctx context.Context, fileID int64, uc *KBUserContext
 		return nil, err
 	}
 	if f == nil {
-		return nil, fmt.Errorf("文件不存在")
+		return nil, ErrKBFileNotFound // handler 映射 404（review chatgpt-codex P2 修复）
 	}
 	kb, err := s.kbRepo.FindByID(ctx, f.KBID)
 	if err != nil {
@@ -1301,7 +1323,7 @@ func (s *KBService) DeleteMember(ctx context.Context, kbID, memberID int64, uc *
 		return nil // 已不存在 → idempotent 成功
 	}
 	if m.KBID != kbID {
-		return fmt.Errorf("成员 %d 不属于该知识库", memberID)
+		return ErrKBMemberWrongKB
 	}
 	return s.memberRepo.Delete(ctx, memberID)
 }
