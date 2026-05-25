@@ -298,14 +298,24 @@ class KBIndexerService:
         except (ValueError, RuntimeError) as exc:
             return KBIndexOutcome(kb_file_id, 0, 0, 0, 0, "FAILED", str(exc))
 
-        doc_chars = len(text)
-        if doc_chars == 0:
-            return await self._write_empty(kb_id, kb_file_id)
-
+        # 先解析 profile —— 即使是空文档也要知道 profile_id 才能正确 scope _write_empty
+        # （review chatgpt-codex P1 修复：之前空文档走全表 DELETE 会清掉蓝绿 active 行）
         if target_profile_id is not None:
             profile = await fetch_kb_profile_by_id(self.pool, target_profile_id)
+            # SECURITY (review chatgpt-codex P2)：profile 必须属于本 KB
+            # 否则 attacker 可借 internal token 用 KB B 的 profile_id 索引 KB A
+            # 的文件 → kb_embeddings 的 (kb_id, profile_id) 出现错配组合。
+            if profile.kb_id != kb_id:
+                return KBIndexOutcome(
+                    kb_file_id, 0, 0, 0, 0, "FAILED",
+                    f"profile {target_profile_id} 不属于 kb {kb_id}",
+                )
         else:
             profile = await fetch_kb_active_profile(self.pool, kb_id)
+
+        doc_chars = len(text)
+        if doc_chars == 0:
+            return await self._write_empty(kb_id, kb_file_id, profile.id)
 
         chunks: list[Chunk] = chunk_split(
             text,
@@ -314,7 +324,7 @@ class KBIndexerService:
             chunk_overlap_tokens=profile.chunk_overlap_tokens,
         )
         if not chunks:
-            return await self._write_empty(kb_id, kb_file_id)
+            return await self._write_empty(kb_id, kb_file_id, profile.id)
 
         # 并发 embed
         embed_start = time.perf_counter()
@@ -413,11 +423,16 @@ class KBIndexerService:
             status="SUCCEEDED",
         )
 
-    async def _write_empty(self, kb_id: int, kb_file_id: int) -> KBIndexOutcome:
-        """空文档：删除旧向量，标 SUCCEEDED chunk_count=0。"""
+    async def _write_empty(self, kb_id: int, kb_file_id: int, profile_id: int) -> KBIndexOutcome:
+        """空文档：仅删除目标 profile 下该 file 的旧向量，标 SUCCEEDED chunk_count=0。
+
+        review chatgpt-codex P1 修复：之前 DELETE 全表（不限 profile_id）会把
+        蓝绿场景下当前 active 的 embeddings 一并清掉，迁移若失败则文件对 active
+        profile 不可搜。改为按 (kb_file_id, profile_id) 双键限定。
+        """
         async with self.pool.acquire() as conn:
             await conn.execute(
-                "DELETE FROM kb_embeddings WHERE kb_file_id = $1",
-                kb_file_id,
+                "DELETE FROM kb_embeddings WHERE kb_file_id = $1 AND profile_id = $2",
+                kb_file_id, profile_id,
             )
-        return KBIndexOutcome(kb_file_id, 0, 0, 0, 0, "SUCCEEDED")
+        return KBIndexOutcome(kb_file_id, profile_id, 0, 0, 0, "SUCCEEDED")
