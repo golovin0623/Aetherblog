@@ -53,83 +53,19 @@ async def recall_kbs(
     results: list[KBHit] = []
 
     async def recall_one(kb_id: int) -> list[KBHit]:
-        try:
-            profile = await fetch_kb_active_profile(pool, kb_id)
-        except Exception as exc:
-            logger.warning("kb_recall.profile_missing", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
-            return []
-        try:
-            # review chatgpt-codex P2：用 profile.model_id 生成查询向量，确保维度
-            # 与 kb_embeddings 里 active 行一致。否则 embedding_dim 不匹配会让
-            # WHERE embedding_dim = $4 过滤掉所有候选 → 召回静默为空。
-            embedding = await llm.embed(query, embedding_model_id=profile.model_id)
-        except Exception as exc:
-            logger.warning("kb_recall.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
-            return []
-        dim = len(embedding) if embedding else 0
-        if dim <= 0:
-            return []
-        # review chatgpt-codex P1：halfvec(>4000) 是非法 pgvector 语法（halfvec
-        # HNSW 列上限 4000）。对超 4000 维（例如 4096 维的 Qwen3-embed / bge-m3）
-        # 走纯 vector cast —— pgvector 的 vector 类型本身没有上限，只是 HNSW
-        # 索引不可用，会退化到顺序扫描。性能换正确性，绝不让 SQL 报错把召回
-        # 静默吞掉（外层 asyncio.gather 已 return_exceptions=True 会吃掉异常）。
-        if dim > 4000:
-            cast_type = "vector"
-        elif dim > 2000:
-            cast_type = "halfvec"
-        else:
-            cast_type = "vector"
-        candidate_limit = min(max(profile.top_k * 3, 20), 100)
+        # 先查 KB 元数据决定走哪条数据源（review chatgpt-codex P1 修复）：
+        #   * SYSTEM_POSTS：博客文章索引库 —— 数据在 post_embeddings + search_profiles
+        #   * CUSTOM：用户自建库 —— 数据在 kb_embeddings + kb_profiles
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                f"""
-                WITH cands AS (
-                    SELECT
-                        ke.kb_file_id,
-                        ke.chunk_index,
-                        ke.chunk_text,
-                        ke.parent_text,
-                        1 - (ke.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
-                    FROM kb_embeddings ke
-                    WHERE ke.kb_id = $2
-                      AND ke.profile_id = $3
-                      AND ke.status = 'active'
-                      AND ke.embedding_dim = $4
-                    ORDER BY ke.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
-                    LIMIT $5
-                )
-                SELECT
-                    c.kb_file_id,
-                    c.chunk_index,
-                    c.similarity,
-                    COALESCE(c.parent_text, c.chunk_text) AS snippet,
-                    f.title AS file_title,
-                    kb.slug AS kb_slug,
-                    kb.name AS kb_name
-                FROM cands c
-                JOIN kb_files f ON f.id = c.kb_file_id
-                JOIN knowledge_bases kb ON kb.id = f.kb_id
-                WHERE c.similarity >= $6
-                ORDER BY c.similarity DESC
-                LIMIT $7
-                """,
-                embedding, kb_id, profile.id, dim,
-                candidate_limit, profile.score_threshold, profile.top_k,
+            kb_row = await conn.fetchrow(
+                "SELECT slug, name, kind FROM knowledge_bases WHERE id = $1",
+                kb_id,
             )
-        return [
-            KBHit(
-                kb_id=kb_id,
-                kb_slug=r["kb_slug"],
-                kb_name=r["kb_name"],
-                kb_file_id=r["kb_file_id"],
-                file_title=r["file_title"],
-                chunk_index=r["chunk_index"],
-                snippet=r["snippet"] or "",
-                similarity=float(r["similarity"]),
-            )
-            for r in rows
-        ]
+        if not kb_row:
+            return []
+        if kb_row["kind"] == "SYSTEM_POSTS":
+            return await _recall_system_posts(pool, llm, kb_id, kb_row, query)
+        return await _recall_custom_kb(pool, llm, kb_id, kb_row, query)
 
     # review gemini medium：单个 KB 召回失败（DB 抖动 / profile 缺失）不应让整个
     # RAG 流程崩；用 return_exceptions=True 收集，过滤掉异常分支。
@@ -147,6 +83,155 @@ async def recall_kbs(
         results.extend(item)
     results.sort(key=lambda h: h.similarity, reverse=True)
     return results[:top_k_total]
+
+
+def _cast_type_for_dim(dim: int) -> str:
+    """按维度选择 pgvector cast type（halfvec 上限 4000，超限 fallback vector）。"""
+    if dim > 4000:
+        return "vector"
+    if dim > 2000:
+        return "halfvec"
+    return "vector"
+
+
+async def _recall_custom_kb(pool, llm: LlmRouter, kb_id: int, kb_row, query: str) -> list[KBHit]:
+    """CUSTOM 库召回：走 kb_embeddings + kb_profiles。"""
+    try:
+        profile = await fetch_kb_active_profile(pool, kb_id)
+    except Exception as exc:
+        logger.warning("kb_recall.profile_missing", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        return []
+    try:
+        embedding = await llm.embed(query, embedding_model_id=profile.model_id)
+    except Exception as exc:
+        logger.warning("kb_recall.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        return []
+    dim = len(embedding) if embedding else 0
+    if dim <= 0:
+        return []
+    cast_type = _cast_type_for_dim(dim)
+    candidate_limit = min(max(profile.top_k * 3, 20), 100)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            WITH cands AS (
+                SELECT
+                    ke.kb_file_id,
+                    ke.chunk_index,
+                    ke.chunk_text,
+                    ke.parent_text,
+                    1 - (ke.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
+                FROM kb_embeddings ke
+                WHERE ke.kb_id = $2
+                  AND ke.profile_id = $3
+                  AND ke.status = 'active'
+                  AND ke.embedding_dim = $4
+                ORDER BY ke.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
+                LIMIT $5
+            )
+            SELECT
+                c.kb_file_id, c.chunk_index, c.similarity,
+                COALESCE(c.parent_text, c.chunk_text) AS snippet,
+                f.title AS file_title
+            FROM cands c
+            JOIN kb_files f ON f.id = c.kb_file_id
+            WHERE c.similarity >= $6
+            ORDER BY c.similarity DESC
+            LIMIT $7
+            """,
+            embedding, kb_id, profile.id, dim,
+            candidate_limit, profile.score_threshold, profile.top_k,
+        )
+    return [
+        KBHit(
+            kb_id=kb_id, kb_slug=kb_row["slug"], kb_name=kb_row["name"],
+            kb_file_id=r["kb_file_id"], file_title=r["file_title"],
+            chunk_index=r["chunk_index"],
+            snippet=r["snippet"] or "",
+            similarity=float(r["similarity"]),
+        )
+        for r in rows
+    ]
+
+
+async def _recall_system_posts(pool, llm: LlmRouter, kb_id: int, kb_row, query: str) -> list[KBHit]:
+    """SYSTEM_POSTS 库召回：走 post_embeddings + search_profiles。
+
+    与博客文章语义搜索同源（migration 000034 / 000041）。这里只取召回结果而不
+    走 vector_store.semantic_search 是为了：
+      1. 复用本模块的 KBHit 结构 → 与 CUSTOM 召回结果同形态合并
+      2. 不强制 vector_store 全套权限/usage_logging 流程（agent chat 已自己管）
+    """
+    async with pool.acquire() as conn:
+        prof = await conn.fetchrow(
+            """
+            SELECT id, model_id, chunker_kind, chunk_size_tokens, chunk_overlap_tokens
+            FROM search_profiles WHERE status = 'active' LIMIT 1
+            """,
+        )
+    if not prof:
+        logger.warning("kb_recall.system_posts.no_search_profile", extra={"data": {"kb_id": kb_id}})
+        return []
+    try:
+        embedding = await llm.embed(query, embedding_model_id=prof["model_id"])
+    except Exception as exc:
+        logger.warning("kb_recall.system_posts.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        return []
+    dim = len(embedding) if embedding else 0
+    if dim <= 0:
+        return []
+    cast_type = _cast_type_for_dim(dim)
+    # SYSTEM_POSTS 召回沿用 search 模块的全局配置默认值：top_k=6, threshold=0.20。
+    # 这与 vector_store.semantic_search 默认值一致；UI 可在 Phase 3 暴露到 admin
+    # 让用户调整（同 CUSTOM 库的 kb_profiles.top_k / score_threshold）。
+    top_k = 6
+    threshold = 0.20
+    candidate_limit = min(max(top_k * 3, 20), 100)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            WITH cands AS (
+                SELECT
+                    pe.post_id,
+                    pe.chunk_index,
+                    pe.chunk_text,
+                    pe.parent_text,
+                    1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
+                FROM post_embeddings pe
+                WHERE pe.profile_id = $2
+                  AND pe.status = 'active'
+                  AND pe.dim = $3
+                ORDER BY pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
+                LIMIT $4
+            )
+            SELECT
+                c.post_id, c.chunk_index, c.similarity,
+                COALESCE(c.parent_text, c.chunk_text) AS snippet,
+                p.title AS file_title
+            FROM cands c
+            JOIN posts p ON p.id = c.post_id
+            WHERE p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.password IS NULL
+              AND p.is_hidden = FALSE
+              AND c.similarity >= $5
+            ORDER BY c.similarity DESC
+            LIMIT $6
+            """,
+            embedding, prof["id"], dim, candidate_limit, threshold, top_k,
+        )
+    return [
+        KBHit(
+            kb_id=kb_id, kb_slug=kb_row["slug"], kb_name=kb_row["name"],
+            # 用 post_id 作为 kb_file_id（仅前端展示用，不参与 join），
+            # render_kb_context 不区分；UI 后续可按 file_title 跳到文章。
+            kb_file_id=r["post_id"], file_title=r["file_title"],
+            chunk_index=r["chunk_index"],
+            snippet=r["snippet"] or "",
+            similarity=float(r["similarity"]),
+        )
+        for r in rows
+    ]
 
 
 def render_kb_context(hits: list[KBHit], max_chars: int = 12000) -> str | None:
