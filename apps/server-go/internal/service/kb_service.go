@@ -503,7 +503,7 @@ func (s *KBService) UploadFile(ctx context.Context, kbID int64, fh *multipart.Fi
 	// 启动后台向量化（不阻塞 HTTP 响应）
 	s.scheduleIndex(kbID, fileID, kb.ActiveProfileID)
 	_ = s.kbRepo.RefreshStats(ctx, kbID)
-	return s.GetFile(ctx, fileID, uc)
+	return s.GetFile(ctx, kbID, fileID, uc)
 }
 
 // scheduleIndex 在后台 goroutine 中调用 ai-service 触发向量化。
@@ -860,13 +860,19 @@ func (s *KBService) listPostsAsKBFiles(ctx context.Context, kb *model.KnowledgeB
 }
 
 // GetFile 文件详情。
-func (s *KBService) GetFile(ctx context.Context, fileID int64, uc *KBUserContext) (*dto.KBFileVO, error) {
+// GetFile 文件详情。
+// kbID > 0 时强制校验文件属于该 KB（防 nested-resource scoping 绕过）；
+// kbID == 0 由可信内部调用使用（如 UploadFile 拿刚插入的 row）。
+func (s *KBService) GetFile(ctx context.Context, kbID, fileID int64, uc *KBUserContext) (*dto.KBFileVO, error) {
 	f, err := s.fileRepo.FindByID(ctx, fileID)
 	if err != nil {
 		return nil, err
 	}
 	if f == nil {
-		return nil, ErrKBFileNotFound // handler 映射 404（review chatgpt-codex P2 修复）
+		return nil, ErrKBFileNotFound
+	}
+	if kbID > 0 && f.KBID != kbID {
+		return nil, ErrKBFileWrongKB
 	}
 	kb, err := s.kbRepo.FindByID(ctx, f.KBID)
 	if err != nil {
@@ -880,15 +886,22 @@ func (s *KBService) GetFile(ctx context.Context, fileID int64, uc *KBUserContext
 }
 
 // DeleteFile 删除 kb_files 行。media_files 不同步删除（用户可能想保留物理文件）。
-func (s *KBService) DeleteFile(ctx context.Context, fileID int64, uc *KBUserContext) error {
+// DeleteFile 删除 kb_files 行。
+// kbID 是 URL 路径上的父资源 id，必须与文件实际所属 kb_id 匹配 —— 否则
+// 拒绝（review chatgpt-codex P2 修复：避免 nested-resource scoping 被绕过 ——
+// 即使 user 对 KB A 有 EDIT，也不能用 /kbs/A/files/<fid_B> 删 KB B 的文件）。
+func (s *KBService) DeleteFile(ctx context.Context, kbID, fileID int64, uc *KBUserContext) error {
 	f, err := s.fileRepo.FindByID(ctx, fileID)
 	if err != nil {
 		return err
 	}
 	if f == nil {
-		return nil
+		return nil // idempotent
 	}
-	kb, err := s.kbRepo.FindByID(ctx, f.KBID)
+	if f.KBID != kbID {
+		return ErrKBFileWrongKB
+	}
+	kb, err := s.kbRepo.FindByID(ctx, kbID)
 	if err != nil {
 		return err
 	}

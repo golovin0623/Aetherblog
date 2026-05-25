@@ -308,11 +308,16 @@ func (h *KBHandler) GetFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.Unauthorized, err.Error())
 	}
+	id, err := parseInt64Param(c, "id")
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
 	fid, err := parseInt64Param(c, "fid")
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
-	vo, err := h.svc.GetFile(c.Request().Context(), fid, uc)
+	// 传入 kbID 让 service 强制校验 file 属于该 KB（防 nested-resource scoping 绕过）
+	vo, err := h.svc.GetFile(c.Request().Context(), id, fid, uc)
 	if err != nil {
 		return h.handleSvcErr(c, err)
 	}
@@ -324,15 +329,21 @@ func (h *KBHandler) DeleteFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.Unauthorized, err.Error())
 	}
+	id, err := parseInt64Param(c, "id")
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
 	fid, err := parseInt64Param(c, "fid")
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
-	if err := h.svc.DeleteFile(c.Request().Context(), fid, uc); err != nil {
-		h.recordKBEvent(c, "kb.file.delete", "KB 文件删除失败", fmt.Sprintf("file_id=%d err=%v", fid, err), "failed")
+	// review chatgpt-codex P2：传入 kbID 让 service 校验 file 属于该 KB，
+	// 防止 EDIT KB A 的用户用 /kbs/A/files/<fid_B> 删 KB B 的文件
+	if err := h.svc.DeleteFile(c.Request().Context(), id, fid, uc); err != nil {
+		h.recordKBEvent(c, "kb.file.delete", "KB 文件删除失败", fmt.Sprintf("kb_id=%d file_id=%d err=%v", id, fid, err), "failed")
 		return h.handleSvcErr(c, err)
 	}
-	h.recordKBEvent(c, "kb.file.delete", fmt.Sprintf("删除 KB 文件 #%d", fid), "", "success")
+	h.recordKBEvent(c, "kb.file.delete", fmt.Sprintf("删除 KB #%d 文件 #%d", id, fid), "", "success")
 	return response.OKEmpty(c)
 }
 
