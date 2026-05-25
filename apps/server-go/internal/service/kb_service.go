@@ -560,11 +560,20 @@ func (s *KBService) scheduleIndex(kbID, fileID int64, activeProfileID *int64) {
 			_ = s.kbRepo.RefreshStats(ctx, kbID)
 			return
 		}
-		result, err := s.indexer.IndexFile(ctx, kbID, fileID, KBIndexPayload{
+		// review chatgpt-codex P2：与 runIndexJob 同款 race —— IndexFile 必须显式
+		// 传 TargetProfileID，否则 admin 在 goroutine 排队期间切换 profile，会让
+		// 新 active 接管写入而 kb_files.vector_profile_id 还指向旧 profile，
+		// 出现"文件元数据 vs 实际 embedding 所属 profile"双标记冲突。
+		payload := KBIndexPayload{
 			Filename: filename,
 			MimeType: mime,
 			Content:  content,
-		})
+		}
+		if profileID > 0 {
+			payload.TargetProfileID = profileID
+			payload.TargetStatus = model.KBProfileStatusActive
+		}
+		result, err := s.indexer.IndexFile(ctx, kbID, fileID, payload)
 		if err != nil {
 			log.Error().Err(err).Int64("kb_id", kbID).Int64("file_id", fileID).Msg("kb index failed")
 			_ = s.fileRepo.MarkFailed(ctx, fileID, truncate(err.Error(), 2048))
@@ -1127,6 +1136,21 @@ func (s *KBService) UpdateProfile(ctx context.Context, kbID, profileID int64, re
 		}
 		if req.ChunkerKind != nil {
 			sets["chunker_kind"] = *req.ChunkerKind
+		}
+		// review chatgpt-codex P2：chunk_size / overlap 是 DB CHECK 约束
+		// (chk_kb_profile_overlap: overlap < size) 的两个字段，必须在写库前
+		// 算"有效值"做关系校验。否则单独传 overlap 但不传 size、或者反过来，
+		// 都会触发 PG 23514 → handler 500（业务校验 should be 4xx）。
+		effSize := p.ChunkSizeTokens
+		if req.ChunkSizeTokens != nil {
+			effSize = *req.ChunkSizeTokens
+		}
+		effOverlap := p.ChunkOverlapTokens
+		if req.ChunkOverlapTokens != nil {
+			effOverlap = *req.ChunkOverlapTokens
+		}
+		if effOverlap >= effSize {
+			return nil, fmt.Errorf("chunk_overlap_tokens (%d) 必须小于 chunk_size_tokens (%d)", effOverlap, effSize)
 		}
 		if req.ChunkSizeTokens != nil {
 			sets["chunk_size_tokens"] = *req.ChunkSizeTokens
