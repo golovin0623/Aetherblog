@@ -88,7 +88,9 @@ CREATE INDEX IF NOT EXISTS idx_kb_profile_status ON kb_profiles(kb_id, status);
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_kb_active_profile'
+        SELECT 1 FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        WHERE con.conname = 'fk_kb_active_profile' AND rel.relname = 'knowledge_bases'
     ) THEN
         ALTER TABLE knowledge_bases
             ADD CONSTRAINT fk_kb_active_profile
@@ -218,7 +220,7 @@ ON CONFLICT (slug) DO NOTHING;
 DO $$
 DECLARE
     posts_kb_id BIGINT;
-    new_profile_id BIGINT;
+    active_profile BIGINT;
     target_model VARCHAR(120);
 BEGIN
     SELECT id INTO posts_kb_id FROM knowledge_bases WHERE slug = 'posts' LIMIT 1;
@@ -227,36 +229,48 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT COALESCE(
-        NULLIF((SELECT setting_value FROM site_settings
-                WHERE setting_key = 'search.active_embedding_model'), ''),
-        (SELECT m.model_id FROM ai_task_routing r
-            JOIN ai_models m ON m.id = r.primary_model_id
-            JOIN ai_task_types t ON t.id = r.task_type_id
-            WHERE t.code = 'embedding' LIMIT 1),
-        'text-embedding-3-large'
-    ) INTO target_model;
+    -- 健康 / 用户已自定义的环境：posts KB 已有一个 active profile（可能是 default，
+    -- 也可能是用户晋升的其他 profile）。此时绝不强制把 default 置回 active ——
+    -- 否则会撞 uq_kb_profile_one_active 唯一约束、令本修复迁移在健康库上反而中止。
+    SELECT id INTO active_profile
+        FROM kb_profiles WHERE kb_id = posts_kb_id AND status = 'active' LIMIT 1;
 
-    INSERT INTO kb_profiles (
-        kb_id, code, name, description, model_id, chunker_kind,
-        chunk_size_tokens, chunk_overlap_tokens, top_k, score_threshold, status
-    )
-    VALUES (
-        posts_kb_id,
-        'default',
-        '默认 · 递归 Markdown 切片',
-        '按 H1/H2 标题 → 段落 → 句子递归切分；超过 chunk_size_tokens 回退到 token 级硬切。'
-        '相邻 chunk 之间保留 chunk_overlap_tokens token 重叠以防边界丢失上下文。'
-        'chunk_size=512, overlap=64，对 Markdown 友好。',
-        target_model,
-        'recursive', 512, 64,
-        6, 0.200,
-        'active'
-    )
-    ON CONFLICT (kb_id, code) DO UPDATE SET status = 'active'
-    RETURNING id INTO new_profile_id;
+    IF active_profile IS NULL THEN
+        -- 仅当当前没有任何 active profile（被跳过槽位的破损环境）才补默认 profile。
+        SELECT COALESCE(
+            NULLIF((SELECT setting_value FROM site_settings
+                    WHERE setting_key = 'search.active_embedding_model'), ''),
+            (SELECT m.model_id FROM ai_task_routing r
+                JOIN ai_models m ON m.id = r.primary_model_id
+                JOIN ai_task_types t ON t.id = r.task_type_id
+                WHERE t.code = 'embedding' LIMIT 1),
+            'text-embedding-3-large'
+        ) INTO target_model;
 
-    IF new_profile_id IS NOT NULL THEN
-        UPDATE knowledge_bases SET active_profile_id = new_profile_id WHERE id = posts_kb_id;
+        INSERT INTO kb_profiles (
+            kb_id, code, name, description, model_id, chunker_kind,
+            chunk_size_tokens, chunk_overlap_tokens, top_k, score_threshold, status
+        )
+        VALUES (
+            posts_kb_id,
+            'default',
+            '默认 · 递归 Markdown 切片',
+            '按 H1/H2 标题 → 段落 → 句子递归切分；超过 chunk_size_tokens 回退到 token 级硬切。'
+            '相邻 chunk 之间保留 chunk_overlap_tokens token 重叠以防边界丢失上下文。'
+            'chunk_size=512, overlap=64，对 Markdown 友好。',
+            target_model,
+            'recursive', 512, 64,
+            6, 0.200,
+            'active'
+        )
+        ON CONFLICT (kb_id, code) DO UPDATE SET status = 'active'
+        RETURNING id INTO active_profile;
+    END IF;
+
+    -- 仅在 active_profile_id 缺失时回填，尊重用户可能的自定义指向。
+    IF active_profile IS NOT NULL THEN
+        UPDATE knowledge_bases
+            SET active_profile_id = active_profile
+            WHERE id = posts_kb_id AND active_profile_id IS NULL;
     END IF;
 END $$;
