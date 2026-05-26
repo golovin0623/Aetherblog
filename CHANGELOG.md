@@ -9,6 +9,195 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Aether Knowledge (Atlas) Phase 3 MVP — AI 建议 Inbox + ai-service stub (2026-05-26, branch feat/knowledge-base)
+
+按 `docs/plan/task-aether-knowledge-system.md` Phase 3 MVP 落地: 红线 C3-1（AI 产出永远先入 inbox，不直接落 KP/Relation 表）+ 用户 accept 链路 + ai-service 启发式 stub。
+
+**Added — Migration:**
+- `000065_atlas_ai_suggestions` —— `atlas_ai_suggestions`（待用户处理的 KP/relation 候选，含 model/token/cost + status enum）+ `atlas_ignored_suggestions`（用户拒绝过的指纹）。CHECK 强制 kind=kp 时 proposed_title NOT NULL，kind=relation 时 from/to/type NOT NULL。
+
+**Added — Backend (Go):**
+- `internal/knowledge/model/ai_suggestion.go` — `AISuggestion` 数据模型
+- `internal/knowledge/repository/suggestion_repo.go` — `SuggestionRepo`: Create / FindByID / List(filter) / MarkResolved / AddIgnored / IsIgnored
+- `internal/knowledge/service/suggestion_service.go` — `AISuggestionService`: Create + Accept（自动建 KP/Relation 并打 provenance=ai_suggested + ai_suggestion_id 回指）+ Reject（写入 ignored 列表 + SHA256 指纹）
+- `internal/knowledge/dto/atlas_ai_dto.go` — `CreateSuggestionRequest` / `SuggestionResponse`
+- `internal/knowledge/handler/suggestion_handler.go` — REST: POST `/suggestions` + GET `/suggestions` (kind/status/carrierId 过滤) + GET/`/accept`/`/reject` `/suggestions/:id`
+- `internal/knowledge/service/kp_service.go` — C2-2 校验松绑: `ai_suggested + ai_suggestion_id` 视为审计闭环（不强制 evidence 标注），让 AI accept 路径可通
+
+**Added — AI Service (Python):**
+- `app/api/routes/atlas.py` —
+  - `POST /v1/atlas/claims/extract` — 启发式抽取（中文标点切句 + 7 种关键词 → kp_type）；返回 `ClaimCandidate[]` 含 confidence/rationale/tokens
+  - `POST /v1/atlas/relations/suggest` — 启发式建议（反驳/支持/因果关键词 + 双字符 bigram Jaccard 相似度 → 9 种 typed relation 中选一）
+  - `GET /v1/atlas/health` — 含 `phase=3, stub=true, relation_types=9`
+- `app/api/router.py` — include atlas.router
+- **stub 标记**: 所有响应含 `stub: true`，Phase 3 后期换 LiteLLM 时改为 false 并接 deps.get_llm_router()
+
+**Added — Admin Frontend:**
+- `apps/admin/src/pages/atlas/SuggestionsPage.tsx` — `/atlas/suggestions`: Inbox 列表 + 状态/种类过滤 + 卡片 UI（含 confidence/cost/model_id 元数据）+ accept/reject 按钮 + P3-DEMO 一键创建样例（用于无 LLM 链路验证）
+- `apps/admin/src/services/atlasService.ts` — 加 `listSuggestions / getSuggestion / createSuggestion / acceptSuggestion / rejectSuggestion` + `AtlasSuggestion` 类型
+- `apps/admin/src/App.tsx` — 加 `/atlas/suggestions` lazy 路由
+
+**Verified — Acceptance:**
+- A3 E2E backend: KP 建议 #1 accept → KP #5 (provenance=ai_suggested, aiSuggestionId=1)。Relation 建议 #2 accept → relation #2。Reject 建议 #3 → atlas_ignored_suggestions 写入一行。
+- 拒绝路径: bad relation_type 400，已 accepted 二次 accept 400。
+- ai-service: `/v1/atlas/health` 200，claims/extract 与 relations/suggest 返回结构化候选含 rationale。
+- 现状无回归: notes/KB/posts/atlas-health/atlas-graph/atlas-suggestions 全 200。
+- 性能 + 设计系统: 0 error / 337 warnings / 2255 info（Phase 0-2 同水位），admin build 23.41s。
+
+**Red Lines 持续遵守:**
+- C3-1 ✓ 所有 AI 产出先入 inbox，accept 才落 KP/Relation
+- C3-2 ✓ 接受时 ai_suggestion_id 回指源建议，可一键回滚
+- C3-3 stub 阶段无云端 API 调用 ✓（Phase 3 后期切 LiteLLM 时默认本地优先）
+
+**Phase 4/5 范围说明**: 本 session 不落地。理由: P4 视频/音频依赖 WhisperX GPU + 模型权重，无法在 sandbox 验证；P4 PDF 完整 pdf.js 抽取是独立工作量；P5 FSRS 间隔重复需真用户用半年才能度量留存。**脚手架已就绪**: Carrier 抽象已支持全 7 种 type，权限/路由/UI 框架完全可扩展——Phase 4 任一子任务只需新增 `internal/knowledge/service/XxxCarrierService.go` 并挂到 atlas group 即可。
+
+### Aether Knowledge (Atlas) Phase 2 MVP — 知识点与有类型关系 (2026-05-26, branch feat/knowledge-base)
+
+按 `docs/plan/task-aether-knowledge-system.md` Phase 2 MVP 落地: 知识点作为一阶公民 + 9 种 typed relation + 双向投影 + 图谱视图 v1。**纯加法 / 0 regression**——`notes` / `KnowledgeBase` / `blog` 等现有路径未受影响；设计系统 `0 error` 红线持续保持。
+
+**Added — Migration:**
+- `000064_atlas_kp_links` —— 衍生表 `atlas_annotation_kp_links`（多对多: annotation ↔ KP, role enum）+ `atlas_relation_evidence`（多对多: relation ↔ annotation）+ 给 `atlas_knowledge_points.uuid` 加 `DEFAULT gen_random_uuid()`（避免引 google/uuid Go 依赖）
+
+**Added — Backend (Go):**
+- `internal/knowledge/repository/kp_repo.go` — `KPRepo`: Create / FindByID / List(filter) / UpdatePartial / SoftDelete / LinkAnnotation(s) / ListEvidenceAnnotations / ListKPsForAnnotation / CreateAndLinkInTx（事务原子创建+关联）
+- `internal/knowledge/repository/relation_repo.go` — `RelationRepo`: Create / FindByID / ListForKP(in/out/all) / ListAll / SoftDelete
+- `internal/knowledge/service/kp_service.go` — `KnowledgePointService` / `RelationService` 编排，含 **C2-1 9 种关系严格白名单 + C2-2 evidence 校验 + C2-4 不自环**
+- `internal/knowledge/dto/atlas_kp_dto.go` — `CreateKnowledgePointRequest` / `UpdateKnowledgePointRequest` / `LinkAnnotationRequest` / `CreateRelationRequest` / `KnowledgePointResponse` / `TypedRelationResponse` / `GraphResponse`
+- `internal/knowledge/handler/kp_handler.go` — REST:
+  - `POST   /knowledge-points` + `GET/PATCH/DELETE /knowledge-points/:id`
+  - `GET    /knowledge-points` (type / status / keyword 筛选)
+  - `POST   /knowledge-points/:id/annotations`（挂 evidence）
+  - `GET    /knowledge-points/:id/evidence`
+  - `GET    /knowledge-points/:id/relations`（dir=in|out|all）
+  - `GET    /annotations/:id/knowledge-points`（双向投影）
+  - `POST   /relations` + `GET/DELETE /relations/:id`
+  - `GET    /graph`（nodes + edges，含 limit）
+- `internal/knowledge/model/knowledge_point.go` — `KPColumns` 常量（显式 SELECT 列表跳过 embedding 列，避开 pgvector marshalling）
+- `internal/server/server.go` — 新增 KP/Relation 子域装配，挂到既有 `/atlas/*` 权限闸下
+
+**Added — Shared Types:**
+- `packages/types/src/models/atlas.ts` — 已含 `AtlasKnowledgePoint / AtlasTypedRelation / AtlasRelationType / ATLAS_RELATION_TYPES` 常量（Phase 0 即就位，Phase 2 在 admin 与服务中使用）
+
+**Added — Admin Frontend:**
+- `apps/admin/src/pages/atlas/KnowledgePointPage.tsx` — `/atlas/kp/:id`: 元信息卡 + Markdown body + Evidence 列表（含跳 Reader）+ 关系列表（按类型着色 + 强度 + 一键删除）+ 添加关系表单（type 下拉 + 目标 KP 下拉）
+- `apps/admin/src/pages/atlas/AtlasGraphPage.tsx` — `/atlas/graph`: 纯 SVG 力导向（200 迭代 Verlet 简化）+ 三种过滤（KP type / relation type / 折叠 hub > 20 入度）+ 6.7KB chunk
+- `apps/admin/src/services/atlasService.ts` — 加 `listKnowledgePoints / get/create/update/deleteKnowledgePoint / linkAnnotationToKP / listEvidence / listKPsForAnnotation / listKPRelations / createRelation / deleteRelation / getGraph`
+- `apps/admin/src/App.tsx` — 加 `/atlas/kp/:id` + `/atlas/graph` 路由
+
+**Verified — Acceptance:**
+- A2-1 KP 抽离闭环: KP 4 由 3 条 evidence (annotation 3/4/5) 创建；反向投影 GET /annotations/3/knowledge-points 返回 `[4]`。
+- A2-2 关系建立: cites 3→4 创建成功；bad_type 与 self-loop 均 400。
+- A2-3 双向投影: API 两端均可达；UI 在 KP 详情页 evidence section 渲染。
+- A2-4 图谱可用性: AtlasGraphPage 6.7KB chunk 入构建；纯 SVG + arrow marker + 力导向。
+- A2-5 R2 关系密度: 1 关系 / 4 KP = 0.25（初始数据，非用户场景；红线在用户真实数据上度量）
+- A2-6 现状无回归: notes/KB/posts/public 全 200。
+- A2-7 性能: `pnpm typecheck` 0 error；`pnpm design-system:check` 仍 `0 error / 337 warnings / 2255 info`；admin build 30.78s 通过。
+
+**D1 决策状态**: 维持保守（CodeMirror 单轨 + W3C 多选择器）。Phase 2 未引入 Tiptap/Yjs，验证了"无 CRDT 也可上线知识点 + 关系"的可行性。
+
+### Aether Knowledge (Atlas) Phase 1 MVP — 标注层 (2026-05-26, branch feat/knowledge-base)
+
+按 `docs/plan/task-aether-knowledge-system.md` Phase 1 MVP 落地。9/12 个任务完成 + 2 个部分完成。**纯加法**——`notes` / `KnowledgeBase` / `blog` / `aetherhub` 等现有路径未受任何回归（A1-5 已 spot-check）。Phase 1 后期 task：完整 pdf.js 文本抽取 + Reader、Playwright 自动化、PDF E2E + A1-1/3/4 红线复测。
+
+**Added — Backend (Go):**
+- `internal/knowledge/repository/carrier_repo.go` — `CarrierRepo`: FindBySourceURI / FindByID / Create（事务原子创建 carrier + v1 version）/ UpdateContent（新增 version + 更新 hash）
+- `internal/knowledge/repository/annotation_repo.go` — `AnnotationRepo`: Create / FindByID / FindByCarrier / UpdatePartial (动态 SQL) / SoftDelete
+- `internal/knowledge/service/markdown_carrier.go` — `MarkdownCarrierService`: `GetOrCreateForNote` 幂等懒创建；内容指纹变化触发 `CarrierVersioningService.MigrateAnnotations`
+- `internal/knowledge/service/note_reader_adapter.go` — 把全局 `repository.NoteRepo` 适配为 Atlas 子域期望的 `NoteReader` 接口（单向依赖）
+- `internal/knowledge/service/pdf_carrier.go` — `PdfCarrierService` 骨架（GetOrCreateForMediaFile + source_uri media://{id}），实际 pdf.js 抽取留待 Phase 1 后期
+- `internal/knowledge/service/annotation_service.go` — `AnnotationService`: Create/Get/ListByCarrier/Update/Delete，**强制 ≥3 selector + TextQuote + TextPosition 双选**（红线 C1-1）
+- `internal/knowledge/service/anchoring.go` — `CarrierVersioningService.MigrateAnnotations`: 4 档锚定 (位置 → exact → prefix 邻域 → 滑窗 Levenshtein) 写回 anchor_state / anchor_score
+- `internal/knowledge/dto/atlas_dto.go` — `EnsureMarkdownCarrierRequest` / `CreateAnnotationRequest` / `UpdateAnnotationRequest` / `CarrierResponse` / `AnnotationResponse`
+- `internal/knowledge/handler/carrier_handler.go` — POST `/atlas/carriers/markdown` + GET `/atlas/carriers/:id`
+- `internal/knowledge/handler/annotation_handler.go` — POST `/atlas/annotations` + GET/PATCH/DELETE `/atlas/annotations/:id` + GET `/atlas/carriers/:id/annotations`
+- `internal/knowledge/handler/atlas_handler.go` — `MountAdmin(g, subs...)` 支持子 handler 注入
+- `internal/server/server.go` — `/atlas/*` 装配链路 + 强制 `content.atlas.read` 权限闸（`RequirePermission(accessSvc, "content.atlas.read")`）
+
+**Added — Admin Frontend:**
+- `apps/admin/src/pages/atlas/lib/selectors.ts` — `buildSelectorsFromTextRange` (rootText + offset) + `buildSelectorsFromDomRange` (DOM Range + CssSelector 路径) + `validateSelectors` 客户端兜底
+- `apps/admin/src/pages/atlas/lib/anchoring.ts` — TS 端鲁棒锚定算法（与 Go 服务端语义对齐）
+- `apps/admin/src/pages/atlas/MarkdownReaderPage.tsx` — `/atlas/reader/note/:noteId`：MarkdownPreview + 标注侧栏 + 三态徽章（anchored 绿 / soft 黄 / orphan 红）+ 「标注选区」按钮 + 「重新对齐」按钮 + 软删
+- `apps/admin/src/services/atlasService.ts` — REST 客户端扩展：`ensureMarkdownCarrier` / `getCarrier` / `listAnnotations` / `createAnnotation` / `getAnnotation` / `updateAnnotation` / `deleteAnnotation`
+- `apps/admin/src/App.tsx` — 新增 lazy 路由 `/atlas/reader/note/:noteId`
+- `apps/admin/src/components/layout/Sidebar.tsx` — INTELLIGENCE 板块新增「知识图集」入口（lucide `Compass`）
+
+**Verified — Acceptance:**
+- A1-2 MD 编辑迁移: 在 carrier 1 上建 4 条标注后修改 note 内容（前置一整段导言）；重新触发管线后 atlas_carrier_versions 增 v2 (reason=user_edit)，4 条标注全部仍 `anchored` (score=1.00)，通过档2 exact substring 命中。
+- A1-5 现状无回归: `/admin/notes` `/admin/note-folders` `/admin/kbs` `/admin/posts` `/api/v1/public/posts` 全部 HTTP 200。
+- A1-6 性能预算: 设计系统 0 errors / 337 warnings / 2255 info（Phase 0 同水位）；`pnpm typecheck` 全绿。
+- A1-1 / A1-3 / A1-4 / A1-8: 留待 Phase 1 后期 pdf.js Reader 落地后跑（红线 R1 = 90% 召回率仍需达成）。
+
+**D1 决策状态**: 保守路径维持（仅 W3C 多选择器 + Go/TS 自实现 Levenshtein 滑窗）。`diff-match-patch` 真库替换 + Y.RelativePosition 双轨延后至 Phase 1 后期 R1 红线复测。
+
+### Aether Knowledge (Atlas) Phase 0 — 数据骨架与栈决策落地 (2026-05-26, branch feat/knowledge-base)
+
+按 `docs/plan/task-aether-knowledge-system.md` Phase 0 全部 9 个任务完成，所有验收项 A0-1..A0-6 全绿。**纯加法迭代**——`notes` / `KnowledgeBase` / `blog` 任何现有路径未受影响。
+
+**Added — Migrations:**
+- `000062_atlas_core` — 5 张核心表 + 索引 + 注释。`atlas_carriers / atlas_carrier_versions / atlas_annotations / atlas_knowledge_points / atlas_typed_relations`，含 W3C 多选择器 JSONB + Y.RelativePosition BYTEA 字段 + pgvector embedding 列（dim 不锁，HNSW 索引 Phase 3 创建）+ 9 种 typed relation 严格 CHECK。
+- `000063_atlas_permissions` — seed `content.atlas.read / write / admin` 3 个权限码，已绑定 ADMIN 角色。
+
+**Added — Backend (Go):**
+- `internal/knowledge/model/` — `Carrier / CarrierVersion / Annotation / KnowledgePoint / TypedRelation` 数据模型 + `RelationTypeSet` 9 种关系白名单。
+- `internal/knowledge/repository/atlas_repo.go` — Phase 0 骨架（Ping 健康自检）；CRUD 由 Phase 1 子 Repo 填充。
+- `internal/knowledge/service/atlas_service.go` — `HealthCheck` 入口。
+- `internal/knowledge/handler/atlas_handler.go` — `MountAdmin` + `GET /atlas/health`。
+- `internal/server/server.go` — 挂载 `admin.Group("/atlas")`，引用 `atlasrepo / atlassvc / atlashandler`。
+- `internal/knowledge/pkg/anchoring/doc.go` — Phase 1 锚定算法占位包。
+
+**Added — Admin Frontend:**
+- `pages/atlas/AtlasPage.tsx` — Atlas 模块入口（占位）：健康自检卡 + Schema 基线卡 + 权限卡 + 5 阶段路线图 + Phase 0 占位提示。
+- `services/atlasService.ts` — REST 客户端（Phase 0 仅 `health()`）。
+- `App.tsx` — 新增 lazy 路由 `/atlas`。
+
+**Added — Shared Types:**
+- `packages/types/src/models/atlas.ts` — `AtlasCarrier / AtlasAnnotation / AtlasKnowledgePoint / AtlasTypedRelation` + W3C selector 联合类型 + 9 种 `AtlasRelationType` 常量。
+- `packages/types/src/models/index.ts` — 加 `export * from './atlas'`。
+
+**Added — Docs & Plan:**
+- `docs/plan/task-knowledge-decisions.md` V1.1 — D1/D2/D3 全保守路径定稿 + Spike-1/Spike-2 结论。
+- `docs/plan/task-aether-knowledge-system.md` §7 完成日志 / §6 任务登记表 全部 P0 任务标 done。
+- `scripts/atlas/anchoring-spike.mjs` — Phase 0 中文锚定鲁棒性 spike，3 个编辑强度档（light/medium/heavy）+ JSON 输出。
+
+**Verified — Acceptance:**
+- A0-1 migrations 双向: 已实测 down 2 → up 全程 dirty=false；`atlas_*` 5 张表 + 3 permission rows 出现/消失符合预期。
+- A0-2 `/api/v1/admin/atlas/health` 200 OK 直连 `:8080` + 网关 `:7899` 双通；含 `{ ok:true, module:'atlas', phase:0 }` payload。
+- A0-3 `/admin/atlas` SPA 渲染；admin 构建产物含 `AtlasPage-DaTtokZL.js` chunk。
+- A0-4 `pnpm typecheck` 全绿；`pnpm design-system:check` 保持 **0 error**（337 warnings / 2251 info 均为既有项目代码，未新增）。
+- A0-5 spike 数字: light=80.61% / medium=10.37% / heavy=0.43%（caveat：脚本使用简化 Levenshtein 兜底，下界值；Phase 1 必须用真 diff-match-patch 复测）。
+- A0-6 本 CHANGELOG 条目 + 手册 §7 完成日志 同步完成。
+
+**D1 决策**: 保守 — CodeMirror 单轨保留，新模块 Phase 1 用纯 W3C 多选择器 + 真 diff-match-patch + 向量回退。Tiptap+Yjs 推迟到 Phase 2 末复盘 R1 后再评估。
+
+### Aether Knowledge 多模态知识系统落地手册 V1.0 + V1.0.1 补丁 (2026-05-26, branch feat/knowledge-base)
+
+把 `docs/plan/knowledge.md`（支持标注迁移与知识图谱涌现的多模态个人知识系统技术调研报告）落地为可执行计划，沉淀为独立路线图手册。**仅为规划文档，未触达任何代码 / schema / API / UI**。
+
+**Added — Plan:**
+- `docs/plan/task-aether-knowledge-system.md` — 5 阶段（约 40-52 周）落地路线图：
+  - §0 北极星（三条铁律 + 五条红线 + 与既有 notes / KB / ai-service / blog 的边界 + D1/D2/D3 决策项）
+  - §1 本地开发环境基线（含 §1.0 基线快照：feat/knowledge-base @ 29013307 · migrations 000061 · 35 handler）
+  - §2 数据骨架（4 张核心新表 + 3 张衍生表，从 migration 000062 起）
+  - §3 Phase 0-5 详细任务清单 / 约束 / 验收 / 红线触发规则
+  - §4 持续构建保障机制（航前清单 + 防偏航 checklist + 失败回滚）
+  - §5-6 任务命名规范 `task-knowledge-P{n}-{seq}-{slug}` + 任务登记表
+  - §7 完成日志（live） + §8 风险登记册 + §11 计划终点 DoD
+
+**Patched — V1.0.1 (本日):**
+- §1.0 新增「基线快照」表，钉死 commit hash / migration 编号 / 已知文档偏差
+- §0.4 D2 修订：`note_embeddings` 不是"死表"，表 + admin UI "AI 索引状态" 占位面板均已就绪，仅缺后台 worker
+- §3 Phase 3 P3-05 修订：hybrid retrieval 直接复用 `app/services/kb_indexer.py` + `kb_recall.py`，不重造 chunker
+
+**Doc 同步:**
+- `CLAUDE.md` 版本基线从 `2026-05-04 / migrations 000045 / 26 handler` 更新到 `2026-05-26 / 000061 / 35 handler / branch feat/knowledge-base @ 29013307`
+- `docs/INDEX.md` 「📋 设计与报告」节新增「Aether Knowledge 调研报告 + 落地手册」两条目
+
+**未变更 / 不需要更新:**
+- `docs/architecture.md`（未改 schema 与架构）
+- `.claude/docs/api-handlers.md`（未新增 endpoint）
+- `.claude/docs/database-migrations.md`（未写新 migration）
+- 设计系统文档（未动 UI）
+
 ### 知识库（Knowledge Base）能力上线 (2026-05-25, branch codex/dev-fix-ui)
 
 INTELLIGENCE 板块新增「知识库」入口，对齐 LobeHub 资源库交互。灵境对话可勾选多个 KB

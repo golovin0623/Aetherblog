@@ -5,3 +5,4 @@ export * from './comment';
 export * from './media';
 export * from './friendLink';
 export * from './access';
+export * from './atlas';
