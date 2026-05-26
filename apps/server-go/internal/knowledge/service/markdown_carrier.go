@@ -53,6 +53,10 @@ func (s *MarkdownCarrierService) AttachVersioning(v *CarrierVersioningService) {
 
 // GetOrCreateForNote 懒创建一个 Carrier 包装指定 note。幂等。
 // 调用方场景: 用户在 Atlas Reader 第一次打开某条 note 时触发。
+//
+// PR #724 review fix (Codex P1): 过去 read-then-insert 模式无锁，并发首次打开同一 note
+// 会同时 miss FindBySourceURI 各自 INSERT 造成重复行。现在改走 CarrierRepo.UpsertBySourceURI
+// 单一 INSERT ... ON CONFLICT (source_uri) 路径 + migration 000066 加 UNIQUE 约束。
 func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID int64) (*model.Carrier, error) {
 	if noteID <= 0 {
 		return nil, errors.New("invalid note id")
@@ -62,12 +66,6 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 	}
 
 	uri := MarkdownSourceURI(noteID)
-
-	// 1) 已存在则直接返回
-	existing, err := s.carriers.FindBySourceURI(ctx, uri)
-	if err != nil {
-		return nil, fmt.Errorf("find carrier: %w", err)
-	}
 
 	note, err := s.notes.GetNoteSnapshot(ctx, noteID)
 	if err != nil {
@@ -79,28 +77,10 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 
 	hash := contentSHA256(note.Content)
 
-	if existing != nil {
-		// 内容指纹变更 → 新建一版 + 触发标注迁移（P1-09）
-		// PR #724 review fix (Gemini high + Codex P1): UpdateContent + MigrateAnnotations
-		// 错误必须 propagate；过去吞掉错误导致内存 hash 与 DB 不一致 + 迁移失败被静默吞掉。
-		if existing.ContentHash != hash {
-			diff := []byte(`{"reason":"note_edited"}`)
-			if err := s.carriers.UpdateContent(ctx, existing.ID, hash, uri, "user_edit", diff); err != nil {
-				return nil, fmt.Errorf("update carrier content: %w", err)
-			}
-			existing.ContentHash = hash
-			if s.versioning != nil {
-				if _, err := s.versioning.MigrateAnnotations(ctx, existing.ID, note.Content); err != nil {
-					// 迁移失败：carrier 版本已落库，但标注未重对齐。返回错误让上层决定（前端可重试）。
-					return nil, fmt.Errorf("migrate annotations after note edit: %w", err)
-				}
-			}
-		}
-		return existing, nil
-	}
-
-	// 2) 懒创建
-	c := &model.Carrier{
+	// 原子 upsert：返回 (carrier, justCreated)。
+	// justCreated=true: 本次 INSERT，已同步建 v1 carrier_version
+	// justCreated=false: 并发 / 之前已存在，仅拿到已有 carrier
+	candidate := &model.Carrier{
 		Type:        "markdown",
 		SourceURI:   uri,
 		ContentHash: hash,
@@ -109,11 +89,28 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 		OwnerID:     note.AuthorID,
 		Status:      "ready",
 	}
-	created, err := s.carriers.Create(ctx, c, uri)
+	carrier, justCreated, err := s.carriers.UpsertBySourceURI(ctx, candidate, uri)
 	if err != nil {
-		return nil, fmt.Errorf("create carrier: %w", err)
+		return nil, fmt.Errorf("upsert carrier: %w", err)
 	}
-	return created, nil
+
+	// 已存在且 hash 变了：bump 版本 + 迁移标注
+	// PR #724 review fix (Gemini high + Codex P1): UpdateContent + MigrateAnnotations
+	// 错误必须 propagate；过去吞掉错误导致内存 hash 与 DB 不一致 + 迁移失败被静默吞掉。
+	if !justCreated && carrier.ContentHash != hash {
+		diff := []byte(`{"reason":"note_edited"}`)
+		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, uri, "user_edit", diff); err != nil {
+			return nil, fmt.Errorf("update carrier content: %w", err)
+		}
+		carrier.ContentHash = hash
+		if s.versioning != nil {
+			if _, err := s.versioning.MigrateAnnotations(ctx, carrier.ID, note.Content); err != nil {
+				// 迁移失败：carrier 版本已落库，但标注未重对齐。返回错误让上层决定（前端可重试）。
+				return nil, fmt.Errorf("migrate annotations after note edit: %w", err)
+			}
+		}
+	}
+	return carrier, nil
 }
 
 // MarkdownSourceURI 构造 markdown 载体的 source_uri。集中在一处便于将来调整。

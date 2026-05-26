@@ -93,6 +93,69 @@ func (r *CarrierRepo) Create(ctx context.Context, c *model.Carrier, storageURI s
 	return &out, nil
 }
 
+// UpsertBySourceURI 原子地插入或返回已存在的 carrier，按 source_uri 唯一约束去重。
+//
+// PR #724 review fix (Codex P1): GetOrCreateForNote 过去做 read-then-insert 没有锁，
+// 并发首次打开同一 note 会同时 miss + 同时 INSERT 造成 source_uri 重复 carrier。
+// 本方法走 INSERT ... ON CONFLICT (source_uri) DO UPDATE source_uri = EXCLUDED.source_uri
+// 模式 + xmax = 0 探测是否真插入。RETURNING 始终返回行（DO UPDATE 无副作用）。
+//
+// 返回 (carrier, justCreated, err)：
+//   justCreated=true 表示本次实际 INSERT，调用方需要再写一行 v1 carrier_version
+//   justCreated=false 表示行已存在，仅返回已有 carrier（含旧 hash），调用方按需做版本迁移
+func (r *CarrierRepo) UpsertBySourceURI(ctx context.Context, c *model.Carrier, storageURI string) (*model.Carrier, bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+
+	var out model.Carrier
+	var justCreated bool
+	err = tx.QueryRowxContext(ctx, `
+		INSERT INTO atlas_carriers (
+			type, source_uri, content_hash, title, author, language,
+			metadata, owner_id, status, status_message
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		ON CONFLICT (source_uri) DO UPDATE
+			SET source_uri = EXCLUDED.source_uri
+		RETURNING
+			id, type, source_uri, content_hash, title, author, language,
+			metadata, owner_id, status, status_message, deleted, created_at, updated_at,
+			(xmax = 0) AS just_created`,
+		c.Type, c.SourceURI, c.ContentHash, c.Title, c.Author, c.Language,
+		c.Metadata, c.OwnerID, c.Status, c.StatusMessage,
+	).Scan(
+		&out.ID, &out.Type, &out.SourceURI, &out.ContentHash, &out.Title,
+		&out.Author, &out.Language, &out.Metadata, &out.OwnerID,
+		&out.Status, &out.StatusMessage, &out.Deleted, &out.CreatedAt, &out.UpdatedAt,
+		&justCreated,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// 只在真插入时建 v1 version；并发情况下仅一个 tx 拿到 justCreated=true
+	if justCreated {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO atlas_carrier_versions (
+				carrier_id, version_no, content_hash, storage_uri, diff_from_prev, reason
+			)
+			VALUES ($1, 1, $2, $3, '{}'::jsonb, 'original')
+			ON CONFLICT (carrier_id, version_no) DO NOTHING`,
+			out.ID, c.ContentHash, storageURI,
+		); err != nil {
+			return nil, false, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return &out, justCreated, nil
+}
+
 // UpdateContent 在内容指纹变更时新增一个 CarrierVersion，并更新 carrier 的
 // content_hash + updated_at（保留 carrier.id，原文不可变指的是版本不可变）。
 func (r *CarrierRepo) UpdateContent(ctx context.Context, carrierID int64, newHash, storageURI, reason string, diffJSON []byte) error {

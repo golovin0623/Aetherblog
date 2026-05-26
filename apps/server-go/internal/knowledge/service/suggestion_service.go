@@ -207,13 +207,26 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 	}
 
 	// MarkResolved 同事务
-	if _, err := tx.ExecContext(ctx, `
+	// PR #724 review fix (Codex P1 #2): 必须检查 RowsAffected。并发场景下：
+	//   T1 BEGIN → T1 INSERT kp → T1 UPDATE WHERE pending → 1 row → T1 COMMIT
+	//   T2 BEGIN → T2 INSERT kp → T2 UPDATE WHERE pending → 0 rows (T1 已翻转)
+	// 若 T2 不检查 RowsAffected 会成功 commit，留下重复 KP/Relation 而 suggestion 仍只指向 T1 的那个。
+	// 这里 0 rows 即并发冲突 —— 必须返回错误触发 Rollback 抹掉本 tx 插入的 KP/Relation。
+	res, err := tx.ExecContext(ctx, `
 		UPDATE atlas_ai_suggestions
 		SET status='accepted', resolved_kp_id=$1, resolved_relation_id=$2, updated_at=CURRENT_TIMESTAMP
 		WHERE id=$3 AND status='pending'`,
 		resolvedKPID, resolvedRelID, sug.ID,
-	); err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("mark resolved: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("rows affected check: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("建议 %d 状态已被并发改变（可能另一个 tx 已 accept），本事务回滚以避免重复实体", sug.ID)
 	}
 
 	if err := tx.Commit(); err != nil {
