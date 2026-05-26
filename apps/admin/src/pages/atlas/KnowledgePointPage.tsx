@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 
 import type {
   AtlasAnnotation,
+  AtlasCarrier,
   AtlasKnowledgePoint,
   AtlasRelationType,
   AtlasTypedRelation,
@@ -50,6 +51,9 @@ export default function KnowledgePointPage() {
   const [evidence, setEvidence] = useState<EvidenceRow[]>([]);
   const [relations, setRelations] = useState<AtlasTypedRelation[]>([]);
   const [otherKPs, setOtherKPs] = useState<AtlasKnowledgePoint[]>([]);
+  // PR #724 review fix (Codex P1 #3): 缓存 evidence 涉及的 carrier，用于把 carrierId
+  // 解析回 noteId（reader 路由 /atlas/reader/note/:noteId 期望的是 noteId）。
+  const [carrierMap, setCarrierMap] = useState<Map<number, AtlasCarrier>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newRel, setNewRel] = useState<{ type: AtlasRelationType; toKpId: number | null }>(
@@ -83,7 +87,27 @@ export default function KnowledgePointPage() {
           }
         })
       );
-      setEvidence(evRows.map((e) => ({ ...e, annotation: annoMap.get(e.annotationId) })));
+      const enrichedEvidence = evRows.map((e) => ({ ...e, annotation: annoMap.get(e.annotationId) }));
+      setEvidence(enrichedEvidence);
+
+      // PR #724 review fix (Codex P1 #3): 预拉 evidence 涉及的 carrier，便于把 carrierId
+      // 映射成 noteId（reader 路由用 noteId 而非 carrierId）。
+      const uniqueCarrierIds = Array.from(
+        new Set(enrichedEvidence.map((e) => e.annotation?.carrierId).filter((x): x is number => !!x))
+      );
+      const carriers = new Map<number, AtlasCarrier>();
+      await Promise.all(
+        uniqueCarrierIds.map(async (cid) => {
+          try {
+            const c = await atlasService.getCarrier(cid);
+            carriers.set(cid, c.data);
+          } catch {
+            /* carrier 已删或权限不足 */
+          }
+        })
+      );
+      setCarrierMap(carriers);
+
       setRelations(relRes.data ?? []);
       setOtherKPs((allKpsRes.data ?? []).filter((x) => x.id !== kpId));
       setError(null);
@@ -138,14 +162,8 @@ export default function KnowledgePointPage() {
     return m;
   }, [kp, otherKPs]);
 
-  if (loading || !kp) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
-      </div>
-    );
-  }
-
+  // PR #724 review fix (Codex P2 #4): 错误分支必须在 (!kp) 之前判断，
+  // 否则 fetch 失败后 loading=false + kp=null 会被 spinner 永远捕获，error 分支永不可达。
   if (error) {
     return (
       <div className="p-6">
@@ -157,6 +175,22 @@ export default function KnowledgePointPage() {
           <ArrowLeft className="h-4 w-4" /> 返回 Atlas
         </button>
         <div className="rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] p-4 text-sm text-[var(--ink-primary)]">{error}</div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+      </div>
+    );
+  }
+
+  if (!kp) {
+    return (
+      <div className="p-6 text-sm text-[var(--ink-secondary)]">
+        知识点不存在或已被删除（KP #{kpId}）。
       </div>
     );
   }
@@ -224,15 +258,25 @@ export default function KnowledgePointPage() {
                       <span className="text-[var(--ink-muted)]">」</span>
                     </p>
                   )}
-                  {a && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/atlas/reader/note/${a.carrierId}`)}
-                      className="mt-2 text-[10px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
-                    >
-                      在阅读器中查看 →
-                    </button>
-                  )}
+                  {a && (() => {
+                    // PR #724 review fix (Codex P1 #3): 解析 carrier.source_uri='notes://N' 得到 noteId。
+                    // reader 路由 /atlas/reader/note/:noteId 用的是 noteId 而非 carrierId。
+                    // 非 markdown 类型 / 无法解析时隐藏跳转按钮。
+                    const carrier = carrierMap.get(a.carrierId);
+                    if (!carrier || carrier.type !== 'markdown') return null;
+                    const match = /^notes:\/\/(\d+)$/.exec(carrier.sourceUri);
+                    if (!match) return null;
+                    const noteId = match[1];
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/atlas/reader/note/${noteId}`)}
+                        className="mt-2 text-[10px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                      >
+                        在阅读器中查看 →
+                      </button>
+                    );
+                  })()}
                 </li>
               );
             })}

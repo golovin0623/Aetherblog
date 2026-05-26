@@ -24,7 +24,7 @@ import { atlasService } from '@/services/atlasService';
 import { noteService } from '@/services/noteService';
 import type { NoteDetail } from '@/types/note';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
-import { buildSelectorsFromTextRange, validateSelectors } from './lib/selectors';
+import { buildSelectorsFromDomRange, validateSelectors } from './lib/selectors';
 import { anchor } from './lib/anchoring';
 
 interface ReaderState {
@@ -87,11 +87,22 @@ export default function MarkdownReaderPage() {
   }, [noteId]);
 
   // 选中文本 → 抽取多选择器
+  //
+  // PR #724 review fix (Codex P1 #2): 过去用 fullText.indexOf(text) 取偏移会永远命中
+  // 第一个相同子串；同一短语在文档中重复出现时所有标注都会落到第一处。
+  // 现在改走 buildSelectorsFromDomRange + DOM Range API，从真实 DOM 选区计算字符偏移。
+  // 锚定空间是「渲染后 textContent」而非 markdown 源——TextQuote prefix/suffix 仍然管用。
   const handleHighlight = useCallback(async () => {
     if (!state.carrier || !state.note) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       toast.message('请先选中要标注的文本');
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const root = previewRef.current;
+    if (!root || !root.contains(range.commonAncestorContainer)) {
+      toast.message('请在阅读区内选择文本');
       return;
     }
     const text = selection.toString();
@@ -100,23 +111,16 @@ export default function MarkdownReaderPage() {
       return;
     }
 
-    // 通过文档全文 + 字符偏移构造 W3C 选择器
-    const fullText = state.note.contentMarkdown ?? '';
-    const idx = fullText.indexOf(text);
-    if (idx === -1) {
-      // 文本可能跨多个 markdown 节点（含 inline 格式）—— 这里降级提示用户
-      toast.error('选区在原文中未找到精确匹配，请缩短选择范围');
+    const rootText = root.textContent ?? '';
+    const built = buildSelectorsFromDomRange(range, rootText, root);
+    if (!built) {
+      toast.error('选区无法构造选择器（DOM 文本与渲染不一致），请缩短选择范围或重试');
       return;
     }
 
-    const { selectors: baseSelectors } = buildSelectorsFromTextRange(fullText, idx, idx + text.length);
-    // 补一个 CssSelector 凑够 3 个（红线 C1-1）
-    const containerSelector: import('@aetherblog/types').AtlasSelector = {
-      type: 'CssSelector',
-      value: 'div[data-atlas-reader] .markdown-preview',
-    };
-    const selectors = [...baseSelectors, containerSelector];
-
+    // buildSelectorsFromDomRange 默认返回 TextQuote+TextPosition+CssSelector ≥3 个，
+    // 已满足红线 C1-1；validateSelectors 二次兜底校验。
+    const selectors = built.selectors;
     const valid = validateSelectors(selectors);
     if (!valid.ok) {
       toast.error(valid.reason || '选择器校验失败');

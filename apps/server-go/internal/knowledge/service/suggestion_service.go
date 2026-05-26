@@ -240,6 +240,10 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 }
 
 // Reject 拒绝建议 + 把指纹写入忽略列表（防止反复推荐）。
+//
+// PR #724 review fix (Codex P1 #1): MarkResolved 现在带 WHERE status='pending' 守卫。
+// 若返回 ErrStatusNotPending（并发场景下另一个 tx 已 accept/reject），向上传播让 handler
+// 返回明确的并发冲突错误，避免静默盖掉 Accept 结果。
 func (s *AISuggestionService) Reject(ctx context.Context, id int64, userID int64) (*model.AISuggestion, error) {
 	sug, err := s.sug.FindByID(ctx, id)
 	if err != nil || sug == nil {
@@ -249,6 +253,9 @@ func (s *AISuggestionService) Reject(ctx context.Context, id int64, userID int64
 		return nil, fmt.Errorf("建议状态 %s 不可 reject", sug.Status)
 	}
 	if err := s.sug.MarkResolved(ctx, sug.ID, "rejected", nil, nil); err != nil {
+		if errors.Is(err, repository.ErrStatusNotPending) {
+			return nil, fmt.Errorf("建议 %d 已被并发处理（accept/reject），本次 reject 拒绝执行", sug.ID)
+		}
 		return nil, err
 	}
 	if userID > 0 {

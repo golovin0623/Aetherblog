@@ -97,18 +97,41 @@ func (r *SuggestionRepo) List(ctx context.Context, f SuggestionFilter) ([]model.
 }
 
 // MarkResolved 标记建议为 accepted（带 resolved_*_id）或 rejected。
+//
+// PR #724 review fix (Codex P1 #1): UPDATE 必须 WHERE status='pending' + 检查 RowsAffected。
+// 否则并发场景下：T1 Accept 已把状态翻到 accepted + resolved_kp_id；T2 Reject 还能盲 UPDATE
+// 把同一行改回 rejected 并清空 resolved_*，造成 KP 已建但建议状态错乱+孤儿 KP。
+//
+// 返回:
+//   * nil: 命中并更新了 1 行
+//   * ErrStatusNotPending: 行不存在或已不是 pending（调用方应回滚事务）
+//   * 其他: DB 错误
 func (r *SuggestionRepo) MarkResolved(
 	ctx context.Context, id int64, status string,
 	resolvedKPID, resolvedRelationID *int64,
 ) error {
-	_, err := r.db.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE atlas_ai_suggestions
 		SET status=$1, resolved_kp_id=$2, resolved_relation_id=$3, updated_at=CURRENT_TIMESTAMP
-		WHERE id=$4`,
+		WHERE id=$4 AND status='pending'`,
 		status, resolvedKPID, resolvedRelationID, id,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrStatusNotPending
+	}
+	return nil
 }
+
+// ErrStatusNotPending 是 MarkResolved 在乐观锁失败时返回的错误。
+// 调用方可以用 errors.Is(err, ErrStatusNotPending) 区分并发冲突 vs 真实 DB 错误。
+var ErrStatusNotPending = errors.New("suggestion 状态已不是 pending（可能被并发 accept/reject）")
 
 // AddIgnored 在 atlas_ignored_suggestions 写入忽略指纹。
 func (r *SuggestionRepo) AddIgnored(ctx context.Context, fingerprint, kind string, userID int64) error {
