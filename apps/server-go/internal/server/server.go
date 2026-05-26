@@ -274,19 +274,22 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasMarkdown.AttachVersioning(atlasVersioning)
 	atlasService := atlassvc.NewAtlasService(atlasRepo, atlasMarkdown)
 	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo)
-	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read（写路径在 handler 内部再细分）。
+	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read。
+	// PR #724 review fix: 所有 mutating routes (POST/PATCH/DELETE) 额外要求 content.atlas.write。
 	// 沿用 accessSvc 作为 PermissionChecker（与 /admin/access 路由一致）。
 	atlasGroup := admin.Group("/atlas", middleware.RequirePermission(accessSvc, "content.atlas.read"))
+	atlasWriteMW := middleware.RequirePermission(accessSvc, "content.atlas.write")
 	// Phase 2 新增 KP + Relation + Graph 子域
 	atlasKPRepo := atlasrepo.NewKPRepo(atlasRepo)
 	atlasRelRepo := atlasrepo.NewRelationRepo(atlasRepo)
 	atlasKPSvc := atlassvc.NewKnowledgePointService(atlasKPRepo, atlasRelRepo)
 	atlasRelSvc := atlassvc.NewRelationService(atlasRelRepo)
-	// Phase 3 新增 AI 建议子域
+	// Phase 3 新增 AI 建议子域。Accept 走原子 tx (PR #724 review fix)，需要直接 *sqlx.DB。
 	atlasSugRepo := atlasrepo.NewSuggestionRepo(atlasRepo)
-	atlasSugSvc := atlassvc.NewAISuggestionService(atlasSugRepo, atlasKPSvc, atlasRelSvc)
+	atlasSugSvc := atlassvc.NewAISuggestionService(atlasSugRepo, atlasKPSvc, atlasRelSvc, s.DB)
 	atlashandler.NewAtlasHandler(atlasService).MountAdmin(
 		atlasGroup,
+		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
 		atlashandler.NewAnnotationHandler(atlasAnnoSvc),
 		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc),

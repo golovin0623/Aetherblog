@@ -28,8 +28,9 @@ func NewCarrierHandler(svc *atlassvc.AtlasService) *CarrierHandler {
 }
 
 // Mount 挂载到 /atlas 子组。
-func (h *CarrierHandler) Mount(g *echo.Group) {
-	g.POST("/carriers/markdown", h.EnsureMarkdown)
+// 红线 RBAC (PR #724 review fix): POST 需 content.atlas.write，由 server.go 传入。
+func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.GET("/carriers/:id", h.Get)
 }
 

@@ -43,20 +43,21 @@ func NewKPHandler(kp *atlassvc.KnowledgePointService, rel *atlassvc.RelationServ
 }
 
 // Mount 挂到 /atlas 子组。
-func (h *KPHandler) Mount(g *echo.Group) {
-	g.POST("/knowledge-points", h.CreateKP)
+// 红线 RBAC (PR #724 review fix): mutating routes 套 content.atlas.write。
+func (h *KPHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	g.POST("/knowledge-points", h.CreateKP, write)
 	g.GET("/knowledge-points", h.ListKP)
 	g.GET("/knowledge-points/:id", h.GetKP)
-	g.PATCH("/knowledge-points/:id", h.UpdateKP)
-	g.DELETE("/knowledge-points/:id", h.DeleteKP)
-	g.POST("/knowledge-points/:id/annotations", h.LinkAnnotation)
+	g.PATCH("/knowledge-points/:id", h.UpdateKP, write)
+	g.DELETE("/knowledge-points/:id", h.DeleteKP, write)
+	g.POST("/knowledge-points/:id/annotations", h.LinkAnnotation, write)
 	g.GET("/knowledge-points/:id/evidence", h.ListEvidence)
 	g.GET("/knowledge-points/:id/relations", h.ListKPRelations)
 	g.GET("/annotations/:id/knowledge-points", h.ListKPsForAnnotation)
 
-	g.POST("/relations", h.CreateRelation)
+	g.POST("/relations", h.CreateRelation, write)
 	g.GET("/relations/:id", h.GetRelation)
-	g.DELETE("/relations/:id", h.DeleteRelation)
+	g.DELETE("/relations/:id", h.DeleteRelation, write)
 
 	g.GET("/graph", h.Graph)
 }

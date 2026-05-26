@@ -88,21 +88,32 @@ export function buildSelectorsFromDomRange(
 }
 
 /**
- * 计算 DOM 文本节点在容器内的累计字符偏移。
- * 通过 TreeWalker 遍历 root 下所有 text 节点直到目标节点出现。
+ * 计算 DOM 节点边界（node, offsetInNode）在 root 内的累计字符偏移。
+ *
+ * PR #724 review fix (Gemini medium): 过去只处理 Node.TEXT_NODE，遇到 Element 容器
+ *   （Range 边界落在元素边界或空元素时）直接返回 0，导致定位错位。
+ *
+ * 这里改用 DOM Range API：构造一个从 (root,0) 到 (node, offsetInNode) 的临时 Range，
+ * 其 .toString().length 即是 root 起点到该边界的字符数（Range.toString() 自动剔除
+ * Element/Comment 节点，仅累加 Text 内容），同时正确处理：
+ *   - Text 节点（offsetInNode = 字符位置）
+ *   - Element 节点（offsetInNode = 子节点索引；Range 自动汇总到该子节点之前的所有 Text）
+ *
+ * 失败 fallback 为 0（原行为）。
  */
 function absoluteCharOffset(root: HTMLElement, node: Node, offsetInNode: number): number {
-  if (node.nodeType === Node.TEXT_NODE && node.parentElement && root.contains(node)) {
-    let total = 0;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let cur: Node | null = walker.nextNode();
-    while (cur) {
-      if (cur === node) return total + offsetInNode;
-      total += (cur as Text).data.length;
-      cur = walker.nextNode();
-    }
+  if (!root.contains(node) && node !== root) return 0;
+  try {
+    const r = document.createRange();
+    r.setStart(root, 0);
+    r.setEnd(node, offsetInNode);
+    const text = r.toString();
+    r.detach?.(); // detach 是历史 API，部分浏览器无害忽略
+    return text.length;
+  } catch {
+    // 罕见：node 是从外部克隆的节点 / root 与 node 不在同一文档
+    return 0;
   }
-  return 0;
 }
 
 /**

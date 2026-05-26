@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 )
@@ -69,21 +70,21 @@ func (r *SuggestionRepo) List(ctx context.Context, f SuggestionFilter) ([]model.
 	args := []any{}
 	idx := 1
 	if f.Kind != nil && *f.Kind != "" {
-		q += " AND kind=$" + itoaKP(idx)
+		q += " AND kind=$" + strconv.Itoa(idx)
 		args = append(args, *f.Kind)
 		idx++
 	}
 	if f.Status != nil && *f.Status != "" {
-		q += " AND status=$" + itoaKP(idx)
+		q += " AND status=$" + strconv.Itoa(idx)
 		args = append(args, *f.Status)
 		idx++
 	}
 	if f.CarrierID != nil {
-		q += " AND carrier_id=$" + itoaKP(idx)
+		q += " AND carrier_id=$" + strconv.Itoa(idx)
 		args = append(args, *f.CarrierID)
 		idx++
 	}
-	q += " ORDER BY created_at DESC LIMIT $" + itoaKP(idx)
+	q += " ORDER BY created_at DESC LIMIT $" + strconv.Itoa(idx)
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 200

@@ -81,12 +81,19 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 
 	if existing != nil {
 		// 内容指纹变更 → 新建一版 + 触发标注迁移（P1-09）
+		// PR #724 review fix (Gemini high + Codex P1): UpdateContent + MigrateAnnotations
+		// 错误必须 propagate；过去吞掉错误导致内存 hash 与 DB 不一致 + 迁移失败被静默吞掉。
 		if existing.ContentHash != hash {
 			diff := []byte(`{"reason":"note_edited"}`)
-			_ = s.carriers.UpdateContent(ctx, existing.ID, hash, uri, "user_edit", diff)
+			if err := s.carriers.UpdateContent(ctx, existing.ID, hash, uri, "user_edit", diff); err != nil {
+				return nil, fmt.Errorf("update carrier content: %w", err)
+			}
 			existing.ContentHash = hash
 			if s.versioning != nil {
-				_, _ = s.versioning.MigrateAnnotations(ctx, existing.ID, note.Content)
+				if _, err := s.versioning.MigrateAnnotations(ctx, existing.ID, note.Content); err != nil {
+					// 迁移失败：carrier 版本已落库，但标注未重对齐。返回错误让上层决定（前端可重试）。
+					return nil, fmt.Errorf("migrate annotations after note edit: %w", err)
+				}
 			}
 		}
 		return existing, nil

@@ -35,11 +35,12 @@ func NewAnnotationHandler(svc *atlassvc.AnnotationService) *AnnotationHandler {
 }
 
 // Mount 挂载到 /atlas 子组。
-func (h *AnnotationHandler) Mount(g *echo.Group) {
-	g.POST("/annotations", h.Create)
+// 红线 RBAC (PR #724 review fix): mutating routes 套 content.atlas.write。
+func (h *AnnotationHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	g.POST("/annotations", h.Create, write)
 	g.GET("/annotations/:id", h.Get)
-	g.PATCH("/annotations/:id", h.Update)
-	g.DELETE("/annotations/:id", h.Delete)
+	g.PATCH("/annotations/:id", h.Update, write)
+	g.DELETE("/annotations/:id", h.Delete, write)
 	g.GET("/carriers/:id/annotations", h.ListByCarrier)
 }
 

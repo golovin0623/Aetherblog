@@ -25,20 +25,24 @@ func NewAtlasHandler(svc *service.AtlasService) *AtlasHandler {
 
 // MountAdmin 注册 /v1/admin/atlas 下的路由。
 //
-// Phase 0 仅 /health。Phase 1 起加入 /carriers/markdown + /carriers/:id +
-// /annotations CRUD + /carriers/:id/annotations。
+// Phase 0 仅 /health（读权限即可，由 g 自带的 content.atlas.read 中间件兜底）。
 //
-// 子 handler 由外部装配（server.go）后通过 AttachSubHandlers 注入，避免循环依赖。
-func (h *AtlasHandler) MountAdmin(g *echo.Group, subs ...SubHandler) {
+// 红线 RBAC (PR #724 review fix): mutating routes 必须额外 require content.atlas.write，
+// 由 server.go 装配时传入 `write` MiddlewareFunc，sub-handler 自行套到 POST/PATCH/DELETE。
+//
+// 子 handler 由外部装配（server.go）注入，避免循环依赖。
+func (h *AtlasHandler) MountAdmin(g *echo.Group, write echo.MiddlewareFunc, subs ...SubHandler) {
 	g.GET("/health", h.Health)
 	for _, sh := range subs {
-		sh.Mount(g)
+		sh.Mount(g, write)
 	}
 }
 
 // SubHandler 是 Atlas 子路由 handler 的统一接口。
+// `write` 是写权限中间件（content.atlas.write）—— sub-handler 必须给所有
+// POST/PATCH/DELETE 单独套上，GET 不需要。
 type SubHandler interface {
-	Mount(g *echo.Group)
+	Mount(g *echo.Group, write echo.MiddlewareFunc)
 }
 
 // Health 返回 Atlas 子产品的健康状态。

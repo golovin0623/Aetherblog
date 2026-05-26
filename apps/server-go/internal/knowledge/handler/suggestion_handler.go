@@ -33,12 +33,14 @@ func NewSuggestionHandler(svc *atlassvc.AISuggestionService) *SuggestionHandler 
 }
 
 // Mount 挂到 /atlas 子组。
-func (h *SuggestionHandler) Mount(g *echo.Group) {
-	g.POST("/suggestions", h.Create)
+// 红线 RBAC (PR #724 review fix): mutating routes 套 content.atlas.write。
+// accept / reject 也算写操作（会创建 KP/Relation 或写入 ignored 列表）。
+func (h *SuggestionHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	g.POST("/suggestions", h.Create, write)
 	g.GET("/suggestions", h.List)
 	g.GET("/suggestions/:id", h.Get)
-	g.POST("/suggestions/:id/accept", h.Accept)
-	g.POST("/suggestions/:id/reject", h.Reject)
+	g.POST("/suggestions/:id/accept", h.Accept, write)
+	g.POST("/suggestions/:id/reject", h.Reject, write)
 }
 
 func (h *SuggestionHandler) Create(c echo.Context) error {

@@ -320,9 +320,22 @@ function truncate(s: string, n: number): string {
 }
 
 // 简易力导向: 200 次迭代，repulsion + spring + 阻尼。
+//
+// PR #724 review fix (Gemini high): spring 阶段用 id->Node Map 把 O(E*N) 降为 O(E)。
+// 200 迭代 × 边数 N=200 × 节点查找 200 ≈ 800 万次/次渲染 → 现在 4 万次。
 function simulate(nodes: Node[], edges: AtlasTypedRelation[], iterations: number): void {
   if (nodes.length === 0) return;
   const k = Math.sqrt((VIEWPORT_W * VIEWPORT_H) / nodes.length);
+  // 构建 id → Node 索引，避免每次 spring 计算 O(N) 查找。
+  const byId = new Map<number, Node>();
+  for (const n of nodes) byId.set(n.id, n);
+  // 预过滤掉两端不在 nodes 里的 edges，循环里再无 if 判分支。
+  const liveEdges: Array<{ a: Node; b: Node }> = [];
+  for (const e of edges) {
+    const a = byId.get(e.fromKpId);
+    const b = byId.get(e.toKpId);
+    if (a && b) liveEdges.push({ a, b });
+  }
   for (let iter = 0; iter < iterations; iter++) {
     // repulsion
     for (let i = 0; i < nodes.length; i++) {
@@ -342,11 +355,8 @@ function simulate(nodes: Node[], edges: AtlasTypedRelation[], iterations: number
       a.vx = (a.vx + fx * 0.0008) * 0.85;
       a.vy = (a.vy + fy * 0.0008) * 0.85;
     }
-    // spring
-    for (const e of edges) {
-      const a = nodes.find((n) => n.id === e.fromKpId);
-      const b = nodes.find((n) => n.id === e.toKpId);
-      if (!a || !b) continue;
+    // spring (O(E)，不再 nodes.find)
+    for (const { a, b } of liveEdges) {
       const dx = a.x - b.x;
       const dy = a.y - b.y;
       const dist = Math.sqrt(dx * dx + dy * dy) + 0.01;

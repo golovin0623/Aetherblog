@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 )
@@ -75,26 +76,26 @@ func (r *AnnotationRepo) UpdatePartial(
 	args := []any{}
 	idx := 1
 	if bodyText != nil {
-		query += ", body_text=$" + itoa(idx)
+		query += ", body_text=$" + strconv.Itoa(idx)
 		args = append(args, *bodyText)
 		idx++
 	}
 	if bodyMeta != nil {
-		query += ", body_meta=$" + itoa(idx)
+		query += ", body_meta=$" + strconv.Itoa(idx)
 		args = append(args, bodyMeta)
 		idx++
 	}
 	if anchorState != nil {
-		query += ", anchor_state=$" + itoa(idx)
+		query += ", anchor_state=$" + strconv.Itoa(idx)
 		args = append(args, *anchorState)
 		idx++
 	}
 	if anchorScore != nil {
-		query += ", anchor_score=$" + itoa(idx)
+		query += ", anchor_score=$" + strconv.Itoa(idx)
 		args = append(args, *anchorScore)
 		idx++
 	}
-	query += " WHERE id=$" + itoa(idx) + " AND deleted=false RETURNING *"
+	query += " WHERE id=$" + strconv.Itoa(idx) + " AND deleted=false RETURNING *"
 	args = append(args, id)
 
 	var out model.Annotation
@@ -115,15 +116,4 @@ func (r *AnnotationRepo) SoftDelete(ctx context.Context, id int64) error {
 	return err
 }
 
-// itoa 把小整数转字符串（避免引 strconv 让 import 列变长）。
-func itoa(n int) string {
-	if n < 10 {
-		return string(rune('0' + n))
-	}
-	a := []byte{}
-	for n > 0 {
-		a = append([]byte{byte('0' + n%10)}, a...)
-		n /= 10
-	}
-	return string(a)
-}
+// itoa 自定义函数已移除（PR #724 review fix Gemini medium）：改用 strconv.Itoa

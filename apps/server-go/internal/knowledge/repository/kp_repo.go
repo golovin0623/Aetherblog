@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -72,26 +73,26 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 	args := []any{}
 	idx := 1
 	if f.AuthorID != nil {
-		q += " AND author_id=$" + itoaKP(idx)
+		q += " AND author_id=$" + strconv.Itoa(idx)
 		args = append(args, *f.AuthorID)
 		idx++
 	}
 	if f.Type != nil && *f.Type != "" {
-		q += " AND type=$" + itoaKP(idx)
+		q += " AND type=$" + strconv.Itoa(idx)
 		args = append(args, *f.Type)
 		idx++
 	}
 	if f.Status != nil && *f.Status != "" {
-		q += " AND status=$" + itoaKP(idx)
+		q += " AND status=$" + strconv.Itoa(idx)
 		args = append(args, *f.Status)
 		idx++
 	}
 	if f.Keyword != nil && *f.Keyword != "" {
-		q += " AND (title ILIKE $" + itoaKP(idx) + " OR body_markdown ILIKE $" + itoaKP(idx) + ")"
+		q += " AND (title ILIKE $" + strconv.Itoa(idx) + " OR body_markdown ILIKE $" + strconv.Itoa(idx) + ")"
 		args = append(args, "%"+*f.Keyword+"%")
 		idx++
 	}
-	q += " ORDER BY updated_at DESC LIMIT $" + itoaKP(idx)
+	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 200
@@ -113,7 +114,7 @@ func (r *KPRepo) UpdatePartial(
 	args := []any{}
 	idx := 1
 	add := func(col string, val any) {
-		q += ", " + col + "=$" + itoaKP(idx)
+		q += ", " + col + "=$" + strconv.Itoa(idx)
 		args = append(args, val)
 		idx++
 	}
@@ -135,7 +136,7 @@ func (r *KPRepo) UpdatePartial(
 	if archived != nil {
 		add("archived", *archived)
 	}
-	q += " WHERE id=$" + itoaKP(idx) + " AND deleted=false RETURNING " + model.KPColumns
+	q += " WHERE id=$" + strconv.Itoa(idx) + " AND deleted=false RETURNING " + model.KPColumns
 	args = append(args, id)
 
 	var out model.KnowledgePoint
@@ -241,14 +242,4 @@ type EvidenceLink struct {
 	Role         string `db:"role" json:"role"`
 }
 
-func itoaKP(n int) string {
-	if n < 10 {
-		return string(rune('0' + n))
-	}
-	a := []byte{}
-	for n > 0 {
-		a = append([]byte{byte('0' + n%10)}, a...)
-		n /= 10
-	}
-	return string(a)
-}
+// itoaKP 自定义函数已移除（PR #724 review fix Gemini medium）：改用 strconv.Itoa
