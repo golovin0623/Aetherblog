@@ -40,8 +40,19 @@ type MigrationStats struct {
 
 // MigrateAnnotations 在版本切换后跑标注迁移。返回每个状态的计数。
 //
-// 注意：此函数**会写入 atlas_annotations** 表的 anchor_state / anchor_score，
-// 调用方必须在持有 carrier 锁/事务的上下文中调用。Phase 1 暂以单库无并发约束。
+// 注意：此函数**会写入 atlas_annotations** 表的 anchor_state / anchor_score。
+//
+// PR #724 review fix (Codex P1, anchoring.go:56): 过去 `_, _ = ...` 吞掉 per-annotation
+// UPDATE 失败，导致 MigrateAnnotations 报告 success 但实际部分标注未持久化；
+// 配合后续 hash 推进，标注会永久 stale。现在改为：
+//   * 任一 annotation UPDATE 失败 → 收集 firstErr → 返回 (stats, error)
+//   * 计数器只在 UPDATE 成功时累加
+// 由调用方决定是否重试（见 markdown_carrier.go GetOrCreateForNote 的 retry 语义）。
+//
+// 调用方约定（PR #724 review fix Codex P1, markdown_carrier.go:104）：
+// **必须在推进 carrier.content_hash 之前**先调本函数，因为 relocate() 是幂等的，
+// 失败后下次入口检测到 hash 仍未推进 → 自动重新进 migration 分支；
+// 反过来若先推 hash 后做 migration，失败后下次跳过 migration，标注永不修复。
 func (s *CarrierVersioningService) MigrateAnnotations(ctx context.Context, carrierID int64, newText string) (*MigrationStats, error) {
 	annos, err := s.annotations.FindByCarrier(ctx, carrierID)
 	if err != nil {
@@ -49,12 +60,18 @@ func (s *CarrierVersioningService) MigrateAnnotations(ctx context.Context, carri
 	}
 
 	stats := &MigrationStats{CarrierID: carrierID, Total: len(annos)}
+	var firstErr error
+	failures := 0
 	for i := range annos {
 		a := &annos[i]
 		state, score := relocate(newText, a.Selectors)
-		// 写回；忽略个别失败避免阻塞整体（最坏情况下下次再追赶）
-		_, _ = s.annotations.UpdatePartial(ctx, a.ID, nil, nil, &state, &score)
-
+		if _, err := s.annotations.UpdatePartial(ctx, a.ID, nil, nil, &state, &score); err != nil {
+			failures++
+			if firstErr == nil {
+				firstErr = fmt.Errorf("annotation %d update: %w", a.ID, err)
+			}
+			continue
+		}
 		switch state {
 		case "anchored":
 			stats.Anchored++
@@ -63,6 +80,9 @@ func (s *CarrierVersioningService) MigrateAnnotations(ctx context.Context, carri
 		case "orphan":
 			stats.Orphan++
 		}
+	}
+	if firstErr != nil {
+		return stats, fmt.Errorf("%d/%d annotation 迁移失败: %w", failures, stats.Total, firstErr)
 	}
 	return stats, nil
 }

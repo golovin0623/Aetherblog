@@ -94,21 +94,33 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 		return nil, fmt.Errorf("upsert carrier: %w", err)
 	}
 
-	// 已存在且 hash 变了：bump 版本 + 迁移标注
-	// PR #724 review fix (Gemini high + Codex P1): UpdateContent + MigrateAnnotations
-	// 错误必须 propagate；过去吞掉错误导致内存 hash 与 DB 不一致 + 迁移失败被静默吞掉。
+	// 已存在且 hash 变了：迁移标注 + bump 版本（注意**顺序**）
+	// PR #724 review fix (Codex P1, markdown_carrier.go:104):
+	//   过去顺序是 UpdateContent → MigrateAnnotations，hash 在 migration 之前就 commit。
+	//   一旦 migration 失败，下次 GetOrCreateForNote 会因 ContentHash == hash 跳过迁移分支，
+	//   标注永远停留在旧锚定状态。
+	//
+	//   现在改为：MigrateAnnotations 先跑（针对**新文本** newText 计算 anchor，
+	//   relocate() 是幂等的——失败 retry 时同一 annotation 会得到同一结果，安全）。
+	//   全部 migration 成功后才 commit 新 hash + 写新 carrier_version。
+	//   若 migration 失败：carrier.content_hash 仍是旧值 → 下次入口检测到不一致 → 重试 migration。
+	//
+	// 仍依赖 PR #724 第二轮 Codex P1（atomic accept）的同款防御：每个独立 UPDATE 通过
+	// MigrateAnnotations 内部统计 + firstErr 串联，让调用方知道并能区分"部分成功 / 全失败"。
 	if !justCreated && carrier.ContentHash != hash {
-		diff := []byte(`{"reason":"note_edited"}`)
-		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, uri, "user_edit", diff); err != nil {
-			return nil, fmt.Errorf("update carrier content: %w", err)
-		}
-		carrier.ContentHash = hash
 		if s.versioning != nil {
 			if _, err := s.versioning.MigrateAnnotations(ctx, carrier.ID, note.Content); err != nil {
-				// 迁移失败：carrier 版本已落库，但标注未重对齐。返回错误让上层决定（前端可重试）。
-				return nil, fmt.Errorf("migrate annotations after note edit: %w", err)
+				// 迁移失败：carrier 版本未推进，标注可能部分更新（relocate 幂等所以安全）；
+				// 下次 GetOrCreateForNote 会因 hash 仍未变化重新进入 migration 分支自动追赶。
+				return nil, fmt.Errorf("migrate annotations before hash bump: %w", err)
 			}
 		}
+		diff := []byte(`{"reason":"note_edited"}`)
+		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, uri, "user_edit", diff); err != nil {
+			// 迁移已成功但 hash 写入失败 —— 下次同样靠 hash 不一致重入；标注已是新状态故无副作用。
+			return nil, fmt.Errorf("update carrier content after migration: %w", err)
+		}
+		carrier.ContentHash = hash
 	}
 	return carrier, nil
 }
