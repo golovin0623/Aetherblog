@@ -22,12 +22,21 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+
+from app.api.deps import require_admin_or_internal
 
 
 logger = logging.getLogger("atlas")
-router = APIRouter(tags=["atlas"], prefix="/v1/atlas")
+# PR #724 review fix (Codex P1): 整个 /v1/atlas/* 必须走 require_admin_or_internal,
+# 与 ai-service 其他敏感 AI 路由（agent、knowledge_bases）保持一致；
+# 允许：管理员 JWT 或 Go 后端的 X-Internal-Service 内部 token。
+router = APIRouter(
+    tags=["atlas"],
+    prefix="/v1/atlas",
+    dependencies=[Depends(require_admin_or_internal)],
+)
 
 
 # ============================================================

@@ -76,11 +76,16 @@ export default function SuggestionsPage() {
   );
 
   // P3-DEMO: 一键创建一条样例建议（无 LLM；用于验证 accept/reject UX）
+  //
+  // PR #724 review fix (Codex P2): 过去硬编码 carrierId=1，但 atlas_ai_suggestions.carrier_id
+  // 有 FK 到 atlas_carriers(id)。新数据库 / 重建 schema 后 carrier #1 不一定存在，
+  // demo 按钮总是 FK 失败。schema 允许 carrier_id 为 NULL（CHECK 只要 kind=kp 时
+  // proposed_title 非空），因此 demo 创建时**不绑定 carrier_id** 即可。
   const handleDemoCreate = useCallback(async () => {
     try {
       const res = await atlasService.createSuggestion({
         kind: 'kp',
-        carrierId: 1,
+        // carrierId 故意不传：demo 数据不与具体载体挂钩
         proposedTitle: `Demo 建议 ${new Date().toLocaleTimeString('zh-CN')}`,
         proposedBody: '这是一条来自 P3-DEMO 的样例 KP 建议（未经过 LLM）。Phase 3 后期接入 ai-service 后此入口将被替换为真正的 claim extraction。',
         proposedKpType: 'concept',
