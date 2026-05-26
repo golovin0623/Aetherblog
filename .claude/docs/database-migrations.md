@@ -210,6 +210,14 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 按 dim × status='active' 创建 partial HNSW 索引：768 / 1024 / 1536 使用 vector_cosine_ops；3072 必须走 halfvec_cosine_ops（pgvector HNSW vector 上限 2000，halfvec 上限 4000）。> 4000 维当前 pgvector 不支持 HNSW，召回退化为顺序扫描；建议改用主流维度。
 
+> ⚠️ **编号已变更（commit `8a70196`）：** 上述 KB 区块（本节标题里的 `000054`～`000058`）后来被整体 **+3** 重新编号为磁盘上的 `000057`～`000061`（`000057_media_folder_is_system` / `000058_knowledge_bases` / `000059_kb_default_profiles` / `000060_kb_embedding_unconstrained` / `000061_kb_embedding_hnsw`），为 Notes（000054）等迁移让位。**golang-migrate 只按整数版本判断是否已应用、对同槽位文件内容变化无感知** —— 见下方 000067。
+
+### 000067 · `kb_schema_repair`
+
+**幂等前向修复迁移。** 修复 commit `8a70196` 的 KB 区块 +3 重编号引发的生产事故：槽位 `000058` 的内容从旧 `kb_embedding_hnsw`（建索引）变成 `knowledge_bases`（建表），任何 version ledger 已越过 58 或 backend 镜像被带外更新（绕过 `deploy.sh` 的 pre-deploy `migrate up`）的环境，新槽位 58 的建表语句永不执行 → admin `/api/v1/admin/kbs`（`kb_repo.go` ListAll）报 `relation "knowledge_bases" does not exist`。
+
+本迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `pg_constraint` 守卫 FK / `ON CONFLICT` 把 000058+000059+000060+000061 收敛后的 KB 最终 schema 幂等重建：缺失则补齐，已正确迁移则全程 no-op（`embedding` 列直接建为不锁维度 `vector`，索引复用 000061 的维度桶 partial HNSW）。`down` 为空（`SELECT 1;`）—— KB 表生命周期归 000058 等的 down，回退一步不应误删整套数据。
+
 ---
 
 ## 部署期 migration 自愈机制

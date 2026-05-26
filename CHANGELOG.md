@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 知识库打开即 500：`knowledge_bases` 表缺失（2026-05-26, branch claude/kb-opening-error-YDBBe）
+
+**现象：** admin 进入「智能 · 知识库」时 `GET /api/v1/admin/kbs` 返回 500，postgres 日志 `relation "knowledge_bases" does not exist`（`kb_repo.go` ListAll 的 `SELECT ... FROM knowledge_bases WHERE is_archived = FALSE`）。
+
+**根因：** commit `8a70196` 将 KB 迁移块整体 **+3** 重编号（`000055_knowledge_bases` → `000058_knowledge_bases`，`000058_kb_embedding_hnsw` → `000061_kb_embedding_hnsw` 等）。golang-migrate 只在 `schema_migrations` 记录单个整数 version，对「同槽位文件内容已变」无感知 —— version ledger 已越过 58、或 backend 镜像被带外 `docker compose up -d`（绕过 `deploy.sh` 的 pre-deploy `migrate up`）的环境，新槽位 58 的建表语句永不执行，`knowledge_bases` 始终不存在。
+
+**Added — Migration:**
+- `000067_kb_schema_repair` —— 幂等前向修复迁移。用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `pg_constraint` 守卫 FK / `ON CONFLICT` 把 000058+000059+000060+000061 收敛后的 KB 最终 schema 重建：缺失则补齐，已正确迁移则全程 no-op。`embedding` 列直接建为不锁维度 `vector`；维度桶 partial HNSW 索引复用 000061。`down` 为空（teardown 归 000058，回退一步不误删整库）。下次 `deploy.sh` 的 pre-deploy `migrate up` 自动生效。
+
 ### Aether Knowledge (Atlas) Phase 3 MVP — AI 建议 Inbox + ai-service stub (2026-05-26, branch feat/knowledge-base)
 
 按 `docs/plan/task-aether-knowledge-system.md` Phase 3 MVP 落地: 红线 C3-1（AI 产出永远先入 inbox，不直接落 KP/Relation 表）+ 用户 accept 链路 + ai-service 启发式 stub。
