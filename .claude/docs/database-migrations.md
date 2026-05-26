@@ -231,23 +231,26 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 此机制确保**生产环境部署不会因为历史 dirty 状态而卡死**。新增 dirty 自愈条目时同步更新 `deploy.sh` 与本表。
 
-> **自愈是 fail-closed 的：** 未登记的 dirty 版本一律 `aborting deploy`（webhook 返回 500、CI deploy 步骤红）。这是**正确**行为 —— 拒绝把真正需要人工判断的迁移故障误 `force` 成绿部署。所以遇到「未登记 dirty」不要急着往表里塞条目，**先确认那条迁移在该实例上幂等 / 安全可重放**，再决定 force 目标。
+> ⚠️ **fail-closed 是特性不是 bug：** 只有上表登记的版本会被自动 `force`，**其他任何 dirty 版本一律中止部署**（webhook 返回 500、CI deploy 步骤红）。这是为了不把"需要人工判断的真实迁移故障"误 heal 成绿部署。遇到未登记 dirty 时，必须先人工查清生产真实 schema 再决定 force 目标 —— 见下方 v57 事故复盘。
 
 ---
 
-## 事故复盘：2026-05-26 生产 `version: 57, dirty: true` 部署中止
+## 事故复盘：v57 dirty 卡死部署（2026-05-26）
 
-**现象：** webhook deploy 最后一步报错，`migration state (pre-up): version: 57, dirty: true` → `migrate up: Dirty database version 57. Fix and force version.` → `did not match the known self-heal signature, aborting deploy` → webhook 500 → CI 失败。
+**现象：** webhook deploy 在 pre-deploy migration 步骤报 `version: 57, dirty: true` → `migrate up: Dirty database version 57. Fix and force version.` → 自愈表不含 v57 → `did not match the known self-heal signature, aborting deploy` → webhook 500 → CI 红。
 
-**直接原因：** 生产 `schema_migrations` 停在 v57 且 dirty=true（某次部署在 v57 这一步失败 / 被中断后留下的脏标记）。deploy.sh 自愈表只覆盖 v34 / v38，未登记 v57 → 按 fail-closed 设计中止。**这是设计上的正确反应，不是 deploy.sh 的 bug。**
+**直接原因：** 生产 `schema_migrations` 停在 v57 且 dirty=true；`deploy.sh` 自愈表只认 v34/v38，未登记 v57，按 fail-closed 设计中止部署。
 
-**根因：** commit `8a70196` 把 KB 区块迁移 `000054-000058` 整体 **+3** 重命名为 `000057-000061`（纯 rename，内容不变），违反「迁移文件不可变」铁律。golang-migrate 只认整数版本：生产 ledger 记的整数与磁盘文件内容自此错位，是 v57 dirty、`knowledge_bases` 漏建（→ 000067）这一系列连锁故障的共同源头。
+**根因：** commit `8a70196`（`fix(kb): CI 修复…`）为解决与上游 `000054_create_notes` 的撞号，把 KB 区块 `000054-000058` 整体 **+3 重命名**为 `000057-000061`（纯 rename，内容不变）。但 **golang-migrate 只认整数版本** —— 已按旧号 54-58 部署过的生产库，ledger 整数与重编号后磁盘文件内容当场错位：同一槽位文件内容变了却不会重跑，连锁出 dirty / `knowledge_bases` 漏建（000067 即为此补救）等问题。**违反的是「迁移文件不可变」铁律**（见 `CLAUDE.md` §3.8）。
 
-**恢复 runbook（需要 prod DB 访问，必须人工确认后执行，禁止盲目 force）：**
-1. 进 prod 探真实状态：`SELECT version, dirty FROM schema_migrations;` + 抽查 `media_folders` 是否有 `is_system` 列、`knowledge_bases` 等 KB 表是否存在。
-2. 据实判断 force 目标。⚠️ **不能无脑 `force 56; up`** —— `000058_knowledge_bases` 用裸 `CREATE TABLE`（非幂等），若 KB 表已存在，重放会 `already exists` 再次失败。
-   - KB 表已齐 + media 列已齐 → 该实例已逻辑完成 57，`migrate force 57` 标干净后 `up`，让 058… 直到 067 收敛。
-   - media 列缺失但 KB 表已齐 → 手动补 media_folder 那几句（幂等），再 `force` 到与实际 schema 匹配的版本。
-3. force 后立刻 `migrate up` 跑到最新（000067 的幂等修复会把 KB schema 收敛齐），并验证 admin `/api/v1/admin/kbs` 不再 500。
+**为何不能盲目自愈 / `force 56; up`：** 槽位 57（`media_folder_is_system`）虽幂等，但 058（`knowledge_bases`）用的是裸 `CREATE TABLE`（**非幂等**），在已建表的库上重跑会 `relation already exists` 再次 dirty。所以 force 目标必须匹配生产**真实 schema**，不能照搬。
 
-**预防（已落地）：** CLAUDE.md §3.8 把「迁移不可变 / 撞号取新号绝不顺移 / 写前向修复迁移」升级为顶层红线。撞号场景一律给**新来的**迁移取下一个空号，绝不顺移已存在的迁移。
+**正确恢复（需有生产 DB 访问的人执行）：**
+1. 进生产库查实况：`SELECT version, dirty FROM schema_migrations;` + 抽查关键对象是否存在（`\d media_folders` 看 `is_system`、`\dt knowledge_bases` 等）。
+2. 据实况选 force 目标：
+   - 若 `media_folders.is_system` **不存在** → `migrate force 56`，让 `up` 重跑幂等的 57 把列补上，再继续。
+   - 若 57 的列**已存在**（只是 dirty 标记残留）→ `migrate force 57`，让 `up` 从 58 继续；但需先确认 `knowledge_bases` 等表是否已建，避免撞 058 裸 `CREATE TABLE`。已建则继续 force 跳过已应用的版本，直到落到真正缺失的版本。
+   - 收尾：`up` 会一路跑到 000067（幂等 KB 修复）兜底收敛 KB schema。
+3. 确认 `dirty=false` 且 backend 健康检查通过后重新触发部署。
+
+> **教训沉淀：** 撞号永远取下一个空号，绝不顺移已合并迁移（`CLAUDE.md` §3.8 已升级为最高红线）。
