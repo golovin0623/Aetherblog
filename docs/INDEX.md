@@ -41,6 +41,8 @@ AetherBlog 项目文档导航。
 | [Markdown 能力矩阵](./blog-markdown-capability-matrix.md) | 博客 Markdown 功能支持清单 |
 | [前端优化报告](./Phase6-Frontend-Optimization-Report.md) | 第六阶段前端性能优化记录 |
 | [Search Profiles 后续 PR 执行手册](./SEARCH_PROFILES_FOLLOWUP_PLAN.md) | RAG profile 化 chunking pipeline 的 admin 操作面落地计划（2026-05-03 起执行） |
+| [Aether Knowledge 调研报告](./plan/knowledge.md) | 支持标注迁移与知识图谱涌现的多模态个人知识系统技术调研（Carrier × Annotation × KnowledgePoint × TypedRelation 四层架构） |
+| [Aether Knowledge 落地手册](./plan/task-aether-knowledge-system.md) | 把调研报告落地的 5 阶段（约 40-52 周）路线图：含基线快照、约束、验收、红线、任务命名规范、完成日志（task-knowledge-* 前缀） |
 
 ## 🔧 运维与 QA
 

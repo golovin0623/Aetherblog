@@ -2,7 +2,9 @@
 
 > 给 Claude Code 的工作指令。**本文件只放「不读会做错」的稳定铁律**与**子文档导航**；操作手册、API 表、迁移历史、故障速查全部按主题拆到 `.claude/docs/` 子文档，按需 Read。
 >
-> 版本对齐基线：2026-05-04（migrations 000045 / 26 个后端 handler / Aether Codex Round 5 + 增量 admin Codex 升级波次）。
+> 版本对齐基线：2026-05-26（branch `feat/knowledge-base` @ `29013307` · migrations 000061 · 35 个后端 handler · Aether Codex Round 5 · Notes 模块 000054 · Knowledge Base RAG 模块 000058+ 已上线含 18 轮安全评审）。
+>
+> 历史基线: 2026-05-04（migrations 000045 / 26 handler）。如需追溯请看 git log。
 
 ---
 

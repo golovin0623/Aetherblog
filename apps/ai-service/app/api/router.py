@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     agent,
     ai,
+    atlas,
     health,
     knowledge_bases,
     log_level,
@@ -31,3 +32,4 @@ router.include_router(tasks.router)
 router.include_router(log_level.router)
 router.include_router(workflows.router)
 router.include_router(knowledge_bases.router)
+router.include_router(atlas.router)

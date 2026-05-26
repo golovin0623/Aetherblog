@@ -36,6 +36,11 @@ const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage')
 const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
+const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
+const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderPage'));
+const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
+const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
+const AtlasSuggestionsPage = lazy(() => import('./pages/atlas/SuggestionsPage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -121,6 +126,11 @@ function App() {
               <Route path="search-config" element={<SearchConfigPage />} />
               <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
               <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
+              <Route path="atlas" element={<AtlasPage />} />
+              <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
+              <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
+              <Route path="atlas/graph" element={<AtlasGraphPage />} />
+              <Route path="atlas/suggestions" element={<AtlasSuggestionsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />

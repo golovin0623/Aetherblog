@@ -19,6 +19,9 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/config"
 	"github.com/golovin0623/aetherblog-server/internal/handler"
+	atlashandler "github.com/golovin0623/aetherblog-server/internal/knowledge/handler"
+	atlasrepo "github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
+	atlassvc "github.com/golovin0623/aetherblog-server/internal/knowledge/service"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/cryptkey"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
@@ -257,6 +260,38 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	noteHandler.MountAdmin(admin.Group("/notes"))
 	noteHandler.MountFolders(admin.Group("/note-folders"))
 	noteHandler.MountTags(admin.Group("/note-tags"))
+
+	// --- Atlas（Aether Knowledge）子产品 ---
+	// 计划: docs/plan/task-aether-knowledge-system.md（5 阶段路线图）
+	// Phase 0 落地 schema + /health；Phase 1 P1-01/05/06/07: MarkdownCarrierAdapter +
+	//   /carriers/markdown 懒创建 + /annotations CRUD + 多选择器校验。
+	// Phase 1+ 起增加 /knowledge-points、/relations、/graph 子路由。
+	atlasRepo := atlasrepo.NewAtlasRepo(s.DB)
+	atlasCarrierRepo := atlasrepo.NewCarrierRepo(atlasRepo)
+	atlasAnnoRepo := atlasrepo.NewAnnotationRepo(atlasRepo)
+	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo))
+	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
+	atlasMarkdown.AttachVersioning(atlasVersioning)
+	atlasService := atlassvc.NewAtlasService(atlasRepo, atlasMarkdown)
+	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo)
+	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read（写路径在 handler 内部再细分）。
+	// 沿用 accessSvc 作为 PermissionChecker（与 /admin/access 路由一致）。
+	atlasGroup := admin.Group("/atlas", middleware.RequirePermission(accessSvc, "content.atlas.read"))
+	// Phase 2 新增 KP + Relation + Graph 子域
+	atlasKPRepo := atlasrepo.NewKPRepo(atlasRepo)
+	atlasRelRepo := atlasrepo.NewRelationRepo(atlasRepo)
+	atlasKPSvc := atlassvc.NewKnowledgePointService(atlasKPRepo, atlasRelRepo)
+	atlasRelSvc := atlassvc.NewRelationService(atlasRelRepo)
+	// Phase 3 新增 AI 建议子域
+	atlasSugRepo := atlasrepo.NewSuggestionRepo(atlasRepo)
+	atlasSugSvc := atlassvc.NewAISuggestionService(atlasSugRepo, atlasKPSvc, atlasRelSvc)
+	atlashandler.NewAtlasHandler(atlasService).MountAdmin(
+		atlasGroup,
+		atlashandler.NewCarrierHandler(atlasService),
+		atlashandler.NewAnnotationHandler(atlasAnnoSvc),
+		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc),
+		atlashandler.NewSuggestionHandler(atlasSugSvc),
+	)
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)
 	handler.NewCommentHandler(commentSvc, activitySvc).MountAdmin(admin.Group("/comments"))

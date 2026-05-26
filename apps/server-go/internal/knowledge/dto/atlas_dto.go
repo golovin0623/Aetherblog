@@ -1,0 +1,79 @@
+// Atlas DTO — REST 请求/响应。
+//
+// 与 packages/types/src/models/atlas.ts 字段一一对应（camelCase）。
+// 落地手册: docs/plan/task-aether-knowledge-system.md §3 Phase 1
+
+package dto
+
+import (
+	"encoding/json"
+	"time"
+)
+
+// ============================================================
+// Carrier
+// ============================================================
+
+// CarrierResponse 是 GET /atlas/carriers/:id 与 POST /atlas/carriers/markdown 的响应。
+type CarrierResponse struct {
+	ID            int64           `json:"id"`
+	Type          string          `json:"type"`
+	SourceURI     string          `json:"sourceUri"`
+	ContentHash   string          `json:"contentHash"`
+	Title         string          `json:"title"`
+	Author        *string         `json:"author,omitempty"`
+	Language      *string         `json:"language,omitempty"`
+	Metadata      json.RawMessage `json:"metadata"`
+	OwnerID       *int64          `json:"ownerId,omitempty"`
+	Status        string          `json:"status"`
+	StatusMessage *string         `json:"statusMessage,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
+}
+
+// EnsureMarkdownCarrierRequest 是 POST /atlas/carriers/markdown 的请求体。
+type EnsureMarkdownCarrierRequest struct {
+	NoteID int64 `json:"noteId" validate:"required,gt=0"`
+}
+
+// ============================================================
+// Annotation
+// ============================================================
+
+// CreateAnnotationRequest 是 POST /atlas/annotations 的请求体。
+type CreateAnnotationRequest struct {
+	CarrierID        int64             `json:"carrierId" validate:"required,gt=0"`
+	CarrierVersionID *int64            `json:"carrierVersionId,omitempty"`
+	Selectors        []json.RawMessage `json:"selectors" validate:"required,min=3"`
+	RelPosition      *string           `json:"relPosition,omitempty"` // base64 编码 Yjs RelativePosition bytes
+	BodyType         string            `json:"bodyType" validate:"required"`
+	BodyText         *string           `json:"bodyText,omitempty"`
+	BodyMeta         json.RawMessage   `json:"bodyMeta,omitempty"`
+	AnchorState      *string           `json:"anchorState,omitempty"`
+	AnchorScore      *float32          `json:"anchorScore,omitempty"`
+}
+
+// UpdateAnnotationRequest 是 PATCH /atlas/annotations/:id 的请求体。
+type UpdateAnnotationRequest struct {
+	BodyText    *string         `json:"bodyText,omitempty"`
+	BodyMeta    json.RawMessage `json:"bodyMeta,omitempty"`
+	AnchorState *string         `json:"anchorState,omitempty"`
+	AnchorScore *float32        `json:"anchorScore,omitempty"`
+}
+
+// AnnotationResponse 是 Annotation 的对外形态。
+type AnnotationResponse struct {
+	ID               int64           `json:"id"`
+	CarrierID        int64           `json:"carrierId"`
+	CarrierVersionID *int64          `json:"carrierVersionId,omitempty"`
+	Selectors        json.RawMessage `json:"selectors"`
+	RelPosition      *string         `json:"relPosition,omitempty"` // base64
+	BodyType         string          `json:"bodyType"`
+	BodyText         *string         `json:"bodyText,omitempty"`
+	BodyMeta         json.RawMessage `json:"bodyMeta"`
+	AnchorState      string          `json:"anchorState"`
+	AnchorScore      float32         `json:"anchorScore"`
+	AuthorID         *int64          `json:"authorId,omitempty"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	UpdatedAt        time.Time       `json:"updatedAt"`
+}
