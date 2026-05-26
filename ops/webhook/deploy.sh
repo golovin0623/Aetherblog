@@ -336,9 +336,10 @@ run_pre_deploy_migrations() {
         ;;
       57)
         # v57 dirty 来自 commit 8a70196 把 KB 区块 +3 重编号的事故（见 000067 /
-        # CLAUDE.md §3.8）。槽位 57 = 000057_media_folder_is_system（幂等），但紧随
-        # 的 000058_knowledge_bases 是**裸 CREATE TABLE（非幂等）**。能否安全 force
-        # 取决于 knowledge_bases 是否已存在：
+        # CLAUDE.md §3.8）。槽位 57 = 000057_media_folder_is_system；该 migration
+        # 已按 path=/root 定位真实根目录，避免历史库 root id 不是 1 时重放触发 FK
+        # 23503。紧随的 000058_knowledge_bases 是**裸 CREATE TABLE（非幂等）**。
+        # 能否安全 force 取决于 knowledge_bases 是否已存在：
         #   * 不存在（文档记录的生产状态 "knowledge_bases 漏建"）→ force 56 让 up
         #     重放整条 KB 链：057 幂等、058 把缺失的表建出来、059/060/061/067 幂等收敛，
         #     062-066(Atlas) 在此前从未跑过故为首次正常创建。
