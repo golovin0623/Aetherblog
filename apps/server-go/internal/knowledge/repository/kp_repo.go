@@ -93,9 +93,14 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 		idx++
 	}
 	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
+	// PR #724 review fix (Codex P2, kp_repo.go:99): 上限从 200 提到 5000，与 /atlas/graph
+	// handler 的上限对齐；过去 200 上限会让 graph 静默截断节点。
+	// 默认值（未指定 limit）仍走 200 保持兼容。
 	limit := f.Limit
-	if limit <= 0 || limit > 200 {
+	if limit <= 0 {
 		limit = 200
+	} else if limit > 5000 {
+		limit = 5000
 	}
 	args = append(args, limit)
 

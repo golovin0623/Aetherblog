@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/knowledge/pkg/anchoring"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
 
@@ -109,7 +110,12 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 	// MigrateAnnotations 内部统计 + firstErr 串联，让调用方知道并能区分"部分成功 / 全失败"。
 	if !justCreated && carrier.ContentHash != hash {
 		if s.versioning != nil {
-			if _, err := s.versioning.MigrateAnnotations(ctx, carrier.ID, note.Content); err != nil {
+			// PR #724 review fix (Codex P1, markdown_carrier.go:112): 标注创建时锚定的是
+			// MarkdownPreview 渲染后的 textContent；migration 必须用同一空间，否则 markdown
+			// 语法字符 (`#`、`**`、链接 URL) 会让 prefix/suffix/position 全部漂移。
+			// 这里把 raw markdown 转近似 plaintext 再传给 MigrateAnnotations。
+			plain := anchoring.MarkdownToPlaintext(note.Content)
+			if _, err := s.versioning.MigrateAnnotations(ctx, carrier.ID, plain); err != nil {
 				// 迁移失败：carrier 版本未推进，标注可能部分更新（relocate 幂等所以安全）；
 				// 下次 GetOrCreateForNote 会因 hash 仍未变化重新进入 migration 分支自动追赶。
 				return nil, fmt.Errorf("migrate annotations before hash bump: %w", err)
