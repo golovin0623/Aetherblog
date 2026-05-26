@@ -157,10 +157,18 @@ export default function MarkdownReaderPage() {
   }, []);
 
   // 重新对齐（点击 orphan / soft 状态的 reanchor 按钮）
+  //
+  // PR #724 review fix (Codex P1, MarkdownReaderPage.tsx:164):
+  //   过去把 state.note.contentMarkdown（raw markdown）传给 anchor()，
+  //   但标注创建时锚定空间是渲染后 root.textContent（buildSelectorsFromDomRange）。
+  //   markdown 语法 (`#`、`**`、链接 URL) 让 prefix/suffix/position 不对齐 → 误判 orphan
+  //   或误锚到重复子串。客户端这里**直接读 DOM 的 textContent**最准确——live DOM 就是
+  //   选择时的同一文本空间，比后端跑 markdown→plaintext 转换更不容易漂移。
   const handleReanchor = useCallback(
     async (annotation: AtlasAnnotation) => {
       if (!state.note) return;
-      const fullText = state.note.contentMarkdown ?? '';
+      const root = previewRef.current;
+      const fullText = root?.textContent ?? state.note.contentMarkdown ?? '';
       const outcome = anchor(fullText, annotation.selectors);
       if (outcome.state === 'orphan') {
         toast.error('文本中无法重新定位（已是 orphan）');
