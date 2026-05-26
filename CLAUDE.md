@@ -120,7 +120,7 @@ import { formatDate, slugify } from '@aetherblog/utils';
 2. **撞号 → 取下一个空号，绝不顺移。** 两个分支都用了 `000054` 时，给**新来的**那条取 `000062`（或当前最大号 +1），**禁止**把已存在的 `000054-000058` 整体 +3 顺移 —— commit `8a70196` 正是这么干的，直接引发 v57 dirty + `knowledge_bases` 漏建的生产事故（补救见 000067）。
 3. **改不动老迁移就写前向修复迁移。** 老版本有 bug / 漏建 → 新建一条幂等的 forward-fix（`CREATE TABLE IF NOT EXISTS` / `ON CONFLICT` / `pg_constraint` 守卫），让它在新版本号上收敛 schema。范式见 000035/000036、000039、000067。
 4. **每条迁移都要幂等 + 单事务安全。** `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `INSERT ... ON CONFLICT`。⚠️ 注意：`CREATE TABLE`（无 IF NOT EXISTS，如 000058）**不幂等**，重跑会 `already exists` 报错 —— 写新表也尽量带 `IF NOT EXISTS`。
-5. **dirty 自愈是 fail-closed 的，别指望它兜底。** `ops/webhook/deploy.sh` 只对登记在册的 dirty 版本（当前 v34/v38）自动 `force`，**未登记的一律中止部署**（这是正确的——避免把真故障 heal 成绿部署）。所以「制造一个新 dirty」≠「部署能自己好」，等于要么人工 `force`、要么新增经过验证的自愈条目。
+5. **dirty 自愈是 fail-closed 的，别指望它兜底。** `ops/webhook/deploy.sh` 只对登记在册的 dirty 版本（当前 v34/v38 无条件 `force`；v57 **条件式**——先探 `knowledge_bases` 是否存在，仅确认不存在时 `force 56`，否则拒绝自愈）自动处理，**未登记的一律中止部署**（这是正确的——避免把真故障 heal 成绿部署）。所以「制造一个新 dirty」≠「部署能自己好」，等于要么人工 `force`、要么新增经过验证的自愈条目。新增条目若重放路径含非幂等迁移（如裸 `CREATE TABLE`），必须像 v57 那样先探测真实 schema 再决定 force 目标，不可无条件 force。
 
 ---
 

@@ -228,8 +228,11 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 | --- | --- |
 | v34 dirty | `migrate force 35` → 让 035/036 接力补完版本化 schema |
 | v38 dirty | `migrate force 38` → 让 039 接管 widen_summary 与 prompt 重写 |
+| v57 dirty | **条件式**：先探 `knowledge_bases` 是否存在 → 仅当**确认不存在**时 `migrate force 56` 重放整条 KB 链（058 建表 + 059/060/061/067 幂等收敛）；表已存在 / 探测失败则**拒绝自愈**、保持 fail-closed 中止交人工 |
 
 此机制确保**生产环境部署不会因为历史 dirty 状态而卡死**。新增 dirty 自愈条目时同步更新 `deploy.sh` 与本表。
+
+> ⚠️ **v57 与 v34/v38 的关键区别：** v34/v38 是无条件 `force`（重放路径全幂等）；v57 后面紧跟的 `000058_knowledge_bases` 是**裸 `CREATE TABLE`（非幂等）**，所以 `deploy.sh` 在 force 前会用 `_probe_knowledge_bases_exists`（`SELECT to_regclass('public.knowledge_bases')`）探测 —— 只有表**确认不存在**（即文档记录的"漏建"生产状态）才 `force 56`；表已存在时盲目重放会 `already exists` 再次 dirty，因此该分支**主动拒绝自愈**，沿用 fail-closed。
 
 > ⚠️ **fail-closed 是特性不是 bug：** 只有上表登记的版本会被自动 `force`，**其他任何 dirty 版本一律中止部署**（webhook 返回 500、CI deploy 步骤红）。这是为了不把"需要人工判断的真实迁移故障"误 heal 成绿部署。遇到未登记 dirty 时，必须先人工查清生产真实 schema 再决定 force 目标 —— 见下方 v57 事故复盘。
 
@@ -245,7 +248,9 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 **为何不能盲目自愈 / `force 56; up`：** 槽位 57（`media_folder_is_system`）虽幂等，但 058（`knowledge_bases`）用的是裸 `CREATE TABLE`（**非幂等**），在已建表的库上重跑会 `relation already exists` 再次 dirty。所以 force 目标必须匹配生产**真实 schema**，不能照搬。
 
-**正确恢复（需有生产 DB 访问的人执行）：**
+**自动恢复（已落地 `deploy.sh`）：** `_try_heal_known_dirty` 的 `57)` 分支会先用 `_probe_knowledge_bases_exists`（`SELECT to_regclass('public.knowledge_bases')`）探测真实 schema —— **仅当 `knowledge_bases` 确认不存在**（即本次事故的"漏建"状态）才 `force 56` 并让 `up` 重放整条 KB 链（058 建表 + 059/060/061/067 幂等收敛 + 062-066 Atlas 首次创建）。这覆盖了下面 runbook 的第 2 步第一种情形，下次 webhook 部署即可自动解开、CI 转绿，无需人工 force。**表已存在或探测失败时该分支主动拒绝自愈**，仍走 fail-closed 中止，需按下方 runbook 人工处理。
+
+**人工恢复（探测失败 / `knowledge_bases` 已存在等 deploy.sh 拒绝自愈的情形，需有生产 DB 访问的人执行）：**
 1. 进生产库查实况：`SELECT version, dirty FROM schema_migrations;` + 抽查关键对象是否存在（`\d media_folders` 看 `is_system`、`\dt knowledge_bases` 等）。
 2. 据实况选 force 目标：
    - 若 `media_folders.is_system` **不存在** → `migrate force 56`，让 `up` 重跑幂等的 57 把列补上，再继续。
