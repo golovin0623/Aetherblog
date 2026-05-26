@@ -1,7 +1,7 @@
 // Atlas Phase 2 — KnowledgePointService + RelationService
 //
 // 红线:
-//   * C2-1 关系类型严格 9 种（由 model.RelationTypeSet 校验）
+//   * C2-1 关系类型严格 9 种（由 model.IsSupportedRelationType 校验）
 //   * C2-2 KP 创建必须关联 ≥1 evidence annotation 或 provenance='user' 显式声明
 //   * C2-4 关系不允许自环（schema CHECK 已挡）
 
@@ -207,7 +207,7 @@ func (s *RelationService) Create(ctx context.Context, in CreateRelationInput) (*
 	if in.FromKPID == in.ToKPID {
 		return nil, errors.New("不允许自环关系 (C2-4)")
 	}
-	if !model.RelationTypeSet[in.Type] {
+	if !model.IsSupportedRelationType(in.Type) {
 		return nil, fmt.Errorf("不支持的关系类型 %q（手册 §3 Phase 2 C2-1 严格 9 种）", in.Type)
 	}
 

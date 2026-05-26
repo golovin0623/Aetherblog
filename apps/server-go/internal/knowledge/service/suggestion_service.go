@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 
@@ -78,7 +79,7 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 		if in.FromKPID == nil || in.ToKPID == nil || in.ProposedRelationType == nil {
 			return nil, errors.New("relation 建议必须有 from/to/type")
 		}
-		if !model.RelationTypeSet[*in.ProposedRelationType] {
+		if !model.IsSupportedRelationType(*in.ProposedRelationType) {
 			return nil, fmt.Errorf("不支持的 relation type: %s", *in.ProposedRelationType)
 		}
 	}
@@ -137,7 +138,7 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 		}
 	case "relation":
 		t := strPtrVal(sug.ProposedRelationType, "")
-		if !model.RelationTypeSet[t] {
+		if !model.IsSupportedRelationType(t) {
 			return nil, fmt.Errorf("不支持的关系类型 %q（C2-1 严格 9 种）", t)
 		}
 		if int64Val(sug.FromKPID) == int64Val(sug.ToKPID) {
@@ -152,6 +153,19 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() // commit 后是 no-op
+
+	// PR #725 review fix (Gemini medium, suggestion_service.go:154): 加 SELECT FOR UPDATE
+	// 悲观锁，避免并发 accept 时各自做完昂贵的 INSERT 再回滚（无用 DB 开销）。
+	// 拿不到锁 / 状态已变 → 立即退出，不进 INSERT 路径。
+	var lockedStatus string
+	if err := tx.QueryRowxContext(ctx,
+		`SELECT status FROM atlas_ai_suggestions WHERE id=$1 FOR UPDATE`, sug.ID,
+	).Scan(&lockedStatus); err != nil {
+		return nil, fmt.Errorf("select for update: %w", err)
+	}
+	if lockedStatus != "pending" {
+		return nil, fmt.Errorf("建议 %d 状态已被并发改为 %s，本事务退出", sug.ID, lockedStatus)
+	}
 
 	var resolvedKPID *int64
 	var resolvedRelID *int64
@@ -286,19 +300,9 @@ func fingerprintSuggestion(s *model.AISuggestion) string {
 	if s.ProposedRelationType != nil {
 		parts = append(parts, "R="+*s.ProposedRelationType)
 	}
-	h := sha256.Sum256([]byte(joinStrings(parts, "|")))
+	// PR #725 review fix (Gemini medium, suggestion_service.go:288): 用标准库 strings.Join
+	h := sha256.Sum256([]byte(strings.Join(parts, "|")))
 	return hex.EncodeToString(h[:])
-}
-
-func joinStrings(parts []string, sep string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += sep
-		}
-		out += p
-	}
-	return out
 }
 
 func strPtrVal(p *string, fallback string) string {

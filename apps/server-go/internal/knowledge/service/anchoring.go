@@ -92,8 +92,9 @@ func (s *CarrierVersioningService) MigrateAnnotations(ctx context.Context, carri
 //
 // **UTF-8 安全 (PR #724 review fix)**: 内部全部基于 []rune 操作。
 // 前端 W3C TextPositionSelector 的 start/end 是 JS UTF-16 code unit 偏移，对 BMP 字符
-// （含所有 CJK）等同于 code point/rune；对 emoji 等 surrogate pair 字符 JS 会计 2 而 Go []rune 计 1，
-// 这是 W3C 与 Go 的真实差异，本实现按 rune 处理（BMP 路径 100% 兼容；非 BMP 由前端避免）。
+// （含所有 CJK）等同于 code point/rune；对 emoji 等 surrogate pair 字符 JS 会计 2 而 Go []rune 计 1。
+// PR #725 review fix (Gemini high, anchoring.go:133): 通过 utf16OffsetToRuneIndex 显式做
+// UTF-16 → rune 转换，让档1 精确位置匹配对非 BMP 字符也正确。
 func relocate(text string, selectorsJSON []byte) (string, float32) {
 	var selectors []map[string]any
 	if err := json.Unmarshal(selectorsJSON, &selectors); err != nil {
@@ -122,9 +123,13 @@ func relocate(text string, selectorsJSON []byte) (string, float32) {
 	prefix := []rune(prefixStr)
 
 	// 档1: 直接位置命中（rune 边界）
+	// PR #725 review fix (Gemini high): position.start/end 是 UTF-16 code unit 偏移，
+	// 用 utf16OffsetToRuneIndex 把它们转换为 Go rune slice 索引，让非 BMP 字符也正确锚定。
 	if position != nil {
-		start, sok := toInt(position["start"])
-		end, eok := toInt(position["end"])
+		startUTF16, sok := toInt(position["start"])
+		endUTF16, eok := toInt(position["end"])
+		start := utf16OffsetToRuneIndex(textRunes, startUTF16)
+		end := utf16OffsetToRuneIndex(textRunes, endUTF16)
 		if sok && eok && start >= 0 && end <= len(textRunes) && start < end {
 			if runesEqual(textRunes[start:end], exact) {
 				return "anchored", 1.0
@@ -172,6 +177,30 @@ func toInt(v any) (int, bool) {
 		return int(x), true
 	}
 	return 0, false
+}
+
+// utf16OffsetToRuneIndex 把 JS UTF-16 code unit 偏移量转换为 Go rune slice 索引。
+//
+// PR #725 review fix (Gemini high, anchoring.go:133): W3C TextPositionSelector 在 JS 端
+// 是 string.slice() 的 UTF-16 code unit 索引。BMP 字符（U+0000..U+FFFF，含所有 CJK）
+// 每个占 1 unit = 1 rune；非 BMP 字符（U+10000..U+10FFFF，如 emoji）占 2 surrogate pair
+// units = 1 rune。本函数走一遍 rune 累计 UTF-16 长度直到命中目标。
+func utf16OffsetToRuneIndex(runes []rune, utf16Offset int) int {
+	if utf16Offset <= 0 {
+		return 0
+	}
+	cnt := 0
+	for i, r := range runes {
+		if cnt >= utf16Offset {
+			return i
+		}
+		if r > 0xFFFF {
+			cnt += 2 // surrogate pair
+		} else {
+			cnt += 1
+		}
+	}
+	return len(runes)
 }
 
 // runesEqual 比较两个 rune slice 是否相同。

@@ -31,18 +31,20 @@ type KnowledgePoint struct {
 const KPColumns = `id, uuid, title, body_markdown, type, confidence, status,
 	author_id, provenance, ai_suggestion_id, archived, deleted, created_at, updated_at`
 
-// RelationTypeSet 是 9 种 typed relation 的全集（手册 §3 Phase 2 C2-1 严格限定）。
-// 不要在此处之外硬编码字符串字面量——所有引用必走 RelationTypeSet。
-var RelationTypeSet = map[string]bool{
-	"supports":    true,
-	"refutes":     true,
-	"specializes": true,
-	"generalizes": true,
-	"precedes":    true,
-	"causes":      true,
-	"similar_to":  true,
-	"cites":       true,
-	"instance_of": true,
+// IsSupportedRelationType 校验 typed relation 类型是否在 9 种白名单内
+// （手册 §3 Phase 2 C2-1 严格限定）。
+//
+// PR #725 review fix (Gemini medium, knowledge_point.go:46): 过去用 `RelationTypeSet`
+// 全局 map 暴露给外部包，存在并发读写风险（虽然现状只读，但全局 map 可被外部 mutate）。
+// 改为 switch 函数：完全不可变、线程安全、命中性能更好。
+func IsSupportedRelationType(t string) bool {
+	switch t {
+	case "supports", "refutes", "specializes", "generalizes",
+		"precedes", "causes", "similar_to", "cites", "instance_of":
+		return true
+	default:
+		return false
+	}
 }
 
 // TypedRelation 对应 atlas_typed_relations 表。

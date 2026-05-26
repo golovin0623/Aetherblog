@@ -72,8 +72,22 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 	}
 	// 占位指纹：mediaID + size。Phase 1 后期换为对文件字节流计算的真 sha256。
 	hash := contentSHA256(fmt.Sprintf("media://%d:size=%d", media.ID, media.FileSize))
+	metadata := []byte(fmt.Sprintf(`{"fileUrl":%q,"fileSize":%d}`, media.FileURL, media.FileSize))
 
+	// PR #725 review fix (Gemini medium, pdf_carrier.go:78): 文件重新上传导致 size 变化时，
+	// existing.ContentHash 不再匹配。过去直接返回 existing 会让 carrier hash + metadata 永久 stale
+	// 且无法触发版本迁移。现在镜像 MarkdownCarrierService 行为：检测 hash 变化 → UpdateContent bump v_n。
 	if existing != nil {
+		if existing.ContentHash != hash {
+			diff := []byte(`{"reason":"pdf_reuploaded"}`)
+			if err := s.carriers.UpdateContent(ctx, existing.ID, hash, uri, "reupload", diff); err != nil {
+				return nil, fmt.Errorf("bump pdf carrier version: %w", err)
+			}
+			existing.ContentHash = hash
+			existing.Metadata = metadata
+			// 注：PDF 标注的版本迁移与 markdown 不同——pdf.js 抽取的文本与 markdown→plaintext
+			// 不在同一空间，Phase 1 后期 PDF Reader 上线时再补 MigrateAnnotations 集成。
+		}
 		return existing, nil
 	}
 
@@ -82,7 +96,7 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 		SourceURI:   uri,
 		ContentHash: hash,
 		Title:       firstNonEmpty(media.Title, fmt.Sprintf("pdf-%d", media.ID)),
-		Metadata:    []byte(fmt.Sprintf(`{"fileUrl":%q,"fileSize":%d}`, media.FileURL, media.FileSize)),
+		Metadata:    metadata,
 		OwnerID:     media.OwnerID,
 		// Phase 1 骨架：状态先标 ingesting，真正抽取完成后由 worker 转 ready。
 		Status:        "ingesting",

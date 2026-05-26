@@ -168,13 +168,13 @@ async def suggest_relation(req: SuggestRelationRequest) -> RelationSuggestion:
 
     if any(k in a for k in ["反驳", "反对", "否定"]):
         rt = "refutes"
-        rationale = f"Phase 3 stub：from_text 含反驳关键词"
+        rationale = "Phase 3 stub：from_text 含反驳关键词"
     elif any(k in a for k in ["支持", "证实", "佐证"]):
         rt = "supports"
-        rationale = f"Phase 3 stub：from_text 含支持关键词"
+        rationale = "Phase 3 stub：from_text 含支持关键词"
     elif any(k in a for k in ["导致", "引起", "造成"]):
         rt = "causes"
-        rationale = f"Phase 3 stub：from_text 含因果关键词"
+        rationale = "Phase 3 stub：from_text 含因果关键词"
     elif overlap >= 0.4:
         rt = "similar_to"
         rationale = f"Phase 3 stub：token overlap={overlap:.2f} ≥ 0.4"
