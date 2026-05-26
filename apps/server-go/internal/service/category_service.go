@@ -144,23 +144,44 @@ func generateSlugFromName(name string) string {
 }
 
 // buildTree 递归地将平铺分类列表组装为树形结构。
-// parentID 为 nil 表示收集顶级分类（无父节点）。
 func buildTree(all []model.Category, parentID *int64) []dto.CategoryVO {
-	var result []dto.CategoryVO
+	byParent := make(map[int64][]dto.CategoryVO)
+	var roots []dto.CategoryVO
+
 	for _, c := range all {
 		c := c
-		var matches bool
+		vo := categoryVO(&c)
+
+		var isRoot bool
 		if parentID == nil {
-			matches = c.ParentID == nil
+			isRoot = c.ParentID == nil
 		} else {
-			matches = c.ParentID != nil && *c.ParentID == *parentID
+			isRoot = c.ParentID != nil && *c.ParentID == *parentID
 		}
-		if matches {
-			vo := categoryVO(&c)
-			// 递归构建子树
-			vo.Children = buildTree(all, &c.ID)
-			result = append(result, vo)
+
+		if isRoot {
+			roots = append(roots, vo)
+		}
+
+		if c.ParentID != nil {
+			byParent[*c.ParentID] = append(byParent[*c.ParentID], vo)
 		}
 	}
+
+	var build func(vo dto.CategoryVO) dto.CategoryVO
+	build = func(vo dto.CategoryVO) dto.CategoryVO {
+		if children, ok := byParent[vo.ID]; ok {
+			for _, child := range children {
+				vo.Children = append(vo.Children, build(child))
+			}
+		}
+		return vo
+	}
+
+	var result []dto.CategoryVO
+	for _, root := range roots {
+		result = append(result, build(root))
+	}
+
 	return result
 }
