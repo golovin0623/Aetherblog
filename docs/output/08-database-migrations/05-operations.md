@@ -81,6 +81,7 @@ fi
 |---|---|---|
 | **34** | 输出含 `version: 34, dirty: true` | `migrate force 35` → 让 035/036 接管 post_embeddings 重建 |
 | **38** | 输出含 `version: 38, dirty: true` | `migrate force 38` → 让 039 接管 v_published_posts 重建 + summary 加宽 |
+| **57** | 输出含 `version: 57, dirty: true` 且 `knowledge_bases` 确认不存在 | `migrate force 56` → 重放 057 media folder 系统目录迁移,再让 058 创建缺失的 KB schema;若表已存在或无法判定则中止 |
 
 **recipe 表只覆盖"安全可重放"的版本**;新增条目时同时改 `deploy.sh::_try_heal_known_dirty` 与 `02-migration-history.md` §9。
 

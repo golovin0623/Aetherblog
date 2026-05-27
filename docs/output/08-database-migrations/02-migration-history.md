@@ -470,6 +470,7 @@ ALTER TABLE activity_events
 |---|---|---|
 | **v34 dirty** | `migrate force 35` | 让 035/036 接力补完版本化 schema |
 | **v38 dirty** | `migrate force 38` | 让 039 接管 widen_summary 与 prompt 重写 |
+| **v57 dirty** | 确认 `knowledge_bases` 不存在后 `migrate force 56` | 重放 057 media folder 系统目录迁移,再让 058 创建缺失的 KB schema;若表已存在或无法判定则中止交人工 |
 
 逻辑:
 1. 部署前 `migrate version` 解析输出,若命中 dirty 表中条目则 `migrate force <target>`。
