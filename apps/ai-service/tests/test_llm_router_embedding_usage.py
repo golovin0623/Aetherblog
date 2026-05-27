@@ -158,3 +158,29 @@ async def test_embed_records_failed_usage_before_reraising(
     assert record["error_code"] == "RuntimeError: upstream timeout"
     assert record["tokens_in"] > 0
     assert metrics.records[0]["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_embed_strict_model_override_does_not_fallback() -> None:
+    usage_logger = FakeUsageLogger()
+    metrics = FakeMetrics()
+    router = _make_router(usage_logger, metrics)
+
+    router.model_router.provider_registry = SimpleNamespace(
+        get_model=AsyncMock(return_value=None),
+    )
+    router.model_router.credential_resolver = SimpleNamespace(
+        get_credential=AsyncMock(return_value=None),
+    )
+    router.model_router.resolve_routing.reset_mock()
+
+    with pytest.raises(ValueError, match="embedding model override failed"):
+        await router.embed(
+            "hello embedding",
+            embedding_model_id="missing-embedding-model",
+            strict_embedding_model_id=True,
+        )
+
+    router.model_router.resolve_routing.assert_not_awaited()
+    assert usage_logger.records == []
+    assert metrics.records == []
