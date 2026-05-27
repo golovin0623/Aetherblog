@@ -59,7 +59,7 @@ KB 写路径速率桶：`rate:kb:write` 60/min/user；写操作落 `activity_eve
 | Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `ai_handler` | `/v1/admin/ai/*` | 9 个业务端点（summary / tags / titles / polish / outline / translate + stream 变体 + health） + 7 个配置端点（prompts + tasks CRUD） + provider 透传（`Any /*`） |
-| `ai_handler` (proxy → ai-service) | `/v1/admin/providers/global-pricing/*` + `/v1/admin/providers/models/:id/sync-{from,global}-pricing` | **全局价格管理（透明转发到 FastAPI）：** `GET /global-pricing` 列表、`GET /coverage` 全 model_id 覆盖率视图、`GET/PUT/DELETE /global-pricing/{model_id:path}` upsert/删除、`POST /global-pricing/{model_id}/apply` 批量回填到所有同名 ai_models 行（可按 `provider_codes` 限制 + `overwrite_existing` 切换）、`POST /models/{id}/sync-global-pricing`（model→global）、`POST /models/{id}/sync-from-global`（global→单条 model）。所有路由仍走 `/providers/*` 通配符代理，不需要新增 Go handler。 |
+| `ai_handler` (proxy → ai-service) | `/v1/admin/providers/global-pricing/*` + `/v1/admin/providers/models/:id/sync-{from,global}-pricing` | **全局价格管理（透明转发到 FastAPI）：** `GET /global-pricing` 列表、`GET /coverage` model_id 覆盖率视图（默认 `enabled_only=true` 仅含「供应商启用」模型即 `m.is_enabled AND p.is_enabled`；传 `enabled_only=false` 看全量目录）、`GET/PUT/DELETE /global-pricing/{model_id:path}` upsert/删除、`POST /global-pricing/{model_id}/apply` 批量回填到所有同名 ai_models 行（可按 `provider_codes` 限制 + `overwrite_existing` 切换）、`POST /models/{id}/sync-global-pricing`（model→global）、`POST /models/{id}/sync-from-global`（global→单条 model）。所有路由仍走 `/providers/*` 通配符代理，不需要新增 Go handler。 |
 | `agent_handler` | `/v1/agent/*` | 4 路由（`POST chat` SSE、`GET models`、`GET articles`、`GET tags`），任意已登录用户可访问；写 `ai.agent_chat` 审计 |
 
 ### 站点配置与统计

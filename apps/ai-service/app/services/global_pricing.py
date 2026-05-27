@@ -324,11 +324,16 @@ class GlobalPricingService:
     # 覆盖率视图：所有 distinct model_id × 全局表
     # ------------------------------------------------------------
 
-    async def coverage(self) -> list[GlobalPricingCoverage]:
-        """以「全部 ai_models 中出现过的 distinct model_id」为左表，
+    async def coverage(self, *, enabled_only: bool = True) -> list[GlobalPricingCoverage]:
+        """以「ai_models 中出现过的 distinct model_id」为左表，
         join 全局价格表，给出每个 model_id 的覆盖与同步状况。
 
         前端用这张表实现「已配置 / 未配置 / 部分脱锚」三档过滤。
+
+        默认（``enabled_only=True``）仅统计「供应商启用」的模型 —— 即
+        ``m.is_enabled AND p.is_enabled``（与 provider_registry 取用模型的口径一致），
+        因为全量模型目录里绝大多数是从远程拉取但从未启用的条目，对定价维护没有意义。
+        传 ``enabled_only=False`` 可退回全量目录视图。
         """
         async with self.pool.acquire() as conn:
             model_rows = await conn.fetch(
@@ -337,7 +342,9 @@ class GlobalPricingService:
                        m.output_cost_per_1k, m.capabilities, p.code AS provider_code
                 FROM ai_models m
                 JOIN ai_providers p ON p.id = m.provider_id
-                """
+                WHERE ($1 = FALSE OR (m.is_enabled = TRUE AND p.is_enabled = TRUE))
+                """,
+                enabled_only,
             )
             global_rows = await conn.fetch(
                 """
