@@ -199,7 +199,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     queryFn: getSiteSettings,
     enabled: !profile,
     staleTime: 10 * 60 * 1000, // 10 分钟
-    initialData: profile || !ssrSettings || Object.keys(ssrSettings).length === 0 ? undefined : ssrSettings,
+    initialData: !profile && ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
   });
 
   const { data: siteStats } = useQuery({

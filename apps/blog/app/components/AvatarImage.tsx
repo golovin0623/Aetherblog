@@ -44,37 +44,40 @@ export default function AvatarImage({
   ariaHidden,
   className,
 }: AvatarImageProps) {
+  const [prevSrc, setPrevSrc] = useState(src);
   const [status, setStatus] = useState<LoadStatus>(() =>
     loadedSrcCache.has(src) ? 'loaded' : 'loading'
   );
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // 派生状态：src 变化时在渲染期间同步重置 status，避免「先用旧 status 渲染新
+  // src（如已 loaded → opacity-100 显示未加载完的破图）再 effect 改回 loading」
+  // 的闪烁（React 官方「根据 prop 变化调整 state」模式）。
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setStatus(loadedSrcCache.has(src) ? 'loaded' : 'loading');
+  }
+
+  // 探测缓存命中（onLoad 在 React 绑定事件前已触发的场景），避免骨架屏在
+  // 已缓存图片上永久残留。
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      loadedSrcCache.add(src);
+      setStatus('loaded');
+    }
+  }, [src]);
 
   const markLoaded = () => {
     loadedSrcCache.add(src);
     setStatus('loaded');
   };
 
-  // src 变化时按缓存重置状态；同时探测缓存命中（onLoad 在挂载前已触发的场景），
-  // 避免骨架屏在已缓存图片上永久残留。
-  useEffect(() => {
-    if (loadedSrcCache.has(src)) {
-      setStatus('loaded');
-      return;
-    }
-    setStatus('loading');
-    const img = imgRef.current;
-    if (img && img.complete && img.naturalWidth > 0) {
-      markLoaded();
-    }
-    // markLoaded 仅依赖 src，闭包稳定，无需进依赖数组
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src]);
-
   return (
     <>
       <span
         aria-hidden
-        className={`absolute inset-0 agent-skeleton-shimmer pointer-events-none transition-opacity duration-500 ease-out ${
+        className={`!absolute inset-0 agent-skeleton-shimmer pointer-events-none transition-opacity duration-500 ease-out ${
           status === 'loading' ? 'opacity-100' : 'opacity-0'
         }`}
       />
