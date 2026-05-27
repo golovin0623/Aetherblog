@@ -200,6 +200,10 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     enabled: !profile,
     staleTime: 10 * 60 * 1000, // 10 分钟
     initialData: !profile && ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
+    // 视 SSR 注水数据为已过期：首帧即用（保住"无瀑布"），但客户端仍后台
+    // revalidate。这样当 SSR 因后端不可达回落到 DEFAULT_SITE_SETTINGS 时，
+    // 浏览器（/api 代理可达）能纠正回真实头像/作者名，而非被钉在默认值 10 分钟。
+    initialDataUpdatedAt: 0,
   });
 
   const { data: siteStats } = useQuery({

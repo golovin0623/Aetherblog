@@ -76,6 +76,9 @@ const MobileMenu = memo(function MobileMenu() {
     queryFn: getSiteSettings,
     staleTime: 10 * 60 * 1000, // 10 分钟
     initialData: ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
+    // SSR 注水数据视为已过期，首帧即用但客户端后台 revalidate，避免 SSR 回落到
+    // DEFAULT_SITE_SETTINGS 时被钉在默认作者名/占位头像（见 AuthorProfileCard 同款）。
+    initialDataUpdatedAt: 0,
   });
 
   const authorName = settings?.author_name || settings?.authorName || 'Golovin';
