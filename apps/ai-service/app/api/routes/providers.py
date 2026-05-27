@@ -9,7 +9,7 @@ import re
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 import httpx
 import asyncpg
 from litellm import acompletion
@@ -883,13 +883,17 @@ async def list_global_pricing(
     response_model=ApiResponse[list[GlobalPricingCoverageRow]],
 )
 async def global_pricing_coverage(
+    enabled_only: bool = Query(
+        True,
+        description="仅统计供应商启用的模型（m.is_enabled AND p.is_enabled）；传 false 查看全量目录。",
+    ),
     service: GlobalPricingService = Depends(get_global_pricing_service),
 ):
-    """返回数据库中所有 distinct model_id 的覆盖率视图。
+    """返回 distinct model_id 的覆盖率视图。
 
-    前端用这张表实现「全部 / 已配置 / 未配置 / 部分脱锚」过滤与一键编辑。
+    默认仅含「供应商启用」的模型；前端用这张表实现「全部 / 已配置 / 未配置 / 部分脱锚」过滤与一键编辑。
     """
-    rows = await service.coverage()
+    rows = await service.coverage(enabled_only=enabled_only)
     return ApiResponse(
         data=[
             GlobalPricingCoverageRow(
