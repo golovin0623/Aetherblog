@@ -26,6 +26,7 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
@@ -843,7 +844,7 @@ func (s *KBService) listPostsAsKBFiles(ctx context.Context, kb *model.KnowledgeB
 	}
 	if q.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (p.title ILIKE $%d OR p.slug ILIKE $%d)", idx, idx))
-		args = append(args, "%"+q.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(q.Keyword)+"%")
 		idx++
 	}
 	base := sb.String()

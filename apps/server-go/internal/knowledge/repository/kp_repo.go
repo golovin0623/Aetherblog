@@ -14,6 +14,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // KPRepo 操作 atlas_knowledge_points + atlas_annotation_kp_links。
@@ -89,7 +90,7 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 	}
 	if f.Keyword != nil && *f.Keyword != "" {
 		q += " AND (title ILIKE $" + strconv.Itoa(idx) + " OR body_markdown ILIKE $" + strconv.Itoa(idx) + ")"
-		args = append(args, "%"+*f.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(*f.Keyword)+"%")
 		idx++
 	}
 	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
