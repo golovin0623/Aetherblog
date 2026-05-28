@@ -24,7 +24,7 @@ func (s *CategoryService) ListTree(ctx context.Context) ([]dto.CategoryVO, error
 	if err != nil {
 		return nil, err
 	}
-	return buildTree(cats, nil), nil
+	return buildTree(cats), nil
 }
 
 // GetByID 通过主键查询单个分类，不存在时返回 nil, nil。
@@ -144,23 +144,36 @@ func generateSlugFromName(name string) string {
 }
 
 // buildTree 递归地将平铺分类列表组装为树形结构。
-// parentID 为 nil 表示收集顶级分类（无父节点）。
-func buildTree(all []model.Category, parentID *int64) []dto.CategoryVO {
-	var result []dto.CategoryVO
+// 性能优化 (Bolt): 将 O(N^2) 的嵌套循环查找优化为 O(N) 的哈希表预分组。
+// 通过预先计算所有节点的 children 映射，将后续的递归装配耗时从秒级(大量数据时)降至毫秒级。
+func buildTree(all []model.Category) []dto.CategoryVO {
+	childrenMap := make(map[int64][]model.Category)
+	var roots []model.Category
+
 	for _, c := range all {
-		c := c
-		var matches bool
-		if parentID == nil {
-			matches = c.ParentID == nil
+		if c.ParentID == nil {
+			roots = append(roots, c)
 		} else {
-			matches = c.ParentID != nil && *c.ParentID == *parentID
-		}
-		if matches {
-			vo := categoryVO(&c)
-			// 递归构建子树
-			vo.Children = buildTree(all, &c.ID)
-			result = append(result, vo)
+			pid := *c.ParentID
+			childrenMap[pid] = append(childrenMap[pid], c)
 		}
 	}
-	return result
+
+	var build func(nodes []model.Category) []dto.CategoryVO
+	build = func(nodes []model.Category) []dto.CategoryVO {
+		if len(nodes) == 0 {
+			return nil
+		}
+		result := make([]dto.CategoryVO, 0, len(nodes))
+		for _, c := range nodes {
+			vo := categoryVO(&c)
+			if children, ok := childrenMap[c.ID]; ok {
+				vo.Children = build(children)
+			}
+			result = append(result, vo)
+		}
+		return result
+	}
+
+	return build(roots)
 }
