@@ -818,7 +818,9 @@ func searchPublishedQuery() string {
 				OR c.name ILIKE $2 ESCAPE '\'
 				OR c.slug ILIKE $2 ESCAPE '\'
 				OR %[2]s
-				OR %[4]s
+				OR (
+					%[4]s
+				)
 			)
 		ORDER BY rank DESC, p.published_at DESC NULLS LAST
 		LIMIT $%[5]d OFFSET $%[6]d`,
