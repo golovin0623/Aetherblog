@@ -570,13 +570,19 @@ class GlobalPricingService:
                 if self._proposal_status(entry, cov) == "unchanged":
                     skipped += 1
                     continue
-                # 保留操作员维护的元数据，只更新价格。
+                # 保留操作员维护的元数据：notes / display_name + pricing JSON 里的
+                # 扩展字段（custom units / audioInput / 其它非 LiteLLM 键）。
+                # 标准 input/output/cached 单价由 upsert 内的
+                # _sync_model_pricing_capabilities 用下面的数据源价格刷新。
                 existing = await self.get_by_model_id(cov.model_id)
                 display_name = existing.display_name if existing else cov.display_name
                 notes = existing.notes if existing else None
+                pricing = dict(existing.pricing) if existing else {}
+                pricing["currency"] = "USD"
             else:
                 display_name = cov.display_name
                 notes = None
+                pricing = {"currency": "USD"}
 
             await self.upsert(
                 model_id=cov.model_id,
@@ -585,7 +591,7 @@ class GlobalPricingService:
                 input_cost_per_1m=entry.input_per_1m,
                 output_cost_per_1m=entry.output_per_1m,
                 cached_input_cost_per_1m=entry.cached_input_per_1m,
-                pricing={"currency": "USD"},
+                pricing=pricing,
                 notes=notes,
             )
             if cov.has_global:
