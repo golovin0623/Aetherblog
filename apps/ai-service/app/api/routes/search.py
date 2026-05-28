@@ -100,7 +100,7 @@ async def semantic_search(
         # 可能来自不同 embedding 模型，召回会稳定返回空。
         profile = await vector_store.get_active_profile()
         model = profile.model_id
-        results = await vector_store.semantic_search(q, limit)
+        results = await vector_store.semantic_search(q, limit, profile=profile)
         return ApiResponse(data=SemanticSearchData(results=results))
     except Exception as exc:
         error_code = str(exc)
@@ -356,14 +356,16 @@ async def semantic_search_internal(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
     user_id = "system"
     if hasattr(user, "user_id"):
         user_id = user.user_id
     elif isinstance(user, dict) and user.get("sub"):
         user_id = str(user["sub"])
     try:
-        results = await vector_store.semantic_search(q, limit)
+        profile = await vector_store.get_active_profile()
+        model = profile.model_id
+        results = await vector_store.semantic_search(q, limit, profile=profile)
         return ApiResponse(data=SemanticSearchData(results=results))
     except Exception as exc:
         error_code = str(exc)

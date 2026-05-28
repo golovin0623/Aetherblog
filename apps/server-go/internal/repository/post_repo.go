@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jmoiron/sqlx"
 
@@ -627,7 +628,7 @@ func derivedSearchTerms(term string) []string {
 			continue
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(term, prefix))
-		if len([]rune(rest)) >= 2 {
+		if utf8.RuneCountInString(rest) >= 2 {
 			return []string{rest}
 		}
 	}
@@ -649,7 +650,8 @@ func splitSearchTerms(raw string) []string {
 		if term == "" {
 			return
 		}
-		if utf8Len := len([]rune(term)); utf8Len < 2 && classifySearchRune([]rune(term)[0]) == searchRuneASCII {
+		firstRune, _ := utf8.DecodeRuneInString(term)
+		if runeCount := utf8.RuneCountInString(term); runeCount < 2 && classifySearchRune(firstRune) == searchRuneASCII {
 			return
 		}
 		if _, ok := seen[term]; ok {
@@ -692,7 +694,8 @@ func splitSearchTerms(raw string) []string {
 	}
 	flush()
 
-	for _, term := range terms {
+	baseTerms := append([]string(nil), terms...)
+	for _, term := range baseTerms {
 		for _, derived := range derivedSearchTerms(term) {
 			addTerm(derived)
 		}
