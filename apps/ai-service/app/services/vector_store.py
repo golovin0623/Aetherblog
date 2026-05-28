@@ -497,6 +497,7 @@ class VectorStoreService:
         可能是 ``deprecated``。两者都属于同一 profile 的可复用 checkpoint。
         """
 
+        used_model_id = profile.model_id
         chunk_count = len(chunks)
         expected_hashes = {c.index: _chunk_hash(c) for c in chunks}
         expected_indices = set(expected_hashes)
@@ -523,7 +524,7 @@ class VectorStoreService:
                 idx in expected_indices
                 and row["chunk_hash"] == expected_hashes[idx]
                 and int(row["chunk_count"] or 1) == chunk_count
-                and row["model_id"] == profile.model_id
+                and row["model_id"] == used_model_id
             )
             if is_valid:
                 row_dim = int(row["dim"])
@@ -566,7 +567,7 @@ class VectorStoreService:
             return {
                 "status": "indexed",
                 "profile": profile.code,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
                 "dim": expected_dim or 0,
                 "chunks": chunk_count,
                 "reused_chunks": completed_chunks,
@@ -585,7 +586,7 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
-                    embedding_model_id=profile.model_id,
+                    embedding_model_id=used_model_id,
                     strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
@@ -629,7 +630,7 @@ class VectorStoreService:
                     """,
                     post_id,
                     profile.id,
-                    profile.model_id,
+                    used_model_id,
                     dim,
                     vec,
                     c.index,
@@ -686,13 +687,13 @@ class VectorStoreService:
                 "embedded_chunks": len(missing_chunks),
                 "embed_ms": round(embed_ms, 2),
                 "vector_dim": expected_dim or 0,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
             }},
         )
         return {
             "status": "indexed",
             "profile": profile.code,
-            "model_id": profile.model_id,
+            "model_id": used_model_id,
             "dim": expected_dim or 0,
             "chunks": chunk_count,
             "reused_chunks": len(valid_indices),
