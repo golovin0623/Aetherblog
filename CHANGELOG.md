@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 全局价格「从 LiteLLM 一键同步」(2026-05-28, branch claude/vendor-enabled-model-defaults-N3nal)
+
+**背景：** 中转站（NewAPI / one-api 等）按各家官方文档维护「绝对价基准」，本质都参照 BerriAI/litellm 的 `model_prices_and_context_window.json`。本服务已把 `litellm` 列为运行时依赖，`litellm.model_cost`（~1000+ 模型，USD/token）离线即可用 —— 无需任何网络请求或手动维护本地价目表。运维不再需要逐个 model_id 手填基准价。
+
+**Added — AI Service (Python):**
+- `app/services/pricing_catalog.py` — 价格目录加载与归一化匹配。把 `litellm.model_cost` 转成 `model_id → CatalogEntry`（USD/token → USD/1M，`<0` 视为无数据、`0` 保留为合法免费价），跳过 `sample_spec` 文档条目。匹配级联：精确 → 去供应商前缀 → 去日期/版本后缀（`-2024-08-06`/`-20240806`/`-1106`/`-0613`/`-latest` 等 3-4 位 MMDD/年份快照，单数字版本号如 `gpt-4` 不截）→ 大小写不敏感；纯函数 `candidate_forms` / `PricingCatalog.match` 不依赖 litellm 便于单测。进程内缓存（表导入后静态）。
+- `app/services/global_pricing.py` — `preview_catalog_sync()` 出 diff（每行 status = new / update / unchanged / no_match）；`apply_catalog_sync()` 按 `model_ids` 勾选范围写入全局表，`overwrite_existing=false` 只补「未配置」项、true 才覆盖且**保留已有 notes / display_name**。新增 `PricingSyncProposal` / `PricingSyncResult` dataclass。
+- `app/api/routes/providers.py` — `POST /global-pricing/catalog/preview` + `POST /global-pricing/catalog/sync`；两条声明在 `/{model_id:path}` 之前避免被 path 转换器吞掉；数据源不可用返回 503。
+- `app/schemas/provider.py` — `PricingCatalogSyncRequest` / `PricingSyncProposalResponse` / `PricingCatalogPreviewResponse` / `PricingCatalogSyncResponse`。
+
+**Added — Admin (React):**
+- `pages/global-pricing/PricingSyncDialog.tsx` — 同步弹窗：进入即拉预览，按状态排序的 diff 表（新增价绿、更新价橙+划掉旧值、已一致灰、无匹配琥珀），可勾选 + 全选、「覆盖已配置」开关（切换实时重拉预览并重置勾选），底部显示已选数与未匹配数。
+- `GlobalPricingPage.tsx` 头部新增「同步价格」按钮；`hooks.ts` 新增 `usePreviewPricingCatalogSync` / `useApplyPricingCatalogSync`；`aiProviderService.ts` 新增 `previewPricingCatalogSync` / `applyPricingCatalogSync` 及相关类型。
+
+**📄 文档影响：** 已更新 `.claude/docs/api-handlers.md`（AI 节登记两条 catalog 路由）。
+
 ### Fixed — 知识库打开即 500：`knowledge_bases` 表缺失（2026-05-26, branch claude/kb-opening-error-YDBBe）
 
 **现象：** admin 进入「智能 · 知识库」时 `GET /api/v1/admin/kbs` 返回 500，postgres 日志 `relation "knowledge_bases" does not exist`（`kb_repo.go` ListAll 的 `SELECT ... FROM knowledge_bases WHERE is_archived = FALSE`）。
