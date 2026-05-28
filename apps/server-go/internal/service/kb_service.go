@@ -40,6 +40,7 @@ var (
 	ErrKBForbidSystem      = errors.New("系统级知识库不可执行该操作")
 	ErrKBProfileNotFound   = errors.New("索引档案不存在")
 	ErrKBProfileBadState   = errors.New("索引档案当前状态不允许该操作")
+	ErrKBProfileBadConfig  = errors.New("索引档案配置无效")
 	ErrKBFileNotFound      = errors.New("知识库文件不存在")
 	ErrKBFileWrongKB       = errors.New("文件不属于该知识库")
 	ErrKBMemberWrongKB     = errors.New("成员不属于该知识库")
@@ -1093,7 +1094,7 @@ func (s *KBService) CreateProfile(ctx context.Context, kbID int64, req dto.Creat
 		return nil, ErrKBPermission
 	}
 	if req.ChunkOverlapTokens >= req.ChunkSizeTokens {
-		return nil, fmt.Errorf("chunkOverlapTokens 必须小于 chunkSizeTokens")
+		return nil, fmt.Errorf("%w: chunkOverlapTokens 必须小于 chunkSizeTokens", ErrKBProfileBadConfig)
 	}
 	p, err := s.profileRepo.Create(ctx, repository.KBProfileCreateRequest{
 		KBID:               kbID,
@@ -1161,7 +1162,7 @@ func (s *KBService) UpdateProfile(ctx context.Context, kbID, profileID int64, re
 			effOverlap = *req.ChunkOverlapTokens
 		}
 		if effOverlap >= effSize {
-			return nil, fmt.Errorf("chunk_overlap_tokens (%d) 必须小于 chunk_size_tokens (%d)", effOverlap, effSize)
+			return nil, fmt.Errorf("%w: chunk_overlap_tokens (%d) 必须小于 chunk_size_tokens (%d)", ErrKBProfileBadConfig, effOverlap, effSize)
 		}
 		if req.ChunkSizeTokens != nil {
 			sets["chunk_size_tokens"] = *req.ChunkSizeTokens
