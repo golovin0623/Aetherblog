@@ -461,14 +461,28 @@ class GlobalPricingService:
     def _proposal_status(
         entry: CatalogEntry, cov: GlobalPricingCoverage
     ) -> str:
-        """与全局现值比对，给出 new / update / unchanged。"""
+        """与全局现值比对，给出 new / update / unchanged。
+
+        只比对数据源「确有提供」的子价（input/output/cached）；数据源未提供
+        的字段（值为 None）由 apply 路径保留操作员现值、不视为差异 —— 否则
+        会与「保留缺失项」的写入语义打架，导致 status 永远停在 update、反复
+        apply 只刷 updated_at 而数值不收敛。
+        """
         if not cov.has_global:
             return "new"
-        same_numbers = (
-            _approx_equal(entry.input_per_1m, cov.global_input_per_1m)
-            and _approx_equal(entry.output_per_1m, cov.global_output_per_1m)
-            and _approx_equal(entry.cached_input_per_1m, cov.global_cached_input_per_1m)
-        )
+        same_numbers = True
+        if entry.input_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.input_per_1m, cov.global_input_per_1m
+            )
+        if entry.output_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.output_per_1m, cov.global_output_per_1m
+            )
+        if entry.cached_input_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.cached_input_per_1m, cov.global_cached_input_per_1m
+            )
         # 数据源恒为 USD；现值若是别的币种，即使数字相同也算需要更新。
         same_currency = (cov.currency or "USD").upper() == "USD"
         return "unchanged" if (same_numbers and same_currency) else "update"
@@ -554,6 +568,31 @@ class GlobalPricingService:
         coverage_rows = await self.coverage(enabled_only=enabled_only)
         selected = set(model_ids) if model_ids is not None else None
 
+        # overwrite 时一次性批量取回待更新行的元数据，避免循环内 N+1 查询。
+        existing_meta: dict[str, dict[str, Any]] = {}
+        if overwrite_existing:
+            targets = [
+                cov.model_id
+                for cov in coverage_rows
+                if cov.has_global and (selected is None or cov.model_id in selected)
+            ]
+            if targets:
+                async with self.pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        """
+                        SELECT model_id, display_name, pricing, notes
+                        FROM ai_global_pricing
+                        WHERE model_id = ANY($1::text[])
+                        """,
+                        targets,
+                    )
+                for r in rows:
+                    existing_meta[r["model_id"]] = {
+                        "display_name": r["display_name"],
+                        "pricing": _parse_json(r["pricing"]),
+                        "notes": r["notes"],
+                    }
+
         matched = created = updated = skipped = 0
         for cov in coverage_rows:
             if selected is not None and cov.model_id not in selected:
@@ -574,10 +613,10 @@ class GlobalPricingService:
                 # 扩展字段（custom units / audioInput / 其它非 LiteLLM 键）。
                 # 标准 input/output/cached 单价由 upsert 内的
                 # _sync_model_pricing_capabilities 用下面的数据源价格刷新。
-                existing = await self.get_by_model_id(cov.model_id)
-                display_name = existing.display_name if existing else cov.display_name
-                notes = existing.notes if existing else None
-                pricing = dict(existing.pricing) if existing else {}
+                existing = existing_meta.get(cov.model_id)
+                display_name = existing["display_name"] if existing else cov.display_name
+                notes = existing["notes"] if existing else None
+                pricing = dict(existing["pricing"]) if existing else {}
                 pricing["currency"] = "USD"
             else:
                 display_name = cov.display_name
