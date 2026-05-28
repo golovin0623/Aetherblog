@@ -50,7 +50,12 @@ from app.schemas.provider import (
     GlobalPricingCoverageRow,
     GlobalPricingApplyRequest,
     GlobalPricingApplyResponse,
+    PricingCatalogSyncRequest,
+    PricingSyncProposalResponse,
+    PricingCatalogPreviewResponse,
+    PricingCatalogSyncResponse,
 )
+from app.services.pricing_catalog import PricingCatalogUnavailable
 from app.services.provider_registry import ProviderRegistry, ModelInfo
 from app.services.credential_resolver import CredentialResolver
 from app.services.global_pricing import GlobalPricingService
@@ -912,6 +917,79 @@ async def global_pricing_coverage(
             )
             for r in rows
         ]
+    )
+
+
+# 注意：catalog 路由必须声明在 /global-pricing/{model_id:path} 之前，
+# 否则 path 转换器会把 "catalog/preview" 当成 model_id 吞掉。
+@router.post(
+    "/global-pricing/catalog/preview",
+    response_model=ApiResponse[PricingCatalogPreviewResponse],
+)
+async def preview_pricing_catalog_sync(
+    req: PricingCatalogSyncRequest,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """预览：把（默认仅供应商启用的）model_id 匹配数据源价格，给出 diff。
+
+    数据源默认 LiteLLM 内置价格表（USD / 1M tokens），离线可用。
+    """
+    try:
+        source, source_model_count, proposals = await service.preview_catalog_sync(
+            enabled_only=req.enabled_only,
+            overwrite_existing=req.overwrite_existing,
+            source=req.source,
+        )
+    except PricingCatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    matched = sum(1 for p in proposals if p.matched_key is not None)
+    applicable = sum(1 for p in proposals if p.will_apply)
+    return ApiResponse(
+        data=PricingCatalogPreviewResponse(
+            source=source,
+            source_model_count=source_model_count,
+            total_candidates=len(proposals),
+            matched_count=matched,
+            applicable_count=applicable,
+            proposals=[PricingSyncProposalResponse(**vars(p)) for p in proposals],
+        )
+    )
+
+
+@router.post(
+    "/global-pricing/catalog/sync",
+    response_model=ApiResponse[PricingCatalogSyncResponse],
+)
+async def apply_pricing_catalog_sync(
+    req: PricingCatalogSyncRequest,
+    service: GlobalPricingService = Depends(get_global_pricing_service),
+):
+    """应用：把数据源价格写入全局表。
+
+    - ``model_ids``：限定只同步这些（预览里勾选的）model_id；空 = 全部可同步项。
+    - ``overwrite_existing``：False 时只为「未配置全局价格」的 model_id 写入，
+      已有价格的一律跳过；True 时覆盖（更新会保留已有 notes / display_name）。
+    """
+    try:
+        result = await service.apply_catalog_sync(
+            model_ids=req.model_ids,
+            enabled_only=req.enabled_only,
+            overwrite_existing=req.overwrite_existing,
+            source=req.source,
+        )
+    except PricingCatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=PricingCatalogSyncResponse(
+            source=result.source,
+            total_candidates=result.total_candidates,
+            matched=result.matched,
+            created=result.created,
+            updated=result.updated,
+            skipped=result.skipped,
+        )
     )
 
 

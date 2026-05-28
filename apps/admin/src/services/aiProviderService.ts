@@ -210,6 +210,50 @@ export interface GlobalPricingApplyResult {
   target_count: number;
 }
 
+export interface PricingCatalogSyncRequest {
+  source?: string;
+  enabled_only?: boolean;
+  overwrite_existing?: boolean;
+  model_ids?: string[] | null;
+}
+
+export type PricingSyncStatus = 'new' | 'update' | 'unchanged' | 'no_match';
+
+export interface PricingSyncProposal {
+  model_id: string;
+  display_name?: string | null;
+  matched_key?: string | null;
+  match_form?: string | null;
+  source_input_per_1m?: number | null;
+  source_output_per_1m?: number | null;
+  source_cached_input_per_1m?: number | null;
+  current_input_per_1m?: number | null;
+  current_output_per_1m?: number | null;
+  current_cached_input_per_1m?: number | null;
+  currency?: string | null;
+  has_global: boolean;
+  status: PricingSyncStatus;
+  will_apply: boolean;
+}
+
+export interface PricingCatalogPreviewResult {
+  source: string;
+  source_model_count: number;
+  total_candidates: number;
+  matched_count: number;
+  applicable_count: number;
+  proposals: PricingSyncProposal[];
+}
+
+export interface PricingCatalogSyncResult {
+  source: string;
+  total_candidates: number;
+  matched: number;
+  created: number;
+  updated: number;
+  skipped: number;
+}
+
 export const aiProviderService = {
   listProviders: (enabledOnly = false): Promise<AiServiceResponse<AiProvider[]>> =>
     api.get('/v1/admin/providers', { params: { enabled_only: enabledOnly } }),
@@ -347,6 +391,16 @@ export const aiProviderService = {
       `/v1/admin/providers/global-pricing/${encodeURIComponent(modelId)}/apply`,
       data
     ),
+
+  previewPricingCatalogSync: (
+    data: PricingCatalogSyncRequest = {}
+  ): Promise<AiServiceResponse<PricingCatalogPreviewResult>> =>
+    api.post('/v1/admin/providers/global-pricing/catalog/preview', data),
+
+  applyPricingCatalogSync: (
+    data: PricingCatalogSyncRequest = {}
+  ): Promise<AiServiceResponse<PricingCatalogSyncResult>> =>
+    api.post('/v1/admin/providers/global-pricing/catalog/sync', data),
 
   syncModelToGlobalPricing: (
     modelDbId: number

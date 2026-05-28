@@ -284,3 +284,51 @@ class GlobalPricingApplyResponse(BaseModel):
 class GlobalPricingSyncFromModelRequest(BaseModel):
     """从指定 model 把价格反向写入全局表。"""
     model_db_id: int
+
+
+class PricingCatalogSyncRequest(BaseModel):
+    """从价格数据源（LiteLLM 内置表）自动同步价格的请求。
+
+    preview 与 apply 共用此请求体；``model_ids`` 仅 apply 时生效——
+    用于把作用域限定到预览里勾选的那些 model_id，为空则同步全部可同步项。
+    """
+    source: str = Field(default="litellm", max_length=32)
+    enabled_only: bool = True
+    overwrite_existing: bool = False
+    model_ids: list[str] | None = None
+
+
+class PricingSyncProposalResponse(BaseModel):
+    """同步预览中的一行 diff。"""
+    model_id: str
+    display_name: str | None
+    matched_key: str | None
+    match_form: str | None
+    source_input_per_1m: float | None
+    source_output_per_1m: float | None
+    source_cached_input_per_1m: float | None
+    current_input_per_1m: float | None
+    current_output_per_1m: float | None
+    current_cached_input_per_1m: float | None
+    currency: str | None
+    has_global: bool
+    status: str   # new | update | unchanged | no_match
+    will_apply: bool
+
+
+class PricingCatalogPreviewResponse(BaseModel):
+    source: str
+    source_model_count: int        # 数据源里可用的定价条目数
+    total_candidates: int          # 参与匹配的 model_id 数
+    matched_count: int             # 命中数据源的 model_id 数
+    applicable_count: int          # 当前 overwrite 策略下会被写入的条数
+    proposals: list[PricingSyncProposalResponse]
+
+
+class PricingCatalogSyncResponse(BaseModel):
+    source: str
+    total_candidates: int
+    matched: int
+    created: int
+    updated: int
+    skipped: int
