@@ -543,8 +543,10 @@ class GlobalPricingService:
     ) -> PricingSyncResult:
         """把数据源价格写入全局表。
 
-        服务端按 model_id 重新匹配数据源价格（不信任客户端传来的数值），
-        ``model_ids`` 用于限定只同步预览里勾选的那些；为空则同步全部可同步项。
+        服务端按 model_id 重新匹配数据源价格（不信任客户端传来的数值）。
+        ``model_ids`` 语义：``None``（省略）= 同步全部可同步项（供编程调用）；
+        显式给出列表 = 只同步列表里的 model_id；显式空列表 ``[]`` = 不同步任何项
+        （前端「未勾选任何项」即此意，按钮也会禁用，故 ``[]`` 不会误同步全部）。
         已有全局价格的 model_id：仅在 ``overwrite_existing=True`` 时更新，
         且更新时保留操作员维护的 notes / display_name。
         """

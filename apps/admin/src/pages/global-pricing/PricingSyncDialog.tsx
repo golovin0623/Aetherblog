@@ -264,7 +264,8 @@ export function PricingSyncDialog({ onClose }: Props) {
                           ? '—'
                           : formatPrice(p.source_input_per_1m)}
                         {p.status === 'update' &&
-                          p.current_input_per_1m != null && (
+                          p.current_input_per_1m != null &&
+                          p.source_input_per_1m !== p.current_input_per_1m && (
                             <div className="text-[10px] text-[var(--text-muted)] line-through">
                               {formatPrice(p.current_input_per_1m)}
                             </div>
@@ -275,7 +276,8 @@ export function PricingSyncDialog({ onClose }: Props) {
                           ? '—'
                           : formatPrice(p.source_output_per_1m)}
                         {p.status === 'update' &&
-                          p.current_output_per_1m != null && (
+                          p.current_output_per_1m != null &&
+                          p.source_output_per_1m !== p.current_output_per_1m && (
                             <div className="text-[10px] text-[var(--text-muted)] line-through">
                               {formatPrice(p.current_output_per_1m)}
                             </div>

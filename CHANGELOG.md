@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **背景：** 中转站（NewAPI / one-api 等）按各家官方文档维护「绝对价基准」，本质都参照 BerriAI/litellm 的 `model_prices_and_context_window.json`。本服务已把 `litellm` 列为运行时依赖，`litellm.model_cost`（~1000+ 模型，USD/token）离线即可用 —— 无需任何网络请求或手动维护本地价目表。运维不再需要逐个 model_id 手填基准价。
 
 **Added — AI Service (Python):**
-- `app/services/pricing_catalog.py` — 价格目录加载与归一化匹配。把 `litellm.model_cost` 转成 `model_id → CatalogEntry`（USD/token → USD/1M，`<=0` 视为无数据），跳过 `sample_spec` 文档条目。匹配级联：精确 → 去供应商前缀 → 去日期/版本后缀（`-2024-08-06`/`-20240806`/`-latest` 等）→ 大小写不敏感；纯函数 `candidate_forms` / `PricingCatalog.match` 不依赖 litellm 便于单测。进程内缓存（表导入后静态）。
+- `app/services/pricing_catalog.py` — 价格目录加载与归一化匹配。把 `litellm.model_cost` 转成 `model_id → CatalogEntry`（USD/token → USD/1M，`<0` 视为无数据、`0` 保留为合法免费价），跳过 `sample_spec` 文档条目。匹配级联：精确 → 去供应商前缀 → 去日期/版本后缀（`-2024-08-06`/`-20240806`/`-1106`/`-0613`/`-latest` 等 3-4 位 MMDD/年份快照，单数字版本号如 `gpt-4` 不截）→ 大小写不敏感；纯函数 `candidate_forms` / `PricingCatalog.match` 不依赖 litellm 便于单测。进程内缓存（表导入后静态）。
 - `app/services/global_pricing.py` — `preview_catalog_sync()` 出 diff（每行 status = new / update / unchanged / no_match）；`apply_catalog_sync()` 按 `model_ids` 勾选范围写入全局表，`overwrite_existing=false` 只补「未配置」项、true 才覆盖且**保留已有 notes / display_name**。新增 `PricingSyncProposal` / `PricingSyncResult` dataclass。
 - `app/api/routes/providers.py` — `POST /global-pricing/catalog/preview` + `POST /global-pricing/catalog/sync`；两条声明在 `/{model_id:path}` 之前避免被 path 转换器吞掉；数据源不可用返回 503。
 - `app/schemas/provider.py` — `PricingCatalogSyncRequest` / `PricingSyncProposalResponse` / `PricingCatalogPreviewResponse` / `PricingCatalogSyncResponse`。

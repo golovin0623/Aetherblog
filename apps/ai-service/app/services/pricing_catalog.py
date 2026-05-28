@@ -22,9 +22,12 @@ from dataclasses import dataclass
 
 TOKENS_PER_MILLION = 1_000_000
 
-# 去掉模型名尾部的日期 / 版本快照后缀：-2024-08-06 / -20240806 / -240806 / @001 / -latest / -preview
+# 去掉模型名尾部的日期 / 版本快照后缀：
+# -2024-08-06 / -20240806 / -240806 / -1106 / -0125 / -0613 / @001 / -latest / -preview
+# 3-4 位覆盖 OpenAI/Anthropic 常见的 MMDD / 年份快照（gpt-4-1106、gpt-3.5-turbo-0613），
+# 仍不动单数字版本号（gpt-4 不会被截成 gpt）。
 _DATE_SUFFIX_RE = re.compile(
-    r"[-@](\d{4}-\d{2}-\d{2}|\d{8}|\d{6}|\d{3}|latest|preview)$",
+    r"[-@](\d{4}-\d{2}-\d{2}|\d{8}|\d{6}|\d{3,4}|latest|preview)$",
     re.IGNORECASE,
 )
 
@@ -43,14 +46,18 @@ class CatalogEntry:
 
 
 def _per_1m(value: object) -> float | None:
-    """USD/token → USD/1M tokens；``<= 0`` 视为「无该项数据」返回 None。"""
+    """USD/token → USD/1M tokens；``< 0`` 视为「无该项数据」返回 None。
+
+    ``0`` 是合法价格（免费 / 本地开源模型），保留为 ``0.0`` 以便同步；
+    litellm 对未知定价是省略该字段（→ None），不会填 0。
+    """
     if value is None:
         return None
     try:
         v = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    if v <= 0:
+    if v < 0:
         return None
     return round(v * TOKENS_PER_MILLION, 6)
 
