@@ -808,6 +808,7 @@ func searchPublishedQuery() string {
 		FROM posts p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			AND p.password IS NULL
 			AND (
 				to_tsvector('simple', %[1]s)
 					@@ (SELECT tsq FROM q)

@@ -86,6 +86,14 @@ func TestSearchPublishedQueryIncludesNaturalLanguageCategoryAndTagFallbacks(t *t
 	}
 }
 
+func TestSearchPublishedQueryExcludesPasswordProtectedPosts(t *testing.T) {
+	query := searchPublishedQuery()
+
+	if !strings.Contains(query, "AND p.password IS NULL") {
+		t.Fatalf("SearchPublished must exclude password-protected posts:\n%s", query)
+	}
+}
+
 func TestSearchPublishedQueryPrioritizesStructuredMatchesOverBodyFrequency(t *testing.T) {
 	query := searchPublishedQuery()
 
