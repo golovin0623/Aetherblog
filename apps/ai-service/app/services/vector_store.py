@@ -504,7 +504,7 @@ class VectorStoreService:
         async with self.pool.acquire() as conn:
             existing_rows = await conn.fetch(
                 """
-                SELECT chunk_index, chunk_hash, COALESCE(chunk_count, 1) AS chunk_count, dim
+                SELECT chunk_index, chunk_hash, COALESCE(chunk_count, 1) AS chunk_count, dim, model_id
                 FROM post_embeddings
                 WHERE post_id = $1
                   AND profile_id = $2
@@ -523,6 +523,7 @@ class VectorStoreService:
                 idx in expected_indices
                 and row["chunk_hash"] == expected_hashes[idx]
                 and int(row["chunk_count"] or 1) == chunk_count
+                and row["model_id"] == profile.model_id
             )
             if is_valid:
                 row_dim = int(row["dim"])
