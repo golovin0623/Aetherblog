@@ -102,7 +102,11 @@ async def _recall_custom_kb(pool, llm: LlmRouter, kb_id: int, kb_row, query: str
         logger.warning("kb_recall.profile_missing", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
         return []
     try:
-        embedding = await llm.embed(query, embedding_model_id=profile.model_id)
+        embedding = await llm.embed(
+            query,
+            embedding_model_id=profile.model_id,
+            strict_embedding_model_id=True,
+        )
     except Exception as exc:
         logger.warning("kb_recall.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
         return []
@@ -173,7 +177,11 @@ async def _recall_system_posts(pool, llm: LlmRouter, kb_id: int, kb_row, query: 
         logger.warning("kb_recall.system_posts.no_search_profile", extra={"data": {"kb_id": kb_id}})
         return []
     try:
-        embedding = await llm.embed(query, embedding_model_id=prof["model_id"])
+        embedding = await llm.embed(
+            query,
+            embedding_model_id=prof["model_id"],
+            strict_embedding_model_id=True,
+        )
     except Exception as exc:
         logger.warning("kb_recall.system_posts.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
         return []
