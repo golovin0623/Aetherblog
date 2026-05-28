@@ -289,6 +289,7 @@ class VectorStoreService:
         SSE 展示单篇文章内部进度；普通 active 写入不依赖它。
         """
         profile = profile or await self.get_active_profile()
+        used_model_id = profile.model_id
         content_len = len(content or "")
 
         # ---- 切片
@@ -346,7 +347,7 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
-                    embedding_model_id=profile.model_id,
+                    embedding_model_id=used_model_id,
                     strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
@@ -404,7 +405,7 @@ class VectorStoreService:
                         (
                             post_id,
                             profile.id,
-                            profile.model_id,
+                            used_model_id,
                             first_dim,
                             vec,
                             target_status,
@@ -442,7 +443,7 @@ class VectorStoreService:
                 extra={"data": {
                     "post_id": post_id,
                     "profile": profile.code,
-                    "model_id": profile.model_id,
+                    "model_id": used_model_id,
                     "dim": first_dim,
                     "chunks": len(chunks),
                     "db_ms": round(db_ms, 2),
@@ -464,14 +465,14 @@ class VectorStoreService:
                 "embed_ms": round(embed_ms, 2),
                 "db_ms": round(db_ms, 2),
                 "vector_dim": first_dim,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
                 "target_status": target_status,
             }},
         )
         return {
             "status": "indexed",
             "profile": profile.code,
-            "model_id": profile.model_id,
+            "model_id": used_model_id,
             "dim": first_dim,
             "chunks": len(chunks),
         }

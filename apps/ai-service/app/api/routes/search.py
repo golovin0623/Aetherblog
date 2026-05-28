@@ -272,6 +272,7 @@ async def index_post(
                 usage_endpoint=request.url.path,
                 request_id=getattr(request.state, "request_id", None),
             )
+            model = str(result.get("model_id") or model)
             request_text = req.content or ""
         return ApiResponse(data=result)
     except HTTPException as exc:
