@@ -40,6 +40,15 @@ func TestSplitSearchTermsExpandsChineseQuestionPhrase(t *testing.T) {
 	}
 }
 
+func TestSplitSearchTermsPreservesSymbolLanguageNames(t *testing.T) {
+	got := splitSearchTerms("C++ C# F#")
+	want := []string{"c++", "c#", "f#"}
+
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("splitSearchTerms() = %#v, want %#v", got, want)
+	}
+}
+
 func TestBuildSearchPublishedArgsEscapesPhraseAndTerms(t *testing.T) {
 	args := buildSearchPublishedArgs("Docker 100%_Guide", 10, 0)
 

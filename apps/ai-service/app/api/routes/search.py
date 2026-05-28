@@ -238,7 +238,7 @@ async def index_post(
     _logger = _logging.getLogger("ai-service")
     start_time = time.perf_counter()
     error_code: str | None = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
     try:
         if req.action == "delete":
             result = await vector_store.delete_post_embedding(req.postId)
@@ -258,6 +258,8 @@ async def index_post(
                     detail="Post is not indexable (must exist and not deleted)",
                 )
             _enforce_content_limit(req.content or "")
+            profile = await vector_store.get_active_profile()
+            model = profile.model_id
             result = await vector_store.upsert_post_embedding(
                 post_id=req.postId,
                 title=req.title or "",
@@ -265,6 +267,10 @@ async def index_post(
                 content=req.content or "",
                 metadata=req.metadata or {},
                 timeout_sec=req.timeoutSec,
+                profile=profile,
+                user_id=user.user_id,
+                usage_endpoint=request.url.path,
+                request_id=getattr(request.state, "request_id", None),
             )
             request_text = req.content or ""
         return ApiResponse(data=result)
@@ -355,7 +361,8 @@ async def semantic_search_internal(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    profile = await vector_store.get_active_profile()
+    model = profile.model_id
     user_id = "system"
     if hasattr(user, "user_id"):
         user_id = user.user_id

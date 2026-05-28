@@ -664,7 +664,7 @@ func splitSearchTerms(raw string) []string {
 		if builder.Len() == 0 {
 			return
 		}
-		term := strings.Trim(builder.String(), "_-+#%.")
+		term := strings.Trim(builder.String(), "_-%.")
 		builder.Reset()
 		lastClass = searchRuneSeparator
 		addTerm(term)
