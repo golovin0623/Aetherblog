@@ -142,7 +142,7 @@ def test_reindex_profile_code_uses_target_profile_model_without_active_profile()
     assert usage_logger.calls[0]["model"] == "embedding-v2"
 
 
-def test_index_post_logs_and_passes_active_profile_model():
+def test_index_post_passes_active_profile_model_without_wrapper_usage_log():
     metrics = FakeMetrics()
     usage_logger = FakeUsageLogger()
     vector_store = FakeVectorStore(_profile(), allow_active_profile=True)
@@ -188,5 +188,5 @@ def test_index_post_logs_and_passes_active_profile_model():
     assert call["profile"].model_id == "embedding-v2"
     assert call["user_id"] == "1"
     assert call["usage_endpoint"] == "/api/v1/admin/search/index"
-    assert metrics.calls[0]["model"] == "embedding-v2"
-    assert usage_logger.calls[0]["model"] == "embedding-v2"
+    assert metrics.calls == []
+    assert usage_logger.calls == []
