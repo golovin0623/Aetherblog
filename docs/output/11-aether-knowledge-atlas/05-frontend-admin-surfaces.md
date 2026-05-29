@@ -81,9 +81,8 @@ Admin 前端为知识库与 Atlas 提供可操作入口:
 ## 5 · 已知限制 / 待改进
 
 1. **AtlasPage 文案过期。** 它仍显示 Phase 0 “严禁真实用户操作”,但其他 Atlas 子页已存在。需要更新为模块 dashboard 或移除误导文案。
-2. **知识库/Atlas 文档入口缺索引。** 顶层 `docs/output/README.md` 以前只有 10 模块,没有新模块导航。
-3. **服务层类型分散。** KB 类型局部定义在 `knowledgeBaseService.ts`,Atlas 类型主要来自 `@aetherblog/types`,建议把 KB 类型也沉到 shared types。
-4. **全局价格和搜索配置与 KB profile 选择关系未在 UI 串联。** 用户可能配置了 chat 模型但未配置 embedding 模型,KB vectorize 会失败。
+2. **服务层类型分散。** KB 类型局部定义在 `knowledgeBaseService.ts`,Atlas 类型主要来自 `@aetherblog/types`,建议把 KB 类型也沉到 shared types。
+3. **全局价格和搜索配置与 KB profile 选择关系未在 UI 串联。** 用户可能配置了 chat 模型但未配置 embedding 模型,KB vectorize 会失败。
 
 ---
 

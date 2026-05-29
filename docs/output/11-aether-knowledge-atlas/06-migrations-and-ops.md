@@ -89,7 +89,6 @@ v57 recipe 的注释说明见 `ops/webhook/deploy.sh:264-355`。它是 KB/Atlas 
 
 | 优先级 | 风险 | 影响 | 建议 |
 | --- | --- | --- | --- |
-| P1 | 文档仍写 migrations 至 000046 | 新人会漏跑 000057-000067 的 KB/Atlas schema | 更新顶层 README 和 DB 模块 README |
 | P1 | 000057 root/path 漂移 | 部署卡 dirty,后续 KB migration 全部被阻断 | 保留 v57 dirty self-heal,不要改成 force 57 |
 | P1 | `atlas_carriers.source_uri` 加 UNIQUE 前已有重复 | 000066 执行失败 | 生产前做重复检查 |
 | P2 | HNSW 索引只覆盖常见维度 | 小众 embedding 模型大库性能差 | 在 profile UI 提示推荐维度 |

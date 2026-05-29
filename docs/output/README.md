@@ -3,7 +3,7 @@
 > **范围:** AetherBlog 项目完成态全模块技术沉淀
 > **最新纠偏:** 2026-05-29 / `origin/main` 基线 / migrations 至 000067 / 新增 Aether Knowledge + KB + Atlas 沉淀
 > **原始基线:** 2026-05-09 / branch `claude/sad-gould-35d3a6` / migrations 至 000046 / Aether Codex Round 5
-> **沉淀规模:** 11 个一级模块 / 87 份 markdown / 29,268 行(当前工作树)
+> **沉淀规模:** 11 个一级模块 / 87 份 markdown / 29,265 行(当前工作树)
 > **变更日志:** [CHANGELOG.md](./CHANGELOG.md)
 
 ---
@@ -122,7 +122,6 @@ Layer 4  迭代变更摘要       CHANGELOG.md
 | P1 | 10-devops | `.github/workflows/README.md` 与 `ops/webhook/README.md` 部署模式冲突 | 旧 root 模式 vs 新 hardened 模式,新运维易被误导 |
 | P1 | 11-knowledge | `AtlasPage` 根入口仍写 Phase 0 占位 | reader/KP/graph/suggestions 子路由已存在,主页文案会误导功能状态 |
 | P1 | 11-knowledge | Atlas AI 是启发式 stub | suggestion inbox 链路可跑通,但不是 LiteLLM 真实抽取 |
-| P1 | 11-knowledge | AetherHub 页面当前未发送 `kbIds` | 服务类型和后端支持 KB 过滤,但当前页面仍只传 articleIds/tagSlugs |
 
 ### 4.2 跨模块耦合 · 必须同步改的"对子"
 
