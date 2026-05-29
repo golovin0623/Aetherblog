@@ -32,7 +32,7 @@ func (r *TagRepo) FindPublicNoPassword(ctx context.Context) ([]model.Tag, error)
 	err := r.db.SelectContext(ctx, &tags, `
 		SELECT
 			t.id, t.name, t.slug, t.description, t.color,
-			COUNT(DISTINCT p.id)::int AS post_count,
+			COUNT(pt.post_id)::int AS post_count,
 			t.created_at, t.updated_at
 		FROM tags t
 		JOIN post_tags pt ON pt.tag_id = t.id

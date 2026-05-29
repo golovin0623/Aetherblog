@@ -18,7 +18,7 @@ func TestFindPublicNoPasswordFiltersPrivateArticleTags(t *testing.T) {
 
 	repo := NewTagRepo(sqlx.NewDb(db, "sqlmock"))
 	now := time.Now()
-	mock.ExpectQuery(`(?s)FROM tags t.*JOIN post_tags pt.*JOIN posts p.*p\.deleted = false.*p\.status = 'PUBLISHED'.*p\.is_hidden = false.*p\.password IS NULL`).
+	mock.ExpectQuery(`(?s)COUNT\(pt\.post_id\)::int AS post_count.*FROM tags t.*JOIN post_tags pt.*JOIN posts p.*p\.deleted = false.*p\.status = 'PUBLISHED'.*p\.is_hidden = false.*p\.password IS NULL`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "name", "slug", "description", "color", "post_count", "created_at", "updated_at",
 		}).AddRow(int64(5), "Public", "public", nil, "#ffffff", 2, now, now))
