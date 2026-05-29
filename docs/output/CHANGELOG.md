@@ -2,7 +2,8 @@
 
 > 本文件以摘要形式记录 `docs/output/` 中每一次文档沉淀的迭代变更。每条记录包含:**触发事件 · 影响范围 · 文档增量 · 关键发现**。
 >
-> 版本基线:2026-05-08 / branch `claude/sad-gould-35d3a6` / migrations 至 000046 / 26 个后端 handler / Aether Codex Round 5。
+> 原始基线:2026-05-08 / branch `claude/sad-gould-35d3a6` / migrations 至 000046 / 26 个后端 handler / Aether Codex Round 5。
+> 最新纠偏:2026-05-29 / `origin/main` 基线 / migrations 至 000067 / 新增 Aether Knowledge、KB、Atlas、Global Pricing、Notes、Agent Workflow 等漂移沉淀。
 
 ---
 
@@ -21,7 +22,8 @@ docs/output/
 ├── 07-ai-service-python/                     # AI 服务(FastAPI + LiteLLM)
 ├── 08-database-migrations/                   # 数据库 schema + migrations
 ├── 09-design-system-shared-packages/         # 设计系统 + 共享 packages
-└── 10-infrastructure-devops/                 # 基础设施 / DevOps
+├── 10-infrastructure-devops/                 # 基础设施 / DevOps
+└── 11-aether-knowledge-atlas/                # Aether Knowledge / KB / Atlas
 ```
 
 每个模块目录:
@@ -467,8 +469,37 @@ P2 可选:
 
 **结束条件:** 项目摸底沉淀工作流已完整文档化为可复用 skill,后续团队任意成员可直接调用 `project-audit-pipeline` 复制本次效果或在本 skill 上继续演进。
 
+---
 
+### Iteration 5 · 2026-05-29 · 文档漂移纠偏与 Aether Knowledge 沉淀
 
+**触发事件:** 用户指出近期新增能力较多,文档和介绍已经发生明显偏差,要求使用 skills 与子代理完成新能力、新功能、行为修改的纠偏沉淀。
+
+**影响范围:** 顶层 [README.md](./README.md)、本 CHANGELOG、模块 05/06/07/08 的高误导入口文档,以及新模块 [11-aether-knowledge-atlas](./11-aether-knowledge-atlas/)。
+
+**文档增量:**
+- 新增 `docs/output/11-aether-knowledge-atlas/` 共 7 份文档,覆盖 KB CRUD/上传/Profile/成员、KB indexing+recall、Agent `kbIds` 过滤、Atlas Carrier/Annotation/KP/Relation/Suggestion、Admin 入口、000057-000067 迁移与运维耦合。
+- 顶层 README 从 10 模块 / 000046 修正为 11 模块 / 000067,新增 KB/Atlas/Global Pricing/Agent body/Atlas relation type 等跨模块同步对子。
+- 更新 Blog 搜索文档,删除已不存在的 4 前缀模式和旧模式 chip 口径,改为当前 `search | ask` 双模式与 EventSource GET 问答。
+- 更新 Admin 总览,补 `/notes`、`/ai-config/pricing`、`/intelligence/knowledge`、`/atlas/*`、`/access`、`/security`、`/activities` 等入口,并修正 agent endpoint 与服务层清单。
+- 更新 AI 服务总览,补 `knowledge_bases.py`、`kb_indexer.py`、`kb_recall.py`、`atlas.py` stub、`global_pricing.py` 及 strict profile embedding 边界。
+- 更新数据库总览、schema overview 与 migration history,把 000047-000067 纳入主题分组,包括全局价格、备份校验、团队 RBAC、Agent Workflow、Notes、fulltext 限长、chunk checkpoint、KB、Atlas 与 KB schema repair。
+
+**关键发现:**
+1. **当前 migration 最新为 000067,不是旧文档里的 000046。** 000057-000067 是 KB/Atlas/KB repair 主线;000047-000056 还包含 Global Pricing、备份校验、团队 RBAC、Agent Workflow、Notes 和 search profile checkpoint。
+2. **KB/RAG 是完整后台子系统,不是占位。** Go 后端有 `/v1/admin/kbs/*`、profile/member/file 维度、Agent picker 和 fail-closed `kbIds` 过滤;ai-service 有 KB index/recall;Admin 有知识库列表与详情页。
+3. **Atlas 是 Phase 0-3 MVP 主干,但 AI 仍是 stub。** Reader/KP/Graph/Suggestions 子页面和 Go schema/service 已落地;`AtlasPage` 根入口仍写 Phase 0 占位,ai-service `/v1/atlas/*` 仍为 heuristic suggestion。
+4. **Blog 搜索已从四前缀模式收敛为文章/问答双 tab。** 文章搜索走 `/api/v1/public/search?mode=hybrid`,问答走 `EventSource('/api/v1/public/search/qa?q=...')`;features 包含 `keywordEnabled/semanticEnabled/aiQaEnabled`。
+5. **Global Pricing 是独立配置基准,不是 analytics 直接事实源。** `ai_global_pricing` 经 ai-service/Admin apply/sync 写回 `ai_models`;Go 统计仍按 `ai_models` 行计算,历史归档不会自动重算。
+6. **AetherHub/KB 口径仍有半接线风险。** 服务类型和后端支持 `kbIds`,但当前 `AetherHubWorkspacePage` 发送请求仍以 `articleIds/tagSlugs` 为主;文档必须把这点标成未完成而不是已完成。
+
+**跨模块溢出:**
+- KB 上传改动必须同步媒体系统目录、Go 白名单、ai-service base64/10MB 限制、Admin 上传提示与 migration 000057 系统目录语义。
+- Atlas relation type 改动必须同步 Go model/DTO、`packages/types/src/models/atlas.ts`、migration CHECK 和 ai-service stub。
+- Profile embedding 当前是 strict fail-fast: search profile/KB profile 的模型禁用、缺凭证或无法路由时不再静默回退,Admin/Search 文档不能继续写成 `active_embedding_model` 单点判断。
+- deploy v57 dirty self-heal 当前实现会先探测 `knowledge_bases`;文档需明确只有确认缺失时才 `force 56`,存在或无法判定时 fail-closed。
+
+**结束条件:** 本轮把最容易误导后续开发的“旧入口 + 新能力空缺 + migration 基线错误”纠正为当前源码事实;更细的模块深文档可在后续 PR 按本 CHANGELOG 继续下钻。
 
 
 

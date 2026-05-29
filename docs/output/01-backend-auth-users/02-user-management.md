@@ -8,7 +8,7 @@
 
 1. **用户档案 CRUD**: 注册、查询、更新昵称 / 邮箱 / 头像、修改密码。
 2. **登录信息更新**: 每次登录成功后写入 `last_login_at` / `last_login_ip`。
-3. **默认管理员账号**: `admin` / `admin123`,`must_change_password=true`,首次登录拿到带 `mcp=true` 的 JWT。
+3. **初始管理员账号**: `admin` 由 migration seed,密码以初始化脚本或部署密钥为准,`must_change_password=true`,首次登录拿到带 `mcp=true` 的 JWT。
 4. **首次改密拦截语义**: 不在登录时拒绝,而是在中间件层把 token 限制在 4 个非业务接口(详见 `05-auth-middleware.md`)。
 5. **密码哈希**: bcrypt DefaultCost(成本 10),不可逆。
 6. **应急重置**: 当所有人都丢失密码时,直接 SQL 改 `password_hash` 即可恢复。
@@ -90,8 +90,8 @@ AuthHandler.RegisterUser (auth_handler.go:260)
 ### 3.2 登录 + 强制改密语义闭环
 
 ```
-1) admin (默认密码) → POST /api/v1/auth/login
-    ├─ ValidatePassword(admin123)        ✅
+1) admin (初始密码) → POST /api/v1/auth/login
+    ├─ ValidatePassword(currentPassword) ✅
     ├─ CheckUserCanLogin
     │     └─ 仅当 password_hash == 种子哈希时拒绝(auth_service.go:73-83)
     │        否则放行(即便 must_change_password=true)
@@ -197,12 +197,12 @@ CREATE INDEX idx_users_status   ON users(status);
 ### 4.2 默认管理员种子(migration 000002)
 
 ```sql
--- 密码: admin123,bcrypt cost 10
+-- password_hash 为 bcrypt 哈希;不要在文档中复制默认明文密码或真实哈希
 INSERT INTO users (username, email, password_hash, nickname, role, status, must_change_password)
 VALUES (
     'admin',
     'admin@aetherblog.local',
-    '$2a$10$1B6fti5pzyTwI58rszwobe/Lpbe2GUzhUk7xVlkGe8kpTckIPsdHe',
+    '<bcrypt-hash>',
     '管理员',
     'ADMIN',
     'ACTIVE',
@@ -230,7 +230,7 @@ VALUES (
 | --- | --- | --- |
 | `auth.cookie.secure` | `true` | 写 `Set-Cookie` 时是否加 `Secure` 标志 |
 | `auth.cookie.same_site` | `Strict` | Cookie 的 `SameSite` 模式 |
-| `database.user` / `database.password` | `aetherblog` / `aetherblog123` | 这只是 PG 连接凭据,不是应用账号 |
+| `database.user` / `database.password` | 以 `.env` / compose 为准 | 这是 PG 连接凭据,不是应用账号;生产必须使用强随机密码 |
 
 ### 5.2 间接影响(JWT / Session 详见模块 01)
 

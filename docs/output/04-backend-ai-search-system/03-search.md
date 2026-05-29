@@ -112,9 +112,9 @@ SearchService.Search (search_service.go:416)
   │            /api/v1/search/semantic/internal,
   │            X-Internal-Service)     │
   └─────────────── wg.Wait ──────────────┘
-  
+
   semErr != nil → log.Warn + 降级到 keyword-only
-  
+
   根据有无结果选 actualMode:
     kw + sem 都有  → "hybrid"  → fusionRRF(kw, sem, 60, limit)
     只有 sem      → "semantic"
@@ -124,7 +124,7 @@ SearchService.Search (search_service.go:416)
 
 ### 3.2 keyword 路径
 
-`keywordSearch` 委托 `postRepo.SearchPublished`,该 SQL 走 `posts.search_vector` (tsvector 列) + `ts_rank()`,加 ILIKE 兜底以保证中文友好(中文 zhparser 在容器里不一定可用)。
+`keywordSearch` 委托 `postRepo.SearchPublished`。当前已经不是简单 `ts_rank + ILIKE` 兜底:repo 会做 CJK/ASCII/符号分词、中文问句派生词、LIKE 转义,并在标题、摘要、正文、分类、标签多字段召回后加权排序。000055 后 fulltext 派生文档还会 `left(..., 200000)`,避免超长 Markdown 触发 PG `SQLSTATE 54000`。
 
 `SearchPublished` 已经过滤了 `deleted=false AND status='PUBLISHED' AND is_hidden=false`,但**没过滤** `password IS NOT NULL`。这是 agent_handler 必须二次过滤的原因(参见 02-agent-and-jobs.md §3)。public 搜索接口由于结果只返回 title/slug 而不返回 content,被部分认为可接受;但严格来说密码保护文章被列出来仍是信息泄露,应在后续 PR 修。
 
@@ -132,10 +132,13 @@ SearchService.Search (search_service.go:416)
 
 `semanticSearch` (`search_service.go:539-573`) 调 ai-service 的 `/api/v1/search/semantic/internal?q=...&limit=N`,带 `X-Internal-Service` token。ai-service 内部:
 
-1. 用当前 `active_profile_code` 指向的 profile 取 `model_id`。
-2. 调 LiteLLM embed `q` 得到向量。
-3. `SELECT * FROM post_embeddings WHERE profile_id = ? AND status = 'active' ORDER BY embedding <=> $1 LIMIT N`。
-4. 返回 `{post:{id,title,slug}, similarity, highlight}`。
+1. 用当前 active profile 取 `model_id`、chunker 与维度。
+2. 调 LiteLLM embed `q`,并以 `strict_embedding_model_id=True` 固定使用 profile 模型。
+3. 按维度选择 `vector(D)` 或 `halfvec(3072)` cast,命中 partial HNSW。
+4. 查询 active `post_embeddings`,过滤已删除、未发布、隐藏和密码保护文章。
+5. 返回 `{post:{id,title,slug}, similarity, highlight}`。
+
+这条 strict 约束很重要:模型禁用、凭据缺失或 routing 不可用时,ai-service 不会静默落到默认 embedding 模型。Go hybrid 搜索会把语义错误降级为 keyword-only 并记录 warn,但 Admin 诊断/重建文档必须按 profile 模型失败来排障。
 
 Go 这边解析后映射成 `dto.SearchResultItem{Source:"semantic"}`。
 
@@ -171,6 +174,7 @@ post_embeddings (profile_id=A)─┘
   ↓ POST /v1/admin/search/profiles/B/reindex/stream  (SSE)
   ai-service 按 B 的 chunker_kind / size / overlap 切片
   对每篇文章嵌入,写入 post_embeddings (profile_id=B, status=shadow)
+  000056 后可按 chunk_hash/chunk_count 复用已有 shadow/deprecated chunk
 
 完成后管理员点「激活」:
   PATCH /v1/admin/search/profiles/B/activate
@@ -179,14 +183,14 @@ post_embeddings (profile_id=A)─┘
     UPDATE search_profiles SET status='active' WHERE id=B
     UPDATE site_settings SET setting_value='B' WHERE setting_key='search.active_profile_code'
     UPDATE site_settings SET setting_value=<B.model_id> WHERE setting_key='search.active_embedding_model'
-  
+
   现在新搜索请求看到 active_profile_code=B,自动用 profile B 的向量
 
 故障场景:
   发现 B 召回质量不好 → 反向激活 A,删除 profile B 与对应 embeddings
 ```
 
-`search_handler.proxyProfileStream` 处理这个 SSE 流(详见 02-agent-and-jobs.md §7.5)。
+`search_handler.proxyProfileStream` 处理这个 SSE 流(详见 02-agent-and-jobs.md §7.5)。当前 SSE 不只有 `start/progress/result/done/error`,还包含 `heartbeat` 与 `chunk_progress`,Admin `useReindexStream` 会展示 in-flight chunk 进度并支持失败后按 profileCode retry。
 
 ## 4. DB 表 / 索引
 

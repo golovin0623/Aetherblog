@@ -1,11 +1,11 @@
-# 02 · Migration 演进史(46 条,主题分组叙事)
+# 02 · Migration 演进史(67 条,主题分组叙事)
 
 > 按主题(用户/鉴权 → 内容 → AI prompt 演进 → 搜索 profiles → 媒体存储 → 安全/审计)梳理。每条 migration 给:
 > - **文件**: `apps/server-go/migrations/<编号>_<名字>.{up,down}.sql`
 > - **摘要 + 影响**:对 schema / 业务的实际作用
 > - **历史故事**(若有):为什么这一版要单独存在
 >
-> 时间轴大致:000001(2026-01-06 初始化) → 000046(2026-05 上旬 security 类目)。
+> 时间轴大致:000001(2026-01-06 初始化) → 000046(原始摸底基线) → 000066(Atlas carrier source_uri 唯一约束) → 000067(KB schema 幂等修复)。
 
 ---
 
@@ -59,6 +59,27 @@
 | 000044 | post_embeddings.parent_text(parent_child chunker) | DDL |
 | 000045 | post_page_size 默认 10→9 | seed 修正 |
 | 000046 | activity_events.event_category 加 security | CHECK 放宽 |
+| 000047 | ai_global_pricing | 全局模型价格 |
+| 000048 | media backup verification | 备份完整性校验 |
+| 000049 | storage.sync.target_provider_id | 备份目标 provider |
+| 000050 | theme visual color settings | 主题视觉色设置 |
+| 000051 | permissions / roles / teams / content_shares | 用户团队 RBAC |
+| 000052 | agent workflow canvas | 智能体编排 |
+| 000053 | editor image smart compression setting | 编辑器设置 |
+| 000054 | notes / note_embeddings | 智能笔记 |
+| 000055 | fulltext tsvector input limit | FTS 稳定性 |
+| 000056 | post_embeddings chunk checkpoint | profile 重建断点 |
+| 000057 | media_folders is_system / undeletable | KB 系统目录 |
+| 000058 | knowledge_bases / kb_* | KB 核心 schema |
+| 000059 | kb default profiles | SYSTEM_POSTS profile seed |
+| 000060 | kb_embeddings vector unconstrained | KB 维度解耦 |
+| 000061 | kb_embeddings HNSW partial indexes | KB 向量索引 |
+| 000062 | atlas core | Atlas Phase 0 schema |
+| 000063 | atlas permissions | 权限 seed |
+| 000064 | atlas KP links / relation evidence | 证据链接 |
+| 000065 | atlas AI suggestions | suggestion inbox |
+| 000066 | atlas_carriers.source_uri unique | 并发去重 |
+| 000067 | kb_schema_repair | KB schema 前向幂等修复 |
 
 ---
 
@@ -462,7 +483,118 @@ ALTER TABLE activity_events
 
 ---
 
-## 9. 部署期 migration 自愈机制
+## 9. 近期新增能力(000047-000067)
+
+### 000047 · `ai_global_pricing`
+
+全局模型价格基准。按 `model_id` 唯一维护 `currency`、per-1M input/output/cache 价格与扩展 `pricing JSONB`。ai-service Global Pricing 页通过 coverage / apply / sync 把它写回 `ai_models`;Go analytics 仍以 `ai_models` 行为成本事实源。
+
+### 000048 · `add_backup_verification`
+
+媒体备份完整性校验:扩展 `media_files.sync_status` 加 `MISSING`,增加 `last_verified_at` 与 partial 索引 `idx_media_files_verify_due`,并 seed `storage.verify.auto_enabled` / `storage.verify.interval_seconds`。
+
+### 000049 · `add_storage_sync_target`
+
+新增 `site_settings.storage.sync.target_provider_id`,把"新上传主存储"与"备份同步目标 provider"拆开,避免 LOCAL 主存储场景无法选择云端备份目标。
+
+### 000050 · `add_theme_visual_color_settings`
+
+新增 `theme_visual_color_mode/light/dark` 三个 appearance 设置,支撑后台/前台视觉光源配色策略。
+
+### 000051 · `user_team_rbac`
+
+落地可扩展 RBAC 与内容共享:
+- `permissions`, `roles`, `role_permissions`, `user_roles`
+- `teams`, `team_members`
+- `content_shares` 统一授权 POST / MEDIA_FILE / MEDIA_FOLDER 给 USER / TEAM / ROLE
+
+旧 `users.role` 仍存在,但新权限体系已经成为后续 Atlas/Access 等模块的基础。
+
+### 000052 · `agent_workflow_canvas`
+
+为后台智能体编排提供持久化边界:connectors、tools、agents、workflows、workflow_versions、variables、runs、trace 等。设计重点是 `secret_ref` 与变量分离,避免真实密钥下发到前端。
+
+### 000053 · `add_editor_image_smart_compression_setting`
+
+新增 `editor_image_smart_compression_enabled=false`,用于文章编辑器图片超过阈值时的智能压缩开关。
+
+### 000054 · `create_notes`
+
+后台私有智能笔记域。新增 `note_folders`, `note_tags`, `notes`, `note_tag_links`, `note_links`, `note_embeddings`。Notes 不是 posts 的子类型,不会进入前台公开路由;但 Atlas Markdown carrier 会把 note 包装为 `notes://{id}` carrier。
+
+### 000055 · `limit_fulltext_tsvector_input`
+
+重建 `idx_posts_fulltext` 与 `idx_notes_fulltext`,对派生 FTS 文档使用 `left(..., 200000)`,避免超长 Markdown 生成 tsvector 时触发 PG `SQLSTATE 54000`。源表仍保留完整 Markdown。
+
+### 000056 · `post_embedding_chunk_checkpoint`
+
+为 search profile reindex 加 chunk 级断点续跑元数据:
+- `post_embeddings.chunk_hash`: `chunk_text + parent_text` 的 SHA-256 指纹。
+- `post_embeddings.chunk_count`: 同一 `(post_id, profile_id)` 的总 chunk 数。
+- `idx_post_emb_profile_post_status`: 便于按 profile/post/status 快速复用 shadow/deprecated chunk。
+
+### 000057 · `media_folder_is_system`
+
+给 `media_folders` 增加 `is_system` / `undeletable`,并 seed `/root/_system_kb`。它是 KB 文件复用媒体存储的前置条件。迁移按 `path='/root'` 定位 root,并补 `uq_folder_path`,避免旧库 root id 漂移。
+
+部署脚本当前对 v57 dirty 的自愈是先探测 `public.knowledge_bases`。只有确认该表不存在时才 `migrate force 56` 后重放 057,再让 058 创建缺失 KB schema;若表已存在或无法判定,脚本拒绝自动自愈并交人工处理。
+
+### 000058 · `knowledge_bases`
+
+KB 核心 5 表:
+- `knowledge_bases`: CUSTOM / SYSTEM_POSTS 两类库。
+- `kb_profiles`: model+chunker+chunk_size+overlap+top_k+threshold,每 KB 最多一个 active profile。
+- `kb_members`: USER/TEAM/ROLE × VIEW/USE/EDIT/MANAGE。
+- `kb_files`: CUSTOM 引 media_files,SYSTEM_POSTS 引 posts,二者互斥。
+- `kb_embeddings`: KB chunk 向量。
+
+文件头注释仍写 000055,以文件名 000058 和 `schema_migrations.version` 为准。
+
+### 000059 · `kb_default_profiles`
+
+为 `slug='posts'` 的 SYSTEM_POSTS 库 seed default active profile。模型选择优先级: `site_settings.search.active_embedding_model` → `ai_task_routing.embedding` → `text-embedding-3-large`。
+
+### 000060 · `kb_embedding_unconstrained`
+
+把 `kb_embeddings.embedding` 从 `vector(3072)` 改为不锁维度 `vector`,支持 1536/3072/4096 等不同 embedding 模型。down 会删除非 3072 维行后改回 `vector(3072)`,属于有数据损失的降级。
+
+### 000061 · `kb_embedding_hnsw`
+
+为 KB active embeddings 建 partial HNSW:1536/3072/1024/768 四个维度桶,3072 使用 `halfvec`。查询端必须按同样 cast 才能命中表达式索引;超出已建桶的维度会退化为顺序扫描。
+
+### 000062 · `atlas_core`
+
+Atlas Phase 0 数据骨架:carriers、carrier_versions、annotations、knowledge_points、typed_relations。它只建独立骨架,不改 posts/notes/media 现有表。
+
+### 000063 · `atlas_permissions`
+
+seed `content.atlas.read/write/admin`,默认授给 ADMIN。普通用户授权留给后续 UI/权限管理,因此当前 Atlas 仍应按管理员能力面理解。
+
+### 000064 · `atlas_kp_links`
+
+给 `atlas_knowledge_points.uuid` 加默认 `gen_random_uuid()`,并新增 `atlas_annotation_kp_links` 与 `atlas_relation_evidence`,把 annotation 作为 KP/relation 的证据多对多关系。
+
+### 000065 · `atlas_ai_suggestions`
+
+新增 `atlas_ai_suggestions` 和 `atlas_ignored_suggestions`。红线:AI 候选只能进 suggestions,用户 accept 后才由 Go transaction 写 KP/Relation;reject 写忽略指纹,避免重复推荐。
+
+### 000066 · `atlas_carrier_unique_source_uri`
+
+给 `atlas_carriers.source_uri` 加唯一约束,解决并发首次打开同一 note 时 read-then-insert 产生重复 carrier 的问题。迁移假设当前无真实重复;若线上已有重复,需要先合并/去重再加约束。
+
+### 000067 · `kb_schema_repair`
+
+KB 迁移块在历史重编号后可能出现 ledger 已越过 058、但 `knowledge_bases` 实表没有执行创建的环境。000067 是前向修复迁移,把 000058-000061 收敛后的 KB 最终 schema 用 `CREATE TABLE IF NOT EXISTS`、`CREATE INDEX IF NOT EXISTS`、catalog 守卫和 seed `ON CONFLICT` 幂等补齐:
+
+- 缺失 KB schema 的环境:补建 `knowledge_bases`、`kb_profiles`、`kb_members`、`kb_files`、`kb_embeddings`、FK、索引和 SYSTEM_POSTS 默认 profile。
+- 已正确迁移的环境:语句应全部 no-op。
+- `kb_embeddings.embedding` 直接建成不锁维度 `vector`,与 000060 后的最终形态一致。
+
+000067 的 down 是 no-op。它不拥有 KB 表生命周期,不能在 `migrate down 1` 时误删知识库数据;真正 teardown 仍归 000058-000061 的 down 负责。
+
+---
+
+## 10. 部署期 migration 自愈机制
 
 `ops/webhook/deploy.sh::_try_heal_known_dirty` 维护 dirty 自愈表:
 
@@ -477,11 +609,11 @@ ALTER TABLE activity_events
 2. 阶段 3:`migrate up` 失败时再次探测,命中条目则 force + retry up(同一次部署内自愈)。
 3. 未登记的 dirty 版本 **一律中止**,避免误 heal。
 
-新增 dirty 自愈条目时同步更新 `deploy.sh` 与本表(`02-migration-history.md` §9)。
+新增 dirty 自愈条目时同步更新 `deploy.sh` 与本表(`02-migration-history.md` §10)。
 
 ---
 
-## 10. 演进观察(总结)
+## 11. 演进观察(总结)
 
 1. **schema 反范式取舍**:`categories.post_count`、`tags.post_count`、`media_folders.{file_count,total_size}`、`media_tags.usage_count` 等都是缓存列,由 trigger / 业务层维护;读热点远高于写,反范式收益高于一致性代价。
 2. **migration 不可变约定的代价**:发布后只能新增 migration,不能改字面量。如 000013 默认 10 → 必须 000045 UPDATE,文件数偏多,但避免了"已部署实例与新部署实例 schema 不一致"的远期故障。

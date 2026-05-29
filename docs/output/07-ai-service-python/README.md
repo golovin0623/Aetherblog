@@ -2,9 +2,9 @@
 
 > 模块根:`apps/ai-service/`
 > 主要语言/技术:Python 3.11+ · FastAPI 0.128 · LiteLLM 1.83 · asyncpg 0.31 · pgvector 0.4 · Redis 7
-> 横向依赖:server-go (`internal/service/ai_client.go`) · PostgreSQL (`ai_*` / `search_profiles` / `post_embeddings` / `jwt_secrets` 等表) · Redis (rate-limit / 缓存)
+> 横向依赖:server-go (`internal/service/ai_client.go`) · PostgreSQL (`ai_*` / `search_profiles` / `post_embeddings` / `knowledge_bases` / `kb_*` / `atlas_*` / `jwt_secrets` 等表) · Redis (rate-limit / 缓存)
 
-本文档是 AI 服务的入口索引,详细的分层 / 流程 / 端点请进入对应的子文档。版本基线:2026-05-04(migrations 000045 / migration 000038 + 000040 prompt 变更已应用)。
+本文档是 AI 服务的入口索引,详细的分层 / 流程 / 端点请进入对应的子文档。原始基线:2026-05-04(migrations 000045 / migration 000038 + 000040 prompt 变更已应用);最新纠偏:2026-05-29(migrations 至 000067,补齐 Global Pricing、KB indexing/recall、Atlas stub)。
 
 ---
 
@@ -12,9 +12,9 @@
 
 **AetherBlog AI Service** 是一个独立的 Python FastAPI 进程,承担「与 LLM 供应商通信」的所有职责:
 
-- **能力面向**:博客生产线的全部 AI 工具 — `summary` / `tags` / `titles` / `polish` / `outline` / `translate`,以及搜索栈所需的 `embedding` / `qa` / RAG。
+- **能力面向**:博客生产线的全部 AI 工具 — `summary` / `tags` / `titles` / `polish` / `outline` / `translate`,以及搜索栈所需的 `embedding` / `qa` / RAG、KB 文件向量化与召回、Atlas AI suggestion stub。
 - **架构定位**:Go backend (server-go) 不直接接触任何 LLM SDK。所有 LLM 调用都由 Go 通过内部 HTTP 客户端 (`AIClient`) 转发到 ai-service,后者再交给 LiteLLM 统一与 OpenAI / Anthropic / Google / Azure / 各家 OpenAI-compatible 中转网关通信。
-- **数据所有权**:`ai_providers` / `ai_models` / `ai_credentials` / `ai_task_routing` / `ai_task_types` / `ai_usage_logs` 这些表的写入入口都在 ai-service;Go 仅做透明代理。
+- **数据所有权**:`ai_providers` / `ai_models` / `ai_credentials` / `ai_task_routing` / `ai_task_types` / `ai_usage_logs` / `ai_global_pricing` 的写入入口主要在 ai-service;KB/Atlas 的业务表由 server-go 管理,ai-service 只负责 KB embedding 写入、recall 查询和 Atlas 候选生成。
 - **状态**:无独立持久状态。一切热数据都来自 PG (路由 / 凭证) 或 Redis (限流 / 缓存),进程可水平扩展。
 
 ---
@@ -68,7 +68,10 @@
 | `GET /api/v1/search/semantic` · `GET /api/v1/search/qa` | 搜索 | 公开语义搜索 / RAG 流式问答 |
 | `POST /api/v1/admin/search/{index,reindex,retry-failed}` | 写索引 | server-go 批处理调用,支持单篇 / 全量 / shadow profile 模式 |
 | `/api/v1/admin/search/profiles/*` | Profile 管理 | 蓝绿切换 search profile (migration 000041) |
-| `/api/v1/admin/providers/**` | Provider/Model/Credential/Routing CRUD | 单管理员 admin UI 直管 |
+| `/api/v1/kb/{kb_id}/files/{file_id}/index` | KB 索引 | 内部通道;base64 文档内容 → parse/chunk/embed → `kb_embeddings` |
+| `/api/v1/kb/{kb_id}/reindex` | KB 重建 ack | 当前只 ack,实际全库重建由 Go 逐文件调 index endpoint |
+| `/v1/atlas/claims/extract` · `/v1/atlas/relations/suggest` | Atlas suggestion | Phase 3 heuristic stub,只返回候选,不直接写 Atlas 表 |
+| `/api/v1/admin/providers/**` | Provider/Model/Credential/Routing/Global Pricing CRUD | 单管理员 admin UI 直管 |
 | `/api/v1/admin/ai/{prompts,tasks}` | Prompt/Task CRUD | 同上 |
 | `/api/v1/admin/metrics/ai` · `/api/v1/admin/log-level` | 运维 | 内存指标 + 运行时日志级别 |
 
@@ -106,7 +109,7 @@
 - `AI_RATE_LIMIT_FAIL_OPEN=false`(默认)— Redis 故障时拒服务,避免被刷爆账单(VULN-070)
 - `AI_MOCK_MODE=false`(prod) / `true`(本地默认) — true 时 `chat()` 直接返回 `[mock:<model>]`,不调 LLM
 - `AI_MAX_INPUT_CHARS=120000`(默认)— 单请求字数硬上限
-- `AI_DEFAULT_PROVIDER` / `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_COMPAT_*` — 当数据库 routing 表完全空时的 env fallback
+- `AI_DEFAULT_PROVIDER` / `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_COMPAT_*` — 当数据库 routing 表完全空时的 env fallback。注意 search/KB profile 路径使用 `strict_embedding_model_id=True`,profile 指定模型不可用时会 fail-fast,不静默回退。
 
 **三段式 Redis**:`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` 与完整 URL `REDIS_URL` 共存,优先级见 `_build_redis_url_from_parts` 与 `_merge_redis_password`(`config.py:156-220`)。Go backend 与 ai-service 共用同一套配置,避免「backend 连得上 / ai-service 连不上」的运维漂移。
 
@@ -128,6 +131,15 @@
 | PyJWT | 2.12.1 | JWT 验签 |
 | redis | 7.0.1 | rate-limit + cache |
 | eval-type-backport | 0.3.1 | 修补 Python 3.10/3.11 的 `X | Y` PEP 604 评估;**项目自带一份带 AST 白名单的安全实现** `apps/ai-service/eval_type_backport.py` |
+
+近期新增服务文件:
+
+| 文件 | 职责 |
+|---|---|
+| `app/services/global_pricing.py` | `ai_global_pricing` 的 coverage、CRUD、apply、model-to-global、global-to-model 同步 |
+| `app/services/kb_indexer.py` | KB 文档 parse/chunk/embed/write,支持 txt/md/html/json/csv/pdf/docx,拒绝 legacy `.doc` |
+| `app/services/kb_recall.py` | Agent chat 的 CUSTOM KB 与 SYSTEM_POSTS 召回 |
+| `app/api/routes/atlas.py` | Atlas claims/relations suggestion stub |
 
 依赖锁定理由(`requirements.txt:1-7`):VULN-074 — 浮动 `>=` 让供应链投毒(typo-squat、误发布)悄悄落地;Dependabot/Renovate 才是受信的升级源,build 机不应该。
 
@@ -168,8 +180,10 @@
 1. **Mock 模式陷阱**:`AI_MOCK_MODE=true` 在本地默认开启;管理员从 admin UI 选了真实 modelId 时(`override` 路径)mock 模式会被绕过让真实 LLM 调用发出去。这是有意为之 — 让管理员能在本地"测一下这个模型",但不要在生产把全局 mock 打开。
 2. **Reasoning 模型 temperature 锁**:GPT-5 系列 / o1 / o3 / o4-mini 拒绝任何 temperature ≠ 1;`_TEMPERATURE_LOCKED_MODEL_PREFIXES`(`llm_router.py:127-145`)在调用前剥离 `temperature` kwarg,让上游用默认值。新增同类模型时需要扩此列表。
 3. **fallback 与 override 互斥**:管理员手动选 model_id (override 路径) 时**不**走 fallback (`llm_router.chat:776-815`)— "用户显式压测此模型,失败就要看到失败"。
-4. **embedding env_fallback 是嫌疑信号**:当 `ai_task_routing` 表里 `embedding` 这条没配置时,`embed()` 会落到 `env_fallback` 并 WARNING(`llm_router.py:1043-1054`)。生产环境出现这条 WARN 通常意味着索引正在用环境变量里的 OpenAI 默认模型,而不是管理员在 SearchConfig 里点的那个。
-5. **think block 检测器**:`stream_chat_with_think_detection` 只识别 `<think>` / `<thinking>` / `<reasoning>` 三类标签(`llm_router.py:1120-1126`)。Qwen / R1 等模型用这些把 chain-of-thought 包起来;新 provider 用其它包裹符号会让推理轨迹串到正文里。
+4. **profile embedding strict fail-fast**:search profile、KB profile 指定 `model_id` 后,vector_store / kb_indexer / kb_recall 都使用 strict embedding model。模型禁用、凭据缺失或路由失败时应暴露为重建/召回错误,不能再写成自动 fallback。
+5. **Global Pricing 不直接重算历史成本**:`ai_global_pricing` 是全局价格基准;只有 apply/sync 写回 `ai_models` 后才影响后续 Go 侧成本统计。已归档的历史成本不会自动重算。
+6. **Atlas AI 仍是 stub**:`/v1/atlas/claims/extract` 和 `/v1/atlas/relations/suggest` 当前只做启发式候选,不是真 LLM 抽取,也不会直接写 KP/Relation。
+7. **think block 检测器**:`stream_chat_with_think_detection` 只识别 `<think>` / `<thinking>` / `<reasoning>` 三类标签(`llm_router.py:1120-1126`)。Qwen / R1 等模型用这些把 chain-of-thought 包起来;新 provider 用其它包裹符号会让推理轨迹串到正文里。
 
 ---
 
@@ -182,6 +196,8 @@
 | 加新 chunker 策略 | `app/services/chunker.py:split` 增分支 + `profiles.py` `allowed_chunkers` 集合扩展;DB CHECK 在 search_profiles 表已硬定枚举,需要同步迁移 |
 | 加新 SSE 事件类型 | `_stream_with_think_detection` 与 `_build_stream_result_payload` 是承接点;前端 useStreamResponse 必须同步认这种事件 |
 | 加 batch 推理 | LiteLLM 的 `batch_completion` 现状未接入;需要在 `LlmRouter` 上加平行 API + 新 task 路径 |
+| 加 KB 文档类型 | `kb_indexer.py::parse_bytes_to_text` + Go 上传 MIME 白名单 + Admin 上传提示同步 |
+| 把 Atlas stub 接成真实 LLM | `app/api/routes/atlas.py` 接 `LlmRouter` / task routing,仍只能写 suggestion,不能直接写 KP/Relation |
 
 子文档:
 - [01-architecture.md](./01-architecture.md) 目录分层 / 启动入口 / 中间件
@@ -191,3 +207,4 @@
 - [05-tests-and-quality.md](./05-tests-and-quality.md) 测试矩阵 / 80% 覆盖门
 - [06-deployment-and-config.md](./06-deployment-and-config.md) Dockerfile / docker-compose / env 矩阵
 - [07-workflow-runner.md](./07-workflow-runner.md) Agent Workflow 执行器 / trace / 安全边界
+- [../11-aether-knowledge-atlas](../11-aether-knowledge-atlas/README.md) KB / Atlas 跨 Go、Admin、ai-service 的稳定沉淀入口

@@ -235,13 +235,14 @@ export function AdminLayout() {
 
 ### 6.1 导航分组
 
-`Sidebar.tsx:41-80` 把 17 个一级页面分成 4 组(Control Room 风格):
+当前 `Sidebar.tsx` 把 22 个可见入口分成 4 组(Control Room 风格):
 
 ```ts
-OVERVIEW       Dashboard, Analytics
+OVERVIEW       Dashboard
 CONTENT        Posts, Media, Cloud Explorer, Categories, Comments, Friends
-INTELLIGENCE   AetherHub, AI Tools, AI Config, Search Config
-SYSTEM         Monitor, Activities, Settings
+INTELLIGENCE   AetherHub, Notes, Atlas, Knowledge Base, Agent Workflows,
+               AI Tools, Global Pricing, Analytics, Search Config, AI Config
+SYSTEM         Monitor, Activities, Access, Security, Settings
 ```
 
 折叠态下:分组 label 隐藏 → 改成短分隔线;按钮居中,只显示 icon。
@@ -295,9 +296,9 @@ SYSTEM         Monitor, Activities, Settings
 
 ### 8.1 命令注册
 
-写死 14 条命令(`CommandPalette.tsx:59-94`),分三组:
+命令面板是单独维护的命令表,不是 Sidebar 的全量镜像。当前包含 AetherHub、Notes、Agent Workflows、AI Tools、Global Pricing、Analytics、Search Config、AI Config、Monitor、Security、Settings 等常用入口,但 Atlas / Knowledge Base 还没有进入命令面板。
 
-- `NAVIGATE`:dashboard / analytics / posts / media / categories / comments / friends / ai-tools / ai-config / search / monitor / settings(12 条)
+- `NAVIGATE`:常用页面导航,当前少于 Sidebar 全量入口
 - `CREATE`:新建文章
 - `SYSTEM`:切换主题、退出登录
 

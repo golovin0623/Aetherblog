@@ -27,103 +27,92 @@
 - 全局快捷键:**⌘K / Ctrl+K**(`BlogHeader.tsx:147`)
 - 全局快捷键:**`/`** (除非焦点在 input/textarea/contentEditable)
 
-### 2.2 输入栏 4 模式
+### 2.2 面板模式
 
-`parseQueryMode()`(`SearchPanel.tsx:36`)按前缀字符分流:
+当前 `SearchPanel` 已从旧的"输入前缀 4 模式"收敛为两个显式 tab:
 
-| 前缀 | mode | 用途 |
-|:---:|:---|:---|
-| (无) | default | 全文检索 |
-| `>` | command | 指令模式(预留,目前无具体实现) |
-| `/` | tag | 标签筛选(预留) |
-| `?` | ai | AI 问答(显式触发) |
+| 模式 | UI 文案 | 行为 |
+|:---|:---|:---|
+| `search` | 文章 | 文章搜索,走 `/api/v1/public/search?mode=hybrid&limit=10` |
+| `ask` | 问答 | AI 问答,走 `EventSource('/api/v1/public/search/qa?q=...')` |
 
-UI 上前缀 chip(`SearchPanel.tsx:478`)用 `cmd-chip` 类显示当前模式。
-
-**注意:** 即使 mode 不是 `default`,目前 `performSearch` 还是把整个 `query`(含前缀)发给 backend 的 `/search?q=`,后端没有按 mode 分发的逻辑。这是**预留 UI 钩子但 backend 尚未配套**的状态 —— `tag` / `command` 模式实际效果与 `default` 一致。
+`?` 仍是快捷入口,但语义已变为"切到问答并剥离 `?` 前缀",不是旧文档里的 `ai mode chip`。`>` command 模式、`/` tag 模式、旧前缀解析函数和旧模式 chip 在当前 `SearchPanel.tsx` 中已经不存在。后续开发不要再按旧前缀模式接接口。
 
 ### 2.3 数据流
 
 ```
-用户输入(query 状态)
-        ↓ 300ms 防抖(performSearch)
+面板打开
         ↓
-1. 关键词搜索:GET /api/v1/public/search?q=...&mode=hybrid&limit=10
+GET /api/v1/public/search/features
         ↓
-2. 若 aiQaEnabled(由 /search/features 决定)
+设置 keywordEnabled / semanticEnabled / aiQaEnabled
+
+文章 tab:
+用户输入(query)
+        ↓ 260ms debounce
+        ↓ Abort 上一次搜索
+GET /api/v1/public/search?q=...&mode=hybrid&limit=10
         ↓
-   EventSource POST /api/v1/public/search/qa?q=...
+SearchResultItem 列表(source: keyword / semantic / hybrid)
+
+问答 tab:
+用户输入(query 或 ?query)
+        ↓ aiQaEnabled gate
+        ↓ close 上一次 EventSource
+EventSource GET /api/v1/public/search/qa?q=...
         ↓ stream
-   delta / sources / done / error  →  setAiAnswer({ answer, sources })
+delta / sources / done / error → aiAnswer
 ```
 
-**features 探测:**(`SearchPanel.tsx:144`)
-
-```ts
-useEffect(() => {
-  if (!isOpen) return;
-  const controller = new AbortController();
-  fetch('/api/v1/public/search/features', { signal: controller.signal })
-    .then(res => res.ok ? res.json() : null)
-    .then(data => {
-      setSemanticEnabled(!!data?.data?.semanticEnabled);
-      setAiQaEnabled(!!data?.data?.aiQaEnabled);
-    });
-  return () => controller.abort();
-}, [isOpen]);
-```
-
-为什么必要:站长可能没配 OpenAI key,关闭语义搜索/AI 问答。前端 `aiQaEnabled` 决定是否启动 SSE,避免 EventSource 在 backend 4xx 时刷红 devtools。`semanticEnabled` 仅影响 footer 提示文案("AI 语义搜索已启用",`SearchPanel.tsx:692`)。
+**features 探测:** 当前返回值包含 `keywordEnabled`、`semanticEnabled`、`aiQaEnabled`。文章 tab 在 keyword/semantic 都不可用时禁用搜索;问答 tab 只有 `aiQaEnabled === true` 才会建立 EventSource。`semanticEnabled` 还用于 footer 能力提示,提示用户本次搜索是否可能有语义召回参与。
 
 ### 2.4 SSE 解析
 
+问答链路是浏览器原生 `EventSource`,不是 POST body:
+
 ```ts
+const es = new EventSource(`/api/v1/public/search/qa?q=${encodeURIComponent(term)}`);
+
 es.onmessage = (event) => {
   const payload = JSON.parse(event.data);
   switch (payload.type) {
-    case 'delta':                 // 文本增量
-      accumulatedAnswer += payload.content;
-      setAiAnswer(prev => ({ answer: accumulatedAnswer, sources: prev?.sources }));
+    case 'delta':
+      accumulatedAnswer += payload.content ?? '';
       break;
-    case 'sources':               // RAG 引用源(后于 delta 或并行)
-      setAiAnswer(prev => ({ answer: prev?.answer ?? accumulatedAnswer, sources: payload.sources }));
+    case 'sources':
+      sources = payload.sources ?? [];
       break;
-    case 'done':                  // 结束
+    case 'done':
+    case 'error':
       es.close();
-      break;
-    case 'error':                 // 异常
-      es.close();
-      if (!accumulatedAnswer) setAiAnswer(null);  // 没拿到任何内容 → 隐藏 AI 区块
       break;
   }
 };
 ```
 
-`SearchPanel.tsx:304-340`。`onerror`(`SearchPanel.tsx:342`)同样判断"已经有 accumulatedAnswer 就保留,没有就隐藏",避免空白区块占位。
+错误处理原则仍是"已有增量就保留,完全没拿到内容才清空",避免用户看到半截回答后被空状态覆盖。
 
 ### 2.5 中断与清理
 
 两个 ref:
-- `eventSourceRef` —— 持有当前 SSE
-- `searchAbortRef` —— 持有当前 fetch 的 AbortController
+- `eventSourceRef` —— 当前问答 SSE。
+- `searchAbortRef` —— 当前文章搜索 fetch 的 AbortController。
 
-`performSearch` 进入时统一 abort 上一次:`searchAbortRef.current?.abort()` + `closeEventSource()`。
-组件 unmount 时 cleanup 也清空两者。
-
-为什么这么严:作者注释明确"快速输入/关闭面板时中断在飞的 fetch,不然组件卸载后 fetch reject 会在 console 抛 'TypeError: Failed to fetch'。"(`SearchPanel.tsx:216`)。
+切换 tab、关闭面板、用户继续输入、组件 unmount 时都要清理旧请求。文章搜索 abort 避免旧结果晚到污染新列表;问答关闭 EventSource 避免后台继续生成。
 
 ### 2.6 历史记录
 
-- localStorage `searchHistory` —— 最多 5 条,LRU 维护(`saveToHistory:183`)。
-- 清空按钮二次确认:首次点击 → "确认清空?"(红字 + 计时 3 秒),再次点击真清(`clearHistory:192`)。
+- localStorage `searchHistory` 保存最近搜索词,去重后 LRU 保留。
+- 点击历史项会回填 query;在 ask tab 下可直接转问答。
+- 清空历史仍保留二次确认,避免误触。
 
 ### 2.7 键盘导航
 
-- ↑/↓ 切换激活项(`SearchPanel.tsx:393`)
-- Enter 打开当前激活项
-- Escape 关闭面板
-- ⌘K 切换面板开关
-- 激活项 `scrollIntoView({ block: 'nearest' })` 防止滚出可视区。
+- ↑/↓ 切换文章结果激活项。
+- Enter 在 search tab 打开当前激活文章;在 ask tab 触发问答。
+- Escape 关闭面板。
+- ⌘K / Ctrl+K 切换面板开关。
+- 激活项使用 `scrollIntoView({ block: 'nearest' })` 防止滚出可视区。
 
 ### 2.8 `SearchResultItem` 卡片
 
@@ -174,13 +163,13 @@ interface YearData {
 
 - 按 tag 过滤文章 —— 后端有 `tag` 数据但前端没有列表页。
 - 按 category 过滤 —— 同上。
-- search 的 `tag` 模式(`/foo`)目前不工作。
+- 搜索面板已经没有 tag 前缀模式;tag/category 发现仍需要独立聚合页承载。
 
 这是一处可拓展的发现层缺口。设计上应该:
 1. 后端补 `GET /api/v1/public/tags/{slug}/posts` / `GET /api/v1/public/categories/{slug}/posts`(可能已存在,需查)。
 2. 前端新增 `app/tags/[slug]/page.tsx` 与 `app/categories/[slug]/page.tsx`,RSC + ISR。
 3. ArticleCard 的 tag chip 加 `Link` 包装。
-4. SearchPanel `tag` mode 接 backend 改成 tag-filter。
+4. SearchPanel 可以在文章 tab 结果中引导到 tag/category 聚合页,但不建议恢复旧 `/foo` 前缀模式。
 
 ---
 
@@ -225,7 +214,7 @@ interface YearData {
 |:---|:---|:---|
 | `GET /api/v1/public/search?q={term}&mode=hybrid&limit=10` | 关键词 + 语义混合搜索 | SearchPanel |
 | `EventSource /api/v1/public/search/qa?q={term}` | AI 问答 SSE | SearchPanel |
-| `GET /api/v1/public/search/features` | 探测 semanticEnabled / aiQaEnabled | SearchPanel |
+| `GET /api/v1/public/search/features` | 探测 keywordEnabled / semanticEnabled / aiQaEnabled | SearchPanel |
 | `GET /api/v1/public/posts?pageSize=100` | 时间轴 + 首页 | timeline / page.tsx |
 | `GET /api/v1/public/posts?pageNum&pageSize` | /posts 列表 | posts/page.tsx |
 | `GET /api/v1/public/archives` | (未使用,timeline 不读这个端点) | — |
@@ -263,7 +252,7 @@ data: {"type":"error","message":"…"}
 
 `/search/features`:
 ```json
-{ "code": 200, "data": { "semanticEnabled": true, "aiQaEnabled": false } }
+{ "code": 200, "data": { "keywordEnabled": true, "semanticEnabled": true, "aiQaEnabled": false } }
 ```
 
 ---
@@ -273,12 +262,12 @@ data: {"type":"error","message":"…"}
 | Codex 元素 | 在哪 | 文件:line |
 |:---|:---|:---|
 | `surface-overlay` | SearchPanel 主容器 | `SearchPanel.tsx:454` |
-| `cmd-chip` | mode 前缀指示 | `SearchPanel.tsx:478` |
-| `ai-stream` | AI 回答文字 + 流式 cursor | `SearchPanel.tsx:521` |
-| `ink-cursor` | AI 流式光标(末尾闪烁的小极光块) | `SearchPanel.tsx:526` |
-| `bg-primary/10 text-primary border-primary/20` | 热门搜索 chip | `SearchPanel.tsx:612` |
-| 历史 chip | `bg-[var(--bg-secondary)] border-[var(--border-subtle)]` | `SearchPanel.tsx:589` |
-| 键盘提示 `<kbd>` | `bg-[var(--bg-card)]` 圆角 | `SearchPanel.tsx:679` |
+| tablist | 文章/问答双模式 | `SearchPanel.tsx:611` |
+| `ai-stream` | AI 回答文字 + 流式 cursor | SearchPanel 问答区 |
+| `ink-cursor` | AI 流式光标(末尾闪烁的小极光块) | SearchPanel 问答区 |
+| `bg-primary/10 text-primary border-primary/20` | 热门搜索 chip / 能力提示 | SearchPanel 面板内 |
+| 历史 chip | `bg-[var(--bg-secondary)] border-[var(--border-subtle)]` | SearchPanel 面板内 |
+| 键盘提示 `<kbd>` | `bg-[var(--bg-card)]` 圆角 | SearchPanel footer |
 
 字体:result title 用默认 sans;publishedAt / source 标签用 `font-mono` 系。
 
@@ -286,7 +275,7 @@ data: {"type":"error","message":"…"}
 
 ## 9 · 性能注意点
 
-- **300ms 防抖** —— 平衡输入响应与 backend QPS。短于 200ms 会触发过多请求,长于 500ms 用户感觉延迟。
+- **260ms 防抖** —— 平衡输入响应与 backend QPS。短于 200ms 会触发过多请求,长于 500ms 用户感觉延迟。
 - **`AbortController` 中断在飞 fetch** —— 否则用户连续输入会让旧结果在新结果之后到达,污染 UI。
 - **`React.memo(SearchResultItem)`** —— 激活项变化只重渲染前后两条。
 - **EventSource 仅在 `aiQaEnabled === true` 时建立** —— 避免无效连接。
@@ -298,9 +287,9 @@ data: {"type":"error","message":"…"}
 ## 10 · 已知限制
 
 1. **没有"按 tag 浏览"**:tag 是首要发现维度,但前端无聚合页,可能流失大量长尾流量。
-2. **`>` / `/` 模式 UI 已铺,backend 未配套**:不要让用户以为这些前缀有效。建议要么补 backend,要么给前端加占位提示("此模式即将开放")。
-3. **search 没有独立路由 `/search?q=`**:深链接友好性弱,无法分享搜索结果。可加一条 `app/search/page.tsx` 接 ?q,server-side 拉初始结果再 hydrate。
-4. **TRENDING_SEARCHES 是硬编码**(`SearchPanel.tsx:31`):`['Spring Boot', 'React', 'Docker', 'Kubernetes', 'TypeScript']` —— 与 backend 实际热门词不挂钩。可接 `/search/trending` 类端点。
+2. **search 没有独立路由 `/search?q=`**:深链接友好性弱,无法分享搜索结果。可加一条 `app/search/page.tsx` 接 ?q,server-side 拉初始结果再 hydrate。
+3. **TRENDING_SEARCHES 是硬编码**:热门词与 backend 实际热门搜索不挂钩。可接 `/search/trending` 类端点。
+4. **问答没有显式来源失败状态**:SSE 失败时只隐藏或保留已有回答,用户无法区分"没有答案"和"QA 服务不可用"。
 5. **timeline 拉 `pageSize=100` 上限**:站点超过 100 篇文章后第 101 篇起就丢了。需要补无限滚或后端 cursor。
 6. **`DEFAULT_VISIBLE_POSTS = 10`**(`TimelineTree.tsx:32`)硬编码,大型站点单月可能有 30+ 文章,目前每月只能看到前 10 加 expand。
 7. **`useLocalStorage` 在 SSR 下无值**:friends 视图、search history、timeline 展开状态 —— 都靠"hasMounted"切换,有一帧 flicker。整体交互可接受,但 hydration 警告需关注。

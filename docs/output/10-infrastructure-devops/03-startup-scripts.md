@@ -91,7 +91,7 @@ MIDDLEWARE_LOG_TAIL=80
 
 2) PROD_MODE=false 时:
    - POSTGRES_PASSWORD 空 → 检查 postgres 数据卷是否存在
-       存在 → 用 docker-compose 历史默认 aetherblog123(避免与 PGDATA 分叉)
+       存在 → 沿用已初始化数据卷对应的历史口令路径(避免与 PGDATA 分叉)
        不存在 → gen_url_safe_secret(base64url,无 / + =)
    - REDIS_PASSWORD 空 → gen_url_safe_secret(redis 不持久化口令,可安全轮换)
 
@@ -106,8 +106,8 @@ MIDDLEWARE_LOG_TAIL=80
    - 现值非空 + 已含 legacy → 跳过
 
 5) PROD_MODE=true:
-   - require_prod_secure_field POSTGRES_PASSWORD ≠ aetherblog123  (不静默改写,FATAL 引导手动 ALTER ROLE)
-   - bootstrap_prod_secure_field REDIS_PASSWORD ≠ aetherblog_dev  (静默替换为强随机)
+   - require_prod_secure_field POSTGRES_PASSWORD 不能等于历史开发兜底值(不静默改写,FATAL 引导手动 ALTER ROLE)
+   - bootstrap_prod_secure_field REDIS_PASSWORD 不能等于历史开发兜底值(静默替换为强随机)
    - bootstrap_prod_secure_field AUTH_COOKIE_SECURE ≠ false       (改为 true)
    - 删除 REDIS_HOST=localhost(让各运行环境默认值接管)
 

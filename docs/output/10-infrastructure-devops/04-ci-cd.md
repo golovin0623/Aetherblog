@@ -328,6 +328,8 @@ case "$v" in
 esac
 ```
 
+v57 需要特别谨慎:当前 `deploy.sh` 会在 force 前探测 `public.knowledge_bases`。只有确认不存在时才 `force 56` 并重放 057/058+;若表已存在或探测失败,脚本拒绝自动自愈,避免非幂等 058 `already exists` 后再次 dirty。
+
 两阶段触发:
 1. 部署前先探:已 dirty 命中条目立刻 force + 让 up 接管
 2. up 失败后再探:同一部署周期内允许自愈 + 重试 up 一次
