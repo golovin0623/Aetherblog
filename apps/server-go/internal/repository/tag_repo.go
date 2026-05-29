@@ -24,6 +24,28 @@ func (r *TagRepo) FindAll(ctx context.Context) ([]model.Tag, error) {
 	return tags, err
 }
 
+// FindPublicNoPassword 返回至少关联一篇公开、未隐藏、无密码文章的标签。
+// Agent 侧 # picker 会把标签名直接暴露给登录用户，不能复用 tags.post_count 的
+// 全站缓存值，否则只用于隐藏/密码文章的标签也会被列出。
+func (r *TagRepo) FindPublicNoPassword(ctx context.Context) ([]model.Tag, error) {
+	var tags []model.Tag
+	err := r.db.SelectContext(ctx, &tags, `
+		SELECT
+			t.id, t.name, t.slug, t.description, t.color,
+			COUNT(DISTINCT p.id)::int AS post_count,
+			t.created_at, t.updated_at
+		FROM tags t
+		JOIN post_tags pt ON pt.tag_id = t.id
+		JOIN posts p ON p.id = pt.post_id
+		WHERE p.deleted = false
+		  AND p.status = 'PUBLISHED'
+		  AND p.is_hidden = false
+		  AND p.password IS NULL
+		GROUP BY t.id, t.name, t.slug, t.description, t.color, t.created_at, t.updated_at
+		ORDER BY post_count DESC, t.id ASC`)
+	return tags, err
+}
+
 // FindByID 根据主键查询单个标签，不存在时返回 nil。
 // 操作表：tags；参数 id 为标签主键。
 func (r *TagRepo) FindByID(ctx context.Context, id int64) (*model.Tag, error) {

@@ -445,14 +445,14 @@ type tagItem struct {
 
 // Tags 处理 GET /api/v1/agent/tags
 //
-// 全量返回（站点标签量级有限，几百以内）。前端按 postCount 倒序展示。
+// 只返回至少关联一篇公开、未隐藏、无密码文章的标签。前端按 postCount 倒序展示。
 func (h *AgentHandler) Tags(c echo.Context) error {
 	if middleware.GetLoginUser(c) == nil {
 		return response.FailWith(c, response.Unauthorized, "未登录")
 	}
-	tags, err := h.tagRepo.FindAll(c.Request().Context())
+	tags, err := h.tagRepo.FindPublicNoPassword(c.Request().Context())
 	if err != nil {
-		log.Warn().Err(err).Msg("agent.tags: FindAll failed")
+		log.Warn().Err(err).Msg("agent.tags: FindPublicNoPassword failed")
 		return response.FailWith(c, response.InternalError, "查询失败")
 	}
 	out := make([]tagItem, 0, len(tags))

@@ -729,14 +729,18 @@ function ProfilesTab({
               key={p.id}
               profile={p}
               canManage={canManage}
-              onActivate={async () => {
+              onRestore={async () => {
+                if (!confirm(
+                  `确定切回「${p.name}」吗？\n\n` +
+                  `系统会把当前 active 档案降级，并把该旧档案保留的 embeddings 恢复为 active。`,
+                )) return;
                 try {
                   await knowledgeBaseService.activateProfile(kb.id, p.id);
-                  toast.success(`已激活档案「${p.name}」（指针切换，旧 embeddings 仍保留）`);
+                  toast.success(`已切回档案「${p.name}」`);
                   await load();
                   onChanged();
                 } catch (err: any) {
-                  toast.error(err?.response?.data?.message || '激活失败');
+                  toast.error(err?.response?.data?.message || '切回失败');
                 }
               }}
               onMigrate={async () => {
@@ -792,13 +796,13 @@ function ProfilesTab({
 function ProfileCard({
   profile,
   canManage,
-  onActivate,
+  onRestore,
   onMigrate,
   onDelete,
 }: {
   profile: KnowledgeBaseProfile;
   canManage: boolean;
-  onActivate: () => void;
+  onRestore: () => void;
   onMigrate: () => void;
   onDelete: () => void;
 }) {
@@ -833,33 +837,33 @@ function ProfileCard({
       {canManage && (
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
           {profile.status === 'shadow' && (
+            <button
+              type="button"
+              onClick={onMigrate}
+              title="蓝绿迁移：用新 profile 全量 reindex，全部成功后原子切换"
+              className="rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
+            >
+              迁移并激活
+            </button>
+          )}
+          {profile.status === 'deprecated' && (
             <>
               <button
                 type="button"
-                onClick={onActivate}
-                title="仅指针切换：保留旧 embeddings，新 profile 立刻接管检索；不重新计算向量"
-                className="rounded-md border border-[var(--text-secondary)]/30 px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+                onClick={onRestore}
+                title="切回旧 profile：恢复该档案保留的 embeddings 为 active"
+                className="rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
               >
-                直接激活
+                切回激活
               </button>
               <button
                 type="button"
-                onClick={onMigrate}
-                title="蓝绿迁移：用新 profile 全量 reindex，全部成功后原子切换"
-                className="rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
+                onClick={onDelete}
+                className="rounded-md border border-status-danger/40 px-2.5 py-1 text-xs text-status-danger hover:bg-status-danger/10"
               >
-                迁移并激活
+                删除
               </button>
             </>
-          )}
-          {profile.status === 'deprecated' && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="rounded-md border border-status-danger/40 px-2.5 py-1 text-xs text-status-danger hover:bg-status-danger/10"
-            >
-              删除
-            </button>
           )}
         </div>
       )}
