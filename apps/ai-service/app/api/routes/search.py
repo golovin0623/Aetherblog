@@ -262,6 +262,7 @@ async def index_post(
             _enforce_content_limit(req.content or "")
             profile = await vector_store.get_active_profile()
             model = profile.model_id
+            index_usage_endpoint = request.url.path
             result = await vector_store.upsert_post_embedding(
                 post_id=req.postId,
                 title=req.title or "",
@@ -271,7 +272,7 @@ async def index_post(
                 timeout_sec=req.timeoutSec,
                 profile=profile,
                 user_id=user.user_id,
-                usage_endpoint=request.url.path,
+                usage_endpoint=index_usage_endpoint,
                 request_id=getattr(request.state, "request_id", None),
             )
             model = str(result.get("model_id") or model)
