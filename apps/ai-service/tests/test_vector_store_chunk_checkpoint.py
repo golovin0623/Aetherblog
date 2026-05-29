@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.chunker import Chunk
 from app.services.vector_store import SearchProfile, VectorStoreService, _chunk_hash
@@ -89,12 +91,21 @@ class FakeLLM:
     def __init__(self, *, fail_texts: set[str] | None = None):
         self.fail_texts = fail_texts or set()
         self.calls: list[str] = []
+        self.kwargs: list[dict] = []
 
     async def embed(self, text: str, timeout_sec=None, **_kwargs):
         self.calls.append(text)
+        self.kwargs.append(dict(_kwargs, timeout_sec=timeout_sec))
         if text in self.fail_texts:
             raise RuntimeError(f"embed failed for {text}")
         return [float(len(text)), 1.0]
+
+
+class FailingOverrideLLM:
+    async def embed(self, *_args, **_kwargs):
+        raise ValueError(
+            "embedding model override failed for text-embedding-3-large: model not found or disabled"
+        )
 
 
 def _profile() -> SearchProfile:
@@ -207,3 +218,90 @@ async def test_shadow_checkpoint_reuses_deprecated_chunks_when_switching_back():
     assert events[0]["status"] == "resumed"
     assert events[0]["doneChunks"] == 2
     assert {row["chunk_index"] for row in pool.conn.rows} == {0, 1, 2}
+
+
+class FakeSemanticConn:
+    def __init__(self):
+        self.fetch_args = None
+
+    async def fetch(self, _sql: str, *args):
+        self.fetch_args = args
+        return []
+
+
+class FakeSemanticPool:
+    def __init__(self):
+        self.conn = FakeSemanticConn()
+
+    @asynccontextmanager
+    async def acquire(self):
+        yield self.conn
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_embeds_query_with_active_profile_model(monkeypatch):
+    pool = FakeSemanticPool()
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+    profile = _profile()
+    monkeypatch.setattr(store, "get_active_profile", AsyncMock(return_value=profile))
+
+    await store.semantic_search("Docker怎么使用?", limit=5)
+
+    store.get_active_profile.assert_awaited_once()
+    assert llm.calls == ["Docker怎么使用?"]
+    assert llm.kwargs[0]["embedding_model_id"] == profile.model_id
+    assert llm.kwargs[0]["strict_embedding_model_id"] is True
+    assert pool.conn.fetch_args[1] == profile.id
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_uses_prefetched_profile_without_reloading(monkeypatch):
+    pool = FakeSemanticPool()
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+    profile = _profile()
+    get_active_profile = AsyncMock(return_value=profile)
+    monkeypatch.setattr(store, "get_active_profile", get_active_profile)
+
+    await store.semantic_search("Docker", limit=5, profile=profile)
+
+    get_active_profile.assert_not_awaited()
+    assert llm.kwargs[0]["embedding_model_id"] == profile.model_id
+    assert pool.conn.fetch_args[1] == profile.id
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_reports_unavailable_profile_model(monkeypatch):
+    pool = FakeSemanticPool()
+    store = VectorStoreService(pool, FailingOverrideLLM())
+    profile = _profile()
+    monkeypatch.setattr(store, "get_active_profile", AsyncMock(return_value=profile))
+
+    with pytest.raises(HTTPException) as exc:
+        await store.semantic_search("Docker", limit=5)
+
+    assert exc.value.status_code == 503
+    assert "active search profile" in exc.value.detail
+    assert pool.conn.fetch_args is None
+
+
+@pytest.mark.asyncio
+async def test_shadow_checkpoint_embeds_chunks_with_profile_model():
+    pool = FakeCheckpointPool()
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+    profile = _profile()
+
+    await store._upsert_shadow_chunks_with_checkpoint(
+        post_id=7,
+        profile=profile,
+        chunks=_chunks()[:1],
+        timeout_sec=None,
+        embed_semaphore=None,
+        progress_cb=None,
+        content_len=100,
+    )
+
+    assert llm.kwargs[0]["embedding_model_id"] == profile.model_id
+    assert llm.kwargs[0]["strict_embedding_model_id"] is True

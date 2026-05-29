@@ -204,7 +204,7 @@ COALESCE((SELECT model_id FROM post_embeddings WHERE status='active' LIMIT 1),
 | **所有时间戳带 trigger 自动 updated_at** | `update_updated_at_column()` | 业务 service 不必显式 SET;000028 加旁路 `app.preserve_updated_at` 让 VanBlog 导入保留原时间 |
 | **向量列不锁 dim** | post_embeddings | 换模型 = INSERT 新行 + 翻转指针,**不动 schema**(对比早期 `post_vectors vector(1536)` 锁死) |
 | **存量数据迁移走 ON CONFLICT DO NOTHING** | 全部 seed migration | 部署幂等;新装 vs 存量统一路径 |
-| **dirty self-heal 在部署脚本里硬编码** | `ops/webhook/deploy.sh::_try_heal_known_dirty` | v34→force 35,v38→force 38;只在 **登记过的 dirty 特征** 上自愈,其他一律中止 |
+| **dirty self-heal 在部署脚本里硬编码** | `ops/webhook/deploy.sh::_try_heal_known_dirty` | v34→force 35,v38→force 38,v57→确认 `knowledge_bases` 不存在后 force 56;只在 **登记过且可证明安全的 dirty 特征** 上自愈,其他一律中止 |
 
 ---
 

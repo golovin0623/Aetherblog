@@ -152,13 +152,30 @@ class VectorStoreService:
         user_id: int | str | None = None,
         usage_endpoint: str | None = None,
         request_id: str | None = None,
+        profile: SearchProfile | None = None,
     ) -> list[dict[str, Any]]:
-        embedding = await self.llm.embed(
-            query,
-            user_id=user_id,
-            usage_endpoint=usage_endpoint,
-            request_id=request_id,
-        )
+        profile = profile or await self.get_active_profile()
+        try:
+            embedding = await self.llm.embed(
+                query,
+                user_id=user_id,
+                embedding_model_id=profile.model_id,
+                strict_embedding_model_id=True,
+                usage_endpoint=usage_endpoint,
+                request_id=request_id,
+            )
+        except ValueError as exc:
+            msg = str(exc)
+            if "embedding model override" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "语义搜索配置不可用：当前 active search profile 指向的 "
+                        f"embedding 模型不可用（profile={profile.code}, model={profile.model_id}）。"
+                        "请在搜索配置中切换到可用模型并重建索引。"
+                    ),
+                ) from exc
+            raise
         dim = len(embedding) if embedding else 0
         # Defensive: `llm.embed()` 理论上不应返回空向量，但 provider 异常
         # (上游 500/empty body 被 LiteLLM 吞掉) 或模型路由配错都会让我们
@@ -172,7 +189,6 @@ class VectorStoreService:
                     "请检查搜索配置里的活跃 embedding 模型与上游供应商连通性。"
                 ),
             )
-        profile = await self.get_active_profile()
         # pgvector 的 hnsw 对 ``vector`` 类型限 2000 维 —— text-embedding-3-large
         # 的 3072 维超过这个阈值, 走 halfvec (float16, hnsw 最大 4000 维)。
         # planner 只有在 ORDER BY / WHERE 的 cast 精确匹配索引表达式时才会
@@ -331,6 +347,8 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
+                    embedding_model_id=profile.model_id,
+                    strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
                     request_id=request_id,
@@ -566,6 +584,8 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
+                    embedding_model_id=profile.model_id,
+                    strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
                     request_id=request_id,
