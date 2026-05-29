@@ -184,3 +184,31 @@ async def test_embed_strict_model_override_does_not_fallback() -> None:
     router.model_router.resolve_routing.assert_not_awaited()
     assert usage_logger.records == []
     assert metrics.records == []
+
+
+@pytest.mark.asyncio
+async def test_embed_strict_model_override_allows_mock_mode_without_credential() -> None:
+    usage_logger = FakeUsageLogger()
+    metrics = FakeMetrics()
+    router = _make_router(usage_logger, metrics)
+    router.settings.mock_mode = True
+    router.settings.vector_dim = 8
+
+    router.model_router.provider_registry = SimpleNamespace(
+        get_model=AsyncMock(return_value=_make_embedding_model()),
+    )
+    router.model_router.credential_resolver = SimpleNamespace(
+        get_credential=AsyncMock(return_value=None),
+    )
+    router.model_router.resolve_routing = AsyncMock(return_value=None)
+
+    result = await router.embed(
+        "hello embedding",
+        embedding_model_id="qwen3-embedding-8b",
+        strict_embedding_model_id=True,
+    )
+
+    assert len(result) == 8
+    assert all(isinstance(value, float) for value in result)
+    assert usage_logger.records == []
+    assert metrics.records == []

@@ -290,7 +290,7 @@ class LlmRouter:
                 "embed.model_override_no_router",
                 extra={"data": {"requested": embedding_model_id}},
             )
-            if strict_embedding_model_id:
+            if strict_embedding_model_id and not self.settings.mock_mode:
                 raise ValueError(
                     f"embedding model override requires model router: {embedding_model_id}"
                 )
@@ -314,7 +314,7 @@ class LlmRouter:
                 "embed.model_override_failed",
                 extra={"data": {"requested": embedding_model_id, "error": str(exc)[:200]}},
             )
-            if strict_embedding_model_id:
+            if strict_embedding_model_id and not self.settings.mock_mode:
                 raise ValueError(
                     f"embedding model override failed for {embedding_model_id}: {exc}"
                 ) from exc

@@ -239,7 +239,8 @@ async def index_post(
     _logger = _logging.getLogger("ai-service")
     start_time = time.perf_counter()
     error_code: str | None = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
+    skip_wrapper_usage = False
     try:
         if req.action == "delete":
             result = await vector_store.delete_post_embedding(req.postId)
@@ -259,6 +260,9 @@ async def index_post(
                     detail="Post is not indexable (must exist and not deleted)",
                 )
             _enforce_content_limit(req.content or "")
+            profile = await vector_store.get_active_profile()
+            model = profile.model_id
+            index_usage_endpoint = request.url.path
             result = await vector_store.upsert_post_embedding(
                 post_id=req.postId,
                 title=req.title or "",
@@ -266,8 +270,14 @@ async def index_post(
                 content=req.content or "",
                 metadata=req.metadata or {},
                 timeout_sec=req.timeoutSec,
+                profile=profile,
+                user_id=user.user_id,
+                usage_endpoint=index_usage_endpoint,
+                request_id=getattr(request.state, "request_id", None),
             )
+            model = str(result.get("model_id") or model)
             request_text = req.content or ""
+            skip_wrapper_usage = True
         return ApiResponse(data=result)
     except HTTPException as exc:
         # 保留原始的 FastAPI 异常（如输入校验 4xx 等）
@@ -327,19 +337,20 @@ async def index_post(
         )
         raise HTTPException(status_code=http_code, detail=f"{user_msg}: {error_msg[:200]}")
     finally:
-        await _log_usage(
-            request=request,
-            metrics=metrics,
-            usage_logger=usage_logger,
-            user_id=user.user_id,
-            model=model,
-            request_text=request_text if "request_text" in locals() else "",
-            response_text="",
-            start_time=start_time,
-            success=error_code is None,
-            cached=False,
-            error_code=error_code,
-        )
+        if not skip_wrapper_usage:
+            await _log_usage(
+                request=request,
+                metrics=metrics,
+                usage_logger=usage_logger,
+                user_id=user.user_id,
+                model=model,
+                request_text=request_text if "request_text" in locals() else "",
+                response_text="",
+                start_time=start_time,
+                success=error_code is None,
+                cached=False,
+                error_code=error_code,
+            )
 
 
 @router.get("/api/v1/search/semantic/internal", response_model=ApiResponse[SemanticSearchData])

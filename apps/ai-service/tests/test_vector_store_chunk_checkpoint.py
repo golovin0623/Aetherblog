@@ -220,6 +220,46 @@ async def test_shadow_checkpoint_reuses_deprecated_chunks_when_switching_back():
     assert {row["chunk_index"] for row in pool.conn.rows} == {0, 1, 2}
 
 
+@pytest.mark.asyncio
+async def test_shadow_checkpoint_reembeds_chunks_when_model_id_differs():
+    pool = FakeCheckpointPool()
+    chunks = _chunks()
+    pool.conn.rows = [
+        {
+            "post_id": 7,
+            "profile_id": 42,
+            "model_id": "old-fallback-model",
+            "dim": 2,
+            "embedding": [1.0, 1.0],
+            "status": "shadow",
+            "chunk_index": chunk.index,
+            "chunk_text": chunk.text,
+            "parent_text": chunk.parent_text,
+            "chunk_hash": _chunk_hash(chunk),
+            "chunk_count": len(chunks),
+        }
+        for chunk in chunks[:2]
+    ]
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+
+    result = await store._upsert_shadow_chunks_with_checkpoint(
+        post_id=7,
+        profile=_profile(),
+        chunks=chunks,
+        timeout_sec=None,
+        embed_semaphore=None,
+        progress_cb=None,
+        content_len=100,
+    )
+
+    assert llm.calls == ["alpha", "beta", "gamma"]
+    assert result["reused_chunks"] == 0
+    assert result["embedded_chunks"] == 3
+    assert {row["chunk_index"] for row in pool.conn.rows} == {0, 1, 2}
+    assert {row["model_id"] for row in pool.conn.rows} == {"m"}
+
+
 class FakeSemanticConn:
     def __init__(self):
         self.fetch_args = None

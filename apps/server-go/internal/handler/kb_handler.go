@@ -1,18 +1,19 @@
 // Package handler · kb_handler.go — /v1/admin/kbs 路由族。
 //
 // 端点：
-//   GET    /v1/admin/kbs                              列表（按权限过滤）
-//   POST   /v1/admin/kbs                              创建（CUSTOM）
-//   GET    /v1/admin/kbs/:id                          详情
-//   PUT    /v1/admin/kbs/:id                          更新
-//   DELETE /v1/admin/kbs/:id                          删除（SYSTEM 拒）
-//   GET    /v1/admin/kbs/:id/stats                    统计与时间轴
-//   GET    /v1/admin/kbs/:id/files                    文件列表
-//   POST   /v1/admin/kbs/:id/files                    上传 multipart
-//   GET    /v1/admin/kbs/:id/files/:fid               文件详情
-//   DELETE /v1/admin/kbs/:id/files/:fid               删除文件
-//   POST   /v1/admin/kbs/:id/files/:fid/reindex       单文件重建
-//   POST   /v1/admin/kbs/:id/reindex                  全库重建
+//
+//	GET    /v1/admin/kbs                              列表（按权限过滤）
+//	POST   /v1/admin/kbs                              创建（CUSTOM）
+//	GET    /v1/admin/kbs/:id                          详情
+//	PUT    /v1/admin/kbs/:id                          更新
+//	DELETE /v1/admin/kbs/:id                          删除（SYSTEM 拒）
+//	GET    /v1/admin/kbs/:id/stats                    统计与时间轴
+//	GET    /v1/admin/kbs/:id/files                    文件列表
+//	POST   /v1/admin/kbs/:id/files                    上传 multipart
+//	GET    /v1/admin/kbs/:id/files/:fid               文件详情
+//	DELETE /v1/admin/kbs/:id/files/:fid               删除文件
+//	POST   /v1/admin/kbs/:id/files/:fid/reindex       单文件重建
+//	POST   /v1/admin/kbs/:id/reindex                  全库重建
 package handler
 
 import (
@@ -136,6 +137,8 @@ func (h *KBHandler) handleSvcErr(c echo.Context, err error) error {
 		return response.FailWith(c, response.NotFound, "索引档案不存在")
 	case errors.Is(err, service.ErrKBProfileBadState):
 		return response.FailWith(c, response.BadRequest, "档案当前状态不允许该操作")
+	case errors.Is(err, service.ErrKBProfileBadConfig):
+		return response.FailWith(c, response.BadRequest, err.Error())
 	case errors.Is(err, service.ErrKBFileNotFound):
 		return response.FailWith(c, response.NotFound, "知识库文件不存在")
 	case errors.Is(err, service.ErrKBFileWrongKB), errors.Is(err, service.ErrKBMemberWrongKB):
@@ -277,9 +280,9 @@ func (h *KBHandler) ListFiles(c echo.Context) error {
 		return h.handleSvcErr(c, err)
 	}
 	return response.OK(c, echo.Map{
-		"items": rows,
-		"total": total,
-		"page":  max1(q.PageNum),
+		"items":    rows,
+		"total":    total,
+		"page":     max1(q.PageNum),
 		"pageSize": defaultPageSize(q.PageSize),
 	})
 }

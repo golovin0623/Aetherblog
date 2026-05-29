@@ -290,6 +290,7 @@ class VectorStoreService:
         SSE 展示单篇文章内部进度；普通 active 写入不依赖它。
         """
         profile = profile or await self.get_active_profile()
+        used_model_id = profile.model_id
         content_len = len(content or "")
 
         # ---- 切片
@@ -347,7 +348,7 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
-                    embedding_model_id=profile.model_id,
+                    embedding_model_id=used_model_id,
                     strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
@@ -405,7 +406,7 @@ class VectorStoreService:
                         (
                             post_id,
                             profile.id,
-                            profile.model_id,
+                            used_model_id,
                             first_dim,
                             vec,
                             target_status,
@@ -443,7 +444,7 @@ class VectorStoreService:
                 extra={"data": {
                     "post_id": post_id,
                     "profile": profile.code,
-                    "model_id": profile.model_id,
+                    "model_id": used_model_id,
                     "dim": first_dim,
                     "chunks": len(chunks),
                     "db_ms": round(db_ms, 2),
@@ -465,14 +466,14 @@ class VectorStoreService:
                 "embed_ms": round(embed_ms, 2),
                 "db_ms": round(db_ms, 2),
                 "vector_dim": first_dim,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
                 "target_status": target_status,
             }},
         )
         return {
             "status": "indexed",
             "profile": profile.code,
-            "model_id": profile.model_id,
+            "model_id": used_model_id,
             "dim": first_dim,
             "chunks": len(chunks),
         }
@@ -497,6 +498,7 @@ class VectorStoreService:
         可能是 ``deprecated``。两者都属于同一 profile 的可复用 checkpoint。
         """
 
+        used_model_id = profile.model_id
         chunk_count = len(chunks)
         expected_hashes = {c.index: _chunk_hash(c) for c in chunks}
         expected_indices = set(expected_hashes)
@@ -504,7 +506,7 @@ class VectorStoreService:
         async with self.pool.acquire() as conn:
             existing_rows = await conn.fetch(
                 """
-                SELECT chunk_index, chunk_hash, COALESCE(chunk_count, 1) AS chunk_count, dim
+                SELECT chunk_index, chunk_hash, COALESCE(chunk_count, 1) AS chunk_count, dim, model_id
                 FROM post_embeddings
                 WHERE post_id = $1
                   AND profile_id = $2
@@ -523,6 +525,7 @@ class VectorStoreService:
                 idx in expected_indices
                 and row["chunk_hash"] == expected_hashes[idx]
                 and int(row["chunk_count"] or 1) == chunk_count
+                and row["model_id"] == used_model_id
             )
             if is_valid:
                 row_dim = int(row["dim"])
@@ -565,7 +568,7 @@ class VectorStoreService:
             return {
                 "status": "indexed",
                 "profile": profile.code,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
                 "dim": expected_dim or 0,
                 "chunks": chunk_count,
                 "reused_chunks": completed_chunks,
@@ -584,7 +587,7 @@ class VectorStoreService:
                 vec = await self.llm.embed(
                     c.text,
                     user_id=user_id,
-                    embedding_model_id=profile.model_id,
+                    embedding_model_id=used_model_id,
                     strict_embedding_model_id=True,
                     timeout_sec=timeout_sec,
                     usage_endpoint=usage_endpoint,
@@ -628,7 +631,7 @@ class VectorStoreService:
                     """,
                     post_id,
                     profile.id,
-                    profile.model_id,
+                    used_model_id,
                     dim,
                     vec,
                     c.index,
@@ -685,13 +688,13 @@ class VectorStoreService:
                 "embedded_chunks": len(missing_chunks),
                 "embed_ms": round(embed_ms, 2),
                 "vector_dim": expected_dim or 0,
-                "model_id": profile.model_id,
+                "model_id": used_model_id,
             }},
         )
         return {
             "status": "indexed",
             "profile": profile.code,
-            "model_id": profile.model_id,
+            "model_id": used_model_id,
             "dim": expected_dim or 0,
             "chunks": chunk_count,
             "reused_chunks": len(valid_indices),

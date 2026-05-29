@@ -665,7 +665,7 @@ func splitSearchTerms(raw string) []string {
 		if builder.Len() == 0 {
 			return
 		}
-		term := strings.Trim(builder.String(), "_-+#%.")
+		term := strings.Trim(builder.String(), "_-%.")
 		builder.Reset()
 		lastClass = searchRuneSeparator
 		addTerm(term)
@@ -790,36 +790,39 @@ func searchPublishedQuery() string {
 	limitPlaceholder := termStart + maxSearchTermPatterns
 	offsetPlaceholder := limitPlaceholder + 1
 	return fmt.Sprintf(`
-			WITH q AS (
-				SELECT plainto_tsquery('simple', lower($1)) AS tsq
+		WITH q AS (
+			SELECT plainto_tsquery('simple', lower($1)) AS tsq
+		)
+		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
+			LEAST(
+				ts_rank(
+					to_tsvector('simple', %[1]s),
+					(SELECT tsq FROM q)
+				),
+				0.35
 			)
-			SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
-				LEAST(
-					ts_rank(
-						to_tsvector('simple', %[1]s),
-						(SELECT tsq FROM q)
-					),
-					0.35
-				)
-				+ CASE WHEN p.title ILIKE $2 ESCAPE '\' THEN 2.4 ELSE 0 END
-				+ CASE WHEN COALESCE(p.summary,'') ILIKE $2 ESCAPE '\' THEN 0.8 ELSE 0 END
-				+ CASE WHEN COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\' THEN 0.18 ELSE 0 END
-				+ CASE WHEN (c.name ILIKE $2 ESCAPE '\' OR c.slug ILIKE $2 ESCAPE '\') THEN 1.2 ELSE 0 END
-				+ CASE WHEN %[2]s THEN 1.0 ELSE 0 END
-				+ %[3]s AS rank
-			FROM posts p
-			LEFT JOIN categories c ON p.category_id = c.id
-			WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			+ CASE WHEN p.title ILIKE $2 ESCAPE '\' THEN 2.4 ELSE 0 END
+			+ CASE WHEN COALESCE(p.summary,'') ILIKE $2 ESCAPE '\' THEN 0.8 ELSE 0 END
+			+ CASE WHEN COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\' THEN 0.18 ELSE 0 END
+			+ CASE WHEN (c.name ILIKE $2 ESCAPE '\' OR c.slug ILIKE $2 ESCAPE '\') THEN 1.2 ELSE 0 END
+			+ CASE WHEN %[2]s THEN 1.0 ELSE 0 END
+			+ %[3]s AS rank
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			AND p.password IS NULL
 			AND (
-					to_tsvector('simple', %[1]s)
-						@@ (SELECT tsq FROM q)
-					OR p.title ILIKE $2 ESCAPE '\'
-					OR COALESCE(p.summary,'') ILIKE $2 ESCAPE '\'
-					OR COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\'
-					OR c.name ILIKE $2 ESCAPE '\'
-					OR c.slug ILIKE $2 ESCAPE '\'
-					OR %[2]s
-					OR %[4]s
+				to_tsvector('simple', %[1]s)
+					@@ (SELECT tsq FROM q)
+				OR p.title ILIKE $2 ESCAPE '\'
+				OR COALESCE(p.summary,'') ILIKE $2 ESCAPE '\'
+				OR COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\'
+				OR c.name ILIKE $2 ESCAPE '\'
+				OR c.slug ILIKE $2 ESCAPE '\'
+				OR %[2]s
+				OR (
+					%[4]s
+					)
 				)
 			ORDER BY rank DESC, p.published_at DESC NULLS LAST
 			LIMIT $%[5]d OFFSET $%[6]d`,
