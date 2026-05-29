@@ -1361,6 +1361,11 @@ func (s *KBService) ActivateProfile(ctx context.Context, kbID, profileID int64, 
 	if p.Status == model.KBProfileStatusActive {
 		return nil
 	}
+	if p.Status == model.KBProfileStatusShadow {
+		// Shadow profile 还没有可供检索的 active embeddings。必须走蓝绿迁移：
+		// 先按目标 profile 写 shadow embeddings，再由 CommitBlueGreen 原子提升。
+		return ErrKBProfileBadState
+	}
 	return s.profileRepo.Activate(ctx, kbID, profileID)
 }
 
