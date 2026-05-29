@@ -192,9 +192,9 @@ ALTER TABLE activity_events ADD CONSTRAINT chk_activity_event_category
 
 AI 模块统一写 `event_category='ai'`,`event_type` 形如 `ai.generation.summary` / `ai.task_create` / `ai.prompt_update` / `ai.provider_proxy_write` / `ai.agent_chat`。
 
-### ai_pricing(价格表) — 通过 ai_models.capabilities 承载
+### ai_pricing / Global Pricing — 统计仍通过 ai_models 承载
 
-价格来源不在独立 ai_pricing 表,而是 `ai_models.capabilities` JSONB 列。`apps/server-go/internal/repository/ai_pricing_repo.go` 里 `buildPricedLogsCTE` 用 `LATERAL` 子查询从 `ai_models.capabilities->'pricing'->'units'` 取 textInput / textOutput / textInput_cacheRead 单价,fallback 到 `m.input_cost_per_1k` / `m.output_cost_per_1k`。计算公式:
+当前存在 `ai_global_pricing`(000047),但它是 Admin/ai-service 维护模型价格的**全局基准表**,不是 Go 统计 CTE 的直接事实源。`apps/server-go/internal/repository/ai_pricing_repo.go` 里 `buildPricedLogsCTE` 仍从 `ai_models.capabilities->'pricing'->'units'` 取 textInput / textOutput / textInput_cacheRead 单价,fallback 到 `m.input_cost_per_1k` / `m.output_cost_per_1k`。Global Pricing 只有在 apply/sync 写回 `ai_models` 后才影响后续统计。计算公式:
 
 ```
 cost = ROUND(
@@ -204,7 +204,7 @@ cost = ROUND(
 )
 ```
 
-migration 增量在 `028_ai_pricing` / `029_ai_pricing_archive` / `030_ai_pricing_compat` 系列(详见模块四 `04-analytics-and-stats.md`)。
+migration 增量包括 `000047_ai_global_pricing` 与早期 `ai_usage_logs.cost_archive_*`。历史归档成本不会因为改 `ai_global_pricing` 自动重算,需要明确触发 cost archive。
 
 ## 5. 配置 / 环境变量
 

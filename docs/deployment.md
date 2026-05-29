@@ -96,7 +96,7 @@ ADMIN_PORT=7894
 POSTGRES_PORT=7895
 
 # 数据库
-POSTGRES_PASSWORD=aetherblog123
+POSTGRES_PASSWORD=<生成强随机密码>
 
 # Redis（使用现有服务）
 REDIS_HOST=host.docker.internal
@@ -426,15 +426,15 @@ docker compose -f docker-compose.prod.yml logs -f
 docker compose -f docker-compose.prod.yml down
 ```
 
-### 默认管理员凭据
+### 初始管理员账号
 
-| 用户名 | 默认密码 | 说明 |
+| 用户名 | 密码来源 | 说明 |
 |:---|:---|:---|
-| `admin` | `admin123` | **首次登录成功后必须修改密码** |
+| `admin` | 以初始化脚本或部署密钥为准 | 首次登录后必须按强制改密流程设置新密码 |
 
 ### 登录故障排查
 
-如果在服务器部署后无法使用 `admin123` 登录：
+如果在服务器部署后无法登录初始管理员账号：
 
 1. **检查后端日志**：
    ```bash

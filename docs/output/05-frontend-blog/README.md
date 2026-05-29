@@ -185,9 +185,9 @@ backend(server-go)
 | `POST /api/v1/public/posts/[slug]/verify-password` | `ProtectedPostContent.tsx:28` |
 | `/api/v1/public/friend-links` | `services.getFriendLinks()` |
 | `/api/v1/public/comments/post/[postId]` (GET/POST) | `CommentSection` |
-| `/api/v1/public/search?q&mode=hybrid&limit` | `SearchPanel.tsx:259` |
-| `EventSource /api/v1/public/search/qa?q` | `SearchPanel.tsx:300` |
-| `/api/v1/public/search/features` | `SearchPanel.tsx:144` —— 决定是否启用语义/AI 问答 UI |
+| `/api/v1/public/search?q&mode=hybrid&limit` | SearchPanel 文章 tab |
+| `EventSource /api/v1/public/search/qa?q` | SearchPanel 问答 tab(EventSource GET) |
+| `/api/v1/public/search/features` | 决定 `keywordEnabled` / `semanticEnabled` / `aiQaEnabled` |
 | `POST /api/v1/public/visit` | `VisitTracker.tsx:21` |
 | `/api/v1/auth/me` / `POST /api/v1/auth/login` / `POST /api/v1/auth/logout` | Agent 登录 |
 | `POST /api/v1/agent/chat`(SSE) | `agentChatStream.ts:47` |
@@ -204,7 +204,7 @@ backend(server-go)
 |:---|:---|:---|
 | Tokens(`01-tokens.md`) | `app/globals.css:7` `@import` `packages/ui/src/styles/tokens.css`,`SiteSettingsProvider.tsx:66` 还会基于 admin 的主色生成 OKLCH 派生变量并注入 `<style id="aetherblog-primary-color">` | `lib/services.ts` 拉到的 `theme_primary_color_*` |
 | Surfaces(`02-surfaces.md`) | `surface-leaf`(ArticleCard / PostNavigation / 评论卡)、`surface-raised`(ScrollToTop / TableOfContents floating trigger / FloatingThemeToggle)、`surface-overlay`(SearchPanel / TocDrawer)、`surface-luminous`(预留给 hero CTA,目前未使用) | `app/components/*.tsx` |
-| Typography(`03-typography.md`) | `font-display`(Fraunces 经 layout.tsx 用 `next/font/google` 别名为 Playfair_Display + Noto_Serif_SC,实际渲染依旧合规)、`font-editorial`(Instrument Serif italic,例如 ArticleCard 摘要)、`font-mono`(metadata / marginalia / cmd-chip / `eyebrow`) | `layout.tsx:27`、`ArticleCard.tsx:99,134,162` |
+| Typography(`03-typography.md`) | `font-display` / `font-editorial` / `font-mono`。SearchPanel 当前不再使用旧 `cmd-chip`,但 metadata / marginalia / `eyebrow` 仍依赖 mono 系。 | `ArticleCard.tsx` / `SearchPanel.tsx` |
 | Motion(`04-motion.md`) | spring/transition/variants 由 `packages/ui` 导出,blog 在 PageTransition / FloatingThemeToggle 等处直接 inline 使用同一组 bezier `[0.16,1,0.3,1]`、`[0.22,1,0.36,1]` | `PageTransition.tsx:232` |
 | Signature(`06-signature-moments.md`) | breath-soft 4.8s 呼吸节奏(首页 H1、Hero、Agent Hero)、aurora-text、ink-cursor、ai-stream | `globals.css` + `page.tsx:66`、`HeroSection.tsx:46`、`SearchPanel.tsx:526` |
 
@@ -291,7 +291,7 @@ backend(server-go)
 | `01-routing-and-layout.md` | layout / template / providers / globals.css 注入顺序 |
 | `02-pages-tour.md` | 9 个公开页 + Agent 三页的逐页职责与数据来源 |
 | `03-content-rendering.md` | MarkdownRenderer 管线 / Shiki / KaTeX / Mermaid / TOC / 与后端契约 |
-| `04-discovery-and-search.md` | SearchPanel 的 4 模式 + 关键词/语义/AI QA + tag/category 过滤现状 |
+| `04-discovery-and-search.md` | SearchPanel 的文章/问答双模式 + 关键词/语义/AI QA + tag/category 聚合缺口 |
 | `05-design-implementation.md` | 4 surface / 字体阶梯 / token / motion 在 blog 里的具体使用点 |
 | `06-data-fetching-and-caching.md` | services.ts 里每个函数的 cache 时长 + ISR 矩阵 + 失败降级策略 |
 | `07-app-shell-and-perf.md` | manifest / FOUC guard / next/font / 骨架屏 / 图片白名单 / Standalone build |

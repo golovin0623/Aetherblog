@@ -402,6 +402,18 @@ translate:  { translatedContent, targetLanguage, sourceLanguage?, model? }
 
 `lib/aiMetrics.ts`:`getAiResponseRateSummary(total, success, error)` 派生显示值(成功率 + 数量行 + 比例行)。
 
+### 7.1 Global Pricing 页面
+
+`/ai-config/pricing` 已从 AI Config 中拆成独立配置面,由 `GlobalPricingPage` + `pages/global-pricing/hooks.ts` + `aiProviderService` 方法组支撑:
+
+- `all / configured / missing / out-of-sync` 四类过滤,用于检查哪些 `ai_models` 没有全局价格或与全局基准不同步。
+- `coverage` 指标显示全局价格覆盖率。
+- `upsert/delete` 维护 `ai_global_pricing` 的 per-1M input/output/cache 价格与扩展 `pricing JSONB`。
+- `applyGlobalPricingToModels` 批量把全局价格写回所有同名 `ai_models`。
+- `syncModelPricingToGlobal` / `syncModelPricingFromGlobal` 在单个模型行与全局基准之间双向同步。
+
+边界:Global Pricing 只是价格基准。Go 侧统计仍从 `ai_models.capabilities.pricing` 或 legacy per-1K 字段计算;只有 apply/sync 写回模型行后,后续用量成本才会变化,历史归档不会自动重算。
+
 ---
 
 ## 8. 已知问题汇总

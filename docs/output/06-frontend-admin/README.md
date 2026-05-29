@@ -1,7 +1,8 @@
 # 06 · Admin 前端总览
 
 > 范围:`apps/admin/`(Vite 6 + React 19 + TypeScript 5.7)。
-> 基线:与本仓 main 分支 `claude/sad-gould-35d3a6`(2026-05-08)对齐。
+> 原始基线:与本仓 main 分支 `claude/sad-gould-35d3a6`(2026-05-08)对齐。
+> 最新纠偏:2026-05-29,补齐 AetherHub、Notes、Knowledge Base、Atlas、Global Pricing、Access/Security 等近期入口。
 >
 > 本目录的其它文档按"能力切片"展开,本 README 给出全模块的纲要、交叉关系和已知问题。
 
@@ -44,7 +45,7 @@
 
 ## 3. 路由树
 
-入口:`apps/admin/src/App.tsx`(110 行,所有路由都在这一个文件,**不分层**)。
+入口:`apps/admin/src/App.tsx`。所有路由仍集中在这个文件,但页面数已经明显扩展,不再是旧文档里的 11 顶层页面口径。
 
 ```
 /login                                       → LoginPage(独立壳,无 AdminLayout)
@@ -59,6 +60,7 @@
   /posts/:id/edit                            → CreatePostPage(同上,带 id)
   /posts/ai-writing/new                      → AiWritingWorkspacePage(AI 协同写作)
   /posts/ai-writing/:id                      → AiWritingWorkspacePage
+  /notes                                     → NotesPage(后台私有智能笔记)
   /media                                     → MediaPage(媒体库 + 文件夹 + 上传)
   /media/folder/:folderId/permissions        → FolderPermissionsWrapper → FolderPermissionsPage
   /storage/explorer                          → CloudExplorerPage(云端 bucket 浏览器)
@@ -70,9 +72,19 @@
   /agent-workflows                           → AgentWorkflowsPage(智能体编排 Canvas)
   /ai-test                                   → AiTestPage(开发期手测页面)
   /ai-config                                 → AiConfigPage(LobeChat 风格 provider/model/credential 配置中心)
+  /ai-config/pricing                         → GlobalPricingPage(全局模型价格与批量同步)
+  /intelligence/knowledge                    → KnowledgeBasePage(知识库列表)
+  /intelligence/knowledge/:id                → KnowledgeBaseDetailPage(files/profiles/members)
+  /atlas                                     → AtlasPage(根入口文案仍偏 Phase 0)
+  /atlas/notes/:id                           → MarkdownReaderPage(笔记 carrier + annotation)
+  /atlas/kp/:id                              → KnowledgePointPage(KP 详情 / 证据 / relation)
+  /atlas/graph                               → AtlasGraphPage(SVG 图谱)
+  /atlas/suggestions                         → AtlasSuggestionsPage(AI suggestion inbox)
   /search-config                             → SearchConfigPage(搜索 + Profile 管理)
   /monitor                                   → MonitorPage(SystemTrends + ContainerStatus + RealtimeLogViewer + JwtRotationCard)
   /activities                                → ActivitiesPage(审计事件)
+  /access                                    → AccessPage(用户/团队/RBAC/内容共享)
+  /security                                  → SecurityPage(安全中心)
 ```
 
 **独立壳**(login / change-password / aetherhub)指**不渲染 Sidebar + MobileHeader**,自管全屏背景。
@@ -127,7 +139,9 @@
 | `['cloud-objects', providerId, prefix, token]` | `CloudExplorerPage` | 默认 |
 | `['friends']` | `FriendsPage` | 默认 |
 | `['ai-providers'/'ai-models'/'ai-credentials']` | `pages/ai-config/hooks/*` | 默认 |
+| `['global-pricing']` / `['global-pricing-coverage']` | `pages/global-pricing/hooks.ts` | 默认 |
 | `['search-profiles' / 'search-diagnostics' / 'search-stats']` | `useSearchProfiles` + `SearchConfigPage` | 30s |
+| `['knowledge-bases']` / `['knowledge-base', id]` | KnowledgeBasePage / KnowledgeBaseDetailPage | 默认 |
 | `['folder-permissions', folderId]` | `FolderPermissionsPage` | 默认 |
 | `['friends']` | `FriendsPage` | 默认 |
 
@@ -161,6 +175,8 @@
 | `aiService.ts` | `/v1/admin/ai/{summary,tags,titles,polish,outline,translate,health}` | AiTestPage / AI 工具的非流式回退 |
 | `agentWorkflowService.ts` | `/v1/admin/agent-workflows` + `/v1/agent/workflows/:id/runs` + `/v1/agent/published` | AgentWorkflowsPage |
 | `aiProviderService.ts` | `/v1/admin/providers` + `/v1/admin/ai/{tasks,prompts}` | AiConfigPage / AIToolsPage / SearchConfigPage |
+| `knowledgeBaseService.ts` | `/v1/admin/kbs` + `/v1/agent/knowledge-bases` | KnowledgeBasePage / KnowledgeBaseDetailPage / Agent KB picker |
+| `atlasService.ts` | `/v1/admin/atlas/*` | Atlas Reader / KP / Graph / Suggestions |
 | `aiPredictionService.ts` | (未对接后端,本地 mock) | AiWritingWorkspace 的 ghost text 实验 |
 | `analyticsService.ts` | `/v1/admin/stats/*` | DashboardPage / AnalyticsPage |
 | `activityService.ts` | `/v1/admin/activities/*` | ActivitiesPage / RecentActivity |
@@ -168,7 +184,12 @@
 | `searchProfileService.ts` | `/v1/admin/search/profiles/*` | SearchConfigPage(profile 子区) |
 | `migrationService.ts` | `/v1/admin/migrations/vanblog/*`(含 SSE) | MigrationPage(嵌在 SettingsPage) |
 | `systemService.ts` | `/v1/admin/system/*` | MonitorPage / DashboardPage 系统区 |
-| `agent/` | ai-service 直连(`/api/v1/ai/agent/*`) | AetherHubWorkspacePage(独立 AI chat) |
+| `accessService.ts` | `/v1/admin/access/*` | AccessPage |
+| `agent/` | server-go 代理(`/api/v1/agent/chat`, `/api/v1/agent/models`) | AetherHubWorkspacePage(独立 AI chat) |
+
+`aiProviderService.ts` 现在还承担 **Global Pricing** 方法组:`listGlobalPricing` / `getGlobalPricingCoverage` / `upsertGlobalPricing` / `deleteGlobalPricing` / `applyGlobalPricingToModels` / `syncModelPricingToGlobal` / `syncModelPricingFromGlobal`。Global Pricing 是配置基准;保存后只有 apply/sync 写回 `ai_models` 才会影响 Go 侧后续成本统计。
+
+Knowledge Base / Atlas 的详细产品和接口边界统一沉淀在 [11-aether-knowledge-atlas](../11-aether-knowledge-atlas/README.md),本 README 只保留入口地图。
 
 **契约形状**:
 

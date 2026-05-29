@@ -1,6 +1,6 @@
 # 01 · Schema 全表清单
 
-> 涵盖 `apps/server-go/migrations/000001` 至 `000046` 累积形成的全部表。每张表给出字段、关键约束、引入版本与对应 Go 模型。
+> 涵盖 `apps/server-go/migrations/000001` 至 `000067` 累积形成的主要表。每张表给出字段、关键约束、引入版本与对应 Go 模型。
 
 ---
 
@@ -8,15 +8,24 @@
 
 ```
 用户/鉴权:    users, jwt_secrets
-内容:         posts, categories, tags, post_tags, comments
+内容:         posts, categories, tags, post_tags, comments,
+              notes, note_folders, note_tags, note_tag_links,
+              note_links, note_embeddings
+访问控制:     permissions, roles, role_permissions, user_roles,
+              teams, team_members, content_shares
 媒体:         media_files, media_folders, media_variants, media_versions,
               media_tags, media_file_tags, media_metadata, media_shares,
               media_sync_jobs, folder_permissions, storage_providers,
               attachments
 AI 模型:      ai_providers, ai_models, ai_credentials, ai_task_types,
-              ai_task_routing
-AI 检索:      post_embeddings, search_profiles
+              ai_task_routing, ai_global_pricing
+AI 检索:      post_embeddings, search_profiles, kb_embeddings
 AI 埋点:      ai_usage_logs
+Aether知识:   knowledge_bases, kb_profiles, kb_members, kb_files,
+              atlas_carriers, atlas_carrier_versions,
+              atlas_annotations, atlas_knowledge_points,
+              atlas_typed_relations, atlas_ai_suggestions,
+              atlas_ignored_suggestions
 统计/审计:    visit_records, visit_daily_stats, daily_stats,
               sys_operation_log, activity_events
 配置/外部:    site_settings, friend_links
@@ -113,7 +122,7 @@ idx_posts_pinned (is_pinned DESC, published_at DESC)
 idx_posts_pin_priority (pin_priority DESC, published_at DESC)   -- 000003
 idx_posts_scheduled WHERE scheduled_at IS NOT NULL
 idx_posts_fulltext  GIN(to_tsvector('simple',
-    title || ' ' || COALESCE(summary,'') || ' ' || COALESCE(content_markdown,'')))
+    left(title || ' ' || COALESCE(summary,'') || ' ' || COALESCE(content_markdown,''), 200000))) -- 000055
 idx_posts_source_key UNIQUE WHERE source_key IS NOT NULL          -- 000027
 idx_posts_hidden_status (is_hidden, status, published_at DESC)    -- 000027
 ```
@@ -125,6 +134,19 @@ idx_posts_hidden_status (is_hidden, status, published_at DESC)    -- 000027
 
 ### 2.5 没有 `post_versions` / `post_categories`(多对多)
 > 仓库实际未引入 `post_versions` 表(文档体系里偶尔提及,但 migration 里没有);文章只走 markdown + 编辑器自带历史(前端 `useEditorHistory`)。`post_categories` 同样未引入 —— 文章 ↔ 分类是 1:n(`posts.category_id`),不是 n:n。
+
+### 2.6 Notes 智能笔记 (000054 + 000055)
+
+后台私有内容域,不是 `posts` 的子类型,也不会进入前台公开路由。
+
+核心表:
+- `note_folders`: 私有笔记文件夹树,`parent_id` 自引用,`deleted=false` 条件索引。
+- `note_tags` / `note_tag_links`: 独立于文章 `tags` 的笔记标签体系。
+- `notes`: `title`, `content_markdown`, `summary`, `folder_id`, `author_id`, `source_type`, `source_meta`, pinned/favorite/archive/delete 状态,`embedding_status`。
+- `note_links`: 笔记内双链,保存 `source_note_id`,可选 `target_note_id`,以及 `target_title/link_text/position`。
+- `note_embeddings`: 笔记向量 chunk,关联 `search_profiles`,字段含 `chunk_text`, `parent_text`, `embedding vector`, `status`, `error_message`。
+
+000055 将 `idx_notes_fulltext` 与 `idx_posts_fulltext` 都改为 `left(..., 200000)` 后再生成 `tsvector`,避免 PostgreSQL 对超长 tsvector 抛 `SQLSTATE 54000`。
 
 ---
 
@@ -268,6 +290,14 @@ Seed 7 类(000019):`summary, tags, titles, polish, outline, embedding, qa`;00001
 
 索引:`idx_ai_usage_logs_created_at DESC`、`idx_ai_usage_logs_user/endpoint`、`idx_ai_usage_logs_task_created/model_created/provider_created`(全 DESC)、`idx_ai_usage_logs_success_created`、`idx_ai_usage_logs_cost_archive_status_created`。
 
+### 5.7 `ai_global_pricing` (000047)
+
+全局模型价格基准表,按 `model_id` 唯一,用于 Admin Global Pricing 页批量维护同名模型价格。
+
+字段:`model_id`, `display_name`, `currency`, `input_cost_per_1m`, `output_cost_per_1m`, `cached_input_cost_per_1m`, `pricing JSONB`, `notes`, timestamps。
+
+注意:它不是 Go analytics 的直接事实源。ai-service apply/sync 把全局价格写回 `ai_models` 后,后续用量成本才会按新价格计算;已归档历史成本不会自动重算。
+
 ---
 
 ## 6. AI 检索与向量
@@ -287,6 +317,8 @@ Seed 7 类(000019):`summary, tags, titles, polish, outline, embedding, qa`;00001
 | `chunk_index` | INT NOT NULL DEFAULT 0 | 000041 | |
 | `chunk_text` | TEXT | 000041 | 切片原文,旧行 NULL |
 | `parent_text` | TEXT | 000044 | 仅 parent_child chunker |
+| `chunk_hash` | VARCHAR(64) | 000056 | chunk_text + parent_text 的稳定指纹,用于断点续跑 |
+| `chunk_count` | INT | 000056 | 同一 post/profile 下当前切分总块数 |
 
 唯一约束演进:
 - 000034: `UNIQUE (post_id, model_id)` —— 单文档单向量。
@@ -321,6 +353,34 @@ Seed: `code='default', name='默认 · 递归 Markdown 切片', chunker_kind='re
 
 ### 6.3 已废弃 `post_vectors` (000015 → 000034 DROP)
 `vector(1536)` 锁死维度,000034 替换为 `post_embeddings`,DROP TABLE。`post_vectors` 同样移除了 `search_similar_posts(...)` SQL 函数。
+
+### 6.4 Knowledge Base 表组 (000057-000061)
+
+KB 是 Agent/RAG 的资料库子系统,文件物理存储复用媒体系统目录 `/root/_system_kb`。
+
+表与关键约束:
+- `knowledge_bases`: `slug` 唯一,`kind IN ('CUSTOM','SYSTEM_POSTS')`,owner/folder/active_profile 关联,统计缓存字段 `file_count/chunk_count/vectorized_count/failed_count/total_tokens`。000067 会在历史 ledger 跳过 KB schema 时幂等补齐最终表结构、索引、FK 与 SYSTEM_POSTS 默认 profile。
+- `kb_profiles`: 每个 KB 的 model/chunker/chunk_size/overlap/top_k/threshold 配置;`UNIQUE (kb_id, code)`;partial unique `uq_kb_profile_one_active` 保证每 KB 最多一个 active profile。
+- `kb_members`: `principal_type IN ('USER','TEAM','ROLE')`,权限四级 `VIEW/USE/EDIT/MANAGE`,唯一 `(kb_id, principal_type, principal_id)`。
+- `kb_files`: CUSTOM 引用 `media_files`,SYSTEM_POSTS 引用 `posts`,用 CHECK 保证二者互斥;`vector_status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','STALE')`。
+- `kb_embeddings`: `(kb_file_id, profile_id, chunk_index)` 唯一;000060 把 `embedding` 改为不锁维度 `vector`;000061 为 1536/3072/1024/768 active 行加 partial HNSW。
+
+回滚风险:000058 down 会级联删除 KB 数据;000060 down 会删除非 3072 维 embeddings 后再改回 `vector(3072)`。
+
+### 6.5 Atlas / Aether Knowledge 表组 (000062-000066)
+
+Atlas 将材料抽象为 Carrier,在 Carrier 上创建 Annotation,再把 Annotation 提炼为 KnowledgePoint 与 TypedRelation。AI 只写 suggestion inbox,accept 后才写正式图谱表。
+
+核心表:
+- `atlas_carriers`: source type/uri/title/content_hash 元数据;000066 对 `source_uri` 加唯一约束,避免并发首次打开同一 note 产生重复 carrier。
+- `atlas_carrier_versions`: carrier 内容版本,用于 annotation anchor 迁移。
+- `atlas_annotations`: W3C selectors、quote/position/context 与 `anchor_state`。
+- `atlas_knowledge_points`: 一阶知识点,带 `uuid`,kind/status/confidence/source 维度。
+- `atlas_typed_relations`: subject/object KP 之间的有类型关系。
+- `atlas_annotation_kp_links` / `atlas_relation_evidence`: annotation 与 KP/relation 的证据多对多表。
+- `atlas_ai_suggestions` / `atlas_ignored_suggestions`: AI 候选 inbox 与忽略指纹。
+
+000063 同步 seed `content.atlas.read/write/admin` 权限并默认授给 ADMIN。当前 Atlas 主要是模块级 RBAC;一旦授予普通用户,还需要复核行级 owner/author 范围。
 
 ---
 

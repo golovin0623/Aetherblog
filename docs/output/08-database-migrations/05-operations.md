@@ -22,7 +22,7 @@
 - 子命令:
   - `up`:应用所有未跑的 migration。`migrate.ErrNoChange` 不是错误。
   - `down N`:回退 N 步。N ≤ 0 时强制为 1。
-  - `version`:打印当前版本与 dirty 标志(`version: 46, dirty: false`)。
+  - `version`:打印当前版本与 dirty 标志(`version: 67, dirty: false`)。
   - `force V`:强制把 `schema_migrations` 标到版本 V(并清 dirty)。**仅在 dirty 自愈时使用。**
 
 ### 1.3 schema_migrations 表
@@ -52,7 +52,7 @@ DATABASE_DSN='postgres://aether:aether@localhost:5432/aether?sslmode=disable' \
 
 # 验证
 DATABASE_DSN='...' ./bin/migrate version
-# 期望: version: 46, dirty: false
+# 期望: version: 67, dirty: false
 ```
 
 ### 2.2 生产部署(自动)
@@ -83,7 +83,7 @@ fi
 | **38** | 输出含 `version: 38, dirty: true` | `migrate force 38` → 让 039 接管 v_published_posts 重建 + summary 加宽 |
 | **57** | 输出含 `version: 57, dirty: true` 且 `knowledge_bases` 确认不存在 | `migrate force 56` → 重放 057 media folder 系统目录迁移,再让 058 创建缺失的 KB schema;若表已存在或无法判定则中止 |
 
-**recipe 表只覆盖"安全可重放"的版本**;新增条目时同时改 `deploy.sh::_try_heal_known_dirty` 与 `02-migration-history.md` §9。
+**recipe 表只覆盖已登记版本**;新增条目时同时改 `deploy.sh::_try_heal_known_dirty` 与 `02-migration-history.md` §10。当前 v57 recipe 会先探测 `public.knowledge_bases`:只有确认不存在时才自动 `force 56`,存在或无法判定时 fail-closed。
 
 ### 2.4 验证 migration 是否成功
 
@@ -91,13 +91,17 @@ fi
 ```sql
 -- 1. 当前版本
 SELECT version, dirty FROM schema_migrations;
--- 应得 (46, false)
+-- 应得 (67, false)
 
 -- 2. 关键表存在
 SELECT to_regclass('public.post_embeddings'),
        to_regclass('public.search_profiles'),
        to_regclass('public.jwt_secrets'),
-       to_regclass('public.media_sync_jobs');
+       to_regclass('public.media_sync_jobs'),
+       to_regclass('public.knowledge_bases'),
+       to_regclass('public.kb_embeddings'),
+       to_regclass('public.atlas_carriers'),
+       to_regclass('public.atlas_ai_suggestions');
 -- 全部非 NULL
 
 -- 3. CHECK 约束最新
@@ -112,6 +116,11 @@ WHERE conname IN ('chk_activity_event_category', 'chk_provider_type', 'chk_media
 SELECT indexname FROM pg_indexes WHERE tablename = 'post_embeddings';
 -- 至少含: idx_post_emb_1536_active, idx_post_emb_3072_active,
 --        idx_post_emb_post_status, idx_post_emb_model_status, idx_post_emb_profile_status
+
+-- 5. KB/Atlas 关键约束
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conname IN ('fk_kb_active_profile', 'chk_kb_files_source', 'uq_atlas_carriers_source_uri');
 ```
 
 **HTTP 校验**:
@@ -240,10 +249,18 @@ docker exec aether-postgres pg_dump -U aether aether \
 | 000041 | 多 chunk 数据(每篇多行)与 `(post_id, model_id) UNIQUE` 冲突;down 不主动 DELETE | 回滚前先 DELETE 多余 chunk(`WHERE chunk_index > 0`) |
 | 000045 | "用户主动设 9" 与 "默认值 9" 不可区分,down 会被退回 10 | 事前 dump `SELECT * FROM site_settings WHERE setting_key='post_page_size'` |
 | 000046 | 已有 `event_category='security'` 的行会让 CHECK 重建失败 | `DELETE FROM activity_events WHERE event_category='security'` 或迁到 'system' |
+| 000051 | roles/teams/content_shares 是权限基础数据,down 会删除授权结构 | 事前导出 `permissions/roles/user_roles/teams/content_shares` |
+| 000052 | agent workflow 定义、版本、运行 trace 会被删除 | 事前导出 `agent_*` 表 |
+| 000054 | notes / note_embeddings 是用户内容,down 会删除笔记域 | 事前导出 notes 全表或走数据库备份恢复 |
+| 000058 | KB 五表 down 级联删除知识库、文件清单、成员、向量 | 不建议 down;用备份恢复或导出 `knowledge_bases/kb_*` |
+| 000060 | 非 3072 维 KB embedding 会被删除后才能改回 `vector(3072)` | 确认所有 KB profile 都是 3072 维或接受向量丢失 |
+| 000062 | Atlas core down 会删除 carriers/annotations/KP/relations | 不建议 down;先导出 `atlas_*` |
+| 000065 | suggestion inbox/ignored 指纹会被删除 | 导出 `atlas_ai_suggestions/atlas_ignored_suggestions` |
+| 000067 | KB schema repair down 是 no-op | 单步回退不会删 KB 表;如需真正降级,按 000058-000061 的数据导出/恢复策略处理 |
 
 ### 4.3 全量回滚(灾难场景)
 
-**思路**:不用 `migrate down 46`(几张表 down 不可逆),用备份恢复 + force 标版本。
+**思路**:不用 `migrate down 66`(多张表 down 会删除业务数据),用备份恢复 + force 标版本。
 
 ```bash
 # 1. 停服务
@@ -426,7 +443,7 @@ DATABASE_DSN='postgres://aether:aether@localhost:5432/aether?sslmode=disable' \
 
 # 当前版本
 ./bin/migrate -dsn "$DSN" version
-# 应得: version: 46, dirty: false
+# 应得: version: 67, dirty: false
 
 # 退 1 步
 ./bin/migrate -dsn "$DSN" down 1
