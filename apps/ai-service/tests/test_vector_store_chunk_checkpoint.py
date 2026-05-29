@@ -288,9 +288,26 @@ async def test_semantic_search_embeds_query_with_active_profile_model(monkeypatc
 
     await store.semantic_search("Docker怎么使用?", limit=5)
 
+    store.get_active_profile.assert_awaited_once()
     assert llm.calls == ["Docker怎么使用?"]
     assert llm.kwargs[0]["embedding_model_id"] == profile.model_id
     assert llm.kwargs[0]["strict_embedding_model_id"] is True
+    assert pool.conn.fetch_args[1] == profile.id
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_uses_prefetched_profile_without_reloading(monkeypatch):
+    pool = FakeSemanticPool()
+    llm = FakeLLM()
+    store = VectorStoreService(pool, llm)
+    profile = _profile()
+    get_active_profile = AsyncMock(return_value=profile)
+    monkeypatch.setattr(store, "get_active_profile", get_active_profile)
+
+    await store.semantic_search("Docker", limit=5, profile=profile)
+
+    get_active_profile.assert_not_awaited()
+    assert llm.kwargs[0]["embedding_model_id"] == profile.model_id
     assert pool.conn.fetch_args[1] == profile.id
 
 

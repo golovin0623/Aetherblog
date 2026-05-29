@@ -351,6 +351,10 @@ tail -n 100 /var/log/aetherblog/deploy.log
      -c "SELECT version, dirty FROM schema_migrations;"
    ```
    如果 dirty=true, 看 deploy.sh 的 self-heal 表 (`_try_heal_known_dirty` 函数) 有没有登记当前 dirty 版本的 recipe.
+   当前登记项:
+   - `v34 dirty` → `migrate force 35`，让 035/036 接管 post_embeddings 修复。
+   - `v38 dirty` → `migrate force 38`，让 039 接管 view 依赖下的 summary 加宽。
+   - `v57 dirty` → 仅在确认 `knowledge_bases` 不存在时 `migrate force 56`，重放 057 media folder 系统目录迁移并让 058 创建缺失 KB schema；否则拒绝自愈并交人工处理。
 
 5. **完整部署日志**:
    ```bash

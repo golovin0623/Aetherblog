@@ -284,6 +284,7 @@ VULN-140:**拒绝静默回退到全量部署**。任何不在白名单的服务�
      dirty self-heal table:
        v34 → force 35 (000034 partial-apply bug)
        v38 → force 38 (000038 view dependency bug,000039 接管修复)
+       v57 → 确认 knowledge_bases 不存在后 force 56 (重放 057,再让 058 创建缺失 KB schema)
 8. 根据 DEPLOY_MODE 调度:
      full        → compose pull + up -d
      incremental → compose pull <services> + up -d --no-deps <services>
@@ -313,6 +314,13 @@ case "$v" in
         reason="000038 ALTER COLUMN summary TYPE 撞 v_published_posts (000001:428) 依赖,
                 PostgreSQL 0A000 'cannot alter type of a column used by a view'。
                 Force 38 让 000039 接管 DROP VIEW + UPDATE + ALTER + recreate VIEW。"
+        ;;
+    57)
+        # 先探测 knowledge_bases。只有确认缺失时才 force 56;
+        # 已存在或无法判定时拒绝自愈,避免非幂等 058 already exists 后再次 dirty。
+        force_to=56
+        reason="000057 media folder 系统目录迁移已具备漂移防护。
+                Force 56 后重放 057,再让 058 创建缺失的 KB schema。"
         ;;
     *)
         return 1   # 未登记的 dirty 一律中止,避免误 heal 真问题
@@ -526,7 +534,7 @@ permissions:
 4. **`pnpm audit` / `govulncheck` / `trivy-scan` / `gitleaks` 全是 non-blocking** — 当前作为可见性信号,等基线清干净后才切 `exit 1`。所以 CI 绿灯不代表零安全公告。
 5. **deploy-webhook.service WEBHOOK_BIND=0.0.0.0** — 公网暴露 :7868 + HMAC 兜底,因为仓库 nginx 暂无 `/deploy` 反代路由,CI 直连公网。注释 explicit 说要切 127.0.0.1 必须同 PR 落地 nginx 反代 + 改 GitHub secret + 验证。
 6. **systemd 219 / CentOS 7 限制** — 大量 232+ 加固指令(`LogsDirectory` / `ProtectSystem=strict` / `MemoryDenyWriteExecute` / `SystemCallFilter` / `${VAR}` ExecStart 展开)被剔除。等 OS 升级才能加回。
-7. **dirty self-heal 仅覆盖 v34 / v38** — 任何新出现的 dirty 状态需要更新 `_try_heal_known_dirty` recipe 表,否则部署中止要人工介入。
+7. **dirty self-heal 仅覆盖 v34 / v38 / v57** — v57 还要求 `knowledge_bases` 确认不存在;任何新出现的 dirty 状态需要更新 `_try_heal_known_dirty` recipe 表,否则部署中止要人工介入。
 8. **trivy-scan 在 build 完成后用 `${github.sha}` tag 拉镜像扫描** — 但 build job 用 `metadata-action` 生成的 tag 是 `branch-{sha}` 形式(`ci-cd.yml:441` `type=sha,prefix={{branch}}-`),与 trivy 的 `image-ref: ...:${github.sha}` 不一致,trivy 实际可能拉不到镜像(或拉到 latest)。这是一个潜在 bug。
 9. **CI/CD doc 文档分散** — `.github/CICD_README.md` / `CICD_GUIDE.md` / `workflows/README.md` 三份内容重叠且部分过时,运维入门容易踩坑。建议 consolidate。
 10. **webhook restart 路径仍依赖文件系统 sentinel** — `/run/aetherblog/restart-webhook` 必须由 webhook user 可写;若 systemd 219 不识别 `RuntimeDirectory=aetherblog` 没自动建目录,fallback 到 `systemd-run`(需 root)。bootstrap 脚本已处理 install -d 兜底。

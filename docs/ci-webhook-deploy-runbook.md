@@ -128,7 +128,7 @@ curl -X POST --max-time 900 --retry 2 --retry-delay 2 \
 7. preflight --no-runtime (静态检查)
 8. run_pre_deploy_migrations:
    - 探测 schema_migrations 状态
-   - 已知 dirty 自愈 (v34→35, v38→38 让 039 接管)
+   - 已知 dirty 自愈 (v34→35, v38→38 让 039 接管, v57 仅在确认 `knowledge_bases` 不存在时 force 56 后重放)
    - migrate up
 9. case DEPLOY_MODE in:
    - full        → docker compose pull && up -d

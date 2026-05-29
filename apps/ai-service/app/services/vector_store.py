@@ -152,8 +152,9 @@ class VectorStoreService:
         user_id: int | str | None = None,
         usage_endpoint: str | None = None,
         request_id: str | None = None,
+        profile: SearchProfile | None = None,
     ) -> list[dict[str, Any]]:
-        profile = await self.get_active_profile()
+        profile = profile or await self.get_active_profile()
         try:
             embedding = await self.llm.embed(
                 query,
