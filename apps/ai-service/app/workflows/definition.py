@@ -63,6 +63,7 @@ class WorkflowExecutionRequest(BaseModel):
     budget: "WorkflowBudget" = Field(default_factory=lambda: WorkflowBudget())
     redactionPolicy: str | None = None
     resumeFromNode: str | None = None
+    resumeContext: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkflowToolSnapshot(BaseModel):

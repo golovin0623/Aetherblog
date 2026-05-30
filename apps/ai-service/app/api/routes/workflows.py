@@ -31,6 +31,7 @@ async def execute_workflow(
         run_id=payload.runId,
         simulate_external=payload.simulateExternal,
         resume_from_node=payload.resumeFromNode,
+        resume_context=payload.resumeContext,
     )
     return ApiResponse(data=_normalize_budget_status(result))
 
@@ -61,6 +62,7 @@ def _resolve_workflow_user_id(user: Any, forwarded: str | None) -> int | None:
 async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None) -> WorkflowRunner:
     tools = default_tools()
     tool_snapshots = {item.code: item for item in payload.tools if item.enabled}
+    budget = _WorkflowRunBudget(payload.budget.maxTokens, payload.budget.maxCostUsd)
     needs_db = any(_node_uses_kb_tool(node) for node in payload.definition.nodes)
     pool = await get_pg_pool() if needs_db and not payload.simulateExternal else None
     if pool is not None:
@@ -81,10 +83,10 @@ async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None) 
 
     return WorkflowRunner(
         tools=tools,
-        llm_executor=_llm_executor(llm_router, user_id, payload.budget.maxTokens, payload.budget.maxCostUsd)
+        llm_executor=_llm_executor(llm_router, user_id, budget)
         if llm_router is not None
         else None,
-        agent_executor=_agent_executor(llm_router, tools, user_id, payload.budget.maxTokens, payload.budget.maxCostUsd)
+        agent_executor=_agent_executor(llm_router, tools, user_id, budget)
         if llm_router is not None
         else None,
         code_executor=_safe_code_executor,
@@ -100,6 +102,30 @@ def _node_uses_kb_tool(node: WorkflowNode) -> bool:
         if isinstance(allowed, list):
             return any(str(tool_code) in kb_tools for tool_code in allowed)
     return False
+
+
+class _WorkflowRunBudget:
+    def __init__(self, max_tokens: int | None, max_cost_usd: float | None) -> None:
+        self.remaining_tokens = max_tokens if max_tokens is not None and max_tokens > 0 else None
+        self.remaining_cost_usd = max_cost_usd if max_cost_usd is not None and max_cost_usd > 0 else None
+        if max_cost_usd is not None and max_cost_usd <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxCostUsd")
+
+    def token_limit(self) -> int | None:
+        if self.remaining_tokens is not None and self.remaining_tokens <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxTokens")
+        return self.remaining_tokens
+
+    def cost_limit(self) -> float | None:
+        if self.remaining_cost_usd is not None and self.remaining_cost_usd <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxCostUsd")
+        return self.remaining_cost_usd
+
+    def record_usage(self, prompt_tokens: int, completion_tokens: int, total_cost_usd: float) -> None:
+        if self.remaining_tokens is not None:
+            self.remaining_tokens -= max(0, prompt_tokens) + max(0, completion_tokens)
+        if self.remaining_cost_usd is not None:
+            self.remaining_cost_usd -= max(0.0, total_cost_usd)
 
 
 def _kb_get_post_tool(pool: Any, user_id: int | None):
@@ -241,7 +267,7 @@ def _http_tool(config: dict[str, Any], timeout_ms: int | None):
     return tool
 
 
-def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, max_tokens: int | None, max_cost_usd: float | None):
+def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, budget: _WorkflowRunBudget):
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
             raise WorkflowExecutionError("llm executor is not connected")
@@ -257,8 +283,9 @@ def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, max_tokens:
             model_id=model_id,
             provider_code=provider_code,
             allow_override=True,
-            max_tokens=max_tokens,
-            max_cost_usd=max_cost_usd,
+            max_tokens=budget.token_limit(),
+            max_cost_usd=budget.cost_limit(),
+            usage_recorder=budget.record_usage,
         )
         return {"text": text, "model": model_id, "provider": provider_code}
 
@@ -269,8 +296,7 @@ def _agent_executor(
     llm_router: LlmRouter | None,
     tools: dict[str, Any],
     user_id: int | None,
-    max_tokens: int | None,
-    max_cost_usd: float | None,
+    budget: _WorkflowRunBudget,
 ):
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
@@ -309,8 +335,9 @@ def _agent_executor(
             user_id=user_id,
             custom_prompt=prompt,
             allow_override=True,
-            max_tokens=max_tokens,
-            max_cost_usd=max_cost_usd,
+            max_tokens=budget.token_limit(),
+            max_cost_usd=budget.cost_limit(),
+            usage_recorder=budget.record_usage,
         )
         return {"report": text, "tool_results": tool_results, "iterations": min(max_iterations, 1)}
 

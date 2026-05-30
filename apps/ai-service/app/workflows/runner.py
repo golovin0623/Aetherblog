@@ -49,6 +49,7 @@ class WorkflowRunner:
         run_id: int | str | None = None,
         simulate_external: bool = False,
         resume_from_node: str | None = None,
+        resume_context: dict[str, Any] | None = None,
     ) -> WorkflowExecutionResult:
         inputs = inputs or {}
         trace: list[WorkflowTraceItem] = []
@@ -66,6 +67,7 @@ class WorkflowRunner:
             order = self._topological_order(definition, incoming, outgoing)
             if resume_from_node and resume_from_node not in nodes_by_id:
                 raise WorkflowExecutionError(f"resumeFromNode {resume_from_node} is not in workflow")
+            resume_nodes = _resume_nodes(resume_context)
 
             skipped: set[str] = set()
             resume_reached = resume_from_node is None
@@ -75,8 +77,13 @@ class WorkflowRunner:
                     if node_id == resume_from_node:
                         resume_reached = True
                     else:
-                        trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点已跳过"))
-                        context["nodes"][node.id] = {"output": None, "status": "skipped"}
+                        restored = resume_nodes.get(node.id)
+                        if restored is not None:
+                            context["nodes"][node.id] = restored
+                            trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点输出已恢复", output=restored.get("output")))
+                        else:
+                            trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点已跳过"))
+                            context["nodes"][node.id] = {"output": None, "status": "skipped"}
                         continue
                 if self._should_skip(node, incoming[node_id], skipped, context):
                     skipped.add(node.id)
@@ -404,6 +411,21 @@ def default_tools() -> dict[str, BuiltinTool]:
         },
         "kb_search": lambda args, _context: {"simulated": True, "query": args.get("query"), "items": []},
     }
+
+
+def _resume_nodes(resume_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(resume_context, dict):
+        return {}
+    nodes = resume_context.get("nodes")
+    if not isinstance(nodes, dict):
+        return {}
+    restored: dict[str, dict[str, Any]] = {}
+    for node_id, value in nodes.items():
+        if isinstance(value, dict) and "output" in value:
+            restored[str(node_id)] = {"output": value.get("output"), "status": str(value.get("status") or "success")}
+        else:
+            restored[str(node_id)] = {"output": value, "status": "success"}
+    return restored
 
 
 def _text_join(args: dict[str, Any], _context: dict[str, Any]) -> str:

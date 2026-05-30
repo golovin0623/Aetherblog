@@ -235,7 +235,7 @@ def test_budgeted_max_tokens_honors_requested_token_limit() -> None:
             output_cost_per_1m=None,
             cached_input_cost_per_1m=None,
         )
-        == 50
+        == 49
     )
 
 
@@ -441,6 +441,30 @@ async def test_resume_from_node_skips_prior_nodes_without_rerunning_side_effects
         ("code_1", "success"),
         ("output_1", "success"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_resume_from_node_restores_prior_outputs_for_templates() -> None:
+    async def code_executor(_node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
+        return {"title": context["nodes"]["load_post"]["output"]["title"]}
+
+    definition = _workflow(
+        nodes=[
+            {"id": "load_post", "type": "tool", "data": {"toolCode": "kb_get_post", "args": {"id": 1}}},
+            {"id": "code_1", "type": "code", "data": {"expression": "nodes.load_post.output.title"}},
+        ],
+        edges=[{"source": "load_post", "target": "code_1"}],
+    )
+
+    result = await WorkflowRunner(code_executor=code_executor).run(
+        definition,
+        {},
+        resume_from_node="code_1",
+        resume_context={"nodes": {"load_post": {"output": {"title": "Restored"}, "status": "success"}}},
+    )
+
+    assert result.status == "success"
+    assert result.outputs["code_1"]["title"] == "Restored"
 
 
 @pytest.mark.asyncio

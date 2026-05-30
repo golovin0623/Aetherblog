@@ -973,6 +973,7 @@ type workflowExecutePayload struct {
 	Budget           workflowBudgetSnapshot `json:"budget,omitempty"`
 	RedactionPolicy  string                 `json:"redactionPolicy,omitempty"`
 	ResumeFromNode   string                 `json:"resumeFromNode,omitempty"`
+	ResumeContext    map[string]any         `json:"resumeContext,omitempty"`
 }
 
 type workflowToolSnapshot struct {
@@ -1028,6 +1029,10 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 	if err != nil {
 		return nil, err
 	}
+	resumeContext, err := s.workflowResumeContext(ctx, run)
+	if err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(workflowExecutePayload{
 		RunID:            run.ID,
 		Definition:       json.RawMessage(workflow.DefinitionJSON),
@@ -1042,6 +1047,7 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 		},
 		RedactionPolicy: run.RedactionPolicy,
 		ResumeFromNode:  stringValue(run.ResumeFromNode),
+		ResumeContext:   resumeContext,
 	})
 	if err != nil {
 		return nil, err
@@ -1129,6 +1135,38 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 	summary := toRunSummary(*finished)
 	summary.Trace = toRunTraceItems(envelope.Data.Trace)
 	return &summary, nil
+}
+
+func (s *AgentWorkflowService) workflowResumeContext(ctx context.Context, run model.AgentWorkflowRun) (map[string]any, error) {
+	if run.ResumeFromNode == nil || strings.TrimSpace(*run.ResumeFromNode) == "" {
+		return nil, nil
+	}
+	sourceRunID := run.ID
+	if run.RetryOfRunID != nil {
+		sourceRunID = *run.RetryOfRunID
+	}
+	logs, err := s.repo.ListRunLogs(ctx, run.UserID, sourceRunID)
+	if err != nil {
+		return nil, err
+	}
+	nodes := map[string]any{}
+	for _, item := range logs {
+		if item.OutputJSON == nil || strings.TrimSpace(*item.OutputJSON) == "" {
+			continue
+		}
+		var output any
+		if err := json.Unmarshal([]byte(*item.OutputJSON), &output); err != nil {
+			continue
+		}
+		nodes[item.NodeID] = map[string]any{
+			"output": output,
+			"status": item.Status,
+		}
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return map[string]any{"nodes": nodes}, nil
 }
 
 func normalizeRunStatus(status string) string {
