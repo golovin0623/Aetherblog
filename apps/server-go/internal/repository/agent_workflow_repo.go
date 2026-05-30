@@ -1092,7 +1092,6 @@ FROM agent_workflows w
 WHERE r.id = $1
   AND w.id = r.workflow_id
   AND (r.user_id = $2 OR w.user_id = $2)
-  AND r.status = 'paused'
 RETURNING
     r.id,
     r.workflow_id,
@@ -1174,6 +1173,7 @@ FROM agent_workflows w
 WHERE r.id = $1
   AND w.id = r.workflow_id
   AND (r.user_id = $2 OR w.user_id = $2)
+  AND r.status = 'paused'
 RETURNING
     r.id,
     r.workflow_id,

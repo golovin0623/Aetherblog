@@ -752,9 +752,24 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if err != nil {
 		return nil, err
 	}
-	if s.client != nil && s.internalToken != "" {
-		go s.executeRunDetached(*workflow, *retry, run.Inputs, retry.Simulated)
+	if s.client == nil || s.internalToken == "" {
+		code, category, retryable := classifyWorkflowError("AI workflow executor is not connected")
+		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
+			RunID:         retry.ID,
+			Status:        "failed",
+			Outputs:       "{}",
+			ErrorMessage:  nullableDescription("AI workflow executor is not connected"),
+			ErrorCode:     nullableDescription(code),
+			ErrorCategory: nullableDescription(category),
+			Retryable:     retryable,
+		})
+		if finishErr != nil {
+			return nil, finishErr
+		}
+		summary := toRunSummary(*failed)
+		return &summary, nil
 	}
+	go s.executeRunDetached(*workflow, *retry, run.Inputs, retry.Simulated)
 	summary := toRunSummary(*retry)
 	return &summary, nil
 }
@@ -765,9 +780,27 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 		return nil, err
 	}
 	workflow, err := s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
-	if err == nil && workflow != nil && s.client != nil && s.internalToken != "" {
-		go s.executeRunDetached(*workflow, *run, run.Inputs, run.Simulated)
+	if err != nil || workflow == nil {
+		return nil, err
 	}
+	if s.client == nil || s.internalToken == "" {
+		code, category, retryable := classifyWorkflowError("AI workflow executor is not connected")
+		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
+			RunID:         run.ID,
+			Status:        "failed",
+			Outputs:       "{}",
+			ErrorMessage:  nullableDescription("AI workflow executor is not connected"),
+			ErrorCode:     nullableDescription(code),
+			ErrorCategory: nullableDescription(category),
+			Retryable:     retryable,
+		})
+		if finishErr != nil {
+			return nil, finishErr
+		}
+		summary := toRunSummary(*failed)
+		return &summary, nil
+	}
+	go s.executeRunDetached(*workflow, *run, run.Inputs, run.Simulated)
 	summary := toRunSummary(*run)
 	return &summary, nil
 }
