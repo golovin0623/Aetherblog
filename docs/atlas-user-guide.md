@@ -141,6 +141,10 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - Admin type-check and build.
 - Atlas UI redline grep for native select, spinner, demo placeholder, and explicit "do not use" markers.
 - R1 Markdown/version anchoring recall: `node scripts/atlas/anchoring-recall.mjs --min-recall 0.9`.
+- R2 relation health fixed corpus: `node scripts/atlas/relation-health-gate.mjs`.
+- R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
+- R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
+- R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with all checks passed.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.
 
