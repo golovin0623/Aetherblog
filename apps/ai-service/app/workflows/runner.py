@@ -48,13 +48,14 @@ class WorkflowRunner:
         *,
         run_id: int | str | None = None,
         simulate_external: bool = False,
+        resume_from_node: str | None = None,
     ) -> WorkflowExecutionResult:
         inputs = inputs or {}
         trace: list[WorkflowTraceItem] = []
         context: dict[str, Any] = {
             "inputs": inputs,
             "workflow": {"name": definition.name, "mode": definition.mode},
-            "run": {"id": run_id},
+            "run": {"id": run_id, "resumeFromNode": resume_from_node},
             "nodes": {},
         }
 
@@ -63,10 +64,20 @@ class WorkflowRunner:
             nodes_by_id = self._nodes_by_id(definition)
             incoming, outgoing = self._edge_maps(definition, nodes_by_id)
             order = self._topological_order(definition, incoming, outgoing)
+            if resume_from_node and resume_from_node not in nodes_by_id:
+                raise WorkflowExecutionError(f"resumeFromNode {resume_from_node} is not in workflow")
 
             skipped: set[str] = set()
+            resume_reached = resume_from_node is None
             for node_id in order:
                 node = nodes_by_id[node_id]
+                if not resume_reached:
+                    if node_id == resume_from_node:
+                        resume_reached = True
+                    else:
+                        trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点已跳过"))
+                        context["nodes"][node.id] = {"output": None, "status": "skipped"}
+                        continue
                 if self._should_skip(node, incoming[node_id], skipped, context):
                     skipped.add(node.id)
                     trace.append(self._trace(node, "skipped", summary="上游分支未命中，跳过节点"))
@@ -319,11 +330,6 @@ class WorkflowRunner:
         executor: ExternalExecutor | None,
         simulate_external: bool,
     ) -> Any:
-        if executor is not None:
-            result = executor(node, context)
-            if hasattr(result, "__await__"):
-                return await result
-            return result
         if simulate_external:
             payload: dict[str, Any] = {
                 "simulated": True,
@@ -338,6 +344,11 @@ class WorkflowRunner:
             if node.type == "code":
                 payload.update({"result": None})
             return payload
+        if executor is not None:
+            result = executor(node, context)
+            if hasattr(result, "__await__"):
+                return await result
+            return result
         raise WorkflowExecutionError(f"{node.type} executor is not connected")
 
     def _collect_outputs(self, definition: WorkflowDefinition, context: dict[str, Any]) -> dict[str, Any]:

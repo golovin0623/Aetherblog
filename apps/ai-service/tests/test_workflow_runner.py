@@ -394,6 +394,56 @@ async def test_external_node_can_be_simulated_explicitly() -> None:
 
 
 @pytest.mark.asyncio
+async def test_simulated_code_node_does_not_execute_restricted_expression() -> None:
+    definition = _workflow(nodes=[{"id": "code_1", "type": "code", "data": {"expression": "# sandbox-worker 接入后启用"}}])
+
+    result = await WorkflowRunner(code_executor=lambda _node, _context: {"unexpected": True}).run(
+        definition,
+        {},
+        simulate_external=True,
+    )
+
+    assert result.status == "success"
+    assert result.outputs["code_1"]["simulated"] is True
+    assert result.outputs["code_1"]["result"] is None
+
+
+@pytest.mark.asyncio
+async def test_resume_from_node_skips_prior_nodes_without_rerunning_side_effects() -> None:
+    def blocked_tool(_args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        raise AssertionError("upstream tool should not run when resuming from code_1")
+
+    async def code_executor(_node: WorkflowNode, _context: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True}
+
+    definition = _workflow(
+        nodes=[
+            {"id": "tool_1", "type": "tool", "data": {"toolCode": "side_effect", "args": {}}},
+            {"id": "code_1", "type": "code", "data": {"expression": "inputs.value"}},
+            {"id": "output_1", "type": "output", "data": {"outputPath": "{{ nodes.code_1.output.ok }}"}},
+        ],
+        edges=[
+            {"source": "tool_1", "target": "code_1"},
+            {"source": "code_1", "target": "output_1"},
+        ],
+    )
+
+    result = await WorkflowRunner(tools={"side_effect": blocked_tool}, code_executor=code_executor).run(
+        definition,
+        {"value": "unused"},
+        resume_from_node="code_1",
+    )
+
+    assert result.status == "success"
+    assert result.outputs["output_1"] is True
+    assert [(item.nodeId, item.status) for item in result.trace] == [
+        ("tool_1", "skipped"),
+        ("code_1", "success"),
+        ("output_1", "success"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_external_node_uses_injected_executor() -> None:
     async def fake_agent(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         return {"node": node.id, "topic": context["inputs"]["topic"]}

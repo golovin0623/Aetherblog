@@ -30,6 +30,7 @@ async def execute_workflow(
         payload.inputs,
         run_id=payload.runId,
         simulate_external=payload.simulateExternal,
+        resume_from_node=payload.resumeFromNode,
     )
     return ApiResponse(data=_normalize_budget_status(result))
 
