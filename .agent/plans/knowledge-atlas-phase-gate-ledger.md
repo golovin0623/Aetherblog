@@ -25,6 +25,7 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | P2-10 data integrity hardening | Implemented | Migration `000068` adds `proposed_kp_type` CHECK and `carrier_version_id` index; service rejects invalid `proposedKpType` | Existing invalid historical suggestions are not corrected |
 | P1-01 Reader inline highlight | Implemented baseline | Markdown Reader overlays anchored/soft annotation ranges into rendered Markdown with state-colored `<mark>` nodes and keeps orphan annotations in the side list only | Fixed R1 corpus and PDF/version migration recall are still not proven |
 | P1-02 annotation to KP | Implemented baseline | Markdown Reader annotation cards now open an editable KP draft for title/body/type/status/confidence/evidence role, create the KP, and link the annotation as the selected evidence role | Multi-annotation batching and browser smoke remain future improvements |
+| P1-03 annotation to AI suggestion | Implemented baseline | Reader annotation cards can call `POST /atlas/annotations/:id/suggestions`; server-go validates annotation scope, calls ai-service `/v1/atlas/claims/extract` through `X-Internal-Service`, and writes pending KP suggestions into Inbox | Batch annotation extraction and model-quality evaluation remain P2 work |
 | P1-04 KP list | Implemented baseline | `/atlas/kps` provides keyword/type/status/provenance/evidence filters, scope switching, health summary, and quick links to KP detail | Bulk actions remain Sprint 1+ polish |
 | P1-05 KP edit/archive/delete | Implemented baseline | KP detail exposes edit modal for title/body/type/status/confidence, archive/restore, and delete confirmation wired to existing APIs with toast/error states | Restore/delete release smoke still needs authenticated browser data |
 | P1-06 relation creation guide | Implemented baseline | KP detail relation form uses styled `Select`, relation explanations, target KP selection, strength, rationale/body, and current-KP evidence attachment; relation list shows rationale and evidence quotes | Target KP search is still limited to the loaded KP list, not full async search |
@@ -34,6 +35,8 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | P1-10 user guide | Implemented baseline | `docs/atlas-user-guide.md` documents note -> annotation -> KP -> relation -> graph workflow and the AetherHub Atlas handoff | Full semantic Atlas recall remains P2-05 work |
 | P1-12 analytics events | Implemented baseline | Atlas writes activity events for annotation creation, annotation->KP, suggestion accept/reject, graph search, and AetherHub Atlas answer citation counts (`atlas.*` event types under `system` category); `/atlas/events` is restricted to known telemetry event types | Metrics still need real user data and dashboard aggregation |
 | G1-01 local graph | Implemented baseline | KP detail includes a depth 1/2/3 local graph view loaded from scoped relation APIs and updates when depth changes | It is an inline SVG baseline, not the later zoom/pan/minimap graph surface |
+| P2-01 structured claim extraction | Implemented baseline | ai-service Atlas claim extraction now uses a LlmRouter structured JSON wrapper when Atlas task routing or an explicit model is available; pydantic validates candidate schema and retries once before heuristic fallback; unit tests cover invalid JSON repair | Real prompt/model eval, production routing seed, and acceptance-rate evidence are still open |
+| P2-03 relation suggestion | Implemented baseline | KP detail can request a relation suggestion for current KP + target KP; server-go calls ai-service `/v1/atlas/relations/suggest`, validates scope, and writes a pending relation suggestion to Inbox; ai-service validates relation type against the 9-type enum and retries once | Relation evidence attachment and quality metrics remain open |
 
 ## Verification Commands
 
@@ -45,6 +48,8 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | `pnpm --filter @aetherblog/admin typecheck` | Passed after `pnpm install --offline --ignore-scripts` initialized the new worktree node_modules |
 | `pnpm --filter @aetherblog/admin build` | Passed; Vite emitted existing large-chunk warnings only |
 | `rg -n "<select\|Loader2\|animate-spin\|P3-DEMO\|Phase 0 占位\|严禁" apps/admin/src/pages/atlas apps/admin/src/services/atlasService.ts` | No matches |
+| `PYTHONPATH=. uv run pytest tests/test_atlas_routes.py -q --no-cov` from `apps/ai-service` | Passed for structured Atlas extraction/relation retry tests |
+| `python -m compileall apps/ai-service/app/api/routes/atlas.py apps/ai-service/app/api/routes/agent.py` | Passed |
 | Browser smoke | In-app Browser was unavailable in this environment; Playwright could load `/admin/atlas` through the Vite dev server and reached the expected login screen without a Vite overlay |
 
 ## Not Yet Passed
@@ -54,7 +59,7 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | Phase 1 R1 anchoring recall | No fixed Markdown/PDF/version migration corpus or >=90% recall script yet |
 | Sprint 1 all-green | P1-01/P1-02/P1-05/P1-06/P1-07/P1-09/P1-10/P1-12/G1-01 now have implementation baselines, but authenticated browser smoke is still open |
 | Phase 2 R2 relation density | Relation creation/evidence API exists, but no real dataset proving density or evidence coverage |
-| Phase 3 R3 AI quality | Suggestions still depend on future LiteLLM structured extraction and eval harness |
+| Phase 3 R3 AI quality | Structured extraction/relation baseline exists, but eval harness, real model routing seed, and measured accept rate are still missing |
 | R4 performance budget | No Playwright trace/build-stat/graph FPS evidence yet |
 | R5 no-regression gate | Full gateway smoke across Notes/KB/Blog/AetherHub not run in this worktree |
 | Full non-admin release smoke | Multi-user code paths are implemented, but release evidence still needs seeded non-admin/admin browser sessions through the gateway |

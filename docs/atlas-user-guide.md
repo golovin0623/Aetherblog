@@ -91,6 +91,11 @@ Click a node to open its KP detail page. On a KP detail page, use the local grap
 
 Use `/admin/atlas/suggestions` to review pending suggestions.
 
+How to generate suggestions:
+
+- From the Reader annotation list, click `AI 建议` on an annotation. Atlas sends the selected evidence text through the AI service and creates pending KP suggestions.
+- From a KP detail page, select a target KP in the relation form and click the `AI` action. Atlas asks the AI service for one typed relation suggestion and places it in the Inbox.
+
 Rules:
 
 - AI output is a suggestion, not a committed graph fact.
@@ -98,7 +103,7 @@ Rules:
 - Accepting a relation suggestion creates a typed relation and links suggestion evidence when available.
 - Rejecting or ignoring a suggestion prevents duplicate pending suggestions from reappearing.
 
-Do not treat current suggestion quality as final model quality until the structured LiteLLM extraction and eval gates are complete.
+The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Do not treat suggestion quality as final model quality until the eval harness and acceptance-rate gates are complete.
 
 ## 8. AetherHub Scope
 

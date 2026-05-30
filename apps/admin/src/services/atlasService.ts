@@ -193,6 +193,18 @@ export const atlasService = {
     costUsd?: number;
   }): Promise<R<AtlasSuggestion>> => api.post(`${base}/suggestions`, payload),
 
+  generateAnnotationSuggestions: (
+    annotationId: number,
+    payload?: { maxCandidates?: number; modelId?: string | null }
+  ): Promise<R<AtlasSuggestion[]>> =>
+    api.post(`${base}/annotations/${annotationId}/suggestions`, payload ?? {}),
+
+  generateRelationSuggestion: (
+    kpId: number,
+    payload: { toKpId: number; modelId?: string | null }
+  ): Promise<R<AtlasSuggestion>> =>
+    api.post(`${base}/knowledge-points/${kpId}/relation-suggestions`, payload),
+
   acceptSuggestion: (id: number): Promise<R<AtlasSuggestion>> =>
     api.post(`${base}/suggestions/${id}/accept`),
 

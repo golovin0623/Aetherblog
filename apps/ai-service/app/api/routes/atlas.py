@@ -7,10 +7,10 @@ Phase 3 范围（本文件）:
   - POST /v1/atlas/relations/suggest 给定一对 KP，建议它们之间的 typed relation
 
 实现方式:
-  - **Phase 3 上线时本文件是 stub**: 返回基于关键词的确定性候选，让前端 + server-go
-    accept/reject 链路可端到端跑通，而不消耗 LLM 配额。
-  - Phase 3 后期：用 deps.get_llm_router() 改为真正的 LiteLLM 调用 +
-    claim/entity 抽取 prompt + cost 计入 atlas_ai_suggestions.cost_usd。
+  - 优先通过 LlmRouter 走 structured JSON wrapper；输出必须通过 pydantic schema
+    校验，失败会重试一次。
+  - 未配置 Atlas task routing / 模型调用失败时，回退到关键词启发式候选，保持
+    前端 + server-go accept/reject 链路可端到端跑通。
   - 红线 C3-1: 本服务**永远不直接写** atlas_knowledge_points / atlas_typed_relations
     表，所有建议必须经 server-go suggestion handler 落 atlas_ai_suggestions 表。
 """
@@ -18,14 +18,17 @@ Phase 3 范围（本文件）:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
-from typing import Optional
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.api.deps import require_admin_or_internal
+from app.api.deps import get_llm_router, require_admin_or_internal
+from app.services.usage_logger import estimate_tokens
 
 
 logger = logging.getLogger("atlas")
@@ -60,12 +63,15 @@ class ClaimCandidate(BaseModel):
     rationale: Optional[str] = None
     tokens_in: int = 0
     tokens_out: int = 0
+    cost_usd: float | None = None
 
 
 class ExtractClaimsResponse(BaseModel):
     candidates: list[ClaimCandidate]
     model_id: str
     stub: bool = True
+    structured: bool = False
+    attempts: int = 0
 
 
 # 启发式关键词（Phase 3 stub 用，Phase 3 后期换为 LLM 抽取）
@@ -79,6 +85,64 @@ HEURISTIC_TRIGGERS = [
     (r"方法|步骤|流程", "method"),
 ]
 
+VALID_KP_TYPES = {
+    "claim",
+    "concept",
+    "question",
+    "definition",
+    "method",
+    "example",
+    "person",
+    "source",
+}
+
+
+class StructuredClaimCandidate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=160)
+    body: str | None = Field(default=None, max_length=4000)
+    type: str = "claim"
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    rationale: str | None = Field(default=None, max_length=1000)
+
+
+class StructuredClaimsOutput(BaseModel):
+    candidates: list[StructuredClaimCandidate] = Field(default_factory=list, max_length=50)
+
+
+CLAIM_EXTRACTION_PROMPT = """You extract grounded Knowledge Atlas candidates from the provided text.
+
+Return only one JSON object with this exact shape:
+{"candidates":[{"title":"short claim title","body":"grounded body copied or paraphrased from text","type":"claim|concept|question|definition|method|example|person|source","confidence":0.0,"rationale":"why this is grounded"}]}
+
+Rules:
+- Do not invent facts outside the text.
+- Prefer concrete claims, definitions, methods, examples, and questions.
+- Keep title concise.
+- Use only the allowed type values.
+- Return at most {max_candidates} candidates.
+
+Text:
+{content}
+"""
+
+RELATION_SUGGESTION_PROMPT = """You choose one typed Knowledge Atlas relation between two knowledge points.
+
+Return only one JSON object with this exact shape:
+{"relation_type":"supports|refutes|specializes|generalizes|precedes|causes|similar_to|cites|instance_of","strength":0.0,"rationale":"grounded explanation"}
+
+Rules:
+- Choose exactly one relation_type from the allowed list.
+- Use strength between 0 and 1.
+- Do not invent facts.
+- If the evidence is weak but the two points are related, use "cites" or "similar_to".
+
+From KP #{from_kp_id}:
+{from_text}
+
+To KP #{to_kp_id}:
+{to_text}
+"""
+
 
 def _split_chunks(text: str, max_chunks: int) -> list[str]:
     """切句子（Phase 3 stub 简化版，按中文标点 + 空行）。"""
@@ -87,7 +151,21 @@ def _split_chunks(text: str, max_chunks: int) -> list[str]:
 
 
 @router.post("/claims/extract")
-async def extract_claims(req: ExtractClaimsRequest) -> ExtractClaimsResponse:
+async def extract_claims(
+    req: ExtractClaimsRequest,
+    llm=Depends(get_llm_router),
+) -> ExtractClaimsResponse:
+    structured = await _extract_claims_with_structured_llm(req, llm=llm, user_id=None)
+    if structured is not None:
+        candidates, model_id, attempts = structured
+        return ExtractClaimsResponse(
+            candidates=candidates,
+            model_id=model_id,
+            stub=False,
+            structured=True,
+            attempts=attempts,
+        )
+
     chunks = _split_chunks(req.text, req.max_candidates)
     candidates: list[ClaimCandidate] = []
     for sentence in chunks:
@@ -104,15 +182,111 @@ async def extract_claims(req: ExtractClaimsRequest) -> ExtractClaimsResponse:
                 proposed_kp_type=kp_type,
                 proposed_confidence=0.55,
                 rationale=f"Phase 3 stub：基于关键词 (pattern={kp_type}) 启发式抽取",
-                tokens_in=len(sentence),
-                tokens_out=len(title),
+                tokens_in=estimate_tokens(sentence),
+                tokens_out=estimate_tokens(title),
             )
         )
     return ExtractClaimsResponse(
         candidates=candidates,
         model_id=req.model_id or "atlas-stub/heuristic-v1",
         stub=True,
+        structured=False,
+        attempts=0,
     )
+
+
+async def _extract_claims_with_structured_llm(
+    req: ExtractClaimsRequest,
+    *,
+    llm: Any,
+    user_id: int | None,
+) -> tuple[list[ClaimCandidate], str, int] | None:
+    if not await _should_use_structured_llm(llm, "atlas_claims", req.model_id, user_id):
+        return None
+
+    usage_context = await _safe_usage_context(llm, "atlas_claims", user_id, req.model_id)
+    model_id = str(usage_context.get("model_id") or usage_context.get("model") or req.model_id or "atlas-llm")
+    last_error = ""
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        prompt = CLAIM_EXTRACTION_PROMPT
+        if last_error:
+            prompt += (
+                "\nYour previous output did not validate. Fix the JSON only. "
+                f"Validation error: {last_error[:300]}\n"
+            )
+        try:
+            raw = await llm.chat(
+                prompt_variables={
+                    "content": req.text,
+                    "max_candidates": req.max_candidates,
+                },
+                model_alias="atlas_claims",
+                custom_prompt=prompt,
+                model_id=req.model_id,
+                user_id=user_id,
+            )
+            parsed = StructuredClaimsOutput.model_validate(_extract_json_object(raw))
+            candidates = _structured_claims_to_candidates(
+                parsed,
+                req_text=req.text,
+                response_text=raw,
+                usage_context=usage_context,
+                limit=req.max_candidates,
+            )
+            if candidates:
+                return candidates, model_id, attempt
+            last_error = "empty candidates"
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning(
+                "atlas.claims_structured_parse_failed",
+                extra={"data": {"attempt": attempt, "error": last_error[:300]}},
+            )
+    return None
+
+
+def _structured_claims_to_candidates(
+    parsed: StructuredClaimsOutput,
+    *,
+    req_text: str,
+    response_text: str,
+    usage_context: dict[str, Any],
+    limit: int,
+) -> list[ClaimCandidate]:
+    raw_candidates = parsed.candidates[:limit]
+    tokens_in = estimate_tokens(req_text)
+    tokens_out_total = estimate_tokens(response_text)
+    per_candidate_cost = _estimate_cost_usd(
+        tokens_in=tokens_in,
+        tokens_out=tokens_out_total,
+        usage_context=usage_context,
+        divisor=max(1, len(raw_candidates)),
+    )
+    candidates: list[ClaimCandidate] = []
+    for item in raw_candidates:
+        kp_type = item.type.strip().lower()
+        if kp_type not in VALID_KP_TYPES:
+            raise ValueError(f"unsupported kp type: {item.type}")
+        title = item.title.strip()
+        if not title:
+            continue
+        body = (item.body or "").strip() or None
+        rationale = (item.rationale or "").strip() or None
+        candidate_out = "\n".join(part for part in [title, body or "", rationale or ""] if part)
+        candidates.append(
+            ClaimCandidate(
+                proposed_title=title[:160],
+                proposed_body=body,
+                proposed_kp_type=kp_type,
+                proposed_confidence=item.confidence,
+                rationale=rationale,
+                tokens_in=tokens_in,
+                tokens_out=estimate_tokens(candidate_out),
+                cost_usd=per_candidate_cost,
+            )
+        )
+    return candidates
 
 
 # ============================================================
@@ -135,6 +309,16 @@ class RelationSuggestion(BaseModel):
     rationale: str
     tokens_in: int = 0
     tokens_out: int = 0
+    cost_usd: float | None = None
+    model_id: str | None = None
+    structured: bool = False
+    attempts: int = 0
+
+
+class StructuredRelationOutput(BaseModel):
+    relation_type: str
+    strength: float = Field(..., ge=0, le=1)
+    rationale: str = Field(..., min_length=1, max_length=1200)
 
 
 VALID_RELATION_TYPES = [
@@ -151,11 +335,19 @@ VALID_RELATION_TYPES = [
 
 
 @router.post("/relations/suggest")
-async def suggest_relation(req: SuggestRelationRequest) -> RelationSuggestion:
+async def suggest_relation(
+    req: SuggestRelationRequest,
+    llm=Depends(get_llm_router),
+) -> RelationSuggestion:
     """根据文本特征启发式给出 relation 建议。
 
-    Phase 3 stub: 使用文本相似度 + 关键词；Phase 3 后期换为 LLM。
+    优先使用 structured LLM wrapper；未配置 Atlas task routing 或模型失败时，
+    回退到确定性启发式，确保 UI 主链路可用。
     """
+    structured = await _suggest_relation_with_structured_llm(req, llm=llm, user_id=None)
+    if structured is not None:
+        suggestion, _, _ = structured
+        return suggestion
 
     # 简单启发式：
     #   - 共享 token 比例高 → similar_to
@@ -187,9 +379,81 @@ async def suggest_relation(req: SuggestRelationRequest) -> RelationSuggestion:
         relation_type=rt,
         strength=strength,
         rationale=rationale,
-        tokens_in=len(a) + len(b),
-        tokens_out=len(rt) + len(rationale),
+        tokens_in=estimate_tokens(a) + estimate_tokens(b),
+        tokens_out=estimate_tokens(rt) + estimate_tokens(rationale),
+        model_id=req.model_id or "atlas-stub/heuristic-v1",
+        structured=False,
+        attempts=0,
     )
+
+
+async def _suggest_relation_with_structured_llm(
+    req: SuggestRelationRequest,
+    *,
+    llm: Any,
+    user_id: int | None,
+) -> tuple[RelationSuggestion, str, int] | None:
+    if not await _should_use_structured_llm(llm, "atlas_relations", req.model_id, user_id):
+        return None
+
+    usage_context = await _safe_usage_context(llm, "atlas_relations", user_id, req.model_id)
+    model_id = str(usage_context.get("model_id") or usage_context.get("model") or req.model_id or "atlas-llm")
+    request_text = f"{req.from_text}\n\n{req.to_text}"
+    last_error = ""
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        prompt = RELATION_SUGGESTION_PROMPT
+        if last_error:
+            prompt += (
+                "\nYour previous output did not validate. Fix the JSON only. "
+                f"Validation error: {last_error[:300]}\n"
+            )
+        try:
+            raw = await llm.chat(
+                prompt_variables={
+                    "content": request_text,
+                    "from_kp_id": req.from_kp_id,
+                    "to_kp_id": req.to_kp_id,
+                    "from_text": req.from_text,
+                    "to_text": req.to_text,
+                },
+                model_alias="atlas_relations",
+                custom_prompt=prompt,
+                model_id=req.model_id,
+                user_id=user_id,
+            )
+            parsed = StructuredRelationOutput.model_validate(_extract_json_object(raw))
+            relation_type = parsed.relation_type.strip().lower()
+            if relation_type not in VALID_RELATION_TYPES:
+                raise ValueError(f"unsupported relation type: {parsed.relation_type}")
+            tokens_in = estimate_tokens(request_text)
+            tokens_out = estimate_tokens(raw)
+            return (
+                RelationSuggestion(
+                    relation_type=relation_type,
+                    strength=parsed.strength,
+                    rationale=parsed.rationale.strip(),
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=_estimate_cost_usd(
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        usage_context=usage_context,
+                    ),
+                    model_id=model_id,
+                    structured=True,
+                    attempts=attempt,
+                ),
+                model_id,
+                attempt,
+            )
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning(
+                "atlas.relation_structured_parse_failed",
+                extra={"data": {"attempt": attempt, "error": last_error[:300]}},
+            )
+    return None
 
 
 def _token_overlap(a: str, b: str) -> float:
@@ -218,7 +482,9 @@ async def atlas_health() -> dict[str, str | bool | int]:
         "ok": True,
         "module": "atlas",
         "phase": 3,
-        "stub": True,
+        "stub": False,
+        "structured": True,
+        "fallback": "heuristic_when_unconfigured",
         "relation_types": len(VALID_RELATION_TYPES),
     }
 
@@ -229,3 +495,71 @@ async def atlas_health() -> dict[str, str | bool | int]:
 
 def fingerprint(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+async def _should_use_structured_llm(
+    llm: Any,
+    task_alias: str,
+    model_id: str | None,
+    user_id: int | None,
+) -> bool:
+    if model_id:
+        return True
+    try:
+        return bool(await llm.has_task_routing(task_alias, user_id))
+    except Exception as exc:
+        logger.info(
+            "atlas.structured_llm_unavailable",
+            extra={"data": {"task_alias": task_alias, "error": str(exc)[:200]}},
+        )
+        return False
+
+
+async def _safe_usage_context(
+    llm: Any,
+    task_alias: str,
+    user_id: int | None,
+    model_id: str | None,
+) -> dict[str, Any]:
+    try:
+        return await llm.resolve_usage_context(
+            task_alias,
+            user_id=user_id,
+            model_id=model_id,
+        )
+    except Exception as exc:
+        logger.info(
+            "atlas.usage_context_unavailable",
+            extra={"data": {"task_alias": task_alias, "error": str(exc)[:200]}},
+        )
+        return {"model": model_id or task_alias, "model_id": model_id or task_alias}
+
+
+def _extract_json_object(text: str) -> Any:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("model output does not contain a JSON object")
+    return json.loads(cleaned[start : end + 1])
+
+
+def _estimate_cost_usd(
+    *,
+    tokens_in: int,
+    tokens_out: int,
+    usage_context: dict[str, Any],
+    divisor: int = 1,
+) -> float | None:
+    try:
+        in_price = Decimal(str(usage_context.get("input_cost_per_1m") or 0))
+        out_price = Decimal(str(usage_context.get("output_cost_per_1m") or 0))
+        cost = (in_price * Decimal(tokens_in) + out_price * Decimal(tokens_out)) / Decimal(1000000)
+        if divisor > 1:
+            cost = cost / Decimal(divisor)
+        return float(cost.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return None

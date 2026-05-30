@@ -25,6 +25,18 @@ type CreateSuggestionRequest struct {
 	CostUSD              *float64 `json:"costUsd,omitempty"`
 }
 
+// GenerateAnnotationSuggestionsRequest 从单条 annotation 生成 KP 建议。
+type GenerateAnnotationSuggestionsRequest struct {
+	MaxCandidates int     `json:"maxCandidates,omitempty"`
+	ModelID       *string `json:"modelId,omitempty"`
+}
+
+// GenerateRelationSuggestionRequest 为两条 KP 生成 relation 建议。
+type GenerateRelationSuggestionRequest struct {
+	ToKPID  int64   `json:"toKpId" validate:"required"`
+	ModelID *string `json:"modelId,omitempty"`
+}
+
 // SuggestionResponse AI 建议对外形态。
 type SuggestionResponse struct {
 	ID                   int64     `json:"id"`

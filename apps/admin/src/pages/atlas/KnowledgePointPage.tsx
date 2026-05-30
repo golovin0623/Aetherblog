@@ -22,6 +22,7 @@ import {
   Highlighter,
   Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { ConfirmModal, Modal, Select } from '@aetherblog/ui';
@@ -145,6 +146,7 @@ export default function KnowledgePointPage() {
   const [editDraft, setEditDraft] = useState<KPEditDraft | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const [generatingRelation, setGeneratingRelation] = useState(false);
   const [localGraphDepth, setLocalGraphDepth] = useState('1');
   const [localGraph, setLocalGraph] = useState<LocalGraphState>({
     nodes: [],
@@ -354,6 +356,22 @@ export default function KnowledgePointPage() {
       toast.error(extractApiErrorMessage(err, '建立关系失败'));
     }
   }, [kpId, newRel, refresh]);
+
+  const handleGenerateRelationSuggestion = useCallback(async () => {
+    if (!kpId || !newRel.toKpId) {
+      toast.message('请选择目标知识点');
+      return;
+    }
+    setGeneratingRelation(true);
+    try {
+      const res = await atlasService.generateRelationSuggestion(kpId, { toKpId: newRel.toKpId });
+      toast.success(`已生成关系建议 #${res.data.id}，前往 Inbox 采纳`);
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成关系建议失败'));
+    } finally {
+      setGeneratingRelation(false);
+    }
+  }, [kpId, newRel.toKpId]);
 
   const handleDeleteRelation = useCallback(
     async (relId: number) => {
@@ -688,7 +706,7 @@ export default function KnowledgePointPage() {
           }}
           className="mt-3 grid gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] bg-[var(--bg-substrate)] p-3"
         >
-          <div className="grid gap-2 md:grid-cols-[190px_minmax(0,1fr)_220px_auto]">
+          <div className="grid gap-2 md:grid-cols-[190px_minmax(0,1fr)_220px_auto_auto]">
             <Select
               value={newRel.type}
               onValueChange={(next) => setNewRel((s) => ({ ...s, type: next as AtlasRelationType }))}
@@ -726,6 +744,14 @@ export default function KnowledgePointPage() {
               className="inline-flex h-9 items-center justify-center gap-1 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
             >
               <Plus className="h-3 w-3" /> 建立
+            </button>
+            <button
+              type="button"
+              disabled={generatingRelation}
+              onClick={() => void handleGenerateRelationSuggestion()}
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_25%,transparent)] px-3 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Sparkles className="h-3 w-3" /> AI
             </button>
           </div>
           <label className="grid gap-1.5">

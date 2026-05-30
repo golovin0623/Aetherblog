@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MarkdownPreview } from '@aetherblog/editor';
-import { ArrowLeft, Brain, Highlighter, Trash2 } from 'lucide-react';
+import { ArrowLeft, Brain, Highlighter, Sparkles, Trash2 } from 'lucide-react';
 import { Modal, Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
@@ -96,6 +96,7 @@ export default function MarkdownReaderPage() {
   const [state, setState] = useState<ReaderState>(initial);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [kpDraft, setKpDraft] = useState<KPDraft | null>(null);
+  const [generatingAnnotationId, setGeneratingAnnotationId] = useState<number | null>(null);
 
   // 拉数据
   useEffect(() => {
@@ -298,6 +299,19 @@ export default function MarkdownReaderPage() {
     [state.note]
   );
 
+  const handleGenerateAISuggestion = useCallback(async (annotation: AtlasAnnotation) => {
+    setGeneratingAnnotationId(annotation.id);
+    try {
+      const res = await atlasService.generateAnnotationSuggestions(annotation.id, { maxCandidates: 3 });
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成 AI 建议失败'));
+    } finally {
+      setGeneratingAnnotationId(null);
+    }
+  }, []);
+
   const stateBadgeMap: Record<AtlasAnnotation['anchorState'], { label: string; cls: string }> = {
     anchored: { label: '已锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-success)_20%,transparent)] text-[var(--signal-success)]' },
     soft_anchored: { label: '软锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)] text-[var(--signal-warn)]' },
@@ -456,6 +470,14 @@ export default function MarkdownReaderPage() {
                         className="inline-flex h-7 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] px-2 text-[10px] text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
                       >
                         <Brain className="h-3 w-3" /> 提炼 KP
+                      </button>
+                      <button
+                        type="button"
+                        disabled={generatingAnnotationId === a.id}
+                        onClick={() => void handleGenerateAISuggestion(a)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_25%,transparent)] px-2 text-[10px] text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Sparkles className="h-3 w-3" /> AI 建议
                       </button>
                       {a.anchorState !== 'anchored' && (
                         <button

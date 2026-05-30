@@ -299,7 +299,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlashandler.NewCarrierHandler(atlasService),
 		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc),
 		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, activitySvc),
-		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, activitySvc),
+		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, aiClient, internalToken, activitySvc),
 		atlashandler.NewAtlasEventHandler(activitySvc),
 	)
 	commentRepo := repository.NewCommentRepo(s.DB)
