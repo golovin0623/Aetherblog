@@ -36,7 +36,7 @@ export interface AgentWorkflowBundle {
 }
 
 export const defaultAgentWorkflowCapabilities: AgentWorkflowCapabilities = {
-  defaultRunMode: 'real',
+  defaultRunMode: 'simulate',
   realLLM: {
     enabled: false,
     state: 'not_connected',

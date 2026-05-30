@@ -1141,11 +1141,21 @@ func (r *AgentWorkflowRepo) PauseRunForApproval(ctx context.Context, runID int64
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
-UPDATE agent_workflow_runs
-SET status = 'paused', paused_reason = 'requires_approval', current_node = $2
-WHERE id = $1`, runID, nodeID); err != nil {
+	res, err := tx.ExecContext(ctx, `
+	UPDATE agent_workflow_runs
+	SET status = 'paused', paused_reason = 'requires_approval', current_node = $2
+	WHERE id = $1
+	  AND cancel_requested = FALSE
+	  AND status IN ('pending', 'running')`, runID, nodeID)
+	if err != nil {
 		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return tx.Commit()
 	}
 	if payload == "" {
 		payload = "{}"

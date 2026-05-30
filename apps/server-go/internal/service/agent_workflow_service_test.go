@@ -109,12 +109,12 @@ func TestToRunSummaryHandlesOptionalFields(t *testing.T) {
 	}
 }
 
-func TestCapabilitiesDefaultToExplicitRealModeButDisableUnwiredRuntime(t *testing.T) {
+func TestCapabilitiesDefaultToSimulationModeButDisableUnwiredRuntime(t *testing.T) {
 	svc := NewAgentWorkflowService(nil, nil, "")
 	caps := svc.Capabilities(t.Context(), 7)
 
-	if caps.DefaultRunMode != "real" {
-		t.Fatalf("default run mode = %q, want real", caps.DefaultRunMode)
+	if caps.DefaultRunMode != "simulate" {
+		t.Fatalf("default run mode = %q, want simulate", caps.DefaultRunMode)
 	}
 	if caps.RealLLM.Enabled || caps.RealTools.Enabled || caps.Sandbox.Enabled || caps.Autonomous.Enabled {
 		t.Fatalf("runtime capabilities requiring ai-service should be disabled by default: %#v", caps)

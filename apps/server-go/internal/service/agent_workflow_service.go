@@ -211,7 +211,7 @@ func (s *AgentWorkflowService) ListSchedules(ctx context.Context, userID int64) 
 func (s *AgentWorkflowService) Capabilities(_ context.Context, _ int64) dto.AgentWorkflowCapabilities {
 	connected := s.client != nil && s.internalToken != ""
 	return dto.AgentWorkflowCapabilities{
-		DefaultRunMode: "real",
+		DefaultRunMode: "simulate",
 		RealLLM: dto.AgentWorkflowCapabilityStatus{
 			Enabled: connected,
 			State:   capabilityState(connected, "not_connected"),
