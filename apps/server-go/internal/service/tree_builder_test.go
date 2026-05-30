@@ -48,7 +48,58 @@ func TestBuildCategoryTree_Empty(t *testing.T) {
 	}
 }
 
-// TestBuildFolderTree_DeepNesting 回归测试：原两轮指针挂载方案在值拷贝下会丢失
+// TestBuildCategoryTree_Cycle 验证脏数据循环引用不会导致栈溢出崩溃。
+// roots-anchored 算法只从 ParentID==nil 的节点下行，环中节点（parent 永不为 nil）
+// 不是 root 也不可达，因此天然不会进入无限递归。
+func TestBuildCategoryTree_Cycle(t *testing.T) {
+	cases := map[string][]model.Category{
+		"pure-2-cycle": {
+			{ID: 1, Name: "a", ParentID: i64(2)},
+			{ID: 2, Name: "b", ParentID: i64(1)},
+		},
+		"self-parent": {
+			{ID: 1, Name: "a", ParentID: i64(1)},
+		},
+		"3-cycle": {
+			{ID: 1, Name: "a", ParentID: i64(3)},
+			{ID: 2, Name: "b", ParentID: i64(1)},
+			{ID: 3, Name: "c", ParentID: i64(2)},
+		},
+		"cycle-dangling-off-root": {
+			{ID: 1, Name: "root", ParentID: nil},
+			{ID: 2, Name: "child", ParentID: i64(1)},
+			{ID: 3, Name: "x", ParentID: i64(4)},
+			{ID: 4, Name: "y", ParentID: i64(3)},
+		},
+	}
+	for name, cats := range cases {
+		t.Run(name, func(t *testing.T) {
+			tree := buildCategoryTree(cats) // 不得栈溢出
+			// 环中节点必须被丢弃（不可达），只保留 nil-root 森林
+			countRoots := len(tree)
+			if name == "cycle-dangling-off-root" {
+				if countRoots != 1 || tree[0].ID != 1 || len(tree[0].Children) != 1 {
+					t.Fatalf("expected single root id=1 with 1 child, got %+v", tree)
+				}
+			} else if countRoots != 0 {
+				t.Fatalf("expected empty tree for pure cycle, got %d roots", countRoots)
+			}
+		})
+	}
+}
+
+// TestBuildFolderTree_Cycle 同上：文件夹树循环引用不导致崩溃。
+func TestBuildFolderTree_Cycle(t *testing.T) {
+	vos := []dto.MediaFolderVO{
+		{ID: 1, Name: "a", ParentID: i64(2)},
+		{ID: 2, Name: "b", ParentID: i64(1)},
+	}
+	tree := buildFolderTree(vos) // 不得栈溢出
+	if len(tree) != 0 {
+		t.Fatalf("expected empty tree for pure cycle, got %d roots", len(tree))
+	}
+}
+
 // 孙级及更深层级。这里构造 4 级嵌套，确保最深层节点完整保留。
 func TestBuildFolderTree_DeepNesting(t *testing.T) {
 	vos := []dto.MediaFolderVO{
