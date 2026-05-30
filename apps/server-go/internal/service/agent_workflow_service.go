@@ -352,6 +352,9 @@ func (s *AgentWorkflowService) CreateSchedule(ctx context.Context, userID int64,
 	if err != nil {
 		return nil, err
 	}
+	if schedule == nil {
+		return nil, fmt.Errorf("workflow not found or not accessible")
+	}
 	item := toScheduleSummary(*schedule)
 	return &item, nil
 }
@@ -846,9 +849,23 @@ func (s *AgentWorkflowService) TestNode(ctx context.Context, userID, workflowID 
 	if err != nil {
 		return nil, err
 	}
-	if s.client != nil && s.internalToken != "" {
-		go s.executeRunDetached(tempWorkflow, *run, inputs, false)
+	if s.client == nil || s.internalToken == "" {
+		code, category, retryable := classifyWorkflowError("AI workflow executor is not connected")
+		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
+			RunID:         run.ID,
+			Status:        "failed",
+			Outputs:       "{}",
+			ErrorMessage:  nullableDescription("AI workflow executor is not connected"),
+			ErrorCode:     nullableDescription(code),
+			ErrorCategory: nullableDescription(category),
+			Retryable:     retryable,
+		})
+		if finishErr != nil {
+			return nil, finishErr
+		}
+		return &dto.AgentWorkflowActionResult{RunID: failed.ID, Status: failed.Status, Message: "AI workflow executor is not connected"}, nil
 	}
+	go s.executeRunDetached(tempWorkflow, *run, inputs, false)
 	return &dto.AgentWorkflowActionResult{RunID: run.ID, Status: run.Status, Message: "节点测试已入队"}, nil
 }
 
@@ -909,7 +926,8 @@ func (s *AgentWorkflowService) executeRunDetached(workflow model.AgentWorkflow, 
 		log.Warn().Err(err).Int64("run_id", run.ID).Msg("agent workflow: start run failed")
 		return
 	}
-	if nodeID, toolCode, payload, approval, err := s.firstApprovalRequiredTool(ctx, run.UserID, workflow.DefinitionJSON); err != nil {
+	resumeFromNode := stringValue(run.ResumeFromNode)
+	if nodeID, toolCode, payload, approval, err := s.firstApprovalRequiredTool(ctx, run.UserID, workflow.DefinitionJSON, resumeFromNode); err != nil {
 		code, category, retryable := classifyWorkflowError(err.Error())
 		_, _ = s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
 			RunID:         run.ID,
@@ -1006,7 +1024,7 @@ type workflowTraceItem struct {
 }
 
 func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow model.AgentWorkflow, run model.AgentWorkflowRun, inputs string, simulateExternal bool) (*dto.AgentWorkflowRunSummary, error) {
-	tools, err := s.workflowToolSnapshot(ctx, run.UserID, workflow.DefinitionJSON)
+	tools, err := s.workflowToolSnapshot(ctx, run.UserID, workflow.DefinitionJSON, stringValue(run.ResumeFromNode))
 	if err != nil {
 		return nil, err
 	}
@@ -1181,12 +1199,13 @@ func toRunTraceItems(items []workflowTraceItem) []dto.AgentRunTraceItem {
 	return trace
 }
 
-func (s *AgentWorkflowService) workflowToolSnapshot(ctx context.Context, userID int64, definitionJSON string) ([]workflowToolSnapshot, error) {
+func (s *AgentWorkflowService) workflowToolSnapshot(ctx context.Context, userID int64, definitionJSON string, approvalBypassNodeID string) ([]workflowToolSnapshot, error) {
 	var def agentworkflow.Definition
 	if err := json.Unmarshal([]byte(definitionJSON), &def); err != nil {
 		return nil, fmt.Errorf("definition must be valid JSON: %w", err)
 	}
-	seen := map[string]bool{}
+	seen := map[string]int{}
+	toolCache := map[string]*model.AgentTool{}
 	snapshot := []workflowToolSnapshot{}
 	for _, node := range def.Nodes {
 		if node.Type != "tool" {
@@ -1194,26 +1213,38 @@ func (s *AgentWorkflowService) workflowToolSnapshot(ctx context.Context, userID 
 		}
 		code, _ := node.Data["toolCode"].(string)
 		code = strings.TrimSpace(code)
-		if code == "" || seen[code] {
+		if code == "" {
 			continue
 		}
-		seen[code] = true
-		tool, err := s.repo.FindToolByCode(ctx, userID, code)
-		if err != nil {
-			return nil, err
-		}
+		tool := toolCache[code]
 		if tool == nil {
-			return nil, fmt.Errorf("tool %s is not registered", code)
+			var err error
+			tool, err = s.repo.FindToolByCode(ctx, userID, code)
+			if err != nil {
+				return nil, err
+			}
+			if tool == nil {
+				return nil, fmt.Errorf("tool %s is not registered", code)
+			}
+			if !tool.Enabled {
+				return nil, fmt.Errorf("tool %s is disabled", code)
+			}
+			toolCache[code] = tool
 		}
-		if !tool.Enabled {
-			return nil, fmt.Errorf("tool %s is disabled", code)
+		requiresApproval := tool.RequiresApproval && node.ID != approvalBypassNodeID
+		if idx, ok := seen[code]; ok {
+			if requiresApproval {
+				snapshot[idx].RequiresApproval = true
+			}
+			continue
 		}
+		seen[code] = len(snapshot)
 		snapshot = append(snapshot, workflowToolSnapshot{
 			Code:             tool.Code,
 			HandlerType:      tool.HandlerType,
 			HandlerConfig:    jsonRawOrDefault(tool.HandlerConfig, "{}"),
 			Enabled:          tool.Enabled,
-			RequiresApproval: tool.RequiresApproval,
+			RequiresApproval: requiresApproval,
 			RateLimitPerMin:  tool.RateLimitPerMin,
 			TimeoutMS:        tool.TimeoutMS,
 		})
@@ -1221,7 +1252,7 @@ func (s *AgentWorkflowService) workflowToolSnapshot(ctx context.Context, userID 
 	return snapshot, nil
 }
 
-func (s *AgentWorkflowService) firstApprovalRequiredTool(ctx context.Context, userID int64, definitionJSON string) (string, string, string, bool, error) {
+func (s *AgentWorkflowService) firstApprovalRequiredTool(ctx context.Context, userID int64, definitionJSON string, approvalBypassNodeID string) (string, string, string, bool, error) {
 	var def agentworkflow.Definition
 	if err := json.Unmarshal([]byte(definitionJSON), &def); err != nil {
 		return "", "", "", false, err
@@ -1242,7 +1273,7 @@ func (s *AgentWorkflowService) firstApprovalRequiredTool(ctx context.Context, us
 		if tool == nil {
 			return "", "", "", false, fmt.Errorf("tool %s is not registered", code)
 		}
-		if tool.RequiresApproval {
+		if tool.RequiresApproval && node.ID != approvalBypassNodeID {
 			payload, _ := json.Marshal(map[string]any{
 				"nodeId":   node.ID,
 				"toolCode": code,

@@ -1497,12 +1497,14 @@ func (r *AgentWorkflowRepo) DeleteAgent(ctx context.Context, userID, id int64) (
 func (r *AgentWorkflowRepo) CreateSchedule(ctx context.Context, req AgentScheduleSaveRequest) (*model.AgentSchedule, error) {
 	var schedule model.AgentSchedule
 	err := r.db.GetContext(ctx, &schedule, `
-INSERT INTO agent_schedules
-    (workflow_id, user_id, enabled, cron_expr, timezone, inputs, next_run_at, missed_run_policy)
-VALUES
-    ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-RETURNING
-    id, workflow_id, user_id, enabled, cron_expr, timezone, inputs::text AS inputs,
+	INSERT INTO agent_schedules
+	    (workflow_id, user_id, enabled, cron_expr, timezone, inputs, next_run_at, missed_run_policy)
+	SELECT
+	    $1, $2, $3, $4, $5, $6::jsonb, $7, $8
+	FROM agent_workflows w
+	WHERE w.id = $1 AND w.user_id = $2
+	RETURNING
+	    id, workflow_id, user_id, enabled, cron_expr, timezone, inputs::text AS inputs,
     next_run_at, last_run_at, last_run_id, missed_run_policy, last_error, created_at, updated_at`,
 		req.WorkflowID,
 		req.UserID,
@@ -1514,6 +1516,9 @@ RETURNING
 		req.MissedRunPolicy,
 	)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &schedule, nil
@@ -1522,19 +1527,23 @@ RETURNING
 func (r *AgentWorkflowRepo) UpdateSchedule(ctx context.Context, id int64, req AgentScheduleSaveRequest) (*model.AgentSchedule, error) {
 	var schedule model.AgentSchedule
 	err := r.db.GetContext(ctx, &schedule, `
-UPDATE agent_schedules
-SET workflow_id = $1,
-    enabled = $2,
-    cron_expr = $3,
+	UPDATE agent_schedules s
+	SET workflow_id = $1,
+	    enabled = $2,
+	    cron_expr = $3,
     timezone = $4,
     inputs = $5::jsonb,
-    next_run_at = $6,
-    missed_run_policy = $7,
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = $8 AND user_id = $9
-RETURNING
-    id, workflow_id, user_id, enabled, cron_expr, timezone, inputs::text AS inputs,
-    next_run_at, last_run_at, last_run_id, missed_run_policy, last_error, created_at, updated_at`,
+	    next_run_at = $6,
+	    missed_run_policy = $7,
+	    updated_at = CURRENT_TIMESTAMP
+	FROM agent_workflows w
+	WHERE s.id = $8
+	  AND s.user_id = $9
+	  AND w.id = $1
+	  AND w.user_id = $9
+	RETURNING
+	    s.id, s.workflow_id, s.user_id, s.enabled, s.cron_expr, s.timezone, s.inputs::text AS inputs,
+	    s.next_run_at, s.last_run_at, s.last_run_id, s.missed_run_policy, s.last_error, s.created_at, s.updated_at`,
 		req.WorkflowID,
 		req.Enabled,
 		req.CronExpr,
