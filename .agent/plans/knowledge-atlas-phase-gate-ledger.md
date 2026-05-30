@@ -23,7 +23,7 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | P0-11 source URI uniqueness | Implemented at schema/repo level | Migration `000068` replaces global `UNIQUE(source_uri)` with live per-owner expression index; carrier source lookup/upsert is owner-scoped | Rollback can fail if per-owner duplicates are created before reverting, because the down migration restores global uniqueness |
 | P0-12 phase gate ledger | Implemented | This file records evidence and remaining work | Must be updated at each Atlas sprint exit |
 | P2-10 data integrity hardening | Implemented | Migration `000068` adds `proposed_kp_type` CHECK and `carrier_version_id` index; service rejects invalid `proposedKpType` | Existing invalid historical suggestions are not corrected |
-| P1-01 Reader inline highlight | Implemented baseline | Markdown Reader overlays anchored/soft annotation ranges into rendered Markdown with state-colored `<mark>` nodes and keeps orphan annotations in the side list only | Fixed R1 corpus and PDF/version migration recall are still not proven |
+| P1-01 Reader inline highlight | Implemented baseline | Markdown Reader overlays anchored/soft annotation ranges into rendered Markdown with state-colored `<mark>` nodes and keeps orphan annotations in the side list only; `scripts/atlas/anchoring-recall.mjs --min-recall 0.9` proves 23/23 Markdown version-migration anchorable cases recalled and 1/1 deliberate orphan retained | PDF/version migration recall corpus is still not proven |
 | P1-02 annotation to KP | Implemented baseline | Markdown Reader annotation cards now open an editable KP draft for title/body/type/status/confidence/evidence role, create the KP, and link the annotation as the selected evidence role | Multi-annotation batching and browser smoke remain future improvements |
 | P1-03 annotation to AI suggestion | Implemented baseline | Reader annotation cards can call `POST /atlas/annotations/:id/suggestions`; server-go validates annotation scope, calls ai-service `/v1/atlas/claims/extract` through `X-Internal-Service`, and writes pending KP suggestions into Inbox | Batch annotation extraction and model-quality evaluation remain P2 work |
 | P1-04 KP list | Implemented baseline | `/atlas/kps` provides keyword/type/status/provenance/evidence filters, scope switching, health summary, and quick links to KP detail | Bulk actions remain Sprint 1+ polish |
@@ -51,13 +51,15 @@ This ledger separates "MVP route exists" from "product phase gate passed". A pha
 | `rg -n "<select\|Loader2\|animate-spin\|P3-DEMO\|Phase 0 占位\|严禁" apps/admin/src/pages/atlas apps/admin/src/services/atlasService.ts apps/admin/src/components/layout/Sidebar.tsx` | No matches |
 | `PYTHONPATH=. uv run pytest tests/test_atlas_routes.py -q --no-cov` from `apps/ai-service` | Passed for structured Atlas extraction/relation retry tests |
 | `python -m compileall apps/ai-service/app/api/routes/atlas.py apps/ai-service/app/api/routes/agent.py` | Passed |
+| `node scripts/atlas/anchoring-recall.mjs --min-recall 0.9` | Passed; 23/23 Markdown version-migration anchorable cases recalled, 1/1 deliberate orphan matched |
+| `go test ./internal/knowledge/service -run TestRelocateMarkdownRecallCorpus -v` from `apps/server-go` | Passed |
 | Browser smoke | In-app Browser was unavailable in this environment; Playwright could load `/admin/atlas` through the Vite dev server and reached the expected login screen without a Vite overlay |
 
 ## Not Yet Passed
 
 | Phase / Gate | Why it is not passed |
 | --- | --- |
-| Phase 1 R1 anchoring recall | No fixed Markdown/PDF/version migration corpus or >=90% recall script yet |
+| Phase 1 R1 anchoring recall | Markdown/version migration corpus now has repeatable >=90% evidence, but PDF/version migration corpus and full combined R1 release evidence are still missing |
 | Sprint 1 all-green | P1-01/P1-02/P1-05/P1-06/P1-07/P1-09/P1-10/P1-12/G1-01 now have implementation baselines, but authenticated browser smoke is still open |
 | Phase 2 R2 relation density | Relation creation/evidence API exists, but no real dataset proving density or evidence coverage |
 | Phase 3 R3 AI quality | Structured extraction/relation baseline exists, but eval harness, real model routing seed, and measured accept rate are still missing |

@@ -138,6 +138,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - Backend tests for repository/service/handler paths touched by the change.
 - Admin type-check and build.
 - Atlas UI redline grep for native select, spinner, demo placeholder, and explicit "do not use" markers.
+- R1 Markdown/version anchoring recall: `node scripts/atlas/anchoring-recall.mjs --min-recall 0.9`.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.
 
