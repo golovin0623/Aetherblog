@@ -13,6 +13,7 @@ package handler
 
 import (
 	"encoding/base64"
+	"fmt"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -26,12 +27,13 @@ import (
 
 // AnnotationHandler 处理 /annotations/* + /carriers/:id/annotations。
 type AnnotationHandler struct {
-	svc *atlassvc.AnnotationService
+	svc      *atlassvc.AnnotationService
+	activity atlasActivityRecorder
 }
 
 // NewAnnotationHandler 创建。
-func NewAnnotationHandler(svc *atlassvc.AnnotationService) *AnnotationHandler {
-	return &AnnotationHandler{svc: svc}
+func NewAnnotationHandler(svc *atlassvc.AnnotationService, activity atlasActivityRecorder) *AnnotationHandler {
+	return &AnnotationHandler{svc: svc, activity: activity}
 }
 
 // Mount 挂载到 /atlas 子组。
@@ -82,6 +84,14 @@ func (h *AnnotationHandler) Create(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.annotation_created",
+		"创建 Atlas 标注",
+		fmt.Sprintf("annotation_id=%d carrier_id=%d anchor_state=%s anchor_score=%.2f", a.ID, a.CarrierID, a.AnchorState, a.AnchorScore),
+		"SUCCESS",
+	)
 	return response.OK(c, toAnnotationResponse(a))
 }
 

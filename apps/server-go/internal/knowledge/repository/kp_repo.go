@@ -60,12 +60,14 @@ func (r *KPRepo) FindByID(ctx context.Context, id int64) (*model.KnowledgePoint,
 
 // KPListFilter 是列表筛选。
 type KPListFilter struct {
-	AuthorID *int64
-	Type     *string
-	Status   *string
-	Keyword  *string
-	Limit    int
-	Offset   int
+	AuthorID    *int64
+	Type        *string
+	Status      *string
+	Provenance  *string
+	Keyword     *string
+	HasEvidence *bool
+	Limit       int
+	Offset      int
 }
 
 // List 按筛选列出。Phase 2 不分页（< 1k KP）；Limit 0 表示 200 上限。
@@ -88,10 +90,22 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 		args = append(args, *f.Status)
 		idx++
 	}
+	if f.Provenance != nil && *f.Provenance != "" {
+		q += " AND provenance=$" + strconv.Itoa(idx)
+		args = append(args, *f.Provenance)
+		idx++
+	}
 	if f.Keyword != nil && *f.Keyword != "" {
 		q += " AND (title ILIKE $" + strconv.Itoa(idx) + " OR body_markdown ILIKE $" + strconv.Itoa(idx) + ")"
 		args = append(args, "%"+dbutil.EscapeLike(*f.Keyword)+"%")
 		idx++
+	}
+	if f.HasEvidence != nil {
+		if *f.HasEvidence {
+			q += " AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l WHERE l.kp_id=atlas_knowledge_points.id)"
+		} else {
+			q += " AND NOT EXISTS (SELECT 1 FROM atlas_annotation_kp_links l WHERE l.kp_id=atlas_knowledge_points.id)"
+		}
 	}
 	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
 	// PR #724 review fix (Codex P2, kp_repo.go:99): 上限从 200 提到 5000，与 /atlas/graph
@@ -160,7 +174,7 @@ func (r *KPRepo) SoftDelete(ctx context.Context, id int64) error {
 	return err
 }
 
-// LinkAnnotation 在 atlas_annotation_kp_links 写一行（幂等：ON CONFLICT DO NOTHING）。
+// LinkAnnotation 在 atlas_annotation_kp_links 写一行；重复关联时刷新 evidence role。
 func (r *KPRepo) LinkAnnotation(ctx context.Context, kpID, annotationID int64, role string) error {
 	if role == "" {
 		role = "evidence"
@@ -168,7 +182,7 @@ func (r *KPRepo) LinkAnnotation(ctx context.Context, kpID, annotationID int64, r
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO atlas_annotation_kp_links (annotation_id, kp_id, role)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (annotation_id, kp_id) DO NOTHING`,
+		ON CONFLICT (annotation_id, kp_id) DO UPDATE SET role=EXCLUDED.role`,
 		annotationID, kpID, role,
 	)
 	return err

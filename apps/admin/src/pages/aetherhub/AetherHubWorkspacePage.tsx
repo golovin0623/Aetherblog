@@ -29,6 +29,7 @@ import {
   CircleHelp,
   Copy,
   FileText,
+  GitBranch,
   Hash,
   LayoutDashboard,
   MessageCircle,
@@ -60,6 +61,8 @@ import {
   fetchAgentKnowledgeBases,
   type AgentKnowledgeBase,
 } from '@/services/knowledgeBaseService';
+import { atlasService } from '@/services/atlasService';
+import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
@@ -118,6 +121,10 @@ const SEND_SHORTCUT_OPTIONS: Array<{
     description: 'Enter 直接换行',
   },
 ];
+
+function countAtlasCitations(text: string): number {
+  return text.match(/\[(?:KP|Evidence|Annotation)\s*#\d+\]/gi)?.length ?? 0;
+}
 
 function readSendShortcut(): SendShortcut {
   if (typeof window === 'undefined') return 'enter';
@@ -212,10 +219,12 @@ export default function AetherHubWorkspacePage() {
   const [selectedTags, setSelectedTags] = useState<AgentTag[]>([]);
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
+  const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
     setSelectedKbs([]);
+    setSelectedAtlasKps([]);
   }, [activeId]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
@@ -448,13 +457,24 @@ export default function AetherHubWorkspacePage() {
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
         kbIds: selectedKbs.length > 0 ? selectedKbs.map((k) => k.id) : null,
+        atlasScope:
+          selectedAtlasKps.length > 0
+            ? {
+                kpIds: selectedAtlasKps.map((kp) => kp.id),
+                neighborhoodDepth: 1,
+                includeEvidence: true,
+              }
+            : null,
       };
+      const requestAtlasKps = [...selectedAtlasKps];
+      let assistantContent = '';
 
       try {
         await streamAgentChat(
           req,
           {
             onDelta: (chunk) => {
+              assistantContent += chunk;
               setSessions((prev) =>
                 prev.map((s) =>
                   s.id !== sessionId
@@ -491,8 +511,18 @@ export default function AetherHubWorkspacePage() {
               );
             },
             onSources: (sources) => patchAssistant({ sources }),
-            onDone: () =>
-              patchAssistant({ pending: false, finishedAt: Date.now() }),
+            onDone: () => {
+              if (requestAtlasKps.length > 0) {
+                const citationCount = countAtlasCitations(assistantContent);
+                void atlasService.recordEvent({
+                  eventType: 'atlas.aetherhub_atlas_answer',
+                  title: 'AetherHub Atlas answer',
+                  description: `kp_ids=${requestAtlasKps.map((kp) => kp.id).join(',')}; citation_count=${citationCount}`,
+                  status: citationCount > 0 ? 'SUCCESS' : 'WARNING',
+                }).catch(() => undefined);
+              }
+              patchAssistant({ pending: false, finishedAt: Date.now() });
+            },
             onError: (message) =>
               patchAssistant({ pending: false, error: message, finishedAt: Date.now() }),
           },
@@ -513,7 +543,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps],
   );
 
   const handleEditMessage = useCallback(
@@ -693,6 +723,16 @@ export default function AetherHubWorkspacePage() {
               onRemove={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
             />
 
+            <AtlasKPPickerBar
+              selectedKps={selectedAtlasKps}
+              onAdd={(kp) =>
+                setSelectedAtlasKps((prev) =>
+                  prev.find((item) => item.id === kp.id) ? prev : [...prev, kp],
+                )
+              }
+              onRemove={(id) => setSelectedAtlasKps((prev) => prev.filter((kp) => kp.id !== id))}
+            />
+
             <WorkspaceCanvas
               greeting={greeting}
               nickname={currentUser.nickname}
@@ -762,6 +802,7 @@ export default function AetherHubWorkspacePage() {
               }));
               setSelectedArticles([]);
               setSelectedTags([]);
+              setSelectedAtlasKps([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -792,6 +833,7 @@ export default function AetherHubWorkspacePage() {
               }));
               setSelectedArticles([]);
               setSelectedTags([]);
+              setSelectedAtlasKps([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -4360,6 +4402,142 @@ function KbPickerBar({
                 // （review gemini medium：双请求竞态）
                 setOptions(null);
               }}
+              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+            >
+              刷新
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AtlasKPPickerBar({
+  selectedKps,
+  onAdd,
+  onRemove,
+}: {
+  selectedKps: AtlasKnowledgePoint[];
+  onAdd: (kp: AtlasKnowledgePoint) => void;
+  onRemove: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<AtlasKnowledgePoint[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open || options !== null) return;
+    setLoading(true);
+    atlasService
+      .listKnowledgePoints({ limit: 100, scope: 'mine' })
+      .then((res) => setOptions((res.data || []).filter((kp) => !kp.archived && kp.status !== 'archived')))
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false));
+  }, [open, options]);
+
+  return (
+    <div className="relative flex shrink-0 items-center gap-2 border-b border-[var(--hub-border)]/40 bg-[var(--hub-control)]/30 px-3 py-2 text-xs">
+      <GitBranch className="h-3.5 w-3.5 text-[var(--aurora-2)]" aria-hidden="true" />
+      <span className="font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+        Atlas
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        {selectedKps.length === 0 && (
+          <span className="text-[var(--ink-muted)]">
+            未选择 Atlas KP
+          </span>
+        )}
+        {selectedKps.map((kp) => (
+          <span
+            key={kp.id}
+            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)]"
+          >
+            <GitBranch className="h-3 w-3 shrink-0 text-[var(--aurora-2)]" />
+            <span className="max-w-[12rem] truncate" title={kp.title}>
+              {kp.title}
+            </span>
+            <span className="font-mono text-[10px] uppercase text-[var(--ink-muted)]">
+              {kp.type}
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(kp.id)}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              aria-label={`移除 Atlas KP ${kp.title}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <button
+        type="button"
+        ref={triggerRef}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[12px] font-medium text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]"
+      >
+        <GitBranch className="h-3.5 w-3.5" />
+        添加
+      </button>
+      {open && (
+        <div
+          className="absolute right-3 top-full z-40 mt-1 w-80 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-overlay,var(--bg-overlay))] p-2 shadow-xl backdrop-blur-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {loading && (
+            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">加载中…</div>
+          )}
+          {!loading && options && options.length === 0 && (
+            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">
+              暂无可用 Atlas KP
+            </div>
+          )}
+          {!loading && options && options.length > 0 && (
+            <ul className="max-h-72 overflow-y-auto">
+              {options.map((kp) => {
+                const picked = selectedKps.find((item) => item.id === kp.id);
+                return (
+                  <li key={kp.id}>
+                    <button
+                      type="button"
+                      disabled={!!picked}
+                      onClick={() => {
+                        onAdd(kp);
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                        picked
+                          ? 'text-[var(--ink-muted)] opacity-60'
+                          : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]'
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{kp.title}</span>
+                        <span className="block truncate text-[11px] text-[var(--ink-muted)]">
+                          {kp.type} · {kp.status} · conf {kp.confidence.toFixed(2)}
+                        </span>
+                      </span>
+                      {picked && <Check className="h-4 w-4 text-status-success" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div className="mt-1 flex items-center justify-end gap-2 border-t border-[var(--hub-border)] pt-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setOptions(null)}
               className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
             >
               刷新

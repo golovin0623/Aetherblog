@@ -2,7 +2,7 @@
 //
 // 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST   /knowledge-points                       创建
-//   GET    /knowledge-points                       列表（含 type/status/keyword 筛选）
+//   GET    /knowledge-points                       列表（含 type/status/provenance/evidence/keyword 筛选）
 //   GET    /knowledge-points/:id                   读
 //   PATCH  /knowledge-points/:id                   部分更新
 //   DELETE /knowledge-points/:id                   软删
@@ -23,6 +23,7 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -36,14 +37,20 @@ import (
 
 // KPHandler 处理 /knowledge-points/* + /relations/* + /graph。
 type KPHandler struct {
-	kp  *atlassvc.KnowledgePointService
-	rel *atlassvc.RelationService
-	ann *atlassvc.AnnotationService
+	kp       *atlassvc.KnowledgePointService
+	rel      *atlassvc.RelationService
+	ann      *atlassvc.AnnotationService
+	activity atlasActivityRecorder
 }
 
 // NewKPHandler 创建。
-func NewKPHandler(kp *atlassvc.KnowledgePointService, rel *atlassvc.RelationService, ann *atlassvc.AnnotationService) *KPHandler {
-	return &KPHandler{kp: kp, rel: rel, ann: ann}
+func NewKPHandler(
+	kp *atlassvc.KnowledgePointService,
+	rel *atlassvc.RelationService,
+	ann *atlassvc.AnnotationService,
+	activity atlasActivityRecorder,
+) *KPHandler {
+	return &KPHandler{kp: kp, rel: rel, ann: ann, activity: activity}
 }
 
 // Mount 挂到 /atlas 子组。
@@ -118,6 +125,21 @@ func (h *KPHandler) ListKP(c echo.Context) error {
 	}
 	if v := c.QueryParam("status"); v != "" {
 		f.Status = &v
+	}
+	if v := c.QueryParam("provenance"); v != "" {
+		f.Provenance = &v
+	}
+	if v := c.QueryParam("evidence"); v != "" {
+		switch v {
+		case "with", "true", "has":
+			hasEvidence := true
+			f.HasEvidence = &hasEvidence
+		case "without", "false", "missing":
+			hasEvidence := false
+			f.HasEvidence = &hasEvidence
+		default:
+			return response.FailWith(c, response.BadRequest, "无效的 evidence 筛选")
+		}
 	}
 	if v := c.QueryParam("keyword"); v != "" {
 		f.Keyword = &v
@@ -224,6 +246,14 @@ func (h *KPHandler) LinkAnnotation(c echo.Context) error {
 	if err := h.kp.LinkAnnotation(c.Request().Context(), kpID, req.AnnotationID, req.Role); err != nil {
 		return response.Error(c, err)
 	}
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.kp_from_annotation",
+		"标注提炼为 KP",
+		fmt.Sprintf("kp_id=%d annotation_id=%d role=%s", kpID, req.AnnotationID, req.Role),
+		"SUCCESS",
+	)
 	return response.OKEmpty(c)
 }
 

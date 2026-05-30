@@ -297,9 +297,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasGroup,
 		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
-		atlashandler.NewAnnotationHandler(atlasAnnoSvc),
-		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc),
-		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService),
+		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc),
+		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, activitySvc),
+		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, activitySvc),
+		atlashandler.NewAtlasEventHandler(activitySvc),
 	)
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)

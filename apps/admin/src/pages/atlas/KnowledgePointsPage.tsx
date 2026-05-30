@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Library, RefreshCw, Search } from 'lucide-react';
 import { Select } from '@aetherblog/ui';
 import type {
   AtlasKnowledgePoint,
   AtlasKnowledgePointStatus,
   AtlasKnowledgePointType,
+  AtlasProvenance,
 } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
@@ -15,6 +16,8 @@ import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 type TypeFilter = AtlasKnowledgePointType | 'all';
 type StatusFilter = AtlasKnowledgePointStatus | 'all';
+type ProvenanceFilter = AtlasProvenance | 'all';
+type EvidenceFilter = 'all' | 'with' | 'without';
 type AtlasScopeFilter = 'all' | 'mine';
 
 const TYPE_OPTIONS = [
@@ -42,14 +45,35 @@ const SCOPE_OPTIONS = [
   { value: 'mine', label: '仅我的' },
 ];
 
+const PROVENANCE_OPTIONS = [
+  { value: 'all', label: '全部来源' },
+  { value: 'user', label: 'User' },
+  { value: 'ai_suggested', label: 'AI suggested' },
+  { value: 'imported', label: 'Imported' },
+];
+
+const EVIDENCE_OPTIONS = [
+  { value: 'all', label: '全部证据' },
+  { value: 'with', label: '有 evidence' },
+  { value: 'without', label: '缺 evidence' },
+];
+
 export default function KnowledgePointsPage() {
+  const [searchParams] = useSearchParams();
+  const urlKeyword = searchParams.get('keyword') ?? '';
   const [items, setItems] = useState<AtlasKnowledgePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [keyword, setKeyword] = useState('');
+  const [keyword, setKeyword] = useState(urlKeyword);
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [provenance, setProvenance] = useState<ProvenanceFilter>('all');
+  const [evidence, setEvidence] = useState<EvidenceFilter>('all');
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
+
+  useEffect(() => {
+    setKeyword(urlKeyword);
+  }, [urlKeyword]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -58,6 +82,8 @@ export default function KnowledgePointsPage() {
         keyword: keyword.trim() || undefined,
         type: type === 'all' ? undefined : type,
         status: status === 'all' ? undefined : status,
+        provenance: provenance === 'all' ? undefined : provenance,
+        evidence: evidence === 'all' ? undefined : evidence,
         scope,
         limit: 500,
       });
@@ -68,7 +94,7 @@ export default function KnowledgePointsPage() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, scope, status, type]);
+  }, [evidence, keyword, provenance, scope, status, type]);
 
   useEffect(() => {
     void refresh();
@@ -99,7 +125,7 @@ export default function KnowledgePointsPage() {
         }
       />
 
-      <section className="grid gap-3 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3 md:grid-cols-[minmax(220px,1fr)_160px_180px_180px]">
+      <section className="grid gap-3 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_150px_150px_150px_150px_150px]">
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
           <input
@@ -130,6 +156,20 @@ export default function KnowledgePointsPage() {
           options={STATUS_OPTIONS}
           size="md"
           ariaLabel="知识点状态过滤"
+        />
+        <Select
+          value={provenance}
+          onValueChange={(next) => setProvenance(next as ProvenanceFilter)}
+          options={PROVENANCE_OPTIONS}
+          size="md"
+          ariaLabel="知识点来源过滤"
+        />
+        <Select
+          value={evidence}
+          onValueChange={(next) => setEvidence(next as EvidenceFilter)}
+          options={EVIDENCE_OPTIONS}
+          size="md"
+          ariaLabel="知识点 evidence 过滤"
         />
       </section>
 

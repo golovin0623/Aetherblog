@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
@@ -8,6 +8,7 @@ import {
   GitBranch,
   Highlighter,
   Library,
+  Search,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -66,8 +67,16 @@ const SCOPE_OPTIONS = [
 ];
 
 export default function AtlasPage() {
+  const navigate = useNavigate();
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
+  const [kpSearch, setKpSearch] = useState('');
+
+  const handleKPSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = kpSearch.trim();
+    navigate(query ? `/atlas/kps?keyword=${encodeURIComponent(query)}` : '/atlas/kps');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +162,29 @@ export default function AtlasPage() {
         </section>
       ) : (
         <>
+          <form
+            onSubmit={handleKPSearch}
+            className="grid gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3 md:grid-cols-[minmax(220px,1fr)_96px]"
+          >
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+              <input
+                type="search"
+                value={kpSearch}
+                onChange={(event) => setKpSearch(event.target.value)}
+                placeholder="搜索 KP 标题或正文"
+                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] pl-9 pr-3 text-sm text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+            <button
+              type="submit"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] px-3 text-sm font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]"
+            >
+              <Search className="h-4 w-4" />
+              搜索
+            </button>
+          </form>
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricTile icon={Database} label="Active KP" value={String(summary?.activeKps.length ?? 0)} />
             <MetricTile icon={GitBranch} label="Relations" value={String(state.relations.length)} />

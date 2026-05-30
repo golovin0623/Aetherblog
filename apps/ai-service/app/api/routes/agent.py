@@ -65,6 +65,13 @@ class AgentChatMessage(BaseModel):
     content: str = Field(..., description="内容")
 
 
+class AgentAtlasScope(BaseModel):
+    kpIds: list[int] | None = Field(default=None, max_length=12)
+    carrierIds: list[int] | None = Field(default=None, max_length=6)
+    neighborhoodDepth: int = Field(default=1, ge=0, le=2)
+    includeEvidence: bool = True
+
+
 class AgentChatRequest(BaseModel):
     sessionId: str = Field(..., min_length=1, max_length=128)
     mode: Literal["chat", "cowork", "code"] = "chat"
@@ -83,6 +90,9 @@ class AgentChatRequest(BaseModel):
     # 在选中的 KB 内做语义召回（每 KB 的 active profile 决定 model + top_k + threshold），
     # 把命中的 chunk 拼成额外 system 段注入给 LLM。
     kbIds: list[int] | None = Field(default=None, max_length=10)
+    # Atlas picker 选中的 KnowledgePoint scope。读取时仍会按 X-Forwarded-User-ID
+    # 约束 author，避免客户端手工拼接其他用户的 KP。
+    atlasScope: AgentAtlasScope | None = None
 
 
 class AgentModelItem(BaseModel):
@@ -576,6 +586,174 @@ async def _build_kb_context_for_chat(
         logger.warning("agent.kb_recall_failed", extra={"data": {"kb_ids": kb_ids}})
         return None
     return render_kb_context(hits)
+
+
+def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
+    out: list[int] = []
+    seen: set[int] = set()
+    for value in values or []:
+        if isinstance(value, bool):
+            continue
+        try:
+            item = int(value)
+        except (TypeError, ValueError):
+            continue
+        if item <= 0 or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _build_atlas_context_for_chat(
+    pool,
+    *,
+    atlas_scope: AgentAtlasScope | None,
+    user_id: int | None,
+) -> str | None:
+    """Build an Aether Atlas context block for Agent chat.
+
+    This is the first AetherHub integration layer: it reads selected KPs, one-hop
+    relations, and evidence quotes. It deliberately scopes all reads by the
+    forwarded user id and does not perform embedding/GraphRAG recall yet.
+    """
+    if atlas_scope is None or user_id is None:
+        return None
+    kp_ids = _dedupe_positive_ints(atlas_scope.kpIds, 12)
+    carrier_ids = _dedupe_positive_ints(atlas_scope.carrierIds, 6)
+    if not kp_ids and not carrier_ids:
+        return None
+
+    try:
+        async with pool.acquire() as conn:
+            if carrier_ids:
+                carrier_kp_rows = await conn.fetch(
+                    """
+                    SELECT DISTINCT l.kp_id
+                    FROM atlas_annotation_kp_links l
+                    JOIN atlas_annotations a ON a.id = l.annotation_id
+                    JOIN atlas_carriers c ON c.id = a.carrier_id
+                    WHERE a.deleted = FALSE
+                      AND c.deleted = FALSE
+                      AND a.carrier_id = ANY($1::bigint[])
+                      AND (a.author_id = $2 OR a.author_id IS NULL)
+                      AND (c.owner_id = $2 OR c.owner_id IS NULL)
+                    LIMIT 12
+                    """,
+                    carrier_ids,
+                    user_id,
+                )
+                kp_ids = _dedupe_positive_ints(
+                    [*kp_ids, *[int(r["kp_id"]) for r in carrier_kp_rows]],
+                    12,
+                )
+            if not kp_ids:
+                return None
+
+            kp_rows = await conn.fetch(
+                """
+                SELECT id, title, body_markdown, type, status, confidence, provenance
+                FROM atlas_knowledge_points
+                WHERE deleted = FALSE
+                  AND id = ANY($1::bigint[])
+                  AND (author_id = $2 OR author_id IS NULL)
+                ORDER BY updated_at DESC
+                LIMIT 12
+                """,
+                kp_ids,
+                user_id,
+            )
+            live_kp_ids = [int(r["id"]) for r in kp_rows]
+            if not live_kp_ids:
+                return None
+
+            relation_rows = []
+            if atlas_scope.neighborhoodDepth > 0:
+                relation_rows = await conn.fetch(
+                    """
+                    SELECT id, from_kp_id, to_kp_id, type, strength, body_markdown
+                    FROM atlas_typed_relations
+                    WHERE deleted = FALSE
+                      AND (from_kp_id = ANY($1::bigint[]) OR to_kp_id = ANY($1::bigint[]))
+                      AND (author_id = $2 OR author_id IS NULL)
+                    ORDER BY strength DESC, updated_at DESC
+                    LIMIT 32
+                    """,
+                    live_kp_ids,
+                    user_id,
+                )
+
+            evidence_rows = []
+            if atlas_scope.includeEvidence:
+                evidence_rows = await conn.fetch(
+                    """
+                    SELECT l.kp_id, l.role, a.id AS annotation_id, a.body_text, a.anchor_state,
+                           c.title AS carrier_title, c.source_uri
+                    FROM atlas_annotation_kp_links l
+                    JOIN atlas_annotations a ON a.id = l.annotation_id
+                    LEFT JOIN atlas_carriers c ON c.id = a.carrier_id
+                    WHERE l.kp_id = ANY($1::bigint[])
+                      AND a.deleted = FALSE
+                      AND (a.author_id = $2 OR a.author_id IS NULL)
+                    ORDER BY a.updated_at DESC
+                    LIMIT 24
+                    """,
+                    live_kp_ids,
+                    user_id,
+                )
+    except Exception:
+        logger.warning("agent.atlas_context_failed", extra={"data": {"kp_ids": kp_ids}})
+        return None
+
+    parts: list[str] = [
+        "# Aether Atlas Context",
+        (
+            "Use this Atlas context as grounded knowledge. When citing it, include "
+            "citations like [KP #id] and [Evidence #annotation_id]. If the answer "
+            "depends on evidence, mention the evidence citation."
+        ),
+        "## Knowledge Points",
+    ]
+    for r in kp_rows:
+        body = (r["body_markdown"] or "").strip()
+        if len(body) > 900:
+            body = body[:900] + "…"
+        parts.append(
+            f"- [KP #{r['id']}] {r['title']} "
+            f"(type={r['type']}, status={r['status']}, confidence={float(r['confidence']):.2f}, provenance={r['provenance']})"
+        )
+        if body:
+            parts.append(f"  Body: {body}")
+
+    if relation_rows:
+        parts.append("## Relations")
+        for r in relation_rows:
+            rationale = (r["body_markdown"] or "").strip()
+            if len(rationale) > 360:
+                rationale = rationale[:360] + "…"
+            line = (
+                f"- [Relation #{r['id']}] KP #{r['from_kp_id']} --{r['type']} "
+                f"({float(r['strength']):.2f})--> KP #{r['to_kp_id']}"
+            )
+            if rationale:
+                line += f"; rationale: {rationale}"
+            parts.append(line)
+
+    if evidence_rows:
+        parts.append("## Evidence")
+        for r in evidence_rows:
+            quote = (r["body_text"] or "").strip()
+            if len(quote) > 500:
+                quote = quote[:500] + "…"
+            source = r["carrier_title"] or r["source_uri"] or "unknown source"
+            parts.append(
+                f"- [Evidence #{r['annotation_id']}] for [KP #{r['kp_id']}] "
+                f"role={r['role']} anchor={r['anchor_state']} source={source}: {quote}"
+            )
+
+    return "\n".join(parts)
 
 
 async def _build_picker_context(
@@ -1092,11 +1270,21 @@ async def agent_chat(
         kb_ids=payload.kbIds,
         messages=payload.messages,
     )
+    atlas_context = await _build_atlas_context_for_chat(
+        pool,
+        atlas_scope=payload.atlasScope,
+        user_id=user_id,
+    )
     if kb_context:
         if context_block:
             context_block = context_block + "\n\n---\n\n" + kb_context
         else:
             context_block = kb_context
+    if atlas_context:
+        if context_block:
+            context_block = context_block + "\n\n---\n\n" + atlas_context
+        else:
+            context_block = atlas_context
     chat_messages = _build_chat_messages(payload, context_block=context_block)
 
     # SSRF 守卫

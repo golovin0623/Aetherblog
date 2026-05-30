@@ -51,6 +51,13 @@ export interface UpdateAnnotationPayload {
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
 
+  recordEvent: (payload: {
+    eventType: 'atlas.graph_search' | 'atlas.aetherhub_atlas_answer' | 'atlas.aetherhub_answer_citation';
+    title?: string;
+    description?: string;
+    status?: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
+  }): Promise<R<void>> => api.post(`${base}/events`, payload),
+
   ensureMarkdownCarrier: (noteId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/markdown`, { noteId }),
 
@@ -74,6 +81,8 @@ export const atlasService = {
   listKnowledgePoints: (params?: {
     type?: AtlasKnowledgePointType;
     status?: AtlasKnowledgePointStatus;
+    provenance?: AtlasProvenance;
+    evidence?: 'with' | 'without';
     keyword?: string;
     limit?: number;
   } & AtlasScopedParams): Promise<R<AtlasKnowledgePoint[]>> => api.get(`${base}/knowledge-points`, { params }),

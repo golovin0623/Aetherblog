@@ -10,6 +10,7 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -24,10 +25,11 @@ import (
 
 // SuggestionHandler 处理 /suggestions/*。
 type SuggestionHandler struct {
-	svc   *atlassvc.AISuggestionService
-	kp    *atlassvc.KnowledgePointService
-	ann   *atlassvc.AnnotationService
-	atlas *atlassvc.AtlasService
+	svc      *atlassvc.AISuggestionService
+	kp       *atlassvc.KnowledgePointService
+	ann      *atlassvc.AnnotationService
+	atlas    *atlassvc.AtlasService
+	activity atlasActivityRecorder
 }
 
 // NewSuggestionHandler 创建。
@@ -36,8 +38,9 @@ func NewSuggestionHandler(
 	kp *atlassvc.KnowledgePointService,
 	ann *atlassvc.AnnotationService,
 	atlas *atlassvc.AtlasService,
+	activity atlasActivityRecorder,
 ) *SuggestionHandler {
-	return &SuggestionHandler{svc: svc, kp: kp, ann: ann, atlas: atlas}
+	return &SuggestionHandler{svc: svc, kp: kp, ann: ann, atlas: atlas, activity: activity}
 }
 
 // Mount 挂到 /atlas 子组。
@@ -164,6 +167,14 @@ func (h *SuggestionHandler) Accept(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "建议不存在")
 	}
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.suggestion_accept",
+		"接受 Atlas AI 建议",
+		fmt.Sprintf("suggestion_id=%d kind=%s resolved_kp_id=%s resolved_relation_id=%s", out.ID, out.Kind, atlasInt64PtrText(out.ResolvedKPID), atlasInt64PtrText(out.ResolvedRelationID)),
+		"SUCCESS",
+	)
 	return response.OK(c, toSuggestionResponse(out))
 }
 
@@ -187,6 +198,14 @@ func (h *SuggestionHandler) Reject(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "建议不存在")
 	}
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.suggestion_reject",
+		"拒绝 Atlas AI 建议",
+		fmt.Sprintf("suggestion_id=%d kind=%s", out.ID, out.Kind),
+		"SUCCESS",
+	)
 	return response.OK(c, toSuggestionResponse(out))
 }
 

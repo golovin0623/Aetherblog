@@ -20,6 +20,12 @@ export interface ChatStreamRequest {
    * 把命中的 chunk 拼成额外 system 段注入 LLM。
    */
   kbIds?: number[] | null;
+  atlasScope?: {
+    kpIds?: number[];
+    carrierIds?: number[];
+    neighborhoodDepth?: number;
+    includeEvidence?: boolean;
+  } | null;
 }
 
 export interface ChatStreamHandlers {

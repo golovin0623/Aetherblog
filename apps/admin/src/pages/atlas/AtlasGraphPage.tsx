@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Compass, EyeOff, Filter, RefreshCw } from 'lucide-react';
+import { Compass, EyeOff, Filter, RefreshCw, Search } from 'lucide-react';
 import { Select } from '@aetherblog/ui';
 
 import type {
@@ -94,10 +94,12 @@ export default function AtlasGraphPage() {
   const [rawKps, setRawKps] = useState<AtlasKnowledgePoint[]>([]);
   const [rawEdges, setRawEdges] = useState<AtlasTypedRelation[]>([]);
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
+  const [keyword, setKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<AtlasKnowledgePointType | 'all'>('all');
   const [relFilter, setRelFilter] = useState<AtlasRelationType | 'all'>('all');
   const [hideHubs, setHideHubs] = useState(true);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const lastGraphSearchRef = useRef('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,9 +119,33 @@ export default function AtlasGraphPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const query = keyword.trim();
+    if (!query) return;
+    const signature = `${scope}|${typeFilter}|${relFilter}|${query}`;
+    const timeoutID = window.setTimeout(() => {
+      if (lastGraphSearchRef.current === signature) return;
+      lastGraphSearchRef.current = signature;
+      void atlasService.recordEvent({
+        eventType: 'atlas.graph_search',
+        title: 'Atlas graph search',
+        description: `keyword=${query}; scope=${scope}; type=${typeFilter}; relation=${relFilter}`,
+        status: 'INFO',
+      }).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(timeoutID);
+  }, [keyword, relFilter, scope, typeFilter]);
+
   const { nodes, edges, hidden } = useMemo(() => {
     // 1) 过滤 KP
     let kps = rawKps;
+    const query = keyword.trim().toLowerCase();
+    if (query) {
+      kps = kps.filter((k) => {
+        const haystack = `${k.title}\n${k.bodyMarkdown}\n${k.type}\n${k.status}\n${k.provenance}`.toLowerCase();
+        return haystack.includes(query);
+      });
+    }
     if (typeFilter !== 'all') kps = kps.filter((k) => k.type === typeFilter);
 
     // 2) 过滤 edges
@@ -165,7 +191,7 @@ export default function AtlasGraphPage() {
     simulate(n, es, ITERATIONS);
 
     return { nodes: n, edges: es as Edge[] | AtlasTypedRelation[], hidden: hiddenCount };
-  }, [rawKps, rawEdges, typeFilter, relFilter, hideHubs]);
+  }, [hideHubs, keyword, rawKps, rawEdges, typeFilter, relFilter]);
 
   return (
     <div className="space-y-4">
@@ -188,6 +214,17 @@ export default function AtlasGraphPage() {
         <span className="inline-flex items-center gap-1 text-[var(--ink-muted)]">
           <Filter className="h-3 w-3" /> 过滤
         </span>
+
+        <label className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+          <input
+            type="search"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="定位 KP 标题、正文或来源"
+            className="h-8 w-full rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] pl-8 pr-2 text-xs text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+          />
+        </label>
 
         <div className="w-36">
           <Select
