@@ -322,7 +322,7 @@ export function AiWritingWorkspacePage() {
         toast.error('请先在智能体编排中发布 Article Audit 工作流');
         return;
       }
-      const res = await agentWorkflowService.invokePublished(audit.slug, { post_id: postId });
+      const res = await agentWorkflowService.invokePublished(audit.slug, { post_id: Number(postId) });
       toast.success(`Article Audit 已入队：#${res.data?.id || '-'}`);
     } catch (error: unknown) {
       toast.error(workflowErrorMessage(error, 'Article Audit 启动失败'));

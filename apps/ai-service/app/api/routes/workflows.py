@@ -88,6 +88,7 @@ def _kb_get_post_tool(pool: Any, user_id: int | None):
         post_id = args.get("id") or args.get("post_id")
         if post_id is None:
             raise WorkflowExecutionError("kb_get_post requires id")
+        parsed_post_id = _coerce_post_id(post_id)
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -98,7 +99,7 @@ def _kb_get_post_tool(pool: Any, user_id: int | None):
                   AND ($2::bigint IS NULL OR author_id = $2 OR status = 'PUBLISHED')
                 LIMIT 1
                 """,
-                int(post_id),
+                parsed_post_id,
                 user_id,
             )
             if row is None:
@@ -111,7 +112,7 @@ def _kb_get_post_tool(pool: Any, user_id: int | None):
                 WHERE pt.post_id = $1
                 ORDER BY t.name ASC
                 """,
-                int(post_id),
+                parsed_post_id,
             )
         return {
             "id": row["id"],
@@ -126,6 +127,13 @@ def _kb_get_post_tool(pool: Any, user_id: int | None):
         }
 
     return tool
+
+
+def _coerce_post_id(post_id: Any) -> int:
+    try:
+        return int(str(post_id).strip())
+    except (TypeError, ValueError):
+        raise WorkflowExecutionError("kb_get_post id must be integer") from None
 
 
 def _kb_search_tool(pool: Any, user_id: int | None):
@@ -300,6 +308,23 @@ _SAFE_OPERATORS = {
 }
 
 
+_COMPARE_OPERATORS = {
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+}
+
+
+_UNARY_OPERATORS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+    ast.Not: operator.not_,
+}
+
+
 def _eval_safe_expression(expression: str, variables: dict[str, Any]) -> Any:
     tree = ast.parse(expression, mode="eval")
     return _eval_node(tree.body, variables)
@@ -314,6 +339,23 @@ def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
         return variables[node.id]
     if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPERATORS:
         return _SAFE_OPERATORS[type(node.op)](_eval_node(node.left, variables), _eval_node(node.right, variables))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
+        return _UNARY_OPERATORS[type(node.op)](_eval_node(node.operand, variables))
+    if isinstance(node, ast.Compare):
+        left = _eval_node(node.left, variables)
+        for op, comparator in zip(node.ops, node.comparators):
+            if type(op) not in _COMPARE_OPERATORS:
+                raise WorkflowExecutionError("unsupported code expression")
+            right = _eval_node(comparator, variables)
+            if not _COMPARE_OPERATORS[type(op)](left, right):
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.And):
+            return all(bool(_eval_node(value, variables)) for value in node.values)
+        if isinstance(node.op, ast.Or):
+            return any(bool(_eval_node(value, variables)) for value in node.values)
     if isinstance(node, ast.Subscript):
         value = _eval_node(node.value, variables)
         key = _eval_node(node.slice, variables)

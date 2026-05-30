@@ -17,6 +17,10 @@ type AgentWorkflowRepo struct {
 	db *sqlx.DB
 }
 
+type workflowRunGetter interface {
+	GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
+}
+
 func NewAgentWorkflowRepo(db *sqlx.DB) *AgentWorkflowRepo {
 	return &AgentWorkflowRepo{db: db}
 }
@@ -396,7 +400,13 @@ SELECT
 FROM agent_tools
 WHERE code = $1
   AND (user_id = $2 OR user_id IS NULL OR is_public = TRUE)
-ORDER BY user_id NULLS LAST
+ORDER BY
+    CASE
+        WHEN user_id = $2 THEN 0
+        WHEN user_id IS NULL THEN 1
+        ELSE 2
+    END,
+    id ASC
 LIMIT 1`, code, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -721,6 +731,55 @@ LIMIT 1`, runID, userID)
 	return &run, nil
 }
 
+func (r *AgentWorkflowRepo) findRunByIDInternal(ctx context.Context, getter workflowRunGetter, runID int64) (*model.AgentWorkflowRun, error) {
+	var run model.AgentWorkflowRun
+	err := getter.GetContext(ctx, &run, `
+SELECT
+    r.id,
+    r.workflow_id,
+    r.version,
+    r.user_id,
+    r.status,
+    r.simulated,
+    r.inputs::text AS inputs,
+    r.outputs::text AS outputs,
+    r.current_node,
+    r.paused_reason,
+    r.started_at,
+    r.finished_at,
+    r.duration_ms,
+    r.total_node_count,
+    r.prompt_tokens,
+    r.completion_tokens,
+    r.total_cost_usd,
+    r.error_message,
+    r.retry_of_run_id,
+    r.resume_from_node,
+    r.cancel_requested,
+    r.source_type,
+    r.source_ref,
+    r.redaction_policy,
+    r.max_tokens,
+    r.max_cost_usd,
+    r.max_duration_ms,
+    r.max_nodes,
+    r.error_code,
+    r.error_category,
+    r.retryable,
+    r.canonicalized_workflow_id,
+    r.created_at
+FROM agent_workflow_runs r
+WHERE r.id = $1
+LIMIT 1`, runID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &run, nil
+}
+
 func (r *AgentWorkflowRepo) ListRunLogs(ctx context.Context, userID, runID int64) ([]model.AgentWorkflowNodeLog, error) {
 	if run, err := r.FindRunByID(ctx, userID, runID); err != nil || run == nil {
 		return nil, err
@@ -877,6 +936,8 @@ SET
     started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
     duration_ms = GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - COALESCE(started_at, created_at))) * 1000)::int)
 WHERE id = $1
+  AND cancel_requested = FALSE
+  AND status NOT IN ('cancelled', 'success', 'failed', 'budget_exceeded')
 RETURNING
     id,
     workflow_id,
@@ -923,6 +984,15 @@ RETURNING
 		req.CompletionTokens,
 		req.TotalCostUSD,
 	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			currentRun, findErr := r.findRunByIDInternal(ctx, tx, req.RunID)
+			if findErr != nil {
+				return nil, findErr
+			}
+			if currentRun != nil {
+				return currentRun, nil
+			}
+		}
 		return nil, err
 	}
 
@@ -1022,6 +1092,7 @@ FROM agent_workflows w
 WHERE r.id = $1
   AND w.id = r.workflow_id
   AND (r.user_id = $2 OR w.user_id = $2)
+  AND r.status = 'paused'
 RETURNING
     r.id,
     r.workflow_id,

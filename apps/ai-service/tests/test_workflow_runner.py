@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from app.api.routes.workflows import execute_workflow
+from app.api.routes.workflows import _coerce_post_id, _eval_safe_expression, execute_workflow
 from app.workflows import WorkflowDefinition, WorkflowExecutionRequest, WorkflowNode, WorkflowRunner
-from app.workflows.runner import evaluate_condition, get_path, resolve_template
+from app.workflows.runner import WorkflowExecutionError, evaluate_condition, get_path, resolve_template
 
 
 def _workflow(
@@ -188,6 +188,27 @@ def test_evaluate_condition(expression: str, want: bool) -> None:
 def test_evaluate_condition_rejects_unsupported_expression(expression: str) -> None:
     with pytest.raises(ValueError):
         evaluate_condition(expression, {"inputs": {"score": 1}})
+
+
+@pytest.mark.parametrize(
+    ("expression", "want"),
+    [
+        ("inputs.score >= 0.8 and not inputs.blocked", True),
+        ("inputs.score < 0.8 or inputs.flag", False),
+        ("-inputs.delta", -3),
+        ("0 < inputs.score < 2", True),
+    ],
+)
+def test_safe_code_expression_supports_reviewed_operators(expression: str, want: Any) -> None:
+    variables = {"inputs": {"score": 1, "blocked": False, "flag": False, "delta": 3}, "nodes": {}}
+
+    assert _eval_safe_expression(expression, variables) == want
+
+
+@pytest.mark.parametrize("post_id", ["abc", "1.5", "", True])
+def test_kb_post_id_rejects_non_integer_values(post_id: Any) -> None:
+    with pytest.raises(WorkflowExecutionError, match="kb_get_post id must be integer"):
+        _coerce_post_id(post_id)
 
 
 @pytest.mark.parametrize(
