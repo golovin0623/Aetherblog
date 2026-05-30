@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -173,6 +174,59 @@ def _completion_kwargs(
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
     return kwargs
+
+
+def _effective_max_tokens(configured: int | None, requested: int | None) -> int | None:
+    values = [value for value in (configured, requested) if value is not None and value > 0]
+    if not values:
+        return None
+    return min(values)
+
+
+def _stringify_messages_for_budget(messages: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        else:
+            parts.append(str(content))
+    return "\n".join(parts)
+
+
+def _budgeted_max_tokens(
+    *,
+    configured_max_tokens: int | None,
+    requested_max_tokens: int | None,
+    max_cost_usd: float | None,
+    messages: list[dict[str, Any]],
+    input_cost_per_1m: float | None,
+    output_cost_per_1m: float | None,
+    cached_input_cost_per_1m: float | None,
+) -> int | None:
+    max_tokens = _effective_max_tokens(configured_max_tokens, requested_max_tokens)
+    if max_cost_usd is None:
+        return max_tokens
+    if max_cost_usd <= 0:
+        raise ValueError("budget exceeded: maxCostUsd")
+
+    effective_input_cost = cached_input_cost_per_1m or input_cost_per_1m
+    if effective_input_cost is not None and effective_input_cost > 0:
+        from app.services.usage_logger import estimate_tokens
+
+        prompt_tokens = estimate_tokens(_stringify_messages_for_budget(messages))
+        prompt_cost = (prompt_tokens / 1_000_000) * effective_input_cost
+        if prompt_cost >= max_cost_usd:
+            raise ValueError("budget exceeded: maxCostUsd")
+        remaining_cost = max_cost_usd - prompt_cost
+    else:
+        remaining_cost = max_cost_usd
+
+    if output_cost_per_1m is None or output_cost_per_1m <= 0:
+        return max_tokens
+
+    affordable_output_tokens = max(1, math.floor((remaining_cost / output_cost_per_1m) * 1_000_000))
+    return _effective_max_tokens(max_tokens, affordable_output_tokens)
 
 
 class LlmRouter:
@@ -772,6 +826,8 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
         allow_override: bool = True,
+        max_tokens: int | None = None,
+        max_cost_usd: float | None = None,
     ) -> str:
         """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。
 
@@ -799,6 +855,15 @@ class LlmRouter:
             return f"[mock:{resolved.model}]"
 
         messages = self._build_messages(prompt_template, normalized_variables, task_alias=model_alias)
+        budgeted_max_tokens = _budgeted_max_tokens(
+            configured_max_tokens=resolved.max_tokens,
+            requested_max_tokens=max_tokens,
+            max_cost_usd=max_cost_usd,
+            messages=messages,
+            input_cost_per_1m=resolved.input_cost_per_1m,
+            output_cost_per_1m=resolved.output_cost_per_1m,
+            cached_input_cost_per_1m=resolved.cached_input_cost_per_1m,
+        )
 
         # SUMMARY-LONGER-THAN-SOURCE 排查需求: 调用前打印完整请求报文
         # (脱敏 api_key, 截断 message content), 让线上"实际发出去的是什么"
@@ -823,7 +888,7 @@ class LlmRouter:
                 **_completion_kwargs(
                     model=resolved.model,
                     temperature=resolved.temperature,
-                    max_tokens=resolved.max_tokens,
+                    max_tokens=budgeted_max_tokens,
                 ),
             )
             content = response.choices[0].message.content
@@ -835,7 +900,7 @@ class LlmRouter:
                         "model": resolved.model,
                         "response_chars": len(content or ""),
                         "response_snippet": (content or "")[:400],
-                        "max_tokens": resolved.max_tokens,
+                        "max_tokens": budgeted_max_tokens,
                     }
                 },
             )
@@ -870,6 +935,15 @@ class LlmRouter:
                             }
                         },
                     )
+                    fallback_max_tokens = _budgeted_max_tokens(
+                        configured_max_tokens=resolved.max_tokens,
+                        requested_max_tokens=max_tokens,
+                        max_cost_usd=max_cost_usd,
+                        messages=messages,
+                        input_cost_per_1m=fallback_routing.model.input_cost_per_1m,
+                        output_cost_per_1m=fallback_routing.model.output_cost_per_1m,
+                        cached_input_cost_per_1m=fallback_routing.model.cached_input_cost_per_1m,
+                    )
                     response = await acompletion(
                         model=fallback_model,
                         messages=messages,
@@ -878,7 +952,7 @@ class LlmRouter:
                         **_completion_kwargs(
                             model=fallback_model,
                             temperature=resolved.temperature,
-                            max_tokens=resolved.max_tokens,
+                            max_tokens=fallback_max_tokens,
                         ),
                     )
                     return response.choices[0].message.content or ""

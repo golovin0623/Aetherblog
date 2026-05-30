@@ -31,7 +31,13 @@ async def execute_workflow(
         run_id=payload.runId,
         simulate_external=payload.simulateExternal,
     )
-    return ApiResponse(data=result)
+    return ApiResponse(data=_normalize_budget_status(result))
+
+
+def _normalize_budget_status(result: WorkflowExecutionResult) -> WorkflowExecutionResult:
+    if result.status == "failed" and "budget" in (result.errorMessage or "").lower():
+        return result.model_copy(update={"status": "budget_exceeded"})
+    return result
 
 
 def _resolve_workflow_user_id(user: Any, forwarded: str | None) -> int | None:
@@ -54,10 +60,7 @@ def _resolve_workflow_user_id(user: Any, forwarded: str | None) -> int | None:
 async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None) -> WorkflowRunner:
     tools = default_tools()
     tool_snapshots = {item.code: item for item in payload.tools if item.enabled}
-    needs_db = any(
-        node.type == "tool" and str(node.data.get("toolCode") or "") in {"kb_get_post", "kb_search"}
-        for node in payload.definition.nodes
-    )
+    needs_db = any(_node_uses_kb_tool(node) for node in payload.definition.nodes)
     pool = await get_pg_pool() if needs_db and not payload.simulateExternal else None
     if pool is not None:
         tools["kb_get_post"] = _kb_get_post_tool(pool, user_id)
@@ -77,10 +80,25 @@ async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None) 
 
     return WorkflowRunner(
         tools=tools,
-        llm_executor=_llm_executor(llm_router, user_id) if llm_router is not None else None,
-        agent_executor=_agent_executor(llm_router, tools, user_id) if llm_router is not None else None,
+        llm_executor=_llm_executor(llm_router, user_id, payload.budget.maxTokens, payload.budget.maxCostUsd)
+        if llm_router is not None
+        else None,
+        agent_executor=_agent_executor(llm_router, tools, user_id, payload.budget.maxTokens, payload.budget.maxCostUsd)
+        if llm_router is not None
+        else None,
         code_executor=_safe_code_executor,
     )
+
+
+def _node_uses_kb_tool(node: WorkflowNode) -> bool:
+    kb_tools = {"kb_get_post", "kb_search"}
+    if node.type == "tool":
+        return str(node.data.get("toolCode") or "") in kb_tools
+    if node.type == "agent":
+        allowed = node.data.get("allowedTools") or node.data.get("allowed_tools") or []
+        if isinstance(allowed, list):
+            return any(str(tool_code) in kb_tools for tool_code in allowed)
+    return False
 
 
 def _kb_get_post_tool(pool: Any, user_id: int | None):
@@ -222,7 +240,7 @@ def _http_tool(config: dict[str, Any], timeout_ms: int | None):
     return tool
 
 
-def _llm_executor(llm_router: LlmRouter | None, user_id: int | None):
+def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, max_tokens: int | None, max_cost_usd: float | None):
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
             raise WorkflowExecutionError("llm executor is not connected")
@@ -238,13 +256,21 @@ def _llm_executor(llm_router: LlmRouter | None, user_id: int | None):
             model_id=model_id,
             provider_code=provider_code,
             allow_override=True,
+            max_tokens=max_tokens,
+            max_cost_usd=max_cost_usd,
         )
         return {"text": text, "model": model_id, "provider": provider_code}
 
     return executor
 
 
-def _agent_executor(llm_router: LlmRouter | None, tools: dict[str, Any], user_id: int | None):
+def _agent_executor(
+    llm_router: LlmRouter | None,
+    tools: dict[str, Any],
+    user_id: int | None,
+    max_tokens: int | None,
+    max_cost_usd: float | None,
+):
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
             raise WorkflowExecutionError("agent executor is not connected")
@@ -282,6 +308,8 @@ def _agent_executor(llm_router: LlmRouter | None, tools: dict[str, Any], user_id
             user_id=user_id,
             custom_prompt=prompt,
             allow_override=True,
+            max_tokens=max_tokens,
+            max_cost_usd=max_cost_usd,
         )
         return {"report": text, "tool_results": tool_results, "iterations": min(max_iterations, 1)}
 

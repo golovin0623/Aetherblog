@@ -5,8 +5,15 @@ from typing import Any
 
 import pytest
 
-from app.api.routes.workflows import _coerce_post_id, _eval_safe_expression, execute_workflow
-from app.workflows import WorkflowDefinition, WorkflowExecutionRequest, WorkflowNode, WorkflowRunner
+from app.api.routes.workflows import (
+    _coerce_post_id,
+    _eval_safe_expression,
+    _node_uses_kb_tool,
+    _normalize_budget_status,
+    execute_workflow,
+)
+from app.services.llm_router import _budgeted_max_tokens
+from app.workflows import WorkflowDefinition, WorkflowExecutionRequest, WorkflowExecutionResult, WorkflowNode, WorkflowRunner
 from app.workflows.runner import WorkflowExecutionError, evaluate_condition, get_path, resolve_template
 
 
@@ -209,6 +216,63 @@ def test_safe_code_expression_supports_reviewed_operators(expression: str, want:
 def test_kb_post_id_rejects_non_integer_values(post_id: Any) -> None:
     with pytest.raises(WorkflowExecutionError, match="kb_get_post id must be integer"):
         _coerce_post_id(post_id)
+
+
+def test_agent_allowed_kb_tool_requires_real_db_tool() -> None:
+    node = WorkflowNode(id="agent_1", type="agent", data={"allowedTools": ["kb_search"]})
+
+    assert _node_uses_kb_tool(node) is True
+
+
+def test_budgeted_max_tokens_honors_requested_token_limit() -> None:
+    assert (
+        _budgeted_max_tokens(
+            configured_max_tokens=200,
+            requested_max_tokens=50,
+            max_cost_usd=None,
+            messages=[{"role": "user", "content": "hello"}],
+            input_cost_per_1m=None,
+            output_cost_per_1m=None,
+            cached_input_cost_per_1m=None,
+        )
+        == 50
+    )
+
+
+def test_budgeted_max_tokens_caps_output_by_cost() -> None:
+    assert (
+        _budgeted_max_tokens(
+            configured_max_tokens=200,
+            requested_max_tokens=None,
+            max_cost_usd=0.00001,
+            messages=[{"role": "user", "content": "hello"}],
+            input_cost_per_1m=0,
+            output_cost_per_1m=10,
+            cached_input_cost_per_1m=None,
+        )
+        == 1
+    )
+
+
+def test_budgeted_max_tokens_rejects_exhausted_cost_budget() -> None:
+    with pytest.raises(ValueError, match="budget exceeded"):
+        _budgeted_max_tokens(
+            configured_max_tokens=200,
+            requested_max_tokens=None,
+            max_cost_usd=0,
+            messages=[{"role": "user", "content": "hello"}],
+            input_cost_per_1m=None,
+            output_cost_per_1m=None,
+            cached_input_cost_per_1m=None,
+        )
+
+
+def test_budget_failure_status_normalizes_to_budget_exceeded() -> None:
+    result = _normalize_budget_status(
+        WorkflowExecutionResult(status="failed", outputs={}, errorMessage="budget exceeded: maxCostUsd")
+    )
+
+    assert result.status == "budget_exceeded"
 
 
 @pytest.mark.parametrize(
