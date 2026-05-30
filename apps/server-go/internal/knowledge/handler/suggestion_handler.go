@@ -1,6 +1,6 @@
 // Atlas Phase 3 — Suggestion REST handler
 //
-// 路径 (admin.Group("/atlas")):
+// 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST   /suggestions                  创建（由 ai-service 回调或 admin demo UI）
 //   GET    /suggestions                  列表（kind / status / carrier_id 过滤）
 //   GET    /suggestions/:id              读
@@ -24,12 +24,20 @@ import (
 
 // SuggestionHandler 处理 /suggestions/*。
 type SuggestionHandler struct {
-	svc *atlassvc.AISuggestionService
+	svc   *atlassvc.AISuggestionService
+	kp    *atlassvc.KnowledgePointService
+	ann   *atlassvc.AnnotationService
+	atlas *atlassvc.AtlasService
 }
 
 // NewSuggestionHandler 创建。
-func NewSuggestionHandler(svc *atlassvc.AISuggestionService) *SuggestionHandler {
-	return &SuggestionHandler{svc: svc}
+func NewSuggestionHandler(
+	svc *atlassvc.AISuggestionService,
+	kp *atlassvc.KnowledgePointService,
+	ann *atlassvc.AnnotationService,
+	atlas *atlassvc.AtlasService,
+) *SuggestionHandler {
+	return &SuggestionHandler{svc: svc, kp: kp, ann: ann, atlas: atlas}
 }
 
 // Mount 挂到 /atlas 子组。
@@ -50,6 +58,9 @@ func (h *SuggestionHandler) Create(c echo.Context) error {
 	}
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	if err := h.assertSuggestionSourceScope(c, req.CarrierID, req.AnnotationID, req.FromKPID, req.ToKPID); err != nil {
+		return writeAtlasError(c, err)
 	}
 	authorID := currentAtlasUserID(c)
 	out, err := h.svc.Create(c.Request().Context(), atlassvc.CreateSuggestionInput{
@@ -78,7 +89,16 @@ func (h *SuggestionHandler) Create(c echo.Context) error {
 }
 
 func (h *SuggestionHandler) List(c echo.Context) error {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
 	f := atlasrepo.SuggestionFilter{}
+	authorID, err := scope.authorFilter(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	f.AuthorID = authorID
 	if v := c.QueryParam("kind"); v != "" {
 		f.Kind = &v
 	}
@@ -113,10 +133,17 @@ func (h *SuggestionHandler) Get(c echo.Context) error {
 	}
 	s, err := h.svc.Get(c.Request().Context(), id)
 	if err != nil {
-		return response.Error(c, err)
+		return err
 	}
 	if s == nil {
 		return response.FailWith(c, response.NotFound, "建议不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if !scope.canAccessAuthor(s.AuthorID) {
+		return response.FailWith(c, response.Forbidden, "无权访问该建议")
 	}
 	return response.OK(c, toSuggestionResponse(s))
 }
@@ -125,6 +152,9 @@ func (h *SuggestionHandler) Accept(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
+	}
+	if err := h.assertSuggestionScope(c, id); err != nil {
+		return writeAtlasError(c, err)
 	}
 	userID := currentAtlasUserID(c)
 	out, err := h.svc.Accept(c.Request().Context(), id, userID)
@@ -142,6 +172,9 @@ func (h *SuggestionHandler) Reject(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
 	}
+	if err := h.assertSuggestionScope(c, id); err != nil {
+		return writeAtlasError(c, err)
+	}
 	lu := middleware.GetLoginUser(c)
 	var uid int64
 	if lu != nil {
@@ -155,6 +188,117 @@ func (h *SuggestionHandler) Reject(c echo.Context) error {
 		return response.FailWith(c, response.NotFound, "建议不存在")
 	}
 	return response.OK(c, toSuggestionResponse(out))
+}
+
+func (h *SuggestionHandler) assertSuggestionScope(c echo.Context, id int64) error {
+	s, err := h.svc.Get(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if s == nil {
+		return atlasError(response.NotFound, "建议不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return err
+	}
+	if !scope.canAccessAuthor(s.AuthorID) {
+		return atlasError(response.Forbidden, "无权访问该建议")
+	}
+	return h.assertSuggestionSourceScope(c, s.CarrierID, s.AnnotationID, s.FromKPID, s.ToKPID)
+}
+
+func (h *SuggestionHandler) assertSuggestionSourceScope(
+	c echo.Context,
+	carrierID *int64,
+	annotationID *int64,
+	fromKPID *int64,
+	toKPID *int64,
+) error {
+	if carrierID != nil {
+		if err := h.assertCarrierScope(c, *carrierID); err != nil {
+			return err
+		}
+	}
+	if annotationID != nil {
+		if err := h.assertAnnotationScope(c, *annotationID); err != nil {
+			return err
+		}
+	}
+	if fromKPID != nil {
+		if err := h.assertKPScope(c, *fromKPID); err != nil {
+			return err
+		}
+	}
+	if toKPID != nil {
+		if err := h.assertKPScope(c, *toKPID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *SuggestionHandler) assertCarrierScope(c echo.Context, id int64) error {
+	if h.atlas == nil || h.atlas.Carriers() == nil {
+		return nil
+	}
+	carrier, err := h.atlas.Carriers().FindByID(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if carrier == nil {
+		return atlasError(response.NotFound, "载体不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return err
+	}
+	if !scope.canAccessOwner(carrier.OwnerID) {
+		return atlasError(response.Forbidden, "无权访问该载体")
+	}
+	return nil
+}
+
+func (h *SuggestionHandler) assertAnnotationScope(c echo.Context, id int64) error {
+	if h.ann == nil {
+		return nil
+	}
+	a, err := h.ann.Get(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if a == nil {
+		return atlasError(response.NotFound, "标注不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return err
+	}
+	if !scope.canAccessAuthor(a.AuthorID) {
+		return atlasError(response.Forbidden, "无权访问该标注")
+	}
+	return nil
+}
+
+func (h *SuggestionHandler) assertKPScope(c echo.Context, id int64) error {
+	if h.kp == nil {
+		return nil
+	}
+	k, err := h.kp.Get(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if k == nil {
+		return atlasError(response.NotFound, "知识点不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return err
+	}
+	if !scope.canAccessAuthor(k.AuthorID) {
+		return atlasError(response.Forbidden, "无权访问该知识点")
+	}
+	return nil
 }
 
 func toSuggestionResponse(s *atlasmodel.AISuggestion) atlasdto.SuggestionResponse {
@@ -176,9 +320,11 @@ func toSuggestionResponse(s *atlasmodel.AISuggestion) atlasdto.SuggestionRespons
 		TokensIn:             s.TokensIn,
 		TokensOut:            s.TokensOut,
 		CostUSD:              s.CostUSD,
+		Fingerprint:          s.Fingerprint,
 		Status:               s.Status,
 		ResolvedKPID:         s.ResolvedKPID,
 		ResolvedRelationID:   s.ResolvedRelationID,
+		AuthorID:             s.AuthorID,
 		CreatedAt:            s.CreatedAt,
 		UpdatedAt:            s.UpdatedAt,
 	}

@@ -36,6 +36,24 @@ func (r *CarrierRepo) FindBySourceURI(ctx context.Context, sourceURI string) (*m
 	return &c, nil
 }
 
+// FindBySourceURIForOwner 用 source_uri + owner 查找未删除载体。
+func (r *CarrierRepo) FindBySourceURIForOwner(ctx context.Context, sourceURI string, ownerID *int64) (*model.Carrier, error) {
+	var c model.Carrier
+	err := r.db.GetContext(ctx, &c,
+		`SELECT * FROM atlas_carriers
+		 WHERE source_uri=$1
+		   AND COALESCE(owner_id, 0) = COALESCE($2::bigint, 0)
+		   AND deleted=false
+		 LIMIT 1`, sourceURI, ownerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // FindByID 按 ID 查询未删除载体。
 func (r *CarrierRepo) FindByID(ctx context.Context, id int64) (*model.Carrier, error) {
 	var c model.Carrier
@@ -93,16 +111,17 @@ func (r *CarrierRepo) Create(ctx context.Context, c *model.Carrier, storageURI s
 	return &out, nil
 }
 
-// UpsertBySourceURI 原子地插入或返回已存在的 carrier，按 source_uri 唯一约束去重。
+// UpsertBySourceURI 原子地插入或返回已存在的 carrier，按 owner+source_uri 唯一索引去重。
 //
 // PR #724 review fix (Codex P1): GetOrCreateForNote 过去做 read-then-insert 没有锁，
 // 并发首次打开同一 note 会同时 miss + 同时 INSERT 造成 source_uri 重复 carrier。
-// 本方法走 INSERT ... ON CONFLICT (source_uri) DO UPDATE source_uri = EXCLUDED.source_uri
+// 本方法走 INSERT ... ON CONFLICT (COALESCE(owner_id,0), source_uri) DO UPDATE source_uri = EXCLUDED.source_uri
 // 模式 + xmax = 0 探测是否真插入。RETURNING 始终返回行（DO UPDATE 无副作用）。
 //
 // 返回 (carrier, justCreated, err)：
-//   justCreated=true 表示本次实际 INSERT，调用方需要再写一行 v1 carrier_version
-//   justCreated=false 表示行已存在，仅返回已有 carrier（含旧 hash），调用方按需做版本迁移
+//
+//	justCreated=true 表示本次实际 INSERT，调用方需要再写一行 v1 carrier_version
+//	justCreated=false 表示行已存在，仅返回已有 carrier（含旧 hash），调用方按需做版本迁移
 func (r *CarrierRepo) UpsertBySourceURI(ctx context.Context, c *model.Carrier, storageURI string) (*model.Carrier, bool, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -118,7 +137,7 @@ func (r *CarrierRepo) UpsertBySourceURI(ctx context.Context, c *model.Carrier, s
 			metadata, owner_id, status, status_message
 		)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT (source_uri) DO UPDATE
+		ON CONFLICT ((COALESCE(owner_id, 0)), source_uri) WHERE deleted=false DO UPDATE
 			SET source_uri = EXCLUDED.source_uri
 		RETURNING
 			id, type, source_uri, content_hash, title, author, language,

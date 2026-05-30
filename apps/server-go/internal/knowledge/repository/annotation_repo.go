@@ -65,6 +65,16 @@ func (r *AnnotationRepo) FindByCarrier(ctx context.Context, carrierID int64) ([]
 	return rows, err
 }
 
+// FindByCarrierForAuthor 列出某作者在 carrier 下的未删除标注。
+func (r *AnnotationRepo) FindByCarrierForAuthor(ctx context.Context, carrierID int64, authorID int64) ([]model.Annotation, error) {
+	rows := []model.Annotation{}
+	err := r.db.SelectContext(ctx, &rows,
+		`SELECT * FROM atlas_annotations
+		 WHERE carrier_id=$1 AND author_id=$2 AND deleted=false
+		 ORDER BY created_at ASC`, carrierID, authorID)
+	return rows, err
+}
+
 // UpdatePartial 部分更新（body / anchor_state / anchor_score / body_meta）。
 // 字段 nil 表示不动。
 func (r *AnnotationRepo) UpdatePartial(

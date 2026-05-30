@@ -1,12 +1,13 @@
 // Atlas — carrier_handler
 //
-// 路径 (admin.Group("/atlas")):
+// 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST /carriers/markdown       懒创建/返回 markdown 类型 carrier
 //   GET  /carriers/:id            读 carrier 详情
 
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -47,8 +48,15 @@ func (h *CarrierHandler) EnsureMarkdown(c echo.Context) error {
 	if md == nil {
 		return response.FailWith(c, response.InternalError, "markdown carrier service 未配置")
 	}
-	carrier, err := md.GetOrCreateForNote(c.Request().Context(), req.NoteID)
+	scope, err := currentAtlasScope(c)
 	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := md.GetOrCreateForNoteAs(c.Request().Context(), req.NoteID, scope.UserID, scope.CanAdmin)
+	if err != nil {
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return response.FailWith(c, response.Forbidden, "无权访问该笔记的 Atlas 载体")
+		}
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OK(c, toCarrierResponse(carrier))
@@ -66,6 +74,13 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	}
 	if carrier == nil {
 		return response.FailWith(c, response.NotFound, "载体不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if !scope.canAccessOwner(carrier.OwnerID) {
+		return response.FailWith(c, response.Forbidden, "无权访问该载体")
 	}
 	return response.OK(c, toCarrierResponse(carrier))
 }

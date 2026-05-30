@@ -75,6 +75,12 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 	if in.Kind == "kp" && in.ProposedTitle == nil {
 		return nil, errors.New("kp 建议必须有 proposed_title")
 	}
+	if in.Kind == "kp" && in.CarrierID == nil && in.AnnotationID == nil {
+		return nil, errors.New("kp 建议必须绑定 carrier 或 annotation 作为证据来源")
+	}
+	if in.ProposedKPType != nil && !allowedKPTypes[*in.ProposedKPType] {
+		return nil, fmt.Errorf("不支持的 proposed kp type: %s", *in.ProposedKPType)
+	}
 	if in.Kind == "relation" {
 		if in.FromKPID == nil || in.ToKPID == nil || in.ProposedRelationType == nil {
 			return nil, errors.New("relation 建议必须有 from/to/type")
@@ -103,6 +109,24 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 		CostUSD:              in.CostUSD,
 		Status:               "pending",
 		AuthorID:             in.AuthorID,
+	}
+	fingerprint := fingerprintSuggestion(sug)
+	sug.Fingerprint = &fingerprint
+	if in.AuthorID != nil && *in.AuthorID > 0 {
+		ignored, err := s.sug.IsIgnored(ctx, fingerprint, *in.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		if ignored {
+			return nil, errors.New("该建议已被用户忽略，不再加入 inbox")
+		}
+	}
+	existing, err := s.sug.FindPendingByFingerprint(ctx, fingerprint, in.AuthorID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
 	}
 	return s.sug.Create(ctx, sug)
 }
@@ -218,6 +242,16 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 			return nil, fmt.Errorf("insert relation: %w", err)
 		}
 		resolvedRelID = &newID
+
+		if sug.AnnotationID != nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO atlas_relation_evidence (relation_id, annotation_id)
+				VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				newID, *sug.AnnotationID,
+			); err != nil {
+				return nil, fmt.Errorf("link relation evidence: %w", err)
+			}
+		}
 	}
 
 	// MarkResolved 同事务

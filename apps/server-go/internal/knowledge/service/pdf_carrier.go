@@ -58,11 +58,6 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 	}
 	uri := PdfSourceURI(mediaFileID)
 
-	existing, err := s.carriers.FindBySourceURI(ctx, uri)
-	if err != nil {
-		return nil, fmt.Errorf("find carrier: %w", err)
-	}
-
 	media, err := s.media.GetPdfSnapshot(ctx, mediaFileID)
 	if err != nil {
 		return nil, fmt.Errorf("load media %d: %w", mediaFileID, err)
@@ -73,6 +68,11 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 	// 占位指纹：mediaID + size。Phase 1 后期换为对文件字节流计算的真 sha256。
 	hash := contentSHA256(fmt.Sprintf("media://%d:size=%d", media.ID, media.FileSize))
 	metadata := []byte(fmt.Sprintf(`{"fileUrl":%q,"fileSize":%d}`, media.FileURL, media.FileSize))
+
+	existing, err := s.carriers.FindBySourceURIForOwner(ctx, uri, media.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("find carrier: %w", err)
+	}
 
 	// PR #725 review fix (Gemini medium, pdf_carrier.go:78): 文件重新上传导致 size 变化时，
 	// existing.ContentHash 不再匹配。过去直接返回 existing 会让 carrier hash + metadata 永久 stale
@@ -102,7 +102,7 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 		Status:        "ingesting",
 		StatusMessage: ptrStr("等待 pdfjs 文本抽取（Phase 1 后期）"),
 	}
-	created, err := s.carriers.Create(ctx, c, uri)
+	created, _, err := s.carriers.UpsertBySourceURI(ctx, c, uri)
 	if err != nil {
 		return nil, fmt.Errorf("create pdf carrier: %w", err)
 	}

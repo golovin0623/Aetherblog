@@ -18,10 +18,10 @@ import {
   Compass,
   GitBranch,
   Highlighter,
-  Loader2,
   Plus,
   Trash2,
 } from 'lucide-react';
+import { Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
 import type {
@@ -34,6 +34,7 @@ import type {
 import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
 
 import { atlasService } from '@/services/atlasService';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 interface EvidenceRow {
@@ -41,6 +42,8 @@ interface EvidenceRow {
   role: string;
   annotation?: AtlasAnnotation;
 }
+
+const RELATION_OPTIONS = ATLAS_RELATION_TYPES.map((type) => ({ value: type, label: type }));
 
 export default function KnowledgePointPage() {
   const { id } = useParams<{ id: string }>();
@@ -181,8 +184,10 @@ export default function KnowledgePointPage() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+      <div className="space-y-4 p-6">
+        <Skeleton className="h-28 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        <Skeleton className="h-40 rounded-2xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        <Skeleton className="h-56 rounded-2xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
       </div>
     );
   }
@@ -342,29 +347,21 @@ export default function KnowledgePointPage() {
           }}
           className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2"
         >
-          <select
+          <Select
             value={newRel.type}
-            onChange={(e) => setNewRel((s) => ({ ...s, type: e.target.value as AtlasRelationType }))}
-            className="h-9 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-2 text-xs"
-          >
-            {ATLAS_RELATION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <select
-            value={newRel.toKpId ?? ''}
-            onChange={(e) => setNewRel((s) => ({ ...s, toKpId: e.target.value ? Number(e.target.value) : null }))}
-            className="h-9 truncate rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-2 text-xs"
-          >
-            <option value="">选择目标知识点</option>
-            {otherKPs.map((k) => (
-              <option key={k.id} value={k.id}>
-                #{k.id} · {k.title}
-              </option>
-            ))}
-          </select>
+            onValueChange={(next) => setNewRel((s) => ({ ...s, type: next as AtlasRelationType }))}
+            options={RELATION_OPTIONS}
+            size="sm"
+            ariaLabel="关系类型"
+          />
+          <Select
+            value={newRel.toKpId ? String(newRel.toKpId) : ''}
+            onValueChange={(next) => setNewRel((s) => ({ ...s, toKpId: next ? Number(next) : null }))}
+            options={otherKPs.map((k) => ({ value: String(k.id), label: `#${k.id} · ${k.title}` }))}
+            placeholder="选择目标知识点"
+            size="sm"
+            ariaLabel="目标知识点"
+          />
           <button
             type="submit"
             className="inline-flex h-9 items-center gap-1 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"

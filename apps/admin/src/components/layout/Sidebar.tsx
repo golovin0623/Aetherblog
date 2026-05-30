@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Library,
   Compass,
+  GitBranch,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -71,6 +72,9 @@ const navSections: Array<{
       { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
       { path: '/notes', icon: BookOpen, label: '智能笔记' },
       { path: '/atlas', icon: Compass, label: '知识图集' },
+      { path: '/atlas/kps', icon: Library, label: '图集知识点' },
+      { path: '/atlas/graph', icon: GitBranch, label: '图谱视图' },
+      { path: '/atlas/suggestions', icon: Sparkles, label: '图集建议' },
       { path: '/intelligence/knowledge', icon: Library, label: '知识库' },
       { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
       { path: '/ai-tools', icon: Sparkles, label: '写作助手' },

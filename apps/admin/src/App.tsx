@@ -37,6 +37,7 @@ const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWor
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
 const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
+const AtlasKnowledgePointsPage = lazy(() => import('./pages/atlas/KnowledgePointsPage'));
 const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderPage'));
 const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
 const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
@@ -127,6 +128,7 @@ function App() {
               <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
               <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
               <Route path="atlas" element={<AtlasPage />} />
+              <Route path="atlas/kps" element={<AtlasKnowledgePointsPage />} />
               <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
               <Route path="atlas/graph" element={<AtlasGraphPage />} />

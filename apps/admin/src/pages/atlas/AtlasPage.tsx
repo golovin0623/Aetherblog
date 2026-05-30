@@ -1,214 +1,356 @@
-// Atlas (Aether Knowledge) 入口页 —— Phase 0 占位
-//
-// 当前阶段只显示模块标题 + 健康自检 + 路线图指引。Phase 1 起会被替换为
-// 阅读器（PDF / Markdown）+ 标注侧栏 + 右侧 KP 抽屉。
-//
-// 路由：/atlas
-// 设计文档：docs/plan/task-aether-knowledge-system.md §3 Phase 0 A0-3 验收
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  BookOpen,
+  Compass,
+  Database,
+  GitBranch,
+  Highlighter,
+  Library,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import { Select } from '@aetherblog/ui';
 
-import { useEffect, useState } from 'react';
-import { Compass, Database, FlaskConical, GitBranch, Loader2, ShieldCheck } from 'lucide-react';
+import type { AtlasHealthResponse, AtlasKnowledgePoint, AtlasTypedRelation } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
-import { atlasService } from '@/services/atlasService';
-import type { AtlasHealthResponse } from '@aetherblog/types';
+import { Skeleton } from '@/components/ui/skeleton';
+import { atlasService, type AtlasSuggestion } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 
-type HealthState =
+type AtlasScopeFilter = 'all' | 'mine';
+
+type DashboardState =
   | { kind: 'loading' }
-  | { kind: 'ok'; data: AtlasHealthResponse }
+  | {
+      kind: 'ok';
+      health: AtlasHealthResponse;
+      kps: AtlasKnowledgePoint[];
+      suggestions: AtlasSuggestion[];
+      relations: AtlasTypedRelation[];
+    }
   | { kind: 'error'; message: string };
 
-const PHASE_MILESTONES: Array<{
-  phase: number;
-  title: string;
-  outcome: string;
-  status: 'in-progress' | 'planned';
-}> = [
-  { phase: 0, title: '数据骨架与栈决策', outcome: '5 张核心表 + atlas 路由 + 决策记录', status: 'in-progress' },
-  { phase: 1, title: '标注层 MVP', outcome: 'PDF / Markdown Carrier + W3C 多选择器 + 鲁棒锚定', status: 'planned' },
-  { phase: 2, title: '知识点与有类型关系', outcome: '一阶 KP + 9 种 typed relation + 图谱视图 v1', status: 'planned' },
-  { phase: 3, title: 'AI 辅助建图', outcome: '复用 kb_indexer / kb_recall + AI 建议卡片', status: 'planned' },
-  { phase: 4, title: '多模态扩展', outcome: '视频 / 音频 / 网页 / 图像 + transcript-as-primary', status: 'planned' },
-  { phase: 5, title: '发现与激活', outcome: 'FSRS 复习 + 上下文推荐 + 主动关联', status: 'planned' },
+const QUICK_LINKS = [
+  {
+    title: '知识点',
+    description: '搜索、筛选和进入 KP 详情',
+    href: '/atlas/kps',
+    icon: Library,
+  },
+  {
+    title: '图谱',
+    description: '按类型过滤并检查节点关系',
+    href: '/atlas/graph',
+    icon: GitBranch,
+  },
+  {
+    title: 'AI 建议',
+    description: '处理待确认的 KP / relation 候选',
+    href: '/atlas/suggestions',
+    icon: Sparkles,
+  },
+  {
+    title: '阅读器',
+    description: '从智能笔记进入 Reader 并创建标注',
+    href: '/notes',
+    icon: Highlighter,
+  },
+];
+
+const SCOPE_OPTIONS = [
+  { value: 'all', label: '全部可访问' },
+  { value: 'mine', label: '仅我的' },
 ];
 
 export default function AtlasPage() {
-  const [state, setState] = useState<HealthState>({ kind: 'loading' });
+  const [state, setState] = useState<DashboardState>({ kind: 'loading' });
+  const [scope, setScope] = useState<AtlasScopeFilter>('all');
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await atlasService.health();
+        const [healthRes, kpRes, suggestionRes, graphRes] = await Promise.all([
+          atlasService.health(),
+          atlasService.listKnowledgePoints({ limit: 100, scope }),
+          atlasService.listSuggestions({ status: 'pending', limit: 100, scope }),
+          atlasService.getGraph(500, { scope }),
+        ]);
         if (cancelled) return;
-        setState({ kind: 'ok', data: res.data });
+        setState({
+          kind: 'ok',
+          health: healthRes.data,
+          kps: kpRes.data ?? [],
+          suggestions: suggestionRes.data ?? [],
+          relations: graphRes.data?.edges ?? [],
+        });
       } catch (err) {
         if (cancelled) return;
-        setState({ kind: 'error', message: extractApiErrorMessage(err, 'Atlas 健康自检失败') });
+        setState({ kind: 'error', message: extractApiErrorMessage(err, 'Atlas 工作台加载失败') });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scope]);
+
+  const summary = useMemo(() => {
+    if (state.kind !== 'ok') return null;
+    const activeKps = state.kps.filter((k) => !k.archived && k.status !== 'archived');
+    const relationDensity = activeKps.length > 0 ? state.relations.length / activeKps.length : 0;
+    const related = new Set<number>();
+    state.relations.forEach((r) => {
+      related.add(r.fromKpId);
+      related.add(r.toKpId);
+    });
+    const orphanCount = activeKps.filter((k) => !related.has(k.id)).length;
+    const aiKps = activeKps.filter((k) => k.provenance === 'ai_suggested').length;
+    return {
+      activeKps,
+      relationDensity,
+      orphanCount,
+      aiKps,
+    };
+  }, [state]);
 
   return (
     <div className="space-y-6">
       <AdminModuleHeader
-        title="Aether Knowledge"
-        description="多模态个人知识图集 · Atlas — 输入流（载体 / 标注 / 知识点 / 有类型关系）"
+        title="Aether Atlas"
+        description="可溯源知识图集工作台 · Carrier / Annotation / KnowledgePoint / Typed Relation"
         icon={Compass}
-        currentLabel="Phase 0 · 数据骨架"
+        currentLabel="Dashboard"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-36">
+              <Select
+                value={scope}
+                onValueChange={(next) => setScope(next as AtlasScopeFilter)}
+                options={SCOPE_OPTIONS}
+                size="sm"
+                ariaLabel="Atlas 数据范围"
+              />
+            </div>
+            <Link
+              to="/atlas/kps"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]"
+            >
+              <Library className="h-3.5 w-3.5" />
+              管理知识点
+            </Link>
+          </div>
+        }
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <HealthCard state={state} />
-        <InfoCard
-          icon={Database}
-          title="Schema 基线"
-          lines={[
-            'migration 000062 — atlas_core',
-            'migration 000063 — atlas_permissions',
-            '5 张核心表 + 11 索引 + 3 权限码',
-          ]}
-        />
-        <InfoCard
-          icon={ShieldCheck}
-          title="权限"
-          lines={[
-            'content.atlas.read · content.atlas.write · content.atlas.admin',
-            'Phase 0 仅绑定 ADMIN 角色',
-          ]}
-        />
-      </section>
+      {state.kind === 'loading' ? (
+        <DashboardSkeleton />
+      ) : state.kind === 'error' ? (
+        <section className="rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] p-4 text-sm text-[var(--ink-primary)]">
+          {state.message}
+        </section>
+      ) : (
+        <>
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricTile icon={Database} label="Active KP" value={String(summary?.activeKps.length ?? 0)} />
+            <MetricTile icon={GitBranch} label="Relations" value={String(state.relations.length)} />
+            <MetricTile
+              icon={ShieldCheck}
+              label="Relation density"
+              value={(summary?.relationDensity ?? 0).toFixed(2)}
+              tone={(summary?.relationDensity ?? 0) >= 0.6 ? 'good' : 'warn'}
+            />
+            <MetricTile
+              icon={Sparkles}
+              label="Pending suggestions"
+              value={String(state.suggestions.length)}
+              tone={state.suggestions.length > 0 ? 'warn' : 'neutral'}
+            />
+          </section>
 
-      <section className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-5 shadow-sm">
-        <header className="mb-4 flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--ink-primary)]">
-            <GitBranch className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-base font-semibold text-[var(--ink-primary)]">5 阶段路线图</h2>
-            <p className="text-xs text-[var(--ink-secondary)]">
-              落地手册：<code className="font-mono">docs/plan/task-aether-knowledge-system.md</code> ·
-              任务命名前缀 <code className="font-mono">task-knowledge-*</code>
-            </p>
-          </div>
-        </header>
-        <ol className="space-y-2">
-          {PHASE_MILESTONES.map((item) => (
-            <li
-              key={item.phase}
-              className={cn(
-                'flex items-start gap-3 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] bg-[var(--bg-substrate)] p-3 text-sm',
-                item.status === 'in-progress' && 'ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
-              )}
-            >
-              <span
-                className={cn(
-                  'mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs',
-                  item.status === 'in-progress'
-                    ? 'bg-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] text-[var(--ink-primary)]'
-                    : 'bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)]'
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[var(--ink-primary)]">工作区入口</h2>
+                    <p className="text-xs text-[var(--ink-secondary)]">从真实子流程进入，不再保留旧版占位操作。</p>
+                  </div>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    module={state.health.module} · phase={state.health.phase}
+                  </span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {QUICK_LINKS.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        to={item.href}
+                        className="group flex min-h-[92px] items-start gap-3 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] p-3 transition-colors hover:border-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,var(--bg-substrate))]"
+                      >
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--ink-primary)]">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-[var(--ink-primary)]">{item.title}</span>
+                          <span className="mt-1 block text-xs leading-relaxed text-[var(--ink-secondary)]">{item.description}</span>
+                        </span>
+                        <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--ink-primary)]" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-[var(--ink-primary)]">最近知识点</h2>
+                  <Link to="/atlas/kps" className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]">
+                    查看全部
+                  </Link>
+                </div>
+                {state.kps.length === 0 ? (
+                  <EmptyLine icon={BookOpen} text="还没有知识点。先从智能笔记进入阅读器创建标注，再提炼 KP。" />
+                ) : (
+                  <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+                    {state.kps.slice(0, 6).map((kp) => (
+                      <li key={kp.id} className="py-2.5">
+                        <Link to={`/atlas/kp/${kp.id}`} className="group flex items-center justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-[var(--ink-primary)] group-hover:underline">
+                              {kp.title}
+                            </span>
+                            <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-muted)]">
+                              <Chip>{kp.type}</Chip>
+                              <Chip>{kp.status}</Chip>
+                              <Chip>{kp.provenance}</Chip>
+                            </span>
+                          </span>
+                          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              >
-                P{item.phase}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-[var(--ink-primary)]">{item.title}</p>
-                <p className="text-xs text-[var(--ink-secondary)]">{item.outcome}</p>
-              </div>
-              <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-secondary)]">
-                {item.status === 'in-progress' ? '进行中' : '规划'}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
+              </section>
+            </div>
 
-      <section className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] p-5">
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--signal-info)_18%,transparent)] text-[var(--ink-primary)]">
-            <FlaskConical className="h-4 w-4" />
-          </span>
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-[var(--ink-primary)]">Phase 0 占位</h3>
-            <p className="text-xs leading-relaxed text-[var(--ink-secondary)]">
-              此页是 Phase 0 的占位入口。当前阶段 schema 与权限已就绪，
-              但阅读视图、标注、知识点和图谱视图都在 Phase 1+ 实现，
-              <strong> 严禁在此页提交真实用户操作。 </strong>
-              对应红线见落地手册 §0.2 R5（现状破坏）。
-            </p>
-          </div>
-        </div>
+            <aside className="space-y-4">
+              <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+                <h2 className="text-sm font-semibold text-[var(--ink-primary)]">图谱健康</h2>
+                <dl className="mt-3 space-y-3 text-xs">
+                  <HealthRow label="孤立 KP" value={summary?.orphanCount ?? 0} warn={(summary?.orphanCount ?? 0) > 0} />
+                  <HealthRow label="AI 生成 KP" value={summary?.aiKps ?? 0} />
+                  <HealthRow label="待处理建议" value={state.suggestions.length} warn={state.suggestions.length > 0} />
+                </dl>
+              </section>
+
+              <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-[var(--ink-primary)]">待处理建议</h2>
+                  <Link to="/atlas/suggestions" className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]">
+                    处理
+                  </Link>
+                </div>
+                {state.suggestions.length === 0 ? (
+                  <EmptyLine icon={Sparkles} text="当前没有 pending 建议。" />
+                ) : (
+                  <ul className="space-y-2">
+                    {state.suggestions.slice(0, 4).map((item) => (
+                      <li key={item.id} className="rounded-lg bg-[var(--bg-substrate)] p-3 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <Chip>{item.kind}</Chip>
+                          <span className="font-mono text-[10px] text-[var(--ink-muted)]">#{item.id}</span>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-[var(--ink-primary)]">
+                          {item.kind === 'kp'
+                            ? item.proposedTitle ?? '(无标题建议)'
+                            : `KP #${item.fromKpId} -> KP #${item.toKpId}`}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </aside>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-24 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        ))}
+      </section>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Skeleton className="h-72 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        <Skeleton className="h-72 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
       </section>
     </div>
   );
 }
 
-function HealthCard({ state }: { state: HealthState }) {
-  const baseClass =
-    'rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-5 shadow-sm';
-
-  if (state.kind === 'loading') {
-    return (
-      <article className={baseClass}>
-        <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-secondary)]">健康自检</p>
-        <div className="mt-3 flex items-center gap-2 text-sm text-[var(--ink-secondary)]">
-          <Loader2 className="h-4 w-4 animate-spin" /> 探测 /api/v1/admin/atlas/health …
-        </div>
-      </article>
-    );
-  }
-
-  if (state.kind === 'error') {
-    return (
-      <article className={cn(baseClass, 'border-[color-mix(in_oklch,var(--signal-danger)_25%,transparent)]')}>
-        <p className="text-xs uppercase tracking-[0.18em] text-[var(--signal-danger)]">健康自检失败</p>
-        <p className="mt-3 text-sm text-[var(--ink-primary)]">{state.message}</p>
-        <p className="mt-2 text-xs text-[var(--ink-secondary)]">
-          常见原因：migrations 000062/000063 未执行，或 server-go 尚未重启。
-        </p>
-      </article>
-    );
-  }
-
+function MetricTile({
+  icon: Icon,
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  icon: typeof Database;
+  label: string;
+  value: string;
+  tone?: 'neutral' | 'good' | 'warn';
+}) {
   return (
-    <article className={baseClass}>
-      <p className="text-xs uppercase tracking-[0.18em] text-[var(--ink-secondary)]">健康自检</p>
-      <div className="mt-3 flex items-center gap-2">
-        <span className="inline-flex h-2 w-2 rounded-full bg-[var(--signal-success)]" />
-        <span className="text-sm font-semibold text-[var(--ink-primary)]">就绪 · phase {state.data.phase}</span>
+    <article className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">{label}</span>
+        <Icon className="h-4 w-4 text-[var(--ink-muted)]" />
       </div>
-      <p className="mt-2 text-xs text-[var(--ink-secondary)]">
-        module = <code className="font-mono">{state.data.module}</code>
+      <p
+        className={cn(
+          'mt-3 font-mono text-3xl text-[var(--ink-primary)]',
+          tone === 'good' && 'text-[var(--signal-success)]',
+          tone === 'warn' && 'text-[var(--signal-warn)]'
+        )}
+      >
+        {value}
       </p>
     </article>
   );
 }
 
-function InfoCard({
-  icon: Icon,
-  title,
-  lines,
-}: {
-  icon: typeof Database;
-  title: string;
-  lines: string[];
-}) {
+function HealthRow({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
   return (
-    <article className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-5 shadow-sm">
-      <header className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--ink-secondary)]">
-        <Icon className="h-4 w-4" /> {title}
-      </header>
-      <ul className="mt-3 space-y-1.5 text-sm text-[var(--ink-primary)]">
-        {lines.map((line) => (
-          <li key={line} className="font-mono text-xs leading-relaxed text-[var(--ink-secondary)]">
-            {line}
-          </li>
-        ))}
-      </ul>
-    </article>
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-[var(--ink-secondary)]">{label}</dt>
+      <dd className={cn('font-mono text-[var(--ink-primary)]', warn && 'text-[var(--signal-warn)]')}>{value}</dd>
+    </div>
+  );
+}
+
+function EmptyLine({ icon: Icon, text }: { icon: typeof BookOpen; text: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] p-4 text-center text-xs text-[var(--ink-secondary)]">
+      <Icon className="mx-auto mb-2 h-4 w-4 text-[var(--ink-muted)]" />
+      {text}
+    </div>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5 font-mono uppercase tracking-[0.12em]">
+      {children}
+    </span>
   );
 }

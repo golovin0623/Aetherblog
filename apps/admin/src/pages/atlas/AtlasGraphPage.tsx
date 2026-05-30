@@ -9,9 +9,10 @@
 //   * 节点 > 5000 时仅渲染 top 200（手册 C2-3）
 //   * 支持按 KP type / relation type 过滤
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Compass, EyeOff, Filter, Loader2, RefreshCw } from 'lucide-react';
+import { Compass, EyeOff, Filter, RefreshCw } from 'lucide-react';
+import { Select } from '@aetherblog/ui';
 
 import type {
   AtlasKnowledgePoint,
@@ -22,6 +23,7 @@ import type {
 import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 
@@ -68,21 +70,39 @@ const RELATION_COLORS: Record<AtlasRelationType, string> = {
   instance_of: '#84cc16',
 };
 
+const TYPE_OPTIONS = [
+  { value: 'all', label: '全部 KP 类型' },
+  ...Object.keys(TYPE_COLORS).map((type) => ({ value: type, label: type })),
+];
+
+const RELATION_OPTIONS = [
+  { value: 'all', label: '全部关系' },
+  ...ATLAS_RELATION_TYPES.map((type) => ({ value: type, label: type })),
+];
+
+type AtlasScopeFilter = 'all' | 'mine';
+
+const SCOPE_OPTIONS = [
+  { value: 'all', label: '全部可访问' },
+  { value: 'mine', label: '仅我的' },
+];
+
 export default function AtlasGraphPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rawKps, setRawKps] = useState<AtlasKnowledgePoint[]>([]);
   const [rawEdges, setRawEdges] = useState<AtlasTypedRelation[]>([]);
+  const [scope, setScope] = useState<AtlasScopeFilter>('all');
   const [typeFilter, setTypeFilter] = useState<AtlasKnowledgePointType | 'all'>('all');
   const [relFilter, setRelFilter] = useState<AtlasRelationType | 'all'>('all');
   const [hideHubs, setHideHubs] = useState(true);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await atlasService.getGraph();
+      const res = await atlasService.getGraph(undefined, { scope });
       setRawKps(res.data?.nodes ?? []);
       setRawEdges(res.data?.edges ?? []);
       setError(null);
@@ -91,11 +111,11 @@ export default function AtlasGraphPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [scope]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const { nodes, edges, hidden } = useMemo(() => {
     // 1) 过滤 KP
@@ -169,37 +189,35 @@ export default function AtlasGraphPage() {
           <Filter className="h-3 w-3" /> 过滤
         </span>
 
-        <label className="inline-flex items-center gap-1">
-          KP type:
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
-            className="h-7 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-1.5"
-          >
-            <option value="all">all</option>
-            {Object.keys(TYPE_COLORS).map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="w-36">
+          <Select
+            value={scope}
+            onValueChange={(next) => setScope(next as AtlasScopeFilter)}
+            options={SCOPE_OPTIONS}
+            size="sm"
+            ariaLabel="Atlas 数据范围"
+          />
+        </div>
 
-        <label className="inline-flex items-center gap-1">
-          关系:
-          <select
+        <div className="w-44">
+          <Select
+            value={typeFilter}
+            onValueChange={(next) => setTypeFilter(next as typeof typeFilter)}
+            options={TYPE_OPTIONS}
+            size="sm"
+            ariaLabel="KP type 过滤"
+          />
+        </div>
+
+        <div className="w-44">
+          <Select
             value={relFilter}
-            onChange={(e) => setRelFilter(e.target.value as typeof relFilter)}
-            className="h-7 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-1.5"
-          >
-            <option value="all">all</option>
-            {ATLAS_RELATION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
+            onValueChange={(next) => setRelFilter(next as typeof relFilter)}
+            options={RELATION_OPTIONS}
+            size="sm"
+            ariaLabel="关系类型过滤"
+          />
+        </div>
 
         <label className="inline-flex items-center gap-1 cursor-pointer">
           <input
@@ -214,8 +232,8 @@ export default function AtlasGraphPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-[600px] items-center justify-center rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+        <div className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+          <Skeleton className="h-[560px] rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] p-4 text-sm text-[var(--ink-primary)]">

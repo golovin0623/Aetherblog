@@ -59,13 +59,14 @@ type LinkAnnotationRequest struct {
 
 // CreateRelationRequest POST /atlas/relations 请求体。
 type CreateRelationRequest struct {
-	FromKPID       int64    `json:"fromKpId" validate:"required,gt=0"`
-	ToKPID         int64    `json:"toKpId" validate:"required,gt=0"`
-	Type           string   `json:"type" validate:"required"`
-	Strength       *float32 `json:"strength,omitempty"`
-	BodyMarkdown   *string  `json:"bodyMarkdown,omitempty"`
-	Provenance     *string  `json:"provenance,omitempty"`
-	AISuggestionID *int64   `json:"aiSuggestionId,omitempty"`
+	FromKPID              int64    `json:"fromKpId" validate:"required,gt=0"`
+	ToKPID                int64    `json:"toKpId" validate:"required,gt=0"`
+	Type                  string   `json:"type" validate:"required"`
+	Strength              *float32 `json:"strength,omitempty"`
+	BodyMarkdown          *string  `json:"bodyMarkdown,omitempty"`
+	Provenance            *string  `json:"provenance,omitempty"`
+	AISuggestionID        *int64   `json:"aiSuggestionId,omitempty"`
+	EvidenceAnnotationIDs []int64  `json:"evidenceAnnotationIds,omitempty"`
 }
 
 // TypedRelationResponse 是 typed relation 对外形态。
@@ -81,6 +82,18 @@ type TypedRelationResponse struct {
 	AuthorID       *int64    `json:"authorId,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// LinkRelationEvidenceRequest 把一条 annotation 作为 relation evidence。
+type LinkRelationEvidenceRequest struct {
+	AnnotationID int64 `json:"annotationId" validate:"required,gt=0"`
+}
+
+// RelationEvidenceResponse 是 relation -> annotation evidence 行。
+type RelationEvidenceResponse struct {
+	RelationID   int64     `json:"relationId"`
+	AnnotationID int64     `json:"annotationId"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // ============================================================

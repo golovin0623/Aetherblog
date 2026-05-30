@@ -22,6 +22,13 @@ import type {
 
 const base = '/v1/admin/atlas';
 
+export type AtlasScopeParam = 'all' | 'mine';
+
+export interface AtlasScopedParams {
+  scope?: AtlasScopeParam;
+  authorId?: number;
+}
+
 export interface CreateAnnotationPayload {
   carrierId: number;
   carrierVersionId?: number | null;
@@ -69,7 +76,7 @@ export const atlasService = {
     status?: AtlasKnowledgePointStatus;
     keyword?: string;
     limit?: number;
-  }): Promise<R<AtlasKnowledgePoint[]>> => api.get(`${base}/knowledge-points`, { params }),
+  } & AtlasScopedParams): Promise<R<AtlasKnowledgePoint[]>> => api.get(`${base}/knowledge-points`, { params }),
 
   getKnowledgePoint: (id: number): Promise<R<AtlasKnowledgePoint>> =>
     api.get(`${base}/knowledge-points/${id}`),
@@ -126,13 +133,26 @@ export const atlasService = {
     strength?: number;
     bodyMarkdown?: string;
     provenance?: AtlasProvenance;
+    evidenceAnnotationIds?: number[];
   }): Promise<R<AtlasTypedRelation>> => api.post(`${base}/relations`, payload),
+
+  linkRelationEvidence: (relationId: number, annotationId: number): Promise<R<void>> =>
+    api.post(`${base}/relations/${relationId}/evidence`, { annotationId }),
+
+  listRelationEvidence: (relationId: number): Promise<R<Array<{ relationId: number; annotationId: number; createdAt: string }>>> =>
+    api.get(`${base}/relations/${relationId}/evidence`),
+
+  deleteRelationEvidence: (relationId: number, annotationId: number): Promise<R<void>> =>
+    api.delete(`${base}/relations/${relationId}/evidence/${annotationId}`),
 
   deleteRelation: (id: number): Promise<R<void>> => api.delete(`${base}/relations/${id}`),
 
   // ---------- Graph ----------
-  getGraph: (limit?: number): Promise<R<{ nodes: AtlasKnowledgePoint[]; edges: AtlasTypedRelation[] }>> =>
-    api.get(`${base}/graph`, { params: limit ? { limit } : undefined }),
+  getGraph: (
+    limit?: number,
+    params?: AtlasScopedParams
+  ): Promise<R<{ nodes: AtlasKnowledgePoint[]; edges: AtlasTypedRelation[] }>> =>
+    api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
 
   // ---------- AI Suggestions (Phase 3) ----------
   listSuggestions: (params?: {
@@ -140,7 +160,7 @@ export const atlasService = {
     status?: 'pending' | 'accepted' | 'rejected' | 'ignored' | 'expired';
     carrierId?: number;
     limit?: number;
-  }): Promise<R<AtlasSuggestion[]>> => api.get(`${base}/suggestions`, { params }),
+  } & AtlasScopedParams): Promise<R<AtlasSuggestion[]>> => api.get(`${base}/suggestions`, { params }),
 
   getSuggestion: (id: number): Promise<R<AtlasSuggestion>> =>
     api.get(`${base}/suggestions/${id}`),
@@ -190,6 +210,8 @@ export interface AtlasSuggestion {
   tokensIn?: number | null;
   tokensOut?: number | null;
   costUsd?: number | null;
+  fingerprint?: string | null;
+  authorId?: number | null;
   status: 'pending' | 'accepted' | 'rejected' | 'ignored' | 'expired';
   resolvedKpId?: number | null;
   resolvedRelationId?: number | null;

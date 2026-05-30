@@ -44,9 +44,11 @@ type SuggestionResponse struct {
 	TokensIn             *int      `json:"tokensIn,omitempty"`
 	TokensOut            *int      `json:"tokensOut,omitempty"`
 	CostUSD              *float64  `json:"costUsd,omitempty"`
+	Fingerprint          *string   `json:"fingerprint,omitempty"`
 	Status               string    `json:"status"`
 	ResolvedKPID         *int64    `json:"resolvedKpId,omitempty"`
 	ResolvedRelationID   *int64    `json:"resolvedRelationId,omitempty"`
+	AuthorID             *int64    `json:"authorId,omitempty"`
 	CreatedAt            time.Time `json:"createdAt"`
 	UpdatedAt            time.Time `json:"updatedAt"`
 }

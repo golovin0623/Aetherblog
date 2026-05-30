@@ -42,6 +42,9 @@ type MarkdownCarrierService struct {
 	versioning *CarrierVersioningService // P1-09: 内容变更时跑标注迁移；可为 nil（向后兼容）
 }
 
+// ErrAtlasForbidden 表示调用者没有访问目标 Atlas 资源的权限。
+var ErrAtlasForbidden = errors.New("atlas resource forbidden")
+
 // NewMarkdownCarrierService 创建服务。
 func NewMarkdownCarrierService(carriers *repository.CarrierRepo, notes NoteReader) *MarkdownCarrierService {
 	return &MarkdownCarrierService{carriers: carriers, notes: notes}
@@ -59,6 +62,15 @@ func (s *MarkdownCarrierService) AttachVersioning(v *CarrierVersioningService) {
 // 会同时 miss FindBySourceURI 各自 INSERT 造成重复行。现在改走 CarrierRepo.UpsertBySourceURI
 // 单一 INSERT ... ON CONFLICT (source_uri) 路径 + migration 000066 加 UNIQUE 约束。
 func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID int64) (*model.Carrier, error) {
+	return s.getOrCreateForNote(ctx, noteID, 0, true)
+}
+
+// GetOrCreateForNoteAs 懒创建/返回当前调用者可访问的 Markdown carrier。
+func (s *MarkdownCarrierService) GetOrCreateForNoteAs(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
+	return s.getOrCreateForNote(ctx, noteID, userID, canAdmin)
+}
+
+func (s *MarkdownCarrierService) getOrCreateForNote(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
 	if noteID <= 0 {
 		return nil, errors.New("invalid note id")
 	}
@@ -74,6 +86,9 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 	}
 	if note == nil {
 		return nil, fmt.Errorf("note %d not found", noteID)
+	}
+	if !canAdmin && (note.AuthorID == nil || *note.AuthorID != userID) {
+		return nil, ErrAtlasForbidden
 	}
 
 	hash := contentSHA256(note.Content)

@@ -42,14 +42,14 @@ func NewKnowledgePointService(kp *repository.KPRepo, rel *repository.RelationRep
 
 // CreateKPInput 是创建 KP 的入参。
 type CreateKPInput struct {
-	Title          string
-	BodyMarkdown   string
-	Type           string
-	Confidence     *float32
-	Status         *string
-	Provenance     *string
-	AISuggestionID *int64
-	AuthorID       *int64
+	Title                 string
+	BodyMarkdown          string
+	Type                  string
+	Confidence            *float32
+	Status                *string
+	Provenance            *string
+	AISuggestionID        *int64
+	AuthorID              *int64
 	EvidenceAnnotationIDs []int64
 }
 
@@ -189,14 +189,15 @@ func NewRelationService(repo *repository.RelationRepo) *RelationService {
 
 // CreateRelationInput 创建入参。
 type CreateRelationInput struct {
-	FromKPID       int64
-	ToKPID         int64
-	Type           string
-	Strength       *float32
-	BodyMarkdown   *string
-	Provenance     *string
-	AISuggestionID *int64
-	AuthorID       *int64
+	FromKPID              int64
+	ToKPID                int64
+	Type                  string
+	Strength              *float32
+	BodyMarkdown          *string
+	Provenance            *string
+	AISuggestionID        *int64
+	AuthorID              *int64
+	EvidenceAnnotationIDs []int64
 }
 
 // Create 校验 9 种类型 + 不自环（schema 已挡 + 这里二次防护）。
@@ -237,6 +238,9 @@ func (s *RelationService) Create(ctx context.Context, in CreateRelationInput) (*
 		AISuggestionID: in.AISuggestionID,
 		AuthorID:       in.AuthorID,
 	}
+	if len(in.EvidenceAnnotationIDs) > 0 {
+		return s.repo.CreateAndLinkEvidenceInTx(ctx, t, in.EvidenceAnnotationIDs)
+	}
 	return s.repo.Create(ctx, t)
 }
 
@@ -246,13 +250,42 @@ func (s *RelationService) Get(ctx context.Context, id int64) (*model.TypedRelati
 }
 
 // ListForKP 列出 KP 的关系（dir = in | out | all）。
-func (s *RelationService) ListForKP(ctx context.Context, kpID int64, dir string) ([]model.TypedRelation, error) {
-	return s.repo.ListForKP(ctx, kpID, dir)
+func (s *RelationService) ListForKP(ctx context.Context, kpID int64, dir string, authorID *int64) ([]model.TypedRelation, error) {
+	return s.repo.ListForKP(ctx, kpID, dir, authorID)
+}
+
+// LinkEvidence 关联 relation 的 evidence annotation。
+func (s *RelationService) LinkEvidence(ctx context.Context, relationID, annotationID int64) error {
+	if relationID <= 0 || annotationID <= 0 {
+		return errors.New("invalid id")
+	}
+	return s.repo.LinkEvidence(ctx, relationID, annotationID)
+}
+
+// ListEvidence 列出 relation evidence。
+func (s *RelationService) ListEvidence(ctx context.Context, relationID int64) ([]repository.RelationEvidenceLink, error) {
+	if relationID <= 0 {
+		return nil, errors.New("invalid relation id")
+	}
+	return s.repo.ListEvidence(ctx, relationID)
+}
+
+// DeleteEvidence 删除 relation evidence 关联。
+func (s *RelationService) DeleteEvidence(ctx context.Context, relationID, annotationID int64) error {
+	if relationID <= 0 || annotationID <= 0 {
+		return errors.New("invalid id")
+	}
+	return s.repo.DeleteEvidence(ctx, relationID, annotationID)
 }
 
 // ListAll 图谱视图用。
 func (s *RelationService) ListAll(ctx context.Context, limit int) ([]model.TypedRelation, error) {
 	return s.repo.ListAll(ctx, limit)
+}
+
+// ListForNodeIDs 图谱视图用：只返回两端都在当前 node set 内的边。
+func (s *RelationService) ListForNodeIDs(ctx context.Context, nodeIDs []int64, limit int, authorID *int64) ([]model.TypedRelation, error) {
+	return s.repo.ListForNodeIDs(ctx, nodeIDs, limit, authorID)
 }
 
 // Delete 软删除。

@@ -187,6 +187,12 @@ export interface AtlasTypedRelation {
   updatedAt: string;
 }
 
+export interface AtlasRelationEvidence {
+  relationId: number;
+  annotationId: number;
+  createdAt: string;
+}
+
 // ============================================================
 // REST 请求 / 响应
 // ============================================================

@@ -32,15 +32,15 @@ func (r *SuggestionRepo) Create(ctx context.Context, s *model.AISuggestion) (*mo
 			proposed_title, proposed_body, proposed_kp_type,
 			proposed_relation_type, proposed_strength, proposed_confidence,
 			rationale, model_id, tokens_in, tokens_out, cost_usd,
-			status, author_id
+			fingerprint, status, author_id
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		RETURNING *`,
 		s.Kind, s.CarrierID, s.AnnotationID, s.FromKPID, s.ToKPID,
 		s.ProposedTitle, s.ProposedBody, s.ProposedKPType,
 		s.ProposedRelationType, s.ProposedStrength, s.ProposedConfidence,
 		s.Rationale, s.ModelID, s.TokensIn, s.TokensOut, s.CostUSD,
-		s.Status, s.AuthorID,
+		s.Fingerprint, s.Status, s.AuthorID,
 	).StructScan(&out)
 	return &out, err
 }
@@ -61,6 +61,7 @@ type SuggestionFilter struct {
 	Kind      *string
 	Status    *string
 	CarrierID *int64
+	AuthorID  *int64
 	Limit     int
 }
 
@@ -84,6 +85,11 @@ func (r *SuggestionRepo) List(ctx context.Context, f SuggestionFilter) ([]model.
 		args = append(args, *f.CarrierID)
 		idx++
 	}
+	if f.AuthorID != nil {
+		q += " AND author_id=$" + strconv.Itoa(idx)
+		args = append(args, *f.AuthorID)
+		idx++
+	}
 	q += " ORDER BY created_at DESC LIMIT $" + strconv.Itoa(idx)
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
@@ -103,9 +109,9 @@ func (r *SuggestionRepo) List(ctx context.Context, f SuggestionFilter) ([]model.
 // 把同一行改回 rejected 并清空 resolved_*，造成 KP 已建但建议状态错乱+孤儿 KP。
 //
 // 返回:
-//   * nil: 命中并更新了 1 行
-//   * ErrStatusNotPending: 行不存在或已不是 pending（调用方应回滚事务）
-//   * 其他: DB 错误
+//   - nil: 命中并更新了 1 行
+//   - ErrStatusNotPending: 行不存在或已不是 pending（调用方应回滚事务）
+//   - 其他: DB 错误
 func (r *SuggestionRepo) MarkResolved(
 	ctx context.Context, id int64, status string,
 	resolvedKPID, resolvedRelationID *int64,
@@ -153,4 +159,29 @@ func (r *SuggestionRepo) IsIgnored(ctx context.Context, fingerprint string, user
 		return false, nil
 	}
 	return n == 1, err
+}
+
+// FindPendingByFingerprint 返回同一作者下尚未处理的同指纹建议。
+func (r *SuggestionRepo) FindPendingByFingerprint(ctx context.Context, fingerprint string, authorID *int64) (*model.AISuggestion, error) {
+	var s model.AISuggestion
+	var err error
+	if authorID != nil {
+		err = r.db.GetContext(ctx, &s, `
+			SELECT * FROM atlas_ai_suggestions
+			WHERE fingerprint=$1 AND status='pending'
+			  AND author_id=$2
+			ORDER BY created_at DESC
+			LIMIT 1`, fingerprint, *authorID)
+	} else {
+		err = r.db.GetContext(ctx, &s, `
+			SELECT * FROM atlas_ai_suggestions
+			WHERE fingerprint=$1 AND status='pending'
+			  AND author_id IS NULL
+			ORDER BY created_at DESC
+			LIMIT 1`, fingerprint)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &s, err
 }

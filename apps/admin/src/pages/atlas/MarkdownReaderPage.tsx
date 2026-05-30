@@ -15,12 +15,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MarkdownPreview } from '@aetherblog/editor';
-import { ArrowLeft, Highlighter, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Brain, Highlighter, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { AtlasAnnotation, AtlasCarrier } from '@aetherblog/types';
 
 import { atlasService } from '@/services/atlasService';
+import { Skeleton } from '@/components/ui/skeleton';
 import { noteService } from '@/services/noteService';
 import type { NoteDetail } from '@/types/note';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
@@ -156,6 +157,34 @@ export default function MarkdownReaderPage() {
     }
   }, []);
 
+  const handleCreateKP = useCallback(
+    async (annotation: AtlasAnnotation) => {
+      const quote = annotation.selectors.find((s) => s.type === 'TextQuoteSelector') as
+        | import('@aetherblog/types').TextQuoteSelector
+        | undefined;
+      const exact = quote?.exact?.trim();
+      if (!exact) {
+        toast.error('该标注缺少 TextQuoteSelector，无法提炼为 KP');
+        return;
+      }
+      const title = exact.length > 72 ? `${exact.slice(0, 72)}...` : exact;
+      try {
+        const res = await atlasService.createKnowledgePoint({
+          title,
+          bodyMarkdown: exact,
+          type: 'claim',
+          provenance: 'user',
+          evidenceAnnotationIds: [annotation.id],
+        });
+        toast.success(`已提炼为 KP #${res.data.id}`);
+        navigate(`/atlas/kp/${res.data.id}`);
+      } catch (err) {
+        toast.error(extractApiErrorMessage(err, '提炼 KP 失败'));
+      }
+    },
+    [navigate]
+  );
+
   // 重新对齐（点击 orphan / soft 状态的 reanchor 按钮）
   //
   // PR #724 review fix (Codex P1, MarkdownReaderPage.tsx:164):
@@ -212,8 +241,17 @@ export default function MarkdownReaderPage() {
 
   if (state.loading) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+      <div className="grid h-[calc(100vh-4rem)] min-h-[640px] grid-cols-[minmax(0,1fr)_360px] gap-0">
+        <div className="space-y-4 bg-[var(--bg-substrate)] p-6">
+          <Skeleton className="h-10 w-64 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <Skeleton className="h-96 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <Skeleton className="h-56 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        </div>
+        <aside className="space-y-3 border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-24 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          ))}
+        </aside>
       </div>
     );
   }
@@ -310,6 +348,13 @@ export default function MarkdownReaderPage() {
                       <p className="mt-1 text-[var(--ink-secondary)]">{a.bodyText}</p>
                     )}
                     <footer className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateKP(a)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] px-2 text-[10px] text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                      >
+                        <Brain className="h-3 w-3" /> 提炼 KP
+                      </button>
                       {a.anchorState !== 'anchored' && (
                         <button
                           type="button"

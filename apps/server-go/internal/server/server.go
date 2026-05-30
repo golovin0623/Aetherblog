@@ -273,11 +273,17 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
 	atlasMarkdown.AttachVersioning(atlasVersioning)
 	atlasService := atlassvc.NewAtlasService(atlasRepo, atlasMarkdown)
-	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo)
+	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo, atlasCarrierRepo)
 	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read。
 	// PR #724 review fix: 所有 mutating routes (POST/PATCH/DELETE) 额外要求 content.atlas.write。
 	// 沿用 accessSvc 作为 PermissionChecker（与 /admin/access 路由一致）。
-	atlasGroup := admin.Group("/atlas", middleware.RequirePermission(accessSvc, "content.atlas.read"))
+	// 注意这里使用 accessAdmin 而非 admin：Atlas 的多用户 Gate 由 content.atlas.* 权限与
+	// handler 层 owner/author scope 共同控制，不再被 legacy ADMIN 角色硬编码挡住。
+	atlasGroup := accessAdmin.Group(
+		"/atlas",
+		middleware.RequirePermission(accessSvc, "content.atlas.read"),
+		atlashandler.AtlasScopeMiddleware(accessSvc),
+	)
 	atlasWriteMW := middleware.RequirePermission(accessSvc, "content.atlas.write")
 	// Phase 2 新增 KP + Relation + Graph 子域
 	atlasKPRepo := atlasrepo.NewKPRepo(atlasRepo)
@@ -292,8 +298,8 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
 		atlashandler.NewAnnotationHandler(atlasAnnoSvc),
-		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc),
-		atlashandler.NewSuggestionHandler(atlasSugSvc),
+		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc),
+		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService),
 	)
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)

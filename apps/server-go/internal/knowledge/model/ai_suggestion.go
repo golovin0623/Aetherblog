@@ -22,6 +22,7 @@ type AISuggestion struct {
 	TokensIn             *int      `db:"tokens_in"`
 	TokensOut            *int      `db:"tokens_out"`
 	CostUSD              *float64  `db:"cost_usd"`
+	Fingerprint          *string   `db:"fingerprint"`
 	Status               string    `db:"status"`
 	ResolvedKPID         *int64    `db:"resolved_kp_id"`
 	ResolvedRelationID   *int64    `db:"resolved_relation_id"`

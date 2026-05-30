@@ -1,6 +1,6 @@
 // Atlas — annotation_handler
 //
-// 路径 (admin.Group("/atlas")):
+// 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST   /annotations          创建（请求体 ≥3 selectors）
 //   GET    /annotations/:id      读
 //   PATCH  /annotations/:id      部分更新
@@ -60,6 +60,13 @@ func (h *AnnotationHandler) Create(c echo.Context) error {
 	}
 
 	authorID := currentAtlasUserID(c)
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if err := h.assertCarrierScope(c, req.CarrierID, scope); err != nil {
+		return writeAtlasError(c, err)
+	}
 	a, err := h.svc.Create(c.Request().Context(), atlassvc.CreateAnnotationInput{
 		CarrierID:        req.CarrierID,
 		CarrierVersionID: req.CarrierVersionID,
@@ -91,6 +98,13 @@ func (h *AnnotationHandler) Get(c echo.Context) error {
 	if a == nil {
 		return response.FailWith(c, response.NotFound, "标注不存在")
 	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if !scope.canAccessAuthor(a.AuthorID) {
+		return response.FailWith(c, response.Forbidden, "无权访问该标注")
+	}
 	return response.OK(c, toAnnotationResponse(a))
 }
 
@@ -103,6 +117,9 @@ func (h *AnnotationHandler) Update(c echo.Context) error {
 	var req atlasdto.UpdateAnnotationRequest
 	if err := c.Bind(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := h.assertAnnotationScope(c, id); err != nil {
+		return writeAtlasError(c, err)
 	}
 	out, err := h.svc.Update(c.Request().Context(), id, atlassvc.UpdateAnnotationInput{
 		BodyText:    req.BodyText,
@@ -125,6 +142,9 @@ func (h *AnnotationHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
 	}
+	if err := h.assertAnnotationScope(c, id); err != nil {
+		return writeAtlasError(c, err)
+	}
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
@@ -137,7 +157,19 @@ func (h *AnnotationHandler) ListByCarrier(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
 	}
-	list, err := h.svc.ListByCarrier(c.Request().Context(), id)
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if err := h.assertCarrierScope(c, id, scope); err != nil {
+		return writeAtlasError(c, err)
+	}
+	var list []atlasmodel.Annotation
+	if scope.CanAdmin {
+		list, err = h.svc.ListByCarrier(c.Request().Context(), id)
+	} else {
+		list, err = h.svc.ListByCarrierForAuthor(c.Request().Context(), id, scope.UserID)
+	}
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -146,6 +178,38 @@ func (h *AnnotationHandler) ListByCarrier(c echo.Context) error {
 		items[i] = toAnnotationResponse(&list[i])
 	}
 	return response.OK(c, items)
+}
+
+func (h *AnnotationHandler) assertCarrierScope(c echo.Context, carrierID int64, scope *atlasScope) error {
+	found, ownerID, err := h.svc.CarrierOwner(c.Request().Context(), carrierID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return atlasError(response.NotFound, "载体不存在")
+	}
+	if !scope.canAccessOwner(ownerID) {
+		return atlasError(response.Forbidden, "无权访问该载体")
+	}
+	return nil
+}
+
+func (h *AnnotationHandler) assertAnnotationScope(c echo.Context, id int64) error {
+	a, err := h.svc.Get(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if a == nil {
+		return atlasError(response.NotFound, "标注不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return err
+	}
+	if !scope.canAccessAuthor(a.AuthorID) {
+		return atlasError(response.Forbidden, "无权操作该标注")
+	}
+	return nil
 }
 
 func decodeRelPos(s *string) ([]byte, error) {
