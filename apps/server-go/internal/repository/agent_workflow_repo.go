@@ -179,6 +179,38 @@ func (r *AgentWorkflowRepo) FindRunnableWorkflow(ctx context.Context, userID, id
 	return r.findWorkflow(ctx, `id = $1 AND (user_id = $2 OR is_public = TRUE)`, id, userID)
 }
 
+func (r *AgentWorkflowRepo) FindWorkflowVersionSnapshot(ctx context.Context, workflowID int64, version int) (*model.AgentWorkflow, error) {
+	var workflow model.AgentWorkflow
+	err := r.db.GetContext(ctx, &workflow, `
+SELECT
+    w.id,
+    w.user_id,
+    w.name,
+    w.description,
+    w.mode,
+    v.definition_json::text AS definition_json,
+    v.definition_ast::text AS definition_ast,
+    w.is_template,
+    w.is_public,
+    v.version,
+    w.run_count,
+    w.last_run_at,
+    w.created_at,
+    w.updated_at
+FROM agent_workflow_versions v
+JOIN agent_workflows w ON w.id = v.workflow_id
+WHERE v.workflow_id = $1
+  AND v.version = $2
+LIMIT 1`, workflowID, version)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &workflow, nil
+}
+
 func (r *AgentWorkflowRepo) findWorkflow(ctx context.Context, where string, args ...any) (*model.AgentWorkflow, error) {
 	var workflow model.AgentWorkflow
 	err := r.db.GetContext(ctx, &workflow, `

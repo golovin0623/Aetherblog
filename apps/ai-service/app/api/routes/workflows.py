@@ -24,7 +24,8 @@ async def execute_workflow(
     forwarded_user_id: str | None = Header(default=None, alias="X-Forwarded-User-ID"),
 ) -> ApiResponse[WorkflowExecutionResult]:
     user_id = _resolve_workflow_user_id(_user, forwarded_user_id)
-    runner = await _build_runner(payload, user_id)
+    budget = _WorkflowRunBudget(payload.budget.maxTokens, payload.budget.maxCostUsd)
+    runner = await _build_runner(payload, user_id, budget)
     result = await runner.run(
         payload.definition,
         payload.inputs,
@@ -33,7 +34,7 @@ async def execute_workflow(
         resume_from_node=payload.resumeFromNode,
         resume_context=payload.resumeContext,
     )
-    return ApiResponse(data=_normalize_budget_status(result))
+    return ApiResponse(data=budget.apply_usage(_normalize_budget_status(result)))
 
 
 def _normalize_budget_status(result: WorkflowExecutionResult) -> WorkflowExecutionResult:
@@ -59,10 +60,9 @@ def _resolve_workflow_user_id(user: Any, forwarded: str | None) -> int | None:
         return None
 
 
-async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None) -> WorkflowRunner:
+async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None, budget: "_WorkflowRunBudget") -> WorkflowRunner:
     tools = default_tools()
     tool_snapshots = {item.code: item for item in payload.tools if item.enabled}
-    budget = _WorkflowRunBudget(payload.budget.maxTokens, payload.budget.maxCostUsd)
     needs_db = any(_node_uses_kb_tool(node) for node in payload.definition.nodes)
     pool = await get_pg_pool() if needs_db and not payload.simulateExternal else None
     if pool is not None:
@@ -108,6 +108,9 @@ class _WorkflowRunBudget:
     def __init__(self, max_tokens: int | None, max_cost_usd: float | None) -> None:
         self.remaining_tokens = max_tokens if max_tokens is not None and max_tokens > 0 else None
         self.remaining_cost_usd = max_cost_usd if max_cost_usd is not None and max_cost_usd > 0 else None
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_cost_usd = 0.0
         if max_cost_usd is not None and max_cost_usd <= 0:
             raise WorkflowExecutionError("budget exceeded: maxCostUsd")
 
@@ -122,10 +125,24 @@ class _WorkflowRunBudget:
         return self.remaining_cost_usd
 
     def record_usage(self, prompt_tokens: int, completion_tokens: int, total_cost_usd: float) -> None:
+        self.prompt_tokens += max(0, prompt_tokens)
+        self.completion_tokens += max(0, completion_tokens)
+        self.total_cost_usd += max(0.0, total_cost_usd)
         if self.remaining_tokens is not None:
             self.remaining_tokens -= max(0, prompt_tokens) + max(0, completion_tokens)
         if self.remaining_cost_usd is not None:
             self.remaining_cost_usd -= max(0.0, total_cost_usd)
+
+    def apply_usage(self, result: WorkflowExecutionResult) -> WorkflowExecutionResult:
+        if self.prompt_tokens <= 0 and self.completion_tokens <= 0 and self.total_cost_usd <= 0:
+            return result
+        return result.model_copy(
+            update={
+                "promptTokens": self.prompt_tokens,
+                "completionTokens": self.completion_tokens,
+                "totalCostUsd": self.total_cost_usd,
+            }
+        )
 
 
 def _kb_get_post_tool(pool: Any, user_id: int | None):

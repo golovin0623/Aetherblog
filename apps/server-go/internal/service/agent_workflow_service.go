@@ -576,7 +576,11 @@ func (s *AgentWorkflowService) InvokePublished(ctx context.Context, userID int64
 	if strings.TrimSpace(req.RedactionPolicy) == "" {
 		req.RedactionPolicy = "production"
 	}
-	return s.CreateRun(ctx, userID, publication.WorkflowID, req)
+	workflow, err := s.repo.FindWorkflowVersionSnapshot(ctx, publication.WorkflowID, publication.Version)
+	if err != nil || workflow == nil {
+		return nil, err
+	}
+	return s.createRunForWorkflow(ctx, userID, *workflow, req, publication.InputSchema)
 }
 
 func (s *AgentWorkflowService) ListWorkflowRuns(ctx context.Context, userID, workflowID int64, limit int) ([]dto.AgentWorkflowRunSummary, error) {
@@ -627,6 +631,10 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 	if err != nil || workflow == nil {
 		return nil, err
 	}
+	return s.createRunForWorkflow(ctx, userID, *workflow, req, defaultPublicationInputSchema(workflow.DefinitionJSON))
+}
+
+func (s *AgentWorkflowService) createRunForWorkflow(ctx context.Context, userID int64, workflow model.AgentWorkflow, req dto.AgentWorkflowRunRequest, inputSchema string) (*dto.AgentWorkflowRunSummary, error) {
 	inputs := strings.TrimSpace(string(req.Inputs))
 	if inputs == "" || inputs == "null" {
 		inputs = "{}"
@@ -634,7 +642,7 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 	if !json.Valid([]byte(inputs)) {
 		return nil, fmt.Errorf("inputs must be valid JSON")
 	}
-	if err := validateWorkflowInputs(defaultPublicationInputSchema(workflow.DefinitionJSON), inputs); err != nil {
+	if err := validateWorkflowInputs(inputSchema, inputs); err != nil {
 		return nil, err
 	}
 	totalNodes := countWorkflowNodes(workflow.DefinitionJSON)
@@ -649,7 +657,7 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 		resumeFromNode = nullableDescription(req.ResumeFromNode)
 	}
 	run, err := s.repo.CreateRun(ctx, repository.AgentWorkflowRunCreateRequest{
-		Workflow:        *workflow,
+		Workflow:        workflow,
 		UserID:          userID,
 		Inputs:          inputs,
 		TotalNodeCount:  totalNodes,
@@ -701,7 +709,7 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 		return &summary, nil
 	}
 
-	go s.executeRunDetached(*workflow, *run, inputs, req.SimulateExternal)
+	go s.executeRunDetached(workflow, *run, inputs, req.SimulateExternal)
 	summary := toRunSummary(*run)
 	return &summary, nil
 }
@@ -719,6 +727,9 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	run, err := s.repo.FindRunByID(ctx, userID, runID)
 	if err != nil || run == nil {
 		return nil, err
+	}
+	if !isRetryableRunStatus(run.Status) {
+		return nil, fmt.Errorf("run status %s is not retryable", run.Status)
 	}
 	workflow, err := s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
 	if err != nil || workflow == nil {
@@ -926,25 +937,6 @@ func (s *AgentWorkflowService) executeRunDetached(workflow model.AgentWorkflow, 
 		log.Warn().Err(err).Int64("run_id", run.ID).Msg("agent workflow: start run failed")
 		return
 	}
-	resumeFromNode := stringValue(run.ResumeFromNode)
-	if nodeID, toolCode, payload, approval, err := s.firstApprovalRequiredTool(ctx, run.UserID, workflow.DefinitionJSON, resumeFromNode); err != nil {
-		code, category, retryable := classifyWorkflowError(err.Error())
-		_, _ = s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
-			RunID:         run.ID,
-			Status:        "failed",
-			Outputs:       "{}",
-			ErrorMessage:  nullableDescription(err.Error()),
-			ErrorCode:     nullableDescription(code),
-			ErrorCategory: nullableDescription(category),
-			Retryable:     retryable,
-		})
-		return
-	} else if approval {
-		if err := s.repo.PauseRunForApproval(ctx, run.ID, nodeID, toolCode, payload); err != nil {
-			log.Warn().Err(err).Int64("run_id", run.ID).Msg("agent workflow: pause for approval failed")
-		}
-		return
-	}
 	if _, err := s.executeWorkflow(ctx, workflow, run, inputs, simulateExternal); err != nil {
 		code, category, retryable := classifyWorkflowError(err.Error())
 		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
@@ -1102,6 +1094,18 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 	if envelope.Data.ErrorMessage != "" {
 		errorMessage = &envelope.Data.ErrorMessage
 	}
+	if nodeID, toolCode, payload, ok := s.approvalRequestFromExecution(workflow.DefinitionJSON, envelope.Data.CurrentNode, envelope.Data.ErrorMessage); ok {
+		if err := s.repo.PauseRunForApproval(ctx, run.ID, nodeID, toolCode, payload); err != nil {
+			return nil, err
+		}
+		paused, err := s.repo.FindRunByID(ctx, run.UserID, run.ID)
+		if err != nil || paused == nil {
+			return nil, err
+		}
+		summary := toRunSummary(*paused)
+		summary.Trace = toRunTraceItems(envelope.Data.Trace)
+		return &summary, nil
+	}
 	var promptTokens *int
 	if envelope.Data.PromptTokens > 0 {
 		promptTokens = &envelope.Data.PromptTokens
@@ -1176,6 +1180,42 @@ func normalizeRunStatus(status string) string {
 	default:
 		return "failed"
 	}
+}
+
+func isRetryableRunStatus(status string) bool {
+	switch status {
+	case "failed", "cancelled", "budget_exceeded":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *AgentWorkflowService) approvalRequestFromExecution(definitionJSON, nodeID, errorMessage string) (string, string, string, bool) {
+	if strings.TrimSpace(nodeID) == "" || !strings.Contains(strings.ToLower(errorMessage), "requires approval") {
+		return "", "", "", false
+	}
+	var def agentworkflow.Definition
+	if err := json.Unmarshal([]byte(definitionJSON), &def); err != nil {
+		return "", "", "", false
+	}
+	for _, node := range def.Nodes {
+		if node.ID != nodeID || node.Type != "tool" {
+			continue
+		}
+		code, _ := node.Data["toolCode"].(string)
+		code = strings.TrimSpace(code)
+		if code == "" {
+			return "", "", "", false
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"nodeId":   node.ID,
+			"toolCode": code,
+			"args":     node.Data["args"],
+		})
+		return node.ID, code, string(payload), true
+	}
+	return "", "", "", false
 }
 
 func toNodeLogInputs(items []workflowTraceItem) []repository.AgentWorkflowNodeLogInput {
