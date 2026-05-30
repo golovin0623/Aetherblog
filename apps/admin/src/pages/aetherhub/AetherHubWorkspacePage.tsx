@@ -17,7 +17,6 @@ import type {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowUp,
   AtSign,
   BookOpen,
   Bot,
@@ -26,17 +25,17 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
   Copy,
   FileText,
   Hash,
+  Layers3,
   LayoutDashboard,
   MessageCircle,
   Moon,
-  MoreHorizontal,
   Pencil,
   RefreshCcw,
   Search,
+  Send,
   Settings,
   Sidebar as SidebarIcon,
   SlashSquare,
@@ -54,7 +53,7 @@ import { AetherMark } from '@aetherblog/ui';
 import { MarkdownPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
-import { useTheme } from '@/hooks';
+import { useMediaQuery, useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
 import {
   fetchAgentKnowledgeBases,
@@ -64,6 +63,8 @@ import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
   type AgentArticle,
+  type AgentModelItem,
+  type AgentModelParams,
   type AgentTag,
   type AgentMessage,
   type AgentSession,
@@ -97,6 +98,11 @@ const promptChips = [
 
 type DisplayMode = 'bubble' | 'engraved';
 type SendShortcut = 'enter' | 'mod-enter';
+type CapabilityPanelTab = 'space' | 'params';
+type SpacePreviewTarget =
+  | { kind: 'article'; article: AgentArticle }
+  | { kind: 'kb'; kb: AgentKnowledgeBase }
+  | { kind: 'tag'; tag: AgentTag };
 
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
 const SEND_SHORTCUT_OPTIONS: Array<{
@@ -118,6 +124,248 @@ const SEND_SHORTCUT_OPTIONS: Array<{
     description: 'Enter 直接换行',
   },
 ];
+
+type StandardModelParamKey =
+  | 'temperature'
+  | 'top_p'
+  | 'max_tokens'
+  | 'presence_penalty'
+  | 'frequency_penalty';
+
+type ModelParamSchema = Record<string, unknown>;
+
+interface NumericModelParam {
+  key: StandardModelParamKey;
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  step: number;
+  defaultValue: number;
+  tag: string;
+  source: 'model' | 'default';
+}
+
+const STANDARD_MODEL_PARAMS: Record<
+  StandardModelParamKey,
+  Omit<NumericModelParam, 'key' | 'source'>
+> = {
+  temperature: {
+    label: '创造性',
+    description: 'temperature · 数值越高越发散',
+    min: 0,
+    max: 2,
+    step: 0.1,
+    defaultValue: 0.7,
+    tag: 'temperature',
+  },
+  top_p: {
+    label: '开放度',
+    description: 'top_p · 控制候选 token 截断范围',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    defaultValue: 1,
+    tag: 'top_p',
+  },
+  max_tokens: {
+    label: '最大输出',
+    description: 'max_tokens · 限制单次回答长度',
+    min: 256,
+    max: 4096,
+    step: 256,
+    defaultValue: 4096,
+    tag: 'max_tokens',
+  },
+  presence_penalty: {
+    label: '话题发散',
+    description: 'presence_penalty · 鼓励引入新话题',
+    min: -2,
+    max: 2,
+    step: 0.1,
+    defaultValue: 0,
+    tag: 'presence_penalty',
+  },
+  frequency_penalty: {
+    label: '重复抑制',
+    description: 'frequency_penalty · 降低重复词句概率',
+    min: -2,
+    max: 2,
+    step: 0.1,
+    defaultValue: 0,
+    tag: 'frequency_penalty',
+  },
+};
+
+const STANDARD_PARAM_ORDER: StandardModelParamKey[] = [
+  'temperature',
+  'top_p',
+  'max_tokens',
+  'presence_penalty',
+  'frequency_penalty',
+];
+
+const REASONING_EXTEND_PARAM_KEYS = new Set([
+  'reasoningEffort',
+  'gpt5ReasoningEffort',
+  'gpt5_1ReasoningEffort',
+  'gpt5_2ReasoningEffort',
+  'gpt5_2ProReasoningEffort',
+  'grok4_20ReasoningEffort',
+  'grok4_3ReasoningEffort',
+  'hy3ReasoningEffort',
+  'codexMaxReasoningEffort',
+]);
+
+const REASONING_EFFORT_OPTIONS = [
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+];
+
+const TEXT_VERBOSITY_OPTIONS = [
+  { value: 'low', label: '简洁' },
+  { value: 'medium', label: '标准' },
+  { value: 'high', label: '详细' },
+];
+
+const THINKING_LEVEL_OPTIONS = [
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function modelParamsSchema(model: AgentModelItem | null): ModelParamSchema {
+  return isRecord(model?.parameters) ? model.parameters : {};
+}
+
+function modelDisabledParams(model: AgentModelItem | null): Set<string> {
+  const disabled = Array.isArray(model?.disabledParams)
+    ? model.disabledParams
+    : Array.isArray(model?.settings?.disabledParams)
+      ? (model.settings.disabledParams as unknown[])
+      : [];
+  return new Set(disabled.map((item) => String(item)));
+}
+
+function modelExtendParams(model: AgentModelItem | null): string[] {
+  if (Array.isArray(model?.extendParams)) return model.extendParams;
+  const raw = model?.settings?.extendParams;
+  return Array.isArray(raw) ? raw.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function readParamSchemaValue(schema: unknown, key: string): unknown {
+  if (!isRecord(schema)) return undefined;
+  return schema[key];
+}
+
+function readParamDefault(schema: unknown): number | null {
+  if (typeof schema === 'number' || typeof schema === 'string') return finiteNumber(schema);
+  return (
+    finiteNumber(readParamSchemaValue(schema, 'default')) ??
+    finiteNumber(readParamSchemaValue(schema, 'defaultValue')) ??
+    finiteNumber(readParamSchemaValue(schema, 'value'))
+  );
+}
+
+function buildNumericModelParams(model: AgentModelItem | null): NumericModelParam[] {
+  const schema = modelParamsSchema(model);
+  const disabled = modelDisabledParams(model);
+  const modelMaxOutput = model?.maxOutputTokens && model.maxOutputTokens > 0
+    ? model.maxOutputTokens
+    : null;
+
+  return STANDARD_PARAM_ORDER.flatMap((key) => {
+    if (disabled.has(key)) return [];
+    const base = STANDARD_MODEL_PARAMS[key];
+    const paramSchema = schema[key];
+    const fromModel = paramSchema !== undefined;
+    const min = finiteNumber(readParamSchemaValue(paramSchema, 'min')) ?? base.min;
+    const max =
+      key === 'max_tokens'
+        ? finiteNumber(readParamSchemaValue(paramSchema, 'max')) ?? modelMaxOutput ?? base.max
+        : finiteNumber(readParamSchemaValue(paramSchema, 'max')) ?? base.max;
+    const step = finiteNumber(readParamSchemaValue(paramSchema, 'step')) ?? base.step;
+    const defaultValue =
+      readParamDefault(paramSchema) ??
+      (key === 'max_tokens' && modelMaxOutput ? Math.min(modelMaxOutput, base.defaultValue) : base.defaultValue);
+
+    return [
+      {
+        ...base,
+        key,
+        min,
+        max: Math.max(max, min),
+        step,
+        defaultValue,
+        source: fromModel ? 'model' : 'default',
+      },
+    ];
+  });
+}
+
+function currentModelFromSession(
+  session: AgentSession | null,
+  modelsState: ReturnType<typeof useAgentModels>,
+): AgentModelItem | null {
+  if (!session?.modelId || modelsState.status !== 'ready') return null;
+  return (
+    modelsState.items.find(
+      (m) => m.modelId === session.modelId && m.providerCode === session.providerCode,
+    ) ?? null
+  );
+}
+
+function effectiveParamValue(
+  session: AgentSession | null,
+  param: NumericModelParam,
+): number {
+  const raw = session?.modelParams?.[param.key];
+  const value = finiteNumber(raw);
+  if (value == null) return param.defaultValue;
+  return Math.min(param.max, Math.max(param.min, value));
+}
+
+function cleanModelParams(params: AgentModelParams | undefined): AgentModelParams | undefined {
+  if (!params) return undefined;
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries) as AgentModelParams;
+}
+
+function buildModelParamsForRequest(
+  model: AgentModelItem | null,
+  sessionParams: AgentModelParams | undefined,
+): AgentModelParams | null {
+  const schema = modelParamsSchema(model);
+  const disabled = modelDisabledParams(model);
+  const fromModel = Object.fromEntries(
+    Object.entries(schema)
+      .filter(([key]) => !disabled.has(key))
+      .map(([key, value]) => [key, readParamDefault(value)])
+      .filter(([, value]) => value !== null),
+  ) as AgentModelParams;
+  const overrides = Object.fromEntries(
+    Object.entries(sessionParams || {}).filter(([key]) => !disabled.has(key)),
+  ) as AgentModelParams;
+  const merged = cleanModelParams({ ...fromModel, ...overrides });
+  return merged || null;
+}
 
 function readSendShortcut(): SendShortcut {
   if (typeof window === 'undefined') return 'enter';
@@ -220,7 +468,7 @@ export default function AetherHubWorkspacePage() {
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(true);
   const [mobileSessionOpen, setMobileSessionOpen] = useState(false);
   const [mobileConfigOpen, setMobileConfigOpen] = useState(false);
 
@@ -290,11 +538,8 @@ export default function AetherHubWorkspacePage() {
   }, [streaming]);
 
   const handleOpenCurrentConfig = useCallback(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) {
-      setPanelCollapsed(false);
-      return;
-    }
-    setMobileConfigOpen(true);
+    setPanelCollapsed(false);
+    setMobileConfigOpen(false);
   }, []);
 
   const handleSelectSession = useCallback(
@@ -334,11 +579,41 @@ export default function AetherHubWorkspacePage() {
         ...s,
         modelId,
         providerCode,
+        modelParams: undefined,
         updatedAt: Date.now(),
       }));
     },
     [activeSession, updateSession],
   );
+
+  const handleSetModelParam = useCallback(
+    (key: string, value: AgentModelParams[string] | undefined) => {
+      if (!activeSession) return;
+      updateSession(activeSession.id, (s) => {
+        const nextParams = { ...(s.modelParams || {}) };
+        if (value === undefined || value === null || value === '') {
+          delete nextParams[key];
+        } else {
+          nextParams[key] = value;
+        }
+        return {
+          ...s,
+          modelParams: cleanModelParams(nextParams),
+          updatedAt: Date.now(),
+        };
+      });
+    },
+    [activeSession, updateSession],
+  );
+
+  const handleResetModelParams = useCallback(() => {
+    if (!activeSession) return;
+    updateSession(activeSession.id, (s) => ({
+      ...s,
+      modelParams: undefined,
+      updatedAt: Date.now(),
+    }));
+  }, [activeSession, updateSession]);
 
   const handleAbort = useCallback(() => {
     abortRef.current?.abort();
@@ -372,6 +647,7 @@ export default function AetherHubWorkspacePage() {
         messages: AgentMessage[];
         selectedArticles?: AgentArticle[];
         selectedTags?: AgentTag[];
+        selectedKbs?: AgentKnowledgeBase[];
       },
     ) => {
       const text = rawText.trim();
@@ -400,8 +676,11 @@ export default function AetherHubWorkspacePage() {
       const sessionId = baseSession.id;
       const modelId = baseSession.modelId ?? null;
       const providerCode = baseSession.providerCode ?? null;
+      const requestModel = currentModelFromSession(baseSession, modelsState);
+      const modelParams = buildModelParamsForRequest(requestModel, baseSession.modelParams);
       const requestArticles = override?.selectedArticles ?? selectedArticles;
       const requestTags = override?.selectedTags ?? selectedTags;
+      const requestKbs = override?.selectedKbs ?? selectedKbs;
       const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -417,6 +696,7 @@ export default function AetherHubWorkspacePage() {
       if (!override) {
         setSelectedArticles([]);
         setSelectedTags([]);
+        setSelectedKbs([]);
       }
       setStreaming(true);
 
@@ -445,9 +725,10 @@ export default function AetherHubWorkspacePage() {
         messages: historyForRequest,
         modelId,
         providerCode,
+        modelParams,
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
-        kbIds: selectedKbs.length > 0 ? selectedKbs.map((k) => k.id) : null,
+        kbIds: requestKbs.length > 0 ? requestKbs.map((k) => k.id) : null,
       };
 
       try {
@@ -513,7 +794,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, modelsState],
   );
 
   const handleEditMessage = useCallback(
@@ -544,6 +825,7 @@ export default function AetherHubWorkspacePage() {
         messages: baseMessages,
         selectedArticles: [],
         selectedTags: [],
+        selectedKbs: [],
       });
     },
     [activeSession, streaming, handleSend],
@@ -586,6 +868,7 @@ export default function AetherHubWorkspacePage() {
           }));
           setSelectedArticles([]);
           setSelectedTags([]);
+          setSelectedKbs([]);
           toast.success('已清空当前对话');
           return;
         case '/new':
@@ -635,12 +918,8 @@ export default function AetherHubWorkspacePage() {
           className={cn(
             'relative z-10 grid h-full min-h-0 w-full grid-cols-1 overflow-hidden',
             sessionSidebarCollapsed
-              ? panelCollapsed
-                ? 'lg:grid-cols-[0px_minmax(0,1fr)] xl:grid-cols-[0px_minmax(0,1fr)]'
-                : 'lg:grid-cols-[0px_minmax(0,1fr)] xl:grid-cols-[0px_minmax(0,1fr)_320px]'
-              : panelCollapsed
-                ? 'lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]'
-                : 'lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]',
+              ? 'lg:grid-cols-[0px_minmax(0,1fr)] xl:grid-cols-[0px_minmax(0,1fr)]'
+              : 'lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]',
           )}
         >
           <WorkspaceSidebar
@@ -681,16 +960,8 @@ export default function AetherHubWorkspacePage() {
               onOpenSessions={() => setMobileSessionOpen(true)}
               sessionSidebarCollapsed={sessionSidebarCollapsed}
               onToggleSessionSidebar={() => setSessionSidebarCollapsed((v) => !v)}
-            />
-
-            <KbPickerBar
-              selectedKbs={selectedKbs}
-              onAdd={(kb) =>
-                setSelectedKbs((prev) =>
-                  prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
-                )
-              }
-              onRemove={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
+              capabilityPanelOpen={!panelCollapsed}
+              onToggleCapabilityPanel={() => setPanelCollapsed((v) => !v)}
             />
 
             <WorkspaceCanvas
@@ -713,6 +984,7 @@ export default function AetherHubWorkspacePage() {
               onPickPrompt={(text) => setComposer(text)}
               selectedArticles={selectedArticles}
               selectedTags={selectedTags}
+              selectedKbs={selectedKbs}
               onPickArticle={(article) =>
                 setSelectedArticles((prev) =>
                   prev.find((a) => a.id === article.id) ? prev : [...prev, article],
@@ -723,12 +995,18 @@ export default function AetherHubWorkspacePage() {
                   prev.find((t) => t.slug === tag.slug) ? prev : [...prev, tag],
                 )
               }
+              onPickKb={(kb) =>
+                setSelectedKbs((prev) =>
+                  prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
+                )
+              }
               onRemoveArticle={(id) =>
                 setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
               }
               onRemoveTag={(slug) =>
                 setSelectedTags((prev) => prev.filter((t) => t.slug !== slug))
               }
+              onRemoveKb={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
               onSlashCommand={handleSlashCommand}
               onEditMessage={handleEditMessage}
               onRetryMessage={handleRetryMessage}
@@ -740,30 +1018,23 @@ export default function AetherHubWorkspacePage() {
             session={activeSession}
             modelsState={modelsState}
             collapsed={panelCollapsed}
+            selectedArticles={selectedArticles}
+            selectedTags={selectedTags}
+            selectedKbs={selectedKbs}
             displayMode={displayMode}
             onSetDisplayMode={setDisplayMode}
             streamAnimation={streamAnimation}
             onSetStreamAnimation={setStreamAnimation}
-            fontSize={fontSize}
-            onSetFontSize={setFontSize}
+            onSetModelParam={handleSetModelParam}
+            onResetModelParams={handleResetModelParams}
             onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
-            onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
-            onClearMessages={() => {
-              if (!activeSession) return;
-              if (streaming) {
-                toast.info('请先停止当前回答');
-                return;
-              }
-              updateSession(activeSession.id, (s) => ({
-                ...s,
-                messages: [],
-                title: '新对话',
-                updatedAt: Date.now(),
-              }));
-              setSelectedArticles([]);
-              setSelectedTags([]);
-              toast.success('已清空当前对话');
-            }}
+            onRemoveArticle={(id) =>
+              setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
+            }
+            onRemoveTag={(slug) =>
+              setSelectedTags((prev) => prev.filter((t) => t.slug !== slug))
+            }
+            onRemoveKb={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
           />
 
           <MobileContextSheet
@@ -792,6 +1063,7 @@ export default function AetherHubWorkspacePage() {
               }));
               setSelectedArticles([]);
               setSelectedTags([]);
+              setSelectedKbs([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -1216,6 +1488,8 @@ function TopBar({
   onOpenSessions,
   sessionSidebarCollapsed,
   onToggleSessionSidebar,
+  capabilityPanelOpen,
+  onToggleCapabilityPanel,
 }: {
   activeSession: AgentSession | null;
   streaming: boolean;
@@ -1225,6 +1499,8 @@ function TopBar({
   onOpenSessions: () => void;
   sessionSidebarCollapsed: boolean;
   onToggleSessionSidebar: () => void;
+  capabilityPanelOpen: boolean;
+  onToggleCapabilityPanel: () => void;
 }) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
 
@@ -1272,6 +1548,21 @@ function TopBar({
           className="grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:h-9 md:w-9 md:rounded-lg"
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCapabilityPanel}
+          aria-pressed={capabilityPanelOpen}
+          aria-label={capabilityPanelOpen ? '关闭空间与参数侧栏' : '打开空间与参数侧栏'}
+          title={capabilityPanelOpen ? '关闭空间与参数侧栏' : '空间与参数'}
+          className={cn(
+            'grid h-8 w-8 place-items-center rounded-full transition-colors md:h-9 md:w-9 md:rounded-lg',
+            capabilityPanelOpen
+              ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+              : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+          )}
+        >
+          <Settings className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -1605,10 +1896,13 @@ function WorkspaceCanvas({
   onPickPrompt,
   selectedArticles,
   selectedTags,
+  selectedKbs,
   onPickArticle,
   onPickTag,
+  onPickKb,
   onRemoveArticle,
   onRemoveTag,
+  onRemoveKb,
   onSlashCommand,
   onEditMessage,
   onRetryMessage,
@@ -1633,10 +1927,13 @@ function WorkspaceCanvas({
   onPickPrompt: (text: string) => void;
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
+  selectedKbs: AgentKnowledgeBase[];
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
+  onPickKb: (kb: AgentKnowledgeBase) => void;
   onRemoveArticle: (id: number) => void;
   onRemoveTag: (slug: string) => void;
+  onRemoveKb: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
   onEditMessage: (message: AgentMessage) => void;
   onRetryMessage: (message: AgentMessage) => void;
@@ -1772,10 +2069,13 @@ function WorkspaceCanvas({
         onSetSendShortcut={onSetSendShortcut}
         selectedArticles={selectedArticles}
         selectedTags={selectedTags}
+        selectedKbs={selectedKbs}
         onPickArticle={onPickArticle}
         onPickTag={onPickTag}
+        onPickKb={onPickKb}
         onRemoveArticle={onRemoveArticle}
         onRemoveTag={onRemoveTag}
+        onRemoveKb={onRemoveKb}
         onSlashCommand={onSlashCommand}
       />
     </main>
@@ -2573,10 +2873,13 @@ function Composer({
   onSetSendShortcut,
   selectedArticles,
   selectedTags,
+  selectedKbs,
   onPickArticle,
   onPickTag,
+  onPickKb,
   onRemoveArticle,
   onRemoveTag,
+  onRemoveKb,
   onSlashCommand,
 }: {
   value: string;
@@ -2591,19 +2894,25 @@ function Composer({
   onSetSendShortcut: (shortcut: SendShortcut) => void;
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
+  selectedKbs: AgentKnowledgeBase[];
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
+  onPickKb: (kb: AgentKnowledgeBase) => void;
   onRemoveArticle: (id: number) => void;
   onRemoveTag: (slug: string) => void;
+  onRemoveKb: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chipTrayRef = useRef<HTMLDivElement | null>(null);
   const atBtnRef = useRef<HTMLButtonElement | null>(null);
   const hashBtnRef = useRef<HTMLButtonElement | null>(null);
+  const kbBtnRef = useRef<HTMLButtonElement | null>(null);
   const slashBtnRef = useRef<HTMLButtonElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
-  const [picker, setPicker] = useState<'article' | 'tag' | 'slash' | null>(null);
+  const sendMenuCloseTimerRef = useRef<number | null>(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
+  const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -2620,6 +2929,7 @@ function Composer({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (isMobile) return;
     const shouldSend =
       sendShortcut === 'enter'
         ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
@@ -2635,26 +2945,57 @@ function Composer({
     onChange(e.target.value);
   };
 
-  const togglePicker = (k: 'article' | 'tag' | 'slash') => {
+  const togglePicker = (k: 'article' | 'tag' | 'kb' | 'slash') => {
     setPicker((cur) => (cur === k ? null : k));
   };
 
   const selectedArticleCount = selectedArticles.length;
   const selectedTagCount = selectedTags.length;
-  const selectedContextCount = selectedArticleCount + selectedTagCount;
+  const selectedKbCount = selectedKbs.length;
+  const selectedContextCount = selectedArticleCount + selectedTagCount + selectedKbCount;
   const selectedContextVisible = selectedContextCount > 0;
   const compactSelectedContext = picker !== null && selectedContextCount > 1;
   const trayScrollEnabled = selectedContextCount > 6;
   const canSend = !!value.trim() && !streaming;
 
+  const clearSendMenuCloseTimer = useCallback(() => {
+    if (sendMenuCloseTimerRef.current === null) return;
+    window.clearTimeout(sendMenuCloseTimerRef.current);
+    sendMenuCloseTimerRef.current = null;
+  }, []);
+
+  const openSendMenu = useCallback(() => {
+    clearSendMenuCloseTimer();
+    setSendMenuOpen(true);
+  }, [clearSendMenuCloseTimer]);
+
+  const closeSendMenu = useCallback(() => {
+    clearSendMenuCloseTimer();
+    setSendMenuOpen(false);
+  }, [clearSendMenuCloseTimer]);
+
+  const scheduleCloseSendMenu = useCallback(() => {
+    clearSendMenuCloseTimer();
+    sendMenuCloseTimerRef.current = window.setTimeout(() => {
+      setSendMenuOpen(false);
+      sendMenuCloseTimerRef.current = null;
+    }, 160);
+  }, [clearSendMenuCloseTimer]);
+
+  useEffect(() => clearSendMenuCloseTimer, [clearSendMenuCloseTimer]);
+
   useEffect(() => {
-    if (!sendMenuOpen) return;
+    if (isMobile) closeSendMenu();
+  }, [closeSendMenu, isMobile]);
+
+  useEffect(() => {
+    if (!sendMenuOpen || isMobile) return;
     const onDown = (e: MouseEvent) => {
       if (!sendMenuRef.current) return;
-      if (!sendMenuRef.current.contains(e.target as Node)) setSendMenuOpen(false);
+      if (!sendMenuRef.current.contains(e.target as Node)) closeSendMenu();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setSendMenuOpen(false);
+      if (e.key === 'Escape') closeSendMenu();
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -2662,7 +3003,7 @@ function Composer({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [sendMenuOpen]);
+  }, [closeSendMenu, isMobile, sendMenuOpen]);
 
   useEffect(() => {
     const el = chipTrayRef.current;
@@ -2703,6 +3044,13 @@ function Composer({
             selectedIds={new Set(selectedArticles.map((a) => a.id))}
             onClose={() => setPicker(null)}
             onPick={(a) => onPickArticle(a)}
+          />
+          <KnowledgeBasePicker
+            open={picker === 'kb'}
+            anchorRef={kbBtnRef}
+            selectedIds={new Set(selectedKbs.map((kb) => kb.id))}
+            onClose={() => setPicker(null)}
+            onPick={(kb) => onPickKb(kb)}
           />
           <TagPicker
             open={picker === 'tag'}
@@ -2753,6 +3101,37 @@ function Composer({
                   }}
                 >
                   <AnimatePresence initial={false}>
+                    {selectedKbs.map((kb) => (
+                      <motion.span
+                        key={`kb-${kb.id}`}
+                        layout
+                        initial={{ opacity: 0, scale: 0.98, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -3 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                        className={cn(
+                          'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_7%,transparent)]',
+                          compactSelectedContext
+                            ? 'max-w-[calc(50%_-_0.1875rem)] flex-[0_1_auto]'
+                            : picker
+                              ? 'max-w-[min(16rem,calc(100%-0.25rem))] flex-[0_1_auto]'
+                              : 'max-w-[min(16rem,64vw)] shrink-0',
+                        )}
+                      >
+                        <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-3)]" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate" title={kb.name}>
+                          {kb.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveKb(kb.id)}
+                          className="inline-flex !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                          aria-label={`移除知识库 ${kb.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </motion.span>
+                    ))}
                     {selectedArticles.map((a) => (
                       <motion.span
                         key={`art-${a.id}`}
@@ -2830,7 +3209,7 @@ function Composer({
             onBlur={() => setFocused(false)}
             rows={1}
             disabled={streaming}
-            placeholder="问灵境，@ 文章 · # 标签 · / 命令"
+            placeholder="问灵境，知识库 · @ 文章 · # 标签 · / 命令"
             spellCheck={false}
             autoComplete="off"
             className={cn(
@@ -2843,7 +3222,7 @@ function Composer({
             style={{ boxShadow: 'none' }}
           />
           <div className="mt-1.5 grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:mt-2 md:min-h-10">
-            <div className="flex min-w-0 items-center gap-1 overflow-visible">
+            <div className="agent-thumb-scroll flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain pr-1 sm:overflow-visible sm:pr-0">
               <ModelPickerButton
                 activeSession={activeSession}
                 modelsState={modelsState}
@@ -2856,6 +3235,15 @@ function Composer({
                 aria-hidden="true"
                 className="mx-1 hidden h-4 w-px bg-[var(--hub-border)] sm:inline-block"
               />
+              <ToolButton
+                ref={kbBtnRef}
+                title="选择知识库"
+                active={picker === 'kb'}
+                count={selectedKbCount}
+                onClick={() => togglePicker('kb')}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+              </ToolButton>
               <ToolButton
                 ref={atBtnRef}
                 title="引用文章 (@)"
@@ -2895,14 +3283,42 @@ function Composer({
                 <Square className="h-3 w-3 fill-current" />
                 停止
               </button>
+            ) : isMobile ? (
+              <button
+                type="button"
+                onClick={() => onSend(value)}
+                disabled={!canSend}
+                className={cn(
+                  'grid h-11 w-12 shrink-0 place-items-center rounded-[1.35rem] border transition-[border-color,background-color,color] duration-200 active:scale-95',
+                  canSend
+                    ? 'border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'cursor-not-allowed border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
+                )}
+                aria-label="发送"
+                title="发送"
+              >
+                <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
+              </button>
             ) : (
               <div
                 ref={sendMenuRef}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === 'mouse') openSendMenu();
+                }}
+                onPointerLeave={(event) => {
+                  if (event.pointerType === 'mouse') scheduleCloseSendMenu();
+                }}
+                onFocusCapture={openSendMenu}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    closeSendMenu();
+                  }
+                }}
                 className={cn(
-                  'relative flex h-10 shrink-0 items-center overflow-visible rounded-full border transition-colors md:h-11',
+                  'relative flex h-11 shrink-0 items-center overflow-visible rounded-[1.35rem] border transition-[border-color,background-color,color] duration-200',
                   canSend
-                    ? 'border-transparent text-[var(--hub-on-accent)] shadow-[var(--hub-accent-shadow)] [background:var(--hub-gradient)]'
-                    : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]',
+                    ? 'border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
                 )}
               >
                 <button
@@ -2910,30 +3326,45 @@ function Composer({
                   onClick={() => onSend(value)}
                   disabled={!canSend}
                   className={cn(
-                    'grid h-10 w-10 place-items-center transition-colors active:scale-95 md:h-11 md:w-11',
-                    !canSend && 'cursor-not-allowed text-[var(--ink-muted)]',
+                    'grid h-11 w-12 place-items-center rounded-l-[1.35rem] transition-colors active:scale-95',
+                    canSend
+                      ? 'text-[var(--bg-void)] hover:bg-[color-mix(in_oklch,var(--bg-void)_9%,transparent)]'
+                      : 'cursor-not-allowed text-[var(--ink-muted)]',
                   )}
                   aria-label="发送"
                   title="发送"
                 >
-                  <ArrowUp className="h-5 w-5" />
+                  <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
                 </button>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-7 w-px transition-colors',
+                    canSend
+                      ? 'bg-[color-mix(in_oklch,var(--bg-void)_24%,transparent)]'
+                      : 'bg-[var(--hub-border)]',
+                  )}
+                />
                 <button
                   type="button"
-                  onClick={() => setSendMenuOpen((open) => !open)}
+                  onClick={openSendMenu}
                   aria-expanded={sendMenuOpen}
                   aria-haspopup="menu"
                   aria-label="选择发送方式"
                   title="选择发送方式"
                   className={cn(
-                    'hidden h-11 w-9 place-items-center border-l transition-colors active:scale-95 md:grid',
-                    canSend
-                      ? 'border-[color-mix(in_oklch,var(--hub-on-accent)_22%,transparent)]'
-                      : 'border-[var(--hub-border)] hover:bg-[var(--hub-control-hover)]',
+                    'grid h-11 w-10 place-items-center rounded-r-[1.35rem] transition-colors active:scale-95',
+                    sendMenuOpen
+                      ? canSend
+                        ? 'bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)] text-[var(--bg-void)]'
+                        : 'bg-[var(--hub-control-hover)] text-[var(--ink-primary)]'
+                      : canSend
+                        ? 'text-[var(--bg-void)] hover:bg-[color-mix(in_oklch,var(--bg-void)_9%,transparent)]'
+                        : 'hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
                   )}
                 >
                   <ChevronDown
-                    className={cn('h-4 w-4 transition-transform', sendMenuOpen && 'rotate-180')}
+                    className={cn('h-[18px] w-[18px] transition-transform', sendMenuOpen && 'rotate-180')}
                   />
                 </button>
 
@@ -2946,11 +3377,8 @@ function Composer({
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="absolute bottom-full right-0 z-40 mb-3 hidden w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:block"
+                      className="absolute bottom-full right-0 z-40 mb-3 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 backdrop-blur-2xl"
                     >
-                      <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-                        发送方式
-                      </div>
                       {SEND_SHORTCUT_OPTIONS.map((option) => {
                         const selected = option.value === sendShortcut;
                         return (
@@ -2964,22 +3392,24 @@ function Composer({
                               setSendMenuOpen(false);
                             }}
                             className={cn(
-                              'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
+                              'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
                               selected
                                 ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
                                 : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
                             )}
                           >
-                            <span className="grid h-7 w-9 shrink-0 place-items-center rounded-lg bg-[var(--hub-control)] font-mono text-[12px] text-[var(--ink-secondary)]">
-                              {option.keys}
+                            <span className="grid h-7 w-6 shrink-0 place-items-center text-[var(--ink-primary)]">
+                              {selected && <Check className="h-4 w-4" />}
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium">{option.label}</span>
-                              <span className="block text-[var(--fs-caption)] text-[var(--ink-muted)]">
-                                {option.description}
+                              <span className="flex items-center gap-2 text-sm font-medium">
+                                按
+                                <span className="rounded-md bg-[var(--hub-control)] px-2 py-1 font-mono text-[11px] text-[var(--ink-secondary)]">
+                                  {option.keys}
+                                </span>
+                                发送
                               </span>
                             </span>
-                            {selected && <Check className="h-4 w-4 shrink-0" />}
                           </button>
                         );
                       })}
@@ -3262,6 +3692,145 @@ function PickerPopover({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+// =============================================================================
+// KnowledgeBasePicker —— 选知识库
+// =============================================================================
+
+function KnowledgeBasePicker({
+  open,
+  onClose,
+  anchorRef,
+  selectedIds,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  selectedIds: Set<number>;
+  onPick: (kb: AgentKnowledgeBase) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<AgentKnowledgeBase[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const q = query.trim();
+    const timer = window.setTimeout(
+      () => {
+        setLoading(true);
+        setError(null);
+        fetchAgentKnowledgeBases(q || undefined)
+          .then((res) => {
+            if (cancelled) return;
+            setItems(res.data || []);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            setItems([]);
+            setError(err instanceof Error ? err.message : '知识库加载失败');
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
+          });
+      },
+      q ? 180 : 0,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, query]);
+
+  const showInitialLoading = loading && items.length === 0;
+  const showEmpty = !loading && !error && items.length === 0;
+
+  return (
+    <PickerPopover
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      ariaLabel="选择知识库"
+      className="w-full sm:w-[min(360px,calc(100vw-1.5rem))]"
+    >
+      <PickerPanelHeader
+        title="知识库"
+        description="选择本轮对话要召回的资源"
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="搜索知识库…"
+        inputRef={inputRef}
+      />
+      <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:h-[300px] sm:max-h-none sm:flex-none sm:py-1">
+        {showInitialLoading && (
+          <div className="absolute inset-x-3 top-4 space-y-2" aria-label="知识库加载中">
+            <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+            <div className="h-11 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+            <div className="h-11 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+            {error}
+          </div>
+        )}
+        {showEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            暂无可用知识库
+          </div>
+        )}
+        {items.length > 0 && (
+          <div className={cn('transition-opacity duration-150', loading ? 'opacity-50' : 'opacity-100')}>
+            {items.map((kb) => {
+              const selected = selectedIds.has(kb.id);
+              return (
+                <button
+                  key={kb.id}
+                  type="button"
+                  onClick={() => {
+                    if (!selected) onPick(kb);
+                  }}
+                  aria-disabled={selected}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors sm:rounded-none sm:py-2',
+                    selected
+                      ? 'cursor-default text-[var(--aurora-3)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                  )}
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--aurora-3)]">
+                    {kb.kind === 'SYSTEM_POSTS' ? (
+                      <Brain className="h-3.5 w-3.5" />
+                    ) : (
+                      <BookOpen className="h-3.5 w-3.5" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm sm:text-[13px]">{kb.name}</span>
+                    <span className="mt-0.5 block truncate text-[11.5px] text-[var(--ink-muted)]">
+                      {kb.kind === 'SYSTEM_POSTS' ? '系统库' : '自定义'} · {kb.fileCount} 文件 ·{' '}
+                      {kb.chunkCount} 分块
+                    </span>
+                  </span>
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PickerPopover>
   );
 }
 
@@ -3607,210 +4176,1005 @@ function ContextPanel({
   session,
   modelsState,
   collapsed,
+  selectedArticles,
+  selectedTags,
+  selectedKbs,
   displayMode,
   onSetDisplayMode,
   streamAnimation,
   onSetStreamAnimation,
-  fontSize,
-  onSetFontSize,
+  onSetModelParam,
+  onResetModelParams,
   onToggleCollapsed,
-  onDeleteSession,
-  onClearMessages,
+  onRemoveArticle,
+  onRemoveTag,
+  onRemoveKb,
 }: {
   session: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   collapsed: boolean;
+  selectedArticles: AgentArticle[];
+  selectedTags: AgentTag[];
+  selectedKbs: AgentKnowledgeBase[];
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
   streamAnimation: StreamAnimationMode;
-  onSetStreamAnimation: (m: StreamAnimationMode) => void;
-  fontSize: number;
-  onSetFontSize: (n: number) => void;
+  onSetStreamAnimation: (mode: StreamAnimationMode) => void;
+  onSetModelParam: (key: string, value: AgentModelParams[string] | undefined) => void;
+  onResetModelParams: () => void;
   onToggleCollapsed: () => void;
-  onDeleteSession: () => void;
-  onClearMessages: () => void;
+  onRemoveArticle: (id: number) => void;
+  onRemoveTag: (slug: string) => void;
+  onRemoveKb: (id: number) => void;
 }) {
-  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const [activeTab, setActiveTab] = useState<CapabilityPanelTab>('space');
+  const [preview, setPreview] = useState<SpacePreviewTarget | null>(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
+  const currentModel = useMemo(
+    () => currentModelFromSession(session, modelsState),
+    [session, modelsState],
+  );
   const modelDisplay = useMemo(() => {
     if (!session?.modelId) return '自动路由';
-    const found = items.find(
-      (m) => m.modelId === session.modelId && m.providerCode === session.providerCode,
-    );
-    return found ? modelLabel(found) : session.modelId;
-  }, [session?.modelId, session?.providerCode, items]);
+    return currentModel ? modelLabel(currentModel) : session.modelId;
+  }, [session?.modelId, currentModel]);
+  const providerDisplay = currentModel?.providerName || session?.providerCode || '路由策略';
+  const numericParams = useMemo(() => buildNumericModelParams(currentModel), [currentModel]);
+  const extendParams = useMemo(() => modelExtendParams(currentModel), [currentModel]);
+  const disabledParams = useMemo(() => Array.from(modelDisabledParams(currentModel)), [currentModel]);
+  const abilities = currentModel?.abilities || {};
+  const activeParamKeys = useMemo(() => {
+    const keys = new Set<string>(numericParams.map((param) => param.key));
+    if (extendParams.some((key) => REASONING_EXTEND_PARAM_KEYS.has(key))) keys.add('reasoning_effort');
+    if (extendParams.includes('textVerbosity')) keys.add('verbosity');
+    if (extendParams.includes('thinkingBudget')) keys.add('thinkingBudget');
+    if (extendParams.some((key) => key.startsWith('thinkingLevel'))) keys.add('thinkingLevel');
+    if (extendParams.includes('enableReasoning')) keys.add('enableReasoning');
+    if (extendParams.includes('disableContextCaching')) keys.add('disableContextCaching');
+    return Array.from(keys);
+  }, [numericParams, extendParams]);
+  const sessionParamCount = Object.keys(cleanModelParams(session?.modelParams) || {}).length;
 
-  const messageCount = session?.messages.length ?? 0;
-  const userMessageCount = session?.messages.filter((m) => m.role === 'user').length ?? 0;
+  const spaceCount = selectedArticles.length + selectedTags.length + selectedKbs.length;
+  const hasSpaceItems = spaceCount > 0;
 
-  const handleCopyId = async () => {
-    if (!session) return;
-    try {
-      await navigator.clipboard.writeText(session.id);
-      toast.success('对话 ID 已复制');
-    } catch {
-      toast.error('复制失败，请手动选中复制');
-    }
-  };
+  useEffect(() => {
+    if (collapsed) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (preview) setPreview(null);
+        else onToggleCollapsed();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [collapsed, onToggleCollapsed, preview]);
 
-  if (collapsed) {
-    // 收起态：渲染一个浮动的展开按钮（绝对定位到右上），不再占用 grid 列
-    return (
-      <button
-        type="button"
-        onClick={onToggleCollapsed}
-        aria-label="展开当前对话面板"
-        title="展开当前对话面板"
-        className="fixed right-4 top-[72px] z-20 hidden h-10 w-10 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] text-[var(--ink-secondary)] shadow-[var(--hub-card-shadow)] backdrop-blur-2xl transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] xl:grid"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </button>
-    );
-  }
+  useEffect(() => {
+    if (collapsed || !isMobile) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [collapsed, isMobile]);
+
+  const panelMotion = isMobile
+    ? {
+        initial: { y: '100%', opacity: 1, scale: 1 },
+        animate: { y: 0, opacity: 1, scale: 1 },
+        exit: { y: '100%', opacity: 1, scale: 1 },
+      }
+    : {
+        initial: { x: 34, opacity: 0, scale: 0.985 },
+        animate: { x: 0, opacity: 1, scale: 1 },
+        exit: { x: 34, opacity: 0, scale: 0.985 },
+      };
+  const panelTransition = isMobile
+    ? { type: 'spring' as const, stiffness: 360, damping: 34, mass: 0.9 }
+    : { type: 'spring' as const, stiffness: 430, damping: 36, mass: 0.82 };
 
   return (
-    <motion.aside
-      initial={{ x: 24, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 24, opacity: 0 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-      className="hidden h-full min-h-0 flex-col gap-4 border-l border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 backdrop-blur-2xl xl:flex"
-    >
-      <div className="flex items-center justify-between px-2 pb-1 pt-3">
-        <h2 className="text-sm font-semibold text-[var(--ink-primary)]">当前对话</h2>
-        <div className="flex items-center gap-2">
-          <IconButton label="收起" onClick={onToggleCollapsed}>
-            <ChevronRight className="h-4 w-4" />
-          </IconButton>
-          <IconButton label="更多">
-            <MoreHorizontal className="h-4 w-4" />
-          </IconButton>
-        </div>
-      </div>
+    <>
+      <AnimatePresence>
+        {!collapsed && (
+          <div className="fixed inset-0 z-50 md:z-40">
+            <motion.div
+              className="absolute inset-0 bg-black/45 backdrop-blur-sm md:bg-black/10 md:backdrop-blur-[1px] xl:bg-transparent xl:backdrop-blur-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              onClick={onToggleCollapsed}
+              aria-hidden="true"
+            />
+            <motion.aside
+              role="dialog"
+              aria-modal={isMobile}
+              aria-label="空间与参数侧栏"
+              initial={panelMotion.initial}
+              animate={panelMotion.animate}
+              exit={panelMotion.exit}
+              transition={panelTransition}
+              className="absolute inset-x-0 bottom-0 top-auto flex max-h-[66vh] w-full overflow-hidden rounded-t-[28px] border border-b-0 border-[var(--hub-border)] bg-[var(--hub-panel-strong)] pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-28px_70px_-34px_rgba(0,0,0,0.64)] backdrop-blur-2xl md:bottom-4 md:left-auto md:right-4 md:top-[76px] md:max-h-none md:w-[min(440px,calc(100vw-1.25rem))] md:rounded-[28px] md:border-b md:pb-0 md:shadow-[0_28px_80px_-38px_rgba(0,0,0,0.55)]"
+            >
+              <div className="hidden w-[58px] shrink-0 flex-col items-center gap-2 border-r border-[var(--hub-border)] bg-[var(--hub-control)]/35 px-2 py-4 md:flex">
+                <CapabilityRailButton
+                  label="空间"
+                  active={activeTab === 'space'}
+                  onClick={() => setActiveTab('space')}
+                >
+                  <Layers3 className="h-5 w-5" />
+                </CapabilityRailButton>
+                <CapabilityRailButton
+                  label="参数"
+                  active={activeTab === 'params'}
+                  onClick={() => setActiveTab('params')}
+                >
+                  <Settings className="h-5 w-5" />
+                </CapabilityRailButton>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={onToggleCollapsed}
+                  aria-label="关闭侧栏"
+                  title="关闭侧栏"
+                  className="grid h-10 w-10 place-items-center rounded-2xl text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                >
+                  <SidebarIcon className="h-5 w-5" />
+                </button>
+              </div>
 
-      <PanelCard>
-        <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">对话信息</h3>
-        <MetadataRow label="对话 ID" value={session?.id ?? '—'} mono />
-        <MetadataRow
-          label="创建时间"
-          value={session ? formatDate(new Date(session.createdAt), 'yyyy-MM-dd HH:mm:ss') : '—'}
-          mono
-        />
-        <MetadataRow
-          label="最近活动"
-          value={session ? formatDate(new Date(session.updatedAt), 'yyyy-MM-dd HH:mm:ss') : '—'}
-          mono
-        />
-        <MetadataRow label="模型" value={modelDisplay} />
-        <MetadataRow
-          label="消息数"
-          value={`${messageCount} / 用户 ${userMessageCount}`}
-          mono
-        />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="shrink-0 border-b border-[var(--hub-border)] px-4 pb-3 pt-3 md:flex md:h-[68px] md:items-center md:justify-between md:gap-3 md:px-5 md:py-0">
+                  <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-[var(--hub-border)] md:hidden" />
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-none">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('space')}
+                        className={cn(
+                          'h-11 min-w-0 flex-1 rounded-2xl px-4 text-[15px] font-semibold transition-colors md:h-10 md:flex-none',
+                          activeTab === 'space'
+                            ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                            : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                        )}
+                      >
+                        空间
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('params')}
+                        className={cn(
+                          'h-11 min-w-0 flex-1 rounded-2xl px-4 text-[15px] font-semibold transition-colors md:h-10 md:flex-none',
+                          activeTab === 'params'
+                            ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                            : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                        )}
+                      >
+                        参数
+                      </button>
+                    </div>
+                    <IconButton label="关闭侧栏" onClick={onToggleCollapsed} className="h-11 w-11 shrink-0 border-0 bg-transparent md:h-9 md:w-9">
+                      {isMobile ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </IconButton>
+                  </div>
+                </div>
+
+                <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 md:px-5 md:py-5">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {activeTab === 'space' ? (
+                      <motion.div
+                        key="space"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-5"
+                      >
+                        <PanelBlock
+                          title="最终空间"
+                          description="这些资源会作为本轮对话的召回边界与参考材料。"
+                        >
+                          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                            <SpaceMetric label="文章" value={selectedArticles.length} />
+                            <SpaceMetric label="知识库" value={selectedKbs.length} />
+                            <SpaceMetric label="标签" value={selectedTags.length} />
+                            <SpaceMetric label="文件" value={selectedKbs.reduce((sum, kb) => sum + kb.fileCount, 0)} />
+                          </div>
+                        </PanelBlock>
+
+                        <PanelBlock title="资源列表">
+                          {!hasSpaceItems && (
+                            <div className="rounded-2xl border border-dashed border-[var(--hub-border)] px-4 py-8 text-center">
+                              <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-2xl bg-[var(--hub-control)] text-[var(--ink-muted)]">
+                                <Layers3 className="h-5 w-5" />
+                              </div>
+                              <p className="text-sm font-medium text-[var(--ink-primary)]">
+                                当前空间为空
+                              </p>
+                              <p className="mt-1 text-[12px] leading-snug text-[var(--ink-muted)]">
+                                在输入框里选择文章、标签或知识库后，这里会形成最终上下文空间。
+                              </p>
+                            </div>
+                          )}
+
+                          {hasSpaceItems && (
+                            <div className="space-y-2.5">
+                              {selectedArticles.map((article) => (
+                                <SpaceResourceRow
+                                  key={`space-article-${article.id}`}
+                                  icon={<FileText className="h-4 w-4" />}
+                                  tone="article"
+                                  title={article.title}
+                                  meta={[
+                                    '文章',
+                                    article.category,
+                                    article.publishedAt,
+                                  ].filter(Boolean).join(' · ')}
+                                  description={article.summary || '点击查看这篇文章的上下文预览'}
+                                  onOpen={() => setPreview({ kind: 'article', article })}
+                                  onRemove={() => onRemoveArticle(article.id)}
+                                />
+                              ))}
+                              {selectedKbs.map((kb) => (
+                                <SpaceResourceRow
+                                  key={`space-kb-${kb.id}`}
+                                  icon={kb.kind === 'SYSTEM_POSTS' ? <Brain className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                                  tone="kb"
+                                  title={kb.name}
+                                  meta={`${kb.kind === 'SYSTEM_POSTS' ? '系统库' : '自定义'} · ${kb.fileCount} 文件 · ${kb.chunkCount} 分块`}
+                                  description={kb.activeProfile?.name || '点击查看知识库召回配置与空间信息'}
+                                  onOpen={() => setPreview({ kind: 'kb', kb })}
+                                  onRemove={() => onRemoveKb(kb.id)}
+                                />
+                              ))}
+                              {selectedTags.map((tag) => (
+                                <SpaceResourceRow
+                                  key={`space-tag-${tag.slug}`}
+                                  icon={<Hash className="h-4 w-4" />}
+                                  tone="tag"
+                                  title={tag.name}
+                                  meta={`标签 · ${tag.postCount} 篇文章`}
+                                  description={`会把对话范围限定到 #${tag.slug}`}
+                                  onOpen={() => setPreview({ kind: 'tag', tag })}
+                                  onRemove={() => onRemoveTag(tag.slug)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </PanelBlock>
+
+                        <PanelBlock title="能力支撑">
+                          <div className="grid gap-3">
+                            <CapabilityLine label="模型" value={modelDisplay} />
+                            <CapabilityLine label="空间范围" value={spaceCount > 0 ? `${spaceCount} 项资源` : '未限定'} />
+                            <CapabilityControl
+                              icon={displayMode === 'bubble' ? <MessageCircle className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                              label="显示"
+                              value={displayMode === 'bubble' ? '气泡' : '版书'}
+                            >
+                              <HubSegmentedControl
+                                ariaLabel="显示模式"
+                                value={displayMode}
+                                options={[
+                                  { value: 'bubble', label: '气泡', title: '彩色卡片承载' },
+                                  { value: 'engraved', label: '版书', title: '文字浮印纸面' },
+                                ]}
+                                onChange={(value) => onSetDisplayMode(value as DisplayMode)}
+                              />
+                            </CapabilityControl>
+                            <CapabilityControl
+                              icon={<RefreshCcw className="h-4 w-4" />}
+                              label="流式动画"
+                              value={streamAnimation === 'smooth' ? '平滑' : streamAnimation === 'fade' ? '淡入' : '无'}
+                            >
+                              <HubSegmentedControl
+                                ariaLabel="流式动画"
+                                value={streamAnimation}
+                                options={[
+                                  { value: 'none', label: '无' },
+                                  { value: 'fade', label: '淡入' },
+                                  { value: 'smooth', label: '平滑' },
+                                ]}
+                                onChange={(value) => onSetStreamAnimation(value as StreamAnimationMode)}
+                              />
+                            </CapabilityControl>
+                          </div>
+                        </PanelBlock>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="params"
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-5"
+                      >
+                        <PanelBlock
+                          title="模型配置"
+                          description="参数项来自 AI 模型配置中的 parameters 与 extendParams。"
+                        >
+                          <div className="rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+                                  {modelDisplay}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
+                                  <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5">
+                                    {providerDisplay}
+                                  </span>
+                                  {currentModel?.scope && (
+                                    <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5">
+                                      {currentModel.scope === 'user' ? '用户凭证' : '系统凭证'}
+                                    </span>
+                                  )}
+                                  {currentModel?.source && (
+                                    <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5">
+                                      {currentModel.source}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-[var(--hub-active)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--hub-accent-text)]">
+                                {activeParamKeys.length} params
+                              </span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <CapabilityLine
+                                label="上下文"
+                                value={formatContextWindow(currentModel?.contextWindow) || '—'}
+                              />
+                              <CapabilityLine
+                                label="最大输出"
+                                value={currentModel?.maxOutputTokens ? `${currentModel.maxOutputTokens}` : '—'}
+                              />
+                            </div>
+                          </div>
+
+                          {!currentModel && (
+                            <div className="mt-3 rounded-2xl border border-dashed border-[var(--hub-border)] px-4 py-5 text-sm leading-6 text-[var(--ink-muted)]">
+                              当前使用自动路由。选择具体模型后，这里会按该模型的可配置参数生成控件。
+                            </div>
+                          )}
+                        </PanelBlock>
+
+                        {currentModel && (
+                          <>
+                            <PanelBlock
+                              title="采样参数"
+                              description="只显示当前模型未禁用且可覆盖的通用生成参数。"
+                            >
+                              <div className="space-y-4">
+                                {numericParams.map((param) => {
+                                  const value = effectiveParamValue(session, param);
+                                  return (
+                                    <ModelParamSlider
+                                      key={param.key}
+                                      param={param}
+                                      value={value}
+                                      overridden={session?.modelParams?.[param.key] !== undefined}
+                                      onChange={(next) => onSetModelParam(param.key, next)}
+                                      onReset={() => onSetModelParam(param.key, undefined)}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            </PanelBlock>
+
+                            <PanelBlock
+                              title="扩展能力"
+                              description="这些项由模型 settings.extendParams 决定，和模型商配置保持同源。"
+                            >
+                              {extendParams.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-[var(--hub-border)] px-4 py-5 text-sm text-[var(--ink-muted)]">
+                                  当前模型没有声明扩展参数。
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {extendParams.some((key) => REASONING_EXTEND_PARAM_KEYS.has(key)) && (
+                                    <ModelParamChoice
+                                      label="推理强度"
+                                      description="reasoning_effort"
+                                      value={String(session?.modelParams?.reasoning_effort || 'medium')}
+                                      options={REASONING_EFFORT_OPTIONS}
+                                      onChange={(value) => onSetModelParam('reasoning_effort', value)}
+                                      onReset={() => onSetModelParam('reasoning_effort', undefined)}
+                                    />
+                                  )}
+                                  {extendParams.includes('textVerbosity') && (
+                                    <ModelParamChoice
+                                      label="输出详略"
+                                      description="verbosity"
+                                      value={String(session?.modelParams?.verbosity || 'medium')}
+                                      options={TEXT_VERBOSITY_OPTIONS}
+                                      onChange={(value) => onSetModelParam('verbosity', value)}
+                                      onReset={() => onSetModelParam('verbosity', undefined)}
+                                    />
+                                  )}
+                                  {extendParams.some((key) => key.startsWith('thinkingLevel')) && (
+                                    <ModelParamChoice
+                                      label="思考级别"
+                                      description="thinkingLevel"
+                                      value={String(session?.modelParams?.thinkingLevel || 'high')}
+                                      options={THINKING_LEVEL_OPTIONS}
+                                      onChange={(value) => onSetModelParam('thinkingLevel', value)}
+                                      onReset={() => onSetModelParam('thinkingLevel', undefined)}
+                                    />
+                                  )}
+                                  {extendParams.includes('thinkingBudget') && (
+                                    <ModelParamSlider
+                                      param={{
+                                        key: 'max_tokens',
+                                        label: '思考预算',
+                                        description: 'thinkingBudget',
+                                        min: 0,
+                                        max: 32000,
+                                        step: 512,
+                                        defaultValue: 2048,
+                                        tag: 'thinkingBudget',
+                                        source: 'model',
+                                      }}
+                                      value={finiteNumber(session?.modelParams?.thinkingBudget) ?? 2048}
+                                      overridden={session?.modelParams?.thinkingBudget !== undefined}
+                                      onChange={(next) => onSetModelParam('thinkingBudget', next)}
+                                      onReset={() => onSetModelParam('thinkingBudget', undefined)}
+                                    />
+                                  )}
+                                  {extendParams.includes('enableReasoning') && (
+                                    <ModelParamToggle
+                                      label="深度思考"
+                                      description="enableReasoning"
+                                      checked={Boolean(session?.modelParams?.enableReasoning)}
+                                      onChange={(next) => onSetModelParam('enableReasoning', next)}
+                                      onReset={() => onSetModelParam('enableReasoning', undefined)}
+                                    />
+                                  )}
+                                  {extendParams.includes('disableContextCaching') && (
+                                    <ModelParamToggle
+                                      label="禁用上下文缓存"
+                                      description="disableContextCaching"
+                                      checked={Boolean(session?.modelParams?.disableContextCaching)}
+                                      onChange={(next) => onSetModelParam('disableContextCaching', next)}
+                                      onReset={() => onSetModelParam('disableContextCaching', undefined)}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </PanelBlock>
+
+                            <PanelBlock title="模型能力">
+                              <div className="flex flex-wrap gap-2">
+                                <ModelAbilityPill active={!!abilities.reasoning} label="推理" />
+                                <ModelAbilityPill active={!!abilities.functionCall} label="函数调用" />
+                                <ModelAbilityPill active={!!abilities.vision} label="视觉" />
+                                <ModelAbilityPill active={!!abilities.search} label="搜索" />
+                                <ModelAbilityPill active={!!abilities.files} label="文件" />
+                                <ModelAbilityPill active={!!abilities.structuredOutput} label="结构化输出" />
+                              </div>
+                              {disabledParams.length > 0 && (
+                                <div className="mt-3 rounded-2xl bg-[var(--hub-control)] px-3 py-2 text-[12px] leading-5 text-[var(--ink-muted)]">
+                                  已按模型配置隐藏：{disabledParams.join('、')}
+                                </div>
+                              )}
+                            </PanelBlock>
+
+                            <PanelBlock title="本轮覆盖">
+                              <div className="flex items-center justify-between gap-3 rounded-2xl bg-[var(--hub-control)] px-3 py-3">
+                                <div>
+                                  <div className="text-sm font-medium text-[var(--ink-primary)]">
+                                    已覆盖 {sessionParamCount} 个参数
+                                  </div>
+                                  <div className="mt-0.5 text-[11.5px] text-[var(--ink-muted)]">
+                                    未覆盖的项继续使用模型配置或路由默认值
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={onResetModelParams}
+                                  disabled={sessionParamCount === 0}
+                                  className="h-9 rounded-xl border border-[var(--hub-border)] px-3 text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  重置
+                                </button>
+                              </div>
+                            </PanelBlock>
+                          </>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+      <SpacePreviewDialog preview={preview} onClose={() => setPreview(null)} />
+    </>
+  );
+}
+
+function CapabilityRailButton({
+  children,
+  label,
+  active,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        'grid h-10 w-10 place-items-center rounded-2xl transition-colors',
+        active
+          ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+          : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PanelBlock({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-b border-[var(--hub-border)] pb-5 last:border-b-0 last:pb-0">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-[var(--ink-primary)]">{title}</h3>
+        {description && (
+          <p className="mt-1 text-[11.5px] leading-snug text-[var(--ink-muted)]">
+            {description}
+          </p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SpaceMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] px-2 py-3 text-center">
+      <div className="font-mono text-[16px] font-semibold tnum text-[var(--ink-primary)]">
+        {value}
+      </div>
+      <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function SpaceResourceRow({
+  icon,
+  tone,
+  title,
+  meta,
+  description,
+  onOpen,
+  onRemove,
+}: {
+  icon: ReactNode;
+  tone: 'article' | 'kb' | 'tag';
+  title: string;
+  meta: string;
+  description: string;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const toneClass =
+    tone === 'article'
+      ? 'text-[var(--aurora-1)]'
+      : tone === 'kb'
+        ? 'text-[var(--aurora-3)]'
+        : 'text-[var(--aurora-2)]';
+
+  return (
+    <div className="group/resource flex items-stretch gap-2 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-2 transition-colors hover:bg-[var(--hub-control-hover)]">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl text-left"
+      >
+        <span className={cn('mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-[var(--hub-panel-strong)]', toneClass)}>
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-[var(--ink-primary)]">
+            {title}
+          </span>
+          <span className="mt-0.5 block truncate font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
+            {meta}
+          </span>
+          <span className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-[var(--ink-muted)]">
+            {description}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`移除 ${title}`}
+        title="移除"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[var(--ink-muted)] opacity-70 transition-colors hover:bg-[var(--hub-panel-strong)] hover:text-[var(--ink-primary)] group-hover/resource:opacity-100"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function CapabilityLine({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-[var(--hub-control)] px-3 py-2.5 text-sm">
+      <span className="text-[var(--ink-muted)]">{label}</span>
+      <span className="min-w-0 truncate text-right text-[var(--ink-primary)]">{value}</span>
+    </div>
+  );
+}
+
+function CapabilityControl({
+  icon,
+  label,
+  value,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl bg-[var(--hub-control)] p-2.5">
+      <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
+        <span className="inline-flex min-w-0 items-center gap-2 text-sm text-[var(--ink-muted)]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-[var(--hub-panel-strong)] text-[var(--ink-secondary)]">
+            {icon}
+          </span>
+          <span>{label}</span>
+        </span>
+        <span className="min-w-0 truncate text-right text-sm font-medium text-[var(--ink-primary)]">
+          {value}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ModelParamSlider({
+  param,
+  value,
+  overridden,
+  onChange,
+  onReset,
+}: {
+  param: NumericModelParam;
+  value: number;
+  overridden: boolean;
+  onChange: (value: number) => void;
+  onReset: () => void;
+}) {
+  const progress = param.max === param.min ? 0 : (value - param.min) / (param.max - param.min);
+  const decimals = String(param.step).includes('.') ? String(param.step).split('.')[1]?.length ?? 1 : 0;
+  const displayValue = Number.isInteger(value) ? String(value) : value.toFixed(decimals);
+
+  return (
+    <div className="rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-[var(--ink-primary)]">{param.label}</span>
+            <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
+              {param.tag}
+            </span>
+            <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5 text-[10px] text-[var(--ink-muted)]">
+              {param.source === 'model' ? '模型配置' : '通用默认'}
+            </span>
+          </div>
+          <p className="mt-1 text-[11.5px] leading-snug text-[var(--ink-muted)]">
+            {param.description}
+          </p>
+        </div>
         <button
           type="button"
-          onClick={handleCopyId}
-          disabled={!session}
-          className={cn(
-            'mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[var(--hub-border)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
-            !session && 'cursor-not-allowed opacity-60',
-          )}
+          onClick={onReset}
+          disabled={!overridden}
+          className="h-8 shrink-0 rounded-xl border border-[var(--hub-border)] px-2.5 text-[12px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Copy className="h-4 w-4" />
-          复制 ID
+          默认
         </button>
-      </PanelCard>
-
-      <PanelCard>
-        <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">显示模式</h3>
-        <HubSegmentedControl
-          ariaLabel="显示模式"
-          value={displayMode}
-          options={[
-            { value: 'bubble', label: '气泡', title: '彩色卡片承载' },
-            { value: 'engraved', label: '版书', title: '文字浮印纸面' },
-          ]}
-          onChange={(v) => onSetDisplayMode(v as DisplayMode)}
-        />
-      </PanelCard>
-
-      <PanelCard>
-        <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">过渡动画</h3>
-        <p className="mb-3 text-[11.5px] leading-snug text-[var(--ink-muted)]">
-          流式吐字节流；越平滑阅读节奏越稳。完成态立即显示完整文本。
-        </p>
-        <SegmentedControl
-          value={streamAnimation}
-          options={[
-            { value: 'none', label: '无' },
-            { value: 'fade', label: '淡入' },
-            { value: 'smooth', label: '平滑' },
-          ]}
-          onChange={(v) => onSetStreamAnimation(v as StreamAnimationMode)}
-        />
-      </PanelCard>
-
-      <PanelCard>
-        <div className="mb-2 flex items-baseline justify-between">
-          <h3 className="text-sm font-medium text-[var(--ink-primary)]">字体大小</h3>
-          <span className="font-mono text-[11px] tnum text-[var(--ink-muted)]">{fontSize}px</span>
-        </div>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_4.25rem] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_4.75rem] sm:gap-3">
         <input
           type="range"
-          min={12}
-          max={18}
-          step={0.5}
-          value={fontSize}
-          onChange={(e) => onSetFontSize(Number(e.target.value))}
+          min={param.min}
+          max={param.max}
+          step={param.step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
           className="hub-range w-full"
-          aria-label="字体大小"
+          aria-label={param.label}
           style={
             {
-              '--hub-range-progress': `${(fontSize - 12) / (18 - 12)}`,
+              '--hub-range-progress': `${Math.min(1, Math.max(0, progress))}`,
             } as React.CSSProperties
           }
         />
-        <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
-          <span>A</span>
-          <span>标准</span>
-          <span>A</span>
-        </div>
-      </PanelCard>
+        <input
+          type="number"
+          min={param.min}
+          max={param.max}
+          step={param.step}
+          value={displayValue}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            if (Number.isFinite(next)) onChange(Math.min(param.max, Math.max(param.min, next)));
+          }}
+          className="h-9 min-w-0 w-full rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] px-2 text-right font-mono text-[12px] tnum text-[var(--ink-primary)] outline-none transition-colors focus:border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
+        />
+      </div>
+      <div className="mt-2 flex justify-between font-mono text-[9.5px] uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+        <span>{param.min}</span>
+        <span>{overridden ? 'override' : 'default'}</span>
+        <span>{param.max}</span>
+      </div>
+    </div>
+  );
+}
 
-      <PanelCard>
-        <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
-        <div className="grid grid-cols-1 gap-3">
-          <ActionButton icon={Pencil} onClick={() => toast.info('对话重命名功能开发中')}>
-            重命名对话
-          </ActionButton>
-          <ActionButton
-            icon={RefreshCcw}
-            onClick={onClearMessages}
-            disabled={!session || session.messages.length === 0}
-          >
-            清空当前对话
-          </ActionButton>
-          <ActionButton
-            icon={Trash2}
-            danger
-            onClick={onDeleteSession}
-            disabled={!session}
-          >
-            删除对话
-          </ActionButton>
+function ModelParamChoice({
+  label,
+  description,
+  value,
+  options,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-[var(--ink-primary)]">{label}</span>
+            <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
+              {description}
+            </span>
+          </div>
         </div>
-      </PanelCard>
-
-      <div className="mt-auto flex justify-end">
         <button
           type="button"
-          className="grid h-11 w-11 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-          aria-label="帮助"
-          title="对话快捷操作仅本地生效，跨设备同步开发中"
+          onClick={onReset}
+          className="h-8 shrink-0 rounded-xl border border-[var(--hub-border)] px-2.5 text-[12px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
-          <CircleHelp className="h-5 w-5" />
+          默认
         </button>
       </div>
-    </motion.aside>
+      <HubSegmentedControl
+        ariaLabel={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
+function ModelParamToggle({
+  label,
+  description,
+  checked,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-[var(--ink-primary)]">{label}</span>
+          <span className="rounded-full bg-[var(--hub-panel-strong)] px-2 py-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
+            {description}
+          </span>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onReset}
+          className="h-8 rounded-xl border border-[var(--hub-border)] px-2.5 text-[12px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+        >
+          默认
+        </button>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          onClick={() => onChange(!checked)}
+          className={cn(
+            'relative h-8 w-14 rounded-full border transition-colors',
+            checked
+              ? 'border-[color-mix(in_oklch,var(--aurora-1)_44%,transparent)] bg-[var(--hub-active)]'
+              : 'border-[var(--hub-border)] bg-[var(--hub-panel-strong)]',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute top-1 h-6 w-6 rounded-full bg-[var(--ink-primary)] transition-transform',
+              checked ? 'translate-x-6' : 'translate-x-1',
+            )}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModelAbilityPill({ active, label }: { active: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+        active
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+          : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function SpacePreviewDialog({
+  preview,
+  onClose,
+}: {
+  preview: SpacePreviewTarget | null;
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {preview && (
+        <div className="fixed inset-0 z-[60]">
+          <motion.div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            onClick={onClose}
+            aria-hidden="true"
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-label="空间资源预览"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }}
+              className="flex max-h-[78vh] w-[min(560px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[26px] border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] shadow-[0_30px_90px_-34px_rgba(0,0,0,0.62)] backdrop-blur-2xl"
+            >
+              <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--hub-border)] px-5">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold text-[var(--ink-primary)]">
+                    {preview.kind === 'article'
+                      ? preview.article.title
+                      : preview.kind === 'kb'
+                        ? preview.kb.name
+                        : preview.tag.name}
+                  </h3>
+                  <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                    {preview.kind === 'article' ? 'Article' : preview.kind === 'kb' ? 'Knowledge Base' : 'Tag'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="关闭预览"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto p-5">
+                {preview.kind === 'article' && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-[var(--hub-control)] p-4">
+                      <div className="mb-3 flex items-center gap-2 text-[var(--aurora-1)]">
+                        <FileText className="h-4 w-4" />
+                        <span className="text-sm font-medium text-[var(--ink-primary)]">引用文章</span>
+                      </div>
+                      <p className="text-sm leading-6 text-[var(--ink-secondary)]">
+                        {preview.article.summary || '暂无摘要。发送时会按文章 ID 进入本轮上下文召回。'}
+                      </p>
+                    </div>
+                    <MetadataRow label="文章 ID" value={preview.article.id} mono />
+                    <MetadataRow label="分类" value={preview.article.category || '—'} />
+                    <MetadataRow label="发布时间" value={preview.article.publishedAt || '—'} mono />
+                  </div>
+                )}
+
+                {preview.kind === 'kb' && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-[var(--hub-control)] p-4">
+                      <div className="mb-3 flex items-center gap-2 text-[var(--aurora-3)]">
+                        {preview.kb.kind === 'SYSTEM_POSTS' ? (
+                          <Brain className="h-4 w-4" />
+                        ) : (
+                          <BookOpen className="h-4 w-4" />
+                        )}
+                        <span className="text-sm font-medium text-[var(--ink-primary)]">
+                          {preview.kb.kind === 'SYSTEM_POSTS' ? '系统文章库' : '自定义知识库'}
+                        </span>
+                      </div>
+                      <p className="text-sm leading-6 text-[var(--ink-secondary)]">
+                        发送时会携带该知识库 ID，由后端按知识库权限与当前激活 Profile 召回相关片段。
+                      </p>
+                    </div>
+                    <MetadataRow label="知识库 ID" value={preview.kb.id} mono />
+                    <MetadataRow label="Slug" value={preview.kb.slug} mono />
+                    <MetadataRow label="文件数" value={preview.kb.fileCount} mono />
+                    <MetadataRow label="分块数" value={preview.kb.chunkCount} mono />
+                    <MetadataRow label="Profile" value={preview.kb.activeProfile?.name || '默认'} />
+                  </div>
+                )}
+
+                {preview.kind === 'tag' && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-[var(--hub-control)] p-4">
+                      <div className="mb-3 flex items-center gap-2 text-[var(--aurora-2)]">
+                        <Hash className="h-4 w-4" />
+                        <span className="text-sm font-medium text-[var(--ink-primary)]">标签范围</span>
+                      </div>
+                      <p className="text-sm leading-6 text-[var(--ink-secondary)]">
+                        本轮对话会优先围绕该标签关联的文章集合进行筛选与召回。
+                      </p>
+                    </div>
+                    <MetadataRow label="标签" value={preview.tag.name} />
+                    <MetadataRow label="Slug" value={preview.tag.slug} mono />
+                    <MetadataRow label="文章数" value={preview.tag.postCount} mono />
+                  </div>
+                )}
+              </div>
+            </motion.section>
+          </div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -4230,150 +5594,4 @@ function formatRelativeShort(timestamp: number): string {
     new Date(now).toDateString() === d.toDateString();
   if (sameDay) return formatDate(d, 'HH:mm');
   return formatDate(d, 'MM-dd');
-}
-
-// ============================================================
-// KbPickerBar —— 灵境对话顶部的知识库 picker
-//
-// 设计：
-//   - 一行的 chip bar，展示已选 KB（点 X 取消），最右侧 "+ 知识库" 按钮打开 popover
-//   - popover 列出当前用户可访问（权限 >= USE）的 KB；点击即加入会话
-//   - 数据源：GET /v1/agent/knowledge-bases（picker 限流桶）
-//   - Phase 2 会把这个 picker 折叠进 composer 里（同 @ / # picker 同款交互）
-// ============================================================
-function KbPickerBar({
-  selectedKbs,
-  onAdd,
-  onRemove,
-}: {
-  selectedKbs: AgentKnowledgeBase[];
-  onAdd: (kb: AgentKnowledgeBase) => void;
-  onRemove: (id: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [options, setOptions] = useState<AgentKnowledgeBase[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open || options !== null) return;
-    setLoading(true);
-    fetchAgentKnowledgeBases()
-      .then((res) => setOptions(res.data || []))
-      .catch(() => setOptions([]))
-      .finally(() => setLoading(false));
-  }, [open, options]);
-
-  return (
-    <div className="relative flex shrink-0 items-center gap-2 border-b border-[var(--hub-border)]/40 bg-[var(--hub-control)]/40 px-3 py-2 text-xs">
-      <Brain className="h-3.5 w-3.5 text-[var(--aurora-3)]" aria-hidden="true" />
-      <span className="font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-        知识库
-      </span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-        {selectedKbs.length === 0 && (
-          <span className="text-[var(--ink-muted)]">
-            未选择 · 选择后本轮对话会自动召回相关片段
-          </span>
-        )}
-        {selectedKbs.map((kb) => (
-          <span
-            key={kb.id}
-            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)]"
-          >
-            <BookOpen className="h-3 w-3 shrink-0 text-[var(--aurora-3)]" />
-            <span className="max-w-[12rem] truncate" title={kb.name}>
-              {kb.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => onRemove(kb.id)}
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
-              aria-label={`移除知识库 ${kb.name}`}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <button
-        type="button"
-        ref={triggerRef}
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[12px] font-medium text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        添加
-      </button>
-      {open && (
-        <div
-          className="absolute right-3 top-full z-40 mt-1 w-72 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-overlay,var(--bg-overlay))] p-2 shadow-xl backdrop-blur-md"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {loading && (
-            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">加载中…</div>
-          )}
-          {!loading && options && options.length === 0 && (
-            <div className="px-3 py-4 text-center text-[var(--ink-muted)]">
-              暂无可用知识库
-            </div>
-          )}
-          {!loading && options && options.length > 0 && (
-            <ul className="max-h-72 overflow-y-auto">
-              {options.map((kb) => {
-                const picked = selectedKbs.find((k) => k.id === kb.id);
-                return (
-                  <li key={kb.id}>
-                    <button
-                      type="button"
-                      disabled={!!picked}
-                      onClick={() => {
-                        onAdd(kb);
-                        setOpen(false);
-                      }}
-                      className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
-                        picked
-                          ? 'text-[var(--ink-muted)] opacity-60'
-                          : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]'
-                      )}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{kb.name}</span>
-                        <span className="block truncate text-[11px] text-[var(--ink-muted)]">
-                          {kb.kind === 'SYSTEM_POSTS' ? '系统库' : '自定义'} · {kb.fileCount} 文件 ·{' '}
-                          {kb.chunkCount} 分块
-                        </span>
-                      </span>
-                      {picked && <Check className="h-4 w-4 text-status-success" />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div className="mt-1 flex items-center justify-end gap-2 border-t border-[var(--hub-border)] pt-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => {
-                // 仅置空缓存触发 useEffect 重发请求，避免重复并发调用
-                // （review gemini medium：双请求竞态）
-                setOptions(null);
-              }}
-              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
-            >
-              刷新
-            </button>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
