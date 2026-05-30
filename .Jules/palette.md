@@ -1,0 +1,3 @@
+## 2024-05-19 - Accessible Close Button for Tag Component
+**Learning:** Icon-only remove buttons in custom UI components (like Tag or Badge) frequently miss proper ARIA labels, `type="button"` attributes, and clear keyboard focus indicators. Using `focus-visible:ring-current` is an elegant way to maintain focus ring color consistency with dynamically colored tags, providing excellent accessibility without hardcoding focus colors.
+**Action:** Always verify that internal sub-components (like remove toggles) within larger UI elements include `type="button"`, translated `aria-label`, visual `title` tooltips, and robust `focus-visible` styles using context-aware CSS techniques like `ring-current`.

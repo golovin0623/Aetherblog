@@ -26,8 +26,11 @@ export function Tag({ children, color, removable, onRemove, className }: TagProp
       {children}
       {removable && (
         <button
+          type="button"
           onClick={onRemove}
-          className="ml-1 p-0.5 rounded-full hover:bg-white/10 transition-colors"
+          aria-label="移除标签"
+          title="移除标签"
+          className="ml-1 p-0.5 rounded-full hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1 focus-visible:ring-offset-transparent"
         >
           <X className="w-3 h-3" />
         </button>
