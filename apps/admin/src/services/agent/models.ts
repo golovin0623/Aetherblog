@@ -8,10 +8,20 @@ import { useEffect, useState } from 'react';
 export interface AgentModelItem {
   providerCode: string;
   providerName?: string | null;
+  providerIcon?: string | null;
   modelId: string;
   displayName?: string | null;
   contextWindow?: number | null;
+  maxOutputTokens?: number | null;
   isDefault?: boolean;
+  abilities?: Record<string, boolean>;
+  extendParams?: string[];
+  settings?: Record<string, unknown>;
+  parameters?: Record<string, unknown>;
+  disabledParams?: string[];
+  source?: string | null;
+  releasedAt?: string | null;
+  description?: string | null;
   scope?: 'user' | 'system';
 }
 

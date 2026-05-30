@@ -12,6 +12,7 @@ export interface ChatStreamRequest {
   messages: { role: 'user' | 'assistant'; content: string }[];
   modelId?: string | null;
   providerCode?: string | null;
+  modelParams?: Record<string, string | number | boolean | null | undefined> | null;
   articleIds?: number[] | null;
   tagSlugs?: string[] | null;
   /**
