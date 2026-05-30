@@ -141,6 +141,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - Admin type-check and build.
 - Atlas UI redline grep for native select, spinner, demo placeholder, and explicit "do not use" markers.
 - R1 Markdown/version anchoring recall: `node scripts/atlas/anchoring-recall.mjs --min-recall 0.9`.
+- R1 PDF text-layer anchoring recall: `node scripts/atlas/pdf-anchoring-recall.mjs --min-recall 0.9`.
 - R2 relation health fixed corpus: `node scripts/atlas/relation-health-gate.mjs`.
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.

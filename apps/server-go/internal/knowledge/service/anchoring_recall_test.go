@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -30,6 +31,27 @@ var recallAnchorTexts = []string{
 	"CRDT 🔒 本地优先让私有知识可以离线编辑",
 	"W3C TextQuoteSelector 和 TextPositionSelector 一起用于重定位",
 	"用户接受后才可以写入知识图谱",
+}
+
+const pdfRecallPageBreak = "\n\f\n"
+
+const pdfRecallCorpusOriginal = "PDF Reader 把页面文本层作为锚定空间，页面坐标只作为跳回原文的辅助信息。" +
+	pdfRecallPageBreak +
+	"页码和矩形只负责跳回视口；TextQuoteSelector 负责跨版本召回。" +
+	pdfRecallPageBreak +
+	"OCR 修正可能改变空格和标点，因此 prefix 与滑窗匹配必须保留。" +
+	pdfRecallPageBreak +
+	"关系证据必须能跳回 PDF 页面的原位置，方便用户审计关系为什么成立。" +
+	pdfRecallPageBreak +
+	"删除的段落应该进入 orphan 状态，而不是伪装成低置信度命中。"
+
+var pdfRecallAnchorTexts = []string{
+	"PDF Reader 把页面文本层作为锚定空间",
+	"页面坐标只作为跳回原文的辅助信息",
+	"TextQuoteSelector 负责跨版本召回",
+	"OCR 修正可能改变空格和标点",
+	"关系证据必须能跳回 PDF 页面的原位置",
+	"删除的段落应该进入 orphan 状态",
 }
 
 func TestRelocateMarkdownRecallCorpus(t *testing.T) {
@@ -99,7 +121,98 @@ func TestRelocateMarkdownRecallCorpus(t *testing.T) {
 	}
 }
 
+func TestRelocatePDFTextLayerRecallCorpus(t *testing.T) {
+	type recallCase struct {
+		name       string
+		text       string
+		anchorable []string
+		orphan     []string
+	}
+	tests := []recallCase{
+		{
+			name:       "cover-page-insert",
+			text:       "封面\n\nAether Atlas PDF 版本迁移测试。" + pdfRecallPageBreak + pdfRecallCorpusOriginal,
+			anchorable: pdfRecallAnchorTexts,
+		},
+		{
+			name:       "ocr-punctuation-copyedit",
+			text:       strings.Replace(pdfRecallCorpusOriginal, "OCR 修正可能改变空格和标点", "OCR 修正可能改变空格、标点", 1),
+			anchorable: pdfRecallAnchorTexts,
+		},
+		{
+			name: "page-note-insert",
+			text: strings.Replace(
+				pdfRecallCorpusOriginal,
+				"关系证据必须能跳回 PDF 页面的原位置",
+				"页脚说明：本页来自重新导出的 PDF。\n关系证据必须能跳回 PDF 页面的原位置",
+				1,
+			),
+			anchorable: pdfRecallAnchorTexts,
+		},
+		{
+			name: "intentional-orphan",
+			text: strings.Replace(
+				pdfRecallCorpusOriginal,
+				"删除的段落应该进入 orphan 状态，而不是伪装成低置信度命中。",
+				"该页内容被作者重写，旧段落已经不存在。",
+				1,
+			),
+			anchorable: pdfRecallAnchorTexts[:5],
+			orphan:     []string{"删除的段落应该进入 orphan 状态"},
+		},
+	}
+
+	total := 0
+	recalled := 0
+	for _, tt := range tests {
+		for _, exact := range tt.anchorable {
+			state, score := relocate(tt.text, selectorsForPDFRecallAnchor(t, pdfRecallCorpusOriginal, exact))
+			total++
+			if state == "anchored" || state == "soft_anchored" {
+				recalled++
+				continue
+			}
+			t.Fatalf("%s failed to recall %q: state=%s score=%.3f", tt.name, exact, state, score)
+		}
+		for _, exact := range tt.orphan {
+			state, score := relocate(tt.text, selectorsForPDFRecallAnchor(t, pdfRecallCorpusOriginal, exact))
+			if state != "orphan" {
+				t.Fatalf("%s expected orphan for %q, got state=%s score=%.3f", tt.name, exact, state, score)
+			}
+		}
+	}
+
+	recall := float64(recalled) / float64(total)
+	if recall < 0.9 {
+		t.Fatalf("recall = %.2f, want >= 0.90", recall)
+	}
+}
+
 func selectorsForRecallAnchor(t *testing.T, text string, exact string) []byte {
+	return selectorsForRecallAnchorWithTail(t, text, exact, map[string]any{
+		"type":  "CssSelector",
+		"value": "[data-atlas-reader]",
+	})
+}
+
+func selectorsForPDFRecallAnchor(t *testing.T, text string, exact string) []byte {
+	startByte := strings.Index(text, exact)
+	if startByte < 0 {
+		t.Fatalf("anchor text not found: %s", exact)
+	}
+	page := 1 + strings.Count(text[:startByte], pdfRecallPageBreak)
+	return selectorsForRecallAnchorWithTail(t, text, exact, map[string]any{
+		"type":       "FragmentSelector",
+		"conformsTo": "https://aetherblog.local/atlas/pdf-text-layer",
+		"value":      "page=" + strconv.Itoa(page) + "&rect=0,0,100,12",
+		"page":       page,
+		"rects": []map[string]any{
+			{"x": 0, "y": 0, "width": 100, "height": 12},
+		},
+	})
+}
+
+func selectorsForRecallAnchorWithTail(t *testing.T, text string, exact string, tail map[string]any) []byte {
 	t.Helper()
 	startByte := strings.Index(text, exact)
 	if startByte < 0 {
@@ -128,10 +241,7 @@ func selectorsForRecallAnchor(t *testing.T, text string, exact string) []byte {
 			"start": utf16Units(text[:startByte]),
 			"end":   utf16Units(text[:endByte]),
 		},
-		{
-			"type":  "CssSelector",
-			"value": "[data-atlas-reader]",
-		},
+		tail,
 	}
 	raw, err := json.Marshal(selectors)
 	if err != nil {
