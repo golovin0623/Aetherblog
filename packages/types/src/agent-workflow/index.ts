@@ -37,6 +37,26 @@ export type AgentRunStatus =
   | 'cancelled'
   | 'budget_exceeded';
 
+export type AgentWorkflowRunMode = 'real' | 'simulate';
+
+export type AgentWorkflowCapabilityState = 'available' | 'not_connected' | 'coming_soon' | 'disabled';
+
+export interface AgentWorkflowCapabilityStatus {
+  enabled: boolean;
+  state: AgentWorkflowCapabilityState;
+  label: string;
+  detail?: string;
+}
+
+export interface AgentWorkflowCapabilities {
+  defaultRunMode: AgentWorkflowRunMode;
+  realLLM: AgentWorkflowCapabilityStatus;
+  realTools: AgentWorkflowCapabilityStatus;
+  sandbox: AgentWorkflowCapabilityStatus;
+  scheduler: AgentWorkflowCapabilityStatus;
+  autonomous: AgentWorkflowCapabilityStatus;
+}
+
 export interface AgentWorkflowInputSpec {
   type: AgentWorkflowInputType;
   required?: boolean;
@@ -96,8 +116,15 @@ export interface AgentToolSummary {
   description?: string;
   category: string;
   protocol: AgentConnectorProtocol;
+  argsSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  handlerType?: string;
+  handlerConfig?: Record<string, unknown>;
+  public?: boolean;
   enabled: boolean;
   requiresApproval: boolean;
+  rateLimitPerMin?: number;
+  timeoutMs?: number;
 }
 
 export interface AgentDefinitionSummary {
@@ -105,8 +132,12 @@ export interface AgentDefinitionSummary {
   code?: string;
   name: string;
   description?: string;
+  systemPrompt?: string;
   model?: string;
+  providerCode?: string;
   maxIterations: number;
+  maxToolCalls?: number;
+  maxTokens?: number;
   toolCodes: string[];
   enabled?: boolean;
 }
@@ -125,7 +156,12 @@ export interface AgentScheduleSummary {
   enabled: boolean;
   cronExpr: string;
   timezone: string;
+  inputs?: Record<string, unknown>;
   nextRunAt?: string;
+  lastRunAt?: string;
+  lastRunId?: string | number;
+  missedRunPolicy?: 'skip' | 'catch-up';
+  lastError?: string;
 }
 
 export interface AgentPublicationRequest {
@@ -160,11 +196,30 @@ export interface AgentWorkflowRunSummary {
   workflowId: string | number;
   version: number;
   status: AgentRunStatus;
+  simulated: boolean;
   inputs: Record<string, unknown>;
   outputs?: Record<string, unknown>;
   currentNode?: string;
+  pausedReason?: string;
   totalNodeCount: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalCostUsd?: number;
   errorMessage?: string;
+  retryOfRunId?: string | number;
+  resumeFromNode?: string;
+  cancelRequested?: boolean;
+  sourceType?: 'canvas' | 'publication' | 'schedule' | 'article' | 'chat' | 'cowork' | 'eval' | 'retry' | 'node-test' | 'canonicalize';
+  sourceRef?: string;
+  redactionPolicy?: 'auto' | 'manual' | 'production' | 'full';
+  maxTokens?: number;
+  maxCostUsd?: number;
+  maxDurationMs?: number;
+  maxNodes?: number;
+  errorCode?: string;
+  errorCategory?: string;
+  retryable?: boolean;
+  canonicalizedWorkflowId?: string | number;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -189,6 +244,7 @@ export interface AgentWorkflowNodeLog {
   errorMessage?: string;
   startedAt?: string;
   finishedAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentRunTraceItem {
@@ -201,4 +257,49 @@ export interface AgentRunTraceItem {
   finishedAt?: string;
   durationMs?: number;
   summary?: string;
+}
+
+export interface AgentWorkflowVersionSummary {
+  id: string | number;
+  workflowId: string | number;
+  version: number;
+  definition?: AgentWorkflowDefinition;
+  changeNote?: string;
+  createdAt: string;
+}
+
+export interface AgentWorkflowTemplateSummary {
+  id: string | number;
+  templateKey: string;
+  title: string;
+  description?: string;
+  category: string;
+  definition: AgentWorkflowDefinition;
+  dependencyManifest: Record<string, unknown>;
+  installedCount: number;
+}
+
+export interface AgentWorkflowMetrics {
+  totalRuns: number;
+  successRuns: number;
+  failedRuns: number;
+  cancelledRuns: number;
+  simulatedRuns: number;
+  avgDurationMs?: number;
+  totalTokens: number;
+  totalCostUsd: number;
+  lastRunAt?: string;
+}
+
+export interface AgentWorkflowActionResult {
+  runId?: string | number;
+  workflowId?: string | number;
+  status: string;
+  message?: string;
+  definition?: AgentWorkflowDefinition;
+}
+
+export interface AgentWorkflowExportResult {
+  format: string;
+  definition: AgentWorkflowDefinition;
 }

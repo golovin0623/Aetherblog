@@ -25,6 +25,7 @@ import {
   Edit3,
   Eye,
   Columns,
+  ShieldCheck,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -50,8 +51,17 @@ import type { ContentSnapshot } from '@/types/content-history';
 // 编辑器扩展
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
 import { aiService } from '@/services/aiService';
+import { agentWorkflowService } from '@/services/agentWorkflowService';
 import { loadToolParams } from '@/components/ai/ToolParamsPanel';
 import { toast } from 'sonner';
+
+function workflowErrorMessage(error: unknown, fallback: string) {
+  const candidate = error as { response?: { data?: { message?: unknown } }; message?: unknown };
+  const responseMessage = candidate.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
+  if (typeof candidate.message === 'string' && candidate.message.trim()) return candidate.message;
+  return fallback;
+}
 
 // AI 工具能力定义
 //
@@ -300,6 +310,25 @@ export function AiWritingWorkspacePage() {
     toast.success('保存成功');
   }, [postId, historyManager, title, content, summary]);
 
+  const runArticleAuditWorkflow = useCallback(async () => {
+    if (!postId) {
+      toast.error('请先保存文章后再运行审计工作流');
+      return;
+    }
+    try {
+      const published = await agentWorkflowService.listPublished(100);
+      const audit = published.data?.find((item) => item.slug === 'article-audit' || item.slug === 'article-audit-agent');
+      if (!audit) {
+        toast.error('请先在智能体编排中发布 Article Audit 工作流');
+        return;
+      }
+      const res = await agentWorkflowService.invokePublished(audit.slug, { post_id: postId });
+      toast.success(`Article Audit 已入队：#${res.data?.id || '-'}`);
+    } catch (error: unknown) {
+      toast.error(workflowErrorMessage(error, 'Article Audit 启动失败'));
+    }
+  }, [postId]);
+
   return (
     <div className="absolute inset-0 flex flex-col bg-[var(--bg-void)]">
       {/* ============ 移动端头部：双排紧凑布局 ============ */}
@@ -390,6 +419,12 @@ export function AiWritingWorkspacePage() {
                 label="对话"
               >
                 <MessageSquare className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={() => void runArticleAuditWorkflow()}
+                label="审计"
+              >
+                <ShieldCheck className="w-[18px] h-[18px]" />
               </MobileIconButton>
               {workflowMode === 'guided' && (
                 <MobileIconButton
@@ -482,6 +517,13 @@ export function AiWritingWorkspacePage() {
               title="AI 对话"
             >
               <MessageSquare className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={() => void runArticleAuditWorkflow()}
+              title="运行 Article Audit"
+            >
+              <ShieldCheck className="w-5 h-5" />
             </DesktopIconButton>
 
             {workflowMode === 'guided' && (

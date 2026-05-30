@@ -60,6 +60,7 @@ import {
   fetchAgentKnowledgeBases,
   type AgentKnowledgeBase,
 } from '@/services/knowledgeBaseService';
+import { agentWorkflowService } from '@/services/agentWorkflowService';
 import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
@@ -87,6 +88,14 @@ import {
   useArticleSearch,
   useSmoothStream,
 } from '@/services/agent';
+
+function workflowErrorMessage(error: unknown, fallback: string) {
+  const candidate = error as { response?: { data?: { message?: unknown } }; message?: unknown };
+  const responseMessage = candidate.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
+  if (typeof candidate.message === 'string' && candidate.message.trim()) return candidate.message;
+  return fallback;
+}
 
 const promptChips = [
   '总结 AetherBlog 项目的整体结构',
@@ -438,6 +447,34 @@ export default function AetherHubWorkspacePage() {
           ),
         );
       };
+
+      const auditMatch = text.match(/^\/audit\s+(\d+)\s*$/i);
+      if (auditMatch) {
+        try {
+          const published = await agentWorkflowService.listPublished(100);
+          const audit = published.data?.find((item) => item.slug === 'article-audit' || item.slug === 'article-audit-agent');
+          if (!audit) {
+            throw new Error('Article Audit 工作流尚未发布');
+          }
+          const run = await agentWorkflowService.invokePublished(audit.slug, { post_id: Number(auditMatch[1]) });
+          patchAssistant({
+            content: `已启动 Article Audit 工作流：#${run.data?.id || '-'}，状态 ${run.data?.status || 'pending'}。`,
+            pending: false,
+            finishedAt: Date.now(),
+          });
+        } catch (error: unknown) {
+          patchAssistant({
+            content: workflowErrorMessage(error, 'Article Audit 启动失败'),
+            pending: false,
+            error: 'workflow_invoke_failed',
+            finishedAt: Date.now(),
+          });
+        } finally {
+          setStreaming(false);
+          abortRef.current = null;
+        }
+        return;
+      }
 
       const req: ChatStreamRequest = {
         sessionId,

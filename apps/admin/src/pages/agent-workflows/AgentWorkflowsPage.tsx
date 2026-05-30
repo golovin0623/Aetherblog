@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  AlertTriangle,
   Bot,
   Box,
   Braces,
@@ -49,13 +50,19 @@ import type {
   AgentWorkflowNodeLog,
   AgentWorkflowNode,
   AgentWorkflowNodeType,
+  AgentWorkflowRunMode,
   AgentWorkflowRunSummary,
   AgentWorkflowSummary,
+  AgentWorkflowTemplateSummary,
+  AgentWorkflowVersionSummary,
+  AgentWorkflowMetrics,
 } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
 import {
   agentWorkflowService,
+  defaultAgentWorkflowCapabilities,
   defaultAgentWorkflowDefinition,
+  isAgentWorkflowRunMode,
   loadLocalAgentWorkflowBundle,
   saveLocalAgentWorkflowBundle,
   type AgentWorkflowBundle,
@@ -174,6 +181,18 @@ function runStatusTone(status: AgentWorkflowRunSummary['status']) {
   if (status === 'failed' || status === 'cancelled' || status === 'budget_exceeded') return 'text-red-500';
   if (status === 'paused') return 'text-amber-500';
   return 'text-[var(--text-tertiary)]';
+}
+
+function isTerminalRunStatus(status: AgentWorkflowRunSummary['status']) {
+  return status === 'success' || status === 'failed' || status === 'cancelled' || status === 'budget_exceeded';
+}
+
+function capabilityTone(enabled: boolean) {
+  return enabled ? 'text-emerald-500' : 'text-amber-500';
+}
+
+function runModeLabel(mode: AgentWorkflowRunMode) {
+  return mode === 'simulate' ? '模拟运行' : '真实运行';
 }
 
 function protocolIcon(tool: AgentToolSummary) {
@@ -306,7 +325,13 @@ export default function AgentWorkflowsPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
+  const [capabilities, setCapabilities] = useState(defaultAgentWorkflowCapabilities);
+  const [runMode, setRunMode] = useState<AgentWorkflowRunMode>(defaultAgentWorkflowCapabilities.defaultRunMode);
   const [toolArgsDrafts, setToolArgsDrafts] = useState<Record<string, string>>({});
+  const [templates, setTemplates] = useState<AgentWorkflowTemplateSummary[]>([]);
+  const [versions, setVersions] = useState<AgentWorkflowVersionSummary[]>([]);
+  const [metrics, setMetrics] = useState<AgentWorkflowMetrics | null>(null);
+  const [isRuntimeActionBusy, setIsRuntimeActionBusy] = useState(false);
 
   const selectedNode = useMemo(
     () => getRawNode(nodes.find((node) => node.id === selectedNodeId)),
@@ -329,6 +354,20 @@ export default function AgentWorkflowsPage() {
     [activeWorkflowId, bundle.workflows],
   );
 
+  const capabilityItems = useMemo(
+    () => [
+      capabilities.realLLM,
+      capabilities.realTools,
+      capabilities.sandbox,
+      capabilities.scheduler,
+      capabilities.autonomous,
+    ],
+    [capabilities],
+  );
+  const unavailableCapabilityCount = capabilityItems.filter((item) => !item.enabled).length;
+  const trueRuntimeReady = capabilityItems.every((item) => item.enabled);
+  const latestRun = bundle.runHistory[0];
+
   const refreshRunHistory = async (workflowId: string | number) => {
     if (!hasBackendWorkflowId(workflowId)) {
       setBundle((current) => ({ ...current, runHistory: [] }));
@@ -342,6 +381,25 @@ export default function AgentWorkflowsPage() {
     });
   };
 
+  const refreshWorkflowMeta = async (workflowId: string | number) => {
+    if (!hasBackendWorkflowId(workflowId)) {
+      setVersions([]);
+      setMetrics(null);
+      return;
+    }
+    try {
+      const [versionResult, metricResult] = await Promise.all([
+        agentWorkflowService.listVersions(workflowId),
+        agentWorkflowService.metrics(workflowId),
+      ]);
+      setVersions(versionResult.data || []);
+      setMetrics(metricResult.data || null);
+    } catch {
+      setVersions([]);
+      setMetrics(null);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -349,14 +407,23 @@ export default function AgentWorkflowsPage() {
       setIsHydrating(true);
       const current = loadLocalAgentWorkflowBundle();
       try {
-        const [workflowResult, toolResult, agentResult, scheduleResult] = await Promise.allSettled([
+        const [capabilityResult, workflowResult, toolResult, agentResult, scheduleResult, templateResult] = await Promise.allSettled([
+          agentWorkflowService.getCapabilities(),
           agentWorkflowService.listWorkflows(),
           agentWorkflowService.listTools(),
           agentWorkflowService.listAgents(),
           agentWorkflowService.listSchedules(),
+          agentWorkflowService.listTemplates(),
         ]);
         if (cancelled) return;
 
+        const nextCapabilities =
+          isFulfilled(capabilityResult) && capabilityResult.value.data
+            ? capabilityResult.value.data
+            : defaultAgentWorkflowCapabilities;
+        const nextRunMode = isAgentWorkflowRunMode(nextCapabilities.defaultRunMode)
+          ? nextCapabilities.defaultRunMode
+          : defaultAgentWorkflowCapabilities.defaultRunMode;
         const workflows =
           isFulfilled(workflowResult) && workflowResult.value.data?.length
             ? workflowResult.value.data
@@ -364,6 +431,7 @@ export default function AgentWorkflowsPage() {
         const tools = isFulfilled(toolResult) && toolResult.value.data?.length ? toolResult.value.data : current.tools;
         const agents = isFulfilled(agentResult) && agentResult.value.data?.length ? agentResult.value.data : current.agents;
         const schedules = isFulfilled(scheduleResult) ? scheduleResult.value.data || [] : current.schedules;
+        const nextTemplates = isFulfilled(templateResult) ? templateResult.value.data || [] : [];
         let activeDefinition = current.activeDefinition;
 
         if (workflows.length > 0 && hasBackendWorkflowId(workflows[0].id)) {
@@ -379,11 +447,19 @@ export default function AgentWorkflowsPage() {
 
         if (cancelled) return;
         let runHistory = current.runHistory;
+        let nextVersions: AgentWorkflowVersionSummary[] = [];
+        let nextMetrics: AgentWorkflowMetrics | null = null;
         if (workflows.length > 0 && hasBackendWorkflowId(workflows[0].id)) {
           try {
-            const runResult = await agentWorkflowService.listRuns(workflows[0].id, 50);
+            const [runResult, versionResult, metricResult] = await Promise.all([
+              agentWorkflowService.listRuns(workflows[0].id, 50),
+              agentWorkflowService.listVersions(workflows[0].id),
+              agentWorkflowService.metrics(workflows[0].id),
+            ]);
             if (!cancelled) {
               runHistory = runResult.data || [];
+              nextVersions = versionResult.data || [];
+              nextMetrics = metricResult.data || null;
             }
           } catch {
             runHistory = current.runHistory;
@@ -402,6 +478,11 @@ export default function AgentWorkflowsPage() {
         setBundle(next);
         setNodes(toFlowNodes(activeDefinition));
         setEdges(toFlowEdges(activeDefinition));
+        setCapabilities(nextCapabilities);
+        setRunMode(nextRunMode);
+        setTemplates(nextTemplates);
+        setVersions(nextVersions);
+        setMetrics(nextMetrics);
         setActiveWorkflowId(workflows[0]?.id ?? current.workflows[0]?.id ?? 'wf_article_audit');
         setRunInputs(initialRunInputs(activeDefinition));
         setSelectedNodeId(selectedNodeIdFor(activeDefinition));
@@ -539,6 +620,8 @@ export default function AgentWorkflowsPage() {
         saveLocalAgentWorkflowBundle(next);
         return next;
       });
+      setVersions([]);
+      setMetrics(null);
       return;
     }
 
@@ -557,6 +640,7 @@ export default function AgentWorkflowsPage() {
         return next;
       });
       void refreshRunHistory(workflow.id);
+      void refreshWorkflowMeta(workflow.id);
     } catch (error) {
       toast.error(`工作流加载失败：${errorMessage(error)}`);
     } finally {
@@ -642,6 +726,7 @@ export default function AgentWorkflowsPage() {
     try {
       const runDefinition = buildDefinition();
       const inputs = normalizeRunInputs(runDefinition, runInputs);
+      const simulateExternal = runMode === 'simulate';
       const synced = await persistDraft();
       const workflowId = synced.workflows.find((workflow) => workflowIdEquals(workflow.id, activeWorkflowId))?.id
         ?? synced.workflows[0]?.id;
@@ -651,7 +736,13 @@ export default function AgentWorkflowsPage() {
       const response = await agentWorkflowService.startRun(
         workflowId,
         inputs,
-        true,
+        simulateExternal,
+        {
+          sourceType: 'canvas',
+          redactionPolicy: runMode === 'real' ? 'manual' : 'auto',
+          maxNodes: 200,
+          maxDurationMs: 15 * 60 * 1000,
+        },
       );
       const run = response.data;
       const nextTrace = traceFromRun(synced.activeDefinition, run?.trace);
@@ -674,12 +765,16 @@ export default function AgentWorkflowsPage() {
         return next;
       });
       if (run?.status === 'failed') {
-        toast.error(`试运行失败：${run.errorMessage || '执行器返回失败状态'}`);
+        toast.error(`${runModeLabel(runMode)}失败：${run.errorMessage || '执行器返回失败状态'}`);
       } else {
-        toast.success(`试运行已完成：${run?.status || 'pending'}`);
+        toast.success(`${runModeLabel(runMode)}已入队：${run?.status || 'pending'}`);
+      }
+      if (workflowId != null) {
+        void refreshRunHistory(workflowId);
+        void refreshWorkflowMeta(workflowId);
       }
     } catch (error) {
-      toast.error(`试运行失败：${errorMessage(error)}`);
+      toast.error(`${runModeLabel(runMode)}失败：${errorMessage(error)}`);
     } finally {
       setIsRunning(false);
     }
@@ -750,6 +845,148 @@ export default function AgentWorkflowsPage() {
     }
   };
 
+  const updateRunInBundle = (run: AgentWorkflowRunSummary) => {
+    setBundle((current) => {
+      const next: AgentWorkflowBundle = {
+        ...current,
+        runHistory: [run, ...current.runHistory.filter((item) => !workflowIdEquals(item.id, run.id))].slice(0, 50),
+      };
+      saveLocalAgentWorkflowBundle(next);
+      return next;
+    });
+  };
+
+  const runRuntimeAction = async (action: 'cancel' | 'retry' | 'resume' | 'canonicalize') => {
+    if (!latestRun || isRuntimeActionBusy) return;
+    setIsRuntimeActionBusy(true);
+    try {
+      if (action === 'canonicalize') {
+        const response = await agentWorkflowService.canonicalizeRun(latestRun.id);
+        if (response.data?.definition) {
+          applyActiveDefinition(response.data.definition);
+          setActiveWorkflowId(response.data.id);
+          setBundle((current) => {
+            const next: AgentWorkflowBundle = {
+              ...current,
+              activeDefinition: response.data!.definition,
+              workflows: [response.data!, ...current.workflows.filter((workflow) => !workflowIdEquals(workflow.id, response.data!.id))],
+              runHistory: [],
+            };
+            saveLocalAgentWorkflowBundle(next);
+            return next;
+          });
+          void refreshWorkflowMeta(response.data.id);
+        }
+        toast.success('运行轨迹已固化为 fixed workflow 草稿');
+        return;
+      }
+      const response =
+        action === 'cancel'
+          ? await agentWorkflowService.cancelRun(latestRun.id)
+          : action === 'retry'
+            ? await agentWorkflowService.retryRun(latestRun.id, true)
+            : await agentWorkflowService.resumeRun(latestRun.id, latestRun.currentNode);
+      if (response.data) {
+        updateRunInBundle(response.data);
+        toast.success(`运行 #${response.data.id} 已更新为 ${response.data.status}`);
+      }
+      if (activeWorkflow?.id) {
+        void refreshRunHistory(activeWorkflow.id);
+        void refreshWorkflowMeta(activeWorkflow.id);
+      }
+    } catch (error) {
+      toast.error(`运行操作失败：${errorMessage(error)}`);
+    } finally {
+      setIsRuntimeActionBusy(false);
+    }
+  };
+
+  const applyTemplate = async (template: AgentWorkflowTemplateSummary) => {
+    applyActiveDefinition(template.definition);
+    setBundle((current) => {
+      const next = { ...current, activeDefinition: template.definition };
+      saveLocalAgentWorkflowBundle(next);
+      return next;
+    });
+    toast.success(`已载入模板：${template.title}`);
+  };
+
+  const exportActiveWorkflow = async () => {
+    if (!activeWorkflow || !hasBackendWorkflowId(activeWorkflow.id)) {
+      toast.error('请先保存后再导出');
+      return;
+    }
+    try {
+      const response = await agentWorkflowService.exportWorkflow(activeWorkflow.id);
+      await navigator.clipboard?.writeText(JSON.stringify(response.data?.definition || buildDefinition(), null, 2));
+      toast.success('工作流 JSON 已复制');
+    } catch (error) {
+      toast.error(`导出失败：${errorMessage(error)}`);
+    }
+  };
+
+  const rollbackLatestVersion = async () => {
+    if (!activeWorkflow || !hasBackendWorkflowId(activeWorkflow.id) || versions.length < 2) return;
+    const previous = versions[1];
+    try {
+      const response = await agentWorkflowService.rollbackVersion(activeWorkflow.id, previous.version);
+      if (response.data?.definition) {
+        applyActiveDefinition(response.data.definition);
+        setBundle((current) => {
+          const next = {
+            ...current,
+            activeDefinition: response.data!.definition,
+            workflows: current.workflows.map((workflow) =>
+              workflowIdEquals(workflow.id, response.data!.id) ? response.data! : workflow,
+            ),
+          };
+          saveLocalAgentWorkflowBundle(next);
+          return next;
+        });
+      }
+      toast.success(`已回滚到 v${previous.version}`);
+      void refreshWorkflowMeta(activeWorkflow.id);
+    } catch (error) {
+      toast.error(`回滚失败：${errorMessage(error)}`);
+    }
+  };
+
+  const createQuickSchedule = async () => {
+    if (!activeWorkflow || !hasBackendWorkflowId(activeWorkflow.id)) {
+      toast.error('请先保存后再创建调度');
+      return;
+    }
+    try {
+      const response = await agentWorkflowService.createSchedule({
+        workflowId: activeWorkflow.id,
+        enabled: false,
+        cronExpr: '0 9 * * *',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
+        inputs: normalizeRunInputs(buildDefinition(), runInputs),
+        missedRunPolicy: 'skip',
+      });
+      if (response.data) {
+        setBundle((current) => {
+          const next = { ...current, schedules: [response.data!, ...current.schedules] };
+          saveLocalAgentWorkflowBundle(next);
+          return next;
+        });
+      }
+      toast.success('已创建每日调度草稿');
+    } catch (error) {
+      toast.error(`创建调度失败：${errorMessage(error)}`);
+    }
+  };
+
+  const testTool = async (tool: AgentToolSummary) => {
+    try {
+      const response = await agentWorkflowService.testTool(tool.code, tool.code === 'text_join' ? { items: ['Aether', 'Blog'], separator: ' ' } : {});
+      toast.success(`${tool.displayName}: ${response.data?.status || 'ok'}`);
+    } catch (error) {
+      toast.error(`工具测试失败：${errorMessage(error)}`);
+    }
+  };
+
   return (
     <div className="agent-workflows-page min-h-0 min-w-0 overflow-auto pb-4 xl:h-[calc(100dvh-6rem)] xl:overflow-hidden">
       <div className="grid min-h-0 grid-cols-1 gap-3 xl:h-full xl:grid-cols-[280px_minmax(0,1fr)_330px]">
@@ -812,6 +1049,28 @@ export default function AgentWorkflowsPage() {
               })}
             </div>
 
+            {templates.length > 0 && (
+              <div className="mt-5">
+                <SectionTitle icon={Sparkles} title="Templates" />
+                <div className="space-y-2">
+                  {templates.slice(0, 4).map((template) => (
+                    <button
+                      key={template.templateKey}
+                      type="button"
+                      onClick={() => void applyTemplate(template)}
+                      className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-semibold text-[var(--text-primary)]">{template.title}</span>
+                        <span className="font-mono text-[10px] uppercase text-[var(--text-tertiary)]">{template.category}</span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[11px] text-[var(--text-muted)]">{template.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5">
               <SectionTitle icon={Plus} title="Node Palette" />
               <div className="grid grid-cols-2 gap-2">
@@ -844,6 +1103,14 @@ export default function AgentWorkflowsPage() {
                 <span className="rounded-md border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[var(--text-tertiary)]">
                   {bundle.activeDefinition.mode}
                 </span>
+                <span className={cn(
+                  'rounded-md border px-1.5 py-0.5 font-mono text-[10px] uppercase',
+                  trueRuntimeReady
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+                )}>
+                  {trueRuntimeReady ? 'real ready' : 'real gated'}
+                </span>
               </div>
               <p className="truncate text-xs text-[var(--text-muted)]">{bundle.activeDefinition.description}</p>
             </div>
@@ -861,6 +1128,14 @@ export default function AgentWorkflowsPage() {
                 <Save className="h-4 w-4" />
                 <span className="hidden md:inline">{isSaving ? '保存中' : '保存'}</span>
               </button>
+              <button className="toolbar-button" type="button" onClick={exportActiveWorkflow} title="导出 JSON">
+                <Database className="h-4 w-4" />
+                <span className="hidden md:inline">导出</span>
+              </button>
+              <button className="toolbar-button" type="button" onClick={createQuickSchedule} title="创建调度">
+                <CalendarClock className="h-4 w-4" />
+                <span className="hidden md:inline">调度</span>
+              </button>
               <button
                 className="toolbar-button"
                 type="button"
@@ -871,9 +1146,9 @@ export default function AgentWorkflowsPage() {
                 {activeWorkflow?.published ? <LockKeyhole className="h-4 w-4" /> : <Globe2 className="h-4 w-4" />}
                 <span className="hidden md:inline">{isPublishing ? '处理中' : activeWorkflow?.published ? '停用发布' : '发布'}</span>
               </button>
-              <button className="toolbar-button-primary" type="button" onClick={simulateRun} disabled={isRunning} title="试运行">
+              <button className="toolbar-button-primary" type="button" onClick={simulateRun} disabled={isRunning} title={runModeLabel(runMode)}>
                 <Play className="h-4 w-4" />
-                <span className="hidden md:inline">{isRunning ? '运行中' : '试运行'}</span>
+                <span className="hidden md:inline">{isRunning ? '运行中' : runMode === 'simulate' ? '模拟运行' : '真实运行'}</span>
               </button>
             </div>
           </div>
@@ -902,7 +1177,18 @@ export default function AgentWorkflowsPage() {
               <PanelRight className="h-4 w-4 text-[var(--text-tertiary)]" />
               <span className="text-sm font-bold text-[var(--text-primary)]">Inspector</span>
             </div>
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+            <div
+              className={cn(
+                'flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]',
+                trueRuntimeReady
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+              )}
+              title={trueRuntimeReady ? '真实运行能力已接入' : '真实运行能力尚未全部接入'}
+            >
+              {trueRuntimeReady ? <ShieldCheck className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+              <span>{trueRuntimeReady ? '真实可用' : `${unavailableCapabilityCount} 项未接入`}</span>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1104,6 +1390,95 @@ export default function AgentWorkflowsPage() {
 
             <div className="mt-5">
               <SectionTitle icon={Play} title="Run Inputs" />
+              <div className="mb-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 p-2">
+                <div className="grid grid-cols-2 gap-1" role="group" aria-label="运行模式">
+                  {([
+                    { mode: 'real' as const, label: '真实', icon: ShieldCheck },
+                    { mode: 'simulate' as const, label: '模拟', icon: FlaskConical },
+                  ]).map((item) => {
+                    const Icon = item.icon;
+                    const selected = runMode === item.mode;
+                    return (
+                      <button
+                        key={item.mode}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setRunMode(item.mode)}
+                        className={cn(
+                          'flex h-9 items-center justify-center gap-1.5 rounded-md border text-xs font-semibold transition-colors',
+                          selected
+                            ? 'border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                            : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]',
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] leading-5 text-[var(--text-muted)]">
+                  {runMode === 'simulate'
+                    ? '模拟运行会显式标记 run，不代表真实工具或模型已接入。'
+                    : trueRuntimeReady
+                      ? '真实运行会调用已接入执行器并记录真实结果。'
+                      : '真实运行默认开启；当前未接入能力会返回明确失败，不再伪装成功。'}
+                </p>
+              </div>
+              <div className="mb-3 space-y-1.5">
+                {capabilityItems.map((item) => (
+                  <div key={item.label} className="flex items-start justify-between gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/35 px-2.5 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-semibold text-[var(--text-primary)]">{item.label}</div>
+                      {item.detail && <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--text-muted)]">{item.detail}</div>}
+                    </div>
+                    <span className={cn('shrink-0 font-mono text-[10px] uppercase', capabilityTone(item.enabled))}>{item.state}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mb-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 p-2">
+                <div className="grid grid-cols-4 gap-1">
+                  {([
+                    { action: 'cancel' as const, label: '取消', disabled: !latestRun || isTerminalRunStatus(latestRun.status) },
+                    { action: 'retry' as const, label: '重试', disabled: !latestRun || latestRun.status === 'running' || latestRun.status === 'pending' },
+                    { action: 'resume' as const, label: '续跑', disabled: !latestRun || latestRun.status !== 'paused' },
+                    { action: 'canonicalize' as const, label: '固化', disabled: !latestRun || latestRun.simulated },
+                  ]).map((item) => (
+                    <button
+                      key={item.action}
+                      type="button"
+                      disabled={item.disabled || isRuntimeActionBusy}
+                      onClick={() => void runRuntimeAction(item.action)}
+                      className="h-8 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[11px] font-semibold text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-md bg-[var(--bg-card)] px-2 py-1">
+                    <div className="font-mono text-xs text-[var(--text-primary)]">{metrics?.totalRuns ?? 0}</div>
+                    <div className="text-[10px] uppercase text-[var(--text-tertiary)]">runs</div>
+                  </div>
+                  <div className="rounded-md bg-[var(--bg-card)] px-2 py-1">
+                    <div className="font-mono text-xs text-emerald-500">{metrics?.successRuns ?? 0}</div>
+                    <div className="text-[10px] uppercase text-[var(--text-tertiary)]">success</div>
+                  </div>
+                  <div className="rounded-md bg-[var(--bg-card)] px-2 py-1">
+                    <div className="font-mono text-xs text-[var(--text-primary)]">{versions[0]?.version ? `v${versions[0].version}` : 'v-'}</div>
+                    <div className="text-[10px] uppercase text-[var(--text-tertiary)]">latest</div>
+                  </div>
+                </div>
+                {versions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => void rollbackLatestVersion()}
+                    className="mt-2 h-8 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[11px] font-semibold text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)]"
+                  >
+                    回滚到 v{versions[1].version}
+                  </button>
+                )}
+              </div>
               <div className="space-y-2">
                 {Object.entries(bundle.activeDefinition.inputs || {}).map(([name, spec]) => (
                   <label key={name} className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-3 py-2">
@@ -1170,7 +1545,16 @@ export default function AgentWorkflowsPage() {
                           <Icon className="h-4 w-4 text-[var(--text-tertiary)]" />
                           <span className="truncate text-xs font-semibold text-[var(--text-primary)]">{tool.displayName}</span>
                         </div>
-                        <span className="font-mono text-[10px] uppercase text-[var(--text-tertiary)]">{tool.protocol}</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => void testTool(tool)}
+                            className="rounded border border-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)]"
+                          >
+                            测试
+                          </button>
+                          <span className="font-mono text-[10px] uppercase text-[var(--text-tertiary)]">{tool.protocol}</span>
+                        </div>
                       </div>
                       <p className="mt-1 line-clamp-2 text-[11px] text-[var(--text-muted)]">{tool.description}</p>
                     </div>
@@ -1190,14 +1574,41 @@ export default function AgentWorkflowsPage() {
                     className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/45 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={cn('font-mono text-xs', runStatusTone(run.status))}>
-                        {run.status}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className={cn('font-mono text-xs', runStatusTone(run.status))}>
+                          {run.status}
+                        </span>
+                        <span className={cn(
+                          'rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase',
+                          run.simulated
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-500'
+                            : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
+                        )}>
+                          {run.simulated ? 'sim' : 'real'}
+                        </span>
+                      </div>
                       <span className="font-mono text-[10px] text-[var(--text-tertiary)]">#{run.id}</span>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
                       <span>{new Date(run.createdAt).toLocaleString()}</span>
                       <span>{run.durationMs != null ? `${run.durationMs}ms` : `${run.totalNodeCount} nodes`}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {run.sourceType && (
+                        <span className="rounded border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[9px] uppercase text-[var(--text-tertiary)]">
+                          {run.sourceType}
+                        </span>
+                      )}
+                      {run.pausedReason && (
+                        <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase text-amber-500">
+                          {run.pausedReason}
+                        </span>
+                      )}
+                      {run.errorCategory && (
+                        <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase text-red-500">
+                          {run.errorCategory}
+                        </span>
+                      )}
                     </div>
                     {run.errorMessage && <p className="mt-1 line-clamp-2 text-[11px] text-red-500">{run.errorMessage}</p>}
                   </button>

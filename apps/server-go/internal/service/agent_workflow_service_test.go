@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,6 +80,7 @@ func TestToRunSummaryHandlesOptionalFields(t *testing.T) {
 		Version:        3,
 		UserID:         7,
 		Status:         "success",
+		Simulated:      true,
 		Inputs:         `{"post_id":171}`,
 		Outputs:        &outputs,
 		CurrentNode:    &current,
@@ -93,6 +95,9 @@ func TestToRunSummaryHandlesOptionalFields(t *testing.T) {
 	if run.ID != 101 || run.WorkflowID != 11 || run.Version != 3 || run.Status != "success" {
 		t.Fatalf("unexpected run summary identity: %#v", run)
 	}
+	if !run.Simulated {
+		t.Fatalf("simulated = false, want true")
+	}
 	if string(run.Inputs) != `{"post_id":171}` || string(run.Outputs) != outputs {
 		t.Fatalf("unexpected JSON fields: inputs=%s outputs=%s", run.Inputs, run.Outputs)
 	}
@@ -101,6 +106,95 @@ func TestToRunSummaryHandlesOptionalFields(t *testing.T) {
 	}
 	if run.DurationMS == nil || *run.DurationMS != duration {
 		t.Fatalf("duration = %#v, want %d", run.DurationMS, duration)
+	}
+}
+
+func TestCapabilitiesDefaultToExplicitRealModeButDisableUnwiredRuntime(t *testing.T) {
+	svc := NewAgentWorkflowService(nil, nil, "")
+	caps := svc.Capabilities(t.Context(), 7)
+
+	if caps.DefaultRunMode != "real" {
+		t.Fatalf("default run mode = %q, want real", caps.DefaultRunMode)
+	}
+	if caps.RealLLM.Enabled || caps.RealTools.Enabled || caps.Sandbox.Enabled || caps.Autonomous.Enabled {
+		t.Fatalf("runtime capabilities requiring ai-service should be disabled by default: %#v", caps)
+	}
+	if !caps.Scheduler.Enabled || caps.Scheduler.State != "available" {
+		t.Fatalf("scheduler capability should be available after CRUD/daemon API wiring: %#v", caps.Scheduler)
+	}
+	if caps.RealLLM.State != "not_connected" || caps.RealTools.State != "not_connected" {
+		t.Fatalf("real runtime states = LLM:%q tools:%q, want not_connected", caps.RealLLM.State, caps.RealTools.State)
+	}
+}
+
+func TestValidateWorkflowInputsHandlesRequiredFieldsAndTypes(t *testing.T) {
+	schema := `{"post_id":{"type":"integer","required":true},"dry_run":{"type":"boolean"}}`
+	if err := validateWorkflowInputs(schema, `{"post_id":171,"dry_run":true}`); err != nil {
+		t.Fatalf("valid inputs returned error: %v", err)
+	}
+	if err := validateWorkflowInputs(schema, `{"dry_run":true}`); err == nil || !strings.Contains(err.Error(), "post_id") {
+		t.Fatalf("missing required field error = %v, want post_id", err)
+	}
+	if err := validateWorkflowInputs(schema, `{"post_id":"171"}`); err == nil || !strings.Contains(err.Error(), "integer") {
+		t.Fatalf("type mismatch error = %v, want integer", err)
+	}
+}
+
+func TestPublicationOriginPolicy(t *testing.T) {
+	if err := validatePublicationOrigin(`["https://blog.example.com","https://*.aether.local"]`, "https://blog.example.com"); err != nil {
+		t.Fatalf("exact origin should pass: %v", err)
+	}
+	if err := validatePublicationOrigin(`["https://*.aether.local"]`, "https://admin.aether.local"); err != nil {
+		t.Fatalf("wildcard origin should pass: %v", err)
+	}
+	if err := validatePublicationOrigin(`["https://blog.example.com"]`, "https://evil.example.com"); err == nil {
+		t.Fatalf("disallowed origin returned nil error")
+	}
+}
+
+func TestRedactWorkflowPayloadRedactsSecretsAndTruncatesLongText(t *testing.T) {
+	got := redactWorkflowPayload(map[string]any{
+		"Authorization": "Bearer secret",
+		"nested": map[string]any{
+			"api_key": "abc",
+			"body":    strings.Repeat("x", 900),
+		},
+	})
+	obj, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("redacted payload type = %T", got)
+	}
+	if obj["Authorization"] != "[REDACTED]" {
+		t.Fatalf("authorization was not redacted: %#v", obj["Authorization"])
+	}
+	nested := obj["nested"].(map[string]any)
+	if nested["api_key"] != "[REDACTED]" {
+		t.Fatalf("api key was not redacted: %#v", nested["api_key"])
+	}
+	if body := nested["body"].(string); len(body) >= 900 || !strings.Contains(body, "truncated") {
+		t.Fatalf("long body was not truncated: len=%d value=%q", len(body), body)
+	}
+}
+
+func TestClassifyWorkflowError(t *testing.T) {
+	tests := []struct {
+		name      string
+		message   string
+		category  string
+		retryable bool
+	}{
+		{name: "budget", message: "budget exceeded", category: "budget", retryable: false},
+		{name: "permission", message: "permission denied", category: "permission", retryable: false},
+		{name: "upstream", message: "AI workflow executor returned HTTP 503", category: "upstream", retryable: true},
+		{name: "config", message: "llm executor is not connected", category: "configuration", retryable: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, category, retryable := classifyWorkflowError(tt.message)
+			if category != tt.category || retryable != tt.retryable {
+				t.Fatalf("classifyWorkflowError = category:%q retryable:%v, want %q/%v", category, retryable, tt.category, tt.retryable)
+			}
+		})
 	}
 }
 

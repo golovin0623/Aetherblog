@@ -325,6 +325,57 @@ async def test_external_node_uses_injected_executor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_workflow_route_runs_restricted_code_executor_without_llm_router() -> None:
+    payload = WorkflowExecutionRequest(
+        definition=_workflow(
+            inputs={"value": {"type": "integer", "required": True}},
+            nodes=[
+                {"id": "input_1", "type": "input"},
+                {"id": "code_1", "type": "code", "data": {"expression": "inputs.value + 2"}},
+                {"id": "output_1", "type": "output", "data": {"outputPath": "{{ nodes.code_1.output.result }}"}},
+            ],
+            edges=[
+                {"source": "input_1", "target": "code_1"},
+                {"source": "code_1", "target": "output_1"},
+            ],
+        ),
+        inputs={"value": 40},
+    )
+
+    response = await execute_workflow(payload, _user=SimpleNamespace(user_id="1", role="admin"))
+
+    assert response.data is not None
+    assert response.data.status == "success"
+    assert response.data.outputs["output_1"] == 42
+
+
+@pytest.mark.asyncio
+async def test_execute_workflow_route_blocks_unconnected_mcp_tool() -> None:
+    payload = WorkflowExecutionRequest(
+        definition=_workflow(
+            nodes=[
+                {"id": "tool_1", "type": "tool", "data": {"toolCode": "web_search", "args": {"query": "Aether"}}},
+            ],
+        ),
+        tools=[
+            {
+                "code": "web_search",
+                "handlerType": "mcp",
+                "handlerConfig": {},
+                "enabled": True,
+                "requiresApproval": False,
+            }
+        ],
+    )
+
+    response = await execute_workflow(payload, _user=SimpleNamespace(user_id="1", role="admin"))
+
+    assert response.data is not None
+    assert response.data.status == "failed"
+    assert "mcp tool web_search is not connected" in (response.data.errorMessage or "")
+
+
+@pytest.mark.asyncio
 async def test_execute_workflow_route_returns_api_response() -> None:
     definition = _workflow(nodes=[{"id": "tool_1", "type": "tool", "data": {"toolCode": "echo", "args": {"ok": True}}}])
     payload = WorkflowExecutionRequest(definition=definition, runId="r1")

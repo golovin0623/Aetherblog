@@ -59,6 +59,27 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     runId: int | str | None = None
     simulateExternal: bool = False
+    tools: list["WorkflowToolSnapshot"] = Field(default_factory=list)
+    budget: "WorkflowBudget" = Field(default_factory=lambda: WorkflowBudget())
+    redactionPolicy: str | None = None
+    resumeFromNode: str | None = None
+
+
+class WorkflowToolSnapshot(BaseModel):
+    code: str
+    handlerType: str
+    handlerConfig: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+    requiresApproval: bool = False
+    rateLimitPerMin: int | None = None
+    timeoutMs: int | None = None
+
+
+class WorkflowBudget(BaseModel):
+    maxTokens: int | None = None
+    maxCostUsd: float | None = None
+    maxDurationMs: int | None = None
+    maxNodes: int | None = None
 
 
 class WorkflowTraceItem(BaseModel):
@@ -81,3 +102,6 @@ class WorkflowExecutionResult(BaseModel):
     currentNode: str | None = None
     trace: list[WorkflowTraceItem] = Field(default_factory=list)
     errorMessage: str | None = None
+    promptTokens: int = 0
+    completionTokens: int = 0
+    totalCostUsd: float = 0
