@@ -194,7 +194,9 @@ def _resolve_agent_disabled_params(settings: dict[str, Any]) -> list[str]:
         return []
     params: list[str] = []
     for item in raw:
-        value = str(item).strip()
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
         if value and value not in params:
             params.append(value)
     return params
@@ -322,7 +324,7 @@ def _coerce_float_param(
         return None
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if not (minimum <= parsed <= maximum):
         return None
@@ -343,7 +345,7 @@ def _coerce_int_param(
         return None
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if not (minimum <= parsed <= maximum):
         return None
