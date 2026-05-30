@@ -18,7 +18,9 @@
 
 ## 2. Note To Annotation
 
-1. Open a Markdown note in the Atlas Reader route: `/admin/atlas/reader/note/<noteId>`.
+1. Open a Markdown note in the Atlas Reader route:
+   - From a note edit page, click the Atlas action in the header. Unsaved edits are saved before opening the Reader.
+   - Direct route: `/admin/atlas/reader/note/<noteId>`.
 2. Select text in the rendered Markdown preview.
 3. Create an annotation from the selection.
 4. Confirm that the annotation appears in the side list:
