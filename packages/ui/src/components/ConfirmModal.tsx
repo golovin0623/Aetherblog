@@ -94,8 +94,10 @@ export function ConfirmModal({
             )}>
               {/* 关闭按钮 */}
               <button
+                type="button"
                 onClick={onCancel}
-                className="absolute right-4 top-4 p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                aria-label="关闭"
+                className="absolute right-4 top-4 p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-popover)]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -112,35 +114,41 @@ export function ConfirmModal({
               {/* 操作按钮 */}
               <div className="flex flex-wrap gap-3 justify-end">
                 <button
+                  type="button"
                   onClick={onCancel}
                   className={cn(
                     'px-4 py-2.5 rounded-lg font-medium transition-colors',
-                    'bg-white/5 text-gray-300 hover:bg-white/10'
+                    'bg-white/5 text-gray-300 hover:bg-white/10',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-popover)]'
                   )}
                 >
                   {cancelText}
                 </button>
                 {secondaryText && onSecondary && (
                   <motion.button
+                    type="button"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={onSecondary}
                     className={cn(
                       'px-4 py-2.5 rounded-lg font-medium transition-colors',
                       'border border-[var(--border-default)] text-[var(--text-primary)]',
-                      'bg-transparent hover:bg-[var(--bg-card-hover)]'
+                      'bg-transparent hover:bg-[var(--bg-card-hover)]',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-popover)]'
                     )}
                   >
                     {secondaryText}
                   </motion.button>
                 )}
                 <motion.button
+                  type="button"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={onConfirm}
                   className={cn(
                     'px-4 py-2.5 rounded-lg font-medium transition-colors',
-                    styles.button
+                    styles.button,
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-popover)]'
                   )}
                 >
                   {confirmText}
