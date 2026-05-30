@@ -17,6 +17,7 @@ type atlasActivityRecorder interface {
 }
 
 var allowedAtlasTelemetryEvents = map[string]bool{
+	"atlas.search":                    true,
 	"atlas.graph_search":              true,
 	"atlas.aetherhub_atlas_answer":    true,
 	"atlas.aetherhub_answer_citation": true,

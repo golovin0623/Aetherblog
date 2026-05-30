@@ -8,8 +8,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // CarrierRepo 操作 atlas_carriers / atlas_carrier_versions。
@@ -66,6 +68,34 @@ func (r *CarrierRepo) FindByID(ctx context.Context, id int64) (*model.Carrier, e
 		return nil, err
 	}
 	return &c, nil
+}
+
+// Search 在可访问载体的标题、来源 URI 与作者字段中做轻量关键字搜索。
+func (r *CarrierRepo) Search(ctx context.Context, keyword string, ownerID *int64, limit int) ([]model.Carrier, error) {
+	if keyword == "" {
+		return []model.Carrier{}, nil
+	}
+	q := `SELECT * FROM atlas_carriers
+		WHERE deleted=false
+		  AND (title ILIKE $1 OR source_uri ILIKE $1 OR author ILIKE $1)`
+	args := []any{"%" + dbutil.EscapeLike(keyword) + "%"}
+	idx := 2
+	if ownerID != nil {
+		q += " AND owner_id=$" + strconv.Itoa(idx)
+		args = append(args, *ownerID)
+		idx++
+	}
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 100 {
+		limit = 100
+	}
+	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
+	args = append(args, limit)
+
+	rows := []model.Carrier{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
+	return rows, err
 }
 
 // Create 原子创建 Carrier + 第 1 版 CarrierVersion。

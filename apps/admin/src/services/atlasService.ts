@@ -15,6 +15,7 @@ import type {
   AtlasKnowledgePointType,
   AtlasProvenance,
   AtlasRelationType,
+  AtlasSearchResponse,
   AtlasSelector,
   AtlasAnnotationBodyType,
   AtlasTypedRelation,
@@ -52,7 +53,7 @@ export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
 
   recordEvent: (payload: {
-    eventType: 'atlas.graph_search' | 'atlas.aetherhub_atlas_answer' | 'atlas.aetherhub_answer_citation';
+    eventType: 'atlas.search' | 'atlas.graph_search' | 'atlas.aetherhub_atlas_answer' | 'atlas.aetherhub_answer_citation';
     title?: string;
     description?: string;
     status?: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
@@ -162,6 +163,12 @@ export const atlasService = {
     params?: AtlasScopedParams
   ): Promise<R<{ nodes: AtlasKnowledgePoint[]; edges: AtlasTypedRelation[] }>> =>
     api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
+
+  search: (params: {
+    q: string;
+    limit?: number;
+  } & AtlasScopedParams): Promise<R<AtlasSearchResponse>> =>
+    api.get(`${base}/search`, { params }),
 
   // ---------- AI Suggestions (Phase 3) ----------
   listSuggestions: (params?: {

@@ -72,6 +72,7 @@ const navSections: Array<{
       { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
       { path: '/notes', icon: BookOpen, label: '智能笔记' },
       { path: '/atlas', icon: Compass, label: '知识图集' },
+      { path: '/atlas/search', icon: Search, label: '图集搜索' },
       { path: '/atlas/kps', icon: Library, label: '图集知识点' },
       { path: '/atlas/graph', icon: GitBranch, label: '图谱视图' },
       { path: '/atlas/suggestions', icon: Sparkles, label: '图集建议' },

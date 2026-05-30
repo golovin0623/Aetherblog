@@ -105,3 +105,13 @@ type GraphResponse struct {
 	Nodes []KnowledgePointResponse `json:"nodes"`
 	Edges []TypedRelationResponse  `json:"edges"`
 }
+
+// SearchResponse 是 GET /atlas/search 的轻量聚合搜索结果。
+type SearchResponse struct {
+	Query           string                   `json:"query"`
+	Limit           int                      `json:"limit"`
+	Total           int                      `json:"total"`
+	KnowledgePoints []KnowledgePointResponse `json:"knowledgePoints"`
+	Annotations     []AnnotationResponse     `json:"annotations"`
+	Carriers        []CarrierResponse        `json:"carriers"`
+}

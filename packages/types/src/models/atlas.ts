@@ -193,6 +193,15 @@ export interface AtlasRelationEvidence {
   createdAt: string;
 }
 
+export interface AtlasSearchResponse {
+  query: string;
+  limit: number;
+  total: number;
+  knowledgePoints: AtlasKnowledgePoint[];
+  annotations: AtlasAnnotation[];
+  carriers: AtlasCarrier[];
+}
+
 // ============================================================
 // REST 请求 / 响应
 // ============================================================

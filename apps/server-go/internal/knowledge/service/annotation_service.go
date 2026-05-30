@@ -147,6 +147,11 @@ func (s *AnnotationService) ListByCarrierForAuthor(ctx context.Context, carrierI
 	return s.repo.FindByCarrierForAuthor(ctx, carrierID, authorID)
 }
 
+// Search 在标注正文与 selectors 中检索。
+func (s *AnnotationService) Search(ctx context.Context, keyword string, authorID *int64, limit int) ([]model.Annotation, error) {
+	return s.repo.Search(ctx, keyword, authorID, limit)
+}
+
 // Update 部分更新。
 func (s *AnnotationService) Update(ctx context.Context, id int64, in UpdateAnnotationInput) (*model.Annotation, error) {
 	if in.AnchorState != nil && !allowedAnchorStates[*in.AnchorState] {

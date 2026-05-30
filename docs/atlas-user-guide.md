@@ -8,8 +8,9 @@
 2. Choose the data scope:
    - `仅我的`: only Atlas records owned by the current user.
    - `全部可访问`: records visible to the current user. Admin users can use this for cross-user review.
-3. Use the dashboard search field to jump into `/admin/atlas/kps` with a keyword filter.
+3. Use the dashboard search field to jump into `/admin/atlas/search` with a keyword filter.
 4. Use the workspace entries for:
+   - `搜索`: search KP, annotations, and carriers from one screen.
    - `知识点`: manage and search Knowledge Points.
    - `图谱`: inspect the graph.
    - `AI 建议`: review pending suggestions.
@@ -60,7 +61,19 @@ Open a KP detail page to:
 - Delete the KP with confirmation.
 - Review evidence annotations and jump back to the source Reader route when the carrier maps to a note.
 
-## 5. Create Relations
+## 5. Search Across Atlas
+
+Use `/admin/atlas/search` for a single keyword search across:
+
+- KP title and body Markdown.
+- Annotation body text and W3C selector text.
+- Carrier title, source URI, and author.
+
+Search respects the same Atlas scope control as the dashboard: non-admin users stay scoped to their own Atlas data, while admin users can choose all accessible records or only their own records.
+
+This is the keyword-search baseline. Semantic Atlas recall and GraphRAG ranking remain future gates.
+
+## 6. Create Relations
 
 1. Open a KP detail page.
 2. In `Relations`, choose the relation type. The UI shows a short explanation for each type:
@@ -73,7 +86,7 @@ Open a KP detail page to:
 
 Relation cards show direction, type, strength, rationale, and attached evidence quotes. Evidence makes a relation auditable: a relation without evidence can exist, but should be treated as less reliable until evidence is attached.
 
-## 6. Inspect The Graph
+## 7. Inspect The Graph
 
 Use `/admin/atlas/graph` for the global graph view.
 
@@ -87,7 +100,7 @@ Available controls:
 
 Click a node to open its KP detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
 
-## 7. AI Suggestions
+## 8. AI Suggestions
 
 Use `/admin/atlas/suggestions` to review pending suggestions.
 
@@ -105,7 +118,7 @@ Rules:
 
 The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Do not treat suggestion quality as final model quality until the eval harness and acceptance-rate gates are complete.
 
-## 8. AetherHub Scope
+## 9. AetherHub Scope
 
 Current available handoff:
 
@@ -118,7 +131,7 @@ Current available handoff:
 
 This is a selected-scope baseline, not full semantic GraphRAG. Automatic Atlas recall from arbitrary questions still depends on the future embedding and graph-neighborhood recall gates.
 
-## 9. Release Checklist
+## 10. Release Checklist
 
 Before treating an Atlas iteration as a passed product gate, record evidence in `.agent/plans/knowledge-atlas-phase-gate-ledger.md`:
 

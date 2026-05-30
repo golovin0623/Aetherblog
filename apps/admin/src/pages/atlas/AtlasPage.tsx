@@ -36,6 +36,12 @@ type DashboardState =
 
 const QUICK_LINKS = [
   {
+    title: '搜索',
+    description: '跨 KP、标注和载体定位内容',
+    href: '/atlas/search',
+    icon: Search,
+  },
+  {
     title: '知识点',
     description: '搜索、筛选和进入 KP 详情',
     href: '/atlas/kps',
@@ -75,7 +81,7 @@ export default function AtlasPage() {
   const handleKPSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = kpSearch.trim();
-    navigate(query ? `/atlas/kps?keyword=${encodeURIComponent(query)}` : '/atlas/kps');
+    navigate(query ? `/atlas/search?q=${encodeURIComponent(query)}` : '/atlas/search');
   };
 
   useEffect(() => {
@@ -172,7 +178,7 @@ export default function AtlasPage() {
                 type="search"
                 value={kpSearch}
                 onChange={(event) => setKpSearch(event.target.value)}
-                placeholder="搜索 KP 标题或正文"
+                placeholder="搜索 KP、标注或来源"
                 className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] pl-9 pr-3 text-sm text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
               />
             </label>

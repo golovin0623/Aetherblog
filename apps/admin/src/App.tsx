@@ -42,6 +42,7 @@ const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderP
 const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
 const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
 const AtlasSuggestionsPage = lazy(() => import('./pages/atlas/SuggestionsPage'));
+const AtlasSearchPage = lazy(() => import('./pages/atlas/AtlasSearchPage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -131,6 +132,7 @@ function App() {
               <Route path="atlas/kps" element={<AtlasKnowledgePointsPage />} />
               <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
+              <Route path="atlas/search" element={<AtlasSearchPage />} />
               <Route path="atlas/graph" element={<AtlasGraphPage />} />
               <Route path="atlas/suggestions" element={<AtlasSuggestionsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />

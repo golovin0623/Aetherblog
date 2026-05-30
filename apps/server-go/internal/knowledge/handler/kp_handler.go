@@ -25,6 +25,7 @@ package handler
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -40,6 +41,7 @@ type KPHandler struct {
 	kp       *atlassvc.KnowledgePointService
 	rel      *atlassvc.RelationService
 	ann      *atlassvc.AnnotationService
+	atlas    *atlassvc.AtlasService
 	activity atlasActivityRecorder
 }
 
@@ -48,9 +50,10 @@ func NewKPHandler(
 	kp *atlassvc.KnowledgePointService,
 	rel *atlassvc.RelationService,
 	ann *atlassvc.AnnotationService,
+	atlas *atlassvc.AtlasService,
 	activity atlasActivityRecorder,
 ) *KPHandler {
-	return &KPHandler{kp: kp, rel: rel, ann: ann, activity: activity}
+	return &KPHandler{kp: kp, rel: rel, ann: ann, atlas: atlas, activity: activity}
 }
 
 // Mount 挂到 /atlas 子组。
@@ -74,6 +77,7 @@ func (h *KPHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.DELETE("/relations/:id", h.DeleteRelation, write)
 
 	g.GET("/graph", h.Graph)
+	g.GET("/search", h.Search)
 }
 
 // ---------- KP ----------
@@ -494,6 +498,83 @@ func (h *KPHandler) Graph(c echo.Context) error {
 		edges[i] = toRelationResponse(&rels[i])
 	}
 	return response.OK(c, atlasdto.GraphResponse{Nodes: nodes, Edges: edges})
+}
+
+// Search 聚合 KP、Annotation、Carrier 的轻量关键字搜索。
+func (h *KPHandler) Search(c echo.Context) error {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	authorID, err := scope.authorFilter(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	query := strings.TrimSpace(c.QueryParam("q"))
+	if query == "" {
+		return response.FailWith(c, response.BadRequest, "搜索词不能为空")
+	}
+	limit := 8
+	if v := c.QueryParam("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = n
+		}
+	}
+	if limit <= 0 {
+		limit = 8
+	} else if limit > 25 {
+		limit = 25
+	}
+
+	kps, err := h.kp.List(c.Request().Context(), atlasrepo.KPListFilter{
+		Keyword:  &query,
+		AuthorID: authorID,
+		Limit:    limit,
+	})
+	if err != nil {
+		return response.Error(c, err)
+	}
+	var annotations []atlasmodel.Annotation
+	if h.ann != nil {
+		annotations, err = h.ann.Search(c.Request().Context(), query, authorID, limit)
+		if err != nil {
+			return response.Error(c, err)
+		}
+	}
+	var carriers []atlasmodel.Carrier
+	if h.atlas != nil && h.atlas.Carriers() != nil {
+		carriers, err = h.atlas.Carriers().Search(c.Request().Context(), query, authorID, limit)
+		if err != nil {
+			return response.Error(c, err)
+		}
+	}
+
+	out := atlasdto.SearchResponse{
+		Query:           query,
+		Limit:           limit,
+		KnowledgePoints: make([]atlasdto.KnowledgePointResponse, len(kps)),
+		Annotations:     make([]atlasdto.AnnotationResponse, len(annotations)),
+		Carriers:        make([]atlasdto.CarrierResponse, len(carriers)),
+	}
+	for i := range kps {
+		out.KnowledgePoints[i] = toKPResponse(&kps[i])
+	}
+	for i := range annotations {
+		out.Annotations[i] = toAnnotationResponse(&annotations[i])
+	}
+	for i := range carriers {
+		out.Carriers[i] = toCarrierResponse(&carriers[i])
+	}
+	out.Total = len(out.KnowledgePoints) + len(out.Annotations) + len(out.Carriers)
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.search",
+		"Atlas search",
+		fmt.Sprintf("q=%q total=%d kp=%d annotation=%d carrier=%d", query, out.Total, len(out.KnowledgePoints), len(out.Annotations), len(out.Carriers)),
+		"INFO",
+	)
+	return response.OK(c, out)
 }
 
 func (h *KPHandler) assertKPScope(c echo.Context, id int64) (*atlasmodel.KnowledgePoint, error) {
