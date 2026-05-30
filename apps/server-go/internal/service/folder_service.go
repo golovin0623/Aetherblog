@@ -163,26 +163,36 @@ func toFolderVOs(fs []model.MediaFolder) []dto.MediaFolderVO {
 }
 
 // buildFolderTree 将平铺的文件夹 VO 列表按 parent_id 构建为嵌套树形结构。
-// 使用两轮遍历：第一轮通过指针将子节点挂载到父节点；第二轮收集根节点。
+// 使用 O(N) 一次遍历哈希表分组，然后自顶向下递归组装。
+// 原两轮指针挂载方案在值拷贝场景下会丢失孙级及更深层级的嵌套数据（先挂载后拷贝的根节点
+// 不含后续才挂上的子节点），此处统一为"先分组、后递归"的安全模式修复。
+// ref: PR#713 —— 修复深层嵌套丢失 + O(N) 优化 + 为 map 预分配容量。
 func buildFolderTree(vos []dto.MediaFolderVO) []dto.MediaFolderVO {
-	byID := make(map[int64]*dto.MediaFolderVO, len(vos))
-	for i := range vos {
-		byID[vos[i].ID] = &vos[i]
+	if len(vos) == 0 {
+		return nil
 	}
-	// 第一轮：将有父节点的文件夹挂载到对应父节点的 Children 列表（通过指针修改原始数据）
-	for i := range vos {
-		if vos[i].ParentID != nil {
-			if parent, ok := byID[*vos[i].ParentID]; ok {
-				parent.Children = append(parent.Children, vos[i])
-			}
-		}
-	}
-	// 第二轮：收集根节点（必须重新从 byID 读取以获取已挂载子节点的完整数据）
+
 	var roots []dto.MediaFolderVO
+	byParent := make(map[int64][]dto.MediaFolderVO, len(vos))
+
 	for i := range vos {
 		if vos[i].ParentID == nil {
-			roots = append(roots, *byID[vos[i].ID])
+			roots = append(roots, vos[i])
+		} else {
+			pid := *vos[i].ParentID
+			byParent[pid] = append(byParent[pid], vos[i])
 		}
 	}
-	return roots
+
+	var build func(nodes []dto.MediaFolderVO) []dto.MediaFolderVO
+	build = func(nodes []dto.MediaFolderVO) []dto.MediaFolderVO {
+		for i := range nodes {
+			if children, ok := byParent[nodes[i].ID]; ok {
+				nodes[i].Children = build(children)
+			}
+		}
+		return nodes
+	}
+
+	return build(roots)
 }

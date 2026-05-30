@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 积压 PR 评审合并：树构建 O(N) 优化 + ConfirmModal 无障碍 (2026-05-30, branch claude/pr-review-consolidation-PH4fL)
+
+**背景：** 一次性消化 9 个积压自动化 PR（#713/#720/#722/#723/#730/#732/#735/#739/#742），逐一核验是否合理、是否与现网代码重复，并把各 PR 上的 code-review 建议一并分析后择优合并到本 PR。
+
+**Changed — Backend (Go):**
+- `internal/service/category_service.go` — `buildTree` 重写为 `buildCategoryTree`：用哈希表按 `parent_id` 预分组 + 自顶向下递归，时间复杂度从 O(N²) 降到 O(N)。采纳 PR#713/#742 评审：命名与 `buildFolderTree` 对齐、map 预分配容量、用 roots/childrenMap 显式分离避免 `0` 魔术值导致的无限递归风险（取代 #730/#739/#742 的次优实现）。
+- `internal/service/folder_service.go` — `buildFolderTree` 同样改为「先分组、后递归」O(N) 方案，**修复原两轮指针挂载在值拷贝下丢失孙级及更深层级嵌套节点的隐蔽 bug**（PR#713）。
+- `internal/service/tree_builder_test.go` — 新增回归测试，锁定多级嵌套正确性与深层文件夹树不丢节点。
+
+**Changed — Frontend (UI):**
+- `packages/ui/src/components/ConfirmModal.tsx` — 采纳 PR#722：所有按钮补 `type="button"`（避免在表单内误触发提交）、关闭按钮加 `aria-label="关闭"`、全部按钮加 `focus-visible` 焦点环（offset 色对齐模态 `--bg-popover` 表面）。`design-system:check` 保持 0 error。
+
+**评审结论（不采纳/无需动作）：**
+- PR#735/#732/#723（LIKE 通配符转义）—— 现网 `kb_service.go` / `kp_repo.go` 已应用 `dbutil.EscapeLike`，**改动已在 main，纯重复**，直接关闭；#723 的 `pg_trgm` 索引建议涉及 DB 迁移、属性能增强，超出本次范围另议。
+- PR#720（反向代理路径穿越「改用 `c.Param("*")`」）—— **判定为安全回退，拒绝合并**。经 Echo v4.15.1 实测：`c.Param("*")` 会把 `%3F`(`?`) / `%23`(`#`) 解码为字面量，下游 HTTP 客户端会误解析为查询串/片段分隔符，造成参数注入 / SSRF 绕过；现网 `EscapedPath()` 方案刻意保留原始编码、深度防御探测 `..`，本就更安全。
+
+**📄 文档影响：** 已更新 `CHANGELOG.md`；树构建为内部纯函数重构，未改 API/schema，无需更新 `architecture.md` / `api-handlers.md`。
+
 ### Added — 全局价格「从 LiteLLM 一键同步」(2026-05-28, branch claude/vendor-enabled-model-defaults-N3nal)
 
 **背景：** 中转站（NewAPI / one-api 等）按各家官方文档维护「绝对价基准」，本质都参照 BerriAI/litellm 的 `model_prices_and_context_window.json`。本服务已把 `litellm` 列为运行时依赖，`litellm.model_cost`（~1000+ 模型，USD/token）离线即可用 —— 无需任何网络请求或手动维护本地价目表。运维不再需要逐个 model_id 手填基准价。
