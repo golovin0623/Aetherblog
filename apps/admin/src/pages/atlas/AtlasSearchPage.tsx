@@ -222,7 +222,7 @@ function AnnotationResult({ item }: { item: AtlasAnnotation }) {
 }
 
 function CarrierResult({ item }: { item: AtlasCarrier }) {
-  const readerHref = noteReaderHref(item.sourceUri);
+  const readerHref = carrierReaderHref(item);
   const content = (
     <>
       <span className="min-w-0">
@@ -301,10 +301,13 @@ function Chip({ children, className }: { children: React.ReactNode; className?: 
   );
 }
 
-function noteReaderHref(sourceUri: string): string | null {
-  if (!sourceUri.startsWith('notes://')) {
-    return null;
+function carrierReaderHref(carrier: AtlasCarrier): string | null {
+  if (carrier.type === 'markdown' && carrier.sourceUri.startsWith('notes://')) {
+    const noteId = Number(carrier.sourceUri.slice('notes://'.length));
+    return Number.isFinite(noteId) && noteId > 0 ? `/atlas/reader/note/${noteId}` : null;
   }
-  const noteId = Number(sourceUri.slice('notes://'.length));
-  return Number.isFinite(noteId) && noteId > 0 ? `/atlas/reader/note/${noteId}` : null;
+  if (carrier.type === 'pdf') {
+    return `/atlas/reader/pdf/${carrier.id}`;
+  }
+  return null;
 }

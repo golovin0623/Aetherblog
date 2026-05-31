@@ -4,10 +4,12 @@
 //   POST /carriers/markdown       懒创建/返回 markdown 类型 carrier
 //   POST /carriers/pdf            懒创建/返回 pdf 类型 carrier
 //   GET  /carriers/:id            读 carrier 详情
+//   GET  /carriers/:id/text-layer  读 pdf carrier 当前文本层
 
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -34,6 +36,7 @@ func NewCarrierHandler(svc *atlassvc.AtlasService) *CarrierHandler {
 func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
+	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
 }
 
@@ -114,6 +117,43 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
+// GetTextLayer 返回 PDF carrier 当前 content_hash 对应的页级文本层。
+func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的 ID")
+	}
+	carrier, err := h.atlas.Carriers().FindByID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if carrier == nil {
+		return response.FailWith(c, response.NotFound, "载体不存在")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if !scope.canAccessOwner(carrier.OwnerID) {
+		return response.FailWith(c, response.Forbidden, "无权访问该载体")
+	}
+	if carrier.Type != "pdf" {
+		return response.FailWith(c, response.BadRequest, "仅 PDF 载体支持文本层读取")
+	}
+	layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(c.Request().Context(), carrier.ID, carrier.ContentHash)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if layer == nil {
+		return response.FailWith(c, response.NotFound, "PDF 文本层不存在或尚未完成抽取")
+	}
+	out, err := toCarrierTextLayerResponse(layer)
+	if err != nil {
+		return response.FailWith(c, response.InternalError, "PDF 文本层页数据损坏")
+	}
+	return response.OK(c, out)
+}
+
 func toCarrierResponse(c *atlasmodel.Carrier) atlasdto.CarrierResponse {
 	return atlasdto.CarrierResponse{
 		ID:            c.ID,
@@ -130,4 +170,38 @@ func toCarrierResponse(c *atlasmodel.Carrier) atlasdto.CarrierResponse {
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     c.UpdatedAt,
 	}
+}
+
+type storedPDFTextPage struct {
+	Page      int    `json:"page"`
+	Text      string `json:"text"`
+	CharStart int    `json:"char_start"`
+	CharEnd   int    `json:"char_end"`
+}
+
+func toCarrierTextLayerResponse(layer *atlasmodel.CarrierTextLayer) (atlasdto.CarrierTextLayerResponse, error) {
+	var storedPages []storedPDFTextPage
+	if len(layer.Pages) > 0 {
+		if err := json.Unmarshal(layer.Pages, &storedPages); err != nil {
+			return atlasdto.CarrierTextLayerResponse{}, err
+		}
+	}
+	pages := make([]atlasdto.CarrierTextPageResponse, 0, len(storedPages))
+	for _, p := range storedPages {
+		pages = append(pages, atlasdto.CarrierTextPageResponse{
+			Page:      p.Page,
+			Text:      p.Text,
+			CharStart: p.CharStart,
+			CharEnd:   p.CharEnd,
+		})
+	}
+	return atlasdto.CarrierTextLayerResponse{
+		CarrierID:   layer.CarrierID,
+		ContentHash: layer.ContentHash,
+		StorageURI:  layer.StorageURI,
+		PageCount:   layer.PageCount,
+		CharCount:   layer.CharCount,
+		Text:        layer.TextContent,
+		Pages:       pages,
+	}, nil
 }

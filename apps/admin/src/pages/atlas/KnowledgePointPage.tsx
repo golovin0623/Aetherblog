@@ -36,6 +36,8 @@ import type {
   AtlasKnowledgePointType,
   AtlasRelationType,
   AtlasTypedRelation,
+  FragmentSelector,
+  PageRectSelector,
   TextQuoteSelector,
 } from '@aetherblog/types';
 import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
@@ -592,18 +594,13 @@ export default function KnowledgePointPage() {
                     </p>
                   )}
                   {a && (() => {
-                    // PR #724 review fix (Codex P1 #3): 解析 carrier.source_uri='notes://N' 得到 noteId。
-                    // reader 路由 /atlas/reader/note/:noteId 用的是 noteId 而非 carrierId。
-                    // 非 markdown 类型 / 无法解析时隐藏跳转按钮。
                     const carrier = carrierMap.get(a.carrierId);
-                    if (!carrier || carrier.type !== 'markdown') return null;
-                    const match = /^notes:\/\/(\d+)$/.exec(carrier.sourceUri);
-                    if (!match) return null;
-                    const noteId = match[1];
+                    const href = carrier ? readerHrefForAnnotation(a, carrier) : null;
+                    if (!href) return null;
                     return (
                       <button
                         type="button"
-                        onClick={() => navigate(`/atlas/reader/note/${noteId}`)}
+                        onClick={() => navigate(href)}
                         className="mt-2 text-[10px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
                       >
                         在阅读器中查看 →
@@ -931,6 +928,54 @@ function Pill({ children, className }: { children: React.ReactNode; className?: 
   return (
     <span className={cn('rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5', className)}>{children}</span>
   );
+}
+
+function readerHrefForAnnotation(annotation: AtlasAnnotation, carrier: AtlasCarrier): string | null {
+  if (carrier.type === 'markdown') {
+    const match = /^notes:\/\/(\d+)$/.exec(carrier.sourceUri);
+    return match ? `/atlas/reader/note/${match[1]}` : null;
+  }
+  if (carrier.type === 'pdf') {
+    const query = pdfAnnotationSearch(annotation);
+    return `/atlas/reader/pdf/${carrier.id}${query ? `?${query}` : ''}`;
+  }
+  return null;
+}
+
+function pdfAnnotationSearch(annotation: AtlasAnnotation): string {
+  const params = new URLSearchParams({ annotationId: String(annotation.id) });
+  const pageRect = annotation.selectors.find((selector) => selector.type === 'PageRectSelector') as PageRectSelector | undefined;
+  if (pageRect && pageRect.page > 0 && pageRect.rects.length > 0) {
+    params.set('page', String(pageRect.page));
+    params.set('rect', formatRectParam(pageRect.rects));
+    return params.toString();
+  }
+
+  const fragment = annotation.selectors.find((selector) => selector.type === 'FragmentSelector') as
+    | (FragmentSelector & { page?: number; rects?: PageRectSelector['rects'] })
+    | undefined;
+  if (fragment?.page && Array.isArray(fragment.rects) && fragment.rects.length > 0) {
+    params.set('page', String(fragment.page));
+    params.set('rect', formatRectParam(fragment.rects));
+    return params.toString();
+  }
+
+  if (fragment?.value) {
+    const parsed = new URLSearchParams(fragment.value);
+    const page = parsed.get('page');
+    const rect = parsed.get('rect');
+    if (page && rect) {
+      params.set('page', page);
+      params.set('rect', rect);
+    }
+  }
+  return params.toString();
+}
+
+function formatRectParam(rects: PageRectSelector['rects']): string {
+  return rects
+    .map((rect) => [rect.x, rect.y, rect.width, rect.height].map((value) => String(value)).join(','))
+    .join(';');
 }
 
 function relationColorClass(t: AtlasRelationType): string {

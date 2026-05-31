@@ -9,6 +9,7 @@ import type {
   AtlasAnnotation,
   AtlasAnchorState,
   AtlasCarrier,
+  AtlasCarrierTextLayer,
   AtlasGraphHealth,
   AtlasHealthResponse,
   AtlasKnowledgePoint,
@@ -67,6 +68,9 @@ export const atlasService = {
     api.post(`${base}/carriers/pdf`, { mediaFileId }),
 
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
+
+  getCarrierTextLayer: (carrierId: number): Promise<R<AtlasCarrierTextLayer>> =>
+    api.get(`${base}/carriers/${carrierId}/text-layer`),
 
   listAnnotations: (carrierId: number): Promise<R<AtlasAnnotation[]>> =>
     api.get(`${base}/carriers/${carrierId}/annotations`),

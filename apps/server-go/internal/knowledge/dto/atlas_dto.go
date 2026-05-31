@@ -41,6 +41,25 @@ type EnsurePDFCarrierRequest struct {
 	MediaFileID int64 `json:"mediaFileId" validate:"required,gt=0"`
 }
 
+// CarrierTextPageResponse 是 PDF 文本层的页级锚定空间。
+type CarrierTextPageResponse struct {
+	Page      int    `json:"page"`
+	Text      string `json:"text"`
+	CharStart int    `json:"charStart"`
+	CharEnd   int    `json:"charEnd"`
+}
+
+// CarrierTextLayerResponse 是 GET /atlas/carriers/:id/text-layer 的响应。
+type CarrierTextLayerResponse struct {
+	CarrierID   int64                     `json:"carrierId"`
+	ContentHash string                    `json:"contentHash"`
+	StorageURI  string                    `json:"storageUri"`
+	PageCount   int                       `json:"pageCount"`
+	CharCount   int                       `json:"charCount"`
+	Text        string                    `json:"text"`
+	Pages       []CarrierTextPageResponse `json:"pages"`
+}
+
 // ============================================================
 // Annotation
 // ============================================================

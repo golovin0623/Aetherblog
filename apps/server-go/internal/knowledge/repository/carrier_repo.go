@@ -293,3 +293,20 @@ func (r *CarrierRepo) FindTextLayerByStorageURI(ctx context.Context, storageURI 
 	}
 	return &layer, nil
 }
+
+// FindTextLayerByCarrierAndHash returns the extracted text layer for the carrier's current content hash.
+func (r *CarrierRepo) FindTextLayerByCarrierAndHash(ctx context.Context, carrierID int64, contentHash string) (*model.CarrierTextLayer, error) {
+	var layer model.CarrierTextLayer
+	err := r.db.GetContext(ctx, &layer,
+		`SELECT * FROM atlas_carrier_text_layers WHERE carrier_id=$1 AND content_hash=$2 LIMIT 1`,
+		carrierID,
+		contentHash,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &layer, nil
+}

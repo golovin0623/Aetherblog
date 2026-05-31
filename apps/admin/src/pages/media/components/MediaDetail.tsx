@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl, mediaService } from '@/services/mediaService';
+import { atlasService } from '@/services/atlasService';
 import { format } from 'date-fns';
 import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
@@ -104,6 +106,8 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [openingAtlas, setOpeningAtlas] = useState(false);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
     queryKey: ['media', 'detail', initialMedia.id],
@@ -164,6 +168,23 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const Icon = typeIcons[media.fileType] || FileText;
   const fullUrl = getMediaUrl(media);
   const isImage = media.fileType === 'IMAGE';
+  const isPDF = media.fileType === 'DOCUMENT' && (
+    media.mimeType?.toLowerCase() === 'application/pdf' ||
+    media.originalName.toLowerCase().endsWith('.pdf')
+  );
+
+  const handleOpenAtlasPDF = async () => {
+    if (!isPDF) return;
+    setOpeningAtlas(true);
+    try {
+      const res = await atlasService.ensurePDFCarrier(media.id);
+      navigate(`/atlas/reader/pdf/${res.data.id}`);
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas PDF Reader 失败'));
+    } finally {
+      setOpeningAtlas(false);
+    }
+  };
 
   const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [
     { id: 'info', label: '详情', icon: FileText },
@@ -251,6 +272,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
           <Share2 className="w-3.5 h-3.5" />
           分享
         </button>
+        {isPDF && (
+          <button
+            onClick={() => void handleOpenAtlasPDF()}
+            disabled={openingAtlas}
+            className={detailSoftButtonClass}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            {openingAtlas ? '处理中...' : 'Atlas'}
+          </button>
+        )}
         {onMove && (
           <button
             onClick={() => onMove(media.id, media.originalName)}

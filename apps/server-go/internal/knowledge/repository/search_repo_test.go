@@ -75,6 +75,35 @@ func TestCarrierRepoUpsertTextLayerPersistsRootText(t *testing.T) {
 	}
 }
 
+func TestCarrierRepoFindTextLayerByCarrierAndHash(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewCarrierRepo(base)
+	now := time.Date(2026, 5, 31, 13, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(`SELECT \* FROM atlas_carrier_text_layers WHERE carrier_id=\$1 AND content_hash=\$2 LIMIT 1`).
+		WithArgs(int64(3), "hash-current").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "carrier_id", "content_hash", "storage_uri", "page_count", "char_count",
+			"text_content", "pages", "created_at", "updated_at",
+		}).AddRow(
+			int64(11), int64(3), "hash-current", "atlas-text-layer://pdf/9/hash-current", 2, 21,
+			"page one\n\npage two", []byte(`[{"page":1,"text":"page one","char_start":0,"char_end":8}]`),
+			now, now,
+		))
+
+	layer, err := repo.FindTextLayerByCarrierAndHash(context.Background(), 3, "hash-current")
+	if err != nil {
+		t.Fatalf("FindTextLayerByCarrierAndHash returned error: %v", err)
+	}
+	if layer == nil || layer.CarrierID != 3 || layer.ContentHash != "hash-current" || layer.PageCount != 2 {
+		t.Fatalf("unexpected text layer: %+v", layer)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestCarrierRepoSearchEscapesKeywordAndScopesOwner(t *testing.T) {
 	base, mock, cleanup := newAtlasRepoMock(t)
 	defer cleanup()

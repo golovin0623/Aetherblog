@@ -140,6 +140,23 @@ export interface AtlasCarrierVersion {
   createdAt: string;
 }
 
+export interface AtlasCarrierTextPage {
+  page: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface AtlasCarrierTextLayer {
+  carrierId: number;
+  contentHash: string;
+  storageUri: string;
+  pageCount: number;
+  charCount: number;
+  text: string;
+  pages: AtlasCarrierTextPage[];
+}
+
 export interface AtlasAnnotation {
   id: number;
   carrierId: number;

@@ -39,6 +39,7 @@ const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBa
 const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
 const AtlasKnowledgePointsPage = lazy(() => import('./pages/atlas/KnowledgePointsPage'));
 const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderPage'));
+const AtlasPDFReaderPage = lazy(() => import('./pages/atlas/PDFReaderPage'));
 const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
 const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
 const AtlasSuggestionsPage = lazy(() => import('./pages/atlas/SuggestionsPage'));
@@ -131,6 +132,7 @@ function App() {
               <Route path="atlas" element={<AtlasPage />} />
               <Route path="atlas/kps" element={<AtlasKnowledgePointsPage />} />
               <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
+              <Route path="atlas/reader/pdf/:carrierId" element={<AtlasPDFReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
               <Route path="atlas/search" element={<AtlasSearchPage />} />
               <Route path="atlas/graph" element={<AtlasGraphPage />} />
