@@ -10,8 +10,24 @@
 //   * 支持按 KP type / relation type 过滤
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode, WheelEvent as ReactWheelEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CalendarDays, Compass, EyeOff, Filter, Network, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  ArrowRight,
+  CalendarDays,
+  Compass,
+  EyeOff,
+  Filter,
+  Maximize2,
+  Network,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { Select } from '@aetherblog/ui';
 
 import type {
@@ -82,6 +98,24 @@ type TopologyFilter = 'all' | 'orphan' | 'hub';
 type GraphSelection =
   | { kind: 'node'; id: number }
   | { kind: 'edge'; id: number };
+type GraphViewport = {
+  x: number;
+  y: number;
+  scale: number;
+};
+type GraphPositionMap = Record<string, { x: number; y: number }>;
+type SavedGraphLayout = {
+  version: 1;
+  viewport: GraphViewport;
+  positions: GraphPositionMap;
+  savedAt: string;
+};
+type PanState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  origin: GraphViewport;
+};
 
 const SCOPE_OPTIONS = [
   { value: 'all', label: '全部可访问' },
@@ -126,6 +160,11 @@ const TIME_WINDOW_DAYS: Record<Exclude<TimeFilter, 'all'>, number> = {
   '30d': 30,
   '90d': 90,
 };
+const MIN_GRAPH_SCALE = 0.55;
+const MAX_GRAPH_SCALE = 2.6;
+const GRAPH_ZOOM_STEP = 1.2;
+const DEFAULT_VIEWPORT: GraphViewport = { x: 0, y: 0, scale: 1 };
+const LAYOUT_STORAGE_PREFIX = 'atlas.graph.layout.v1';
 
 export default function AtlasGraphPage() {
   const navigate = useNavigate();
@@ -146,8 +185,14 @@ export default function AtlasGraphPage() {
   const [topologyFilter, setTopologyFilter] = useState<TopologyFilter>('all');
   const [hideHubs, setHideHubs] = useState(true);
   const [selection, setSelection] = useState<GraphSelection | null>(null);
+  const [viewport, setViewport] = useState<GraphViewport>(DEFAULT_VIEWPORT);
+  const [savedPositions, setSavedPositions] = useState<GraphPositionMap>({});
+  const [layoutSavedAt, setLayoutSavedAt] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const panRef = useRef<PanState | null>(null);
+  const draggedRef = useRef(false);
   const lastGraphSearchRef = useRef('');
+  const graphLayoutKey = useMemo(() => `${LAYOUT_STORAGE_PREFIX}:${scope}`, [scope]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,6 +213,14 @@ export default function AtlasGraphPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const saved = readSavedGraphLayout(graphLayoutKey);
+    setViewport(saved?.viewport ?? DEFAULT_VIEWPORT);
+    setSavedPositions(saved?.positions ?? {});
+    setLayoutSavedAt(saved?.savedAt ?? null);
+    setSelection(null);
+  }, [graphLayoutKey]);
 
   useEffect(() => {
     const query = keyword.trim();
@@ -287,6 +340,12 @@ export default function AtlasGraphPage() {
       };
     });
     simulate(n, es, ITERATIONS);
+    n.forEach((node) => {
+      const saved = savedPositions[String(node.id)];
+      if (!saved) return;
+      node.x = clamp(saved.x, 30, VIEWPORT_W - 30);
+      node.y = clamp(saved.y, 30, VIEWPORT_H - 30);
+    });
 
     return { nodes: n, edges: es, hidden: hiddenCount, ...degrees };
   }, [
@@ -300,6 +359,7 @@ export default function AtlasGraphPage() {
     rawKps,
     relationEvidenceCounts,
     relFilter,
+    savedPositions,
     timeFilter,
     topologyFilter,
     typeFilter,
@@ -311,6 +371,81 @@ export default function AtlasGraphPage() {
     if (selection.kind === 'edge' && edges.some((edge) => edge.id === selection.id)) return;
     setSelection(null);
   }, [edges, nodes, selection]);
+
+  const zoomGraph = useCallback((factor: number, anchor = { x: VIEWPORT_W / 2, y: VIEWPORT_H / 2 }) => {
+    setViewport((current) => zoomViewport(current, factor, anchor));
+  }, []);
+
+  const resetViewport = useCallback(() => {
+    setViewport(DEFAULT_VIEWPORT);
+  }, []);
+
+  const saveLayout = useCallback(() => {
+    const positions = nodes.reduce<GraphPositionMap>((acc, node) => {
+      acc[String(node.id)] = { x: roundPosition(node.x), y: roundPosition(node.y) };
+      return acc;
+    }, {});
+    const savedAt = new Date().toISOString();
+    const layout: SavedGraphLayout = {
+      version: 1,
+      viewport: clampViewport(viewport),
+      positions,
+      savedAt,
+    };
+    window.localStorage.setItem(graphLayoutKey, JSON.stringify(layout));
+    setSavedPositions(positions);
+    setLayoutSavedAt(savedAt);
+  }, [graphLayoutKey, nodes, viewport]);
+
+  const resetLayout = useCallback(() => {
+    window.localStorage.removeItem(graphLayoutKey);
+    setSavedPositions({});
+    setViewport(DEFAULT_VIEWPORT);
+    setLayoutSavedAt(null);
+  }, [graphLayoutKey]);
+
+  const handleWheel = useCallback((event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const point = svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
+    zoomGraph(event.deltaY < 0 ? GRAPH_ZOOM_STEP : 1 / GRAPH_ZOOM_STEP, point);
+  }, [zoomGraph]);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('[data-graph-node-id], [data-graph-edge-id]')) return;
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: viewport,
+    };
+    draggedRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [viewport]);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const next = clampViewport({
+      ...pan.origin,
+      x: pan.origin.x + event.clientX - pan.startX,
+      y: pan.origin.y + event.clientY - pan.startY,
+    });
+    if (Math.abs(event.clientX - pan.startX) > 3 || Math.abs(event.clientY - pan.startY) > 3) {
+      draggedRef.current = true;
+    }
+    setViewport(next);
+  }, []);
+
+  const endPan = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    panRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -452,13 +587,50 @@ export default function AtlasGraphPage() {
         </div>
       ) : (
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
+          <div className="relative overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
+            <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_92%,transparent)] p-1 shadow-sm backdrop-blur">
+              <GraphIconButton label="缩小图谱" onClick={() => zoomGraph(1 / GRAPH_ZOOM_STEP)}>
+                <ZoomOut className="h-3.5 w-3.5" />
+              </GraphIconButton>
+              <GraphIconButton label="重置视图" onClick={resetViewport}>
+                <Maximize2 className="h-3.5 w-3.5" />
+              </GraphIconButton>
+              <GraphIconButton label="放大图谱" onClick={() => zoomGraph(GRAPH_ZOOM_STEP)}>
+                <ZoomIn className="h-3.5 w-3.5" />
+              </GraphIconButton>
+              <span className="mx-1 h-5 w-px bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" />
+              <GraphIconButton label="保存布局" onClick={saveLayout}>
+                <Save className="h-3.5 w-3.5" />
+              </GraphIconButton>
+              <GraphIconButton label="重置布局" onClick={resetLayout}>
+                <RotateCcw className="h-3.5 w-3.5" />
+              </GraphIconButton>
+            </div>
+            {layoutSavedAt ? (
+              <p className="absolute bottom-3 left-3 z-10 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_92%,transparent)] px-2 py-1 text-[10px] text-[var(--ink-muted)] shadow-sm backdrop-blur">
+                布局已保存 · {formatDate(layoutSavedAt)}
+              </p>
+            ) : null}
+            <GraphMiniMap nodes={nodes} edges={edges} viewport={viewport} onJump={setViewport} />
             <svg
               ref={svgRef}
+              aria-label="Atlas graph canvas"
               viewBox={`0 0 ${VIEWPORT_W} ${VIEWPORT_H}`}
               className="block w-full"
-              style={{ maxHeight: 720 }}
-              onClick={() => setSelection(null)}
+              data-zoom-scale={viewport.scale.toFixed(2)}
+              style={{ maxHeight: 720, cursor: panRef.current ? 'grabbing' : 'grab', touchAction: 'none' }}
+              onWheel={handleWheel}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+              onClick={() => {
+                if (draggedRef.current) {
+                  draggedRef.current = false;
+                  return;
+                }
+                setSelection(null);
+              }}
             >
               <defs>
                 <marker
@@ -476,78 +648,81 @@ export default function AtlasGraphPage() {
 
               <rect x={0} y={0} width={VIEWPORT_W} height={VIEWPORT_H} fill="transparent" pointerEvents="none" />
 
-              {edges.map((e) => {
-                const a = nodes.find((n) => n.id === e.fromKpId);
-                const b = nodes.find((n) => n.id === e.toKpId);
-                if (!a || !b) return null;
-                const color = RELATION_COLORS[e.type];
-                const selected = selection?.kind === 'edge' && selection.id === e.id;
-                return (
-                  <g key={e.id} className="cursor-pointer">
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke="rgba(0,0,0,0.001)"
-                      strokeWidth={14}
-                      pointerEvents="stroke"
+              <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+                {edges.map((e) => {
+                  const a = nodes.find((n) => n.id === e.fromKpId);
+                  const b = nodes.find((n) => n.id === e.toKpId);
+                  if (!a || !b) return null;
+                  const color = RELATION_COLORS[e.type];
+                  const selected = selection?.kind === 'edge' && selection.id === e.id;
+                  return (
+                    <g key={e.id} data-graph-edge-id={e.id} className="cursor-pointer">
+                      <line
+                        x1={a.x}
+                        y1={a.y}
+                        x2={b.x}
+                        y2={b.y}
+                        stroke="rgba(0,0,0,0.001)"
+                        strokeWidth={14}
+                        pointerEvents="stroke"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelection({ kind: 'edge', id: e.id });
+                        }}
+                      />
+                      <line
+                        x1={a.x}
+                        y1={a.y}
+                        x2={b.x}
+                        y2={b.y}
+                        stroke={color}
+                        strokeOpacity={selected ? 0.95 : 0.5}
+                        strokeWidth={selected ? 3 + e.strength * 1.2 : 1 + e.strength * 1.2}
+                        markerEnd="url(#atlas-arrow)"
+                        style={{ color, pointerEvents: 'none' }}
+                      />
+                    </g>
+                  );
+                })}
+
+                {nodes.map((n) => {
+                  const color = TYPE_COLORS[n.kp.type] ?? '#94a3b8';
+                  const selected = selection?.kind === 'node' && selection.id === n.id;
+                  return (
+                    <g
+                      key={n.id}
+                      data-graph-node-id={n.id}
+                      transform={`translate(${n.x}, ${n.y})`}
+                      className="cursor-pointer"
+                      pointerEvents="all"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSelection({ kind: 'edge', id: e.id });
+                        setSelection({ kind: 'node', id: n.id });
                       }}
-                    />
-                    <line
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke={color}
-                      strokeOpacity={selected ? 0.95 : 0.5}
-                      strokeWidth={selected ? 3 + e.strength * 1.2 : 1 + e.strength * 1.2}
-                      markerEnd="url(#atlas-arrow)"
-                      style={{ color, pointerEvents: 'none' }}
-                    />
-                  </g>
-                );
-              })}
-
-              {nodes.map((n) => {
-                const color = TYPE_COLORS[n.kp.type] ?? '#94a3b8';
-                const selected = selection?.kind === 'node' && selection.id === n.id;
-                return (
-                  <g
-                    key={n.id}
-                    transform={`translate(${n.x}, ${n.y})`}
-                    className="cursor-pointer"
-                    pointerEvents="all"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelection({ kind: 'node', id: n.id });
-                    }}
-                    onDoubleClick={() => navigate(`/atlas/kp/${n.id}`)}
-                  >
-                    <rect x={-24} y={-20} width={164} height={40} fill="rgba(0,0,0,0.001)" pointerEvents="all" />
-                    <circle
-                      r={selected ? 13 : 10}
-                      fill={color}
-                      fillOpacity={0.85}
-                      stroke={selected ? 'var(--ink-primary)' : '#fff'}
-                      strokeWidth={selected ? 2.5 : 1.5}
-                    />
-                    <text
-                      x={14}
-                      y={4}
-                      fontSize={11}
-                      fill="currentColor"
-                      className="fill-current text-[var(--ink-primary)]"
-                      style={{ pointerEvents: 'none' }}
+                      onDoubleClick={() => navigate(`/atlas/kp/${n.id}`)}
                     >
-                      {truncate(n.kp.title, 18)}
-                    </text>
-                  </g>
-                );
-              })}
+                      <rect x={-24} y={-20} width={164} height={40} fill="rgba(0,0,0,0.001)" pointerEvents="all" />
+                      <circle
+                        r={selected ? 13 : 10}
+                        fill={color}
+                        fillOpacity={0.85}
+                        stroke={selected ? 'var(--ink-primary)' : '#fff'}
+                        strokeWidth={selected ? 2.5 : 1.5}
+                      />
+                      <text
+                        x={14}
+                        y={4}
+                        fontSize={11}
+                        fill="currentColor"
+                        className="fill-current text-[var(--ink-primary)]"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {truncate(n.kp.title, 18)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
             </svg>
           </div>
 
@@ -582,6 +757,100 @@ export default function AtlasGraphPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+function GraphIconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--ink-primary)] hover:bg-[var(--bg-substrate)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function GraphMiniMap({
+  nodes,
+  edges,
+  viewport,
+  onJump,
+}: {
+  nodes: Node[];
+  edges: AtlasTypedRelation[];
+  viewport: GraphViewport;
+  onJump: (viewport: GraphViewport) => void;
+}) {
+  const width = 180;
+  const height = 130;
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const visibleRect = getVisibleGraphRect(viewport);
+
+  const jumpTo = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * VIEWPORT_W;
+    const y = ((event.clientY - rect.top) / rect.height) * VIEWPORT_H;
+    onJump(clampViewport({
+      ...viewport,
+      x: VIEWPORT_W / 2 - x * viewport.scale,
+      y: VIEWPORT_H / 2 - y * viewport.scale,
+    }));
+  };
+
+  return (
+    <svg
+      aria-label="图谱小地图"
+      viewBox={`0 0 ${VIEWPORT_W} ${VIEWPORT_H}`}
+      width={width}
+      height={height}
+      onPointerDown={jumpTo}
+      className="absolute bottom-3 right-3 z-10 cursor-crosshair rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_92%,transparent)] p-2 shadow-sm backdrop-blur"
+    >
+      <rect x={0} y={0} width={VIEWPORT_W} height={VIEWPORT_H} rx={22} fill="var(--bg-substrate)" opacity={0.82} />
+      {edges.map((edge) => {
+        const from = nodeById.get(edge.fromKpId);
+        const to = nodeById.get(edge.toKpId);
+        if (!from || !to) return null;
+        return (
+          <line
+            key={edge.id}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+            stroke={RELATION_COLORS[edge.type]}
+            strokeOpacity={0.38}
+            strokeWidth={4}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+      {nodes.map((node) => (
+        <circle
+          key={node.id}
+          cx={node.x}
+          cy={node.y}
+          r={7}
+          fill={TYPE_COLORS[node.kp.type] ?? '#94a3b8'}
+          fillOpacity={0.85}
+        />
+      ))}
+      <rect
+        x={visibleRect.x}
+        y={visibleRect.y}
+        width={visibleRect.width}
+        height={visibleRect.height}
+        fill="none"
+        stroke="var(--ink-primary)"
+        strokeWidth={8}
+        vectorEffect="non-scaling-stroke"
+        strokeDasharray="18 12"
+      />
+    </svg>
   );
 }
 
@@ -775,6 +1044,81 @@ function formatDate(value: string): string {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function readSavedGraphLayout(key: string): SavedGraphLayout | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedGraphLayout>;
+    if (parsed.version !== 1 || !parsed.viewport || !parsed.positions || !parsed.savedAt) return null;
+    return {
+      version: 1,
+      viewport: clampViewport(parsed.viewport),
+      positions: parsed.positions,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function roundPosition(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function clampScale(scale: number): number {
+  return clamp(scale, MIN_GRAPH_SCALE, MAX_GRAPH_SCALE);
+}
+
+function clampViewport(viewport: GraphViewport): GraphViewport {
+  const scale = clampScale(viewport.scale);
+  const margin = 80;
+  const [minX, maxX] = panLimits(VIEWPORT_W, scale, margin);
+  const [minY, maxY] = panLimits(VIEWPORT_H, scale, margin);
+  return {
+    scale,
+    x: clamp(viewport.x, minX, maxX),
+    y: clamp(viewport.y, minY, maxY),
+  };
+}
+
+function panLimits(size: number, scale: number, margin: number): [number, number] {
+  if (scale < 1) {
+    return [-margin, size * (1 - scale) + margin];
+  }
+  return [size * (1 - scale) - margin, margin];
+}
+
+function zoomViewport(viewport: GraphViewport, factor: number, anchor: { x: number; y: number }): GraphViewport {
+  const nextScale = clampScale(viewport.scale * factor);
+  const worldX = (anchor.x - viewport.x) / viewport.scale;
+  const worldY = (anchor.y - viewport.y) / viewport.scale;
+  return clampViewport({
+    scale: nextScale,
+    x: anchor.x - worldX * nextScale,
+    y: anchor.y - worldY * nextScale,
+  });
+}
+
+function svgPointFromClient(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * VIEWPORT_W,
+    y: ((clientY - rect.top) / rect.height) * VIEWPORT_H,
+  };
+}
+
+function getVisibleGraphRect(viewport: GraphViewport) {
+  const scale = clampScale(viewport.scale);
+  const x = clamp(-viewport.x / scale, 0, VIEWPORT_W);
+  const y = clamp(-viewport.y / scale, 0, VIEWPORT_H);
+  return {
+    x,
+    y,
+    width: clamp(VIEWPORT_W / scale, 0, VIEWPORT_W - x),
+    height: clamp(VIEWPORT_H / scale, 0, VIEWPORT_H - y),
+  };
 }
 
 // 简易力导向: 200 次迭代，repulsion + spring + 阻尼。
