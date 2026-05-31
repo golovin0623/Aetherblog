@@ -275,7 +275,7 @@ Priority semantics:
 | ATLAS-P2-02 | Batch carrier extraction | 对 note/post/PDF 批量生成 KP suggestions, 后台 job + 进度 | 大文档异步抽取, 不阻塞 UI | P2-01 |
 | ATLAS-P2-03 | Relation suggestion | 给新 KP 推荐 top-N 关系候选, 解释 type 和证据 | 新建 KP 后 inbox 出现可用 relation suggestions | P2-01 |
 | ATLAS-P2-04 | KP embedding pipeline | **Landing baseline 已落地**: KP title/body/evidence 写 embedding; `000073` 增加 `embedding_profile_id/model_id/indexed_at` 和 dim bucket HNSW partial index; ai-service 内部 index route + server-go create/update/link/suggestion accept 异步触发; 复用 search profile 抽象 | 新建/更新/接受建议后的 KP 可进入语义召回；历史 KP 仍需 backfill/reindex | — |
-| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / Markdown carrier note chunks / evidence / relations | AetherHub selected Atlas scope 可召回 KP + evidence + relations; 选中 `notes://{id}` Markdown carrier 时可复用 note chunk embedding; empty-scope 自动 GraphRAG、search-page rerank、community/global query 后续推进 | P2-04 |
+| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / Markdown carrier note chunks / evidence / relations；无选中 KP 时发送空 scope 触发自动语义召回 | AetherHub selected/empty Atlas scope 可召回 KP + evidence + relations; 选中 `notes://{id}` Markdown carrier 时可复用 note chunk embedding; search-page rerank、community/global GraphRAG 后续推进 | P2-04 |
 | ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate; 本 PR 先落地固定语料 gate + explicit-model live gate, 后续继续扩展 prompt/model A/B 样本 | 切模型/改 prompt 前后可比较质量; 当前 gate 已能阻断 stub/无凭证伪通过 | P2-01,P1-12 |
 | ATLAS-P2-08 | Cost budget | 复用 `usage_logger`/`cost_usd`; 接全局价格页; per-run cost preview; 预算阈值告警 | 用户知道批量抽取消耗多少; 超阈值提示 | P2-01 |
 | ATLAS-P2-10 | 数据完整性硬化（NEW） | `proposed_kp_type` 加 CHECK(或 service 校验); `atlas_annotations.carrier_version_id` 加 partial FK index | 非法 kp_type 在 Create 即拒; re-anchor 查询不走 seq scan | — |
@@ -351,7 +351,7 @@ Duration: 2-4 周。
 
 ### Sprint 3: Graph Search And AetherHub Integration
 Duration: 3-5 周。
-- ATLAS-P2-04 KP embedding baseline · P2-05 selected-scope atlas recall baseline · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索语义 rerank · P1-09 empty-scope AetherHub Atlas recall · G1-02 zoom/pan/minimap · G1-03 inspector · G1-04 filters · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
+- ATLAS-P2-04 KP embedding baseline · P2-05 selected/empty-scope atlas recall baseline · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索语义 rerank · G1-02 zoom/pan/minimap · G1-03 inspector · G1-04 filters · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
 - Exit: 能对某 KP/子图/carrier 提问, 回答带 evidence citation 和跳转; 图谱可交互、可治理、布局稳定。
 
 ### Sprint 4: Multimodal And Publishing

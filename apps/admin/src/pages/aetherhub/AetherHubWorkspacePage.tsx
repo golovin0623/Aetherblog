@@ -116,6 +116,7 @@ type SpacePreviewTarget =
   | { kind: 'kb'; kb: AgentKnowledgeBase }
   | { kind: 'atlas'; kp: AtlasKnowledgePoint }
   | { kind: 'tag'; tag: AgentTag };
+type AetherHubAtlasScope = NonNullable<ChatStreamRequest['atlasScope']>;
 
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
 const SEND_SHORTCUT_OPTIONS: Array<{
@@ -138,8 +139,26 @@ const SEND_SHORTCUT_OPTIONS: Array<{
   },
 ];
 
+function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasScope {
+  return {
+    kpIds: kps.map((kp) => kp.id),
+    neighborhoodDepth: 1,
+    includeEvidence: true,
+    semanticRecall: true,
+    semanticLimit: 8,
+  };
+}
+
+function describeAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): string {
+  if (kps.length === 0) return 'kp_ids=auto';
+  return `kp_ids=${kps.map((kp) => kp.id).join(',')}`;
+}
+
 function countAtlasCitations(text: string): number {
-  return text.match(/\[(?:KP|Evidence|Annotation)\s*#\d+\]/gi)?.length ?? 0;
+  return (
+    text.match(/\[(?:(?:KP|Evidence|Annotation)\s*#\d+|Note\s*#\d+\s+chunk\s+\d+)\]/gi)
+      ?.length ?? 0
+  );
 }
 
 type StandardModelParamKey =
@@ -779,16 +798,7 @@ export default function AetherHubWorkspacePage() {
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
         kbIds: requestKbs.length > 0 ? requestKbs.map((k) => k.id) : null,
-        atlasScope:
-          requestAtlasKps.length > 0
-            ? {
-                kpIds: requestAtlasKps.map((kp) => kp.id),
-                neighborhoodDepth: 1,
-                includeEvidence: true,
-                semanticRecall: true,
-                semanticLimit: 8,
-              }
-            : null,
+        atlasScope: buildAetherHubAtlasScope(requestAtlasKps),
       };
       let assistantContent = '';
 
@@ -835,15 +845,13 @@ export default function AetherHubWorkspacePage() {
             },
             onSources: (sources) => patchAssistant({ sources }),
             onDone: () => {
-              if (requestAtlasKps.length > 0) {
-                const citationCount = countAtlasCitations(assistantContent);
-                void atlasService.recordEvent({
-                  eventType: 'atlas.aetherhub_atlas_answer',
-                  title: 'AetherHub Atlas answer',
-                  description: `kp_ids=${requestAtlasKps.map((kp) => kp.id).join(',')}; citation_count=${citationCount}`,
-                  status: citationCount > 0 ? 'SUCCESS' : 'WARNING',
-                }).catch(() => undefined);
-              }
+              const citationCount = countAtlasCitations(assistantContent);
+              void atlasService.recordEvent({
+                eventType: 'atlas.aetherhub_atlas_answer',
+                title: 'AetherHub Atlas answer',
+                description: `${describeAetherHubAtlasScope(requestAtlasKps)}; citation_count=${citationCount}`,
+                status: citationCount > 0 ? 'SUCCESS' : 'WARNING',
+              }).catch(() => undefined);
               patchAssistant({ pending: false, finishedAt: Date.now() });
             },
             onError: (message) =>

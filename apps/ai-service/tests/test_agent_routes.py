@@ -371,6 +371,53 @@ async def test_build_atlas_context_uses_last_user_message_for_semantic_recall(
 
 
 @pytest.mark.asyncio
+async def test_build_atlas_context_uses_empty_scope_for_semantic_recall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    captured: dict[str, Any] = {}
+    llm_router = object()
+    pool = object()
+
+    async def fake_recall_atlas_context(_pool: Any, _llm: Any, **kwargs: Any):
+        captured["pool"] = _pool
+        captured["llm"] = _llm
+        captured.update(kwargs)
+        return atlas_recall_module.AtlasRecallContext()
+
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _ctx: "empty scope atlas")
+
+    rendered = await agent_module._build_atlas_context_for_chat(
+        pool,
+        atlas_scope=agent_module.AgentAtlasScope(
+            kpIds=[],
+            neighborhoodDepth=1,
+            includeEvidence=True,
+            semanticRecall=True,
+            semanticLimit=8,
+        ),
+        user_id=9,
+        llm_router=llm_router,
+        messages=[AgentChatMessage(role="user", content="哪些知识点可以解释当前问题？")],
+    )
+
+    assert rendered == "empty scope atlas"
+    assert captured == {
+        "pool": pool,
+        "llm": llm_router,
+        "user_id": 9,
+        "query": "哪些知识点可以解释当前问题？",
+        "kp_ids": [],
+        "carrier_ids": [],
+        "semantic_limit": 8,
+        "neighborhood_depth": 1,
+        "include_evidence": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_records_usage_log_for_stream(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_completion_kwargs: dict[str, Any] = {}
 
