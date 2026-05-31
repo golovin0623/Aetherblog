@@ -5,10 +5,16 @@ import type {
   AgentPublicationRequest,
   AgentPublicationSummary,
   AgentScheduleSummary,
+  AgentWorkflowCapabilities,
   AgentWorkflowDetail,
+  AgentWorkflowExportResult,
+  AgentWorkflowMetrics,
   AgentWorkflowNodeLog,
   AgentWorkflowRunDetail,
+  AgentWorkflowRunMode,
   AgentWorkflowRunSummary,
+  AgentWorkflowTemplateSummary,
+  AgentWorkflowVersionSummary,
   AgentRunTraceItem,
   AgentToolSummary,
   AgentVariableSpec,
@@ -28,6 +34,43 @@ export interface AgentWorkflowBundle {
   runHistory: AgentWorkflowRunSummary[];
   activeDefinition: AgentWorkflowDefinition;
 }
+
+export const defaultAgentWorkflowCapabilities: AgentWorkflowCapabilities = {
+  defaultRunMode: 'simulate',
+  realLLM: {
+    enabled: false,
+    state: 'not_connected',
+    label: '真实 LLM',
+    detail: 'workflow runner 尚未接入 LlmRouter。',
+  },
+  realTools: {
+    enabled: false,
+    state: 'not_connected',
+    label: '真实内置工具',
+    detail: 'kb_get_post / kb_search 仍是占位实现。',
+  },
+  sandbox: {
+    enabled: false,
+    state: 'not_connected',
+    label: '受限代码沙盒',
+    detail: '等待 ai-service / sandbox-worker。',
+  },
+  scheduler: {
+    enabled: true,
+    state: 'available',
+    label: '调度器',
+    detail: '支持 schedule CRUD 与 missed-run 策略。',
+  },
+  autonomous: {
+    enabled: false,
+    state: 'coming_soon',
+    label: 'Autonomous',
+    detail: '等待 ReAct/tool-calling loop。',
+  },
+};
+
+export const isAgentWorkflowRunMode = (value: string): value is AgentWorkflowRunMode =>
+  value === 'real' || value === 'simulate';
 
 export const defaultAgentWorkflowDefinition: AgentWorkflowDefinition = {
   version: 1,
@@ -239,13 +282,36 @@ export function saveLocalAgentWorkflowBundle(bundle: AgentWorkflowBundle) {
 export const agentWorkflowService = {
   listWorkflows: () => api.get<R<AgentWorkflowSummary[]>>('/v1/admin/agent-workflows'),
   getWorkflow: (id: string | number) => api.get<R<AgentWorkflowDetail>>(`/v1/admin/agent-workflows/${id}`),
+  getCapabilities: () => api.get<R<AgentWorkflowCapabilities>>('/v1/admin/agent-workflows/capabilities'),
+  listTemplates: () => api.get<R<AgentWorkflowTemplateSummary[]>>('/v1/admin/agent-workflows/templates'),
   createWorkflow: (definition: AgentWorkflowDefinition) =>
     api.post<R<AgentWorkflowDetail>>('/v1/admin/agent-workflows', { definition }),
   updateWorkflow: (id: string | number, definition: AgentWorkflowDefinition) =>
     api.patch<R<AgentWorkflowDetail>>(`/v1/admin/agent-workflows/${id}`, { definition }),
+  importWorkflow: (definition: AgentWorkflowDefinition, format = 'json') =>
+    api.post<R<AgentWorkflowDetail>>('/v1/admin/agent-workflows/import', { definition, format }),
+  exportWorkflow: (id: string | number, format = 'json') =>
+    api.get<R<AgentWorkflowExportResult>>(`/v1/admin/agent-workflows/${id}/export`, { params: { format } }),
+  listVersions: (id: string | number) =>
+    api.get<R<AgentWorkflowVersionSummary[]>>(`/v1/admin/agent-workflows/${id}/versions`),
+  rollbackVersion: (id: string | number, version: number) =>
+    api.post<R<AgentWorkflowDetail>>(`/v1/admin/agent-workflows/${id}/versions/${version}/rollback`),
   listTools: () => api.get<R<AgentToolSummary[]>>('/v1/admin/agent-tools'),
   listAgents: () => api.get<R<AgentDefinitionSummary[]>>('/v1/admin/agent-definitions'),
   listSchedules: () => api.get<R<AgentScheduleSummary[]>>('/v1/admin/agent-schedules'),
+  createSchedule: (schedule: Partial<AgentScheduleSummary> & { workflowId: string | number; cronExpr: string }) =>
+    api.post<R<AgentScheduleSummary>>('/v1/admin/agent-schedules', schedule),
+  updateSchedule: (id: string | number, schedule: Partial<AgentScheduleSummary>) =>
+    api.put<R<AgentScheduleSummary>>(`/v1/admin/agent-schedules/${id}`, schedule),
+  deleteSchedule: (id: string | number) => api.delete<R<null>>(`/v1/admin/agent-schedules/${id}`),
+  testTool: (code: string, args: Record<string, unknown> = {}) =>
+    api.post<R<{ status: string; output?: unknown; errorMessage?: string; durationMs: number }>>(`/v1/admin/agent-tools/${code}/test`, { args }),
+  listVariables: (workflowId: string | number) =>
+    api.get<R<AgentVariableSpec[]>>(`/v1/admin/agent-workflows/${workflowId}/variables`),
+  upsertVariable: (workflowId: string | number, variable: AgentVariableSpec) =>
+    api.put<R<AgentVariableSpec>>(`/v1/admin/agent-workflows/${workflowId}/variables`, variable),
+  metrics: (workflowId: string | number) =>
+    api.get<R<AgentWorkflowMetrics>>(`/v1/admin/agent-workflows/${workflowId}/metrics`),
   publishWorkflow: (workflowId: string | number, publication: AgentPublicationRequest = {}) =>
     api.put<R<AgentPublicationSummary>>(`/v1/admin/agent-workflows/${workflowId}/publication`, publication),
   unpublishWorkflow: (workflowId: string | number) =>
@@ -257,6 +323,15 @@ export const agentWorkflowService = {
     api.get<R<AgentWorkflowRunSummary[]>>(`/v1/admin/agent-workflows/${workflowId}/runs`, { params: { limit } }),
   getRun: (runId: string | number) => api.get<R<AgentWorkflowRunDetail>>(`/v1/agent/runs/${runId}`),
   getRunLogs: (runId: string | number) => api.get<R<AgentWorkflowNodeLog[]>>(`/v1/agent/runs/${runId}/logs`),
-  startRun: (workflowId: string | number, inputs: Record<string, unknown>, simulateExternal = false) =>
-    api.post<R<AgentWorkflowRunSummary>>(`/v1/agent/workflows/${workflowId}/runs`, { inputs, simulateExternal }),
+  startRun: (workflowId: string | number, inputs: Record<string, unknown>, simulateExternal = false, extra: Record<string, unknown> = {}) =>
+    api.post<R<AgentWorkflowRunSummary>>(`/v1/agent/workflows/${workflowId}/runs`, { inputs, simulateExternal, ...extra }),
+  cancelRun: (runId: string | number) => api.post<R<AgentWorkflowRunSummary>>(`/v1/agent/runs/${runId}/cancel`),
+  retryRun: (runId: string | number, fromFailedNode = false) =>
+    api.post<R<AgentWorkflowRunSummary>>(`/v1/agent/runs/${runId}/retry`, { fromFailedNode }),
+  resumeRun: (runId: string | number, resumeFromNode?: string) =>
+    api.post<R<AgentWorkflowRunSummary>>(`/v1/agent/runs/${runId}/resume`, { resumeFromNode }),
+  canonicalizeRun: (runId: string | number) =>
+    api.post<R<AgentWorkflowDetail>>(`/v1/agent/runs/${runId}/canonicalize`),
+  testNode: (workflowId: string | number, nodeId: string, inputs: Record<string, unknown>) =>
+    api.post<R<{ runId?: string | number; status: string; message?: string }>>(`/v1/admin/agent-workflows/${workflowId}/node-test`, { nodeId, inputs }),
 };

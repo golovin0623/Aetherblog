@@ -352,6 +352,7 @@ packages/
 | 认证 | `/v1/auth/*` | 登录 / 注册 | 否 |
 | 公开 | `/v1/public/*` | 面向访客的内容 API | 否 |
 | 管理 | `/v1/admin/*` | 后台管理 API | JWT |
+| 智能编排 | `/v1/admin/agent-workflows/*`、`/v1/admin/agent-{tools,definitions,schedules}`、`/v1/agent/workflows/*`、`/v1/agent/published/*`、`/v1/agent/runs/*` | Agent Workflow authoring、catalog、capabilities、governed runtime、run stream/control、published invoke | JWT |
 | AI | `/api/v1/ai/*` | AI 服务代理 | JWT |
 
 ### 通用响应格式
@@ -402,7 +403,7 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 
 ## 数据库表结构
 
-数据库共 28 个迁移（000001–000028），创建以下主要表：
+数据库迁移持续追加；当前 Agent Workflow 相关迁移已覆盖到 `000069_agent_workflow_full_iteration`。
 
 ### 核心业务表
 
@@ -438,6 +439,8 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 | `ai_task_routing` | 任务到模型的路由映射 |
 | `ai_usage_logs` | 使用日志（tokens / latency / cached） |
 | `post_embeddings` | 版本化向量检索存储（pgvector，见下节） |
+| `agent_workflows` / `agent_workflow_runs` / `agent_workflow_node_logs` | 智能编排画布、运行实例与节点级 trace；`agent_workflow_runs.simulated` 区分显式模拟运行与真实运行，000069 补齐 source/redaction/budget/error/canonicalize 元数据 |
+| `agent_workflow_approvals` / `agent_publication_invocations` / `agent_workflow_marketplace_items` / `agent_workflow_notifications` | 智能编排治理、发布限流、模板市场与运行通知边界 |
 
 ### 版本化向量存储（migration 000034）
 

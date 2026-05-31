@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import ast
+import operator
+from typing import Any
 
-from app.api.deps import require_admin_or_internal
+import httpx
+from fastapi import APIRouter, Depends, Header
+
+from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
 from app.schemas.common import ApiResponse
-from app.workflows import WorkflowExecutionRequest, WorkflowExecutionResult, WorkflowRunner
+from app.services.llm_router import LlmRouter
+from app.utils.url_validator import validate_external_url_async
+from app.workflows import WorkflowExecutionRequest, WorkflowExecutionResult, WorkflowNode, WorkflowRunner
+from app.workflows.runner import WorkflowExecutionError, default_tools, resolve_template
 
 router = APIRouter(prefix="/api/v1/agent/workflows", tags=["agent-workflows"])
 
@@ -13,12 +21,473 @@ router = APIRouter(prefix="/api/v1/agent/workflows", tags=["agent-workflows"])
 async def execute_workflow(
     payload: WorkflowExecutionRequest,
     _user=Depends(require_admin_or_internal),
+    forwarded_user_id: str | None = Header(default=None, alias="X-Forwarded-User-ID"),
 ) -> ApiResponse[WorkflowExecutionResult]:
-    runner = WorkflowRunner()
+    user_id = _resolve_workflow_user_id(_user, forwarded_user_id)
+    budget = _WorkflowRunBudget(payload.budget.maxTokens, payload.budget.maxCostUsd)
+    runner = await _build_runner(payload, user_id, budget)
     result = await runner.run(
         payload.definition,
         payload.inputs,
         run_id=payload.runId,
         simulate_external=payload.simulateExternal,
+        resume_from_node=payload.resumeFromNode,
+        resume_context=payload.resumeContext,
     )
-    return ApiResponse(data=result)
+    return ApiResponse(data=budget.apply_usage(_normalize_budget_status(result)))
+
+
+def _normalize_budget_status(result: WorkflowExecutionResult) -> WorkflowExecutionResult:
+    if result.status == "failed" and "budget" in (result.errorMessage or "").lower():
+        return result.model_copy(update={"status": "budget_exceeded"})
+    return result
+
+
+def _resolve_workflow_user_id(user: Any, forwarded: str | None) -> int | None:
+    raw_sub: Any = None
+    if user is None:
+        raw_sub = None
+    elif isinstance(user, dict):
+        raw_sub = user.get("sub") or user.get("user_id")
+    else:
+        raw_sub = getattr(user, "user_id", None)
+    if raw_sub == "system":
+        raw_sub = forwarded
+    try:
+        user_id = int(str(raw_sub).strip())
+        return user_id if user_id > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None, budget: "_WorkflowRunBudget") -> WorkflowRunner:
+    tools = default_tools()
+    tool_snapshots = {item.code: item for item in payload.tools if item.enabled}
+    needs_db = any(_node_uses_kb_tool(node) for node in payload.definition.nodes)
+    pool = await get_pg_pool() if needs_db and not payload.simulateExternal else None
+    if pool is not None:
+        tools["kb_get_post"] = _kb_get_post_tool(pool, user_id)
+        tools["kb_search"] = _kb_search_tool(pool, user_id)
+
+    for code, snapshot in tool_snapshots.items():
+        # Tool nodes always run through _execute_tool (no external-simulation path), so
+        # in a simulated/preview run we install a side-effect-free stub. This takes
+        # precedence over the approval gate: a preview should produce a simulated tool
+        # output, not pause the run / create an approval request, and must not issue
+        # real GET/POST/PATCH requests.
+        if payload.simulateExternal:
+            tools[code] = _simulated_tool(code, snapshot.handlerType)
+            continue
+        if snapshot.requiresApproval:
+            tools[code] = _approval_required_tool(code)
+            continue
+        if snapshot.handlerType == "http":
+            tools[code] = _http_tool(snapshot.handlerConfig, snapshot.timeoutMs)
+        elif snapshot.handlerType in {"mcp", "skill", "openapi"}:
+            tools[code] = _not_connected_tool(code, snapshot.handlerType)
+
+    needs_llm_agent = any(node.type in {"llm", "agent"} for node in payload.definition.nodes)
+    llm_router = await get_llm_router() if needs_llm_agent and not payload.simulateExternal else None
+
+    return WorkflowRunner(
+        tools=tools,
+        llm_executor=_llm_executor(llm_router, user_id, budget)
+        if llm_router is not None
+        else None,
+        agent_executor=_agent_executor(llm_router, tools, user_id, budget)
+        if llm_router is not None
+        else None,
+        code_executor=_safe_code_executor,
+    )
+
+
+def _node_uses_kb_tool(node: WorkflowNode) -> bool:
+    kb_tools = {"kb_get_post", "kb_search"}
+    if node.type == "tool":
+        return str(node.data.get("toolCode") or "") in kb_tools
+    if node.type == "agent":
+        allowed = node.data.get("allowedTools") or node.data.get("allowed_tools") or []
+        if isinstance(allowed, list):
+            return any(str(tool_code) in kb_tools for tool_code in allowed)
+    return False
+
+
+class _WorkflowRunBudget:
+    def __init__(self, max_tokens: int | None, max_cost_usd: float | None) -> None:
+        self.remaining_tokens = max_tokens if max_tokens is not None and max_tokens > 0 else None
+        self.remaining_cost_usd = max_cost_usd if max_cost_usd is not None and max_cost_usd > 0 else None
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_cost_usd = 0.0
+        if max_cost_usd is not None and max_cost_usd <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxCostUsd")
+
+    def token_limit(self) -> int | None:
+        if self.remaining_tokens is not None and self.remaining_tokens <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxTokens")
+        return self.remaining_tokens
+
+    def cost_limit(self) -> float | None:
+        if self.remaining_cost_usd is not None and self.remaining_cost_usd <= 0:
+            raise WorkflowExecutionError("budget exceeded: maxCostUsd")
+        return self.remaining_cost_usd
+
+    def record_usage(self, prompt_tokens: int, completion_tokens: int, total_cost_usd: float) -> None:
+        self.prompt_tokens += max(0, prompt_tokens)
+        self.completion_tokens += max(0, completion_tokens)
+        self.total_cost_usd += max(0.0, total_cost_usd)
+        if self.remaining_tokens is not None:
+            self.remaining_tokens -= max(0, prompt_tokens) + max(0, completion_tokens)
+        if self.remaining_cost_usd is not None:
+            self.remaining_cost_usd -= max(0.0, total_cost_usd)
+
+    def apply_usage(self, result: WorkflowExecutionResult) -> WorkflowExecutionResult:
+        if self.prompt_tokens <= 0 and self.completion_tokens <= 0 and self.total_cost_usd <= 0:
+            return result
+        return result.model_copy(
+            update={
+                "promptTokens": self.prompt_tokens,
+                "completionTokens": self.completion_tokens,
+                "totalCostUsd": self.total_cost_usd,
+            }
+        )
+
+
+def _kb_get_post_tool(pool: Any, user_id: int | None):
+    async def tool(args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        post_id = args.get("id") or args.get("post_id")
+        if post_id is None:
+            raise WorkflowExecutionError("kb_get_post requires id")
+        parsed_post_id = _coerce_post_id(post_id)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, title, slug, content_markdown, summary, status, author_id, updated_at
+                FROM posts
+                WHERE id = $1
+                  AND deleted = FALSE
+                  AND ($2::bigint IS NULL OR author_id = $2 OR status = 'PUBLISHED')
+                LIMIT 1
+                """,
+                parsed_post_id,
+                user_id,
+            )
+            if row is None:
+                raise WorkflowExecutionError("post not found or not accessible")
+            tags = await conn.fetch(
+                """
+                SELECT t.name
+                FROM tags t
+                JOIN post_tags pt ON pt.tag_id = t.id
+                WHERE pt.post_id = $1
+                ORDER BY t.name ASC
+                """,
+                parsed_post_id,
+            )
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "slug": row["slug"],
+            "content_markdown": row["content_markdown"] or "",
+            "summary": row["summary"] or "",
+            "status": row["status"],
+            "author_id": row["author_id"],
+            "tags": [item["name"] for item in tags],
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    return tool
+
+
+def _coerce_post_id(post_id: Any) -> int:
+    try:
+        return int(str(post_id).strip())
+    except (TypeError, ValueError):
+        raise WorkflowExecutionError("kb_get_post id must be integer") from None
+
+
+def _kb_search_tool(pool: Any, user_id: int | None):
+    async def tool(args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        query = str(args.get("query") or "").strip()
+        if not query:
+            raise WorkflowExecutionError("kb_search requires query")
+        limit = int(args.get("limit") or args.get("top_k") or 5)
+        limit = max(1, min(limit, 20))
+        pattern = f"%{query}%"
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, title, slug, summary, status, updated_at
+                FROM posts
+                WHERE deleted = FALSE
+                  AND ($3::bigint IS NULL OR author_id = $3 OR status = 'PUBLISHED')
+                  AND (
+                    title ILIKE $1 OR
+                    COALESCE(summary, '') ILIKE $1 OR
+                    COALESCE(content_markdown, '') ILIKE $1
+                  )
+                ORDER BY
+                    CASE WHEN title ILIKE $1 THEN 0 ELSE 1 END,
+                    updated_at DESC
+                LIMIT $2
+                """,
+                pattern,
+                limit,
+                user_id,
+            )
+        return {
+            "query": query,
+            "items": [
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "slug": row["slug"],
+                    "summary": row["summary"] or "",
+                    "status": row["status"],
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                }
+                for row in rows
+            ],
+        }
+
+    return tool
+
+
+def _approval_required_tool(code: str):
+    async def tool(_args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        raise WorkflowExecutionError(f"tool {code} requires approval")
+
+    return tool
+
+
+def _not_connected_tool(code: str, handler_type: str):
+    async def tool(_args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        raise WorkflowExecutionError(f"{handler_type} tool {code} is not connected")
+
+    return tool
+
+
+def _simulated_tool(code: str, handler_type: str):
+    # Side-effect-free stand-in used when simulateExternal is set, so preview runs of
+    # tool nodes (which always run through _execute_tool) never issue real requests.
+    async def tool(args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        return {"simulated": True, "tool": code, "handlerType": handler_type, "args": args}
+
+    return tool
+
+
+def _http_tool(config: dict[str, Any], timeout_ms: int | None):
+    async def tool(args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        url = str(config.get("url") or args.get("url") or "").strip()
+        if not url:
+            raise WorkflowExecutionError("http tool requires url")
+        if not await validate_external_url_async(url):
+            raise WorkflowExecutionError("http tool url is not allowed")
+        method = str(config.get("method") or args.get("method") or "GET").upper()
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            raise WorkflowExecutionError("http tool method is not allowed")
+        headers = config.get("headers") if isinstance(config.get("headers"), dict) else {}
+        timeout = max(1.0, min((timeout_ms or 30000) / 1000, 30.0))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(method, url, headers=headers, params=args.get("params"), json=args.get("body"))
+        content_type = response.headers.get("content-type", "")
+        body: Any
+        if "application/json" in content_type:
+            body = response.json()
+        else:
+            body = response.text[:5000]
+        return {"status_code": response.status_code, "headers": dict(response.headers), "body": body}
+
+    return tool
+
+
+def _resolve_node_source(node: WorkflowNode, context: dict[str, Any]) -> Any:
+    # Honor an explicit `source` template when configured. Otherwise default to the
+    # value flowing in along the incoming edge (the upstream node output the runner
+    # passed via __node_input) so an llm/agent node wired after a tool/extractor sees
+    # the loaded/extracted content, not just the raw workflow inputs. Fall back to the
+    # whole inputs only when there is genuinely no upstream value.
+    explicit = node.data.get("source")
+    if explicit is not None:
+        return resolve_template(explicit, context)
+    node_input = context.get("__node_input")
+    if node_input is not None:
+        return node_input
+    return context.get("inputs", {})
+
+
+def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, budget: _WorkflowRunBudget):
+    async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
+        if llm_router is None:
+            raise WorkflowExecutionError("llm executor is not connected")
+        source = _resolve_node_source(node, context)
+        prompt = str(node.data.get("prompt") or node.data.get("systemPrompt") or "请基于输入完成任务。")
+        model_id = str(node.data.get("modelId") or node.data.get("model") or "") or None
+        provider_code = str(node.data.get("providerCode") or "") or None
+        text = await llm_router.chat(
+            {"content": _stringify_for_prompt(source)},
+            "qa",
+            user_id=user_id,
+            custom_prompt=prompt,
+            model_id=model_id,
+            provider_code=provider_code,
+            allow_override=True,
+            max_tokens=budget.token_limit(),
+            max_cost_usd=budget.cost_limit(),
+            usage_recorder=budget.record_usage,
+        )
+        return {"text": text, "model": model_id, "provider": provider_code}
+
+    return executor
+
+
+def _agent_executor(
+    llm_router: LlmRouter | None,
+    tools: dict[str, Any],
+    user_id: int | None,
+    budget: _WorkflowRunBudget,
+):
+    async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
+        if llm_router is None:
+            raise WorkflowExecutionError("agent executor is not connected")
+        source = _resolve_node_source(node, context)
+        allowed = node.data.get("allowedTools") or node.data.get("allowed_tools") or []
+        if not isinstance(allowed, list):
+            allowed = []
+        tool_results: list[dict[str, Any]] = []
+        for tool_code in allowed[:3]:
+            tool = tools.get(str(tool_code))
+            if tool is None:
+                continue
+            if str(tool_code) == "kb_search":
+                query = ""
+                if isinstance(source, dict):
+                    query = str(source.get("title") or source.get("summary") or "")[:120]
+                if query:
+                    result = tool({"query": query, "limit": 5}, context)
+                    if hasattr(result, "__await__"):
+                        result = await result
+                    tool_results.append({"tool": tool_code, "result": result})
+        prompt = str(node.data.get("prompt") or "你是内容审计 Agent。请输出结构化 JSON 报告。")
+        max_iterations = int(node.data.get("maxIterations") or 4)
+        # Honor per-node model/provider overrides, like the llm executor does. Without
+        # this an Agent node's configured data.model/modelId/providerCode is ignored and
+        # the run silently uses the router default, making per-node model/cost controls
+        # misleading.
+        model_id = str(node.data.get("modelId") or node.data.get("model") or "") or None
+        provider_code = str(node.data.get("providerCode") or "") or None
+        text = await llm_router.chat(
+            {
+                "content": _stringify_for_prompt(
+                    {
+                        "source": source,
+                        "tool_results": tool_results,
+                        "max_iterations": max_iterations,
+                    }
+                )
+            },
+            "qa",
+            user_id=user_id,
+            custom_prompt=prompt,
+            model_id=model_id,
+            provider_code=provider_code,
+            allow_override=True,
+            max_tokens=budget.token_limit(),
+            max_cost_usd=budget.cost_limit(),
+            usage_recorder=budget.record_usage,
+        )
+        return {"report": text, "tool_results": tool_results, "iterations": min(max_iterations, 1)}
+
+    return executor
+
+
+async def _safe_code_executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
+    expression = str(node.data.get("expression") or node.data.get("code") or "").strip()
+    if expression.startswith("return "):
+        expression = expression[7:].strip()
+    if not expression:
+        raise WorkflowExecutionError("code node requires expression")
+    value = _eval_safe_expression(expression, {"inputs": context.get("inputs", {}), "nodes": context.get("nodes", {})})
+    return {"result": value, "sandbox": "restricted-expression"}
+
+
+_SAFE_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+}
+
+
+_COMPARE_OPERATORS = {
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+}
+
+
+_UNARY_OPERATORS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+    ast.Not: operator.not_,
+}
+
+
+def _eval_safe_expression(expression: str, variables: dict[str, Any]) -> Any:
+    tree = ast.parse(expression, mode="eval")
+    return _eval_node(tree.body, variables)
+
+
+def _eval_node(node: ast.AST, variables: dict[str, Any]) -> Any:
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        if node.id not in variables:
+            raise WorkflowExecutionError(f"name {node.id} is not allowed")
+        return variables[node.id]
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPERATORS:
+        return _SAFE_OPERATORS[type(node.op)](_eval_node(node.left, variables), _eval_node(node.right, variables))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
+        return _UNARY_OPERATORS[type(node.op)](_eval_node(node.operand, variables))
+    if isinstance(node, ast.Compare):
+        left = _eval_node(node.left, variables)
+        for op, comparator in zip(node.ops, node.comparators):
+            if type(op) not in _COMPARE_OPERATORS:
+                raise WorkflowExecutionError("unsupported code expression")
+            right = _eval_node(comparator, variables)
+            if not _COMPARE_OPERATORS[type(op)](left, right):
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.And):
+            return all(bool(_eval_node(value, variables)) for value in node.values)
+        if isinstance(node.op, ast.Or):
+            return any(bool(_eval_node(value, variables)) for value in node.values)
+    if isinstance(node, ast.Subscript):
+        value = _eval_node(node.value, variables)
+        key = _eval_node(node.slice, variables)
+        return value[key]
+    if isinstance(node, ast.Attribute):
+        value = _eval_node(node.value, variables)
+        if isinstance(value, dict):
+            return value.get(node.attr)
+        return getattr(value, node.attr)
+    if isinstance(node, ast.Dict):
+        return {_eval_node(k, variables): _eval_node(v, variables) for k, v in zip(node.keys, node.values) if k is not None}
+    if isinstance(node, ast.List):
+        return [_eval_node(item, variables) for item in node.elts]
+    raise WorkflowExecutionError("unsupported code expression")
+
+
+def _stringify_for_prompt(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    import json
+
+    return json.dumps(value, ensure_ascii=False, default=str)
