@@ -82,6 +82,14 @@ export interface AtlasMarkdownSource {
   contentMarkdown: string;
 }
 
+export interface AtlasFetchedWebClip {
+  sourceUrl: string;
+  title: string;
+  contentMarkdown: string;
+  author?: string | null;
+  language?: string | null;
+}
+
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
 
@@ -115,6 +123,9 @@ export const atlasService = {
     language?: string | null;
   }): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/web`, payload),
+
+  fetchWebClip: (payload: { sourceUrl: string }): Promise<R<AtlasFetchedWebClip>> =>
+    api.post(`${base}/carriers/web/fetch`, payload),
 
   ensureMediaTranscriptCarrier: (payload: {
     mediaFileId: number;

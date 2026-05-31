@@ -5,6 +5,7 @@
 //   POST /carriers/pdf            懒创建/返回 pdf 类型 carrier
 //   POST /carriers/post           懒创建/返回 blog_post 类型 carrier
 //   POST /carriers/web            创建/更新 web clip 类型 carrier
+//   POST /carriers/web/fetch      抓取网页并返回可编辑正文快照
 //   POST /carriers/media-transcript 创建/更新 video/audio transcript carrier
 //   GET  /carriers/:id            读 carrier 详情
 //   GET  /carriers/:id/text-layer  读 pdf/blog_post/web/video/audio carrier 当前文本层
@@ -43,6 +44,7 @@ func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
 	g.POST("/carriers/post", h.EnsurePost, write)
 	g.POST("/carriers/web", h.EnsureWeb, write)
+	g.POST("/carriers/web/fetch", h.FetchWeb, write)
 	g.POST("/carriers/media-transcript", h.EnsureMediaTranscript, write)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
@@ -205,6 +207,32 @@ func (h *CarrierHandler) EnsureWeb(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OK(c, toCarrierResponse(carrier))
+}
+
+// FetchWeb 抓取网页 URL 并返回可编辑的 Web 快照草稿。
+func (h *CarrierHandler) FetchWeb(c echo.Context) error {
+	var req atlasdto.FetchWebCarrierRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	web := h.atlas.WebClips()
+	if web == nil {
+		return response.FailWith(c, response.InternalError, "web clip carrier service 未配置")
+	}
+	snapshot, err := web.FetchSnapshot(c.Request().Context(), req.SourceURL)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, atlasdto.FetchWebCarrierResponse{
+		SourceURL:       snapshot.SourceURL,
+		Title:           snapshot.Title,
+		ContentMarkdown: snapshot.ContentMarkdown,
+		Author:          snapshot.Author,
+		Language:        snapshot.Language,
+	})
 }
 
 // EnsureMediaTranscript 创建 / 更新 video/audio 转录文本 carrier。

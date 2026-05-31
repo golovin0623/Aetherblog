@@ -33,6 +33,19 @@ func TestCarrierHandlerMountsWebCarrierRoute(t *testing.T) {
 	t.Fatalf("POST /atlas/carriers/web route was not mounted")
 }
 
+func TestCarrierHandlerMountsFetchWebCarrierRoute(t *testing.T) {
+	e := echo.New()
+	h := &CarrierHandler{}
+	h.Mount(e.Group("/atlas"), func(next echo.HandlerFunc) echo.HandlerFunc { return next })
+
+	for _, route := range e.Routes() {
+		if route.Method == http.MethodPost && route.Path == "/atlas/carriers/web/fetch" {
+			return
+		}
+	}
+	t.Fatalf("POST /atlas/carriers/web/fetch route was not mounted")
+}
+
 func TestCarrierHandlerMountsMediaTranscriptCarrierRoute(t *testing.T) {
 	e := echo.New()
 	h := &CarrierHandler{}

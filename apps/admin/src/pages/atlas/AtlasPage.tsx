@@ -5,6 +5,7 @@ import {
   BookOpen,
   Compass,
   Database,
+  Download,
   GitBranch,
   Highlighter,
   Library,
@@ -90,6 +91,7 @@ export default function AtlasPage() {
   const [webClipOpen, setWebClipOpen] = useState(false);
   const [webClipForm, setWebClipForm] = useState(initialWebClipForm);
   const [savingWebClip, setSavingWebClip] = useState(false);
+  const [fetchingWebClip, setFetchingWebClip] = useState(false);
 
   const handleKPSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -136,6 +138,41 @@ export default function AtlasPage() {
       toast.error(extractApiErrorMessage(err, '保存 Web 快照失败'));
     } finally {
       setSavingWebClip(false);
+    }
+  };
+
+  const handleFetchWebClip = async () => {
+    const sourceUrl = webClipForm.sourceUrl.trim();
+    if (!sourceUrl) {
+      toast.error('请填写 Web URL');
+      return;
+    }
+    try {
+      const parsed = new URL(sourceUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        toast.error('Web URL 仅支持 http(s)');
+        return;
+      }
+    } catch {
+      toast.error('请填写完整的 http(s) URL');
+      return;
+    }
+    setFetchingWebClip(true);
+    try {
+      const res = await atlasService.fetchWebClip({ sourceUrl });
+      setWebClipForm((form) => ({
+        ...form,
+        sourceUrl: res.data.sourceUrl || form.sourceUrl,
+        title: res.data.title || form.title,
+        contentMarkdown: res.data.contentMarkdown || form.contentMarkdown,
+        author: res.data.author ?? form.author,
+        language: res.data.language ?? form.language,
+      }));
+      toast.success('网页正文已抓取');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抓取网页正文失败'));
+    } finally {
+      setFetchingWebClip(false);
     }
   };
 
@@ -401,22 +438,33 @@ export default function AtlasPage() {
       <Modal
         isOpen={webClipOpen}
         onClose={() => {
-          if (!savingWebClip) setWebClipOpen(false);
+          if (!savingWebClip && !fetchingWebClip) setWebClipOpen(false);
         }}
         title="保存 Web 快照"
         size="lg"
       >
         <form className="space-y-4" onSubmit={(event) => void handleCreateWebClip(event)}>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-[var(--ink-secondary)]">URL</span>
-            <input
-              type="url"
-              value={webClipForm.sourceUrl}
-              onChange={(event) => setWebClipForm((form) => ({ ...form, sourceUrl: event.target.value }))}
-              placeholder="https://example.com/article"
-              className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-            />
-          </label>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_128px]">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">URL</span>
+              <input
+                type="url"
+                value={webClipForm.sourceUrl}
+                onChange={(event) => setWebClipForm((form) => ({ ...form, sourceUrl: event.target.value }))}
+                placeholder="https://example.com/article"
+                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={savingWebClip || fetchingWebClip || !webClipForm.sourceUrl.trim()}
+              onClick={() => void handleFetchWebClip()}
+              className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {fetchingWebClip ? '抓取中' : '抓取正文'}
+            </button>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
             <label className="block space-y-1.5">
@@ -460,7 +508,7 @@ export default function AtlasPage() {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              disabled={savingWebClip}
+              disabled={savingWebClip || fetchingWebClip}
               onClick={() => setWebClipOpen(false)}
               className="inline-flex h-9 items-center rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-3 text-xs text-[var(--ink-secondary)] hover:bg-[var(--bg-substrate)] disabled:opacity-60"
             >
@@ -468,7 +516,7 @@ export default function AtlasPage() {
             </button>
             <button
               type="submit"
-              disabled={savingWebClip}
+              disabled={savingWebClip || fetchingWebClip}
               className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] disabled:opacity-60"
             >
               <Highlighter className="h-3.5 w-3.5" />

@@ -68,6 +68,20 @@ type EnsureWebCarrierRequest struct {
 	Language        *string `json:"language,omitempty"`
 }
 
+// FetchWebCarrierRequest 是 POST /atlas/carriers/web/fetch 的请求体。
+type FetchWebCarrierRequest struct {
+	SourceURL string `json:"sourceUrl" validate:"required"`
+}
+
+// FetchWebCarrierResponse 是网页自动抓取后的可编辑快照草稿。
+type FetchWebCarrierResponse struct {
+	SourceURL       string  `json:"sourceUrl"`
+	Title           string  `json:"title"`
+	ContentMarkdown string  `json:"contentMarkdown"`
+	Author          *string `json:"author,omitempty"`
+	Language        *string `json:"language,omitempty"`
+}
+
 // EnsureMediaTranscriptCarrierRequest 是 POST /atlas/carriers/media-transcript 的请求体。
 type EnsureMediaTranscriptCarrierRequest struct {
 	MediaFileID        int64   `json:"mediaFileId" validate:"required,gt=0"`

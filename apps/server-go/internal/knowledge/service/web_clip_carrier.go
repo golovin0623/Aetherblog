@@ -23,20 +23,35 @@ type WebClipInput struct {
 	Language        *string
 }
 
-// WebClipCarrierService stores web pages as Atlas carriers without fetching remote URLs server-side.
+// WebClipCarrierService stores web pages as Atlas carriers.
 type WebClipCarrierService struct {
 	carriers   *repository.CarrierRepo
 	versioning *CarrierVersioningService
+	fetcher    *WebClipFetcher
 }
 
 // NewWebClipCarrierService creates a web clip carrier service.
 func NewWebClipCarrierService(carriers *repository.CarrierRepo) *WebClipCarrierService {
-	return &WebClipCarrierService{carriers: carriers}
+	return &WebClipCarrierService{carriers: carriers, fetcher: DefaultWebClipFetcher()}
 }
 
 // AttachVersioning injects annotation migration for edited web clips.
 func (s *WebClipCarrierService) AttachVersioning(v *CarrierVersioningService) {
 	s.versioning = v
+}
+
+// AttachFetcher injects a bounded web fetcher, primarily for tests.
+func (s *WebClipCarrierService) AttachFetcher(fetcher *WebClipFetcher) {
+	s.fetcher = fetcher
+}
+
+// FetchSnapshot fetches a public web page and extracts a readable Markdown draft.
+func (s *WebClipCarrierService) FetchSnapshot(ctx context.Context, sourceURL string) (*WebClipSnapshot, error) {
+	fetcher := s.fetcher
+	if fetcher == nil {
+		fetcher = DefaultWebClipFetcher()
+	}
+	return fetcher.Fetch(ctx, sourceURL)
 }
 
 // CreateOrUpdateWebClipAs stores the supplied web page snapshot for the current user.
