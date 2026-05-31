@@ -19,13 +19,13 @@
 
 ## 🌟 项目简介
 
-AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内容创作流程。前台追求极致的阅读体验，后台提供高效的内容管理与 AI 写作工具，同时通过独立 AI 服务实现多模型路由与流式输出。
+AetherBlog 是一个**全栈智能博客与个人知识系统**，将 AI 能力深度融入内容创作、检索、问答和知识沉淀流程。前台提供阅读、混合搜索与 AI 问答体验；后台提供内容管理、AetherHub 对话工作台、智能笔记、知识库、知识图集、智能体编排、全局模型价格和运维控制台；独立 AI 服务负责多模型路由、流式输出、向量索引与 RAG 召回。
 
 ### 设计理念
 
 - 🎨 **Cognitive Elegance** — 灵感源自 Linear、Raycast、Vercel 的设计语言
 - 🌙 **暗色优先** — 丰富的光晕渐变 + 毛玻璃质感，营造沉浸阅读氛围
-- 🤖 **AI 原生** — 写作辅助不是附加功能，而是内置于编辑器的核心体验
+- 🤖 **AI 原生** — 写作辅助、搜索问答、知识库 RAG 与 Atlas 建图建议都围绕内容工作流设计
 - ⚡ **现代技术栈** — 前后端均采用最新框架版本，追求极致性能
 
 ---
@@ -35,7 +35,8 @@ AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内�
 ### 📝 博客前台
 
 - **丰富的 Markdown 渲染** — Shiki 语法高亮 + KaTeX 数学公式 + Mermaid 图表
-- **全文语义搜索** — 基于 pgvector 的向量检索，超越关键词匹配
+- **关键词 / 语义 / 混合搜索** — 功能探测驱动的文章搜索，支持关键词、语义与 RRF hybrid 结果
+- **AI 问答面板** — SearchPanel 的“文章 / 问答”双模式，问答走 SSE 流式输出并返回引用源
 - **评论系统** — 支持嵌套回复的访客评论
 - **时间线视图** — 文章时间轴浏览
 - **友链页面** — 蜂巢布局的友链展示
@@ -48,6 +49,12 @@ AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内�
 - **仪表盘** — 访问统计、AI 用量分析、系统状态一览
 - **文章管理** — 创建、编辑、发布、归档完整生命周期
 - **AI 编辑器** — 集成 AI 侧栏、Slash 命令、选中文本 AI 工具栏
+- **AetherHub** — 独立 AI 对话工作台，支持会话、模型、显示模式、流式动画和文章/tag 上下文
+- **智能笔记** — 后台私有 Notes 域，支持文件夹、标签、双链与向量化基础设施
+- **知识库** — 自定义 KB 文件上传、Profile、成员权限与 Agent/RAG 召回契约
+- **知识图集 Atlas** — Carrier、Annotation、KnowledgePoint、TypedRelation、Graph 与 AI suggestion inbox
+- **全局模型价格** — 按 model_id 维护价格基准，并同步回 provider model 行
+- **访问与安全管理** — 用户、团队、角色权限、内容共享、安全中心与 JWT 密钥轮换入口
 - **分类与标签** — 灵活的内容组织体系
 - **媒体库** — 文件夹管理 + 拖拽上传 + 图片处理
 - **评论管理** — 审核、回复、批量操作
@@ -64,8 +71,11 @@ AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内�
 | **内容润色** | AI 优化文本表达 |
 | **大纲生成** | 一键生成文章结构 |
 | **多语言翻译** | 文章内容翻译 |
+| **RAG 问答** | 公开搜索问答、Agent 对话和 KB 召回 |
+| **Atlas 建议** | AI 候选先进入 suggestion inbox，人工确认后写入图谱 |
+| **模型价格同步** | 全局价格基准、覆盖率检查、批量 apply/sync |
 
-所有 AI 能力支持 **SSE 流式输出**（打字机效果），通过独立 AI 服务实现 **多模型路由**（OpenAI / DeepSeek / 通义千问等）。
+主要 AI 能力支持 **SSE 流式输出**（打字机效果），通过独立 AI 服务实现 **多模型路由**（OpenAI / DeepSeek / 通义千问等）。搜索与 KB 向量化使用 profile 指定模型，缺凭证或模型不可用时按 strict profile 失败，不再静默回退到默认 embedding。
 
 ---
 
@@ -79,7 +89,7 @@ AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内�
 | AI 服务 | FastAPI + LiteLLM | — |
 | 数据库 | PostgreSQL + pgvector | 17 |
 | 缓存 | Redis | 7 |
-| 搜索 | Elasticsearch | 8 |
+| 搜索 | PostgreSQL FTS + pgvector | — |
 | 序列化 | encoding/json | Go 标准库 |
 | 容器化 | Docker Compose | — |
 | CI/CD | GitHub Actions | — |
@@ -138,7 +148,7 @@ pnpm install
 - `.env` 不存在 → 从 `.env.example` 拷贝；
 - `.env` 中 `JWT_SECRET` / `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` / `AI_INTERNAL_SERVICE_TOKEN` / `AI_CREDENTIAL_ENCRYPTION_KEYS` 为空 → 用 `openssl` / Fernet 就地生成强密钥；
 - `apps/blog/.env.local` / `apps/admin/.env.local` 不存在 → 从同目录 `.env.local.example` 拷贝；
-- 中间件容器（PostgreSQL / Redis）尚未启动 → 通过 `docker compose up` 拉起，且 `.env.example` 默认值已对齐 `docker-compose.yml` 中固定的容器密码（`aetherblog123` / `aetherblog_dev`）。
+- 中间件容器（PostgreSQL / Redis / Elasticsearch）尚未启动 → 通过 `docker compose up` 拉起；具体账号、密码和端口以本地 `.env` 与 compose 文件为准，仓库示例文件不应回填真实密钥或默认口令。
 
 > 之前手动改过 `.env` 但跑不起来？最干净的修复是：`mv .env .env.bak && ./start.sh --gateway` 让脚本重建。
 
@@ -152,7 +162,7 @@ pnpm install
 | 🔧 后端 API | http://localhost:8080/api | 直连 Go 后端 |
 | 🤖 AI 服务 | http://localhost:8000 | 直连 FastAPI |
 
-> 默认管理员：`admin` / `admin123`（首次登录后请修改密码）
+> 初始管理员账号以初始化脚本或本地部署密钥为准；首次登录后会进入强制改密流程。
 
 ### 启动模式速查
 

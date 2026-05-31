@@ -1,11 +1,11 @@
 // Package service · kb_service.go — 知识库业务编排。
 //
 // 职责：
-//   1. KB CRUD（含自动创建归档目录 + 默认 profile）
-//   2. 权限解析（owner ∪ admin ∪ kb_members；返回 EffectivePermission）
-//   3. 文件上传桥接（自动归档到 /root/_system_kb/<slug>/<yyyy>/<mm>/<dd>，触发 ai-service 向量化）
-//   4. Profile CRUD + 蓝绿激活
-//   5. 成员授权 CRUD
+//  1. KB CRUD（含自动创建归档目录 + 默认 profile）
+//  2. 权限解析（owner ∪ admin ∪ kb_members；返回 EffectivePermission）
+//  3. 文件上传桥接（自动归档到 /root/_system_kb/<slug>/<yyyy>/<mm>/<dd>，触发 ai-service 向量化）
+//  4. Profile CRUD + 蓝绿激活
+//  5. 成员授权 CRUD
 //
 // 大多数 handler 只调本 service，不会直接打 repo。
 package service
@@ -26,6 +26,7 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
@@ -39,6 +40,7 @@ var (
 	ErrKBForbidSystem      = errors.New("系统级知识库不可执行该操作")
 	ErrKBProfileNotFound   = errors.New("索引档案不存在")
 	ErrKBProfileBadState   = errors.New("索引档案当前状态不允许该操作")
+	ErrKBProfileBadConfig  = errors.New("索引档案配置无效")
 	ErrKBFileNotFound      = errors.New("知识库文件不存在")
 	ErrKBFileWrongKB       = errors.New("文件不属于该知识库")
 	ErrKBMemberWrongKB     = errors.New("成员不属于该知识库")
@@ -68,15 +70,15 @@ type KBUserContext struct {
 
 // KBService 编排知识库业务。
 type KBService struct {
-	db            *sqlx.DB
-	kbRepo        *repository.KBRepo
-	profileRepo   *repository.KBProfileRepo
-	memberRepo    *repository.KBMemberRepo
-	fileRepo      *repository.KBFileRepo
-	mediaSvc      *MediaService
-	folderSvc     *FolderService
-	indexer       *KBIndexerClient
-	defaultModel  string // 创建 CUSTOM KB 时默认 profile 的 model_id（同 search_profiles seed 策略）
+	db           *sqlx.DB
+	kbRepo       *repository.KBRepo
+	profileRepo  *repository.KBProfileRepo
+	memberRepo   *repository.KBMemberRepo
+	fileRepo     *repository.KBFileRepo
+	mediaSvc     *MediaService
+	folderSvc    *FolderService
+	indexer      *KBIndexerClient
+	defaultModel string // 创建 CUSTOM KB 时默认 profile 的 model_id（同 search_profiles seed 策略）
 }
 
 func NewKBService(
@@ -218,12 +220,12 @@ func (s *KBService) GetBySlugForUser(ctx context.Context, slug string, uc *KBUse
 // =====================================================================
 
 // Create 创建 CUSTOM 知识库。事务流程：
-//   1. slug 解析（若未提供则从 name 派生）
-//   2. INSERT knowledge_bases 取得 id
-//   3. EnsureFolderByPath /root/_system_kb/<slug>
-//   4. UPDATE knowledge_bases.folder_id
-//   5. INSERT 默认 profile（status='active', model 取 defaultModel, chunker='recursive'）
-//   6. UPDATE knowledge_bases.active_profile_id
+//  1. slug 解析（若未提供则从 name 派生）
+//  2. INSERT knowledge_bases 取得 id
+//  3. EnsureFolderByPath /root/_system_kb/<slug>
+//  4. UPDATE knowledge_bases.folder_id
+//  5. INSERT 默认 profile（status='active', model 取 defaultModel, chunker='recursive'）
+//  6. UPDATE knowledge_bases.active_profile_id
 //
 // 任何步骤失败都让上层 tx 回滚（这里用 sql 而非显式 begin，因为 EnsureFolderByPath
 // 跨多 row，且文件夹幂等创建本身不需要回滚保护——失败的目录留着无害）。
@@ -471,11 +473,11 @@ func (s *KBService) canEdit(ctx context.Context, kb *model.KnowledgeBase, uc *KB
 // =====================================================================
 
 // UploadFile 桥接到 MediaService：
-//   1. 校验 EDIT 权限 + 库类型必须是 CUSTOM
-//   2. EnsureFolderByPath /root/_system_kb/<slug>/<yyyy>/<mm>/<dd>
-//   3. 在 KB 上传 context 下调用 MediaService.Upload
-//   4. 插入 kb_files row（PENDING）
-//   5. 启动 goroutine 调 ai-service 触发向量化（成功/失败状态写回 kb_files）
+//  1. 校验 EDIT 权限 + 库类型必须是 CUSTOM
+//  2. EnsureFolderByPath /root/_system_kb/<slug>/<yyyy>/<mm>/<dd>
+//  3. 在 KB 上传 context 下调用 MediaService.Upload
+//  4. 插入 kb_files row（PENDING）
+//  5. 启动 goroutine 调 ai-service 触发向量化（成功/失败状态写回 kb_files）
 func (s *KBService) UploadFile(ctx context.Context, kbID int64, fh *multipart.FileHeader, category *string, uc *KBUserContext) (*dto.KBFileVO, error) {
 	kb, err := s.kbRepo.FindByID(ctx, kbID)
 	if err != nil {
@@ -535,10 +537,10 @@ func (s *KBService) UploadFile(ctx context.Context, kbID int64, fh *multipart.Fi
 // 失败结果写回 kb_files.vector_error，不影响主流程。
 //
 // 流程：
-//   1. 标 RUNNING + 自增 attempt
-//   2. 从 MediaService 下载文件原始字节（限 10MB）
-//   3. POST 到 ai-service /v1/kb/.../index，传 base64 content + mime
-//   4. 写 SUCCEEDED / FAILED
+//  1. 标 RUNNING + 自增 attempt
+//  2. 从 MediaService 下载文件原始字节（限 10MB）
+//  3. POST 到 ai-service /v1/kb/.../index，传 base64 content + mime
+//  4. 写 SUCCEEDED / FAILED
 const kbMaxBytes = 10 * 1024 * 1024 // 10 MB
 
 func (s *KBService) scheduleIndex(kbID, fileID int64, activeProfileID *int64) {
@@ -808,9 +810,11 @@ func (s *KBService) ListFiles(ctx context.Context, kbID int64, q dto.KBFileListQ
 
 // listPostsAsKBFiles 把 posts 视为 SYSTEM_POSTS 库的虚拟文件。
 // 状态映射：
-//   posts.embedding_status='INDEXED' → SUCCEEDED
-//   posts.embedding_status='PENDING' → PENDING
-//   posts.embedding_status='FAILED'  → FAILED
+//
+//	posts.embedding_status='INDEXED' → SUCCEEDED
+//	posts.embedding_status='PENDING' → PENDING
+//	posts.embedding_status='FAILED'  → FAILED
+//
 // chunk_count 来自 post_embeddings 的 active 行数。
 func (s *KBService) listPostsAsKBFiles(ctx context.Context, kb *model.KnowledgeBase, q dto.KBFileListQuery) ([]dto.KBFileVO, int64, error) {
 	pageNum := q.PageNum
@@ -843,7 +847,7 @@ func (s *KBService) listPostsAsKBFiles(ctx context.Context, kb *model.KnowledgeB
 	}
 	if q.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (p.title ILIKE $%d OR p.slug ILIKE $%d)", idx, idx))
-		args = append(args, "%"+q.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(q.Keyword)+"%")
 		idx++
 	}
 	base := sb.String()
@@ -1090,7 +1094,7 @@ func (s *KBService) CreateProfile(ctx context.Context, kbID int64, req dto.Creat
 		return nil, ErrKBPermission
 	}
 	if req.ChunkOverlapTokens >= req.ChunkSizeTokens {
-		return nil, fmt.Errorf("chunkOverlapTokens 必须小于 chunkSizeTokens")
+		return nil, fmt.Errorf("%w: chunkOverlapTokens 必须小于 chunkSizeTokens", ErrKBProfileBadConfig)
 	}
 	p, err := s.profileRepo.Create(ctx, repository.KBProfileCreateRequest{
 		KBID:               kbID,
@@ -1158,7 +1162,7 @@ func (s *KBService) UpdateProfile(ctx context.Context, kbID, profileID int64, re
 			effOverlap = *req.ChunkOverlapTokens
 		}
 		if effOverlap >= effSize {
-			return nil, fmt.Errorf("chunk_overlap_tokens (%d) 必须小于 chunk_size_tokens (%d)", effOverlap, effSize)
+			return nil, fmt.Errorf("%w: chunk_overlap_tokens (%d) 必须小于 chunk_size_tokens (%d)", ErrKBProfileBadConfig, effOverlap, effSize)
 		}
 		if req.ChunkSizeTokens != nil {
 			sets["chunk_size_tokens"] = *req.ChunkSizeTokens
@@ -1186,11 +1190,11 @@ func (s *KBService) UpdateProfile(ctx context.Context, kbID, profileID int64, re
 }
 
 // MigrateProfile 蓝绿迁移 + 激活：
-//   1. 校验：MANAGE 权限、profile 属于该 kb 且不是 active
-//   2. 立即返回（HTTP 202 语义） —— 后台 goroutine 遍历 KB 全部 kb_files：
-//      下载字节 → 用 target profile 索引到 status='shadow' 行
-//   3. 全部成功后 CommitBlueGreen 事务做最终切换
-//   4. 任一文件失败：abort，部分 shadow 行保留，可重试（不影响 active）
+//  1. 校验：MANAGE 权限、profile 属于该 kb 且不是 active
+//  2. 立即返回（HTTP 202 语义） —— 后台 goroutine 遍历 KB 全部 kb_files：
+//     下载字节 → 用 target profile 索引到 status='shadow' 行
+//  3. 全部成功后 CommitBlueGreen 事务做最终切换
+//  4. 任一文件失败：abort，部分 shadow 行保留，可重试（不影响 active）
 //
 // 修复评审：
 //   - chatgpt-codex P2：用 cursor 分页迭代全部文件，不再单页 10000 上限
@@ -1356,6 +1360,11 @@ func (s *KBService) ActivateProfile(ctx context.Context, kbID, profileID int64, 
 	}
 	if p.Status == model.KBProfileStatusActive {
 		return nil
+	}
+	if p.Status == model.KBProfileStatusShadow {
+		// Shadow profile 还没有可供检索的 active embeddings。必须走蓝绿迁移：
+		// 先按目标 profile 写 shadow embeddings，再由 CommitBlueGreen 原子提升。
+		return ErrKBProfileBadState
 	}
 	return s.profileRepo.Activate(ctx, kbID, profileID)
 }

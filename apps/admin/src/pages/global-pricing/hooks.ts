@@ -7,6 +7,7 @@ import {
   aiProviderService,
   type GlobalPricingApplyRequest,
   type GlobalPricingUpsertRequest,
+  type PricingCatalogSyncRequest,
 } from '@/services/aiProviderService';
 import { resolveAiServiceErrorMessage } from '@/pages/ai-config/utils/errorMessage';
 
@@ -107,6 +108,41 @@ export function useApplyGlobalPricing() {
     },
     onError: (error: unknown) => {
       toast.error(resolveAiServiceErrorMessage(error, '批量回填失败'));
+    },
+  });
+}
+
+export function usePreviewPricingCatalogSync() {
+  return useMutation({
+    mutationFn: (data: PricingCatalogSyncRequest) =>
+      aiProviderService.previewPricingCatalogSync(data),
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '加载价格目录失败'));
+    },
+  });
+}
+
+export function useApplyPricingCatalogSync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PricingCatalogSyncRequest) =>
+      aiProviderService.applyPricingCatalogSync(data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: globalPricingKeys.all });
+      const { created, updated, skipped, matched } = res.data || {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        matched: 0,
+      };
+      toast.success(
+        `已同步价格：新增 ${created} · 更新 ${updated}` +
+          (skipped > 0 ? ` · 跳过 ${skipped}` : '') +
+          `（命中 ${matched}）`
+      );
+    },
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '同步价格失败'));
     },
   });
 }

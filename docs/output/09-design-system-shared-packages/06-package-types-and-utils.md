@@ -6,7 +6,7 @@
 
 ## 范围
 
-- `packages/types/`(14 文件,~600 LOC,纯 TS interface)
+- `packages/types/`(纯 TS interface;2026-05-29 已扩展 note/access/atlas 等领域模型)
 - `packages/utils/`(21 文件,~700 LOC)
 - `apps/blog/app/components/SiteSettingsProvider.tsx:5` —— utils 的核心消费点之一(`generateColorVars`)
 
@@ -31,7 +31,7 @@
 
 无 `dependencies` / 无 scripts。**这是一个零运行时依赖的纯类型包**。
 
-`tsconfig.json`:`extends: '../../tsconfig.json'` + `rootDir: 'src'` + `outDir: 'dist'` + `include: ['src/**/*']`(`packages/types/tsconfig.json`,8 行)。
+`packages/types/tsconfig.json` 现在是自包含配置,不再简单继承根 tsconfig。关键项包括 `target ES2022`、`module ESNext`、`moduleResolution bundler`、`strict true`、`declaration/declarationMap`、`rootDir src`、`outDir dist`。`package.json` 仍无独立 build/typecheck scripts,主要由 blog/admin 的 typecheck 间接覆盖。
 
 ### 2. types 三大命名空间
 
@@ -54,13 +54,18 @@ packages/types/src/
 │   ├── post.ts         Post / PostListItem / CreatePostInput / UpdatePostInput / PostStatus / Category / Tag
 │   ├── user.ts         User / LoginInput / LoginResult / RegisterInput / UserRole
 │   ├── comment.ts      Comment / CreateCommentInput / CommentStatus
-│   ├── media.ts        ★ 大头(280 行) Media / MediaFolder / MediaTag / StorageProvider / MediaVariant / FolderPermission / MediaShare / MediaVersion + 各 Request/枚举
-│   └── friendLink.ts   FriendLink / CreateFriendLinkInput
+│   ├── media.ts        Media / MediaFolder / MediaTag / StorageProvider / MediaVariant / FolderPermission / MediaShare / MediaVersion + 各 Request/枚举
+│   ├── friendLink.ts   FriendLink / CreateFriendLinkInput
+│   ├── note.ts         智能笔记领域类型
+│   ├── access.ts       用户 / 团队 / RBAC / 内容共享类型
+│   └── atlas.ts        Carrier / Annotation / KnowledgePoint / TypedRelation / Suggestion 类型
 │
 └── ai/
     ├── prompt.ts       PromptTemplate / PromptVariable / PromptCategory
     └── completion.ts   CompletionRequest / CompletionResponse / StreamingChunk / TokenUsage
 ```
+
+Atlas 类型现在是 Admin Atlas 页面与 `atlasService` 的共享契约,relation type、selector、carrier、annotation、knowledge point、relation/suggestion 的字段调整必须与 Go model/DTO 和 migration CHECK 同步。KB 领域目前主要在 admin service 局部定义,后续若沉淀到共享类型,优先放入 `packages/types/src/models/` 后再改页面内类型。
 
 ### 3. api/ 命名空间
 

@@ -18,7 +18,7 @@
 
 特征:
 - `postgres:5432` / `redis:6379` 都是 `127.0.0.1:` 绑定
-- `POSTGRES_PASSWORD:-aetherblog123` / `REDIS_PASSWORD:-aetherblog_dev` 默认值兜底,本地 dev 友好
+- PostgreSQL / Redis 凭据应由本地 `.env` 显式提供;历史开发兜底值不应复制到文档或生产配置
 - 命名网络 `aetherblog-network`,**显式指定 `name: aetherblog_aetherblog-network`** 与 prod 不冲突
 - 数据卷 `postgres_data` / `redis_data`(无前缀)
 
@@ -197,6 +197,7 @@ Stage 3: runner (TARGETPLATFORM, node:20-alpine)
 ```
 Stage 1: builder (node:20-alpine)
   pnpm install --frozen-lockfile
+  ENV NODE_OPTIONS="--max-old-space-size=4096"
   pnpm --filter @aetherblog/admin build
 
 Stage 2: runner (nginxinc/nginx-unprivileged:alpine)
@@ -213,6 +214,7 @@ Stage 2: runner (nginxinc/nginx-unprivileged:alpine)
 
 关键点:
 - `apps/admin/Dockerfile:37` 用 `nginxinc/nginx-unprivileged` 替代官方 `nginx`(VULN-124):master 进程不跑 root → 限制容器逃逸危害
+- builder 阶段设置 `NODE_OPTIONS="--max-old-space-size=4096"`:Admin Vite bundle 体量增长后,GitHub buildx / Docker builder 的 Node 默认 heap 容易在 `pnpm --filter @aetherblog/admin build` 时 OOM。这个环境变量只影响构建阶段,runner 仍是 nginx 静态站点。
 - 暴露 8080 而非 80:非特权 nginx 不能绑 <1024
 - `apps/admin/nginx.conf:26` SPA CSP 与 gateway `nginx.conf:39` 的 CSP 必须一致,任何修改要同步两处(注释里 explicit warn)
 

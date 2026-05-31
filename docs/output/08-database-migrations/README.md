@@ -3,7 +3,7 @@
 > 本目录拆分:
 > - `README.md` (本篇) — 全局视图
 > - `01-schema-overview.md` — 全表清单与字段说明
-> - `02-migration-history.md` — 46 条 migration 演进叙事
+> - `02-migration-history.md` — 67 条 migration 演进叙事
 > - `03-extensions-and-indexes.md` — pgvector / tsvector / 全部索引
 > - `04-data-flows.md` — 关键 SQL 链路
 > - `05-operations.md` — 应用流程 / 事故恢复 / 备份回滚
@@ -22,32 +22,33 @@
 | 迁移工具 | `golang-migrate/migrate v4` | `apps/server-go/cmd/migrate/main.go` 二进制 + `apps/server-go/migrations/*.{up,down}.sql` |
 | ORM | `sqlx` (Go) + `asyncpg` (Python ai-service) | 不引入 GORM,SQL 显式;`config_schema`/`metadata` JSONB 列由应用层处理,部分字段在结构体里被 **有意省略** 以规避 sqlx 扫描 |
 
-迁移目录: `apps/server-go/migrations/000001_init_schema` 至 `000046_activity_event_category_security`,共 46 条。每条 migration 都有对偶 `*.up.sql` / `*.down.sql`,文件名编号顺序即应用顺序。
+迁移目录: `apps/server-go/migrations/000001_init_schema` 至 `000067_kb_schema_repair`,当前共 67 条。每条 migration 都有对偶 `*.up.sql` / `*.down.sql`,文件名编号顺序即应用顺序。原始文档基线停在 000046;000047-000067 是本轮纠偏必须补齐的新增能力面。
 
 ---
 
-## 2. Schema 分组(7 大主题域)
+## 2. Schema 分组(10 大主题域)
 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  用户/鉴权    │    │  内容核心     │    │  评论与互动   │
+│  用户/鉴权    │    │  内容/笔记    │    │  评论与互动   │
 ├──────────────┤    ├──────────────┤    ├──────────────┤
 │ users        │◄───┤ posts        │◄───┤ comments     │
-│ jwt_secrets  │    │ categories   │    │              │
-│              │    │ tags         │    │              │
-│              │    │ post_tags    │    │              │
+│ jwt_secrets  │    │ notes        │    │              │
+│ roles/teams  │    │ categories   │    │              │
+│ permissions  │    │ tags         │    │              │
 └──────────────┘    └──────┬───────┘    └──────────────┘
                            │
         ┌──────────────────┼──────────────────────────┐
         ▼                  ▼                          ▼
 ┌──────────────┐    ┌──────────────┐         ┌──────────────┐
-│  AI 模型     │    │  AI 检索     │         │  统计/审计   │
+│  AI 模型     │    │  AI/KB 检索  │         │  统计/审计   │
 ├──────────────┤    ├──────────────┤         ├──────────────┤
 │ ai_providers │◄───┤ post_embed-  │         │ visit_records│
 │ ai_models    │    │ dings        │         │ daily_stats  │
 │ ai_creden-   │    │ search_      │         │ activity_    │
 │ tials        │    │ profiles     │         │ events       │
-│ ai_task_types│    │ ai_usage_logs│         │ sys_op_log   │
+│ ai_global_   │    │ kb_embed-    │         │ sys_op_log   │
+│ pricing      │    │ dings        │         │              │
 │ ai_task_     │    │              │         │              │
 │ routing      │    │              │         │              │
 └──────────────┘    └──────────────┘         └──────────────┘
@@ -67,13 +68,13 @@
 │  attachments(独立: 文章下载附件)                              │
 └────────────────────────────────────────────────────────────┘
 
-┌────────────────────────────┐
-│       系统配置             │
-├────────────────────────────┤
-│ site_settings (KV)         │
-│ friend_links               │
-│ schema_migrations (mig 工具)│
-└────────────────────────────┘
+┌────────────────────────────┐   ┌────────────────────────────┐
+│       系统配置             │   │ Aether Knowledge / Atlas   │
+├────────────────────────────┤   ├────────────────────────────┤
+│ site_settings (KV)         │   │ knowledge_bases / kb_*     │
+│ friend_links               │   │ atlas_carriers / annot-    │
+│ schema_migrations          │   │ ations / kp / relations    │
+└────────────────────────────┘   └────────────────────────────┘
 ```
 
 主题与对应 migration 范围速查:
@@ -85,8 +86,15 @@
 | 评论 | 000001, 000004, 000005 | comments |
 | 媒体存储 | 000007–000012, 000042, 000043 | media_files / folders / variants / versions / tags / shares / sync_jobs / storage_providers |
 | AI 模型注册 | 000017, 000018, 000020, 000021, 000026 | ai_providers, ai_models, ai_credentials, ai_task_types, ai_task_routing |
+| 全局模型价格 | 000047 | ai_global_pricing |
 | AI 检索 / 向量 | 000015, 000034–000037, 000041, 000044 | post_embeddings, search_profiles, post_vectors(已 drop) |
+| Profile 断点续跑 | 000056 | post_embeddings.chunk_hash, chunk_count |
 | 搜索配置 | 000031, 000032, 000045 | site_settings.search.* |
+| Notes | 000054, 000055 | notes, note_folders, note_tags, note_embeddings, fulltext 限长 |
+| 用户/团队 RBAC | 000051, 000063 | permissions, roles, role_permissions, user_roles, teams, team_members, content_shares, atlas permissions |
+| Agent Workflow | 000052 | agent_connectors, agent_tools, agent_agents, agent_workflows, agent_* |
+| KB / 知识库 | 000057–000061, 000067 | media_folders system flags, knowledge_bases, kb_profiles, kb_members, kb_files, kb_embeddings, KB schema repair |
+| Atlas / 知识图集 | 000062–000066 | atlas_carriers, atlas_annotations, atlas_knowledge_points, atlas_typed_relations, suggestions |
 | 统计 / 审计 | 000006, 000022, 000046 | visit_records, visit_daily_stats, daily_stats, sys_operation_log, activity_events |
 | AI 使用埋点 | 000016, 000023–000025, 000030 | ai_usage_logs |
 | 站点设置 | 000001, 000013, 000014, 000029 | site_settings, friend_links |
@@ -108,6 +116,8 @@ posts n──n tags             via post_tags          (init schema: 000001)
 posts n──1 categories                              (init schema: 000001)
 posts 1──n post_embeddings  via post_id            (000034: 版本化 + 0..n chunk)
 post_embeddings n──1 search_profiles               (000041: chunker+模型四元组)
+post_embeddings 加 chunk_hash/chunk_count           (000056: profile reindex checkpoint)
+notes 1──n note_embeddings                          (000054)
 
 categories 1──n categories  (parent_id 自引用)
 comments   1──n comments    (parent_id 自引用,二级回复)
@@ -126,6 +136,16 @@ folder_permissions n──1 media_folders              (000011)
 ai_providers 1──n ai_models 1──n ai_task_routing(primary/fallback)
 ai_credentials n──1 ai_providers
 ai_task_routing n──1 ai_task_types
+ai_global_pricing 1──n ai_models(逻辑同步,非 FK)
+
+knowledge_bases 1──n kb_profiles 1──n kb_embeddings
+knowledge_bases 1──n kb_files     1──n kb_embeddings
+knowledge_bases 1──n kb_members
+
+atlas_carriers 1──n atlas_carrier_versions
+atlas_carriers 1──n atlas_annotations n──n atlas_knowledge_points
+atlas_knowledge_points 1──n atlas_typed_relations(subject/object)
+atlas_ai_suggestions -> accept 后才写 KP/Relation
 ```
 
 > 详细字段、约束、索引参见 `01-schema-overview.md`。
@@ -167,8 +187,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- gen_random_uuid 等;ai_credentia
 ```
 
 ### 5.2 向量列与索引(决策点)
-- `post_embeddings.embedding` 是 **不锁维度** 的 `vector` 列(pgvector 0.7+ 支持变长)。
-- 维度 ≤ 2000 用 `hnsw ((embedding::vector(D)) vector_cosine_ops)`;3072 维(`text-embedding-3-large` 默认)必须走 `halfvec` —— `hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)`。**partial 索引按 `dim` × `status='active'` 分桶**:换模型只需追加一条 partial 索引,主表不动。
+- `post_embeddings.embedding` 与 `kb_embeddings.embedding` 现在都按 **不锁维度** 的 `vector` 列设计(pgvector 0.7+ 支持变长)。`kb_embeddings` 初版在 000058 写成 `vector(3072)`,000060 立即改为 unconstrained `vector`。
+- 维度 ≤ 2000 用 `hnsw ((embedding::vector(D)) vector_cosine_ops)`;3072 维(`text-embedding-3-large` 默认)必须走 `halfvec` —— `hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)`。**partial 索引按 `dim` × `status='active'` 分桶**:换模型只需追加一条 partial 索引,主表不动。KB 侧 000061 预建 1536 / 3072 / 1024 / 768 四组 partial HNSW。
 - 不使用 IVFFlat:HNSW 在 < 100 万行规模下无需训练,延迟更稳定;Aether 的语义检索流量低,维护成本压在 `m=16, ef_construction=64`。
 
 ### 5.3 search_profiles —— 为什么单独建表
@@ -203,8 +223,10 @@ COALESCE((SELECT model_id FROM post_embeddings WHERE status='active' LIMIT 1),
 | **NULL 表示系统默认而非缺失** | `ai_task_routing.user_id`, `ai_credentials.user_id` | 配合 `UNIQUE NULLS NOT DISTINCT` 避免重复 seed |
 | **所有时间戳带 trigger 自动 updated_at** | `update_updated_at_column()` | 业务 service 不必显式 SET;000028 加旁路 `app.preserve_updated_at` 让 VanBlog 导入保留原时间 |
 | **向量列不锁 dim** | post_embeddings | 换模型 = INSERT 新行 + 翻转指针,**不动 schema**(对比早期 `post_vectors vector(1536)` 锁死) |
+| **KB 文件复用媒体系统目录** | 000057-000058 | KB 文件不新造对象存储系统,而是落 `/root/_system_kb/<slug>`;媒体目录隐藏和 undeletable 规则必须配套 |
+| **AI suggestion 不直写 Atlas 图谱** | 000065 | LLM/heuristic 输出只能进入 `atlas_ai_suggestions`,用户 accept 后才写 KP/Relation |
 | **存量数据迁移走 ON CONFLICT DO NOTHING** | 全部 seed migration | 部署幂等;新装 vs 存量统一路径 |
-| **dirty self-heal 在部署脚本里硬编码** | `ops/webhook/deploy.sh::_try_heal_known_dirty` | v34→force 35,v38→force 38;只在 **登记过的 dirty 特征** 上自愈,其他一律中止 |
+| **dirty self-heal 在部署脚本里硬编码** | `ops/webhook/deploy.sh::_try_heal_known_dirty` | v34→force 35,v38→force 38,v57→确认 `knowledge_bases` 不存在后 force 56;只在 **登记过且可证明安全的 dirty 特征** 上自愈,其他一律中止 |
 
 ---
 
@@ -215,6 +237,8 @@ COALESCE((SELECT model_id FROM post_embeddings WHERE status='active' LIMIT 1),
 - **`config_schema` / `metadata` JSONB 暂未走 sqlx**: 业务逻辑通过 raw query + `pgtype.JSONB` 处理,会增加一次 marshal/unmarshal 成本。
 - **`v_published_posts` 视图阻挡 ALTER COLUMN**: 000038 的 `posts.summary` 加宽因 view 引用 `SELECT p.*` 失败;最终在 000039 通过 `DROP VIEW + ALTER + CREATE OR REPLACE VIEW` 解决。后续任何对 posts 列类型的修改必须走同样模式。
 - **`post_embeddings.parent_text` 仅 parent_child chunker 写**: 其他 chunker_kind 为 NULL;查询时需在应用层判断,后端不做强约束。
+- **000058-000061 文件头注释编号漂移**:这些文件的头部注释仍写 000055-000058,但真实文件名是 000058-000061。以文件名和 `schema_migrations.version` 为准。
+- **KB/Atlas down 会删除业务数据**:000058/000062/000065 的 down 会级联删除 KB/Atlas 数据;000060 down 会删除非 3072 维 KB embeddings。000067 down 刻意 no-op,避免单步回退误删知识库。不能把这些迁移当普通可逆迁移。
 
 ### 7.2 扩展点
 - **新 embedding 模型 / 维度**: 仅需在 admin UI 切换 active model + 跑 reindex;若维度不在已有 partial 索引中(1536 / 3072),手工追加一条 partial HNSW 索引。
@@ -230,7 +254,7 @@ COALESCE((SELECT model_id FROM post_embeddings WHERE status='active' LIMIT 1),
 | 文档 | 主题 |
 |---|---|
 | [`01-schema-overview.md`](./01-schema-overview.md) | 全表清单 / 字段 / PK / FK / 索引 |
-| [`02-migration-history.md`](./02-migration-history.md) | 46 条 migration 演进叙事(分主题) |
+| [`02-migration-history.md`](./02-migration-history.md) | 67 条 migration 演进叙事(分主题) |
 | [`03-extensions-and-indexes.md`](./03-extensions-and-indexes.md) | pgvector / tsvector / GIN / 索引清单 |
 | [`04-data-flows.md`](./04-data-flows.md) | 文章发布 / 搜索双通路 / 媒体上传 / 审计事件 SQL 链路 |
 | [`05-operations.md`](./05-operations.md) | migration 应用 / 事故恢复 / dirty / 备份 / 回滚 |
@@ -240,7 +264,7 @@ COALESCE((SELECT model_id FROM post_embeddings WHERE status='active' LIMIT 1),
 ## 9. 与其他模块的对接面
 
 - **后端 server-go**(`apps/server-go/internal/repository/`): 全部 SQL 直写;migration 是结构契约的唯一真源;model 是行的 Go 表示。
-- **AI 服务 Python**(`apps/ai-service/app/`): 通过 asyncpg / SQLAlchemy 直连同一 PG,只读 + 写 `post_embeddings`、`ai_usage_logs`、`search_profiles`;对 schema 的修改一律走 server-go 的 migrations(Python 侧 **不持有** migration)。
+- **AI 服务 Python**(`apps/ai-service/app/`): 通过 asyncpg / SQLAlchemy 直连同一 PG,读写 `post_embeddings`、`kb_embeddings`、`ai_usage_logs`、`search_profiles`、`ai_global_pricing`;对 schema 的修改一律走 server-go 的 migrations(Python 侧 **不持有** migration)。
 - **Admin 前端 SearchConfigPage**: 直接消费 `search_profiles` + `site_settings.search.*` 暴露的 API,迁移变更体现为新增 admin 控件(profile 列表、reindex SSE 状态)。
 - **部署脚本** `ops/webhook/deploy.sh`: 内嵌 `migrate up` + `_try_heal_known_dirty`;新增 dirty 自愈条目时同步更新此脚本与 `02-migration-history.md` 自愈表。
 - **CI** `.github/workflows/`: 在 PR 阶段跑 `golangci-lint` + 编译 `cmd/migrate`,无独立 migration 校验;dirty 检测发生在生产部署阶段。

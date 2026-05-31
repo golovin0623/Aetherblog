@@ -351,6 +351,7 @@ class LlmRouter:
         self,
         user_id: int | str | None,
         embedding_model_id: str | None,
+        strict_embedding_model_id: bool = False,
     ) -> "RoutingConfig | None":
         """给 embed() 用的路由解析。
 
@@ -358,7 +359,9 @@ class LlmRouter:
         找出该 model + credential，临时构造 RoutingConfig 返回；不通过
         _is_chat_capable_model 校验（embedding 模型本就不是 chat）。
 
-        找不到时 fall back 到默认 task=embedding 路由，并 WARN。
+        strict_embedding_model_id=True 时，找不到指定模型必须失败，避免
+        search_profiles / kb_profiles 声称使用 A 模型但实际 fallback 到 B 模型，
+        导致同一 profile 下混入不同模型的向量。
         """
         # 默认路径：按 task=embedding 走全局 routing
         if not embedding_model_id:
@@ -369,6 +372,10 @@ class LlmRouter:
                 "embed.model_override_no_router",
                 extra={"data": {"requested": embedding_model_id}},
             )
+            if strict_embedding_model_id and not self.settings.mock_mode:
+                raise ValueError(
+                    f"embedding model override requires model router: {embedding_model_id}"
+                )
             return await self._get_routing("embedding", _normalize_user_id(user_id))
 
         try:
@@ -389,6 +396,10 @@ class LlmRouter:
                 "embed.model_override_failed",
                 extra={"data": {"requested": embedding_model_id, "error": str(exc)[:200]}},
             )
+            if strict_embedding_model_id and not self.settings.mock_mode:
+                raise ValueError(
+                    f"embedding model override failed for {embedding_model_id}: {exc}"
+                ) from exc
             return await self._get_routing("embedding", _normalize_user_id(user_id))
 
     async def has_task_routing(self, task_type: str, user_id: int | None = None) -> bool:
@@ -1213,16 +1224,19 @@ class LlmRouter:
         usage_endpoint: str | None = None,
         request_id: str | None = None,
         embedding_model_id: str | None = None,
+        strict_embedding_model_id: bool = False,
     ) -> list[float]:
         """为文本生成 embedding 向量。
 
         embedding_model_id：可选；当 KB profile 等需要严格使用特定 embedding 模型
         （绕过全局 ai_task_routing.embedding 路由）时传入。模型 + 凭证按
-        provider_registry / credential_resolver 顺序解析；找不到则降级到默认路由
-        并 WARN（行为不破坏）。
+        provider_registry / credential_resolver 顺序解析。strict_embedding_model_id=True
+        时找不到指定模型会失败；否则保持旧行为，降级到默认路由并 WARN。
         """
         routing = await self._resolve_routing_for_embedding(
-            user_id=user_id, embedding_model_id=embedding_model_id,
+            user_id=user_id,
+            embedding_model_id=embedding_model_id,
+            strict_embedding_model_id=strict_embedding_model_id,
         )
 
         if routing:

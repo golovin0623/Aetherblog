@@ -12,6 +12,7 @@ import {
   Coins,
   RefreshCw,
   Search,
+  Sparkles,
   Trash2,
   XCircle,
   Layers,
@@ -34,6 +35,7 @@ import {
   useGlobalPricingList,
 } from './hooks';
 import GlobalPricingDialog from './GlobalPricingDialog';
+import PricingSyncDialog from './PricingSyncDialog';
 import {
   GlobalPricingMetricSkeletonGrid,
   GlobalPricingTableSkeleton,
@@ -94,6 +96,7 @@ export default function GlobalPricingPage() {
   const [search, setSearch] = useState('');
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [pendingDeleteModelId, setPendingDeleteModelId] = useState<string | null>(null);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [renderLimit, setRenderLimit] = useState(INITIAL_ROW_RENDER_LIMIT);
 
   const deferredSearch = useDeferredValue(search);
@@ -205,21 +208,33 @@ export default function GlobalPricingPage() {
             : `未配置 ${stats.missing} · 脱锚 ${stats.outOfSync}`
         }
         actions={
-          <motion.button
-            onClick={handleRefresh}
-            aria-label="刷新全局模型价格"
-            aria-busy={isRefreshing}
-            data-refreshing={isRefreshing ? 'true' : 'false'}
-            title="刷新全局模型价格"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="intelligence-action-button global-pricing-refresh-action"
-          >
-            <RefreshCw
-              className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
-            />
-            <span className="sr-only">刷新</span>
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              onClick={() => setSyncDialogOpen(true)}
+              title="从 LiteLLM 内置价格表自动同步"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="intelligence-action-button global-pricing-sync-action inline-flex items-center gap-1.5 px-3"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="text-sm font-medium">同步价格</span>
+            </motion.button>
+            <motion.button
+              onClick={handleRefresh}
+              aria-label="刷新全局模型价格"
+              aria-busy={isRefreshing}
+              data-refreshing={isRefreshing ? 'true' : 'false'}
+              title="刷新全局模型价格"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="intelligence-action-button global-pricing-refresh-action"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+              />
+              <span className="sr-only">刷新</span>
+            </motion.button>
+          </div>
         }
       />
 
@@ -382,6 +397,9 @@ export default function GlobalPricingPage() {
       </IntelligencePanel>
 
       <AnimatePresence>
+        {syncDialogOpen && (
+          <PricingSyncDialog onClose={() => setSyncDialogOpen(false)} />
+        )}
         {editingModelId && (
           <GlobalPricingDialog
             modelId={editingModelId}

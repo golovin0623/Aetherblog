@@ -1,4 +1,4 @@
--- 000054: 媒体文件夹增加 is_system / undeletable 标记，并 seed 系统知识库根目录。
+-- 000057: 媒体文件夹增加 is_system / undeletable 标记，并 seed 系统知识库根目录。
 --
 -- 背景：知识库（knowledge_bases）功能需要把上传的物理文件落到媒体库受控的
 -- 隐藏子树 `/root/_system_kb/<kb-slug>/<yyyy>/<mm>/<dd>/`。这些目录复用 media_files
@@ -20,14 +20,50 @@ ALTER TABLE media_folders
     ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS undeletable BOOLEAN NOT NULL DEFAULT FALSE;
 
--- 根目录（id=1，000007 已 seed）补 undeletable=TRUE
-UPDATE media_folders SET undeletable = TRUE WHERE id = 1;
+-- 生产漂移防护：
+--   1) 旧库可能没有 uq_folder_path 约束，但 path 语义仍应唯一；补齐后下面
+--      ON CONFLICT (path) 才能稳定工作。
+--   2) 不再硬编码 root id=1。生产库可能因历史导入/手工修复导致 /root 的 id
+--      不是 1；按 path 定位 root，避免重放 000057 时 parent_id=1 触发 FK 23503。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_folder_path ON media_folders(path);
 
--- 系统 KB 根目录。parent_id 显式指向 1（root），path/depth 与 000007 的根命名风格对齐。
--- ON CONFLICT (path) 因为 000007 已经给 path 加了 UNIQUE。
-INSERT INTO media_folders (name, slug, path, depth, sort_order, visibility, is_system, undeletable, parent_id)
-VALUES ('_system_kb', '_system_kb', '/root/_system_kb', 1, 9999, 'PRIVATE', TRUE, TRUE, 1)
-ON CONFLICT (path) DO UPDATE SET is_system = TRUE, undeletable = TRUE;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM media_folders WHERE path = '/root') THEN
+        INSERT INTO media_folders (
+            name, slug, path, depth, sort_order, visibility, is_system, undeletable
+        )
+        VALUES ('Root', 'root', '/root', 0, 0, 'PRIVATE', FALSE, TRUE);
+    END IF;
+END $$;
+
+UPDATE media_folders
+SET is_system = FALSE, undeletable = TRUE
+WHERE path = '/root';
+
+-- 系统 KB 根目录。parent_id 指向 path=/root 的实际 id，path/depth 与 000007 的根命名风格对齐。
+WITH root_folder AS (
+    SELECT id
+    FROM media_folders
+    WHERE path = '/root'
+    ORDER BY id
+    LIMIT 1
+)
+INSERT INTO media_folders (
+    name, slug, path, depth, sort_order, visibility, is_system, undeletable, parent_id
+)
+SELECT
+    '_system_kb', '_system_kb', '/root/_system_kb', 1, 9999, 'PRIVATE', TRUE, TRUE, root_folder.id
+FROM root_folder
+ON CONFLICT (path) DO UPDATE SET
+    name = EXCLUDED.name,
+    slug = EXCLUDED.slug,
+    depth = EXCLUDED.depth,
+    sort_order = EXCLUDED.sort_order,
+    visibility = EXCLUDED.visibility,
+    is_system = TRUE,
+    undeletable = TRUE,
+    parent_id = EXCLUDED.parent_id;
 
 CREATE INDEX IF NOT EXISTS idx_media_folders_is_system ON media_folders(is_system);
 

@@ -240,8 +240,8 @@ nginx 通过 host.docker.internal 反代到宿主机进程
 
 ```
 bootstrap_env PROD_MODE=true:
-  - require_prod_secure_field POSTGRES_PASSWORD ≠ aetherblog123
-  - bootstrap_prod_secure_field REDIS_PASSWORD ≠ aetherblog_dev → 静默替换强随机
+  - require_prod_secure_field POSTGRES_PASSWORD 不能等于历史开发兜底值
+  - bootstrap_prod_secure_field REDIS_PASSWORD 不能等于历史开发兜底值 → 静默替换强随机
   - bootstrap_prod_secure_field AUTH_COOKIE_SECURE ≠ false → 改为 true
   - 删除 REDIS_HOST=localhost
 应用进程仍跑宿主机
@@ -308,7 +308,7 @@ AI_CREDENTIAL_ENCRYPTION_KEYS: RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI=  # �
 - `change-me-to-a-secure-random-string` / `sk-proj-mock-key-for-testing` / `default-secret-for-dev-only-change-in-prod`(VULN-117)
 - 任何 git diff 中的 secret 字面值(`gitleaks-action`)
 
-历史:`aetherblog123` 是 dev DB 默认值,在 `docker-compose.yml` / `Makefile` / `config.yaml` / 旧 `start.sh` 散布 → **不加入 forbidden 列表**,由 VULN-118 P1 单独清理。
+历史开发兜底口令曾在 `docker-compose.yml` / `Makefile` / `config.yaml` / 旧 `start.sh` 散布 → **不加入 forbidden 列表**,由 VULN-118 P1 单独清理。文档不应继续复制这些明文值。
 
 ---
 
@@ -323,7 +323,7 @@ AI_CREDENTIAL_ENCRYPTION_KEYS: RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI=  # �
 
 ## 8. 已知限制 / 配置陷阱
 
-1. **`POSTGRES_PASSWORD` 持久化绑定** — 一旦 PGDATA 用某口令初始化,改 .env 无效。这就是 `bootstrap_env` 在 fresh install 才生成强随机的根本原因(`start.sh:386-413`),已存在卷时退回老默认 `aetherblog123` 保护升级路径。轮换必须 `ALTER ROLE` 同步。
+1. **`POSTGRES_PASSWORD` 持久化绑定** — 一旦 PGDATA 用某口令初始化,改 .env 无效。这就是 `bootstrap_env` 在 fresh install 才生成强随机的根本原因(`start.sh:386-413`),已存在卷时会走历史兼容路径保护升级。轮换必须 `ALTER ROLE` 同步。
 2. **`REDIS_HOST` 不能写死在 .env** — start.sh --prod 把 backend / ai-service 跑成宿主机进程时 host DNS 解析不到容器 `redis`,需要 localhost + 端口映射;docker-compose.prod.yml 容器化部署需要 `redis`(compose 网络 DNS)。**同一 .env 不可能同时满足**。`bootstrap_env` 在 prod 模式删除 `REDIS_HOST=localhost` 让默认接管(Go 配置 yaml 默认 `localhost`,compose 默认 `redis`)。
 3. **`AI_CREDENTIAL_ENCRYPTION_KEYS` legacy fallback 是临时的** — `start.sh:231-301` 自动追加 `_legacy_jwt_derived_key(JWT_SECRET)` 到末位让旧密文可解,VULN-056 升级路径。完成迁移后必须 `--repair-orphans` + 移除末位 + 设 `AI_LEGACY_KEY_FALLBACK=false`。
 4. **`DOCKER_REGISTRY` 默认硬编码 `golovin0623`** — `docker-build.sh:33` 与 `docker-compose.prod.yml:221`(`${DOCKER_REGISTRY:-}`)默认空。fork 用户必须在 `.env` 加 `DOCKER_REGISTRY=<your-namespace>`。

@@ -13,6 +13,7 @@ AetherBlog 项目文档导航。
 | [**开发指南**](./development.md) | 本地环境搭建、构建命令、模块说明、调试技巧 |
 | [**系统架构**](./architecture.md) | 架构概览、模块划分、技术选型、数据流 |
 | [**部署指南**](./deployment.md) | Docker 构建、生产部署、域名配置、运维操作 |
+| [**技术摸底沉淀**](./output/README.md) | 11 个模块的代码事实沉淀、横向矩阵与新能力纠偏入口 |
 
 ## 🔄 CI/CD
 
@@ -43,6 +44,7 @@ AetherBlog 项目文档导航。
 | [Search Profiles 后续 PR 执行手册](./SEARCH_PROFILES_FOLLOWUP_PLAN.md) | RAG profile 化 chunking pipeline 的 admin 操作面落地计划（2026-05-03 起执行） |
 | [Aether Knowledge 调研报告](./plan/knowledge.md) | 支持标注迁移与知识图谱涌现的多模态个人知识系统技术调研（Carrier × Annotation × KnowledgePoint × TypedRelation 四层架构） |
 | [Aether Knowledge 落地手册](./plan/task-aether-knowledge-system.md) | 把调研报告落地的 5 阶段（约 40-52 周）路线图：含基线快照、约束、验收、红线、任务命名规范、完成日志（task-knowledge-* 前缀） |
+| [Aether Knowledge 当前实现沉淀](./output/11-aether-knowledge-atlas/README.md) | 当前工作树的 KB/RAG、Atlas、Admin 入口、AI stub 与 000057-000067 迁移事实 |
 
 ## 🔧 运维与 QA
 

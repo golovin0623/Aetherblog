@@ -23,12 +23,25 @@ export interface AgentMessage {
   firstTokenAt?: number;
 }
 
+export type AgentModelParamValue = string | number | boolean | null;
+
+export interface AgentModelParams {
+  temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
+  presence_penalty?: number | null;
+  frequency_penalty?: number | null;
+  reasoning_effort?: string | null;
+  [key: string]: AgentModelParamValue | undefined;
+}
+
 export interface AgentSession {
   id: string;
   title: string;
   mode: AgentMode;
   modelId?: string | null;
   providerCode?: string | null;
+  modelParams?: AgentModelParams;
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];

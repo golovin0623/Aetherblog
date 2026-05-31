@@ -7,12 +7,19 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
+)
+
+const (
+	maxSearchTermPatterns = 5
+	noSearchTermPattern   = "\ue000aetherblog-no-search-term\ue000"
 )
 
 // PostRepo 提供对 posts 表及相关 post_tags 关联表的数据访问能力。
@@ -584,35 +591,248 @@ func postSearchDocumentSQL(alias string) string {
 	)
 }
 
+type searchRuneClass int
+
+const (
+	searchRuneSeparator searchRuneClass = iota
+	searchRuneASCII
+	searchRuneCJK
+	searchRuneOtherWord
+)
+
+func classifySearchRune(r rune) searchRuneClass {
+	switch {
+	case r <= unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r)):
+		return searchRuneASCII
+	case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul):
+		return searchRuneCJK
+	case unicode.IsLetter(r) || unicode.IsDigit(r):
+		return searchRuneOtherWord
+	default:
+		return searchRuneSeparator
+	}
+}
+
+func isSearchTokenConnector(r rune) bool {
+	switch r {
+	case '_', '-', '+', '#', '%', '.':
+		return true
+	default:
+		return false
+	}
+}
+
+func derivedSearchTerms(term string) []string {
+	for _, prefix := range []string{"什么是", "怎么", "如何", "怎样", "为何", "为什么"} {
+		if !strings.HasPrefix(term, prefix) {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(term, prefix))
+		if utf8.RuneCountInString(rest) >= 2 {
+			return []string{rest}
+		}
+	}
+	return nil
+}
+
+func splitSearchTerms(raw string) []string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if normalized == "" {
+		return nil
+	}
+
+	terms := make([]string, 0, maxSearchTermPatterns)
+	seen := make(map[string]struct{})
+	var builder strings.Builder
+	lastClass := searchRuneSeparator
+
+	addTerm := func(term string) {
+		if term == "" {
+			return
+		}
+		firstRune, _ := utf8.DecodeRuneInString(term)
+		if runeCount := utf8.RuneCountInString(term); runeCount < 2 && classifySearchRune(firstRune) == searchRuneASCII {
+			return
+		}
+		if _, ok := seen[term]; ok {
+			return
+		}
+		seen[term] = struct{}{}
+		terms = append(terms, term)
+	}
+
+	flush := func() {
+		if builder.Len() == 0 {
+			return
+		}
+		term := strings.Trim(builder.String(), "_-%.")
+		builder.Reset()
+		lastClass = searchRuneSeparator
+		addTerm(term)
+	}
+
+	for _, r := range normalized {
+		if isSearchTokenConnector(r) {
+			if builder.Len() > 0 {
+				builder.WriteRune(r)
+			} else {
+				lastClass = searchRuneSeparator
+			}
+			continue
+		}
+
+		class := classifySearchRune(r)
+		if class == searchRuneSeparator {
+			flush()
+			continue
+		}
+		if builder.Len() > 0 && class != lastClass {
+			flush()
+		}
+		builder.WriteRune(r)
+		lastClass = class
+	}
+	flush()
+
+	baseTerms := append([]string(nil), terms...)
+	for _, term := range baseTerms {
+		for _, derived := range derivedSearchTerms(term) {
+			addTerm(derived)
+		}
+		if len(terms) >= maxSearchTermPatterns {
+			break
+		}
+	}
+
+	if len(terms) > maxSearchTermPatterns {
+		return terms[:maxSearchTermPatterns]
+	}
+	return terms
+}
+
+func buildSearchLikePattern(term string) string {
+	return "%" + dbutil.EscapeLike(strings.ToLower(strings.TrimSpace(term))) + "%"
+}
+
+func buildSearchPublishedArgs(keyword string, limit, offset int) []any {
+	args := []any{keyword, buildSearchLikePattern(keyword)}
+	terms := splitSearchTerms(keyword)
+	for i := 0; i < maxSearchTermPatterns; i++ {
+		if i < len(terms) {
+			args = append(args, buildSearchLikePattern(terms[i]))
+			continue
+		}
+		args = append(args, noSearchTermPattern)
+	}
+	return append(args, limit, offset)
+}
+
+func postSearchLikeAnySQL(column string, start, count int) string {
+	parts := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		parts = append(parts, fmt.Sprintf("%s ILIKE $%d ESCAPE '\\'", column, start+i))
+	}
+	return "(" + strings.Join(parts, " OR ") + ")"
+}
+
+func postSearchTagLikeAnySQL(start, count int) string {
+	parts := make([]string, 0, count*2)
+	for i := 0; i < count; i++ {
+		placeholder := start + i
+		parts = append(parts,
+			fmt.Sprintf("t.name ILIKE $%d ESCAPE '\\'", placeholder),
+			fmt.Sprintf("t.slug ILIKE $%d ESCAPE '\\'", placeholder),
+		)
+	}
+	return strings.Join(parts, " OR ")
+}
+
+func postSearchTagExistsSQL(patternSQL string) string {
+	return fmt.Sprintf(`EXISTS (
+					SELECT 1
+					FROM post_tags pt
+					JOIN tags t ON t.id = pt.tag_id
+					WHERE pt.post_id = p.id
+						AND (%s)
+				)`, patternSQL)
+}
+
+func postSearchTermRankSQL(start, count int) string {
+	parts := make([]string, 0, count*5)
+	for i := 0; i < count; i++ {
+		placeholder := start + i
+		parts = append(parts,
+			fmt.Sprintf("CASE WHEN p.title ILIKE $%d ESCAPE '\\' THEN 0.45 ELSE 0 END", placeholder),
+			fmt.Sprintf("CASE WHEN COALESCE(p.summary,'') ILIKE $%d ESCAPE '\\' THEN 0.15 ELSE 0 END", placeholder),
+			fmt.Sprintf("CASE WHEN COALESCE(p.content_markdown,'') ILIKE $%d ESCAPE '\\' THEN 0.04 ELSE 0 END", placeholder),
+			fmt.Sprintf("CASE WHEN (c.name ILIKE $%d ESCAPE '\\' OR c.slug ILIKE $%d ESCAPE '\\') THEN 0.28 ELSE 0 END", placeholder, placeholder),
+			fmt.Sprintf("CASE WHEN %s THEN 0.28 ELSE 0 END",
+				postSearchTagExistsSQL(postSearchTagLikeAnySQL(placeholder, 1))),
+		)
+	}
+	return "(" + strings.Join(parts, " + ") + ")"
+}
+
+func postSearchTermWhereSQL(start, count int) string {
+	return strings.Join([]string{
+		postSearchLikeAnySQL("p.title", start, count),
+		postSearchLikeAnySQL("COALESCE(p.summary,'')", start, count),
+		postSearchLikeAnySQL("COALESCE(p.content_markdown,'')", start, count),
+		postSearchLikeAnySQL("c.name", start, count),
+		postSearchLikeAnySQL("c.slug", start, count),
+		postSearchTagExistsSQL(postSearchTagLikeAnySQL(start, count)),
+	}, "\n					OR ")
+}
+
 func searchPublishedQuery() string {
 	searchDocument := postSearchDocumentSQL("p")
+	termStart := 3
+	limitPlaceholder := termStart + maxSearchTermPatterns
+	offsetPlaceholder := limitPlaceholder + 1
 	return fmt.Sprintf(`
 		WITH q AS (
-			SELECT plainto_tsquery('simple', lower($1)) AS tsq,
-			       '%%' || lower($2) || '%%' AS like_pat
+			SELECT plainto_tsquery('simple', lower($1)) AS tsq
 		)
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
-			GREATEST(
+			LEAST(
 				ts_rank(
 					to_tsvector('simple', %[1]s),
 					(SELECT tsq FROM q)
 				),
-				CASE WHEN p.title ILIKE (SELECT like_pat FROM q) THEN 0.5 ELSE 0 END,
-				CASE WHEN COALESCE(p.summary,'') ILIKE (SELECT like_pat FROM q) THEN 0.2 ELSE 0 END,
-				CASE WHEN COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q) THEN 0.05 ELSE 0 END
-			) AS rank
+				0.35
+			)
+			+ CASE WHEN p.title ILIKE $2 ESCAPE '\' THEN 2.4 ELSE 0 END
+			+ CASE WHEN COALESCE(p.summary,'') ILIKE $2 ESCAPE '\' THEN 0.8 ELSE 0 END
+			+ CASE WHEN COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\' THEN 0.18 ELSE 0 END
+			+ CASE WHEN (c.name ILIKE $2 ESCAPE '\' OR c.slug ILIKE $2 ESCAPE '\') THEN 1.2 ELSE 0 END
+			+ CASE WHEN %[2]s THEN 1.0 ELSE 0 END
+			+ %[3]s AS rank
 		FROM posts p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			AND p.password IS NULL
 			AND (
 				to_tsvector('simple', %[1]s)
 					@@ (SELECT tsq FROM q)
-				OR p.title ILIKE (SELECT like_pat FROM q)
-				OR COALESCE(p.summary,'') ILIKE (SELECT like_pat FROM q)
-				OR COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q)
-			)
-		ORDER BY rank DESC, p.published_at DESC NULLS LAST
-		LIMIT $3 OFFSET $4`, searchDocument)
+				OR p.title ILIKE $2 ESCAPE '\'
+				OR COALESCE(p.summary,'') ILIKE $2 ESCAPE '\'
+				OR COALESCE(p.content_markdown,'') ILIKE $2 ESCAPE '\'
+				OR c.name ILIKE $2 ESCAPE '\'
+				OR c.slug ILIKE $2 ESCAPE '\'
+				OR %[2]s
+				OR (
+					%[4]s
+					)
+				)
+			ORDER BY rank DESC, p.published_at DESC NULLS LAST
+			LIMIT $%[5]d OFFSET $%[6]d`,
+		searchDocument,
+		postSearchTagExistsSQL(`t.name ILIKE $2 ESCAPE '\' OR t.slug ILIKE $2 ESCAPE '\'`),
+		postSearchTermRankSQL(termStart, maxSearchTermPatterns),
+		postSearchTermWhereSQL(termStart, maxSearchTermPatterns),
+		limitPlaceholder,
+		offsetPlaceholder,
+	)
 }
 
 // SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
@@ -626,7 +846,7 @@ func searchPublishedQuery() string {
 // content_markdown 本身仍完整保存，ILIKE 兜底也继续覆盖全文。
 func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
 	var rows []SearchResultRow
-	err := r.db.SelectContext(ctx, &rows, searchPublishedQuery(), keyword, dbutil.EscapeLike(keyword), limit, offset)
+	err := r.db.SelectContext(ctx, &rows, searchPublishedQuery(), buildSearchPublishedArgs(keyword, limit, offset)...)
 	return rows, err
 }
 

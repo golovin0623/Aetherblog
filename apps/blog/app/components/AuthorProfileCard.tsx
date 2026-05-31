@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -9,6 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
+import { useSiteSettings } from './SiteSettingsProvider';
+import AvatarImage from './AvatarImage';
 
 // SECURITY (VULN-098): 限制 `social_links` JSON 解析的大小，避免恶意超大串在
 // 受害者浏览器里递归解析消耗内存；外加成员数上限防御 DoS。
@@ -189,11 +190,20 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
 
+  // 布局已在 SSR 阶段 fetch 好 settings 并经 context 下发；用它做 initialData，
+  // 让头像 URL 首帧即可用，消除「客户端再 fetch 一次 settings」的瀑布与
+  // 「先 Gravatar 占位 → 切真头像」的二次加载闪烁。
+  const { settings: ssrSettings } = useSiteSettings();
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
     enabled: !profile,
-    staleTime: 10 * 60 * 1000 // 10 分钟
+    staleTime: 10 * 60 * 1000, // 10 分钟
+    initialData: !profile && ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
+    // 视 SSR 注水数据为已过期：首帧即用（保住"无瀑布"），但客户端仍后台
+    // revalidate。这样当 SSR 因后端不可达回落到 DEFAULT_SITE_SETTINGS 时，
+    // 浏览器（/api 代理可达）能纠正回真实头像/作者名，而非被钉在默认值 10 分钟。
+    initialDataUpdatedAt: 0,
   });
 
   const { data: siteStats } = useQuery({
@@ -240,15 +250,14 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <div className="relative w-full h-full rounded-full overflow-hidden outline-none focus:outline-none shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6),0_4px_14px_-4px_rgba(0,0,0,0.4)] bg-[var(--bg-secondary)] transition-all duration-300">
-            <Image
+            <AvatarImage
               src={avatar}
               alt={name}
-              fill
               sizes="96px"
               className="object-cover outline-none select-none"
               priority
               draggable={false}
-              aria-hidden="true"
+              ariaHidden
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
           </div>

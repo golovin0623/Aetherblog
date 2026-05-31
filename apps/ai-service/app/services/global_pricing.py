@@ -24,6 +24,7 @@ from typing import Any
 
 import asyncpg
 
+from app.services.pricing_catalog import CatalogEntry, get_catalog
 from app.services.provider_registry import (
     _encode_json,
     _parse_json,
@@ -64,6 +65,35 @@ class GlobalPricingCoverage:
     global_cached_input_per_1m: float | None
     currency: str | None
     providers: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PricingSyncProposal:
+    """一条「把数据源价格同步进全局表」的预览提案。"""
+    model_id: str
+    display_name: str | None
+    matched_key: str | None        # 命中的数据源 key（None = 未匹配）
+    match_form: str | None         # 命中所用的归一化形式
+    source_input_per_1m: float | None
+    source_output_per_1m: float | None
+    source_cached_input_per_1m: float | None
+    current_input_per_1m: float | None
+    current_output_per_1m: float | None
+    current_cached_input_per_1m: float | None
+    currency: str | None
+    has_global: bool
+    status: str                    # new | update | unchanged | no_match
+    will_apply: bool               # 按当前 overwrite 策略是否会被写入
+
+
+@dataclass
+class PricingSyncResult:
+    source: str
+    total_candidates: int
+    matched: int
+    created: int
+    updated: int
+    skipped: int
 
 
 def _model_input_per_1m(row: dict[str, Any]) -> float | None:
@@ -324,11 +354,16 @@ class GlobalPricingService:
     # 覆盖率视图：所有 distinct model_id × 全局表
     # ------------------------------------------------------------
 
-    async def coverage(self) -> list[GlobalPricingCoverage]:
-        """以「全部 ai_models 中出现过的 distinct model_id」为左表，
+    async def coverage(self, *, enabled_only: bool = True) -> list[GlobalPricingCoverage]:
+        """以「ai_models 中出现过的 distinct model_id」为左表，
         join 全局价格表，给出每个 model_id 的覆盖与同步状况。
 
         前端用这张表实现「已配置 / 未配置 / 部分脱锚」三档过滤。
+
+        默认（``enabled_only=True``）仅统计「供应商启用」的模型 —— 即
+        ``m.is_enabled AND p.is_enabled``（与 provider_registry 取用模型的口径一致），
+        因为全量模型目录里绝大多数是从远程拉取但从未启用的条目，对定价维护没有意义。
+        传 ``enabled_only=False`` 可退回全量目录视图。
         """
         async with self.pool.acquire() as conn:
             model_rows = await conn.fetch(
@@ -337,7 +372,9 @@ class GlobalPricingService:
                        m.output_cost_per_1k, m.capabilities, p.code AS provider_code
                 FROM ai_models m
                 JOIN ai_providers p ON p.id = m.provider_id
-                """
+                WHERE ($1 = FALSE OR (m.is_enabled = TRUE AND p.is_enabled = TRUE))
+                """,
+                enabled_only,
             )
             global_rows = await conn.fetch(
                 """
@@ -415,6 +452,200 @@ class GlobalPricingService:
                 )
             )
         return out
+
+    # ------------------------------------------------------------
+    # 自动同步：数据源价格目录（LiteLLM）→ 全局表
+    # ------------------------------------------------------------
+
+    @staticmethod
+    def _proposal_status(
+        entry: CatalogEntry, cov: GlobalPricingCoverage
+    ) -> str:
+        """与全局现值比对，给出 new / update / unchanged。
+
+        只比对数据源「确有提供」的子价（input/output/cached）；数据源未提供
+        的字段（值为 None）由 apply 路径保留操作员现值、不视为差异 —— 否则
+        会与「保留缺失项」的写入语义打架，导致 status 永远停在 update、反复
+        apply 只刷 updated_at 而数值不收敛。
+        """
+        if not cov.has_global:
+            return "new"
+        same_numbers = True
+        if entry.input_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.input_per_1m, cov.global_input_per_1m
+            )
+        if entry.output_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.output_per_1m, cov.global_output_per_1m
+            )
+        if entry.cached_input_per_1m is not None:
+            same_numbers = same_numbers and _approx_equal(
+                entry.cached_input_per_1m, cov.global_cached_input_per_1m
+            )
+        # 数据源恒为 USD；现值若是别的币种，即使数字相同也算需要更新。
+        same_currency = (cov.currency or "USD").upper() == "USD"
+        return "unchanged" if (same_numbers and same_currency) else "update"
+
+    async def preview_catalog_sync(
+        self,
+        *,
+        enabled_only: bool = True,
+        overwrite_existing: bool = False,
+        source: str = "litellm",
+    ) -> tuple[str, int, list[PricingSyncProposal]]:
+        """把（默认启用的）model_id 逐个匹配数据源价格，给出 diff 预览。
+
+        Returns: (source, source_model_count, proposals)
+        """
+        catalog = get_catalog(source)
+        coverage_rows = await self.coverage(enabled_only=enabled_only)
+
+        proposals: list[PricingSyncProposal] = []
+        for cov in coverage_rows:
+            entry, form = catalog.match(cov.model_id)
+            if entry is None:
+                proposals.append(
+                    PricingSyncProposal(
+                        model_id=cov.model_id,
+                        display_name=cov.display_name,
+                        matched_key=None,
+                        match_form=None,
+                        source_input_per_1m=None,
+                        source_output_per_1m=None,
+                        source_cached_input_per_1m=None,
+                        current_input_per_1m=cov.global_input_per_1m,
+                        current_output_per_1m=cov.global_output_per_1m,
+                        current_cached_input_per_1m=cov.global_cached_input_per_1m,
+                        currency=cov.currency,
+                        has_global=cov.has_global,
+                        status="no_match",
+                        will_apply=False,
+                    )
+                )
+                continue
+
+            status = self._proposal_status(entry, cov)
+            will_apply = status == "new" or (status == "update" and overwrite_existing)
+            proposals.append(
+                PricingSyncProposal(
+                    model_id=cov.model_id,
+                    display_name=cov.display_name,
+                    matched_key=entry.source_key,
+                    match_form=form,
+                    source_input_per_1m=entry.input_per_1m,
+                    source_output_per_1m=entry.output_per_1m,
+                    source_cached_input_per_1m=entry.cached_input_per_1m,
+                    current_input_per_1m=cov.global_input_per_1m,
+                    current_output_per_1m=cov.global_output_per_1m,
+                    current_cached_input_per_1m=cov.global_cached_input_per_1m,
+                    currency=cov.currency,
+                    has_global=cov.has_global,
+                    status=status,
+                    will_apply=will_apply,
+                )
+            )
+        return catalog.source, catalog.model_count, proposals
+
+    async def apply_catalog_sync(
+        self,
+        *,
+        model_ids: list[str] | None = None,
+        enabled_only: bool = True,
+        overwrite_existing: bool = False,
+        source: str = "litellm",
+    ) -> PricingSyncResult:
+        """把数据源价格写入全局表。
+
+        服务端按 model_id 重新匹配数据源价格（不信任客户端传来的数值）。
+        ``model_ids`` 语义：``None``（省略）= 同步全部可同步项（供编程调用）；
+        显式给出列表 = 只同步列表里的 model_id；显式空列表 ``[]`` = 不同步任何项
+        （前端「未勾选任何项」即此意，按钮也会禁用，故 ``[]`` 不会误同步全部）。
+        已有全局价格的 model_id：仅在 ``overwrite_existing=True`` 时更新，
+        且更新时保留操作员维护的 notes / display_name。
+        """
+        catalog = get_catalog(source)
+        coverage_rows = await self.coverage(enabled_only=enabled_only)
+        selected = set(model_ids) if model_ids is not None else None
+
+        # overwrite 时一次性批量取回待更新行的元数据，避免循环内 N+1 查询。
+        existing_meta: dict[str, dict[str, Any]] = {}
+        if overwrite_existing:
+            targets = [
+                cov.model_id
+                for cov in coverage_rows
+                if cov.has_global and (selected is None or cov.model_id in selected)
+            ]
+            if targets:
+                async with self.pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        """
+                        SELECT model_id, display_name, pricing, notes
+                        FROM ai_global_pricing
+                        WHERE model_id = ANY($1::text[])
+                        """,
+                        targets,
+                    )
+                for r in rows:
+                    existing_meta[r["model_id"]] = {
+                        "display_name": r["display_name"],
+                        "pricing": _parse_json(r["pricing"]),
+                        "notes": r["notes"],
+                    }
+
+        matched = created = updated = skipped = 0
+        for cov in coverage_rows:
+            if selected is not None and cov.model_id not in selected:
+                continue
+            entry, _form = catalog.match(cov.model_id)
+            if entry is None:
+                continue
+            matched += 1
+
+            if cov.has_global:
+                if not overwrite_existing:
+                    skipped += 1
+                    continue
+                if self._proposal_status(entry, cov) == "unchanged":
+                    skipped += 1
+                    continue
+                # 保留操作员维护的元数据：notes / display_name + pricing JSON 里的
+                # 扩展字段（custom units / audioInput / 其它非 LiteLLM 键）。
+                # 标准 input/output/cached 单价由 upsert 内的
+                # _sync_model_pricing_capabilities 用下面的数据源价格刷新。
+                existing = existing_meta.get(cov.model_id)
+                display_name = existing["display_name"] if existing else cov.display_name
+                notes = existing["notes"] if existing else None
+                pricing = dict(existing["pricing"]) if existing else {}
+                pricing["currency"] = "USD"
+            else:
+                display_name = cov.display_name
+                notes = None
+                pricing = {"currency": "USD"}
+
+            await self.upsert(
+                model_id=cov.model_id,
+                display_name=display_name,
+                currency="USD",
+                input_cost_per_1m=entry.input_per_1m,
+                output_cost_per_1m=entry.output_per_1m,
+                cached_input_cost_per_1m=entry.cached_input_per_1m,
+                pricing=pricing,
+                notes=notes,
+            )
+            if cov.has_global:
+                updated += 1
+            else:
+                created += 1
+
+        return PricingSyncResult(
+            source=catalog.source,
+            total_candidates=len(coverage_rows),
+            matched=matched,
+            created=created,
+            updated=updated,
+            skipped=skipped,
+        )
 
     # ------------------------------------------------------------
     # 批量应用：全局 → 多 provider

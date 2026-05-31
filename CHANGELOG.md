@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 积压 PR 评审合并：树构建 O(N) 优化 + ConfirmModal 无障碍 (2026-05-30, branch claude/pr-review-consolidation-PH4fL)
+
+**背景：** 一次性消化 9 个积压自动化 PR（#713/#720/#722/#723/#730/#732/#735/#739/#742），逐一核验是否合理、是否与现网代码重复，并把各 PR 上的 code-review 建议一并分析后择优合并到本 PR。
+
+**Changed — Backend (Go):**
+- `internal/service/category_service.go` — `buildTree` 重写为 `buildCategoryTree`：用哈希表按 `parent_id` 预分组 + 自顶向下递归，时间复杂度从 O(N²) 降到 O(N)。采纳 PR#713/#742 评审：命名与 `buildFolderTree` 对齐、map 预分配容量、用 roots/childrenMap 显式分离避免 `0` 魔术值导致的无限递归风险（取代 #730/#739/#742 的次优实现）。
+- `internal/service/folder_service.go` — `buildFolderTree` 同样改为「先分组、后递归」O(N) 方案，**修复原两轮指针挂载在值拷贝下丢失孙级及更深层级嵌套节点的隐蔽 bug**（PR#713）。
+- `internal/service/tree_builder_test.go` — 新增回归测试，锁定多级嵌套正确性与深层文件夹树不丢节点。
+
+**Changed — Frontend (UI):**
+- `packages/ui/src/components/ConfirmModal.tsx` — 采纳 PR#722：所有按钮补 `type="button"`（避免在表单内误触发提交）、关闭按钮加 `aria-label="关闭"`、全部按钮加 `focus-visible` 焦点环（offset 色对齐模态 `--bg-popover` 表面）。`design-system:check` 保持 0 error。
+
+**评审结论（不采纳/无需动作）：**
+- PR#735/#732/#723（LIKE 通配符转义）—— 现网 `kb_service.go` / `kp_repo.go` 已应用 `dbutil.EscapeLike`，**改动已在 main，纯重复**，直接关闭；#723 的 `pg_trgm` 索引建议涉及 DB 迁移、属性能增强，超出本次范围另议。
+- PR#720（反向代理路径穿越「改用 `c.Param("*")`」）—— **判定为安全回退，拒绝合并**。经 Echo v4.15.1 实测：`c.Param("*")` 会把 `%3F`(`?`) / `%23`(`#`) 解码为字面量，下游 HTTP 客户端会误解析为查询串/片段分隔符，造成参数注入 / SSRF 绕过；现网 `EscapedPath()` 方案刻意保留原始编码、深度防御探测 `..`，本就更安全。
+
+**📄 文档影响：** 已更新 `CHANGELOG.md`；树构建为内部纯函数重构，未改 API/schema，无需更新 `architecture.md` / `api-handlers.md`。
+
+### Added — 全局价格「从 LiteLLM 一键同步」(2026-05-28, branch claude/vendor-enabled-model-defaults-N3nal)
+
+**背景：** 中转站（NewAPI / one-api 等）按各家官方文档维护「绝对价基准」，本质都参照 BerriAI/litellm 的 `model_prices_and_context_window.json`。本服务已把 `litellm` 列为运行时依赖，`litellm.model_cost`（~1000+ 模型，USD/token）离线即可用 —— 无需任何网络请求或手动维护本地价目表。运维不再需要逐个 model_id 手填基准价。
+
+**Added — AI Service (Python):**
+- `app/services/pricing_catalog.py` — 价格目录加载与归一化匹配。把 `litellm.model_cost` 转成 `model_id → CatalogEntry`（USD/token → USD/1M，`<0` 视为无数据、`0` 保留为合法免费价），跳过 `sample_spec` 文档条目。匹配级联：精确 → 去供应商前缀 → 去日期/版本后缀（`-2024-08-06`/`-20240806`/`-1106`/`-0613`/`-latest` 等 3-4 位 MMDD/年份快照，单数字版本号如 `gpt-4` 不截）→ 大小写不敏感；纯函数 `candidate_forms` / `PricingCatalog.match` 不依赖 litellm 便于单测。进程内缓存（表导入后静态）。
+- `app/services/global_pricing.py` — `preview_catalog_sync()` 出 diff（每行 status = new / update / unchanged / no_match）；`apply_catalog_sync()` 按 `model_ids` 勾选范围写入全局表，`overwrite_existing=false` 只补「未配置」项、true 才覆盖且**保留已有 notes / display_name**。新增 `PricingSyncProposal` / `PricingSyncResult` dataclass。
+- `app/api/routes/providers.py` — `POST /global-pricing/catalog/preview` + `POST /global-pricing/catalog/sync`；两条声明在 `/{model_id:path}` 之前避免被 path 转换器吞掉；数据源不可用返回 503。
+- `app/schemas/provider.py` — `PricingCatalogSyncRequest` / `PricingSyncProposalResponse` / `PricingCatalogPreviewResponse` / `PricingCatalogSyncResponse`。
+
+**Added — Admin (React):**
+- `pages/global-pricing/PricingSyncDialog.tsx` — 同步弹窗：进入即拉预览，按状态排序的 diff 表（新增价绿、更新价橙+划掉旧值、已一致灰、无匹配琥珀），可勾选 + 全选、「覆盖已配置」开关（切换实时重拉预览并重置勾选），底部显示已选数与未匹配数。
+- `GlobalPricingPage.tsx` 头部新增「同步价格」按钮；`hooks.ts` 新增 `usePreviewPricingCatalogSync` / `useApplyPricingCatalogSync`；`aiProviderService.ts` 新增 `previewPricingCatalogSync` / `applyPricingCatalogSync` 及相关类型。
+
+**📄 文档影响：** 已更新 `.claude/docs/api-handlers.md`（AI 节登记两条 catalog 路由）。
+
+### Fixed — 知识库打开即 500：`knowledge_bases` 表缺失（2026-05-26, branch claude/kb-opening-error-YDBBe）
+
+**现象：** admin 进入「智能 · 知识库」时 `GET /api/v1/admin/kbs` 返回 500，postgres 日志 `relation "knowledge_bases" does not exist`（`kb_repo.go` ListAll 的 `SELECT ... FROM knowledge_bases WHERE is_archived = FALSE`）。
+
+**根因：** commit `8a70196` 将 KB 迁移块整体 **+3** 重编号（`000055_knowledge_bases` → `000058_knowledge_bases`，`000058_kb_embedding_hnsw` → `000061_kb_embedding_hnsw` 等）。golang-migrate 只在 `schema_migrations` 记录单个整数 version，对「同槽位文件内容已变」无感知 —— version ledger 已越过 58、或 backend 镜像被带外 `docker compose up -d`（绕过 `deploy.sh` 的 pre-deploy `migrate up`）的环境，新槽位 58 的建表语句永不执行，`knowledge_bases` 始终不存在。
+
+**Added — Migration:**
+- `000067_kb_schema_repair` —— 幂等前向修复迁移。用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `pg_constraint` 守卫 FK / `ON CONFLICT` 把 000058+000059+000060+000061 收敛后的 KB 最终 schema 重建：缺失则补齐，已正确迁移则全程 no-op。`embedding` 列直接建为不锁维度 `vector`；维度桶 partial HNSW 索引复用 000061。`down` 为空（teardown 归 000058，回退一步不误删整库）。下次 `deploy.sh` 的 pre-deploy `migrate up` 自动生效。
+
 ### Aether Knowledge (Atlas) Phase 3 MVP — AI 建议 Inbox + ai-service stub (2026-05-26, branch feat/knowledge-base)
 
 按 `docs/plan/task-aether-knowledge-system.md` Phase 3 MVP 落地: 红线 C3-1（AI 产出永远先入 inbox，不直接落 KP/Relation 表）+ 用户 accept 链路 + ai-service 启发式 stub。

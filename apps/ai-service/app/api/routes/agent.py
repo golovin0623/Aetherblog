@@ -83,6 +83,10 @@ class AgentChatRequest(BaseModel):
     # 在选中的 KB 内做语义召回（每 KB 的 active profile 决定 model + top_k + threshold），
     # 把命中的 chunk 拼成额外 system 段注入给 LLM。
     kbIds: list[int] | None = Field(default=None, max_length=10)
+    # 前端侧栏按模型 capabilities.parameters / settings.extendParams 生成的
+    # 本轮模型参数覆盖。只允许少量兼容字段进入 LiteLLM 请求，避免把任意 JSON
+    # 直接透传给上游。
+    modelParams: dict[str, Any] | None = None
 
 
 class AgentModelItem(BaseModel):
@@ -98,6 +102,8 @@ class AgentModelItem(BaseModel):
     abilities: dict[str, bool] = Field(default_factory=dict)
     extendParams: list[str] = Field(default_factory=list)
     settings: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    disabledParams: list[str] = Field(default_factory=list)
     source: str | None = None
     releasedAt: str | None = None
     description: str | None = None
@@ -182,6 +188,25 @@ def _resolve_agent_extend_params(settings: dict[str, Any]) -> list[str]:
     return params
 
 
+def _resolve_agent_disabled_params(settings: dict[str, Any]) -> list[str]:
+    raw = settings.get("disabledParams")
+    if not isinstance(raw, list):
+        return []
+    params: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if value and value not in params:
+            params.append(value)
+    return params
+
+
+def _resolve_agent_model_parameters(caps: dict[str, Any]) -> dict[str, Any]:
+    parameters = caps.get("parameters")
+    return parameters if isinstance(parameters, dict) else {}
+
+
 def _resolve_agent_context_window(row: Any, caps: dict[str, Any]) -> int | None:
     return (
         _parse_int(row["context_window"])
@@ -232,6 +257,7 @@ _GEMINI_THINKING_EXTRA_BODY = {
     # 这里必须嵌套更深一层。
     "extra_body": {"google": {"thinking_config": {"include_thoughts": True}}},
 }
+_AGENT_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 
 # ============================================================================
@@ -284,21 +310,122 @@ def _is_gemini_model(model: str | None) -> bool:
     return _bare_model_id(model).lower().startswith("gemini-")
 
 
+def _coerce_float_param(
+    params: dict[str, Any] | None,
+    key: str,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float | None:
+    if not params or key not in params:
+        return None
+    value = params.get(key)
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not (minimum <= parsed <= maximum):
+        return None
+    return parsed
+
+
+def _coerce_int_param(
+    params: dict[str, Any] | None,
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int | None:
+    if not params or key not in params:
+        return None
+    value = params.get(key)
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not (minimum <= parsed <= maximum):
+        return None
+    return parsed
+
+
+def _coerce_reasoning_effort(params: dict[str, Any] | None) -> str | None:
+    if not params or "reasoning_effort" not in params:
+        return None
+    value = str(params.get("reasoning_effort") or "").strip().lower()
+    return value if value in _AGENT_REASONING_EFFORTS else None
+
+
+def _model_omits_sampling(model: str) -> bool:
+    # Reuse the central LiteLLM compatibility helper without importing another
+    # private symbol: locked sampling models will drop temperature from kwargs.
+    return "temperature" not in _completion_kwargs(
+        model=model,
+        temperature=0.7,
+        max_tokens=None,
+    )
+
+
 def _agent_completion_kwargs(
     *,
     model: str,
     temperature: float | None,
     max_tokens: int | None,
+    model_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    override_temperature = _coerce_float_param(
+        model_params,
+        "temperature",
+        minimum=0,
+        maximum=2,
+    )
+    override_max_tokens = _coerce_int_param(
+        model_params,
+        "max_tokens",
+        minimum=1,
+        maximum=131_072,
+    )
+    override_top_p = _coerce_float_param(
+        model_params,
+        "top_p",
+        minimum=0,
+        maximum=1,
+    )
+    override_presence_penalty = _coerce_float_param(
+        model_params,
+        "presence_penalty",
+        minimum=-2,
+        maximum=2,
+    )
+    override_frequency_penalty = _coerce_float_param(
+        model_params,
+        "frequency_penalty",
+        minimum=-2,
+        maximum=2,
+    )
+    override_reasoning_effort = _coerce_reasoning_effort(model_params)
+
     kwargs = _completion_kwargs(
         model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
+        temperature=override_temperature if override_temperature is not None else temperature,
+        max_tokens=override_max_tokens if override_max_tokens is not None else max_tokens,
     )
+    if not _model_omits_sampling(model):
+        if override_top_p is not None:
+            kwargs["top_p"] = override_top_p
+        if override_presence_penalty is not None:
+            kwargs["presence_penalty"] = override_presence_penalty
+        if override_frequency_penalty is not None:
+            kwargs["frequency_penalty"] = override_frequency_penalty
+    if override_reasoning_effort:
+        kwargs["reasoning_effort"] = override_reasoning_effort
     if _is_gemini_model(model):
         # Google 兼容 OpenAI 的 API 要求 include_thoughts=True 来返回
         # 可见的思维摘要；reasoning_effort 仅控制预算/级别。
-        kwargs["reasoning_effort"] = "low"
+        kwargs.setdefault("reasoning_effort", "low")
         kwargs["extra_body"] = _GEMINI_THINKING_EXTRA_BODY
         # LiteLLM 在转发兼容 OpenAI 的请求前验证参数。
         # Gemini 的兼容层支持这些字段，即使 LiteLLM 通过
@@ -1015,6 +1142,8 @@ async def list_agent_models(
                 abilities=_resolve_agent_model_abilities(caps),
                 extendParams=_resolve_agent_extend_params(settings),
                 settings=settings,
+                parameters=_resolve_agent_model_parameters(caps),
+                disabledParams=_resolve_agent_disabled_params(settings),
                 source=caps.get("source") if isinstance(caps.get("source"), str) else None,
                 releasedAt=(
                     caps.get("released_at")
@@ -1137,6 +1266,7 @@ async def agent_chat(
                 model=resolved.model,
                 temperature=resolved.temperature,
                 max_tokens=resolved.max_tokens,
+                model_params=payload.modelParams,
             )
             try:
                 stream = await acompletion(

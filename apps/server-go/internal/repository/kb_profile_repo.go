@@ -74,8 +74,8 @@ type KBProfileCreateRequest struct {
 	TopK               int
 	// nil → repo 用 0.200 兜底；非 nil → 即便是 0 也按传入值写入。
 	// 这是为了让 admin 能合法设置 scoreThreshold=0（拉满召回不做相似度过滤）。
-	ScoreThreshold     *float64
-	Status             string // 默认 'shadow'；首次创建直接传 'active' 可一步到位
+	ScoreThreshold *float64
+	Status         string // 默认 'shadow'；首次创建直接传 'active' 可一步到位
 }
 
 // Create 写入新 profile 并返回。
@@ -137,15 +137,12 @@ func (r *KBProfileRepo) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-// Activate 蓝绿激活：在同一事务里
-//   1. 当前 active 的 profile（如有）翻为 deprecated
-//   2. 目标 profile 翻为 active
-//   3. knowledge_bases.active_profile_id 指向目标
+// Activate 切回已具备 embeddings 的 profile：在同一事务里
+//  1. 当前 active profile 与 embeddings 翻为 deprecated
+//  2. 目标 profile 翻为 active，并把其 shadow/deprecated embeddings 提升为 active
+//  3. knowledge_bases.active_profile_id 指向目标
 //
-// 简单激活：仅指针切换，不重写 embeddings。当 shadow profile 已经写好了 embeddings
-// （比如经过 ActivateWithShadow 的 reindex 阶段），调用本方法做最终切换。
-//
-// 注意：partial unique index ``uq_kb_profile_one_active`` 要求同一 kb 任意时刻
+// 注意：partial unique index uq_kb_profile_one_active 要求同一 kb 任意时刻
 // 至多一行 active。本事务里先把旧 active 翻成 deprecated 再把新 active 翻起来，
 // 满足该约束。
 func (r *KBProfileRepo) Activate(ctx context.Context, kbID, targetProfileID int64) error {
@@ -154,13 +151,36 @@ func (r *KBProfileRepo) Activate(ctx context.Context, kbID, targetProfileID int6
 		return err
 	}
 	defer tx.Rollback()
-	// 旧 active → deprecated
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE kb_profiles SET status='deprecated', updated_at=CURRENT_TIMESTAMP
-         WHERE kb_id=$1 AND status='active' AND id <> $2`,
-		kbID, targetProfileID); err != nil {
-		return fmt.Errorf("deprecate old active: %w", err)
+
+	var oldActive sql.NullInt64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM kb_profiles WHERE kb_id=$1 AND status='active' AND id <> $2 LIMIT 1`,
+		kbID, targetProfileID).Scan(&oldActive); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("locate old active profile: %w", err)
 	}
+
+	if oldActive.Valid {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE kb_profiles SET status='deprecated', updated_at=CURRENT_TIMESTAMP WHERE id=$1`,
+			oldActive.Int64); err != nil {
+			return fmt.Errorf("deprecate old active: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE kb_embeddings SET status='deprecated' WHERE profile_id=$1 AND status='active'`,
+			oldActive.Int64); err != nil {
+			return fmt.Errorf("deprecate old embeddings: %w", err)
+		}
+	}
+
+	// 目标 profile 可能来自蓝绿迁移留下的 shadow rows，或来自旧 active 被切走后
+	// 保留的 deprecated rows；切换 profile 时必须同步提升 embeddings，否则召回查询
+	// 的 `ke.status = 'active'` 会看不到任何内容。
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE kb_embeddings SET status='active' WHERE profile_id=$1 AND status IN ('shadow', 'deprecated')`,
+		targetProfileID); err != nil {
+		return fmt.Errorf("promote target embeddings: %w", err)
+	}
+
 	// 目标 → active
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE kb_profiles SET status='active', updated_at=CURRENT_TIMESTAMP
@@ -178,9 +198,9 @@ func (r *KBProfileRepo) Activate(ctx context.Context, kbID, targetProfileID int6
 }
 
 // CommitBlueGreen 在 shadow embeddings 全部写入后执行的最终切换事务：
-//   1. 旧 active profile → deprecated；旧 active kb_embeddings → deprecated
-//   2. 目标 shadow profile → active；目标 shadow kb_embeddings → active
-//   3. knowledge_bases.active_profile_id 指向目标
+//  1. 旧 active profile → deprecated；旧 active kb_embeddings → deprecated
+//  2. 目标 shadow profile → active；目标 shadow kb_embeddings → active
+//  3. knowledge_bases.active_profile_id 指向目标
 //
 // 这是真正的"零切换窗口"蓝绿切换 —— 整套表的同时翻转保证搜索流量永远落在
 // 一致的 (profile, embeddings) 对上。

@@ -94,11 +94,13 @@ async def semantic_search(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    # 解析为真实使用的路由模型（而非过期的环境默认值），让用量日志 /
-    # 指标反映实际运行的模型。
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
     try:
-        results = await vector_store.semantic_search(q, limit)
+        # 语义搜索必须使用 active search profile 的模型；否则查询向量和索引向量
+        # 可能来自不同 embedding 模型，召回会稳定返回空。
+        profile = await vector_store.get_active_profile()
+        model = profile.model_id
+        results = await vector_store.semantic_search(q, limit, profile=profile)
         return ApiResponse(data=SemanticSearchData(results=results))
     except Exception as exc:
         error_code = str(exc)
@@ -138,7 +140,7 @@ async def reindex(
     """
     start_time = time.perf_counter()
     error_code = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
     try:
         if profileCode:
             # 蓝绿模式：把目标 profile 当成 shadow 写
@@ -148,6 +150,7 @@ async def reindex(
                     status_code=404,
                     detail=f"Profile '{profileCode}' 不存在",
                 )
+            model = profile.model_id
             target_status = "active" if profile.status == "active" else "shadow"
             async with pool.acquire() as conn:
                 rows = await conn.fetch(
@@ -190,6 +193,8 @@ async def reindex(
                 "target_status": target_status,
             }
         else:
+            profile = await vector_store.get_active_profile()
+            model = profile.model_id
             result = await vector_store.reindex()
         return ApiResponse(data=result)
     except Exception as exc:
@@ -234,7 +239,8 @@ async def index_post(
     _logger = _logging.getLogger("ai-service")
     start_time = time.perf_counter()
     error_code: str | None = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
+    skip_wrapper_usage = False
     try:
         if req.action == "delete":
             result = await vector_store.delete_post_embedding(req.postId)
@@ -254,6 +260,9 @@ async def index_post(
                     detail="Post is not indexable (must exist and not deleted)",
                 )
             _enforce_content_limit(req.content or "")
+            profile = await vector_store.get_active_profile()
+            model = profile.model_id
+            index_usage_endpoint = request.url.path
             result = await vector_store.upsert_post_embedding(
                 post_id=req.postId,
                 title=req.title or "",
@@ -261,8 +270,14 @@ async def index_post(
                 content=req.content or "",
                 metadata=req.metadata or {},
                 timeout_sec=req.timeoutSec,
+                profile=profile,
+                user_id=user.user_id,
+                usage_endpoint=index_usage_endpoint,
+                request_id=getattr(request.state, "request_id", None),
             )
+            model = str(result.get("model_id") or model)
             request_text = req.content or ""
+            skip_wrapper_usage = True
         return ApiResponse(data=result)
     except HTTPException as exc:
         # 保留原始的 FastAPI 异常（如输入校验 4xx 等）
@@ -322,19 +337,20 @@ async def index_post(
         )
         raise HTTPException(status_code=http_code, detail=f"{user_msg}: {error_msg[:200]}")
     finally:
-        await _log_usage(
-            request=request,
-            metrics=metrics,
-            usage_logger=usage_logger,
-            user_id=user.user_id,
-            model=model,
-            request_text=request_text if "request_text" in locals() else "",
-            response_text="",
-            start_time=start_time,
-            success=error_code is None,
-            cached=False,
-            error_code=error_code,
-        )
+        if not skip_wrapper_usage:
+            await _log_usage(
+                request=request,
+                metrics=metrics,
+                usage_logger=usage_logger,
+                user_id=user.user_id,
+                model=model,
+                request_text=request_text if "request_text" in locals() else "",
+                response_text="",
+                start_time=start_time,
+                success=error_code is None,
+                cached=False,
+                error_code=error_code,
+            )
 
 
 @router.get("/api/v1/search/semantic/internal", response_model=ApiResponse[SemanticSearchData])
@@ -351,14 +367,16 @@ async def semantic_search_internal(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    model = await vector_store.llm.resolve_embedding_model_id()
+    model = "unknown"
     user_id = "system"
     if hasattr(user, "user_id"):
         user_id = user.user_id
     elif isinstance(user, dict) and user.get("sub"):
         user_id = str(user["sub"])
     try:
-        results = await vector_store.semantic_search(q, limit)
+        profile = await vector_store.get_active_profile()
+        model = profile.model_id
+        results = await vector_store.semantic_search(q, limit, profile=profile)
         return ApiResponse(data=SemanticSearchData(results=results))
     except Exception as exc:
         error_code = str(exc)

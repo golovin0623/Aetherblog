@@ -211,9 +211,19 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 按 dim × status='active' 创建 partial HNSW 索引：768 / 1024 / 1536 使用 vector_cosine_ops；3072 必须走 halfvec_cosine_ops（pgvector HNSW vector 上限 2000，halfvec 上限 4000）。> 4000 维当前 pgvector 不支持 HNSW，召回退化为顺序扫描；建议改用主流维度。
 
+> ⚠️ **编号已变更（commit `8a70196`）：** 上述 KB 区块（本节标题里的 `000054`～`000058`）后来被整体 **+3** 重新编号为磁盘上的 `000057`～`000061`（`000057_media_folder_is_system` / `000058_knowledge_bases` / `000059_kb_default_profiles` / `000060_kb_embedding_unconstrained` / `000061_kb_embedding_hnsw`），为 Notes（000054）等迁移让位。**golang-migrate 只按整数版本判断是否已应用、对同槽位文件内容变化无感知** —— 见下方 000067。
+
+### 000067 · `kb_schema_repair`
+
+**幂等前向修复迁移。** 修复 commit `8a70196` 的 KB 区块 +3 重编号引发的生产事故：槽位 `000058` 的内容从旧 `kb_embedding_hnsw`（建索引）变成 `knowledge_bases`（建表），任何 version ledger 已越过 58 或 backend 镜像被带外更新（绕过 `deploy.sh` 的 pre-deploy `migrate up`）的环境，新槽位 58 的建表语句永不执行 → admin `/api/v1/admin/kbs`（`kb_repo.go` ListAll）报 `relation "knowledge_bases" does not exist`。
+
+本迁移用 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `pg_constraint` 守卫 FK / `ON CONFLICT` 把 000058+000059+000060+000061 收敛后的 KB 最终 schema 幂等重建：缺失则补齐，已正确迁移则全程 no-op（`embedding` 列直接建为不锁维度 `vector`，索引复用 000061 的维度桶 partial HNSW）。`down` 为空（`SELECT 1;`）—— KB 表生命周期归 000058 等的 down，回退一步不应误删整套数据。
+
 ### 000068 · `agent_workflow_run_simulated`
 
 为 `agent_workflow_runs` 增加 `simulated BOOLEAN NOT NULL DEFAULT FALSE`。背景是智能编排 Phase 0 诚实化：前端默认真实运行，只有用户显式选择「模拟」时才传 `simulateExternal=true`；后端把该选择持久化到 run history，published slug invoke 强制按真实运行创建 run，避免外部调用把模拟成功误解为真实执行能力。迁移会把历史未知 run 保守回填为 `simulated=true`，新 run 由服务层显式写入真实/模拟模式。
+
+> 注：本 migration 原始编号为 000067，因与 main 的 `000067_kb_schema_repair` 整数版本冲突，整体顺延 +1 改为 000068（`000068_agent_workflow_full_iteration` 顺延为 000069）。
 
 ### 000069 · `agent_workflow_full_iteration`
 
@@ -235,5 +245,36 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 | --- | --- |
 | v34 dirty | `migrate force 35` → 让 035/036 接力补完版本化 schema |
 | v38 dirty | `migrate force 38` → 让 039 接管 widen_summary 与 prompt 重写 |
+| v57 dirty | **条件式**：先探 `knowledge_bases` 是否存在 → 仅当**确认不存在**时 `migrate force 56` 重放整条 KB 链（058 建表 + 059/060/061/067 幂等收敛）；表已存在 / 探测失败则**拒绝自愈**、保持 fail-closed 中止交人工 |
 
 此机制确保**生产环境部署不会因为历史 dirty 状态而卡死**。新增 dirty 自愈条目时同步更新 `deploy.sh` 与本表。
+
+> ⚠️ **v57 与 v34/v38 的关键区别：** v34/v38 是无条件 `force`（重放路径全幂等）；v57 后面紧跟的 `000058_knowledge_bases` 是**裸 `CREATE TABLE`（非幂等）**，所以 `deploy.sh` 在 force 前会用 `_probe_knowledge_bases_exists`（`SELECT to_regclass('public.knowledge_bases')`）探测 —— 只有表**确认不存在**（即文档记录的"漏建"生产状态）才 `force 56`；表已存在时盲目重放会 `already exists` 再次 dirty，因此该分支**主动拒绝自愈**，沿用 fail-closed。`000057_media_folder_is_system` 本身已改为按 `path='/root'` 定位真实根目录，避免历史库 root id 不是 1 时重放触发 `media_folders_parent_id_fkey` (`23503`)。
+
+> ⚠️ **fail-closed 是特性不是 bug：** 只有上表登记的版本会被自动 `force`，**其他任何 dirty 版本一律中止部署**（webhook 返回 500、CI deploy 步骤红）。这是为了不把"需要人工判断的真实迁移故障"误 heal 成绿部署。遇到未登记 dirty 时，必须先人工查清生产真实 schema 再决定 force 目标 —— 见下方 v57 事故复盘。
+
+---
+
+## 事故复盘：v57 dirty 卡死部署（2026-05-26）
+
+**现象：** webhook deploy 在 pre-deploy migration 步骤报 `version: 57, dirty: true` → `migrate up: Dirty database version 57. Fix and force version.` → 自愈表不含 v57 → `did not match the known self-heal signature, aborting deploy` → webhook 500 → CI 红。
+
+**直接原因：** 生产 `schema_migrations` 停在 v57 且 dirty=true；`deploy.sh` 自愈表只认 v34/v38，未登记 v57，按 fail-closed 设计中止部署。
+
+**根因：** commit `8a70196`（`fix(kb): CI 修复…`）为解决与上游 `000054_create_notes` 的撞号，把 KB 区块 `000054-000058` 整体 **+3 重命名**为 `000057-000061`（纯 rename，内容不变）。但 **golang-migrate 只认整数版本** —— 已按旧号 54-58 部署过的生产库，ledger 整数与重编号后磁盘文件内容当场错位：同一槽位文件内容变了却不会重跑，连锁出 dirty / `knowledge_bases` 漏建（000067 即为此补救）等问题。**违反的是「迁移文件不可变」铁律**（见 `CLAUDE.md` §3.8）。
+
+**为何不能盲目自愈 / `force 56; up`：** 槽位 57（`media_folder_is_system`）虽幂等，但 058（`knowledge_bases`）用的是裸 `CREATE TABLE`（**非幂等**），在已建表的库上重跑会 `relation already exists` 再次 dirty。所以 force 目标必须匹配生产**真实 schema**，不能照搬。
+
+**自动恢复（已落地 `deploy.sh`）：** `_try_heal_known_dirty` 的 `57)` 分支会先用 `_probe_knowledge_bases_exists`（`SELECT to_regclass('public.knowledge_bases')`）探测真实 schema —— **仅当 `knowledge_bases` 确认不存在**（即本次事故的"漏建"状态）才 `force 56` 并让 `up` 重放整条 KB 链（058 建表 + 059/060/061/067 幂等收敛 + 062-066 Atlas 首次创建）。这覆盖了下面 runbook 的第 2 步第一种情形，下次 webhook 部署即可自动解开、CI 转绿，无需人工 force。**表已存在或探测失败时该分支主动拒绝自愈**，仍走 fail-closed 中止，需按下方 runbook 人工处理。
+
+**二次故障补丁（同日）：** 首次加入 v57 自愈后，生产重放 000057 暴露出旧 migration 硬编码 `parent_id=1` 的隐患：历史库里 `/root` 的实际 id 漂移，导致 `_system_kb` 插入时报 `media_folders_parent_id_fkey (23503)`。当前 000057 已改为补 `uq_folder_path`、确保 `/root` 存在，并用 `WITH root_folder AS (...)` 把 `_system_kb.parent_id` 指向真实 `/root` 行。
+
+**人工恢复（探测失败 / `knowledge_bases` 已存在等 deploy.sh 拒绝自愈的情形，需有生产 DB 访问的人执行）：**
+1. 进生产库查实况：`SELECT version, dirty FROM schema_migrations;` + 抽查关键对象是否存在（`\d media_folders` 看 `is_system`、`\dt knowledge_bases` 等）。
+2. 据实况选 force 目标：
+   - 若 `media_folders.is_system` **不存在** → `migrate force 56`，让 `up` 重跑幂等的 57 把列补上，再继续。
+   - 若 57 的列**已存在**（只是 dirty 标记残留）→ `migrate force 57`，让 `up` 从 58 继续；但需先确认 `knowledge_bases` 等表是否已建，避免撞 058 裸 `CREATE TABLE`。已建则继续 force 跳过已应用的版本，直到落到真正缺失的版本。
+   - 收尾：`up` 会一路跑到 000067（幂等 KB 修复）兜底收敛 KB schema。
+3. 确认 `dirty=false` 且 backend 健康检查通过后重新触发部署。
+
+> **教训沉淀：** 撞号永远取下一个空号，绝不顺移已合并迁移（`CLAUDE.md` §3.8 已升级为最高红线）。

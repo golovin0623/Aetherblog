@@ -261,6 +261,17 @@ run_pre_deploy_migrations() {
   #     认为 38 已应用, 跳到 039 来执行 DROP VIEW + 重做 7 条 UPDATE +
   #     ALTER + recreate VIEW 的完整修复.
   #
+  #   v57 → force 56 (仅当 knowledge_bases 确认不存在时; 否则拒绝自愈)
+  #     起因: commit 8a70196 为解决与上游 000054_create_notes 的撞号, 把 KB 区块
+  #     整体 +3 重编号 (000055_knowledge_bases→000058 等). golang-migrate 只认整数
+  #     版本, 已按旧号部署过的生产库 ledger 整数与磁盘文件内容自此错位, 连锁出
+  #     v57 dirty + knowledge_bases 漏建. 槽位 57 (000057_media_folder_is_system)
+  #     幂等, 但紧随的 000058_knowledge_bases 是裸 CREATE TABLE (非幂等). 与 v34/v38
+  #     的无条件 force 不同, 这里必须先探 knowledge_bases 是否存在:
+  #       * 不存在 → force 56 让 up 重放整条链 (058 建表, 059/060/061/067 幂等收敛).
+  #       * 存在 / 探测失败 → 重放 058 会 already exists 再次 dirty, 拒绝自愈,
+  #         保持 fail-closed 交人工. 见 _try_heal_known_dirty 的 57) 分支注释。
+  #
   # 两阶段触发 (与 v34 同):
   #   1) 部署前先探: 已经 dirty 的命中条目立刻 force + 让后续 up 接管.
   #   2) up 失败后再探: 同一部署周期内允许自愈 + 重试 up 一次.
@@ -276,6 +287,27 @@ run_pre_deploy_migrations() {
     docker compose -f "$COMPOSE_FILE" run --rm \
       --entrypoint /app/migrate \
       backend -dir /app/migrations -dsn "$db_dsn" version 2>&1 || true
+  }
+
+  # 探测 public.knowledge_bases 是否存在。echo "yes" / "no" / ""(无法判定)。
+  # v57 自愈分支用它判断 force 目标是否安全：knowledge_bases 由非幂等的
+  # 000058 裸 CREATE TABLE 创建，只有在确认该表**不存在**时重放 000058 才安全。
+  # 任何不确定（psql 失败 / 输出非预期）一律回 ""，让调用方走 fail-closed。
+  _probe_knowledge_bases_exists() {
+    # 确保 postgres 起着；migration 探测已经会经 depends_on 拉起它，这里再 up -d
+    # 一次是幂等的，仅为保证下面的 exec 一定有目标容器。
+    docker compose -f "$COMPOSE_FILE" up -d postgres >/dev/null 2>&1 || true
+    local out
+    out=$(docker compose -f "$COMPOSE_FILE" exec -T \
+            -e PGPASSWORD="${POSTGRES_PASSWORD:-}" \
+            postgres psql -U "$db_user" -d "$db_name" -tAc \
+            "SELECT to_regclass('public.knowledge_bases') IS NOT NULL" 2>/dev/null \
+          | tr -d '[:space:]')
+    case "$out" in
+      t) echo "yes" ;;
+      f) echo "no" ;;
+      *) echo "" ;;
+    esac
   }
 
   # 当 dirty 版本命中 recipe 表 **且** force 成功时返回 0；
@@ -301,6 +333,28 @@ run_pre_deploy_migrations() {
       38)
         force_to=38
         reason="000038 ALTER COLUMN fails on view dependency (v_published_posts); 000039 contains the real fix (DROP VIEW + redo UPDATEs + ALTER + recreate VIEW). Force 38 so 039 takes over."
+        ;;
+      57)
+        # v57 dirty 来自 commit 8a70196 把 KB 区块 +3 重编号的事故（见 000067 /
+        # CLAUDE.md §3.8）。槽位 57 = 000057_media_folder_is_system；该 migration
+        # 已按 path=/root 定位真实根目录，避免历史库 root id 不是 1 时重放触发 FK
+        # 23503。紧随的 000058_knowledge_bases 是**裸 CREATE TABLE（非幂等）**。
+        # 能否安全 force 取决于 knowledge_bases 是否已存在：
+        #   * 不存在（文档记录的生产状态 "knowledge_bases 漏建"）→ force 56 让 up
+        #     重放整条 KB 链：057 幂等、058 把缺失的表建出来、059/060/061/067 幂等收敛，
+        #     062-066(Atlas) 在此前从未跑过故为首次正常创建。
+        #   * 存在 / 无法判定 → 重放 058 会 `already exists` 再次 dirty，本分支无法
+        #     安全自动处理 → 拒绝自愈，沿用 fail-closed 中止交人工（见
+        #     .claude/docs/database-migrations.md 的恢复 runbook）。
+        local kb_exists
+        kb_exists=$(_probe_knowledge_bases_exists)
+        if [ "$kb_exists" = "no" ]; then
+          force_to=56
+          reason="v57 dirty from 8a70196 KB renumber; knowledge_bases confirmed ABSENT → force 56 replays the idempotent-safe KB chain (058 creates the missing table, 067 converges)"
+        else
+          echo "[$(date -Iseconds)] WARN: v57 dirty but knowledge_bases existence is '${kb_exists:-unknown}' (not confirmed absent); declining auto-heal to avoid replaying non-idempotent 000058. Manual recovery required — see .claude/docs/database-migrations.md."
+          return 1
+        fi
         ;;
       *)
         return 1
