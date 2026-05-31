@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 68
-- **最新：** `000068_agent_workflow_full_iteration`（补齐智能编排 runtime 元数据、治理、审批、限流、eval、marketplace、human input、cowork handoff 与 notifications 边界）
-- **次新：** `000067_agent_workflow_run_simulated`（为智能编排 run 增加 `simulated` 标记，显式区分真实运行与模拟执行）
+- **总数：** 69
+- **最新：** `000069_agent_workflow_full_iteration`（补齐智能编排 runtime 元数据、治理、审批、限流、eval、marketplace、human input、cowork handoff 与 notifications 边界）
+- **次新：** `000068_agent_workflow_run_simulated`（为智能编排 run 增加 `simulated` 标记，显式区分真实运行与模拟执行）
 
 ---
 
@@ -28,7 +28,7 @@
 | `search_profiles` | 000041 | Chunking 策略 + 模型 + 切片参数四元组绑定，蓝绿翻转扩展到全 RAG pipeline |
 | `post_embeddings.parent_text` | 000044 | parent_child chunker 父段原文（其他 chunker_kind 为 NULL） |
 | `ai_global_pricing` | 000047 | 按 `model_id` 索引的跨供应商共享价格基准；UI「全局价格」页 + 单条模型详情「↺ 从全局回填 / 写入全局」 |
-| `agent_workflows` / `agent_workflow_runs` / `agent_workflow_node_logs` | 000052 / 000067 / 000068 | 智能编排画布、运行实例与节点 trace；000067 增加 run `simulated` 标记，000068 增加治理与全量运行元数据 |
+| `agent_workflows` / `agent_workflow_runs` / `agent_workflow_node_logs` | 000052 / 000068 / 000069 | 智能编排画布、运行实例与节点 trace；000068 增加 run `simulated` 标记，000069 增加治理与全量运行元数据 |
 
 ---
 
@@ -211,11 +211,11 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 按 dim × status='active' 创建 partial HNSW 索引：768 / 1024 / 1536 使用 vector_cosine_ops；3072 必须走 halfvec_cosine_ops（pgvector HNSW vector 上限 2000，halfvec 上限 4000）。> 4000 维当前 pgvector 不支持 HNSW，召回退化为顺序扫描；建议改用主流维度。
 
-### 000067 · `agent_workflow_run_simulated`
+### 000068 · `agent_workflow_run_simulated`
 
 为 `agent_workflow_runs` 增加 `simulated BOOLEAN NOT NULL DEFAULT FALSE`。背景是智能编排 Phase 0 诚实化：前端默认真实运行，只有用户显式选择「模拟」时才传 `simulateExternal=true`；后端把该选择持久化到 run history，published slug invoke 强制按真实运行创建 run，避免外部调用把模拟成功误解为真实执行能力。迁移会把历史未知 run 保守回填为 `simulated=true`，新 run 由服务层显式写入真实/模拟模式。
 
-### 000068 · `agent_workflow_full_iteration`
+### 000069 · `agent_workflow_full_iteration`
 
 为智能编排全量产品迭代补齐运行与治理边界：
 

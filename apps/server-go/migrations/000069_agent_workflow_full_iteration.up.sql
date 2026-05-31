@@ -1,6 +1,6 @@
 -- ============================================================
 -- Agent Workflow full iteration foundation
--- migration: 000068
+-- migration: 000069
 -- ref: .agent/plans/intelligent-orchestration-gap-analysis-iteration-checklist.md
 -- ============================================================
 -- This migration keeps the long-term roadmap honest in the data model: run

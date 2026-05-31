@@ -403,7 +403,7 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 
 ## 数据库表结构
 
-数据库迁移持续追加；当前 Agent Workflow 相关迁移已覆盖到 `000068_agent_workflow_full_iteration`。
+数据库迁移持续追加；当前 Agent Workflow 相关迁移已覆盖到 `000069_agent_workflow_full_iteration`。
 
 ### 核心业务表
 
@@ -439,7 +439,7 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 | `ai_task_routing` | 任务到模型的路由映射 |
 | `ai_usage_logs` | 使用日志（tokens / latency / cached） |
 | `post_embeddings` | 版本化向量检索存储（pgvector，见下节） |
-| `agent_workflows` / `agent_workflow_runs` / `agent_workflow_node_logs` | 智能编排画布、运行实例与节点级 trace；`agent_workflow_runs.simulated` 区分显式模拟运行与真实运行，000068 补齐 source/redaction/budget/error/canonicalize 元数据 |
+| `agent_workflows` / `agent_workflow_runs` / `agent_workflow_node_logs` | 智能编排画布、运行实例与节点级 trace；`agent_workflow_runs.simulated` 区分显式模拟运行与真实运行，000069 补齐 source/redaction/budget/error/canonicalize 元数据 |
 | `agent_workflow_approvals` / `agent_publication_invocations` / `agent_workflow_marketplace_items` / `agent_workflow_notifications` | 智能编排治理、发布限流、模板市场与运行通知边界 |
 
 ### 版本化向量存储（migration 000034）

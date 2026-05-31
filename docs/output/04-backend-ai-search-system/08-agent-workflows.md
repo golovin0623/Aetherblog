@@ -1,6 +1,6 @@
 # 08 · Agent Workflow Backend
 
-> 范围：`apps/server-go/internal/{handler,service,repository,model,dto}/agent_workflow*`、`internal/pkg/agentworkflow/`、`migrations/000052_agent_workflow_canvas.*.sql`、`migrations/000067_agent_workflow_run_simulated.*.sql`、`migrations/000068_agent_workflow_full_iteration.*.sql`。
+> 范围：`apps/server-go/internal/{handler,service,repository,model,dto}/agent_workflow*`、`internal/pkg/agentworkflow/`、`migrations/000052_agent_workflow_canvas.*.sql`、`migrations/000068_agent_workflow_run_simulated.*.sql`、`migrations/000069_agent_workflow_full_iteration.*.sql`。
 > 当前状态：authoring CRUD + catalog + capabilities + async runtime +治理 + published slug invoke + versions/templates/import/export/metrics MVP。
 
 ## 1. 路由面
@@ -67,9 +67,9 @@ Runtime：
 
 迁移同时 seed 了 system builtin connectors/tools：`kb_get_post`、`kb_search`、`text_join`、`echo`，并把 `web_search` / `skill_security_audit` 作为默认禁用且 `requires_approval=true` 的受控工具。
 
-`000067_agent_workflow_run_simulated` 为 `agent_workflow_runs` 增加 `simulated BOOLEAN NOT NULL DEFAULT FALSE`，用于区分真实运行和显式模拟运行。历史未知 run 会按保守口径回填为 `simulated=true`，新 run 由服务层按请求模式显式写入。
+`000068_agent_workflow_run_simulated` 为 `agent_workflow_runs` 增加 `simulated BOOLEAN NOT NULL DEFAULT FALSE`，用于区分真实运行和显式模拟运行。历史未知 run 会按保守口径回填为 `simulated=true`，新 run 由服务层按请求模式显式写入。
 
-`000068_agent_workflow_full_iteration` 扩展：
+`000069_agent_workflow_full_iteration` 扩展：
 
 - `agent_workflow_runs`：retry/resume/cancel/source/redaction/budget/error/canonicalized workflow 字段。
 - `agent_workflow_node_logs`：`metadata_json`，用于 tokens/source/tool metadata。
