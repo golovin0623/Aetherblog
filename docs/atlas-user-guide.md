@@ -170,7 +170,13 @@ AI_INTERNAL_SERVICE_TOKEN=... node scripts/atlas/reindex-embeddings.mjs --kind a
 
 This is an automatic semantic recall baseline, not full GraphRAG. The admin search page now has a semantic rerank baseline, while community/global graph query and production evidence from running the KP/note embedding backfill command remain future gates.
 
-## 11. Release Checklist
+## 11. AI Writing Workspace
+
+In `/admin/posts/ai-writing/:id`, the Atlas reference action searches the current user's Atlas KP set with a bounded query built from the current title, summary, and body. The panel lists related KPs and semantic scores when available.
+
+Use `插入引用` to add a Markdown link like `Atlas KP #42` to the current cursor position. The link opens the Atlas KP detail page, where evidence annotations and relations can be reviewed before publication. The current baseline inserts KP detail references; automatic evidence-quote insertion and public citation formatting remain later work.
+
+## 12. Release Checklist
 
 Before treating an Atlas iteration as a passed product gate, record evidence in `.agent/plans/knowledge-atlas-phase-gate-ledger.md`:
 

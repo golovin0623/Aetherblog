@@ -27,6 +27,9 @@ import {
   Columns,
   ShieldCheck,
   Network,
+  BookOpen,
+  RefreshCw,
+  Link2,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -48,6 +51,7 @@ import { AiChatPanel } from '@/components/ai/AiChatPanel';
 // 类型定义
 import type { AiCapability } from '@/types/writing-workflow';
 import type { ContentSnapshot } from '@/types/content-history';
+import type { AtlasSearchKnowledgePoint } from '@aetherblog/types';
 
 // 编辑器扩展
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
@@ -69,6 +73,21 @@ function formatAtlasCostUsd(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '未知';
   if (value === 0) return '$0';
   return `$${value.toFixed(6)}`;
+}
+
+const ATLAS_WRITING_QUERY_LIMIT = 900;
+
+function buildAtlasWritingQuery(title: string, summary: string, content: string) {
+  const combined = [title, summary, content]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n');
+  return combined.slice(0, ATLAS_WRITING_QUERY_LIMIT);
+}
+
+function atlasReferenceMarkdown(kp: AtlasSearchKnowledgePoint) {
+  const safeTitle = kp.title.replaceAll('[', '\\[').replaceAll(']', '\\]');
+  return `[Atlas KP #${kp.id}: ${safeTitle}](/admin/atlas/kp/${kp.id})`;
 }
 
 // AI 工具能力定义
@@ -102,7 +121,13 @@ const AI_CAPABILITIES: AiCapability[] = [
 ];
 
 type EditorViewMode = 'edit' | 'preview' | 'split';
-type MobilePanel = 'history' | 'chat' | 'workflow' | null;
+type MobilePanel = 'history' | 'chat' | 'workflow' | 'atlas' | null;
+
+type AtlasReferenceState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ok'; items: AtlasSearchKnowledgePoint[]; semanticAvailable?: boolean }
+  | { kind: 'error'; message: string };
 
 export function AiWritingWorkspacePage() {
   const navigate = useNavigate();
@@ -127,7 +152,9 @@ export function AiWritingWorkspacePage() {
   const [showWorkflowNav, setShowWorkflowNav] = useState(true);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
+  const [showAtlasPanel, setShowAtlasPanel] = useState(false);
   const [generatingAtlasSuggestions, setGeneratingAtlasSuggestions] = useState(false);
+  const [atlasReferenceState, setAtlasReferenceState] = useState<AtlasReferenceState>({ kind: 'idle' });
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [compareSnapshots, setCompareSnapshots] = useState<{
     snapshot1: ContentSnapshot;
@@ -371,6 +398,69 @@ export function AiWritingWorkspacePage() {
     }
   }, [postId]);
 
+  const refreshAtlasReferences = useCallback(async () => {
+    const q = buildAtlasWritingQuery(title, summary, content);
+    if (!q.trim()) {
+      toast.error('请先写入标题或正文后再检索 Atlas 参考');
+      return;
+    }
+    setAtlasReferenceState({ kind: 'loading' });
+    try {
+      const res = await atlasService.search({ q, scope: 'mine', semantic: true, limit: 6 });
+      setAtlasReferenceState({
+        kind: 'ok',
+        items: res.data.knowledgePoints,
+        semanticAvailable: res.data.semanticAvailable,
+      });
+      if (res.data.knowledgePoints.length === 0) {
+        toast.message('没有找到相关 Atlas KP');
+      }
+    } catch (error) {
+      setAtlasReferenceState({ kind: 'error', message: extractApiErrorMessage(error, 'Atlas 参考检索失败') });
+    }
+  }, [content, summary, title]);
+
+  const toggleAtlasReferencePanel = useCallback(() => {
+    const shouldOpen = isMobile ? mobilePanel !== 'atlas' : !showAtlasPanel;
+    if (isMobile) {
+      setMobilePanel(shouldOpen ? 'atlas' : null);
+    } else {
+      setShowAtlasPanel(shouldOpen);
+    }
+    if (shouldOpen && atlasReferenceState.kind === 'idle') {
+      void refreshAtlasReferences();
+    }
+  }, [atlasReferenceState.kind, isMobile, mobilePanel, refreshAtlasReferences, showAtlasPanel]);
+
+  const insertAtlasReference = useCallback(async (kp: AtlasSearchKnowledgePoint) => {
+    const markdown = atlasReferenceMarkdown(kp);
+    const view = editorViewRef.current;
+    if (postId) {
+      await historyManager.createSnapshot({
+        title,
+        content,
+        summary,
+        source: 'user-edit',
+        sourceName: '插入 Atlas 引用前',
+      });
+    }
+    if (view) {
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
+        changes: { from, to, insert: markdown },
+        selection: { anchor: from + markdown.length },
+      });
+      setContent(view.state.doc.toString());
+      view.focus();
+    } else {
+      setContent((current) => {
+        const separator = current.trim() ? '\n\n' : '';
+        return `${current}${separator}${markdown}`;
+      });
+    }
+    toast.success(`已插入 KP #${kp.id} 引用`);
+  }, [content, historyManager, postId, summary, title]);
+
   return (
     <div className="absolute inset-0 flex flex-col bg-[var(--bg-void)]">
       {/* ============ 移动端头部：双排紧凑布局 ============ */}
@@ -472,6 +562,13 @@ export function AiWritingWorkspacePage() {
                 <MessageSquare className="w-[18px] h-[18px]" />
               </MobileIconButton>
               <MobileIconButton
+                onClick={toggleAtlasReferencePanel}
+                active={mobilePanel === 'atlas'}
+                label="Atlas 参考"
+              >
+                <BookOpen className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
                 onClick={() => void runArticleAuditWorkflow()}
                 label="审计"
               >
@@ -568,6 +665,14 @@ export function AiWritingWorkspacePage() {
               title="AI 对话"
             >
               <MessageSquare className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={toggleAtlasReferencePanel}
+              active={showAtlasPanel}
+              title="Atlas 参考"
+            >
+              <BookOpen className="w-5 h-5" />
             </DesktopIconButton>
 
             <DesktopIconButton
@@ -775,6 +880,27 @@ export function AiWritingWorkspacePage() {
             )}
           </AnimatePresence>
         )}
+
+        {!isMobile && (
+          <AnimatePresence>
+            {showAtlasPanel && (
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 340, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
+              >
+                <AtlasReferencePanel
+                  state={atlasReferenceState}
+                  onRefresh={() => void refreshAtlasReferences()}
+                  onInsert={(kp) => void insertAtlasReference(kp)}
+                  onClose={() => setShowAtlasPanel(false)}
+                />
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        )}
       </div>
 
       {/* ============ 移动端：底部抽屉面板 ============ */}
@@ -854,6 +980,14 @@ export function AiWritingWorkspacePage() {
               </div>
             </div>
           )}
+          {mobilePanel === 'atlas' && (
+            <AtlasReferencePanel
+              state={atlasReferenceState}
+              onRefresh={() => void refreshAtlasReferences()}
+              onInsert={(kp) => void insertAtlasReference(kp)}
+              onClose={closeMobilePanel}
+            />
+          )}
         </MobileBottomSheet>
       )}
 
@@ -867,6 +1001,114 @@ export function AiWritingWorkspacePage() {
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function AtlasReferencePanel({
+  state,
+  onRefresh,
+  onInsert,
+  onClose,
+}: {
+  state: AtlasReferenceState;
+  onRefresh: () => void;
+  onInsert: (kp: AtlasSearchKnowledgePoint) => void;
+  onClose: () => void;
+}) {
+  const items = state.kind === 'ok' ? state.items : [];
+  return (
+    <div className="h-full w-[340px] max-w-full flex flex-col bg-[var(--bg-substrate)]">
+      <div className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <BookOpen className="w-4 h-4 text-[var(--aurora-1)] flex-shrink-0" />
+          <h3 className="font-mono text-[var(--fs-micro)] uppercase tracking-[0.18em] text-[var(--ink-muted)] truncate">
+            Atlas 参考
+          </h3>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={state.kind === 'loading'}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] disabled:opacity-40"
+            aria-label="刷新 Atlas 参考"
+            title="刷新 Atlas 参考"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+            aria-label="关闭 Atlas 参考"
+            title="关闭 Atlas 参考"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {state.kind === 'idle' ? (
+          <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">等待检索。</div>
+        ) : state.kind === 'loading' ? (
+          <div className="space-y-3 px-4 py-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="h-20 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            ))}
+          </div>
+        ) : state.kind === 'error' ? (
+          <div className="px-4 py-6 text-sm text-[var(--signal-danger)]">{state.message}</div>
+        ) : items.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">没有匹配的 KP。</div>
+        ) : (
+          <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)]">
+            {items.map((kp) => {
+              const score = typeof kp.searchScore === 'number' ? Math.round(kp.searchScore * 100) : null;
+              return (
+                <li key={kp.id} className="px-4 py-3">
+                  <div className="space-y-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-[var(--ink-muted)]">KP #{kp.id}</span>
+                        {score !== null ? (
+                          <span className="rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-2 py-0.5 font-mono text-[10px] text-[var(--aurora-1)]">
+                            {score}%
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm font-semibold text-[var(--ink-primary)]">{kp.title}</p>
+                      {kp.bodyMarkdown ? (
+                        <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--ink-secondary)]">{kp.bodyMarkdown}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        {kp.type}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onInsert(kp)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] px-2.5 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        插入引用
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {state.kind === 'ok' && state.semanticAvailable === false ? (
+        <div className="border-t border-[color-mix(in_oklch,var(--signal-warn)_24%,transparent)] px-4 py-3 text-xs text-[var(--ink-secondary)]">
+          语义召回不可用，当前为关键词结果。
+        </div>
+      ) : null}
     </div>
   );
 }
