@@ -21,6 +21,9 @@ const REQUIRED_CHECKS = [
   { id: 'atlas-reader-pdf', surface: 'Atlas PDF Reader', path: '/admin/atlas/reader/pdf/<carrierId>' },
   { id: 'atlas-kp-list', surface: 'Atlas KP', path: '/admin/atlas/kps' },
   { id: 'atlas-kp-detail', surface: 'Atlas KP', path: '/admin/atlas/kp/<kpId>' },
+  { id: 'atlas-kp-archive', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
+  { id: 'atlas-kp-restore', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
+  { id: 'atlas-kp-delete', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
   { id: 'atlas-graph', surface: 'Atlas Graph', path: '/admin/atlas/graph' },
   { id: 'atlas-suggestions', surface: 'Atlas Suggestions', path: '/admin/atlas/suggestions' },
   { id: 'notes-editor', surface: 'Notes', path: '/admin/notes/<noteId>/edit' },
@@ -74,6 +77,7 @@ try {
   await visit(page, 'atlas-reader-pdf', `/admin/atlas/reader/pdf/${seeded.pdfCarrier.id}`, ['PDF 标注', seeded.pdf.anchorText]);
   await visit(page, 'atlas-kp-list', '/admin/atlas/kps', ['Knowledge Points', seeded.kp.title]);
   await visit(page, 'atlas-kp-detail', `/admin/atlas/kp/${seeded.kp.id}`, [seeded.kp.title, '知识点']);
+  await exerciseKPLifecycle(page, seeded.lifecycleKp);
   await visit(page, 'atlas-graph', '/admin/atlas/graph', ['Aether Graph']);
   report.metrics.graphFps = await measureAnimationFrameFPS(page);
   await visit(page, 'atlas-suggestions', '/admin/atlas/suggestions', ['AI 建议 Inbox', seeded.suggestion.proposedTitle]);
@@ -84,7 +88,7 @@ try {
 
   writeReport();
   printSummary();
-  if (report.checks.some((check) => check.status !== 'passed')) exit(1);
+  if (report.checks.some((check) => check.status !== 'passed')) process.exitCode = 1;
 } catch (error) {
   if (report.checks.length === 0 || !report.checks.some((check) => check.status === 'failed')) {
     report.checks.push({
@@ -98,7 +102,7 @@ try {
   }
   writeReport();
   console.error(error instanceof Error ? error.stack || error.message : error);
-  exit(1);
+  process.exitCode = 1;
 } finally {
   await browser?.close();
 }
@@ -187,6 +191,15 @@ async function seedAtlasData(page) {
     confidence: 0.82,
     evidenceAnnotationIds: [annotation.id],
   });
+  const lifecycleKp = await api(page, 'POST', '/api/v1/admin/atlas/knowledge-points', {
+    title: `Atlas Smoke Lifecycle KP ${stamp}`,
+    bodyMarkdown: 'Temporary KP used to verify browser archive, restore, and delete actions.',
+    type: 'method',
+    status: 'growing',
+    provenance: 'user',
+    confidence: 0.88,
+    evidenceAnnotationIds: [annotation.id],
+  });
   const relation = await api(page, 'POST', '/api/v1/admin/atlas/relations', {
     fromKpId: kp.id,
     toKpId: relatedKp.id,
@@ -228,9 +241,44 @@ async function seedAtlasData(page) {
     relatedKp,
     relation,
     suggestion,
+    lifecycleKp,
     pdf: { media, anchorText: pdfAnchorText, textLayer },
     pdfCarrier,
   };
+}
+
+async function exerciseKPLifecycle(page, lifecycleKp) {
+  const detailPath = `/admin/atlas/kp/${lifecycleKp.id}`;
+  await gotoPath(page, detailPath);
+  await waitForAnyText(page, [lifecycleKp.title, '归档']);
+
+  await page.getByRole('button', { name: /归档/ }).click();
+  await page.getByRole('button', { name: /恢复/ }).waitFor({ state: 'visible', timeout: args.timeoutMs });
+  await waitForAnyText(page, ['已归档']);
+  const archived = await api(page, 'GET', `/api/v1/admin/atlas/knowledge-points/${lifecycleKp.id}`);
+  if (!archived.archived || archived.status !== 'archived') {
+    throw new Error(`KP archive mismatch: archived=${archived.archived} status=${archived.status}`);
+  }
+  pass('atlas-kp-archive', detailPath, `kp=${lifecycleKp.id}; archived=${archived.archived}; status=${archived.status}`);
+
+  await page.getByRole('button', { name: /恢复/ }).click();
+  await page.getByRole('button', { name: /归档/ }).waitFor({ state: 'visible', timeout: args.timeoutMs });
+  const restored = await api(page, 'GET', `/api/v1/admin/atlas/knowledge-points/${lifecycleKp.id}`);
+  if (restored.archived || restored.status === 'archived') {
+    throw new Error(`KP restore mismatch: archived=${restored.archived} status=${restored.status}`);
+  }
+  pass('atlas-kp-restore', detailPath, `kp=${lifecycleKp.id}; archived=${restored.archived}; status=${restored.status}`);
+
+  await page.getByRole('button', { name: /^删除$/ }).click();
+  await waitForAnyText(page, ['删除知识点', lifecycleKp.title]);
+  await page.getByRole('button', { name: /^删除$/ }).last().click();
+  await page.waitForURL((url) => url.pathname.endsWith('/admin/atlas/kps'), { timeout: args.timeoutMs });
+  await waitForAnyText(page, ['Knowledge Points']);
+  const deleted = await rawApi(page, 'GET', `/api/v1/admin/atlas/knowledge-points/${lifecycleKp.id}`);
+  if (deleted.ok && deleted.json?.code === 200) {
+    throw new Error(`KP delete mismatch: GET still returned code=200 for ${lifecycleKp.id}`);
+  }
+  pass('atlas-kp-delete', detailPath, `kp=${lifecycleKp.id}; redirected=${pathOf(page.url())}; get_status=${deleted.status}; code=${deleted.json?.code ?? 'n/a'}`);
 }
 
 async function visit(page, id, actualPath, expectedTexts) {
@@ -321,6 +369,14 @@ async function describeVisitError(page, error) {
 }
 
 async function api(page, method, path, data) {
+  const result = await rawApi(page, method, path, data);
+  if (!result.ok || result.json?.code !== 200) {
+    throw new Error(`${method} ${path} failed HTTP ${result.status} code=${result.json?.code ?? 'n/a'} message=${result.json?.message ?? result.text.slice(0, 160)}`);
+  }
+  return result.json.data;
+}
+
+async function rawApi(page, method, path, data) {
   const url = joinUrl(args.baseUrl, path);
   const options = data === undefined ? {} : { data };
   const response = await page.request.fetch(url, { method, ...options });
@@ -331,10 +387,12 @@ async function api(page, method, path, data) {
   } catch {
     throw new Error(`${method} ${path} returned non-JSON HTTP ${response.status()}: ${text.slice(0, 160)}`);
   }
-  if (!response.ok() || json.code !== 200) {
-    throw new Error(`${method} ${path} failed HTTP ${response.status()} code=${json.code ?? 'n/a'} message=${json.message ?? text.slice(0, 160)}`);
-  }
-  return json.data;
+  return {
+    ok: response.ok(),
+    status: response.status(),
+    text,
+    json,
+  };
 }
 
 async function uploadPDF(page, filename, buffer) {
@@ -458,6 +516,7 @@ function summarizeSeeded(seeded) {
     annotationId: seeded.annotation.id,
     kpId: seeded.kp.id,
     relatedKpId: seeded.relatedKp.id,
+    lifecycleKpId: seeded.lifecycleKp.id,
     relationId: seeded.relation.id,
     suggestionId: seeded.suggestion.id,
     pdfMediaId: seeded.pdf.media.id,
