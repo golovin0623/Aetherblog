@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
 from app.services.kb_indexer import extract_pdf_text_pages
-from app.services.atlas_recall import upsert_knowledge_point_embedding
+from app.services.atlas_recall import AtlasKnowledgePointHit, recall_atlas_context, upsert_knowledge_point_embedding
 from app.services.usage_logger import estimate_tokens
 from app.services.vector_store import SearchProfile, VectorStoreService
 
@@ -59,6 +59,30 @@ class IndexKnowledgePointResponse(BaseModel):
     profile_id: int
     model_id: str
     embedding_dim: int
+
+
+class AtlasSemanticSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    user_id: int | None = Field(default=None, ge=1)
+    limit: int = Field(default=8, ge=1, le=25)
+
+
+class AtlasSemanticKnowledgePoint(BaseModel):
+    id: int
+    title: str
+    body_markdown: str
+    type: str
+    status: str
+    confidence: float
+    provenance: str
+    similarity: float | None = None
+    recall_source: str = "semantic"
+
+
+class AtlasSemanticSearchResponse(BaseModel):
+    query: str
+    limit: int
+    knowledge_points: list[AtlasSemanticKnowledgePoint] = Field(default_factory=list)
 
 
 class ReindexKnowledgePointsRequest(BaseModel):
@@ -187,6 +211,49 @@ async def index_knowledge_point(
         profile_id=result.profile_id,
         model_id=result.model_id,
         embedding_dim=result.embedding_dim,
+    )
+
+
+@router.post("/search/semantic")
+async def semantic_search(
+    req: AtlasSemanticSearchRequest,
+    llm=Depends(get_llm_router),
+    pool=Depends(get_pg_pool),
+) -> AtlasSemanticSearchResponse:
+    """Return Atlas KP semantic hits for server-go search reranking."""
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query 不能为空")
+
+    context = await recall_atlas_context(
+        pool,
+        llm,
+        user_id=req.user_id,
+        query=query,
+        kp_ids=[],
+        carrier_ids=[],
+        semantic_limit=req.limit,
+        neighborhood_depth=0,
+        include_evidence=False,
+    )
+    hits = [
+        _semantic_kp_response(hit)
+        for hit in context.knowledge_points
+    ]
+    return AtlasSemanticSearchResponse(query=query, limit=req.limit, knowledge_points=hits)
+
+
+def _semantic_kp_response(hit: AtlasKnowledgePointHit) -> AtlasSemanticKnowledgePoint:
+    return AtlasSemanticKnowledgePoint(
+        id=hit.id,
+        title=hit.title,
+        body_markdown=hit.body_markdown,
+        type=hit.type,
+        status=hit.status,
+        confidence=hit.confidence,
+        provenance=hit.provenance,
+        similarity=hit.similarity,
+        recall_source=hit.recall_source,
     )
 
 

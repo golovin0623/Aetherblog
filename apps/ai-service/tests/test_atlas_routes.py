@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.routes import atlas
-from app.services.atlas_recall import AtlasEmbeddingUpdate
+from app.services.atlas_recall import AtlasEmbeddingUpdate, AtlasKnowledgePointHit, AtlasRecallContext
 from app.services.vector_store import SearchProfile
 from tests.support import FakeConn, FakePool
 
@@ -170,6 +170,59 @@ async def test_index_knowledge_point_delegates_to_atlas_recall_service(
     assert result.kp_id == 7
     assert result.profile_id == 42
     assert result.embedding_dim == 1536
+
+
+@pytest.mark.asyncio
+async def test_semantic_search_delegates_to_atlas_recall_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_recall(pool: Any, llm: Any, **kwargs: Any) -> AtlasRecallContext:
+        captured["pool"] = pool
+        captured["llm"] = llm
+        captured.update(kwargs)
+        return AtlasRecallContext(
+            knowledge_points=[
+                AtlasKnowledgePointHit(
+                    id=8,
+                    title="Semantic KP",
+                    body_markdown="semantic body",
+                    type="claim",
+                    status="evergreen",
+                    confidence=0.86,
+                    provenance="user",
+                    similarity=0.77,
+                    recall_source="semantic",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(atlas, "recall_atlas_context", fake_recall)
+    pool = object()
+    llm = object()
+
+    result = await atlas.semantic_search(
+        atlas.AtlasSemanticSearchRequest(query=" evidence graph ", user_id=9, limit=3),
+        llm=llm,
+        pool=pool,
+    )
+
+    assert captured == {
+        "pool": pool,
+        "llm": llm,
+        "user_id": 9,
+        "query": "evidence graph",
+        "kp_ids": [],
+        "carrier_ids": [],
+        "semantic_limit": 3,
+        "neighborhood_depth": 0,
+        "include_evidence": False,
+    }
+    assert result.query == "evidence graph"
+    assert result.limit == 3
+    assert result.knowledge_points[0].id == 8
+    assert result.knowledge_points[0].similarity == pytest.approx(0.77)
 
 
 @pytest.mark.asyncio

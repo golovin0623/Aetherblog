@@ -305,7 +305,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
 		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc),
-		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, atlasService, activitySvc),
+		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, atlasService, atlassvc.NewAtlasSemanticSearchClient(aiClient, internalToken), activitySvc),
 		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, aiClient, internalToken, activitySvc),
 		atlashandler.NewAtlasEventHandler(activitySvc),
 	)

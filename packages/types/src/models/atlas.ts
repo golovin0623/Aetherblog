@@ -245,9 +245,19 @@ export interface AtlasSearchResponse {
   query: string;
   limit: number;
   total: number;
-  knowledgePoints: AtlasKnowledgePoint[];
+  semanticEnabled?: boolean;
+  semanticAvailable?: boolean;
+  semanticStatus?: string;
+  knowledgePoints: AtlasSearchKnowledgePoint[];
   annotations: AtlasAnnotation[];
   carriers: AtlasCarrier[];
+}
+
+export type AtlasSearchSource = 'keyword' | 'semantic' | 'keyword_semantic';
+
+export interface AtlasSearchKnowledgePoint extends AtlasKnowledgePoint {
+  searchScore?: number | null;
+  searchSource?: AtlasSearchSource | string;
 }
 
 // ============================================================

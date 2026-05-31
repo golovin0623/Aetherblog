@@ -191,6 +191,7 @@ export const atlasService = {
   search: (params: {
     q: string;
     limit?: number;
+    semantic?: boolean;
   } & AtlasScopedParams): Promise<R<AtlasSearchResponse>> =>
     api.get(`${base}/search`, { params }),
 

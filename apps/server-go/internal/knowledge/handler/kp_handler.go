@@ -24,6 +24,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type KPHandler struct {
 	rel      *atlassvc.RelationService
 	ann      *atlassvc.AnnotationService
 	atlas    *atlassvc.AtlasService
+	semantic *atlassvc.AtlasSemanticSearchClient
 	activity atlasActivityRecorder
 }
 
@@ -52,9 +54,10 @@ func NewKPHandler(
 	rel *atlassvc.RelationService,
 	ann *atlassvc.AnnotationService,
 	atlas *atlassvc.AtlasService,
+	semantic *atlassvc.AtlasSemanticSearchClient,
 	activity atlasActivityRecorder,
 ) *KPHandler {
-	return &KPHandler{kp: kp, rel: rel, ann: ann, atlas: atlas, activity: activity}
+	return &KPHandler{kp: kp, rel: rel, ann: ann, atlas: atlas, semantic: semantic, activity: activity}
 }
 
 // Mount 挂到 /atlas 子组。
@@ -567,6 +570,7 @@ func (h *KPHandler) Search(c echo.Context) error {
 	} else if limit > 25 {
 		limit = 25
 	}
+	semanticEnabled := parseAtlasSemanticParam(c.QueryParam("semantic"))
 
 	kps, err := h.kp.List(c.Request().Context(), atlasrepo.KPListFilter{
 		Keyword:  &query,
@@ -590,16 +594,33 @@ func (h *KPHandler) Search(c echo.Context) error {
 			return response.Error(c, err)
 		}
 	}
+	semanticAvailable := false
+	semanticStatus := "disabled"
+	var semanticHits []atlassvc.AtlasSemanticKnowledgePointHit
+	if semanticEnabled {
+		semanticStatus = "unavailable"
+		if h.semantic != nil {
+			if result, err := h.semantic.Search(c.Request().Context(), query, authorID, limit); err == nil && result != nil {
+				semanticAvailable = true
+				semanticStatus = "ok"
+				semanticHits = result.KnowledgePoints
+			}
+		}
+	}
+	searchKPs, err := h.toSearchKnowledgePoints(c.Request().Context(), scope, kps, semanticHits, semanticAvailable, limit)
+	if err != nil {
+		return response.Error(c, err)
+	}
 
 	out := atlasdto.SearchResponse{
-		Query:           query,
-		Limit:           limit,
-		KnowledgePoints: make([]atlasdto.KnowledgePointResponse, len(kps)),
-		Annotations:     make([]atlasdto.AnnotationResponse, len(annotations)),
-		Carriers:        make([]atlasdto.CarrierResponse, len(carriers)),
-	}
-	for i := range kps {
-		out.KnowledgePoints[i] = toKPResponse(&kps[i])
+		Query:             query,
+		Limit:             limit,
+		SemanticEnabled:   semanticEnabled,
+		SemanticAvailable: semanticAvailable,
+		SemanticStatus:    semanticStatus,
+		KnowledgePoints:   searchKPs,
+		Annotations:       make([]atlasdto.AnnotationResponse, len(annotations)),
+		Carriers:          make([]atlasdto.CarrierResponse, len(carriers)),
 	}
 	for i := range annotations {
 		out.Annotations[i] = toAnnotationResponse(&annotations[i])
@@ -613,10 +634,104 @@ func (h *KPHandler) Search(c echo.Context) error {
 		c,
 		"atlas.search",
 		"Atlas search",
-		fmt.Sprintf("q=%q total=%d kp=%d annotation=%d carrier=%d", query, out.Total, len(out.KnowledgePoints), len(out.Annotations), len(out.Carriers)),
+		fmt.Sprintf("q=%q total=%d kp=%d annotation=%d carrier=%d semantic=%s", query, out.Total, len(out.KnowledgePoints), len(out.Annotations), len(out.Carriers), semanticStatus),
 		"INFO",
 	)
 	return response.OK(c, out)
+}
+
+func (h *KPHandler) toSearchKnowledgePoints(
+	ctx context.Context,
+	scope *atlasScope,
+	keywordRows []atlasmodel.KnowledgePoint,
+	semanticHits []atlassvc.AtlasSemanticKnowledgePointHit,
+	semanticAvailable bool,
+	limit int,
+) ([]atlasdto.SearchKnowledgePointResponse, error) {
+	byID := make(map[int64]*atlasdto.SearchKnowledgePointResponse, len(keywordRows)+len(semanticHits))
+	keywordOrder := make([]int64, 0, len(keywordRows))
+	for i := range keywordRows {
+		kp := toKPResponse(&keywordRows[i])
+		item := atlasdto.SearchKnowledgePointResponse{
+			KnowledgePointResponse: kp,
+			SearchSource:           "keyword",
+		}
+		byID[kp.ID] = &item
+		keywordOrder = append(keywordOrder, kp.ID)
+	}
+
+	semanticOrder := make([]int64, 0, len(semanticHits))
+	if semanticAvailable {
+		for _, hit := range semanticHits {
+			if hit.ID <= 0 {
+				continue
+			}
+			if existing, ok := byID[hit.ID]; ok {
+				existing.SearchScore = hit.Similarity
+				existing.SearchSource = "keyword_semantic"
+				semanticOrder = append(semanticOrder, hit.ID)
+				continue
+			}
+			kp, err := h.kp.Get(ctx, hit.ID)
+			if err != nil {
+				return nil, err
+			}
+			if kp == nil || !scope.canAccessAuthor(kp.AuthorID) {
+				continue
+			}
+			resp := toKPResponse(kp)
+			item := atlasdto.SearchKnowledgePointResponse{
+				KnowledgePointResponse: resp,
+				SearchScore:            hit.Similarity,
+				SearchSource:           normalizeAtlasSearchSource(hit.RecallSource),
+			}
+			byID[resp.ID] = &item
+			semanticOrder = append(semanticOrder, resp.ID)
+		}
+	}
+
+	out := make([]atlasdto.SearchKnowledgePointResponse, 0, len(byID))
+	seen := make(map[int64]bool, len(byID))
+	appendIfPresent := func(id int64) {
+		if seen[id] {
+			return
+		}
+		item, ok := byID[id]
+		if !ok {
+			return
+		}
+		seen[id] = true
+		out = append(out, *item)
+	}
+	for _, id := range semanticOrder {
+		appendIfPresent(id)
+	}
+	for _, id := range keywordOrder {
+		appendIfPresent(id)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func parseAtlasSemanticParam(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	enabled, err := strconv.ParseBool(raw)
+	return err == nil && enabled
+}
+
+func normalizeAtlasSearchSource(source string) string {
+	switch strings.TrimSpace(source) {
+	case "semantic", "":
+		return "semantic"
+	case "keyword", "keyword_semantic":
+		return source
+	default:
+		return "semantic"
+	}
 }
 
 func (h *KPHandler) assertKPScope(c echo.Context, id int64) (*atlasmodel.KnowledgePoint, error) {

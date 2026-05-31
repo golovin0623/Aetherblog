@@ -85,7 +85,9 @@ Use `/admin/atlas/search` for a single keyword search across:
 
 Search respects the same Atlas scope control as the dashboard: non-admin users stay scoped to their own Atlas data, while admin users can choose all accessible records or only their own records.
 
-This page is still the keyword-search baseline. Semantic Atlas recall is available in the AetherHub handoff when Atlas scope is selected, but `/atlas/search` does not yet rerank results with vectors or GraphRAG.
+The `语义重排` switch is enabled by default. When it is on, `/atlas/search` still returns keyword KP/Annotation/Carrier matches, and the backend additionally calls the same active-profile Atlas semantic recall path used by AetherHub. Semantic KP hits are hydrated through the Go backend scope checks, ranked ahead of keyword-only KP hits, and marked with source and score chips. If ai-service recall is unavailable, the page keeps the keyword results and shows a degradation banner instead of failing the whole search.
+
+This is a search-page semantic rerank baseline, not full GraphRAG/community/global query ranking. Production recall completeness still depends on running the KP/note embedding backfill command after deployment.
 
 ## 7. Create Relations
 
@@ -162,7 +164,7 @@ Historical KP/note rows can be backfilled through ai-service internal endpoints 
 AI_INTERNAL_SERVICE_TOKEN=... node scripts/atlas/reindex-embeddings.mjs --kind all --limit 100 --batches 20
 ```
 
-This is an automatic semantic recall baseline, not full GraphRAG. Search-page semantic rerank, community/global graph query, and production evidence from running the KP/note embedding backfill command remain future gates.
+This is an automatic semantic recall baseline, not full GraphRAG. The admin search page now has a semantic rerank baseline, while community/global graph query and production evidence from running the KP/note embedding backfill command remain future gates.
 
 ## 11. Release Checklist
 

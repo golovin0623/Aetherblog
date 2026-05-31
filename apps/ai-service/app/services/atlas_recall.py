@@ -295,7 +295,7 @@ async def recall_atlas_context(
     pool,
     llm: LlmRouter | None,
     *,
-    user_id: int,
+    user_id: int | None,
     query: str | None,
     kp_ids: list[int] | None = None,
     carrier_ids: list[int] | None = None,
@@ -415,7 +415,7 @@ async def recall_atlas_context(
     )
 
 
-async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int) -> list[int]:
+async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int | None) -> list[int]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -426,8 +426,8 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int)
             WHERE a.deleted = FALSE
               AND c.deleted = FALSE
               AND a.carrier_id = ANY($1::bigint[])
-              AND (a.author_id = $2 OR a.author_id IS NULL)
-              AND (c.owner_id = $2 OR c.owner_id IS NULL)
+              AND ($2::bigint IS NULL OR a.author_id = $2 OR a.author_id IS NULL)
+              AND ($2::bigint IS NULL OR c.owner_id = $2 OR c.owner_id IS NULL)
             LIMIT 12
             """,
             carrier_ids,
@@ -436,7 +436,7 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int)
     return [int(row["kp_id"]) for row in rows]
 
 
-async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: int) -> list[int]:
+async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: int | None) -> list[int]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -445,7 +445,7 @@ async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: in
             WHERE c.id = ANY($1::bigint[])
               AND c.type = 'markdown'
               AND c.deleted = FALSE
-              AND (c.owner_id = $2 OR c.owner_id IS NULL)
+              AND ($2::bigint IS NULL OR c.owner_id = $2 OR c.owner_id IS NULL)
               AND c.source_uri ~ '^notes://[0-9]+$'
             LIMIT 12
             """,
@@ -458,7 +458,7 @@ async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: in
 async def _fetch_kps_by_ids(
     pool,
     kp_ids: list[int],
-    user_id: int,
+    user_id: int | None,
     *,
     recall_source: str,
 ) -> list[AtlasKnowledgePointHit]:
@@ -481,7 +481,7 @@ async def _fetch_kps_by_ids(
             FROM atlas_knowledge_points
             WHERE deleted = FALSE
               AND id = ANY($1::bigint[])
-              AND (author_id = $2 OR author_id IS NULL)
+              AND ($2::bigint IS NULL OR author_id = $2 OR author_id IS NULL)
             ORDER BY array_position($1::bigint[], id)
             LIMIT 24
             """,
@@ -497,7 +497,7 @@ async def _semantic_recall(
     llm: LlmRouter,
     *,
     query: str,
-    user_id: int,
+    user_id: int | None,
     limit: int,
 ) -> list[AtlasKnowledgePointHit]:
     profile = await _get_active_search_profile(pool, llm)
@@ -526,7 +526,7 @@ async def _semantic_recall_with_vector(
     profile: SearchProfile,
     embedding: list[float],
     dim: int,
-    user_id: int,
+    user_id: int | None,
     limit: int,
 ) -> list[AtlasKnowledgePointHit]:
     cast_type = _cast_type_for_dim(dim)
@@ -552,7 +552,7 @@ async def _semantic_recall_with_vector(
                   AND embedding IS NOT NULL
                   AND deleted = FALSE
                   AND archived = FALSE
-                  AND (author_id = $6 OR author_id IS NULL)
+                  AND ($6::bigint IS NULL OR author_id = $6 OR author_id IS NULL)
                 ORDER BY embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
             )
@@ -579,7 +579,7 @@ async def _semantic_note_recall_with_vector(
     profile: SearchProfile,
     embedding: list[float],
     dim: int,
-    user_id: int,
+    user_id: int | None,
     note_ids: list[int],
     limit: int,
 ) -> list[AtlasNoteHit]:
@@ -611,7 +611,7 @@ async def _semantic_note_recall_with_vector(
                   AND ne.status = 'INDEXED'
                   AND ne.embedding IS NOT NULL
                   AND n.deleted = FALSE
-                  AND (n.author_id = $6 OR n.author_id IS NULL)
+                  AND ($6::bigint IS NULL OR n.author_id = $6 OR n.author_id IS NULL)
                   AND ne.note_id = ANY($8::bigint[])
                 ORDER BY ne.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
@@ -637,7 +637,7 @@ async def _semantic_note_recall_with_vector(
 async def _fetch_relation_neighborhood(
     pool,
     seed_kp_ids: list[int],
-    user_id: int,
+    user_id: int | None,
     *,
     depth: int,
 ) -> list[AtlasRelationHit]:
@@ -656,7 +656,7 @@ async def _fetch_relation_neighborhood(
                     ARRAY[r.from_kp_id, r.to_kp_id]::bigint[] AS path
                 FROM atlas_typed_relations r
                 WHERE r.deleted = FALSE
-                  AND (r.author_id = $2 OR r.author_id IS NULL)
+                  AND ($2::bigint IS NULL OR r.author_id = $2 OR r.author_id IS NULL)
                   AND (r.from_kp_id = ANY($1::bigint[]) OR r.to_kp_id = ANY($1::bigint[]))
 
                 UNION ALL
@@ -678,7 +678,7 @@ async def _fetch_relation_neighborhood(
                   ON (r.from_kp_id = rw.from_kp_id OR r.from_kp_id = rw.to_kp_id
                    OR r.to_kp_id = rw.from_kp_id OR r.to_kp_id = rw.to_kp_id)
                 WHERE r.deleted = FALSE
-                  AND (r.author_id = $2 OR r.author_id IS NULL)
+                  AND ($2::bigint IS NULL OR r.author_id = $2 OR r.author_id IS NULL)
                   AND rw.depth < $3
                   AND NOT (
                     r.from_kp_id = ANY(rw.path)
@@ -706,7 +706,7 @@ async def _fetch_relation_neighborhood(
     return relations
 
 
-async def _fetch_evidence(pool, kp_ids: list[int], user_id: int) -> list[AtlasEvidenceHit]:
+async def _fetch_evidence(pool, kp_ids: list[int], user_id: int | None) -> list[AtlasEvidenceHit]:
     kp_ids = _dedupe_positive_ints(kp_ids, 36)
     if not kp_ids:
         return []
@@ -726,7 +726,7 @@ async def _fetch_evidence(pool, kp_ids: list[int], user_id: int) -> list[AtlasEv
             LEFT JOIN atlas_carriers c ON c.id = a.carrier_id
             WHERE l.kp_id = ANY($1::bigint[])
               AND a.deleted = FALSE
-              AND (a.author_id = $2 OR a.author_id IS NULL)
+              AND ($2::bigint IS NULL OR a.author_id = $2 OR a.author_id IS NULL)
             ORDER BY array_position($1::bigint[], l.kp_id), a.updated_at DESC
             LIMIT 32
             """,

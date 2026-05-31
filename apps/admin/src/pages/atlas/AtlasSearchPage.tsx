@@ -1,8 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BookOpen, FileText, Highlighter, RefreshCw, Search } from 'lucide-react';
+import { ArrowRight, BookOpen, BrainCircuit, FileText, Highlighter, RefreshCw, Search } from 'lucide-react';
 import { Select } from '@aetherblog/ui';
-import type { AtlasAnnotation, AtlasCarrier, AtlasKnowledgePoint, AtlasSearchResponse } from '@aetherblog/types';
+import type { AtlasAnnotation, AtlasCarrier, AtlasSearchKnowledgePoint, AtlasSearchResponse } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,11 +26,13 @@ export default function AtlasSearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = searchParams.get('q') ?? '';
   const urlScope = searchParams.get('scope') === 'mine' ? 'mine' : 'all';
+  const urlSemantic = searchParams.get('semantic') !== '0';
   const [query, setQuery] = useState(urlQuery);
   const [scope, setScope] = useState<AtlasScopeFilter>(urlScope);
+  const [semantic, setSemantic] = useState(urlSemantic);
   const [state, setState] = useState<SearchState>(urlQuery ? { kind: 'loading' } : { kind: 'idle' });
 
-  const runSearch = useCallback(async (nextQuery: string, nextScope: AtlasScopeFilter) => {
+  const runSearch = useCallback(async (nextQuery: string, nextScope: AtlasScopeFilter, nextSemantic: boolean) => {
     const q = nextQuery.trim();
     if (!q) {
       setState({ kind: 'idle' });
@@ -38,7 +40,7 @@ export default function AtlasSearchPage() {
     }
     setState({ kind: 'loading' });
     try {
-      const res = await atlasService.search({ q, scope: nextScope, limit: 10 });
+      const res = await atlasService.search({ q, scope: nextScope, limit: 10, semantic: nextSemantic });
       setState({ kind: 'ok', data: res.data });
     } catch (err) {
       setState({ kind: 'error', message: extractApiErrorMessage(err, 'Atlas 搜索失败') });
@@ -48,17 +50,18 @@ export default function AtlasSearchPage() {
   useEffect(() => {
     setQuery(urlQuery);
     setScope(urlScope);
+    setSemantic(urlSemantic);
     if (urlQuery.trim()) {
-      void runSearch(urlQuery, urlScope);
+      void runSearch(urlQuery, urlScope, urlSemantic);
     } else {
       setState({ kind: 'idle' });
     }
-  }, [runSearch, urlQuery, urlScope]);
+  }, [runSearch, urlQuery, urlScope, urlSemantic]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const q = query.trim();
-    setSearchParams(q ? { q, scope } : {});
+    setSearchParams(q ? { q, scope, ...(semantic ? {} : { semantic: '0' }) } : {});
   };
 
   const counts = useMemo(() => {
@@ -81,7 +84,7 @@ export default function AtlasSearchPage() {
         actions={
           <button
             type="button"
-            onClick={() => void runSearch(query, scope)}
+            onClick={() => void runSearch(query, scope, semantic)}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)]"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -92,7 +95,7 @@ export default function AtlasSearchPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="grid gap-3 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3 md:grid-cols-[minmax(220px,1fr)_160px_104px]"
+        className="grid gap-3 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3 md:grid-cols-[minmax(220px,1fr)_160px_180px_104px]"
       >
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
@@ -111,6 +114,17 @@ export default function AtlasSearchPage() {
           size="md"
           ariaLabel="Atlas 搜索范围"
         />
+        <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)]">
+          <input
+            type="checkbox"
+            checked={semantic}
+            onChange={(event) => setSemantic(event.target.checked)}
+            className="h-4 w-4 rounded border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] accent-[var(--aurora-1)]"
+            aria-label="启用 Atlas 语义重排"
+          />
+          <BrainCircuit className="h-4 w-4 text-[var(--ink-muted)]" />
+          <span className="truncate">语义重排</span>
+        </label>
         <button
           type="submit"
           className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] px-3 text-sm font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]"
@@ -131,51 +145,59 @@ export default function AtlasSearchPage() {
           {state.message}
         </section>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <ResultPanel title="Knowledge Points" count={counts.kp} icon={BookOpen}>
-            {state.data.knowledgePoints.length === 0 ? (
-              <EmptyResult />
-            ) : (
-              <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
-                {state.data.knowledgePoints.map((item) => (
-                  <KnowledgePointResult key={item.id} item={item} />
-                ))}
-              </ul>
-            )}
-          </ResultPanel>
-
-          <div className="space-y-4">
-            <ResultPanel title="Annotations" count={counts.annotation} icon={Highlighter}>
-              {state.data.annotations.length === 0 ? (
+        <div className="space-y-3">
+          {state.data.semanticEnabled && !state.data.semanticAvailable ? (
+            <section className="rounded-lg border border-[color-mix(in_oklch,var(--signal-warn)_28%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_8%,transparent)] px-4 py-3 text-xs text-[var(--ink-primary)]">
+              语义重排暂不可用，当前展示关键词结果。
+            </section>
+          ) : null}
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <ResultPanel title="Knowledge Points" count={counts.kp} icon={BookOpen}>
+              {state.data.knowledgePoints.length === 0 ? (
                 <EmptyResult />
               ) : (
                 <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
-                  {state.data.annotations.map((item) => (
-                    <AnnotationResult key={item.id} item={item} />
+                  {state.data.knowledgePoints.map((item) => (
+                    <KnowledgePointResult key={item.id} item={item} />
                   ))}
                 </ul>
               )}
             </ResultPanel>
 
-            <ResultPanel title="Carriers" count={counts.carrier} icon={FileText}>
-              {state.data.carriers.length === 0 ? (
-                <EmptyResult />
-              ) : (
-                <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
-                  {state.data.carriers.map((item) => (
-                    <CarrierResult key={item.id} item={item} />
-                  ))}
-                </ul>
-              )}
-            </ResultPanel>
-          </div>
-        </section>
+            <div className="space-y-4">
+              <ResultPanel title="Annotations" count={counts.annotation} icon={Highlighter}>
+                {state.data.annotations.length === 0 ? (
+                  <EmptyResult />
+                ) : (
+                  <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+                    {state.data.annotations.map((item) => (
+                      <AnnotationResult key={item.id} item={item} />
+                    ))}
+                  </ul>
+                )}
+              </ResultPanel>
+
+              <ResultPanel title="Carriers" count={counts.carrier} icon={FileText}>
+                {state.data.carriers.length === 0 ? (
+                  <EmptyResult />
+                ) : (
+                  <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+                    {state.data.carriers.map((item) => (
+                      <CarrierResult key={item.id} item={item} />
+                    ))}
+                  </ul>
+                )}
+              </ResultPanel>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
 }
 
-function KnowledgePointResult({ item }: { item: AtlasKnowledgePoint }) {
+function KnowledgePointResult({ item }: { item: AtlasSearchKnowledgePoint }) {
+  const score = typeof item.searchScore === 'number' ? Math.round(item.searchScore * 100) : null;
   return (
     <li>
       <Link
@@ -195,12 +217,20 @@ function KnowledgePointResult({ item }: { item: AtlasKnowledgePoint }) {
             <Chip className={cn(item.provenance === 'ai_suggested' && 'text-[var(--signal-warn)]')}>
               {item.provenance}
             </Chip>
+            {item.searchSource ? <Chip className="text-[var(--aurora-1)]">{searchSourceLabel(item.searchSource)}</Chip> : null}
+            {score !== null ? <Chip>{score}%</Chip> : null}
           </span>
         </span>
         <ArrowRight className="hidden h-4 w-4 text-[var(--ink-muted)] md:block" />
       </Link>
     </li>
   );
+}
+
+function searchSourceLabel(source: string) {
+  if (source === 'keyword_semantic') return 'keyword+semantic';
+  if (source === 'semantic') return 'semantic';
+  return 'keyword';
 }
 
 function AnnotationResult({ item }: { item: AtlasAnnotation }) {
