@@ -9,6 +9,7 @@ import type {
   AtlasAnnotation,
   AtlasAnchorState,
   AtlasCarrier,
+  AtlasGraphHealth,
   AtlasHealthResponse,
   AtlasKnowledgePoint,
   AtlasKnowledgePointStatus,
@@ -166,6 +167,9 @@ export const atlasService = {
     params?: AtlasScopedParams
   ): Promise<R<{ nodes: AtlasKnowledgePoint[]; edges: AtlasTypedRelation[] }>> =>
     api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
+
+  getGraphHealth: (params?: AtlasScopedParams & { hubLimit?: number }): Promise<R<AtlasGraphHealth>> =>
+    api.get(`${base}/graph/health`, { params }),
 
   search: (params: {
     q: string;

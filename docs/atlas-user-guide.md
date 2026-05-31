@@ -104,6 +104,8 @@ Relation cards show direction, type, strength, rationale, and attached evidence 
 
 Use `/admin/atlas/graph` for the global graph view.
 
+The `/admin/atlas` dashboard reads live graph health from `/api/v1/admin/atlas/graph/health`. The health panel shows active KP count, relation count and density, orphan KP ratio, KP evidence coverage, relation evidence-or-rationale coverage, and top hub nodes under the selected Atlas scope.
+
 Available controls:
 
 - Keyword search across KP title, body, type, status, and provenance.

@@ -288,6 +288,11 @@ func (s *RelationService) ListForNodeIDs(ctx context.Context, nodeIDs []int64, l
 	return s.repo.ListForNodeIDs(ctx, nodeIDs, limit, authorID)
 }
 
+// GraphHealth 图谱健康指标。
+func (s *RelationService) GraphHealth(ctx context.Context, authorID *int64, hubLimit int) (*repository.GraphHealthMetrics, error) {
+	return s.repo.GraphHealth(ctx, authorID, hubLimit)
+}
+
 // Delete 软删除。
 func (s *RelationService) Delete(ctx context.Context, id int64) error {
 	return s.repo.SoftDelete(ctx, id)

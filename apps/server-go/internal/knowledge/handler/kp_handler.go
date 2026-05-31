@@ -19,6 +19,7 @@
 //   DELETE /relations/:id                          软删
 //
 //   GET    /graph                                  图谱 JSON（nodes + edges）
+//   GET    /graph/health                           图谱健康指标
 
 package handler
 
@@ -77,6 +78,7 @@ func (h *KPHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.DELETE("/relations/:id", h.DeleteRelation, write)
 
 	g.GET("/graph", h.Graph)
+	g.GET("/graph/health", h.GraphHealth)
 	g.GET("/search", h.Search)
 }
 
@@ -500,6 +502,28 @@ func (h *KPHandler) Graph(c echo.Context) error {
 	return response.OK(c, atlasdto.GraphResponse{Nodes: nodes, Edges: edges})
 }
 
+func (h *KPHandler) GraphHealth(c echo.Context) error {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	authorID, err := scope.authorFilter(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	hubLimit := 5
+	if v := c.QueryParam("hubLimit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			hubLimit = n
+		}
+	}
+	metrics, err := h.rel.GraphHealth(c.Request().Context(), authorID, hubLimit)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, toGraphHealthResponse(metrics))
+}
+
 // Search 聚合 KP、Annotation、Carrier 的轻量关键字搜索。
 func (h *KPHandler) Search(c echo.Context) error {
 	scope, err := currentAtlasScope(c)
@@ -667,5 +691,33 @@ func toRelationResponse(t *atlasmodel.TypedRelation) atlasdto.TypedRelationRespo
 		AuthorID:       t.AuthorID,
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
+	}
+}
+
+func toGraphHealthResponse(m *atlasrepo.GraphHealthMetrics) atlasdto.GraphHealthResponse {
+	hubs := make([]atlasdto.GraphHealthHubResponse, len(m.TopHubs))
+	for i := range m.TopHubs {
+		hubs[i] = atlasdto.GraphHealthHubResponse{
+			KPID:      m.TopHubs[i].KPID,
+			Title:     m.TopHubs[i].Title,
+			Degree:    m.TopHubs[i].Degree,
+			InDegree:  m.TopHubs[i].InDegree,
+			OutDegree: m.TopHubs[i].OutDegree,
+		}
+	}
+	return atlasdto.GraphHealthResponse{
+		ActiveKPCount:                m.ActiveKPCount,
+		RelationCount:                m.RelationCount,
+		RelationDensity:              m.RelationDensity,
+		OrphanKPCount:                m.OrphanKPCount,
+		OrphanKPRatio:                m.OrphanKPRatio,
+		KPEvidenceCount:              m.KPEvidenceCount,
+		KPEvidenceCoverage:           m.KPEvidenceCoverage,
+		RelationEvidenceCount:        m.RelationEvidenceCount,
+		RelationEvidenceCoverage:     m.RelationEvidenceCoverage,
+		MissingEvidenceKPCount:       m.MissingEvidenceKPCount,
+		MissingEvidenceRelationCount: m.MissingEvidenceRelationCount,
+		AIKPCount:                    m.AIKPCount,
+		TopHubs:                      hubs,
 	}
 }

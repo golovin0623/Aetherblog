@@ -193,6 +193,30 @@ export interface AtlasRelationEvidence {
   createdAt: string;
 }
 
+export interface AtlasGraphHealthHub {
+  kpId: number;
+  title: string;
+  degree: number;
+  inDegree: number;
+  outDegree: number;
+}
+
+export interface AtlasGraphHealth {
+  activeKpCount: number;
+  relationCount: number;
+  relationDensity: number;
+  orphanKpCount: number;
+  orphanKpRatio: number;
+  kpEvidenceCount: number;
+  kpEvidenceCoverage: number;
+  relationEvidenceCount: number;
+  relationEvidenceCoverage: number;
+  missingEvidenceKpCount: number;
+  missingEvidenceRelationCount: number;
+  aiKpCount: number;
+  topHubs: AtlasGraphHealthHub[];
+}
+
 export interface AtlasSearchResponse {
   query: string;
   limit: number;

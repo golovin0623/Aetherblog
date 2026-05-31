@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -114,6 +115,64 @@ func TestRelationRepoLinkAndListEvidence(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].RelationID != 10 || rows[0].AnnotationID != 20 {
 		t.Fatalf("unexpected evidence rows: %+v", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestRelationRepoGraphHealthComputesLiveMetrics(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewRelationRepo(base)
+	authorID := int64(7)
+
+	mock.ExpectQuery(`WITH scoped_kp AS`).
+		WithArgs(authorID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"active_kp_count",
+			"relation_count",
+			"orphan_kp_count",
+			"kp_evidence_count",
+			"relation_evidence_count",
+			"ai_kp_count",
+		}).AddRow(int64(4), int64(3), int64(1), int64(3), int64(2), int64(1)))
+
+	mock.ExpectQuery(`WITH scoped_kp AS`).
+		WithArgs(authorID, 5).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"kp_id",
+			"title",
+			"degree",
+			"in_degree",
+			"out_degree",
+		}).AddRow(int64(10), "Graph Hub", int64(3), int64(1), int64(2)))
+
+	metrics, err := repo.GraphHealth(context.Background(), &authorID, 5)
+	if err != nil {
+		t.Fatalf("GraphHealth returned error: %v", err)
+	}
+	if metrics.ActiveKPCount != 4 || metrics.RelationCount != 3 {
+		t.Fatalf("unexpected counts: %+v", metrics)
+	}
+	if math.Abs(metrics.RelationDensity-0.75) > 0.001 {
+		t.Fatalf("RelationDensity = %.3f, want 0.75", metrics.RelationDensity)
+	}
+	if math.Abs(metrics.OrphanKPRatio-0.25) > 0.001 {
+		t.Fatalf("OrphanKPRatio = %.3f, want 0.25", metrics.OrphanKPRatio)
+	}
+	if math.Abs(metrics.KPEvidenceCoverage-0.75) > 0.001 {
+		t.Fatalf("KPEvidenceCoverage = %.3f, want 0.75", metrics.KPEvidenceCoverage)
+	}
+	if math.Abs(metrics.RelationEvidenceCoverage-0.666) > 0.01 {
+		t.Fatalf("RelationEvidenceCoverage = %.3f, want approximately 0.667", metrics.RelationEvidenceCoverage)
+	}
+	if metrics.MissingEvidenceKPCount != 1 || metrics.MissingEvidenceRelationCount != 1 {
+		t.Fatalf("unexpected missing evidence counts: %+v", metrics)
+	}
+	if len(metrics.TopHubs) != 1 || metrics.TopHubs[0].KPID != 10 || metrics.TopHubs[0].Degree != 3 {
+		t.Fatalf("unexpected hubs: %+v", metrics.TopHubs)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sql expectations: %v", err)

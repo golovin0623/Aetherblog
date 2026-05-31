@@ -106,6 +106,32 @@ type GraphResponse struct {
 	Edges []TypedRelationResponse  `json:"edges"`
 }
 
+// GraphHealthResponse 是 GET /atlas/graph/health 的响应。
+type GraphHealthResponse struct {
+	ActiveKPCount                int64                    `json:"activeKpCount"`
+	RelationCount                int64                    `json:"relationCount"`
+	RelationDensity              float64                  `json:"relationDensity"`
+	OrphanKPCount                int64                    `json:"orphanKpCount"`
+	OrphanKPRatio                float64                  `json:"orphanKpRatio"`
+	KPEvidenceCount              int64                    `json:"kpEvidenceCount"`
+	KPEvidenceCoverage           float64                  `json:"kpEvidenceCoverage"`
+	RelationEvidenceCount        int64                    `json:"relationEvidenceCount"`
+	RelationEvidenceCoverage     float64                  `json:"relationEvidenceCoverage"`
+	MissingEvidenceKPCount       int64                    `json:"missingEvidenceKpCount"`
+	MissingEvidenceRelationCount int64                    `json:"missingEvidenceRelationCount"`
+	AIKPCount                    int64                    `json:"aiKpCount"`
+	TopHubs                      []GraphHealthHubResponse `json:"topHubs"`
+}
+
+// GraphHealthHubResponse 是 graph health 的 hub 节点摘要。
+type GraphHealthHubResponse struct {
+	KPID      int64  `json:"kpId"`
+	Title     string `json:"title"`
+	Degree    int64  `json:"degree"`
+	InDegree  int64  `json:"inDegree"`
+	OutDegree int64  `json:"outDegree"`
+}
+
 // SearchResponse 是 GET /atlas/search 的轻量聚合搜索结果。
 type SearchResponse struct {
 	Query           string                   `json:"query"`

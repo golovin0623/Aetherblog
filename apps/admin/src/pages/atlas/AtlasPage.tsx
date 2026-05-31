@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Select } from '@aetherblog/ui';
 
-import type { AtlasHealthResponse, AtlasKnowledgePoint, AtlasTypedRelation } from '@aetherblog/types';
+import type { AtlasGraphHealth, AtlasHealthResponse, AtlasKnowledgePoint } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,7 +30,7 @@ type DashboardState =
       health: AtlasHealthResponse;
       kps: AtlasKnowledgePoint[];
       suggestions: AtlasSuggestion[];
-      relations: AtlasTypedRelation[];
+      graphHealth: AtlasGraphHealth;
     }
   | { kind: 'error'; message: string };
 
@@ -88,11 +88,11 @@ export default function AtlasPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const [healthRes, kpRes, suggestionRes, graphRes] = await Promise.all([
+        const [healthRes, kpRes, suggestionRes, graphHealthRes] = await Promise.all([
           atlasService.health(),
           atlasService.listKnowledgePoints({ limit: 100, scope }),
           atlasService.listSuggestions({ status: 'pending', limit: 100, scope }),
-          atlasService.getGraph(500, { scope }),
+          atlasService.getGraphHealth({ scope, hubLimit: 5 }),
         ]);
         if (cancelled) return;
         setState({
@@ -100,7 +100,7 @@ export default function AtlasPage() {
           health: healthRes.data,
           kps: kpRes.data ?? [],
           suggestions: suggestionRes.data ?? [],
-          relations: graphRes.data?.edges ?? [],
+          graphHealth: graphHealthRes.data,
         });
       } catch (err) {
         if (cancelled) return;
@@ -111,25 +111,6 @@ export default function AtlasPage() {
       cancelled = true;
     };
   }, [scope]);
-
-  const summary = useMemo(() => {
-    if (state.kind !== 'ok') return null;
-    const activeKps = state.kps.filter((k) => !k.archived && k.status !== 'archived');
-    const relationDensity = activeKps.length > 0 ? state.relations.length / activeKps.length : 0;
-    const related = new Set<number>();
-    state.relations.forEach((r) => {
-      related.add(r.fromKpId);
-      related.add(r.toKpId);
-    });
-    const orphanCount = activeKps.filter((k) => !related.has(k.id)).length;
-    const aiKps = activeKps.filter((k) => k.provenance === 'ai_suggested').length;
-    return {
-      activeKps,
-      relationDensity,
-      orphanCount,
-      aiKps,
-    };
-  }, [state]);
 
   return (
     <div className="space-y-6">
@@ -192,13 +173,13 @@ export default function AtlasPage() {
           </form>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricTile icon={Database} label="Active KP" value={String(summary?.activeKps.length ?? 0)} />
-            <MetricTile icon={GitBranch} label="Relations" value={String(state.relations.length)} />
+            <MetricTile icon={Database} label="Active KP" value={String(state.graphHealth.activeKpCount)} />
+            <MetricTile icon={GitBranch} label="Relations" value={String(state.graphHealth.relationCount)} />
             <MetricTile
               icon={ShieldCheck}
               label="Relation density"
-              value={(summary?.relationDensity ?? 0).toFixed(2)}
-              tone={(summary?.relationDensity ?? 0) >= 0.6 ? 'good' : 'warn'}
+              value={state.graphHealth.relationDensity.toFixed(2)}
+              tone={state.graphHealth.relationDensity >= 2 ? 'good' : 'warn'}
             />
             <MetricTile
               icon={Sparkles}
@@ -280,10 +261,46 @@ export default function AtlasPage() {
               <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
                 <h2 className="text-sm font-semibold text-[var(--ink-primary)]">图谱健康</h2>
                 <dl className="mt-3 space-y-3 text-xs">
-                  <HealthRow label="孤立 KP" value={summary?.orphanCount ?? 0} warn={(summary?.orphanCount ?? 0) > 0} />
-                  <HealthRow label="AI 生成 KP" value={summary?.aiKps ?? 0} />
+                  <HealthRow
+                    label="孤立 KP"
+                    value={`${state.graphHealth.orphanKpCount} (${formatPercent(state.graphHealth.orphanKpRatio)})`}
+                    warn={state.graphHealth.orphanKpCount > 0}
+                  />
+                  <HealthRow
+                    label="KP evidence"
+                    value={formatPercent(state.graphHealth.kpEvidenceCoverage)}
+                    warn={state.graphHealth.missingEvidenceKpCount > 0}
+                  />
+                  <HealthRow
+                    label="Relation evidence"
+                    value={formatPercent(state.graphHealth.relationEvidenceCoverage)}
+                    warn={state.graphHealth.missingEvidenceRelationCount > 0}
+                  />
+                  <HealthRow label="AI 生成 KP" value={state.graphHealth.aiKpCount} />
                   <HealthRow label="待处理建议" value={state.suggestions.length} warn={state.suggestions.length > 0} />
                 </dl>
+                <div className="mt-4 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] pt-3">
+                  <h3 className="text-xs font-semibold text-[var(--ink-primary)]">Hub 节点</h3>
+                  {state.graphHealth.topHubs.length === 0 ? (
+                    <p className="mt-2 text-xs text-[var(--ink-secondary)]">暂无 hub 节点</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {state.graphHealth.topHubs.map((hub) => (
+                        <li key={hub.kpId} className="text-xs">
+                          <Link
+                            to={`/atlas/kp/${hub.kpId}`}
+                            className="flex items-center justify-between gap-3 rounded-md bg-[var(--bg-substrate)] px-2.5 py-2 hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,var(--bg-substrate))]"
+                          >
+                            <span className="min-w-0 truncate text-[var(--ink-primary)]">{hub.title}</span>
+                            <span className="shrink-0 font-mono text-[var(--ink-muted)]">
+                              {hub.degree} · {hub.inDegree}/{hub.outDegree}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </section>
 
               <section className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
@@ -367,13 +384,18 @@ function MetricTile({
   );
 }
 
-function HealthRow({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
+function HealthRow({ label, value, warn = false }: { label: string; value: number | string; warn?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-[var(--ink-secondary)]">{label}</dt>
       <dd className={cn('font-mono text-[var(--ink-primary)]', warn && 'text-[var(--signal-warn)]')}>{value}</dd>
     </div>
   );
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '0%';
+  return `${Math.round(value * 100)}%`;
 }
 
 function EmptyLine({ icon: Icon, text }: { icon: typeof BookOpen; text: string }) {

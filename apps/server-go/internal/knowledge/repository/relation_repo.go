@@ -20,6 +20,32 @@ type RelationRepo struct {
 	*AtlasRepo
 }
 
+// GraphHealthMetrics 是 live Atlas 图谱健康指标。
+type GraphHealthMetrics struct {
+	ActiveKPCount                int64            `db:"active_kp_count" json:"activeKpCount"`
+	RelationCount                int64            `db:"relation_count" json:"relationCount"`
+	RelationDensity              float64          `json:"relationDensity"`
+	OrphanKPCount                int64            `db:"orphan_kp_count" json:"orphanKpCount"`
+	OrphanKPRatio                float64          `json:"orphanKpRatio"`
+	KPEvidenceCount              int64            `db:"kp_evidence_count" json:"kpEvidenceCount"`
+	KPEvidenceCoverage           float64          `json:"kpEvidenceCoverage"`
+	RelationEvidenceCount        int64            `db:"relation_evidence_count" json:"relationEvidenceCount"`
+	RelationEvidenceCoverage     float64          `json:"relationEvidenceCoverage"`
+	MissingEvidenceKPCount       int64            `json:"missingEvidenceKpCount"`
+	MissingEvidenceRelationCount int64            `json:"missingEvidenceRelationCount"`
+	AIKPCount                    int64            `db:"ai_kp_count" json:"aiKpCount"`
+	TopHubs                      []GraphHealthHub `json:"topHubs"`
+}
+
+// GraphHealthHub 是按入/出度聚合的 hub 节点。
+type GraphHealthHub struct {
+	KPID      int64  `db:"kp_id" json:"kpId"`
+	Title     string `db:"title" json:"title"`
+	Degree    int64  `db:"degree" json:"degree"`
+	InDegree  int64  `db:"in_degree" json:"inDegree"`
+	OutDegree int64  `db:"out_degree" json:"outDegree"`
+}
+
 // NewRelationRepo 衍生。
 func NewRelationRepo(base *AtlasRepo) *RelationRepo {
 	return &RelationRepo{AtlasRepo: base}
@@ -157,6 +183,137 @@ func (r *RelationRepo) ListForNodeIDs(ctx context.Context, nodeIDs []int64, limi
 	rows := []model.TypedRelation{}
 	err := r.db.SelectContext(ctx, &rows, q, args...)
 	return rows, err
+}
+
+// GraphHealth 汇总当前 scope 下的关系密度、evidence 覆盖率和 hub 排名。
+func (r *RelationRepo) GraphHealth(ctx context.Context, authorID *int64, hubLimit int) (*GraphHealthMetrics, error) {
+	if hubLimit <= 0 {
+		hubLimit = 5
+	} else if hubLimit > 20 {
+		hubLimit = 20
+	}
+
+	args := []any{}
+	kpAuthorClause := ""
+	relAuthorClause := ""
+	nextArg := 1
+	if authorID != nil {
+		kpAuthorClause = " AND author_id=$" + strconv.Itoa(nextArg)
+		relAuthorClause = " AND r.author_id=$" + strconv.Itoa(nextArg)
+		args = append(args, *authorID)
+		nextArg++
+	}
+
+	countQuery := `
+WITH scoped_kp AS (
+	SELECT id, title, provenance
+	FROM atlas_knowledge_points
+	WHERE deleted=false
+	  AND archived=false
+	  AND status <> 'archived'` + kpAuthorClause + `
+),
+scoped_rel AS (
+	SELECT r.id, r.from_kp_id, r.to_kp_id, r.body_markdown
+	FROM atlas_typed_relations r
+	JOIN scoped_kp from_kp ON from_kp.id = r.from_kp_id
+	JOIN scoped_kp to_kp ON to_kp.id = r.to_kp_id
+	WHERE r.deleted=false` + relAuthorClause + `
+)
+SELECT
+	(SELECT COUNT(*) FROM scoped_kp) AS active_kp_count,
+	(SELECT COUNT(*) FROM scoped_rel) AS relation_count,
+	(
+		SELECT COUNT(*)
+		FROM scoped_kp k
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM scoped_rel r
+			WHERE r.from_kp_id = k.id OR r.to_kp_id = k.id
+		)
+	) AS orphan_kp_count,
+	(
+		SELECT COUNT(*)
+		FROM scoped_kp k
+		WHERE EXISTS (
+			SELECT 1
+			FROM atlas_annotation_kp_links l
+			WHERE l.kp_id = k.id
+		)
+	) AS kp_evidence_count,
+	(
+		SELECT COUNT(*)
+		FROM scoped_rel r
+		WHERE EXISTS (
+			SELECT 1
+			FROM atlas_relation_evidence e
+			WHERE e.relation_id = r.id
+		)
+		OR NULLIF(BTRIM(COALESCE(r.body_markdown, '')), '') IS NOT NULL
+	) AS relation_evidence_count,
+	(SELECT COUNT(*) FROM scoped_kp WHERE provenance='ai_suggested') AS ai_kp_count`
+
+	var metrics GraphHealthMetrics
+	if err := r.db.GetContext(ctx, &metrics, countQuery, args...); err != nil {
+		return nil, err
+	}
+	if metrics.ActiveKPCount > 0 {
+		metrics.RelationDensity = float64(metrics.RelationCount) / float64(metrics.ActiveKPCount)
+		metrics.OrphanKPRatio = float64(metrics.OrphanKPCount) / float64(metrics.ActiveKPCount)
+		metrics.KPEvidenceCoverage = float64(metrics.KPEvidenceCount) / float64(metrics.ActiveKPCount)
+	}
+	if metrics.RelationCount > 0 {
+		metrics.RelationEvidenceCoverage = float64(metrics.RelationEvidenceCount) / float64(metrics.RelationCount)
+	}
+	metrics.MissingEvidenceKPCount = nonNegativeMetricDelta(metrics.ActiveKPCount, metrics.KPEvidenceCount)
+	metrics.MissingEvidenceRelationCount = nonNegativeMetricDelta(metrics.RelationCount, metrics.RelationEvidenceCount)
+
+	hubArgs := append([]any{}, args...)
+	limitArg := nextArg
+	hubArgs = append(hubArgs, hubLimit)
+	hubQuery := `
+WITH scoped_kp AS (
+	SELECT id, title
+	FROM atlas_knowledge_points
+	WHERE deleted=false
+	  AND archived=false
+	  AND status <> 'archived'` + kpAuthorClause + `
+),
+scoped_rel AS (
+	SELECT r.id, r.from_kp_id, r.to_kp_id
+	FROM atlas_typed_relations r
+	JOIN scoped_kp from_kp ON from_kp.id = r.from_kp_id
+	JOIN scoped_kp to_kp ON to_kp.id = r.to_kp_id
+	WHERE r.deleted=false` + relAuthorClause + `
+),
+degrees AS (
+	SELECT
+		k.id AS kp_id,
+		k.title,
+		COUNT(r.id) AS degree,
+		COUNT(r.id) FILTER (WHERE r.to_kp_id = k.id) AS in_degree,
+		COUNT(r.id) FILTER (WHERE r.from_kp_id = k.id) AS out_degree
+	FROM scoped_kp k
+	LEFT JOIN scoped_rel r ON r.from_kp_id = k.id OR r.to_kp_id = k.id
+	GROUP BY k.id, k.title
+)
+SELECT kp_id, title, degree, in_degree, out_degree
+FROM degrees
+WHERE degree > 0
+ORDER BY degree DESC, kp_id ASC
+LIMIT $` + strconv.Itoa(limitArg)
+	hubs := []GraphHealthHub{}
+	if err := r.db.SelectContext(ctx, &hubs, hubQuery, hubArgs...); err != nil {
+		return nil, err
+	}
+	metrics.TopHubs = hubs
+	return &metrics, nil
+}
+
+func nonNegativeMetricDelta(total, covered int64) int64 {
+	if covered >= total {
+		return 0
+	}
+	return total - covered
 }
 
 // RelationEvidenceLink 是 atlas_relation_evidence 的对外行。
