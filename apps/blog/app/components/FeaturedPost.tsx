@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Calendar, Folder, ArrowRight, Lock } from 'lucide-react';
@@ -26,16 +26,14 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 1000 });
 
-  // 使用 useMemo 记忆化摘要计算，防止聚光灯效果导致的频繁重渲染重复执行
-  const displaySummary = useMemo(() => {
-    return post.passwordRequired
-      ? '这是一篇加密文章，请输入密码后查看。'
-      : post.summary
-        ? post.summary
-        : post.contentPreview
-            ? post.contentPreview.slice(0, 500) + '...'
-            : '暂无摘要';
-  }, [post.passwordRequired, post.summary, post.contentPreview]);
+  // 移除 useMemo: 这里只是简单的布尔判断与字符串切片操作，使用 useMemo 会带来不必要的 hook 开销，反而影响性能。
+  const displaySummary = post.passwordRequired
+    ? '这是一篇加密文章，请输入密码后查看。'
+    : post.summary
+      ? post.summary
+      : post.contentPreview
+          ? post.contentPreview.slice(0, 500) + '...'
+          : '暂无摘要';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 点击交互元素时阻止导航
