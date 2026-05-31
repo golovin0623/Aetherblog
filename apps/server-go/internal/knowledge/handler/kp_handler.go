@@ -516,11 +516,21 @@ func (h *KPHandler) Graph(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	kpEvidencePreviews, err := h.attachGraphKPEvidencePreviews(c.Request().Context(), nodeIDs, authorID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	relationEvidencePreviews, err := h.attachGraphRelationEvidencePreviews(c.Request().Context(), relationIDs, authorID)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	return response.OK(c, atlasdto.GraphResponse{
-		Nodes:                  nodes,
-		Edges:                  edges,
-		KPEvidenceCounts:       kpEvidenceCounts,
-		RelationEvidenceCounts: relationEvidenceCounts,
+		Nodes:                    nodes,
+		Edges:                    edges,
+		KPEvidenceCounts:         kpEvidenceCounts,
+		RelationEvidenceCounts:   relationEvidenceCounts,
+		KPEvidencePreviews:       kpEvidencePreviews,
+		RelationEvidencePreviews: relationEvidencePreviews,
 	})
 }
 
@@ -758,6 +768,28 @@ func (h *KPHandler) attachSearchEvidencePreviews(
 	return nil
 }
 
+func (h *KPHandler) attachGraphKPEvidencePreviews(ctx context.Context, kpIDs []int64, authorID *int64) (map[int64]*atlasdto.SearchEvidencePreviewResponse, error) {
+	if h == nil || h.kp == nil {
+		return nil, nil
+	}
+	rows, err := h.kp.FirstEvidencePreviewRowsByKPIDs(ctx, kpIDs, authorID)
+	if err != nil {
+		return nil, err
+	}
+	return toGraphEvidencePreviewMap(rows), nil
+}
+
+func (h *KPHandler) attachGraphRelationEvidencePreviews(ctx context.Context, relationIDs []int64, authorID *int64) (map[int64]*atlasdto.SearchEvidencePreviewResponse, error) {
+	if h == nil || h.rel == nil {
+		return nil, nil
+	}
+	rows, err := h.rel.FirstEvidencePreviewRowsByRelationIDs(ctx, relationIDs, authorID)
+	if err != nil {
+		return nil, err
+	}
+	return toGraphEvidencePreviewMap(rows), nil
+}
+
 const (
 	atlasSearchEvidenceQuoteLimit = 240
 	atlasSearchEvidenceNoteLimit  = 180
@@ -770,10 +802,56 @@ func toSearchEvidencePreview(
 	if annotation == nil || carrier == nil {
 		return nil
 	}
-	quote := truncateAtlasEvidenceText(firstTextQuoteSelectorExact(annotation.Selectors), atlasSearchEvidenceQuoteLimit)
+	return toEvidencePreviewResponse(
+		annotation.ID,
+		annotation.CarrierID,
+		carrier.Type,
+		carrier.Title,
+		annotation.Selectors,
+		annotation.BodyText,
+	)
+}
+
+func toGraphEvidencePreviewMap(rows []atlasrepo.EvidencePreviewRow) map[int64]*atlasdto.SearchEvidencePreviewResponse {
+	if len(rows) == 0 {
+		return nil
+	}
+	previews := make(map[int64]*atlasdto.SearchEvidencePreviewResponse, len(rows))
+	for _, row := range rows {
+		if _, exists := previews[row.SubjectID]; exists {
+			continue
+		}
+		preview := toEvidencePreviewResponse(
+			row.AnnotationID,
+			row.CarrierID,
+			row.CarrierType,
+			row.CarrierTitle,
+			row.Selectors,
+			row.BodyText,
+		)
+		if preview == nil {
+			continue
+		}
+		previews[row.SubjectID] = preview
+	}
+	if len(previews) == 0 {
+		return nil
+	}
+	return previews
+}
+
+func toEvidencePreviewResponse(
+	annotationID int64,
+	carrierID int64,
+	carrierType string,
+	carrierTitle string,
+	selectors []byte,
+	bodyTextPtr *string,
+) *atlasdto.SearchEvidencePreviewResponse {
+	quote := truncateAtlasEvidenceText(firstTextQuoteSelectorExact(selectors), atlasSearchEvidenceQuoteLimit)
 	bodyText := ""
-	if annotation.BodyText != nil {
-		bodyText = strings.TrimSpace(*annotation.BodyText)
+	if bodyTextPtr != nil {
+		bodyText = strings.TrimSpace(*bodyTextPtr)
 	}
 	if quote == "" {
 		quote = truncateAtlasEvidenceText(bodyText, atlasSearchEvidenceQuoteLimit)
@@ -786,10 +864,10 @@ func toSearchEvidencePreview(
 		note = &trimmed
 	}
 	return &atlasdto.SearchEvidencePreviewResponse{
-		AnnotationID: annotation.ID,
-		CarrierID:    annotation.CarrierID,
-		CarrierType:  carrier.Type,
-		CarrierTitle: carrier.Title,
+		AnnotationID: annotationID,
+		CarrierID:    carrierID,
+		CarrierType:  carrierType,
+		CarrierTitle: carrierTitle,
 		Quote:        quote,
 		Note:         note,
 	}

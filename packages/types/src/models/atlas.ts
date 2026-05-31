@@ -210,6 +210,8 @@ export interface AtlasGraphResponse {
   edges: AtlasTypedRelation[];
   kpEvidenceCounts?: Record<string, number>;
   relationEvidenceCounts?: Record<string, number>;
+  kpEvidencePreviews?: Record<string, AtlasSearchEvidencePreview>;
+  relationEvidencePreviews?: Record<string, AtlasSearchEvidencePreview>;
 }
 
 export interface AtlasRelationEvidence {

@@ -20,6 +20,7 @@ import {
   Filter,
   Maximize2,
   Network,
+  Quote,
   RefreshCw,
   RotateCcw,
   Save,
@@ -36,6 +37,7 @@ import type {
   AtlasKnowledgePointType,
   AtlasProvenance,
   AtlasRelationType,
+  AtlasSearchEvidencePreview,
   AtlasTypedRelation,
 } from '@aetherblog/types';
 import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
@@ -200,6 +202,8 @@ export default function AtlasGraphPage() {
   const [rawEdges, setRawEdges] = useState<AtlasTypedRelation[]>([]);
   const [kpEvidenceCounts, setKpEvidenceCounts] = useState<Record<string, number>>({});
   const [relationEvidenceCounts, setRelationEvidenceCounts] = useState<Record<string, number>>({});
+  const [kpEvidencePreviews, setKpEvidencePreviews] = useState<Record<string, AtlasSearchEvidencePreview>>({});
+  const [relationEvidencePreviews, setRelationEvidencePreviews] = useState<Record<string, AtlasSearchEvidencePreview>>({});
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
   const [keyword, setKeyword] = useState('');
   const [typeFilter, setTypeFilter] = useState<AtlasKnowledgePointType | 'all'>('all');
@@ -258,6 +262,8 @@ export default function AtlasGraphPage() {
       setRawEdges(res.data?.edges ?? []);
       setKpEvidenceCounts(res.data?.kpEvidenceCounts ?? {});
       setRelationEvidenceCounts(res.data?.relationEvidenceCounts ?? {});
+      setKpEvidencePreviews(res.data?.kpEvidencePreviews ?? {});
+      setRelationEvidencePreviews(res.data?.relationEvidencePreviews ?? {});
       setError(null);
     } catch (err) {
       setError(extractApiErrorMessage(err, '加载图谱失败'));
@@ -909,6 +915,8 @@ export default function AtlasGraphPage() {
             edges={edges}
             kpEvidenceCounts={kpEvidenceCounts}
             relationEvidenceCounts={relationEvidenceCounts}
+            kpEvidencePreviews={kpEvidencePreviews}
+            relationEvidencePreviews={relationEvidencePreviews}
             degreeById={degreeById}
             inDegreeById={inDegreeById}
             outDegreeById={outDegreeById}
@@ -1037,6 +1045,8 @@ function GraphInspector({
   edges,
   kpEvidenceCounts,
   relationEvidenceCounts,
+  kpEvidencePreviews,
+  relationEvidencePreviews,
   degreeById,
   inDegreeById,
   outDegreeById,
@@ -1047,6 +1057,8 @@ function GraphInspector({
   edges: AtlasTypedRelation[];
   kpEvidenceCounts: Record<string, number>;
   relationEvidenceCounts: Record<string, number>;
+  kpEvidencePreviews: Record<string, AtlasSearchEvidencePreview>;
+  relationEvidencePreviews: Record<string, AtlasSearchEvidencePreview>;
   degreeById: Map<number, number>;
   inDegreeById: Map<number, number>;
   outDegreeById: Map<number, number>;
@@ -1060,6 +1072,7 @@ function GraphInspector({
   if (selectedNode) {
     const kp = selectedNode.kp;
     const relatedEdges = edges.filter((edge) => edge.fromKpId === kp.id || edge.toKpId === kp.id);
+    const preview = evidencePreview(kpEvidencePreviews, kp.id);
     return (
       <aside className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4 text-xs text-[var(--ink-secondary)]">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -1091,6 +1104,7 @@ function GraphInspector({
             {truncate(kp.bodyMarkdown.replace(/\s+/g, ' '), 180)}
           </p>
         ) : null}
+        <EvidencePreviewBlock preview={preview} />
         <div className="mt-4 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pt-3">
           <p className="mb-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-[var(--ink-muted)]">
             <Network className="h-3 w-3" /> Relations
@@ -1112,6 +1126,7 @@ function GraphInspector({
   if (selectedEdge) {
     const from = nodes.find((node) => node.id === selectedEdge.fromKpId)?.kp;
     const to = nodes.find((node) => node.id === selectedEdge.toKpId)?.kp;
+    const preview = evidencePreview(relationEvidencePreviews, selectedEdge.id);
     return (
       <aside className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4 text-xs text-[var(--ink-secondary)]">
         <div className="mb-3">
@@ -1131,6 +1146,7 @@ function GraphInspector({
             {truncate(selectedEdge.bodyMarkdown.replace(/\s+/g, ' '), 180)}
           </p>
         ) : null}
+        <EvidencePreviewBlock preview={preview} />
         <div className="mt-4 flex flex-wrap gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pt-3">
           <button
             type="button"
@@ -1182,6 +1198,24 @@ function GraphBadge({ children }: { children: string }) {
   );
 }
 
+function EvidencePreviewBlock({ preview }: { preview?: AtlasSearchEvidencePreview }) {
+  if (!preview) return null;
+  return (
+    <div className="mt-4 border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] pl-3">
+      <p className="mb-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-[var(--ink-muted)]">
+        <Quote className="h-3 w-3 text-[var(--aurora-1)]" /> Evidence
+      </p>
+      <p className="line-clamp-4 text-xs leading-5 text-[var(--ink-primary)]">{preview.quote}</p>
+      {preview.note ? (
+        <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[var(--ink-secondary)]">{preview.note}</p>
+      ) : null}
+      <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-wide text-[var(--ink-muted)]">
+        {preview.carrierType} · {preview.carrierTitle || `carrier #${preview.carrierId}`} · annotation #{preview.annotationId}
+      </p>
+    </div>
+  );
+}
+
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
@@ -1193,6 +1227,10 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 
 function evidenceCount(counts: Record<string, number>, id: number): number {
   return counts[String(id)] ?? 0;
+}
+
+function evidencePreview(previews: Record<string, AtlasSearchEvidencePreview>, id: number): AtlasSearchEvidencePreview | undefined {
+  return previews[String(id)];
 }
 
 function buildDegreeMaps(edges: AtlasTypedRelation[], kps: AtlasKnowledgePoint[]) {

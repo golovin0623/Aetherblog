@@ -6,6 +6,7 @@ import (
 	"time"
 
 	atlasmodel "github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	atlasrepo "github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 	atlassvc "github.com/golovin0623/aetherblog-server/internal/knowledge/service"
 )
 
@@ -142,5 +143,38 @@ func TestAtlasSearchEvidencePreviewFallsBackToBodyText(t *testing.T) {
 	}
 	if got.Note != nil {
 		t.Fatalf("note = %#v, want nil when note duplicates fallback quote", got.Note)
+	}
+}
+
+func TestAtlasGraphEvidencePreviewMapUsesSubjectIDs(t *testing.T) {
+	note := "extra graph note"
+	got := toGraphEvidencePreviewMap([]atlasrepo.EvidencePreviewRow{
+		{
+			SubjectID:    42,
+			AnnotationID: 77,
+			CarrierID:    9,
+			CarrierType:  "markdown",
+			CarrierTitle: "Graph Note",
+			Selectors: []byte(`[
+				{"type":"TextQuoteSelector","exact":"Graph evidence quote"}
+			]`),
+			BodyText: &note,
+		},
+	})
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	preview := got[42]
+	if preview == nil {
+		t.Fatal("preview for subject 42 = nil")
+	}
+	if preview.AnnotationID != 77 || preview.CarrierID != 9 {
+		t.Fatalf("unexpected preview identity: %+v", preview)
+	}
+	if preview.Quote != "Graph evidence quote" {
+		t.Fatalf("quote = %q, want graph quote", preview.Quote)
+	}
+	if preview.Note == nil || *preview.Note != note {
+		t.Fatalf("note = %#v, want %q", preview.Note, note)
 	}
 }

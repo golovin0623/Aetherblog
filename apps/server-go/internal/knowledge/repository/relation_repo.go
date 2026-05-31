@@ -208,6 +208,63 @@ func (r *RelationRepo) CountEvidenceByRelationIDs(ctx context.Context, relationI
 	return counts, nil
 }
 
+// FirstEvidencePreviewRowsByRelationIDs returns one scoped evidence annotation
+// per relation for graph inspector previews.
+func (r *RelationRepo) FirstEvidencePreviewRowsByRelationIDs(ctx context.Context, relationIDs []int64, authorID *int64) ([]EvidencePreviewRow, error) {
+	if len(relationIDs) == 0 {
+		return []EvidencePreviewRow{}, nil
+	}
+	q := `
+WITH ranked AS (
+	SELECT
+		e.relation_id AS subject_id,
+		a.id AS annotation_id,
+		a.carrier_id,
+		a.selectors,
+		a.body_text,
+		a.author_id AS annotation_author_id,
+		c.type AS carrier_type,
+		c.title AS carrier_title,
+		c.owner_id AS carrier_owner_id,
+		ROW_NUMBER() OVER (
+			PARTITION BY e.relation_id
+			ORDER BY e.created_at ASC, e.annotation_id ASC
+		) AS rn
+	FROM atlas_relation_evidence e
+	JOIN atlas_annotations a ON a.id = e.annotation_id AND a.deleted = false
+	JOIN atlas_carriers c ON c.id = a.carrier_id AND c.deleted = false
+	WHERE e.relation_id = ANY($1)`
+	args := []any{pq.Int64Array(relationIDs)}
+	q += `
+	  AND (
+		NULLIF(BTRIM(COALESCE(a.body_text, '')), '') IS NOT NULL
+		OR a.selectors::text LIKE '%TextQuoteSelector%'
+	  )`
+	if authorID != nil {
+		q += `
+	  AND a.author_id = $2
+	  AND c.owner_id = $2`
+		args = append(args, *authorID)
+	}
+	q += `
+)
+SELECT
+	subject_id,
+	annotation_id,
+	carrier_id,
+	selectors,
+	body_text,
+	annotation_author_id,
+	carrier_type,
+	carrier_title,
+	carrier_owner_id
+FROM ranked
+WHERE rn = 1`
+	rows := []EvidencePreviewRow{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
+	return rows, err
+}
+
 // GraphHealth 汇总当前 scope 下的关系密度、evidence 覆盖率和 hub 排名。
 func (r *RelationRepo) GraphHealth(ctx context.Context, authorID *int64, hubLimit int) (*GraphHealthMetrics, error) {
 	if hubLimit <= 0 {

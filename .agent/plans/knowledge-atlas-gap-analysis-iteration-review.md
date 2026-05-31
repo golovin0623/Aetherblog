@@ -267,7 +267,7 @@ Priority semantics:
 | --- | --- | --- | --- | --- |
 | ATLAS-G1-01 | Local graph | KP 详情增 local graph tab, 支持 depth 1/2/3 | 从 KP 看上下游, depth 改变即时生效 | P0-04 |
 | ATLAS-G1-02 | Zoom/pan/minimap | **Landing baseline 已落地**: `/atlas/graph` 使用自建 SVG viewport transform，支持工具栏放大/缩小/重置、滚轮缩放、拖拽平移、小地图点击定位，并限制 pan/zoom 边界避免图谱被完全拖离视窗 | 200 节点内可在当前 SVG 图上缩放/平移探索；后续若进入千节点级再评估 Sigma/Cytoscape 等渲染库 | 选型见 §13 R-决策 |
-| ATLAS-G1-03 | Node/edge inspector | **Landing baseline 已落地**: 点击 `/atlas/graph` 节点/边打开右侧 inspector，显示元信息、evidence count、degree、relation endpoints/body preview 和跳转动作 | 不离开图谱即可理解节点和关系；后续可补 evidence quote 预览与更细 action | G1-02,P0-07 |
+| ATLAS-G1-03 | Node/edge inspector | **Evidence-preview baseline 已落地**: 点击 `/atlas/graph` 节点/边打开右侧 inspector，显示元信息、evidence count、首条 scoped evidence quote、carrier/annotation source、degree、relation endpoints/body preview 和跳转动作；`GET /atlas/graph` 同步返回 KP/relation evidence preview maps | 不离开图谱即可理解节点和关系的证据依据；多证据浏览、Reader 跳转与更细 action 后续 polish | G1-02,P0-07 |
 | ATLAS-G1-04 | Graph filters | **Landing baseline 已落地**: 时间窗口、provenance、confidence、KP/relation evidence health、orphan/hub filters；Graph API 返回 evidence-count maps 支撑证据健康过滤；图谱页可把当前过滤组合保存为 scope 内 localStorage 预设，并支持套用、刷新后恢复和删除 | 能回答“最近新增/AI 生成/缺证据”等治理问题；多人共享/服务端 filter presets 仍属后续协作 polish | G1-02 |
 | ATLAS-G1-05 | Layout persistence | **Landing baseline 已落地**: 图谱页可保存当前可见节点坐标与 viewport 到 scoped localStorage，刷新后恢复布局和视图，也可重置布局 | 当前全局图刷新后可保持保存过的布局和缩放/平移状态；专题白板级布局仍属 A3-06 | G1-02 |
 | ATLAS-G1-06 | Graph health metrics | 关系密度、孤立 KP、无 evidence KP/relation、hub 排行 | Dashboard 可见图谱健康状况 | P0-01,P1-12 |

@@ -164,6 +164,37 @@ func TestRelationRepoCountEvidenceByRelationIDsEmptyDoesNotQuery(t *testing.T) {
 	}
 }
 
+func TestRelationRepoFirstEvidencePreviewRowsByRelationIDsScopesToAuthor(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	authorID := int64(7)
+	repo := NewRelationRepo(base)
+	mock.ExpectQuery(`WITH ranked`).
+		WithArgs(sqlmock.AnyArg(), authorID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"subject_id", "annotation_id", "carrier_id", "selectors", "body_text",
+			"annotation_author_id", "carrier_type", "carrier_title", "carrier_owner_id",
+		}).AddRow(
+			int64(21), int64(20), int64(30), []byte(`[{"type":"TextQuoteSelector","exact":"relation quote"}]`), "relation note",
+			authorID, "pdf", "Research PDF", authorID,
+		))
+
+	rows, err := repo.FirstEvidencePreviewRowsByRelationIDs(context.Background(), []int64{21, 22}, &authorID)
+	if err != nil {
+		t.Fatalf("FirstEvidencePreviewRowsByRelationIDs returned error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].SubjectID != 21 || rows[0].AnnotationID != 20 {
+		t.Fatalf("unexpected preview rows: %+v", rows)
+	}
+	if rows[0].CarrierType != "pdf" || rows[0].CarrierTitle != "Research PDF" {
+		t.Fatalf("unexpected carrier fields: %+v", rows[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestRelationRepoGraphHealthComputesLiveMetrics(t *testing.T) {
 	base, mock, cleanup := newAtlasRepoMock(t)
 	defer cleanup()

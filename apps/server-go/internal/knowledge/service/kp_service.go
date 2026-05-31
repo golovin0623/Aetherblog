@@ -212,6 +212,11 @@ func (s *KnowledgePointService) CountEvidenceByKPIDs(ctx context.Context, kpIDs 
 	return s.kp.CountEvidenceByKPIDs(ctx, kpIDs)
 }
 
+// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence preview row per KP.
+func (s *KnowledgePointService) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
+	return s.kp.FirstEvidencePreviewRowsByKPIDs(ctx, kpIDs, authorID)
+}
+
 // ListKPsForAnnotation 列出某标注支撑的所有 KP ID（双向投影用）。
 func (s *KnowledgePointService) ListKPsForAnnotation(ctx context.Context, annotationID int64) ([]int64, error) {
 	return s.kp.ListKPsForAnnotation(ctx, annotationID)
@@ -335,6 +340,11 @@ func (s *RelationService) ListForNodeIDs(ctx context.Context, nodeIDs []int64, l
 // CountEvidenceByRelationIDs 批量统计 relation evidence 数量。
 func (s *RelationService) CountEvidenceByRelationIDs(ctx context.Context, relationIDs []int64) (map[int64]int64, error) {
 	return s.repo.CountEvidenceByRelationIDs(ctx, relationIDs)
+}
+
+// FirstEvidencePreviewRowsByRelationIDs returns one scoped evidence preview row per relation.
+func (s *RelationService) FirstEvidencePreviewRowsByRelationIDs(ctx context.Context, relationIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
+	return s.repo.FirstEvidencePreviewRowsByRelationIDs(ctx, relationIDs, authorID)
 }
 
 // GraphHealth 图谱健康指标。

@@ -124,6 +124,8 @@ Available controls:
 - The minimap in the lower-right corner shows the current viewport and can jump to a graph region.
 - `保存布局` persists the current visible node positions plus zoom/pan viewport for the selected graph scope; `重置布局` clears that saved state.
 
+Click a KP or relation to open the inspector. The inspector shows metadata, evidence counts, graph degree, relation endpoints, rationale/body preview, and the first accessible evidence quote with carrier and annotation source under the current Atlas scope. Use the node and relation navigation actions when you need to inspect the full KP detail; multi-evidence browsing and direct Reader jumps remain later graph polish.
+
 Click a node or relation to inspect metadata, evidence counts, degree, relation summary, and navigation actions without leaving the graph. Open a KP from the inspector when you need the full detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
 
 ## 9. AI Suggestions

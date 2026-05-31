@@ -235,6 +235,63 @@ func (r *KPRepo) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[i
 	return counts, nil
 }
 
+// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence annotation per KP
+// for graph inspector previews.
+func (r *KPRepo) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]EvidencePreviewRow, error) {
+	if len(kpIDs) == 0 {
+		return []EvidencePreviewRow{}, nil
+	}
+	q := `
+WITH ranked AS (
+	SELECT
+		l.kp_id AS subject_id,
+		a.id AS annotation_id,
+		a.carrier_id,
+		a.selectors,
+		a.body_text,
+		a.author_id AS annotation_author_id,
+		c.type AS carrier_type,
+		c.title AS carrier_title,
+		c.owner_id AS carrier_owner_id,
+		ROW_NUMBER() OVER (
+			PARTITION BY l.kp_id
+			ORDER BY l.created_at ASC, l.annotation_id ASC
+		) AS rn
+	FROM atlas_annotation_kp_links l
+	JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = false
+	JOIN atlas_carriers c ON c.id = a.carrier_id AND c.deleted = false
+	WHERE l.kp_id = ANY($1)`
+	args := []any{pq.Int64Array(kpIDs)}
+	q += `
+	  AND (
+		NULLIF(BTRIM(COALESCE(a.body_text, '')), '') IS NOT NULL
+		OR a.selectors::text LIKE '%TextQuoteSelector%'
+	  )`
+	if authorID != nil {
+		q += `
+	  AND a.author_id = $2
+	  AND c.owner_id = $2`
+		args = append(args, *authorID)
+	}
+	q += `
+)
+SELECT
+	subject_id,
+	annotation_id,
+	carrier_id,
+	selectors,
+	body_text,
+	annotation_author_id,
+	carrier_type,
+	carrier_title,
+	carrier_owner_id
+FROM ranked
+WHERE rn = 1`
+	rows := []EvidencePreviewRow{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
+	return rows, err
+}
+
 // ListKPsForAnnotation 列出某标注支撑的所有 KP ID。
 func (r *KPRepo) ListKPsForAnnotation(ctx context.Context, annotationID int64) ([]int64, error) {
 	ids := []int64{}
