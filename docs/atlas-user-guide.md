@@ -132,7 +132,7 @@ Rules:
 - Accepting a relation suggestion creates a typed relation and links suggestion evidence when available.
 - Rejecting or ignoring a suggestion prevents duplicate pending suggestions from reappearing.
 
-The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Do not treat suggestion quality as final model quality until the eval harness and acceptance-rate gates are complete.
+The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Migration `000072` seeds the `atlas_claims` and `atlas_relations` task types and inherits the site's default chat routing when possible. Do not treat suggestion quality as final model quality until the live R3 gate has run against usable AI credentials and has produced non-stub accept/reject evidence.
 
 ## 10. AetherHub Scope
 
@@ -160,6 +160,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R2 relation health fixed corpus: `node scripts/atlas/relation-health-gate.mjs`.
 - R2 live non-admin dataset gate: `ATLAS_SMOKE_PASSWORD=... node scripts/atlas/run-relation-health-live-gate.mjs`.
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
+- R3 live AI quality gate: `ATLAS_SMOKE_PASSWORD=... node scripts/atlas/run-ai-quality-live-gate.mjs`. This gate must fail if Atlas task routing has no usable credential or if generated suggestions fall back to `atlas-stub/heuristic-v1`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
 - R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with all 15 checks passed, including KP archive/restore/delete lifecycle checks.
 - Multi-user smoke gate: `node scripts/atlas/multiuser-smoke-gate.mjs --input <report.json>` with all 17 checks passed, including non-admin Markdown Reader sessions and cross-user Reader source denial.

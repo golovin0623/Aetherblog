@@ -7,16 +7,17 @@
 
 ## Landing Update（2026-05-31, `codex/knowledge-atlas-landing`）
 
-本 PR 在新 worktree 中完成本文 Sprint 0 / Multi-user Gate 的落地, 并提前补齐部分 Sprint 1 基础能力:
+本 PR 在新 worktree 中完成本文 Sprint 0 / Multi-user Gate 的落地, 并继续补齐 R1/R2/R3/R4/R5 的可验证 gate 基线:
 
 - P0-01/P0-02: `/atlas` 从 Phase 0 占位页改为真实 dashboard, Sidebar 与 dashboard 均能进入 KP 列表、Graph、Suggestions。
 - P0-03/P0-11: Atlas 读写改为 RBAC + scope middleware, list/get/graph/relation/suggestion/carrier/annotation 执行 author/owner 过滤; `source_uri` 唯一性改为 live per-owner expression index。
 - P0-04/P0-07: Graph edge 查询按节点集和 author scope 收敛; relation evidence 增 repo/service/API, create relation 和 AI relation accept 都能绑定 evidence annotation。
 - P0-05/P0-06/P2-10: KP suggestion 必须绑定 carrier/annotation, create 阶段执行 ignored/pending fingerprint 去重, 并补 proposed KP type 校验与迁移约束。
-- P0-08/P0-12: 新增 Go repo/service/handler 测试、Atlas UI 红线 grep、phase gate ledger; 详细证据见 `.agent/plans/knowledge-atlas-phase-gate-ledger.md`。
+- P0-08/P0-12: 新增 Go repo/service/handler 测试、Atlas UI 红线 grep、phase gate ledger; R1 real-PDF corpus gate、R2 live relation-health gate、R4 runtime/build budget gate、R5 admin/multi-user smoke gate 均已有当前证据; 详细证据见 `.agent/plans/knowledge-atlas-phase-gate-ledger.md`。
 - P1-02/P1-04/P1-08 baseline: Markdown Reader 支持从 annotation 提炼 KP; 新增 `/atlas/kps`; Atlas 已触达页面移除原生 `<select>` 与 spinner, 改用共享 `Select` 与 skeleton。
+- P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: R1 固定语料、真实 LiteLLM 抽取、GraphRAG/embedding、AetherHub Atlas scope、公开知识地图、多模态输入和完整 R4/R5 自动化 gate。
+未在本 PR 宣称完成的项仍按本文路线图后移: R3 真实模型 accept/reject 质量证据、GraphRAG/embedding、公开知识地图、多模态输入和生产部署复跑证据。当前本地 R3 live gate 已证明 task/routing 种子存在, 但没有可用 AI credential, 因而不能把 heuristic fallback 当作 R3 通过。
 
 ---
 
