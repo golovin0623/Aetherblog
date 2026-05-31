@@ -40,7 +40,7 @@ The backend can now create a PDF Atlas carrier from an uploaded media file:
 
 The Go backend reads the media bytes from the configured storage provider and calls the internal AI service endpoint `POST /v1/atlas/pdf/extract`. The extracted page-aware root text is stored in `atlas_carrier_text_layers`, while the carrier version points at an immutable `atlas-text-layer://pdf/<mediaId>/<hash>` URI.
 
-This is the text-layer ingest baseline. The current gateway smoke covers generated PDF upload, text-layer persistence, PDF Reader loading, page-rectangle jump-back, and non-admin Markdown Reader sessions. A broader real-document PDF corpus is still required before the R1 product gate is complete.
+This is the text-layer ingest baseline. The current gateway smoke covers generated PDF upload, text-layer persistence, PDF Reader loading, page-rectangle jump-back, and non-admin Markdown Reader sessions. The R1 file-level PDF corpus gate also builds representative multi-page PDFs, extracts them through `pypdf`, and verifies recall across revision variants. Production/user PDF samples should still be rerun before release.
 
 ## 4. Annotation To Knowledge Point
 
@@ -156,6 +156,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - Atlas UI redline grep for native select, spinner, demo placeholder, and explicit "do not use" markers.
 - R1 Markdown/version anchoring recall: `node scripts/atlas/anchoring-recall.mjs --min-recall 0.9`.
 - R1 PDF text-layer anchoring recall: `node scripts/atlas/pdf-anchoring-recall.mjs --min-recall 0.9`.
+- R1 real-PDF corpus gate: `node scripts/atlas/pdf-real-corpus-gate.mjs --min-recall 0.9`.
 - R2 relation health fixed corpus: `node scripts/atlas/relation-health-gate.mjs`.
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
