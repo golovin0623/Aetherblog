@@ -8,11 +8,13 @@ import {
   GitBranch,
   Highlighter,
   Library,
+  Plus,
   Search,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import { Select } from '@aetherblog/ui';
+import { Modal, Select } from '@aetherblog/ui';
+import { toast } from 'sonner';
 
 import type { AtlasGraphHealth, AtlasHealthResponse, AtlasKnowledgePoint } from '@aetherblog/types';
 
@@ -72,16 +74,69 @@ const SCOPE_OPTIONS = [
   { value: 'mine', label: '仅我的' },
 ];
 
+const initialWebClipForm = {
+  sourceUrl: '',
+  title: '',
+  contentMarkdown: '',
+  author: '',
+  language: '',
+};
+
 export default function AtlasPage() {
   const navigate = useNavigate();
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
   const [kpSearch, setKpSearch] = useState('');
+  const [webClipOpen, setWebClipOpen] = useState(false);
+  const [webClipForm, setWebClipForm] = useState(initialWebClipForm);
+  const [savingWebClip, setSavingWebClip] = useState(false);
 
   const handleKPSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = kpSearch.trim();
     navigate(query ? `/atlas/search?q=${encodeURIComponent(query)}` : '/atlas/search');
+  };
+
+  const handleCreateWebClip = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const sourceUrl = webClipForm.sourceUrl.trim();
+    const contentMarkdown = webClipForm.contentMarkdown.trim();
+    if (!sourceUrl) {
+      toast.error('请填写 Web URL');
+      return;
+    }
+    try {
+      const parsed = new URL(sourceUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        toast.error('Web URL 仅支持 http(s)');
+        return;
+      }
+    } catch {
+      toast.error('请填写完整的 http(s) URL');
+      return;
+    }
+    if (!contentMarkdown) {
+      toast.error('请填写网页正文快照');
+      return;
+    }
+    setSavingWebClip(true);
+    try {
+      const res = await atlasService.ensureWebCarrier({
+        sourceUrl,
+        title: webClipForm.title.trim() || undefined,
+        contentMarkdown,
+        author: webClipForm.author.trim() || undefined,
+        language: webClipForm.language.trim() || undefined,
+      });
+      setWebClipForm(initialWebClipForm);
+      setWebClipOpen(false);
+      toast.success('Web 快照已保存');
+      navigate(`/atlas/reader/web/${res.data.id}`);
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '保存 Web 快照失败'));
+    } finally {
+      setSavingWebClip(false);
+    }
   };
 
   useEffect(() => {
@@ -137,6 +192,14 @@ export default function AtlasPage() {
               <Library className="h-3.5 w-3.5" />
               管理知识点
             </Link>
+            <button
+              type="button"
+              onClick={() => setWebClipOpen(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Web 快照
+            </button>
           </div>
         }
       />
@@ -334,6 +397,86 @@ export default function AtlasPage() {
           </section>
         </>
       )}
+
+      <Modal
+        isOpen={webClipOpen}
+        onClose={() => {
+          if (!savingWebClip) setWebClipOpen(false);
+        }}
+        title="保存 Web 快照"
+        size="lg"
+      >
+        <form className="space-y-4" onSubmit={(event) => void handleCreateWebClip(event)}>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-medium text-[var(--ink-secondary)]">URL</span>
+            <input
+              type="url"
+              value={webClipForm.sourceUrl}
+              onChange={(event) => setWebClipForm((form) => ({ ...form, sourceUrl: event.target.value }))}
+              placeholder="https://example.com/article"
+              className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+            />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">标题</span>
+              <input
+                value={webClipForm.title}
+                onChange={(event) => setWebClipForm((form) => ({ ...form, title: event.target.value }))}
+                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">语言</span>
+              <input
+                value={webClipForm.language}
+                onChange={(event) => setWebClipForm((form) => ({ ...form, language: event.target.value }))}
+                placeholder="zh-CN"
+                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+          </div>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-medium text-[var(--ink-secondary)]">作者</span>
+            <input
+              value={webClipForm.author}
+              onChange={(event) => setWebClipForm((form) => ({ ...form, author: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+            />
+          </label>
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-medium text-[var(--ink-secondary)]">Markdown 正文</span>
+            <textarea
+              value={webClipForm.contentMarkdown}
+              onChange={(event) => setWebClipForm((form) => ({ ...form, contentMarkdown: event.target.value }))}
+              rows={10}
+              className="w-full resize-none rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 text-sm leading-6 text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+            />
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={savingWebClip}
+              onClick={() => setWebClipOpen(false)}
+              className="inline-flex h-9 items-center rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-3 text-xs text-[var(--ink-secondary)] hover:bg-[var(--bg-substrate)] disabled:opacity-60"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={savingWebClip}
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] disabled:opacity-60"
+            >
+              <Highlighter className="h-3.5 w-3.5" />
+              {savingWebClip ? '保存中...' : '保存并阅读'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

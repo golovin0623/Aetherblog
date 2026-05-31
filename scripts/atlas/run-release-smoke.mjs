@@ -19,6 +19,7 @@ const REQUIRED_CHECKS = [
   { id: 'atlas-dashboard', surface: 'Atlas', path: '/admin/atlas' },
   { id: 'atlas-reader-note', surface: 'Atlas Reader', path: '/admin/atlas/reader/note/<noteId>' },
   { id: 'atlas-reader-pdf', surface: 'Atlas PDF Reader', path: '/admin/atlas/reader/pdf/<carrierId>' },
+  { id: 'atlas-reader-web', surface: 'Atlas Web Reader', path: '/admin/atlas/reader/web/<carrierId>' },
   { id: 'atlas-kp-list', surface: 'Atlas KP', path: '/admin/atlas/kps' },
   { id: 'atlas-kp-detail', surface: 'Atlas KP', path: '/admin/atlas/kp/<kpId>' },
   { id: 'atlas-kp-archive', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
@@ -75,6 +76,7 @@ try {
 
   await visit(page, 'atlas-reader-note', `/admin/atlas/reader/note/${seeded.note.id}`, [seeded.note.title, '标注']);
   await visit(page, 'atlas-reader-pdf', `/admin/atlas/reader/pdf/${seeded.pdfCarrier.id}`, ['PDF 标注', seeded.pdf.anchorText]);
+  await visit(page, 'atlas-reader-web', `/admin/atlas/reader/web/${seeded.webCarrier.id}`, ['Web 标注', seeded.web.anchorText]);
   await visit(page, 'atlas-kp-list', '/admin/atlas/kps', ['Knowledge Points', seeded.kp.title]);
   await visit(page, 'atlas-kp-detail', `/admin/atlas/kp/${seeded.kp.id}`, [seeded.kp.title, '知识点']);
   await exerciseKPLifecycle(page, seeded.lifecycleKp);
@@ -233,6 +235,25 @@ async function seedAtlasData(page) {
     throw new Error(`PDF text layer did not include expected smoke anchor; carrier=${pdfCarrier.id}`);
   }
 
+  const webAnchorText = `Atlas Web smoke anchor ${stamp}`;
+  const webCarrier = await api(page, 'POST', '/api/v1/admin/atlas/carriers/web', {
+    sourceUrl: `https://example.com/atlas-smoke/${stamp}#section`,
+    title: `Atlas Web Smoke ${stamp}`,
+    contentMarkdown: [
+      `# Atlas Web Smoke ${stamp}`,
+      '',
+      `${webAnchorText} connects clipped web pages to Atlas annotations and AI suggestions.`,
+      '',
+      'This web snapshot is created by the release smoke runner.',
+    ].join('\n'),
+    author: 'Atlas smoke runner',
+    language: 'en',
+  });
+  const webTextLayer = await api(page, 'GET', `/api/v1/admin/atlas/carriers/${webCarrier.id}/text-layer`);
+  if (!String(webTextLayer.text || '').includes(webAnchorText)) {
+    throw new Error(`Web text layer did not include expected smoke anchor; carrier=${webCarrier.id}`);
+  }
+
   return {
     note,
     carrier,
@@ -244,6 +265,8 @@ async function seedAtlasData(page) {
     lifecycleKp,
     pdf: { media, anchorText: pdfAnchorText, textLayer },
     pdfCarrier,
+    web: { anchorText: webAnchorText, textLayer: webTextLayer },
+    webCarrier,
   };
 }
 
@@ -522,6 +545,8 @@ function summarizeSeeded(seeded) {
     pdfMediaId: seeded.pdf.media.id,
     pdfCarrierId: seeded.pdfCarrier.id,
     pdfPageCount: seeded.pdf.textLayer.pageCount,
+    webCarrierId: seeded.webCarrier.id,
+    webCharCount: seeded.web.textLayer.charCount,
   };
 }
 

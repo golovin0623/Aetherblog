@@ -13,6 +13,7 @@ const REQUIRED_CHECKS = [
   { id: 'atlas-dashboard', surface: 'Atlas', path: '/admin/atlas' },
   { id: 'atlas-reader-note', surface: 'Atlas Reader', path: '/admin/atlas/reader/note/<noteId>' },
   { id: 'atlas-reader-pdf', surface: 'Atlas PDF Reader', path: '/admin/atlas/reader/pdf/<carrierId>' },
+  { id: 'atlas-reader-web', surface: 'Atlas Web Reader', path: '/admin/atlas/reader/web/<carrierId>' },
   { id: 'atlas-kp-list', surface: 'Atlas KP', path: '/admin/atlas/kps' },
   { id: 'atlas-kp-detail', surface: 'Atlas KP', path: '/admin/atlas/kp/<kpId>' },
   { id: 'atlas-kp-archive', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
