@@ -10,6 +10,7 @@ from app.api.routes import (
     knowledge_bases,
     log_level,
     metrics,
+    notes,
     profiles,
     providers,
     prompts,
@@ -33,3 +34,4 @@ router.include_router(log_level.router)
 router.include_router(workflows.router)
 router.include_router(knowledge_bases.router)
 router.include_router(atlas.router)
+router.include_router(notes.router)

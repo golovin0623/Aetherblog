@@ -105,6 +105,9 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
     def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
         if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
             return [{"kp_id": 7}]
+        if "notes://" in sql and "FROM atlas_carriers c" in sql:
+            assert args == ([3], 9)
+            return []
         if "embedding::halfvec(3072)" in sql:
             assert args[0] == semantic_embedding
             assert args[1] == 42
@@ -239,3 +242,67 @@ def test_render_atlas_context_includes_recall_source_relations_and_evidence() ->
     assert "score=0.77" in rendered
     assert "[Relation #101] KP #7 --supports" in rendered
     assert "[Evidence #501] for [KP #8]" in rendered
+
+
+@pytest.mark.asyncio
+async def test_recall_atlas_context_recalls_note_chunks_for_markdown_carriers() -> None:
+    profile = _profile()
+    embedding = [0.2, 0.3, 0.4]
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "search.active_profile_code" in sql:
+            return {"setting_value": profile.code}
+        if "FROM search_profiles WHERE code" in sql:
+            return profile.__dict__
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            return []
+        if "notes://" in sql and "FROM atlas_carriers c" in sql:
+            assert args == ([3], 9)
+            return [{"note_id": 11}]
+        if "FROM atlas_knowledge_points" in sql and "embedding::vector(3)" in sql:
+            return []
+        if "FROM note_embeddings ne" in sql and "embedding::vector(3)" in sql:
+            assert args[0] == embedding
+            assert args[1] == 42
+            assert args[2] == 3
+            assert args[5] == 9
+            assert args[7] == [11]
+            return [
+                {
+                    "note_id": 11,
+                    "title": "Carrier note",
+                    "chunk_index": 0,
+                    "chunk_text": "Markdown carrier chunk",
+                    "similarity": 0.88,
+                    "source_uri": "notes://11",
+                }
+            ]
+        raise AssertionError(f"unexpected fetch SQL: {sql}")
+
+    conn = FakeConn(fetchrow=fetchrow, fetch=fetch)
+    llm = FakeEmbedLLM(embedding)
+
+    context = await recall_atlas_context(
+        FakePool(conn),
+        llm,
+        user_id=9,
+        query="carrier chunk question",
+        carrier_ids=[3],
+        semantic_limit=3,
+        neighborhood_depth=1,
+        include_evidence=True,
+    )
+
+    assert context.knowledge_points == []
+    assert len(context.note_hits) == 1
+    assert context.note_hits[0].note_id == 11
+    assert context.note_hits[0].similarity == pytest.approx(0.88)
+
+    rendered = render_atlas_context(context)
+    assert rendered is not None
+    assert "## Note Carrier Chunks" in rendered
+    assert "[Note #11 chunk 0] Carrier note" in rendered
+    assert "score=0.88" in rendered

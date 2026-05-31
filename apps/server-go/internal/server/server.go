@@ -232,6 +232,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc, internalToken)
 	postSvc.SetAccessService(accessSvc)
 	noteSvc := service.NewNoteService(noteRepo, s.Redis)
+	noteSvc.AttachEmbeddingIndexer(service.NewNoteIndexerClient(aiClient, internalToken))
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))

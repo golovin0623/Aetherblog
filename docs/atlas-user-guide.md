@@ -143,11 +143,12 @@ Current available handoff:
 3. In the `Atlas` picker bar, add the KP nodes that should ground the next answer.
 4. Ask the question.
 5. AetherHub sends the selected KP ids as `atlasScope` with semantic recall enabled.
-6. The AI service uses the last user message as the recall query, then merges selected KPs, active-profile semantic KP hits, relation-neighborhood rows, and evidence quotes into the conversation context.
+6. The AI service uses the last user message as the recall query, then merges selected KPs, active-profile semantic KP hits, Markdown carrier note chunks, relation-neighborhood rows, and evidence quotes into the conversation context.
 7. New or updated KPs are indexed asynchronously after create, update, evidence link, or accepting a KP suggestion. Very recent edits may need the background indexing call to finish before they appear in semantic recall.
-8. Answers should cite Atlas context with `[KP #id]` and `[Evidence #annotation_id]` markers.
+8. Notes are indexed asynchronously after create, full save, duplicate, and title/summary edits. Markdown carriers backed by `notes://{id}` can contribute `[Note #id chunk n]` context after this worker finishes.
+9. Answers should cite Atlas context with `[KP #id]`, `[Evidence #annotation_id]`, and `[Note #id chunk n]` markers where relevant.
 
-This is a selected-scope semantic baseline, not full automatic GraphRAG. Empty-scope Atlas recall from arbitrary questions, search-page semantic rerank, community/global graph query, historical KP backfill, and the D2 `note_embeddings` worker remain future gates.
+This is a selected-scope semantic baseline, not full automatic GraphRAG. Empty-scope Atlas recall from arbitrary questions, search-page semantic rerank, community/global graph query, and historical KP/note embedding backfill remain future gates.
 
 ## 11. Release Checklist
 

@@ -184,7 +184,7 @@ var allowedNoteColumns = map[string]bool{
 	"title": true, "summary": true, "folder_id": true, "source_type": true,
 	"source_url": true, "source_title": true, "source_meta": true,
 	"is_pinned": true, "is_favorite": true, "archived": true,
-	"last_opened_at": true, "updated_at": true,
+	"embedding_status": true, "last_opened_at": true, "updated_at": true,
 }
 
 // UpdateProperties 按白名单局部更新笔记属性。

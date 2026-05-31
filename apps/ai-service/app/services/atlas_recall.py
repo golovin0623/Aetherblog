@@ -63,15 +63,27 @@ class AtlasEvidenceHit:
 
 
 @dataclass
+class AtlasNoteHit:
+    note_id: int
+    title: str
+    chunk_index: int
+    chunk_text: str
+    similarity: float
+    source_uri: str | None = None
+
+
+@dataclass
 class AtlasRecallContext:
     knowledge_points: list[AtlasKnowledgePointHit | dict[str, Any]] = field(default_factory=list)
     relations: list[AtlasRelationHit | dict[str, Any]] = field(default_factory=list)
     evidence: list[AtlasEvidenceHit | dict[str, Any]] = field(default_factory=list)
+    note_hits: list[AtlasNoteHit | dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.knowledge_points = [_coerce_kp(row) for row in self.knowledge_points]
         self.relations = [_coerce_relation(row) for row in self.relations]
         self.evidence = [_coerce_evidence(row) for row in self.evidence]
+        self.note_hits = [_coerce_note_hit(row) for row in self.note_hits]
 
 
 def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
@@ -143,6 +155,19 @@ def _coerce_evidence(row: AtlasEvidenceHit | dict[str, Any]) -> AtlasEvidenceHit
         body_text=str(row.get("body_text") or ""),
         anchor_state=str(row.get("anchor_state") or "orphan"),
         carrier_title=row.get("carrier_title"),
+        source_uri=row.get("source_uri"),
+    )
+
+
+def _coerce_note_hit(row: AtlasNoteHit | dict[str, Any]) -> AtlasNoteHit:
+    if isinstance(row, AtlasNoteHit):
+        return row
+    return AtlasNoteHit(
+        note_id=int(row["note_id"]),
+        title=str(row.get("title") or ""),
+        chunk_index=int(row.get("chunk_index") or 0),
+        chunk_text=str(row.get("chunk_text") or ""),
+        similarity=float(row.get("similarity") or 0),
         source_uri=row.get("source_uri"),
     )
 
@@ -284,11 +309,11 @@ async def recall_atlas_context(
     semantic_limit = max(0, min(int(semantic_limit or 0), 12))
     neighborhood_depth = max(0, min(int(neighborhood_depth or 0), 2))
 
+    carrier_note_ids: list[int] = []
     if carrier_ids:
-        selected_kp_ids = _dedupe_positive_ints(
-            [*selected_kp_ids, *(await _fetch_kp_ids_for_carriers(pool, carrier_ids, user_id))],
-            12,
-        )
+        carrier_kp_ids = await _fetch_kp_ids_for_carriers(pool, carrier_ids, user_id)
+        carrier_note_ids = await _fetch_note_ids_for_carriers(pool, carrier_ids, user_id)
+        selected_kp_ids = _dedupe_positive_ints([*selected_kp_ids, *carrier_kp_ids], 12)
 
     selected_rows = await _fetch_kps_by_ids(
         pool,
@@ -298,19 +323,57 @@ async def recall_atlas_context(
     )
 
     semantic_rows: list[AtlasKnowledgePointHit] = []
+    note_rows: list[AtlasNoteHit] = []
     query = (query or "").strip()
-    if llm is not None and query and semantic_limit > 0:
+    query_profile: SearchProfile | None = None
+    query_embedding: list[float] | None = None
+    query_dim = 0
+    if llm is not None and query and (semantic_limit > 0 or carrier_note_ids):
         try:
-            semantic_rows = await _semantic_recall(
+            query_profile = await _get_active_search_profile(pool, llm)
+            query_embedding = await llm.embed(
+                query,
+                user_id=user_id,
+                embedding_model_id=query_profile.model_id,
+                strict_embedding_model_id=True,
+            )
+            query_dim = len(query_embedding) if query_embedding else 0
+        except Exception as exc:
+            logger.warning(
+                "atlas_recall.query_embedding_failed",
+                extra={"data": {"user_id": user_id, "error": f"{type(exc).__name__}: {exc}"[:240]}},
+            )
+
+    if query_profile is not None and query_embedding and query_dim > 0 and semantic_limit > 0:
+        try:
+            semantic_rows = await _semantic_recall_with_vector(
                 pool,
-                llm,
-                query=query,
+                profile=query_profile,
+                embedding=query_embedding,
+                dim=query_dim,
                 user_id=user_id,
                 limit=semantic_limit,
             )
         except Exception as exc:
             logger.warning(
                 "atlas_recall.semantic_failed",
+                extra={"data": {"user_id": user_id, "error": f"{type(exc).__name__}: {exc}"[:240]}},
+            )
+
+    if query_profile is not None and query_embedding and query_dim > 0 and carrier_note_ids:
+        try:
+            note_rows = await _semantic_note_recall_with_vector(
+                pool,
+                profile=query_profile,
+                embedding=query_embedding,
+                dim=query_dim,
+                user_id=user_id,
+                note_ids=carrier_note_ids,
+                limit=semantic_limit or 4,
+            )
+        except Exception as exc:
+            logger.warning(
+                "atlas_recall.note_semantic_failed",
                 extra={"data": {"user_id": user_id, "error": f"{type(exc).__name__}: {exc}"[:240]}},
             )
 
@@ -348,6 +411,7 @@ async def recall_atlas_context(
         knowledge_points=kps,
         relations=relation_rows,
         evidence=evidence_rows,
+        note_hits=note_rows,
     )
 
 
@@ -370,6 +434,25 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int)
             user_id,
         )
     return [int(row["kp_id"]) for row in rows]
+
+
+async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: int) -> list[int]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT substring(c.source_uri FROM '^notes://([0-9]+)$')::bigint AS note_id
+            FROM atlas_carriers c
+            WHERE c.id = ANY($1::bigint[])
+              AND c.type = 'markdown'
+              AND c.deleted = FALSE
+              AND (c.owner_id = $2 OR c.owner_id IS NULL)
+              AND c.source_uri ~ '^notes://[0-9]+$'
+            LIMIT 12
+            """,
+            carrier_ids,
+            user_id,
+        )
+    return [int(row["note_id"]) for row in rows]
 
 
 async def _fetch_kps_by_ids(
@@ -427,7 +510,25 @@ async def _semantic_recall(
     dim = len(embedding) if embedding else 0
     if dim <= 0:
         return []
+    return await _semantic_recall_with_vector(
+        pool,
+        profile=profile,
+        embedding=embedding,
+        dim=dim,
+        user_id=user_id,
+        limit=limit,
+    )
 
+
+async def _semantic_recall_with_vector(
+    pool,
+    *,
+    profile: SearchProfile,
+    embedding: list[float],
+    dim: int,
+    user_id: int,
+    limit: int,
+) -> list[AtlasKnowledgePointHit]:
     cast_type = _cast_type_for_dim(dim)
     candidate_limit = min(max(limit * 4, 24), 120)
     threshold = get_settings().search_threshold
@@ -470,6 +571,67 @@ async def _semantic_recall(
             limit,
         )
     return [_coerce_kp(_row_to_dict(row)) for row in rows]
+
+
+async def _semantic_note_recall_with_vector(
+    pool,
+    *,
+    profile: SearchProfile,
+    embedding: list[float],
+    dim: int,
+    user_id: int,
+    note_ids: list[int],
+    limit: int,
+) -> list[AtlasNoteHit]:
+    note_ids = _dedupe_positive_ints(note_ids, 12)
+    if not note_ids or limit <= 0:
+        return []
+
+    cast_type = _cast_type_for_dim(dim)
+    candidate_limit = min(max(limit * 4, 24), 120)
+    threshold = get_settings().search_threshold
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            WITH semantic_candidates AS (
+                SELECT
+                    ne.note_id,
+                    n.title,
+                    ne.chunk_index,
+                    ne.chunk_text,
+                    1 - (ne.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity,
+                    COALESCE(c.source_uri, 'notes://' || ne.note_id::text) AS source_uri
+                FROM note_embeddings ne
+                JOIN notes n ON n.id = ne.note_id
+                LEFT JOIN atlas_carriers c
+                  ON c.source_uri = 'notes://' || ne.note_id::text
+                 AND c.deleted = FALSE
+                WHERE ne.profile_id = $2
+                  AND ne.embedding_dim = $3
+                  AND ne.status = 'INDEXED'
+                  AND ne.embedding IS NOT NULL
+                  AND n.deleted = FALSE
+                  AND (n.author_id = $6 OR n.author_id IS NULL)
+                  AND ne.note_id = ANY($8::bigint[])
+                ORDER BY ne.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
+                LIMIT $4
+            )
+            SELECT *
+            FROM semantic_candidates
+            WHERE similarity >= $5
+            ORDER BY similarity DESC
+            LIMIT $7
+            """,
+            embedding,
+            profile.id,
+            dim,
+            candidate_limit,
+            threshold,
+            user_id,
+            limit,
+            note_ids,
+        )
+    return [_coerce_note_hit(_row_to_dict(row)) for row in rows]
 
 
 async def _fetch_relation_neighborhood(
@@ -586,17 +748,17 @@ def _merge_kps(kps: list[AtlasKnowledgePointHit]) -> list[AtlasKnowledgePointHit
 
 
 def render_atlas_context(context: AtlasRecallContext, max_chars: int = 12000) -> str | None:
-    if not context.knowledge_points:
+    if not context.knowledge_points and not context.note_hits:
         return None
 
     parts: list[str] = [
         "# Aether Atlas Context",
         (
             "Use this Atlas context as grounded knowledge. When citing it, include "
-            "citations like [KP #id] and [Evidence #annotation_id]. If the answer "
-            "depends on evidence, mention the evidence citation."
+            "citations like [KP #id], [Evidence #annotation_id], and "
+            "[Note #id chunk n]. If the answer depends on evidence, mention the "
+            "evidence citation."
         ),
-        "## Knowledge Points",
     ]
     total = sum(len(part) for part in parts)
 
@@ -608,17 +770,30 @@ def render_atlas_context(context: AtlasRecallContext, max_chars: int = 12000) ->
         total += len(line) + 1
         return True
 
-    for kp in context.knowledge_points:
-        score = "" if kp.similarity is None else f", score={kp.similarity:.2f}"
-        if not append(
-            f"- [KP #{kp.id}] {kp.title} "
-            f"(type={kp.type}, status={kp.status}, confidence={kp.confidence:.2f}, "
-            f"provenance={kp.provenance}, recall={kp.recall_source}{score})"
-        ):
-            break
-        body = _trim(kp.body_markdown, 900)
-        if body and not append(f"  Body: {body}"):
-            break
+    if context.knowledge_points:
+        append("## Knowledge Points")
+        for kp in context.knowledge_points:
+            score = "" if kp.similarity is None else f", score={kp.similarity:.2f}"
+            if not append(
+                f"- [KP #{kp.id}] {kp.title} "
+                f"(type={kp.type}, status={kp.status}, confidence={kp.confidence:.2f}, "
+                f"provenance={kp.provenance}, recall={kp.recall_source}{score})"
+            ):
+                break
+            body = _trim(kp.body_markdown, 900)
+            if body and not append(f"  Body: {body}"):
+                break
+
+    if context.note_hits:
+        append("## Note Carrier Chunks")
+        for note in context.note_hits:
+            snippet = _trim(note.chunk_text, 700)
+            source = note.source_uri or f"notes://{note.note_id}"
+            if not append(
+                f"- [Note #{note.note_id} chunk {note.chunk_index}] {note.title} "
+                f"(source={source}, score={note.similarity:.2f}): {snippet}"
+            ):
+                break
 
     if context.relations:
         append("## Relations")

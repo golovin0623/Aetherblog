@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -39,13 +40,61 @@ type ParsedNoteLink = repository.ParsedNoteLink
 
 // NoteService 管理后台私有智能笔记。
 type NoteService struct {
-	repo *repository.NoteRepo
-	rdb  *redis.Client
+	repo    *repository.NoteRepo
+	rdb     *redis.Client
+	indexer NoteEmbeddingIndexer
 }
 
 // NewNoteService 创建 NoteService。
 func NewNoteService(repo *repository.NoteRepo, rdb *redis.Client) *NoteService {
 	return &NoteService{repo: repo, rdb: rdb}
+}
+
+// NoteEmbeddingIndexer 是 ai-service note embedding 写入器的最小接口。
+type NoteEmbeddingIndexer interface {
+	IndexNote(ctx context.Context, noteID int64, userID *int64) (*NoteIndexResult, error)
+}
+
+// AttachEmbeddingIndexer 注入异步 note embedding 写入器。
+func (s *NoteService) AttachEmbeddingIndexer(indexer NoteEmbeddingIndexer) {
+	s.indexer = indexer
+}
+
+// ScheduleEmbedding 异步触发 note embedding 重写。
+func (s *NoteService) ScheduleEmbedding(ctx context.Context, noteID int64, userID *int64, reason string) {
+	if s == nil || s.indexer == nil || noteID <= 0 {
+		return
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(base, 3*time.Minute)
+		defer cancel()
+		result, err := s.indexer.IndexNote(bg, noteID, userID)
+		if err != nil {
+			log.Warn().Err(err).Int64("note_id", noteID).Str("reason", reason).Msg("note embedding index failed")
+			return
+		}
+		if strings.EqualFold(result.Status, "FAILED") {
+			log.Warn().
+				Int64("note_id", noteID).
+				Int64("profile_id", result.ProfileID).
+				Str("error", result.Error).
+				Str("reason", reason).
+				Msg("note embedding index failed")
+			return
+		}
+		log.Info().
+			Int64("note_id", noteID).
+			Int64("profile_id", result.ProfileID).
+			Int("embedding_dim", result.EmbeddingDim).
+			Int("chunks", result.ChunkCount).
+			Str("status", result.Status).
+			Str("reason", reason).
+			Msg("note embedding indexed")
+	}()
 }
 
 // GetOwnership 返回笔记存在标志与作者 ID。
@@ -133,6 +182,7 @@ func (s *NoteService) Create(ctx context.Context, req dto.CreateNoteRequest, aut
 	if err != nil {
 		return nil, err
 	}
+	s.ScheduleEmbedding(ctx, out.ID, out.AuthorID, "create")
 	return s.GetByID(ctx, out.ID, authorID)
 }
 
@@ -169,10 +219,12 @@ func (s *NoteService) Update(ctx context.Context, id int64, req dto.CreateNoteRe
 		WordCount:       countWords(content),
 		EmbeddingStatus: "PENDING",
 	}
-	if _, err := s.repo.UpdateWithRelations(ctx, id, n, normalizeNoteTags(req.TagNames, content), parseNoteLinks(content)); err != nil {
+	out, err := s.repo.UpdateWithRelations(ctx, id, n, normalizeNoteTags(req.TagNames, content), parseNoteLinks(content))
+	if err != nil {
 		return nil, err
 	}
 	s.deleteDraft(ctx, id, userID)
+	s.ScheduleEmbedding(ctx, id, out.AuthorID, "update")
 	return s.GetByID(ctx, id, userID)
 }
 
@@ -216,16 +268,26 @@ func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.Up
 	if req.Archived != nil {
 		fields["archived"] = *req.Archived
 	}
+	shouldReindex := notePropertiesNeedEmbedding(req)
+	if shouldReindex {
+		fields["embedding_status"] = "PENDING"
+	}
 	if req.TagNames != nil {
 		n, err := s.repo.UpdatePropertiesWithTags(ctx, id, fields, normalizeNoteTags(req.TagNames, ""))
 		if err != nil || n == nil {
 			return nil, err
+		}
+		if shouldReindex {
+			s.ScheduleEmbedding(ctx, id, n.AuthorID, "update_properties")
 		}
 		return s.GetByID(ctx, id, userID)
 	}
 	n, err := s.repo.UpdateProperties(ctx, id, fields)
 	if err != nil || n == nil {
 		return nil, err
+	}
+	if shouldReindex {
+		s.ScheduleEmbedding(ctx, id, n.AuthorID, "update_properties")
 	}
 	return s.GetByID(ctx, id, userID)
 }
@@ -267,6 +329,7 @@ func (s *NoteService) Duplicate(ctx context.Context, id int64, authorID int64) (
 	if err != nil {
 		return nil, err
 	}
+	s.ScheduleEmbedding(ctx, out.ID, out.AuthorID, "duplicate")
 	return s.GetByID(ctx, out.ID, authorID)
 }
 
@@ -365,6 +428,10 @@ func noteAuthorPtr(authorID int64) *int64 {
 		return nil
 	}
 	return &authorID
+}
+
+func notePropertiesNeedEmbedding(req dto.UpdateNotePropertiesRequest) bool {
+	return req.Title != nil || req.Summary != nil
 }
 
 func toNoteListItem(n *model.Note, folderName *string, tagNames []string) dto.NoteListItem {

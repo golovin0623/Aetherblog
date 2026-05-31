@@ -17,7 +17,7 @@
 - P1-02/P1-04/P1-08 baseline: Markdown Reader 支持从 annotation 提炼 KP; 新增 `/atlas/kps`; Atlas 已触达页面移除原生 `<select>` 与 spinner, 改用共享 `Select` 与 skeleton。
 - P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过, 并已用显式 live 模型 `gemini-3.1-flash-lite-preview` 跑通非 stub KP/relation 建议质量证据。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、D2 `note_embeddings` worker、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、历史 KP embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate。
+未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、历史 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker 已补成 landing baseline，但历史 note 回填仍需后续生产任务。
 
 ---
 
@@ -38,8 +38,8 @@
 | C-9 | 指标无“如何度量” | 多个目标（转化率/探索成功率/grounded 率）无埋点、无测试集, 无法计算 → 退出标准不可验证 | 原 §8 | §11 指标补“数据来源/埋点”列; 新增 P1-12 埋点项作为度量前置 |
 | C-10 | 未点出 spinner 红线违规 | 5 个 Atlas 页用 `Loader2 animate-spin`, 违反 CLAUDE.md “禁止 spinner” UI 红线 | `AtlasPage.tsx:159`; `MarkdownReaderPage.tsx:216`; `AtlasGraphPage.tsx:218`; `SuggestionsPage.tsx:161`; `KnowledgePointPage.tsx:185` | 并入 P1-08（控件统一 + 骨架屏） |
 | C-11 | 未把产品策划书的 Phase Gate 当成一等约束 | `task-aether-knowledge-system.md` 明确“进入下一阶段 = 上阶段验收全绿 + 红线未触发 + 决策闭环”; 但当前完成日志已有 P1-P3 MVP, 同时 A1 PDF/R1、A2 真实关系密度、A3 真实质量仍未证明 | `docs/plan/task-aether-knowledge-system.md:244-246,672-677`; 本文 §11 | 新增 P0-12, 把“阶段完成”改为 evidence ledger, 防止把 MVP 链路误当完整 Phase 通过 |
-| C-12 | 未处理 D2 `note_embeddings` worker 的策划书债务 | 策划书 D2 要补 `note_embeddings` worker 并让 Markdown Carrier 接入; 当前表和 notes AI UI 存在, 但 worker/repo/service 未形成闭环, 本文原只写 KP embedding | `migrations/000054_create_notes.up.sql:119-140`; `CreateNotePage.tsx:812-822`; `rg note_embeddings apps/server-go/internal apps/ai-service/app` 无实现 | 新增 P2-11, 要么恢复 note embedding worker, 要么正式反转 D2 并同步策划书 |
-| C-13 | 未记录“不同 worktree 迭代”的对照基线 | 同名 review 文件只在当前工作树存在; 但 7 个 worktree 对关键事实收敛一致: `/atlas` 仍是 Phase 0 占位, `source_uri` 仍是全局 UNIQUE, relation evidence 只有表, `note_embeddings` 有表无 worker/code | 本文 §16 Cross-Worktree Iteration Log | 新增第二轮 cross-worktree 证据, 说明本 review 不是单一工作树的孤立判断; 也明确它只覆盖高风险事实抽样, 不替代完整代码审计 |
+| C-12 | 未处理 D2 `note_embeddings` worker 的策划书债务 | 已修正: 策划书 D2 选择“复活而非废弃”，并已补 `NoteIndexerService`、`/v1/notes/{id}/index`、Go note index client/async trigger、`000074` profile/HNSW 与 Markdown Carrier note recall | `migrations/000054_create_notes.up.sql:119-140`; `migrations/000074_note_embedding_profile_index.up.sql`; `apps/ai-service/app/services/note_indexer.py`; `apps/server-go/internal/service/note_service.go` | P2-11 landing baseline 已落地；历史 notes backfill/reindex 仍为生产前任务 |
+| C-13 | 未记录“不同 worktree 迭代”的对照基线 | 同名 review 文件只在当前工作树存在; 但 7 个 worktree 对关键事实收敛一致: `/atlas` 仍是 Phase 0 占位, `source_uri` 仍是全局 UNIQUE, relation evidence 只有表, 当时 `note_embeddings` 有表无 worker/code（后续 PR #745 已修 C-12） | 本文 §16 Cross-Worktree Iteration Log | 新增第二轮 cross-worktree 证据, 说明本 review 不是单一工作树的孤立判断; 也明确它只覆盖高风险事实抽样, 不替代完整代码审计 |
 
 > 其余约 18 项原稿断言经代码核对为 **CONFIRMED**（见 §2.2 与 §17 验证附录）, 保持不变。原计划的**总体方向与四层模型判断是正确的**, 本次修订主要是“纠正事实、补设计冲突、降过激技术提案、把路线图补成闭环、把产品策划书红线补成可验证 gate”。
 
@@ -82,7 +82,7 @@
 | R4 性能预算与设计系统 | Atlas 当前仍有 spinner/原生 select; Graph 手写 SVG 只适合小 smoke | P1-08 先修 UI 红线; G1-02 前做渲染库决策和 bundle gate |
 | R5 不破坏 notes / KB / blog | Atlas 将接入 notes、KB、AetherHub、blog publishing, 风险从“模块局部”变成“跨域契约” | P0-08 和 Sprint exit 必须包含 notes/KB/blog smoke, 不只跑 Atlas 单元测试 |
 | D1 保守编辑器路径 | 当前 Reader 复用 Markdown/CodeMirror 路线, 未引入 Yjs | 保持; 若 R1 不达标才重估 Y.RelativePosition/Tiptap |
-| D2 `note_embeddings` worker | 表与 notes UI 存在, 但 worker 未闭环; 原本文档只规划 KP embedding, 漏掉 Markdown Carrier 与 note embedding 策略 | 新增 P2-11, 要么恢复 worker 并接入 Markdown Carrier, 要么正式反转 D2 |
+| D2 `note_embeddings` worker | 已按 P2-11 恢复 worker: `NoteIndexerService` 写 active profile note chunks, server-go note 变更异步触发, Markdown Carrier recall 复用 `notes://{id}` chunks | 保留历史 notes backfill/reindex 与未来 carrier_embeddings 统一表重估 |
 | D3 `note_links` 与 typed relations 并存 | 当前没有把 note_links 迁入 Atlas relation | 保持; 全局搜索/写作集成只做跨模块引用, 不迁移语义 |
 | Whole-plan DoD: 用户手册、50 alpha、公开文档同步 | 本文已有 `docs/atlas-user-guide.md` 项; alpha/主力 PKM 属全计划终点, 不应提前伪装成 P1/P2 指标 | S4 以后才评估公开化与 alpha; P0-12 ledger 保留 Whole-plan DoD 状态 |
 
@@ -136,7 +136,7 @@
 | 数据完整性小洞 | `000065:23` `proposed_kp_type` 无 CHECK（非法值 accept 时才暴雷）; `atlas_annotations.carrier_version_id` 无 FK index | 脏建议占位 / re-anchor 查询 seq scan | NEW |
 | 测试薄弱 | 仅 `pkg/anchoring/markdown_text_test.go`; KP/relation/suggestion handler/service/repo 与前端 smoke 均缺 | 迭代易回归 | CONFIRMED |
 | 产品阶段 gate 证据缺失 | 策划书要求 Phase gate 全绿再前进; 完成日志同时承认 A1 PDF/R1、A2 关系密度、A3 真实质量未验证 | roadmap 若只按“已实现 MVP”推进会偏航 | NEW（见 C-11） |
-| D2 note embedding 未闭环 | `note_embeddings` 表和 notes AI UI 存在; 但 `apps/server-go/internal` / `apps/ai-service/app` 无 note embedding worker 闭环 | Markdown Carrier / Atlas recall 的 embedding 数据源不明确 | NEW（见 C-12） |
+| D2 note embedding 未闭环 | `note_embeddings` 表和 notes AI UI 存在; landing baseline 已补 `apps/server-go/internal/service/note_indexer_client.go`、`NoteService.ScheduleEmbedding`、`apps/ai-service/app/services/note_indexer.py` 与 Markdown carrier note recall | 历史 notes 仍需 backfill/reindex 才能保证生产召回完整 | CORRECTED（P2-11 baseline） |
 
 ---
 
@@ -275,11 +275,11 @@ Priority semantics:
 | ATLAS-P2-02 | Batch carrier extraction | 对 note/post/PDF 批量生成 KP suggestions, 后台 job + 进度 | 大文档异步抽取, 不阻塞 UI | P2-01 |
 | ATLAS-P2-03 | Relation suggestion | 给新 KP 推荐 top-N 关系候选, 解释 type 和证据 | 新建 KP 后 inbox 出现可用 relation suggestions | P2-01 |
 | ATLAS-P2-04 | KP embedding pipeline | **Landing baseline 已落地**: KP title/body/evidence 写 embedding; `000073` 增加 `embedding_profile_id/model_id/indexed_at` 和 dim bucket HNSW partial index; ai-service 内部 index route + server-go create/update/link/suggestion accept 异步触发; 复用 search profile 抽象 | 新建/更新/接受建议后的 KP 可进入语义召回；历史 KP 仍需 backfill/reindex | — |
-| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / evidence / relations | AetherHub selected Atlas scope 可召回 KP + evidence + relations; empty-scope 自动 GraphRAG、search-page rerank、community/global query 后续推进 | P2-04 |
+| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / Markdown carrier note chunks / evidence / relations | AetherHub selected Atlas scope 可召回 KP + evidence + relations; 选中 `notes://{id}` Markdown carrier 时可复用 note chunk embedding; empty-scope 自动 GraphRAG、search-page rerank、community/global query 后续推进 | P2-04 |
 | ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate; 本 PR 先落地固定语料 gate + explicit-model live gate, 后续继续扩展 prompt/model A/B 样本 | 切模型/改 prompt 前后可比较质量; 当前 gate 已能阻断 stub/无凭证伪通过 | P2-01,P1-12 |
 | ATLAS-P2-08 | Cost budget | 复用 `usage_logger`/`cost_usd`; 接全局价格页; per-run cost preview; 预算阈值告警 | 用户知道批量抽取消耗多少; 超阈值提示 | P2-01 |
 | ATLAS-P2-10 | 数据完整性硬化（NEW） | `proposed_kp_type` 加 CHECK(或 service 校验); `atlas_annotations.carrier_version_id` 加 partial FK index | 非法 kp_type 在 Create 即拒; re-anchor 查询不走 seq scan | — |
-| ATLAS-P2-11 | D2 note_embeddings 策略闭环（NEW） | 按策划书 D2 补 note embedding worker 并让 Markdown Carrier / Atlas recall 可复用, 或正式反转 D2 为 KP-only embedding 并更新 `task-knowledge-decisions.md` | `note_embeddings` 不再是死表; Atlas 语义召回的数据源、profile、重建策略有单一说明和测试 | P2-04 |
+| ATLAS-P2-11 | D2 note_embeddings 策略闭环（NEW） | **Landing baseline 已落地**: `000074` 补 `embedding_dim/model_id/token_count`、profile+chunk 唯一约束与 768/1024/1536/3072 HNSW buckets; ai-service `NoteIndexerService` + `/v1/notes/{id}/index` 写入 active search profile note chunks; server-go note create/update/duplicate/title-summary edits 异步触发; Atlas recall 对 Markdown carrier `notes://{id}` 复用 note chunk context | `note_embeddings` 不再是死表; Atlas 语义召回的数据源、profile、重建策略有测试；历史 notes 回填/重建命令后续补齐 | P2-04 |
 
 ### P2. Multimodal Input Expansion
 
@@ -435,7 +435,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 | R-6 | 关系类型四处手工同步漂移 | Go/SQL/TS/Python 校验不一致 | 选定单一来源(建议 TS const 或 SQL)生成其余, 或加跨语言 contract test(见 §13) |
 | R-7 | community/Leiden 过早投入 | 高成本低回报 | 降级 Backlog; 近期用 degree/hub 主题分组替代 |
 | R-8 | 把 MVP 链路误当 Phase Gate 已通过 | 跳过 R1/R2/R3/R4/R5 证据, 后续功能堆在未证明基础上 | P0-12 gate ledger; Sprint exit 必须引用证据命令/数据 |
-| R-9 | `note_embeddings` 继续作为死表/死 UI | Atlas recall 与 notes AI 占位分叉, 后续重复建索引 | P2-11 明确“恢复 worker”或“正式反转 D2”二选一 |
+| R-9 | `note_embeddings` 继续作为死表/死 UI | Atlas recall 与 notes AI 占位分叉, 后续重复建索引 | 已通过 P2-11 landing baseline 恢复 worker；剩余风险降为历史 notes backfill |
 
 ---
 
@@ -447,8 +447,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 4. **关系类型单一来源**: 选 TS const / SQL / 还是独立 schema 文件做生成源? 决定 R-6 落地方式。
 5. **是否永不引入图数据库**: 维持 Postgres 邻接表(recursive CTE)上限是多少节点/深度? 触及上限时的退路。
 6. **多用户开放时间点**: Multi-user Gate 何时开? 影响 P0-03/11 与 A3-03/04 的排期紧迫度。
-7. **D2 note_embeddings 处理**: 恢复 `note_embeddings` worker 并让 Markdown Carrier 复用, 还是正式反转 D2、改为 KP-only / carrier-only embedding? 这必须同步 `task-knowledge-decisions.md`。
-8. **Phase Gate owner**: P0-12 ledger 由谁维护, 是进入每个 Sprint 的强制 checklist, 还是只在 release 前审计? 建议作为 Sprint exit gate。
+7. **Phase Gate owner**: P0-12 ledger 由谁维护, 是进入每个 Sprint 的强制 checklist, 还是只在 release 前审计? 建议作为 Sprint exit gate。
 
 ---
 
@@ -463,7 +462,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 - **结构化抽取需要 wrapper（更正 C-7）**: `llm_router` 不含 schema 校验 + 重试; P2-01 必须先建该 wrapper, 它同时服务 P2-03。
 - **community/Leiden 后移（更正 C-6）**: 非 Postgres 原生, 需 Python worker 把图载入内存; 与“暂不做 community 工作负载”一致 —— 归 Backlog, 近期 global query 用 degree/hub 主题分组 + 预计算邻域。
 - **关系类型单一来源**: 当前 Go/SQL/TS/Python 四处值一致但手工同步; 用生成或 contract test 固化（§13 决策 4）。
-- **D2 不可继续悬空**: 当前 landing baseline 是 KP-only embedding + Atlas selected-scope semantic recall；`note_embeddings` 表和 notes AI UI 仍未形成 worker 闭环。后续必须恢复 note embedding worker 并让 Markdown Carrier 复用，或正式反转 D2 并写回策划书。
+- **D2 已闭合为 landing baseline**: `note_embeddings` 不再作为死表保留；新建/更新 notes 会异步写 active search profile note chunks，Markdown Carrier recall 可复用 `notes://{id}` chunks。后续只保留历史 notes backfill/reindex 与是否升级统一 `carrier_embeddings` 表的长期评估。
 - **图渲染**: 小 smoke 用现有 SVG MVP 可接受; 交互密集的长期探索建议用成熟渲染器（§13 决策 1）。
 - **红线合规**: 任何 Atlas UI 工作遵守 CLAUDE.md —— 无 spinner(用骨架屏)、不发明颜色、用共享 Select/Modal、`pnpm design-system:check` 保持 0 error; 新增 API/migration 同步 `docs/architecture.md` + `.claude/docs/`。
 
@@ -488,11 +487,11 @@ P1-12 埋点 ─▶ §11 指标可计算
 
 ## 16. Cross-Worktree Iteration Log（第二轮, 2026-05-31）
 
-本轮按“不同 worktree 上迭代”的要求, 对当前工作树和 6 个相关工作树做了抽样对照。为避免把本机绝对路径写进计划文档, 下表只保留 worktree 语义标签与 commit/ref。结论是: **同名 review 文件没有可合并的其他版本, 但关键 Atlas 缺口在多个 worktree 中一致出现**。因此 C-4/C-11/C-12 等判断不是当前未跟踪文档的孤立推断。
+本轮按“不同 worktree 上迭代”的要求, 对当时当前工作树和 6 个相关工作树做了抽样对照。为避免把本机绝对路径写进计划文档, 下表只保留 worktree 语义标签与 commit/ref。结论是: **同名 review 文件没有可合并的其他版本, 但关键 Atlas 缺口在多个 worktree 中一致出现**。因此 C-4/C-11/C-12 等判断不是当前未跟踪文档的孤立推断。2026-05-31 后续 landing baseline 已在 PR #745 当前分支修复 C-12；下表保留为当时的横向基线证据。
 
 | Worktree / branch label | Ref | 同名 review 文件 | Atlas 入口页 | Schema / evidence 抽样 | `note_embeddings` 抽样 | 对本文影响 |
 | --- | --- | --- | --- | --- | --- | --- |
-| current `hotfix/types-tsconfig-self-contained` | `a222c7e7` | 存在 | Phase 0 占位 | `source_uri` 全局 UNIQUE; `atlas_relation_evidence` 仅建表 | 表存在; server-go / ai-service 无 worker/code | 本文主基线 |
+| current `hotfix/types-tsconfig-self-contained` | `a222c7e7` | 存在 | Phase 0 占位 | `source_uri` 全局 UNIQUE; `atlas_relation_evidence` 仅建表 | 当时表存在但 server-go / ai-service 无 worker/code；PR #745 后续已补 P2-11 baseline | 本文主基线；C-12 已在后续补丁中 corrected |
 | `codex/docs-current-capability-baseline` | `00bd0f4f` | 不存在 | Phase 0 占位 | 同 current | 同 current | 支持“当前能力文档不能当完成证明” |
 | `codex/more-functional-audit` | `23cbc71e` | 不存在 | Phase 0 占位 | 同 current | 同 current | 支持高风险功能缺口仍未闭环 |
 | `codex/recent-feature-audit-fixes` | `426295fd` | 不存在 | Phase 0 占位 | 同 current | 同 current | 支持近期修复未覆盖 Atlas 主缺口 |
@@ -537,5 +536,5 @@ P1-12 埋点 ─▶ §11 指标可计算
 | 测试仅 anchoring | `internal/knowledge/pkg/anchoring/markdown_text_test.go`(唯一) | CONFIRMED |
 | 子页导航单入口 | `apps/admin/src/App.tsx`(atlas 路由); `Sidebar.tsx`(仅 `/atlas` 一项) | CONFIRMED |
 | 产品策划书 gate 未完整证明 | `docs/plan/task-aether-knowledge-system.md` 明确 phase gate; 完成日志保留 A1/A2/A3 未验证项 | **NEW (C-11)** |
-| D2 note_embeddings worker 未闭环 | `migrations/000054_create_notes.up.sql` 建表; `CreateNotePage.tsx` 显示 AI 索引状态; `apps/server-go/internal` / `apps/ai-service/app` 无 worker 闭环 | **NEW (C-12)** |
-| 跨 worktree 高风险事实收敛 | 7 个 worktree 抽样: review 文件仅 current 存在; Phase 0 入口、全局 `source_uri`、relation evidence 仅表、`note_embeddings` 无 worker/code 均一致 | **NEW (C-13)** |
+| D2 note_embeddings worker 未闭环 | `000054` 建基础表; `000074` 补 profile/dim/model/token + HNSW; server-go note index client/service trigger + ai-service note indexer/route + Atlas note recall 已落地 | **CORRECTED (P2-11 baseline)** |
+| 跨 worktree 高风险事实收敛 | 7 个 worktree 抽样: review 文件仅 current 存在; Phase 0 入口、全局 `source_uri`、relation evidence 仅表、当时 `note_embeddings` 无 worker/code 均一致；PR #745 后续已修 C-12 | **NEW (C-13), C-12 now corrected** |

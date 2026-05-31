@@ -80,6 +80,13 @@
 | 000065 | atlas AI suggestions | suggestion inbox |
 | 000066 | atlas_carriers.source_uri unique | 并发去重 |
 | 000067 | kb_schema_repair | KB schema 前向幂等修复 |
+| 000068 | agent workflow run simulated | 编排运行模拟状态 |
+| 000069 | agent workflow full iteration | 编排完整迭代 |
+| 000070 | atlas p0 hardening | Atlas 基础硬化 |
+| 000071 | atlas carrier text layers | carrier 文本层 |
+| 000072 | seed atlas AI task types | Atlas AI task routing seed |
+| 000073 | atlas KP embedding profile | KP embedding profile/HNSW |
+| 000074 | note embedding profile index | note embedding profile/HNSW |
 
 ---
 

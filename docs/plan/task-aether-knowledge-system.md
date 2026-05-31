@@ -43,7 +43,7 @@
 | 决策 ID | 议题 | 默认值（保守） | 何时可重估 |
 |---|---|---|---|
 | **D1** | 编辑器是否切 Tiptap + Yjs | `@aetherblog/editor` (CodeMirror) **保留**；新模块用 **Tiptap+Yjs 并存** | Phase 2 末若双轨锚定收益 < 5%，回退为单轨 W3C 选择器 |
-| **D2** | `note_embeddings` worker 缺失 | **补齐**：表已建好（migration 000054）+ admin UI 已有「AI 索引状态」占位面板（`CreateNotePage.tsx` PanelGroup "AI"），仅缺后台 worker。Markdown Carrier 适配器接入此表 + 补齐 worker | Phase 3 若新增 `carrier_embeddings` 统一表更合理，做迁移 |
+| **D2** | `note_embeddings` worker 缺失 | **已补齐 landing baseline**：表已建好（migration 000054）+ `000074` 补 profile/dim/model/token 与 HNSW 索引；ai-service `NoteIndexerService` 写 note chunks；Go `NoteService` 在 note 变更后异步触发；Markdown Carrier/Atlas recall 通过 `notes://{id}` 复用此表 | Phase 3 若新增 `carrier_embeddings` 统一表更合理，做迁移；生产前补历史 notes backfill |
 | **D3** | `note_links` 与 `typed_relations` 关系 | **两表并存**：`note_links` 维持 notes 内 `[[]]`；KP 间关系一律走 `typed_relations` | 永不迁移 `note_links`（它是 notes 内部结构） |
 
 ---
@@ -667,6 +667,7 @@ proposed → planned → in_progress → blocked? → in_review → done
 |---|---|---|---|
 | 2026-05-26 | 创建 | 本手册 V1.0 创建，对齐 migrations 000061、knowledge.md 调研报告 | — |
 | 2026-05-26 | 补丁 | V1.0.1: §1.0 加基线快照（feat/knowledge-base @ 29013307）；D2 修订（note_embeddings 表+UI 占位均已就绪，缺 worker）；P3-05 修订（直接复用 ai-service 的 kb_indexer.py / kb_recall.py） | 本对话偏差校验 |
+| 2026-05-31 | 补丁 | V1.0.2: D2 `note_embeddings` landing baseline 已补齐（migration 000074 + ai-service note worker + Go 异步触发 + Markdown Carrier note chunk recall）；历史 notes backfill 仍列为生产前任务 | PR #745 |
 | 2026-05-26 | Phase 0 | **Phase 0 完成**。落地 migrations 000062-000063 / `internal/knowledge/` 后端骨架 / `pages/atlas/` 前端占位 / `packages/types/models/atlas.ts` 共享类型 / `docs/plan/task-knowledge-decisions.md` 决策记录 V1.1（D1/D2/D3 全保守路径定稿）/ `scripts/atlas/anchoring-spike.mjs` Phase 0 锚定 spike（中文 light 80.61% / medium 10.37% / heavy 0.43%）。**全部 9 个 P0 任务 closed**，A0-1..A0-6 全绿。 | task-knowledge-P0-* |
 | 2026-05-26 | 验收 | A0-1 migrations down 2→up 000061↔000063 双向通过；A0-2 `/api/v1/admin/atlas/health` 200 直连 + `:7899` 网关双通；A0-3 `/admin/atlas` SPA 渲染，`AtlasPage-DaTtokZL.js` chunk 7490B 入构建；A0-4 `pnpm typecheck` 全绿、`pnpm design-system:check` 保持 0 error；A0-5 spike 结论入决策记录；A0-6 本日志条目 + CHANGELOG.md 同步。 | — |
 | 2026-05-26 | Phase 1 (MVP) | **Phase 1 MVP 落地**: MarkdownCarrierAdapter（懒包装 notes→carriers，幂等）+ 多选择器构建器（W3C TextQuote+TextPosition+CssSelector ≥3 校验）+ Annotation CRUD（POST/GET/PATCH/DELETE 含 `< 3 selectors` 400 拒绝）+ Robust Anchoring 4 档（位置→exact→prefix 邻域→滑窗）双端（TS lib/anchoring.ts + Go service/anchoring.go）+ Markdown Reader 页（带三态徽章 anchored/soft_anchored/orphan 与重对齐按钮）+ 权限闸 `content.atlas.read` + Carrier 版本管线（user_edit 触发 atlas_carrier_versions v2 + annotation 全量重对齐）+ PdfCarrierService 骨架。**E2E 全程在 :7899 网关验证**。 | task-knowledge-P1-{01,04,05,06,07,08,09,10},02-skeleton |
@@ -688,7 +689,7 @@ proposed → planned → in_progress → blocked? → in_review → done
 | RISK-03 | GraphRAG Leiden 聚类对中文文档质量差 | 中 | 中 | Phase 3 评估时若 NDCG@10 < 0.5 退回到只跑实体抽取 |
 | RISK-04 | AI 接受率持续低于 50% | 中 | 高 | 触发 R3，回退为纯检索辅助；不补救 |
 | RISK-05 | KnowledgeBase RAG 与 Atlas 检索语义混淆 | 低 | 中 | 文档+UI 严格区分命名: KB 用于"全站知识库"，Atlas 用于"个人 KP 图谱" |
-| RISK-06 | note_embeddings 死表数据腐烂 | 低 | 低 | Phase 1 内由 Markdown Carrier 接入并跑通 worker |
+| RISK-06 | note_embeddings 死表数据腐烂 | 低 | 低 | Landing baseline 已由 Markdown Carrier 接入并跑通 worker；剩余风险是历史 notes 未 backfill |
 
 ---
 
