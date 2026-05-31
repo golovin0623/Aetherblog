@@ -111,6 +111,11 @@ func New(cfg *config.Config) (*Server, error) {
 	e.HideBanner = true
 	e.HidePort = true
 	e.Validator = &echoValidator{v: newValidator()}
+	// Derive client IP from X-Forwarded-For while trimming trusted proxy hops
+	// (loopback/link-local/private — covers the nginx gateway). Without a configured
+	// extractor, RealIP() trusts the raw client-supplied XFF, letting callers rotate
+	// the header to evade per-IP publication rate limits. ref: agent-workflow rate keys
+	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 

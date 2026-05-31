@@ -48,13 +48,15 @@ class WorkflowRunner:
         *,
         run_id: int | str | None = None,
         simulate_external: bool = False,
+        resume_from_node: str | None = None,
+        resume_context: dict[str, Any] | None = None,
     ) -> WorkflowExecutionResult:
         inputs = inputs or {}
         trace: list[WorkflowTraceItem] = []
         context: dict[str, Any] = {
             "inputs": inputs,
             "workflow": {"name": definition.name, "mode": definition.mode},
-            "run": {"id": run_id},
+            "run": {"id": run_id, "resumeFromNode": resume_from_node},
             "nodes": {},
         }
 
@@ -63,10 +65,26 @@ class WorkflowRunner:
             nodes_by_id = self._nodes_by_id(definition)
             incoming, outgoing = self._edge_maps(definition, nodes_by_id)
             order = self._topological_order(definition, incoming, outgoing)
+            if resume_from_node and resume_from_node not in nodes_by_id:
+                raise WorkflowExecutionError(f"resumeFromNode {resume_from_node} is not in workflow")
+            resume_nodes = _resume_nodes(resume_context)
 
             skipped: set[str] = set()
+            resume_reached = resume_from_node is None
             for node_id in order:
                 node = nodes_by_id[node_id]
+                if not resume_reached:
+                    if node_id == resume_from_node:
+                        resume_reached = True
+                    else:
+                        restored = resume_nodes.get(node.id)
+                        if restored is not None:
+                            context["nodes"][node.id] = restored
+                            trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点输出已恢复", output=restored.get("output")))
+                        else:
+                            trace.append(self._trace(node, "skipped", summary="resumeFromNode 前置节点已跳过"))
+                            context["nodes"][node.id] = {"output": None, "status": "skipped"}
+                        continue
                 if self._should_skip(node, incoming[node_id], skipped, context):
                     skipped.add(node.id)
                     trace.append(self._trace(node, "skipped", summary="上游分支未命中，跳过节点"))
@@ -242,11 +260,11 @@ class WorkflowRunner:
         if node.type == "loop":
             return self._execute_loop(node, context)
         if node.type == "llm":
-            return await self._execute_external(node, context, self.llm_executor, simulate_external)
+            return await self._execute_external(node, context, self.llm_executor, simulate_external, node_input)
         if node.type == "agent":
-            return await self._execute_external(node, context, self.agent_executor, simulate_external)
+            return await self._execute_external(node, context, self.agent_executor, simulate_external, node_input)
         if node.type == "code":
-            return await self._execute_external(node, context, self.code_executor, simulate_external)
+            return await self._execute_external(node, context, self.code_executor, simulate_external, node_input)
         raise WorkflowExecutionError(f"unsupported node type {node.type}")
 
     async def _execute_tool(self, node: WorkflowNode, context: dict[str, Any]) -> Any:
@@ -318,12 +336,8 @@ class WorkflowRunner:
         context: dict[str, Any],
         executor: ExternalExecutor | None,
         simulate_external: bool,
+        node_input: Any = None,
     ) -> Any:
-        if executor is not None:
-            result = executor(node, context)
-            if hasattr(result, "__await__"):
-                return await result
-            return result
         if simulate_external:
             payload: dict[str, Any] = {
                 "simulated": True,
@@ -338,6 +352,15 @@ class WorkflowRunner:
             if node.type == "code":
                 payload.update({"result": None})
             return payload
+        if executor is not None:
+            # Expose the computed upstream input so llm/agent executors can default
+            # their `source` to the value flowing in along the edge (e.g. a loaded /
+            # extracted article), instead of falling back to the whole workflow inputs.
+            exec_context = {**context, "__node_input": node_input}
+            result = executor(node, exec_context)
+            if hasattr(result, "__await__"):
+                return await result
+            return result
         raise WorkflowExecutionError(f"{node.type} executor is not connected")
 
     def _collect_outputs(self, definition: WorkflowDefinition, context: dict[str, Any]) -> dict[str, Any]:
@@ -393,6 +416,21 @@ def default_tools() -> dict[str, BuiltinTool]:
         },
         "kb_search": lambda args, _context: {"simulated": True, "query": args.get("query"), "items": []},
     }
+
+
+def _resume_nodes(resume_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(resume_context, dict):
+        return {}
+    nodes = resume_context.get("nodes")
+    if not isinstance(nodes, dict):
+        return {}
+    restored: dict[str, dict[str, Any]] = {}
+    for node_id, value in nodes.items():
+        if isinstance(value, dict) and "output" in value:
+            restored[str(node_id)] = {"output": value.get("output"), "status": str(value.get("status") or "success")}
+        else:
+            restored[str(node_id)] = {"output": value, "status": "success"}
+    return restored
 
 
 def _text_join(args: dict[str, Any], _context: dict[str, Any]) -> str:

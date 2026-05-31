@@ -1,7 +1,7 @@
 # Agent 模块 · 三模式产品定位
 
-状态：定位锁定（Chat 已上线 · Cowork 设计冻结 · Code/Agent Workflow Canvas MVP 已启动）
-更新时间：2026-05-12
+状态：定位锁定（Chat 已上线 · Cowork 设计冻结 · Code/Agent Workflow Canvas 全量产品迭代已落地）
+更新时间：2026-05-31
 负责人：AetherBlog 团队
 
 ---
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | **Chat** | 站点内嵌的轻量问答 Agent。基于已有的文章、标签、设置回答用户的问题 | ✅ 已上线 |
 | **Cowork** | 主动副手 —— 定时任务 + 通知推送 + 知识合成的异步助理 | 🚧 设计冻结，开发未开始 |
-| **Code / Agent Workflow** | 最底层的 Agent 编排平台 —— 工具注册 + 工作流定义 + 自治执行 | 🚧 Canvas-first MVP 已启动 |
+| **Code / Agent Workflow** | 最底层的 Agent 编排平台 —— 工具注册 + 工作流定义 + 自治执行 | ✅ Canvas-first 产品迭代已落地；真实 KB/LLM/Agent/受限 Code、运行治理与内容入口可用 |
 
 **这一份 `README.md`** 是三模式的总入口与定位文档；下面两份子文档分别给出 Cowork 与 Code 的完整产品路线：
 
@@ -96,8 +96,10 @@
 | Cowork — Phase 2 MVP 执行（调度器 + 一种工具 + 通知） | ⏸ 暂缓 | Phase 1 完成后启动 |
 | Code — 设计文档 | ✅ 完成并按 Canvas-first 修订 | 2026-05-12 |
 | Agent Workflow — Phase 0/1 Canvas 骨架 | ✅ MVP 可验收 | 后台 `/agent-workflows`、Go CRUD、迁移、工具目录、发布入口 |
-| Agent Workflow — Phase 2 DAG 执行器 | 🚧 已启动 | ai-service deterministic runner、分支/循环/trace、模拟外部执行 |
-| Agent Workflow — Phase 3+ MCP / Schedule / Sandbox | ⏳ 待扩展 | 需要 connector adapter、调度器、sandbox-worker |
+| Agent Workflow — Phase 2 DAG 执行器 | ✅ 可用 MVP | ai-service deterministic runner、真实 KB/LLM/Agent/受限 Code、分支/循环/trace；未接入 executor 会显式失败 |
+| Agent Workflow — Phase 2.1 诚实化 | ✅ 已落地 | 后台 capabilities API、运行模式切换、run `simulated` 持久标记、静态绿盾改为状态驱动徽标 |
+| Agent Workflow — Phase 3+ 治理 / Schedule / Sandbox | ✅ 基础边界已落地，待硬化 | tool/agent/schedule/variable CRUD、publication origin/rate/input schema、预算、审批暂停、模板、版本、导入导出、canonicalize；独立 sandbox-worker / 动态 scheduler daemon / 团队协作待专项 |
+| Agent Workflow — 内容业务入口 | ✅ 已落地 | 文章 AI 写作页 Article Audit、AetherHub Chat `/audit <post_id>` 调用 published workflow |
 
 **Workspace UI 当前处理**：
 - ModeSwitch 上 Cowork / Code 两个按钮加 `Soon` 徽标；

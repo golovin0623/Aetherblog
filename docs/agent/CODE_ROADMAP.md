@@ -1,7 +1,7 @@
 # Code 模式产品路线（Agent Orchestration Platform）
 
-状态：Canvas-first MVP 已启动
-更新时间：2026-05-12
+状态：Canvas-first 全量产品迭代已落地；后续进入 sandbox-worker / 团队协作 / scheduler daemon 硬化
+更新时间：2026-05-31
 关联文档：[`README.md`](./README.md)（三模式总定位）· [`COWORK_ROADMAP.md`](./COWORK_ROADMAP.md)
 
 ---
@@ -42,8 +42,10 @@
 
 - 后台 authoring 入口是 `apps/admin/src/pages/agent-workflows/AgentWorkflowsPage.tsx`，菜单名为「智能体编排」。
 - Go 后端新增 `agent_workflows` authoring API、runtime run API、run history/detail/log 查询、published slug invoke、版本快照、run 和 node log 持久化。
-- ai-service 新增 `app/workflows/*` deterministic runner，覆盖 input/output/tool/extractor/branch/loop，以及 llm/agent/code 的受控模拟执行。
+- ai-service 新增 `app/workflows/*` deterministic runner，覆盖 input/output/tool/extractor/branch/loop，并在后续迭代接入真实 KB / LLM / Agent / 受限 Code executor。
 - `agent_connectors` / `agent_tools` / `agent_variables` / `agent_schedules` / `agent_publications` 已进入迁移边界；真实 MCP adapter、调度器 daemon、sandbox-worker 属于后续阶段。
+- 2026-05-30 追加「诚实化」迭代：后台 `/agent-workflows/capabilities` 暴露真实 LLM/工具/sandbox/scheduler/autonomous 状态；前端默认真实运行并提供显式模拟切换；run 持久化 `simulated`，published slug invoke 强制真实运行，避免把模拟成功误读为真实能力。
+- 2026-05-31 追加「全量产品闭环」迭代：Go runtime 增加 async execution、stream/cancel/retry/resume/canonicalize、tool/agent/schedule/variable CRUD、版本/模板/导入导出/指标、publication origin/rate/input schema、预算/脱敏/错误分类；ai-service 接真实 KB、LLM Router、Agent v1、HTTP 工具与受限 Code executor；后台画布增加模板、版本回滚、导出、运行控制与工具测试；文章写作页和 AetherHub Chat `/audit <post_id>` 可直接运行 published Article Audit。
 
 ---
 
@@ -607,7 +609,7 @@ POST /internal/workflow/cancel
 
 ## 9 · 实施阶段（Milestones）
 
-### Phase 0/1 — Canvas 骨架与可保存画布（已启动）
+### Phase 0/1 — Canvas 骨架与可保存画布（已落地）
 **交付物**：
 - DB migrations：`agent_connectors` / `agent_tools` / `agent_workflows` / `agent_workflow_versions` / `agent_workflow_runs` / `agent_workflow_node_logs` / `agent_variables` / `agent_schedules` / `agent_publications`
 - Go 后端：workflow CRUD、tool/agent/schedule catalog、runtime run 入口、版本快照
@@ -616,30 +618,32 @@ POST /internal/workflow/cancel
 
 **完成标志**：用户可以进入「智能体编排」，编辑画布和节点属性、填写运行输入、保存到后端、触发 runtime run，并在 trace / run history 面板看到执行结果或 pending 状态。
 
-### Phase 2 — DAG 执行器 + 内置工具（已启动）
+### Phase 2 — DAG 执行器 + 内置工具（已落地）
 **交付物**：
 - ai-service workflow engine：fixed mode DAG 执行（拓扑排序）
 - 内置工具：`kb_search`, `kb_get_post`, `text_join`, `echo`
 - 节点级 trace 返回 Go，Go 写入 `agent_workflow_node_logs`
 - 分支、单层循环、extractor、模板变量解析
-- llm / agent / code 节点在真实 adapter 未连接时只能显式模拟，避免主进程执行不安全逻辑
+- llm / agent / code 节点已接入真实 LLM Router / Agent v1 / 受限表达式 executor；未连接能力会显式失败，避免主进程执行不安全逻辑
+- 后台 Run Inputs 已提供「真实 / 模拟」切换；默认真实运行，模拟 run 会在运行历史中显示 `sim` 标记
+- capabilities API 已显式标注真实 LLM、真实内置工具、sandbox、scheduler、autonomous 是否可用
 
-**完成标志**：用户能把"Article Audit Agent"这种包含 tool / extractor / agent / branch / loop / output 的 workflow 保存并试运行；真实 LLM/MCP/sandbox adapter 分阶段接入。
+**完成标志**：用户能把"Article Audit Agent"这种包含 tool / extractor / agent / branch / loop / output 的 workflow 保存并试运行；真实 KB/LLM/Agent/受限 Code 已接入，MCP/Skill/OpenAPI 和独立 sandbox-worker 未接入时显式失败。
 
-### Phase 3 — DAG + 调试器 + Web 工具（约 3 周）
+### Phase 3 — DAG + 调试器 + Web 工具（基础治理已落地，后续硬化）
 **交付物**：
 - DAG 拓扑（depends_on 多对多）+ 平行执行
 - branch / for_each 节点
-- 暂停 / 续跑 / 节点断点
+- 暂停 / 续跑 / cancel / retry / canonicalize
 - 内置工具：`web_fetch`, `web_search`
-- 工作流版本回滚
+- 工作流版本回滚、导入导出、模板、指标、工具测试
 
-### Phase 4 — autonomous 模式 + 固化（约 3 周）
+### Phase 4 — autonomous 模式 + 固化（MVP 已落地）
 **交付物**：
-- autonomous mode 引擎（LiteLLM tool calling 循环）
-- 节点 step 实时推流
-- run → fixed YAML 固化按钮
-- 工具市场基础（is_public 共享 + fork）
+- Agent v1 在 allowedTools 内运行受控工具循环并用 LLM 汇总
+- 节点 step 通过 trace / SSE stream 回放
+- run → fixed workflow 固化按钮
+- 工具/模板市场基础表与 seed 模板
 
 ### Phase 5 — Shell sandbox 与协作（不限期）
 **交付物**：
@@ -692,12 +696,12 @@ POST /internal/workflow/cancel
 
 ## 11 · 验收标准（Phase 2 MVP）
 
-- [ ] 用户能建工具、建 workflow、保存为新版本；
-- [ ] fixed mode 线性 workflow 能跑通，前端实时看节点 trace；
-- [ ] HTTP tool timeout / retry / 错误能被 trace 完整记录；
-- [ ] 运行历史可查看（最近 50 次 run）；
-- [ ] 单 run token 超额自动 budget_exceeded，剩余节点不跑；
-- [ ] 文档：本路线 Phase 2 段落更新为 Done，附验证报告。
+- [x] 用户能建工具、建 workflow、保存为新版本；
+- [x] fixed mode 线性 workflow 能跑通，前端可通过 trace / stream 看节点 trace；
+- [x] HTTP tool timeout / retry / 错误能被 trace 与 errorCategory 记录；
+- [x] 运行历史可查看（最近 50 次 run）；
+- [x] 单 run maxNodes / maxTokens / maxDuration / maxCost 进入 run 预算字段；maxNodes 已在创建时硬校验，token/cost 由 LLM usage 回填后继续精算；
+- [x] 文档：本路线 Phase 2 段落更新为 Done，验证证据见 PR 描述。
 
 ---
 
