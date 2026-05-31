@@ -12,7 +12,7 @@ import "time"
 // Carrier 对应 atlas_carriers 表，是 Atlas 的多模态载体一阶对象。
 type Carrier struct {
 	ID            int64     `db:"id"`
-	Type          string    `db:"type"` // pdf|epub|markdown|web|video|audio|image
+	Type          string    `db:"type"` // pdf|epub|markdown|blog_post|web|video|audio|image
 	SourceURI     string    `db:"source_uri"`
 	ContentHash   string    `db:"content_hash"`
 	Title         string    `db:"title"`
