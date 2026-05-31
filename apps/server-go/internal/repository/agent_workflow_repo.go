@@ -1167,7 +1167,7 @@ RETURNING
 	return &run, nil
 }
 
-func (r *AgentWorkflowRepo) PauseRunForApproval(ctx context.Context, runID int64, nodeID, toolCode, payload string) error {
+func (r *AgentWorkflowRepo) PauseRunForApproval(ctx context.Context, runID int64, nodeID, toolCode, payload string, logs []AgentWorkflowNodeLogInput) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -1188,6 +1188,40 @@ func (r *AgentWorkflowRepo) PauseRunForApproval(ctx context.Context, runID int64
 	}
 	if affected == 0 {
 		return tx.Commit()
+	}
+	// Persist the executor trace for the already-run upstream nodes before pausing.
+	// workflowResumeContext restores prior outputs from these node logs, so without
+	// this the resumed run would re-run the approved node with empty upstream
+	// dependencies (e.g. {{ nodes.load_post.output }} → missing). Replace any prior
+	// logs for the run so repeated pause/resume cycles stay idempotent.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM agent_workflow_node_logs WHERE run_id = $1`, runID); err != nil {
+		return err
+	}
+	for _, item := range logs {
+		if item.InputJSON == "" {
+			item.InputJSON = "{}"
+		}
+		if item.MetadataJSON == "" {
+			item.MetadataJSON = "{}"
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO agent_workflow_node_logs
+    (run_id, sequence, node_id, node_type, status, input_json, output_json, duration_ms, error_message, finished_at, metadata_json)
+VALUES
+    ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, CURRENT_TIMESTAMP, $10::jsonb)`,
+			runID,
+			item.Sequence,
+			item.NodeID,
+			item.NodeType,
+			item.Status,
+			item.InputJSON,
+			item.OutputJSON,
+			item.DurationMS,
+			item.ErrorMessage,
+			item.MetadataJSON,
+		); err != nil {
+			return err
+		}
 	}
 	if payload == "" {
 		payload = "{}"

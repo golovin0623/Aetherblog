@@ -126,6 +126,15 @@ func (s *AgentWorkflowService) ListTools(ctx context.Context, userID int64) ([]d
 		if tool.Description != nil {
 			desc = *tool.Description
 		}
+		// handler_config can carry secrets (e.g. HTTP Authorization headers / API
+		// keys). The list includes system/public tools owned by other accounts, so
+		// only expose the raw config for tools the caller actually owns; redact it
+		// for public/system rows to avoid leaking other owners' credentials.
+		ownedByCaller := tool.UserID != nil && *tool.UserID == userID
+		handlerConfig := json.RawMessage("{}")
+		if ownedByCaller {
+			handlerConfig = jsonRawOrDefault(tool.HandlerConfig, "{}")
+		}
 		out = append(out, dto.AgentToolSummary{
 			ID:               tool.ID,
 			Code:             tool.Code,
@@ -136,7 +145,7 @@ func (s *AgentWorkflowService) ListTools(ctx context.Context, userID int64) ([]d
 			ArgsSchema:       jsonRawOrDefault(tool.ArgsSchema, "{}"),
 			OutputSchema:     jsonRawOrDefault(tool.OutputSchema, "{}"),
 			HandlerType:      tool.HandlerType,
-			HandlerConfig:    jsonRawOrDefault(tool.HandlerConfig, "{}"),
+			HandlerConfig:    handlerConfig,
 			Public:           tool.IsPublic,
 			Enabled:          tool.Enabled,
 			RequiresApproval: tool.RequiresApproval,
@@ -1101,7 +1110,7 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 		errorMessage = &envelope.Data.ErrorMessage
 	}
 	if nodeID, toolCode, payload, ok := s.approvalRequestFromExecution(workflow.DefinitionJSON, envelope.Data.CurrentNode, envelope.Data.ErrorMessage); ok {
-		if err := s.repo.PauseRunForApproval(ctx, run.ID, nodeID, toolCode, payload); err != nil {
+		if err := s.repo.PauseRunForApproval(ctx, run.ID, nodeID, toolCode, payload, toNodeLogInputs(envelope.Data.Trace)); err != nil {
 			return nil, err
 		}
 		paused, err := s.repo.FindRunByID(ctx, run.UserID, run.ID)
