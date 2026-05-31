@@ -117,6 +117,7 @@ Available controls:
 - Evidence health filters for KPs and relations.
 - Topology filters for orphan and hub KPs.
 - Hub folding for nodes with high incoming degree.
+- `保存过滤` stores the current keyword/type/relation/time/provenance/confidence/evidence/topology/hub-folding filter set as a named preset for the current graph scope. Use the preset menu to apply it later, or `删除预设` to remove it.
 - Zoom controls, mouse-wheel zoom, drag panning, and reset view.
 - The minimap in the lower-right corner shows the current viewport and can jump to a graph region.
 - `保存布局` persists the current visible node positions plus zoom/pan viewport for the selected graph scope; `重置布局` clears that saved state.

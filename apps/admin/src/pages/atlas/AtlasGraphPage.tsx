@@ -25,6 +25,7 @@ import {
   Save,
   Search,
   SlidersHorizontal,
+  Trash2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -110,6 +111,28 @@ type SavedGraphLayout = {
   positions: GraphPositionMap;
   savedAt: string;
 };
+type GraphFilterState = {
+  keyword: string;
+  typeFilter: AtlasKnowledgePointType | 'all';
+  relFilter: AtlasRelationType | 'all';
+  timeFilter: TimeFilter;
+  provenanceFilter: AtlasProvenance | 'all';
+  confidenceFilter: ConfidenceFilter;
+  evidenceFilter: EvidenceFilter;
+  topologyFilter: TopologyFilter;
+  hideHubs: boolean;
+};
+type GraphFilterPreset = {
+  id: string;
+  name: string;
+  filters: GraphFilterState;
+  createdAt: string;
+  updatedAt: string;
+};
+type SavedGraphFilterPresets = {
+  version: 1;
+  presets: GraphFilterPreset[];
+};
 type PanState = {
   pointerId: number;
   startX: number;
@@ -165,6 +188,9 @@ const MAX_GRAPH_SCALE = 2.6;
 const GRAPH_ZOOM_STEP = 1.2;
 const DEFAULT_VIEWPORT: GraphViewport = { x: 0, y: 0, scale: 1 };
 const LAYOUT_STORAGE_PREFIX = 'atlas.graph.layout.v1';
+const FILTER_PRESET_STORAGE_PREFIX = 'atlas.graph.filter-presets.v1';
+const FILTER_PRESET_LIMIT = 12;
+const NO_FILTER_PRESET = 'none';
 
 export default function AtlasGraphPage() {
   const navigate = useNavigate();
@@ -188,11 +214,41 @@ export default function AtlasGraphPage() {
   const [viewport, setViewport] = useState<GraphViewport>(DEFAULT_VIEWPORT);
   const [savedPositions, setSavedPositions] = useState<GraphPositionMap>({});
   const [layoutSavedAt, setLayoutSavedAt] = useState<string | null>(null);
+  const [filterPresets, setFilterPresets] = useState<GraphFilterPreset[]>([]);
+  const [presetName, setPresetName] = useState('');
+  const [activePresetId, setActivePresetId] = useState(NO_FILTER_PRESET);
+  const [presetStatus, setPresetStatus] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const draggedRef = useRef(false);
   const lastGraphSearchRef = useRef('');
   const graphLayoutKey = useMemo(() => `${LAYOUT_STORAGE_PREFIX}:${scope}`, [scope]);
+  const graphFilterPresetKey = useMemo(() => `${FILTER_PRESET_STORAGE_PREFIX}:${scope}`, [scope]);
+  const currentFilterState = useMemo<GraphFilterState>(() => ({
+    keyword,
+    typeFilter,
+    relFilter,
+    timeFilter,
+    provenanceFilter,
+    confidenceFilter,
+    evidenceFilter,
+    topologyFilter,
+    hideHubs,
+  }), [
+    confidenceFilter,
+    evidenceFilter,
+    hideHubs,
+    keyword,
+    provenanceFilter,
+    relFilter,
+    timeFilter,
+    topologyFilter,
+    typeFilter,
+  ]);
+  const filterPresetOptions = useMemo(() => [
+    { value: NO_FILTER_PRESET, label: '选择过滤预设' },
+    ...filterPresets.map((preset) => ({ value: preset.id, label: preset.name })),
+  ], [filterPresets]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,6 +277,16 @@ export default function AtlasGraphPage() {
     setLayoutSavedAt(saved?.savedAt ?? null);
     setSelection(null);
   }, [graphLayoutKey]);
+
+  useEffect(() => {
+    setFilterPresets(readGraphFilterPresets(graphFilterPresetKey));
+    setPresetName('');
+    setPresetStatus(null);
+  }, [graphFilterPresetKey]);
+
+  useEffect(() => {
+    setActivePresetId(findMatchingPresetId(filterPresets, currentFilterState) ?? NO_FILTER_PRESET);
+  }, [currentFilterState, filterPresets]);
 
   useEffect(() => {
     const query = keyword.trim();
@@ -404,6 +470,73 @@ export default function AtlasGraphPage() {
     setLayoutSavedAt(null);
   }, [graphLayoutKey]);
 
+  const persistFilterPresets = useCallback((presets: GraphFilterPreset[]) => {
+    const next = presets.slice(0, FILTER_PRESET_LIMIT);
+    const saved: SavedGraphFilterPresets = { version: 1, presets: next };
+    window.localStorage.setItem(graphFilterPresetKey, JSON.stringify(saved));
+    setFilterPresets(next);
+  }, [graphFilterPresetKey]);
+
+  const applyFilterState = useCallback((filters: GraphFilterState) => {
+    setKeyword(filters.keyword);
+    setTypeFilter(filters.typeFilter);
+    setRelFilter(filters.relFilter);
+    setTimeFilter(filters.timeFilter);
+    setProvenanceFilter(filters.provenanceFilter);
+    setConfidenceFilter(filters.confidenceFilter);
+    setEvidenceFilter(filters.evidenceFilter);
+    setTopologyFilter(filters.topologyFilter);
+    setHideHubs(filters.hideHubs);
+    setSelection(null);
+  }, []);
+
+  const applyFilterPreset = useCallback((presetId: string) => {
+    if (presetId === NO_FILTER_PRESET) {
+      setActivePresetId(NO_FILTER_PRESET);
+      return;
+    }
+    const preset = filterPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+    applyFilterState(preset.filters);
+    setPresetName(preset.name);
+    setPresetStatus(`已套用过滤预设 · ${preset.name}`);
+  }, [applyFilterState, filterPresets]);
+
+  const saveFilterPreset = useCallback(() => {
+    const name = presetName.trim() || defaultGraphFilterPresetName(currentFilterState);
+    const existing = activePresetId !== NO_FILTER_PRESET
+      ? filterPresets.find((preset) => preset.id === activePresetId)
+      : filterPresets.find((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    const now = new Date().toISOString();
+    const nextPreset: GraphFilterPreset = {
+      id: existing?.id ?? makeGraphFilterPresetId(),
+      name,
+      filters: currentFilterState,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const next = [
+      nextPreset,
+      ...filterPresets.filter((preset) => (
+        preset.id !== nextPreset.id && preset.name.toLowerCase() !== name.toLowerCase()
+      )),
+    ];
+    persistFilterPresets(next);
+    setPresetName(name);
+    setActivePresetId(nextPreset.id);
+    setPresetStatus(`已保存过滤预设 · ${name}`);
+  }, [activePresetId, currentFilterState, filterPresets, persistFilterPresets, presetName]);
+
+  const deleteFilterPreset = useCallback(() => {
+    if (activePresetId === NO_FILTER_PRESET) return;
+    const preset = filterPresets.find((item) => item.id === activePresetId);
+    const next = filterPresets.filter((item) => item.id !== activePresetId);
+    persistFilterPresets(next);
+    setActivePresetId(NO_FILTER_PRESET);
+    setPresetName('');
+    setPresetStatus(preset ? `已删除过滤预设 · ${preset.name}` : null);
+  }, [activePresetId, filterPresets, persistFilterPresets]);
+
   const handleWheel = useCallback((event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault();
     const point = svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
@@ -571,6 +704,50 @@ export default function AtlasGraphPage() {
           <EyeOff className="h-3 w-3" />
           折叠 hub (入度 &gt; {HUB_THRESHOLD})
         </label>
+
+        <span className="hidden h-5 w-px bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] lg:inline-block" />
+
+        <div className="w-44">
+          <Select
+            value={activePresetId}
+            onValueChange={applyFilterPreset}
+            options={filterPresetOptions}
+            size="sm"
+            ariaLabel="图谱过滤预设"
+          />
+        </div>
+
+        <input
+          type="text"
+          value={presetName}
+          onChange={(event) => setPresetName(event.target.value)}
+          placeholder="预设名称"
+          aria-label="过滤预设名称"
+          className="h-8 w-36 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] px-2 text-xs text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+        />
+
+        <button
+          type="button"
+          onClick={saveFilterPreset}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-2 text-[11px] text-[var(--ink-primary)] hover:bg-[var(--bg-substrate)]"
+        >
+          <Save className="h-3 w-3" /> 保存过滤
+        </button>
+
+        <button
+          type="button"
+          onClick={deleteFilterPreset}
+          disabled={activePresetId === NO_FILTER_PRESET}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-2 text-[11px] text-[var(--ink-primary)] hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <Trash2 className="h-3 w-3" /> 删除预设
+        </button>
+
+        {presetStatus ? (
+          <span className="text-[10px] text-[var(--ink-muted)]" aria-live="polite">
+            {presetStatus}
+          </span>
+        ) : null}
       </div>
 
       {loading ? (
@@ -1061,6 +1238,122 @@ function readSavedGraphLayout(key: string): SavedGraphLayout | null {
   } catch {
     return null;
   }
+}
+
+function readGraphFilterPresets(key: string): GraphFilterPreset[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<SavedGraphFilterPresets>;
+    if (parsed.version !== 1 || !Array.isArray(parsed.presets)) return [];
+    return parsed.presets
+      .map(normalizeGraphFilterPreset)
+      .filter((preset): preset is GraphFilterPreset => Boolean(preset))
+      .slice(0, FILTER_PRESET_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeGraphFilterPreset(value: unknown): GraphFilterPreset | null {
+  if (!value || typeof value !== 'object') return null;
+  const preset = value as Partial<GraphFilterPreset>;
+  if (!preset.id || !preset.name || !preset.filters || !preset.createdAt || !preset.updatedAt) return null;
+  const filters = normalizeGraphFilterState(preset.filters);
+  if (!filters) return null;
+  return {
+    id: String(preset.id),
+    name: String(preset.name).trim() || '未命名过滤',
+    filters,
+    createdAt: String(preset.createdAt),
+    updatedAt: String(preset.updatedAt),
+  };
+}
+
+function normalizeGraphFilterState(value: unknown): GraphFilterState | null {
+  if (!value || typeof value !== 'object') return null;
+  const filters = value as Partial<GraphFilterState>;
+  if (!isTypeFilter(filters.typeFilter)) return null;
+  if (!isRelationFilter(filters.relFilter)) return null;
+  if (!isTimeFilter(filters.timeFilter)) return null;
+  if (!isProvenanceFilter(filters.provenanceFilter)) return null;
+  if (!isConfidenceFilter(filters.confidenceFilter)) return null;
+  if (!isEvidenceFilter(filters.evidenceFilter)) return null;
+  if (!isTopologyFilter(filters.topologyFilter)) return null;
+  return {
+    keyword: typeof filters.keyword === 'string' ? filters.keyword : '',
+    typeFilter: filters.typeFilter,
+    relFilter: filters.relFilter,
+    timeFilter: filters.timeFilter,
+    provenanceFilter: filters.provenanceFilter,
+    confidenceFilter: filters.confidenceFilter,
+    evidenceFilter: filters.evidenceFilter,
+    topologyFilter: filters.topologyFilter,
+    hideHubs: typeof filters.hideHubs === 'boolean' ? filters.hideHubs : true,
+  };
+}
+
+function findMatchingPresetId(presets: GraphFilterPreset[], filters: GraphFilterState): string | null {
+  return presets.find((preset) => graphFilterStateEquals(preset.filters, filters))?.id ?? null;
+}
+
+function graphFilterStateEquals(a: GraphFilterState, b: GraphFilterState): boolean {
+  return a.keyword === b.keyword
+    && a.typeFilter === b.typeFilter
+    && a.relFilter === b.relFilter
+    && a.timeFilter === b.timeFilter
+    && a.provenanceFilter === b.provenanceFilter
+    && a.confidenceFilter === b.confidenceFilter
+    && a.evidenceFilter === b.evidenceFilter
+    && a.topologyFilter === b.topologyFilter
+    && a.hideHubs === b.hideHubs;
+}
+
+function defaultGraphFilterPresetName(filters: GraphFilterState): string {
+  const parts = [
+    filters.keyword.trim(),
+    filters.typeFilter !== 'all' ? filters.typeFilter : '',
+    filters.relFilter !== 'all' ? filters.relFilter : '',
+    filters.timeFilter !== 'all' ? filters.timeFilter : '',
+    filters.provenanceFilter !== 'all' ? filters.provenanceFilter : '',
+    filters.confidenceFilter !== 'all' ? filters.confidenceFilter : '',
+    filters.evidenceFilter !== 'all' ? filters.evidenceFilter : '',
+    filters.topologyFilter !== 'all' ? filters.topologyFilter : '',
+    filters.hideHubs ? 'fold-hubs' : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.slice(0, 3).join(' · ') : '默认过滤';
+}
+
+function makeGraphFilterPresetId(): string {
+  return `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isTypeFilter(value: unknown): value is AtlasKnowledgePointType | 'all' {
+  return value === 'all' || (typeof value === 'string' && value in TYPE_COLORS);
+}
+
+function isRelationFilter(value: unknown): value is AtlasRelationType | 'all' {
+  return value === 'all' || (typeof value === 'string' && ATLAS_RELATION_TYPES.includes(value as AtlasRelationType));
+}
+
+function isTimeFilter(value: unknown): value is TimeFilter {
+  return TIME_OPTIONS.some((option) => option.value === value);
+}
+
+function isProvenanceFilter(value: unknown): value is AtlasProvenance | 'all' {
+  return PROVENANCE_OPTIONS.some((option) => option.value === value);
+}
+
+function isConfidenceFilter(value: unknown): value is ConfidenceFilter {
+  return CONFIDENCE_OPTIONS.some((option) => option.value === value);
+}
+
+function isEvidenceFilter(value: unknown): value is EvidenceFilter {
+  return EVIDENCE_OPTIONS.some((option) => option.value === value);
+}
+
+function isTopologyFilter(value: unknown): value is TopologyFilter {
+  return TOPOLOGY_OPTIONS.some((option) => option.value === value);
 }
 
 function roundPosition(value: number): number {
