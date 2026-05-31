@@ -353,6 +353,12 @@ def _agent_executor(
                     tool_results.append({"tool": tool_code, "result": result})
         prompt = str(node.data.get("prompt") or "你是内容审计 Agent。请输出结构化 JSON 报告。")
         max_iterations = int(node.data.get("maxIterations") or 4)
+        # Honor per-node model/provider overrides, like the llm executor does. Without
+        # this an Agent node's configured data.model/modelId/providerCode is ignored and
+        # the run silently uses the router default, making per-node model/cost controls
+        # misleading.
+        model_id = str(node.data.get("modelId") or node.data.get("model") or "") or None
+        provider_code = str(node.data.get("providerCode") or "") or None
         text = await llm_router.chat(
             {
                 "content": _stringify_for_prompt(
@@ -366,6 +372,8 @@ def _agent_executor(
             "qa",
             user_id=user_id,
             custom_prompt=prompt,
+            model_id=model_id,
+            provider_code=provider_code,
             allow_override=True,
             max_tokens=budget.token_limit(),
             max_cost_usd=budget.cost_limit(),

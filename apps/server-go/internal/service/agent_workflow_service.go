@@ -784,6 +784,27 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if err != nil {
 		return nil, err
 	}
+	// Re-run the node-budget preflight the original create path enforces. RetryRun
+	// goes straight to repo.CreateRun, and ai-service does not enforce maxNodes, so
+	// without this a run that was correctly rejected for exceeding maxNodes could be
+	// retried and execute anyway.
+	if req.MaxNodes != nil && countWorkflowNodes(workflow.DefinitionJSON) > *req.MaxNodes {
+		code, category, retryable := classifyWorkflowError("budget exceeded: max nodes")
+		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
+			RunID:         retry.ID,
+			Status:        "budget_exceeded",
+			Outputs:       "{}",
+			ErrorMessage:  nullableDescription("budget exceeded: workflow node count exceeds maxNodes"),
+			ErrorCode:     nullableDescription(code),
+			ErrorCategory: nullableDescription(category),
+			Retryable:     retryable,
+		})
+		if finishErr != nil {
+			return nil, finishErr
+		}
+		summary := toRunSummary(*failed)
+		return &summary, nil
+	}
 	if s.client == nil || s.internalToken == "" {
 		code, category, retryable := classifyWorkflowError("AI workflow executor is not connected")
 		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
