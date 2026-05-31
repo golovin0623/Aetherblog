@@ -883,17 +883,16 @@ func parseRunLimit(c echo.Context) int {
 }
 
 func clientRateKey(c echo.Context) string {
-	parts := []string{strings.TrimSpace(c.Request().Header.Get("X-Forwarded-For")), strings.TrimSpace(c.RealIP())}
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-		if strings.Contains(part, ",") {
-			part = strings.TrimSpace(strings.Split(part, ",")[0])
-		}
-		if part != "" {
-			return "ip:" + part
-		}
+	// Use Echo's RealIP, which derives the peer from the trusted-proxy chain rather
+	// than the raw client-supplied X-Forwarded-For first hop. Consuming the raw header
+	// directly would let any caller rotate XFF to mint a fresh rate-limit bucket for
+	// the same publication.
+	ip := strings.TrimSpace(c.RealIP())
+	if strings.Contains(ip, ",") {
+		ip = strings.TrimSpace(strings.Split(ip, ",")[0])
+	}
+	if ip != "" {
+		return "ip:" + ip
 	}
 	return "ip:unknown"
 }

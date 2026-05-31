@@ -802,13 +802,6 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 	if err != nil || run == nil {
 		return nil, err
 	}
-	// Resuming a paused run is the human approval decision: transition the pending
-	// approval row(s) to 'approved' so executeWorkflow's gate (HasApprovedDecision)
-	// recognizes this node as approved exactly once and the run can progress past the
-	// governed tool instead of immediately re-pausing.
-	if _, err := s.repo.ApproveResumeDecision(ctx, runID, resumeFromNode, userID); err != nil {
-		return nil, err
-	}
 	// Resume the definition the run actually paused on: run.Version, resumeFromNode,
 	// and the persisted node logs all refer to that snapshot. Reloading the mutable
 	// current workflow row would execute a newer (possibly edited) definition whose
@@ -821,6 +814,17 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 	if workflow == nil {
 		workflow, err = s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
 		if err != nil || workflow == nil {
+			return nil, err
+		}
+	}
+	// Resuming records the human approval decision that clears an approval-gated
+	// tool. Only the workflow *owner* may approve: a published workflow's run belongs
+	// to the invoker, and the repo lets the invoker resume too, so without this check
+	// an invoker could approve their own paused run and execute the owner's guarded
+	// HTTP/MCP tool credentials. A non-owner resume still re-runs but leaves the
+	// approval pending, so the governed tool re-pauses for owner review.
+	if userID == workflow.UserID {
+		if _, err := s.repo.ApproveResumeDecision(ctx, runID, resumeFromNode, userID); err != nil {
 			return nil, err
 		}
 	}
