@@ -133,6 +133,7 @@ Use `/admin/atlas/suggestions` to review pending suggestions.
 How to generate suggestions:
 
 - From a Markdown or PDF Reader header, click `全文 AI 建议`. Atlas first previews the run cost against the per-run budget, then sends a bounded slice of the current carrier root text through the AI service and creates carrier-bound pending KP suggestions in the Inbox. If the estimate exceeds the threshold, generation is cancelled before any suggestion is created.
+- From the AI Writing workspace for an existing post, click the Atlas action in the header. Atlas wraps the draft or published post as a `blog_post` carrier, previews the run cost, then uses the same carrier-level suggestion pipeline to create pending KP suggestions.
 - From the Reader annotation list, click `AI 建议` on an annotation. Atlas sends the selected evidence text through the AI service and creates pending KP suggestions.
 - From a KP detail page, select a target KP in the relation form and click the `AI` action. Atlas asks the AI service for one typed relation suggestion and places it in the Inbox.
 
@@ -145,7 +146,7 @@ Rules:
 
 The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Migration `000072` seeds the `atlas_claims` and `atlas_relations` task types and inherits the site's default chat routing when possible. The current landing evidence includes a live R3 gate run through gateway/server-go/ai-service with explicit model `gemini-3.1-flash-lite-preview`: KP accept `100%`, relation accept `50%`, schema valid `100%`, grounded `100%`, non-stub `100%`, and token coverage `100%`. Production release still needs default Atlas routing credentials configured and a production rerun.
 
-Carrier-level extraction is currently a synchronous bounded baseline for Reader usage. It includes a preflight token/cost estimate, pricing-missing warning, and per-run `maxCostUsd` threshold guard. Large async batch jobs, progress reporting, persistent user-configurable budgets, and batch-job cost rollups remain later P2-02/P2-08 work.
+Carrier-level extraction is currently a synchronous bounded baseline for Reader and writing-workspace usage. It includes a preflight token/cost estimate, pricing-missing warning, and per-run `maxCostUsd` threshold guard. Large async batch jobs, progress reporting, persistent user-configurable budgets, and batch-job cost rollups remain later P2-02/P2-08 work.
 
 ## 10. AetherHub Scope
 

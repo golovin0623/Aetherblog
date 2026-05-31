@@ -12,10 +12,11 @@ import (
 
 // AtlasService 聚合 Atlas 子域的业务编排入口。
 type AtlasService struct {
-	repo     *repository.AtlasRepo
-	carriers *repository.CarrierRepo
-	markdown *MarkdownCarrierService
-	pdf      *PdfCarrierService
+	repo      *repository.AtlasRepo
+	carriers  *repository.CarrierRepo
+	markdown  *MarkdownCarrierService
+	pdf       *PdfCarrierService
+	blogPosts *BlogPostCarrierService
 }
 
 // NewAtlasService 创建 AtlasService。
@@ -50,6 +51,16 @@ func (s *AtlasService) AttachPDF(pdf *PdfCarrierService) {
 // PDF 返回 PDF 子服务（媒体文件 → 文本层 carrier）。
 func (s *AtlasService) PDF() *PdfCarrierService {
 	return s.pdf
+}
+
+// AttachBlogPosts injects the blog-post carrier service after post dependencies are wired.
+func (s *AtlasService) AttachBlogPosts(blogPosts *BlogPostCarrierService) {
+	s.blogPosts = blogPosts
+}
+
+// BlogPosts 返回 Blog post 子服务（posts 表 → carrier）。
+func (s *AtlasService) BlogPosts() *BlogPostCarrierService {
+	return s.blogPosts
 }
 
 // Carriers 返回 CarrierRepo（CRUD）。Phase 1+ 由 handler 调。

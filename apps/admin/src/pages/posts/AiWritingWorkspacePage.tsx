@@ -26,11 +26,12 @@ import {
   Eye,
   Columns,
   ShieldCheck,
+  Network,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
-import { cn } from '@/lib/utils';
+import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 // Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
@@ -52,6 +53,7 @@ import type { ContentSnapshot } from '@/types/content-history';
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
 import { aiService } from '@/services/aiService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
+import { atlasService, ATLAS_CARRIER_SUGGESTION_MAX_COST_USD } from '@/services/atlasService';
 import { loadToolParams } from '@/components/ai/ToolParamsPanel';
 import { toast } from 'sonner';
 
@@ -61,6 +63,12 @@ function workflowErrorMessage(error: unknown, fallback: string) {
   if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
   if (typeof candidate.message === 'string' && candidate.message.trim()) return candidate.message;
   return fallback;
+}
+
+function formatAtlasCostUsd(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '未知';
+  if (value === 0) return '$0';
+  return `$${value.toFixed(6)}`;
 }
 
 // AI 工具能力定义
@@ -119,6 +127,7 @@ export function AiWritingWorkspacePage() {
   const [showWorkflowNav, setShowWorkflowNav] = useState(true);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
+  const [generatingAtlasSuggestions, setGeneratingAtlasSuggestions] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [compareSnapshots, setCompareSnapshots] = useState<{
     snapshot1: ContentSnapshot;
@@ -329,6 +338,39 @@ export function AiWritingWorkspacePage() {
     }
   }, [postId]);
 
+  const generateAtlasPostSuggestions = useCallback(async () => {
+    if (!postId || Number.isNaN(postId)) {
+      toast.error('请先保存文章后再生成 Atlas 建议');
+      return;
+    }
+    setGeneratingAtlasSuggestions(true);
+    try {
+      const carrier = await atlasService.ensurePostCarrier(postId);
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.data.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.data.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从文章生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '生成 Atlas 建议失败'));
+    } finally {
+      setGeneratingAtlasSuggestions(false);
+    }
+  }, [postId]);
+
   return (
     <div className="absolute inset-0 flex flex-col bg-[var(--bg-void)]">
       {/* ============ 移动端头部：双排紧凑布局 ============ */}
@@ -351,13 +393,22 @@ export function AiWritingWorkspacePage() {
                 </span>
               </div>
             </div>
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
-            >
-              <Save className="w-3.5 h-3.5" />
-              保存
-            </button>
+            <div className="flex items-center gap-1">
+              <MobileIconButton
+                onClick={() => void generateAtlasPostSuggestions()}
+                disabled={generatingAtlasSuggestions}
+                label="Atlas"
+              >
+                <Network className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
+              >
+                <Save className="w-3.5 h-3.5" />
+                保存
+              </button>
+            </div>
           </div>
 
           {/* Row 2 · 模式 + 控制条 */}
@@ -524,6 +575,14 @@ export function AiWritingWorkspacePage() {
               title="运行 Article Audit"
             >
               <ShieldCheck className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={() => void generateAtlasPostSuggestions()}
+              disabled={generatingAtlasSuggestions}
+              title={generatingAtlasSuggestions ? '正在生成 Atlas 建议' : '生成 Atlas 建议'}
+            >
+              <Network className="w-5 h-5" />
             </DesktopIconButton>
 
             {workflowMode === 'guided' && (

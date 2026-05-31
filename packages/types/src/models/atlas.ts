@@ -16,6 +16,7 @@ export type AtlasCarrierType =
   | 'pdf'
   | 'epub'
   | 'markdown'
+  | 'blog_post'
   | 'web'
   | 'video'
   | 'audio'

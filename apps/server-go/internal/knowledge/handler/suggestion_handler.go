@@ -597,6 +597,22 @@ func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope 
 			return "", atlasError(response.BadRequest, "PDF 文本层不存在，请先完成文本抽取")
 		}
 		return strings.TrimSpace(layer.TextContent), nil
+	case "blog_post":
+		if h.atlas == nil || h.atlas.BlogPosts() == nil {
+			return "", atlasError(response.InternalError, "Blog post carrier 服务未配置")
+		}
+		postID, ok := blogPostIDFromCarrierSource(carrier.SourceURI)
+		if !ok {
+			return "", atlasError(response.BadRequest, "Blog post carrier source_uri 无法解析")
+		}
+		post, err := h.atlas.BlogPosts().GetPostSourceAs(ctx, postID, scope.UserID, scope.CanAdmin)
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return "", atlasError(response.Forbidden, "无权访问该文章来源")
+		}
+		if err != nil {
+			return "", err
+		}
+		return atlassvc.BlogPostText(post), nil
 	default:
 		return "", atlasError(response.BadRequest, fmt.Sprintf("暂不支持从 %s 载体生成 AI 建议", carrier.Type))
 	}
@@ -605,6 +621,19 @@ func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope 
 func markdownNoteIDFromCarrierSource(sourceURI string) (int64, bool) {
 	trimmed := strings.TrimSpace(sourceURI)
 	raw := strings.TrimPrefix(trimmed, "notes://")
+	if raw == trimmed || strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+func blogPostIDFromCarrierSource(sourceURI string) (int64, bool) {
+	trimmed := strings.TrimSpace(sourceURI)
+	raw := strings.TrimPrefix(trimmed, "posts://")
 	if raw == trimmed || strings.TrimSpace(raw) == "" {
 		return 0, false
 	}

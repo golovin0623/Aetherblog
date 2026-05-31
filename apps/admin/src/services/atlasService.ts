@@ -104,6 +104,9 @@ export const atlasService = {
   ensurePDFCarrier: (mediaFileId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/pdf`, { mediaFileId }),
 
+  ensurePostCarrier: (postId: number): Promise<R<AtlasCarrier>> =>
+    api.post(`${base}/carriers/post`, { postId }),
+
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
 
   getCarrierTextLayer: (carrierId: number): Promise<R<AtlasCarrierTextLayer>> =>

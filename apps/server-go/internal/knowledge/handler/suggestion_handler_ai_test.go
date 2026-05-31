@@ -158,3 +158,17 @@ func TestMarkdownNoteIDFromCarrierSource(t *testing.T) {
 		}
 	}
 }
+
+func TestBlogPostIDFromCarrierSource(t *testing.T) {
+	id, ok := blogPostIDFromCarrierSource("posts://42")
+	if !ok || id != 42 {
+		t.Fatalf("parsed post source = (%d,%t), want (42,true)", id, ok)
+	}
+
+	for _, source := range []string{"posts://", "posts://abc", "notes://42", "https://example.test/42"} {
+		id, ok := blogPostIDFromCarrierSource(source)
+		if ok || id != 0 {
+			t.Fatalf("source %q parsed as (%d,%t), want (0,false)", source, id, ok)
+		}
+	}
+}

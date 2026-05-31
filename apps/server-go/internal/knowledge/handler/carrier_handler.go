@@ -3,6 +3,7 @@
 // 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST /carriers/markdown       懒创建/返回 markdown 类型 carrier
 //   POST /carriers/pdf            懒创建/返回 pdf 类型 carrier
+//   POST /carriers/post           懒创建/返回 blog_post 类型 carrier
 //   GET  /carriers/:id            读 carrier 详情
 //   GET  /carriers/:id/text-layer  读 pdf carrier 当前文本层
 
@@ -38,6 +39,7 @@ func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.GET("/carriers/markdown/:noteId/source", h.GetMarkdownSource)
 	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
+	g.POST("/carriers/post", h.EnsurePost, write)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
 }
@@ -138,6 +140,33 @@ func (h *CarrierHandler) EnsurePDF(c echo.Context) error {
 	if err != nil {
 		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
 			return response.FailWith(c, response.Forbidden, "无权访问该媒体的 Atlas 载体")
+		}
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, toCarrierResponse(carrier))
+}
+
+// EnsurePost 懒创建 / 返回 blog_post 类型 carrier。
+func (h *CarrierHandler) EnsurePost(c echo.Context) error {
+	var req atlasdto.EnsurePostCarrierRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	posts := h.atlas.BlogPosts()
+	if posts == nil {
+		return response.FailWith(c, response.InternalError, "blog post carrier service 未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := posts.GetOrCreateForPostAs(c.Request().Context(), req.PostID, scope.UserID, scope.CanAdmin)
+	if err != nil {
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return response.FailWith(c, response.Forbidden, "无权访问该文章的 Atlas 载体")
 		}
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
