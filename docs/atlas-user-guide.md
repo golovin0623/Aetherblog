@@ -158,6 +158,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R1 PDF text-layer anchoring recall: `node scripts/atlas/pdf-anchoring-recall.mjs --min-recall 0.9`.
 - R1 real-PDF corpus gate: `node scripts/atlas/pdf-real-corpus-gate.mjs --min-recall 0.9`.
 - R2 relation health fixed corpus: `node scripts/atlas/relation-health-gate.mjs`.
+- R2 live non-admin dataset gate: `ATLAS_SMOKE_PASSWORD=... node scripts/atlas/run-relation-health-live-gate.mjs`.
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
 - R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with all 15 checks passed, including KP archive/restore/delete lifecycle checks.
