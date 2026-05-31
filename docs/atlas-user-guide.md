@@ -172,9 +172,9 @@ This is an automatic semantic recall baseline, not full GraphRAG. The admin sear
 
 ## 11. AI Writing Workspace
 
-In `/admin/posts/ai-writing/:id`, the Atlas reference action searches the current user's Atlas KP set with a bounded query built from the current title, summary, and body. The panel lists related KPs and semantic scores when available.
+In `/admin/posts/ai-writing/:id`, the Atlas reference action searches the current user's Atlas KP set with a bounded query built from the current title, summary, and body. The panel lists related KPs, semantic scores when available, and the first accessible evidence quote for each KP when the KP has linked evidence.
 
-Use `插入引用` to add a Markdown link like `Atlas KP #42` to the current cursor position. The link opens the Atlas KP detail page, where evidence annotations and relations can be reviewed before publication. The current baseline inserts KP detail references; automatic evidence-quote insertion and public citation formatting remain later work.
+Use `链接` to add an internal Markdown link like `Atlas KP #42` to the current cursor position. Use `证据` to insert a public-safe blockquote citation containing the evidence quote, source carrier title, KP id, and evidence annotation id without linking readers into `/admin`. Richer writing-agent synthesis remains later work.
 
 ## 12. Release Checklist
 

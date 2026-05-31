@@ -135,10 +135,20 @@ type GraphHealthHubResponse struct {
 }
 
 // SearchResponse 是 GET /atlas/search 的轻量聚合搜索结果。
+type SearchEvidencePreviewResponse struct {
+	AnnotationID int64   `json:"annotationId"`
+	CarrierID    int64   `json:"carrierId"`
+	CarrierType  string  `json:"carrierType"`
+	CarrierTitle string  `json:"carrierTitle"`
+	Quote        string  `json:"quote"`
+	Note         *string `json:"note,omitempty"`
+}
+
 type SearchKnowledgePointResponse struct {
 	KnowledgePointResponse
-	SearchScore  *float64 `json:"searchScore,omitempty"`
-	SearchSource string   `json:"searchSource,omitempty"`
+	SearchScore     *float64                       `json:"searchScore,omitempty"`
+	SearchSource    string                         `json:"searchSource,omitempty"`
+	EvidencePreview *SearchEvidencePreviewResponse `json:"evidencePreview,omitempty"`
 }
 
 type SearchResponse struct {

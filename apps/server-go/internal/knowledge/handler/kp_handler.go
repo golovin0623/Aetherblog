@@ -25,6 +25,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -611,6 +612,9 @@ func (h *KPHandler) Search(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	if err := h.attachSearchEvidencePreviews(c.Request().Context(), scope, searchKPs); err != nil {
+		return response.Error(c, err)
+	}
 
 	out := atlasdto.SearchResponse{
 		Query:             query,
@@ -713,6 +717,116 @@ func (h *KPHandler) toSearchKnowledgePoints(
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (h *KPHandler) attachSearchEvidencePreviews(
+	ctx context.Context,
+	scope *atlasScope,
+	items []atlasdto.SearchKnowledgePointResponse,
+) error {
+	if h == nil || h.kp == nil || h.ann == nil || h.atlas == nil || h.atlas.Carriers() == nil {
+		return nil
+	}
+	for i := range items {
+		links, err := h.kp.ListEvidence(ctx, items[i].ID)
+		if err != nil {
+			return err
+		}
+		for _, link := range links {
+			annotation, err := h.ann.Get(ctx, link.AnnotationID)
+			if err != nil {
+				return err
+			}
+			if annotation == nil || !scope.canAccessAuthor(annotation.AuthorID) {
+				continue
+			}
+			carrier, err := h.atlas.Carriers().FindByID(ctx, annotation.CarrierID)
+			if err != nil {
+				return err
+			}
+			if carrier == nil || !scope.canAccessOwner(carrier.OwnerID) {
+				continue
+			}
+			preview := toSearchEvidencePreview(annotation, carrier)
+			if preview == nil {
+				continue
+			}
+			items[i].EvidencePreview = preview
+			break
+		}
+	}
+	return nil
+}
+
+const (
+	atlasSearchEvidenceQuoteLimit = 240
+	atlasSearchEvidenceNoteLimit  = 180
+)
+
+func toSearchEvidencePreview(
+	annotation *atlasmodel.Annotation,
+	carrier *atlasmodel.Carrier,
+) *atlasdto.SearchEvidencePreviewResponse {
+	if annotation == nil || carrier == nil {
+		return nil
+	}
+	quote := truncateAtlasEvidenceText(firstTextQuoteSelectorExact(annotation.Selectors), atlasSearchEvidenceQuoteLimit)
+	bodyText := ""
+	if annotation.BodyText != nil {
+		bodyText = strings.TrimSpace(*annotation.BodyText)
+	}
+	if quote == "" {
+		quote = truncateAtlasEvidenceText(bodyText, atlasSearchEvidenceQuoteLimit)
+	}
+	if quote == "" {
+		return nil
+	}
+	var note *string
+	if trimmed := truncateAtlasEvidenceText(bodyText, atlasSearchEvidenceNoteLimit); trimmed != "" && trimmed != quote {
+		note = &trimmed
+	}
+	return &atlasdto.SearchEvidencePreviewResponse{
+		AnnotationID: annotation.ID,
+		CarrierID:    annotation.CarrierID,
+		CarrierType:  carrier.Type,
+		CarrierTitle: carrier.Title,
+		Quote:        quote,
+		Note:         note,
+	}
+}
+
+func firstTextQuoteSelectorExact(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var selectors []struct {
+		Type  string `json:"type"`
+		Exact string `json:"exact"`
+	}
+	if err := json.Unmarshal(raw, &selectors); err != nil {
+		return ""
+	}
+	for _, selector := range selectors {
+		if selector.Type == "TextQuoteSelector" {
+			return strings.TrimSpace(selector.Exact)
+		}
+	}
+	return ""
+}
+
+func truncateAtlasEvidenceText(text string, limit int) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	if text == "" || limit <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	if limit <= 3 {
+		return string(runes[:limit])
+	}
+	return strings.TrimSpace(string(runes[:limit-3])) + "..."
 }
 
 func parseAtlasSemanticParam(raw string) bool {

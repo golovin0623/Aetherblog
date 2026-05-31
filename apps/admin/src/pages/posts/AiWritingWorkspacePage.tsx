@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Link2,
   Highlighter,
+  Quote,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -89,6 +90,33 @@ function buildAtlasWritingQuery(title: string, summary: string, content: string)
 function atlasReferenceMarkdown(kp: AtlasSearchKnowledgePoint) {
   const safeTitle = kp.title.replaceAll('[', '\\[').replaceAll(']', '\\]');
   return `[Atlas KP #${kp.id}: ${safeTitle}](/admin/atlas/kp/${kp.id})`;
+}
+
+function normalizeAtlasCitationText(text: string) {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+function atlasEvidenceCitationMarkdown(kp: AtlasSearchKnowledgePoint) {
+  const evidence = kp.evidencePreview;
+  if (!evidence?.quote) return atlasReferenceMarkdown(kp);
+
+  const title = normalizeAtlasCitationText(kp.title);
+  const quote = normalizeAtlasCitationText(evidence.quote);
+  const carrierTitle = normalizeAtlasCitationText(evidence.carrierTitle);
+  const sourceParts = [
+    carrierTitle ? `来源：${carrierTitle}` : null,
+    `KP #${kp.id}: ${title}`,
+    `evidence #${evidence.annotationId}`,
+  ].filter(Boolean);
+  const lines = [
+    `> ${quote}`,
+    '>',
+    `> Atlas 引用 - ${sourceParts.join(' · ')}`,
+  ];
+  if (evidence.note) {
+    lines.push('', `标注备注：${normalizeAtlasCitationText(evidence.note)}`);
+  }
+  return lines.join('\n');
 }
 
 // AI 工具能力定义
@@ -450,8 +478,8 @@ export function AiWritingWorkspacePage() {
     }
   }, [atlasReferenceState.kind, isMobile, mobilePanel, refreshAtlasReferences, showAtlasPanel]);
 
-  const insertAtlasReference = useCallback(async (kp: AtlasSearchKnowledgePoint) => {
-    const markdown = atlasReferenceMarkdown(kp);
+  const insertAtlasReference = useCallback(async (kp: AtlasSearchKnowledgePoint, mode: 'link' | 'evidence' = 'link') => {
+    const markdown = mode === 'evidence' ? atlasEvidenceCitationMarkdown(kp) : atlasReferenceMarkdown(kp);
     const view = editorViewRef.current;
     if (postId) {
       await historyManager.createSnapshot({
@@ -459,7 +487,7 @@ export function AiWritingWorkspacePage() {
         content,
         summary,
         source: 'user-edit',
-        sourceName: '插入 Atlas 引用前',
+        sourceName: mode === 'evidence' ? '插入 Atlas evidence 前' : '插入 Atlas 引用前',
       });
     }
     if (view) {
@@ -476,7 +504,7 @@ export function AiWritingWorkspacePage() {
         return `${current}${separator}${markdown}`;
       });
     }
-    toast.success(`已插入 KP #${kp.id} 引用`);
+    toast.success(mode === 'evidence' ? `已插入 KP #${kp.id} evidence` : `已插入 KP #${kp.id} 引用`);
   }, [content, historyManager, postId, summary, title]);
 
   return (
@@ -927,7 +955,8 @@ export function AiWritingWorkspacePage() {
                 <AtlasReferencePanel
                   state={atlasReferenceState}
                   onRefresh={() => void refreshAtlasReferences()}
-                  onInsert={(kp) => void insertAtlasReference(kp)}
+                  onInsertLink={(kp) => void insertAtlasReference(kp, 'link')}
+                  onInsertEvidence={(kp) => void insertAtlasReference(kp, 'evidence')}
                   onClose={() => setShowAtlasPanel(false)}
                 />
               </motion.aside>
@@ -1017,7 +1046,8 @@ export function AiWritingWorkspacePage() {
             <AtlasReferencePanel
               state={atlasReferenceState}
               onRefresh={() => void refreshAtlasReferences()}
-              onInsert={(kp) => void insertAtlasReference(kp)}
+              onInsertLink={(kp) => void insertAtlasReference(kp, 'link')}
+              onInsertEvidence={(kp) => void insertAtlasReference(kp, 'evidence')}
               onClose={closeMobilePanel}
             />
           )}
@@ -1041,12 +1071,14 @@ export function AiWritingWorkspacePage() {
 function AtlasReferencePanel({
   state,
   onRefresh,
-  onInsert,
+  onInsertLink,
+  onInsertEvidence,
   onClose,
 }: {
   state: AtlasReferenceState;
   onRefresh: () => void;
-  onInsert: (kp: AtlasSearchKnowledgePoint) => void;
+  onInsertLink: (kp: AtlasSearchKnowledgePoint) => void;
+  onInsertEvidence: (kp: AtlasSearchKnowledgePoint) => void;
   onClose: () => void;
 }) {
   const items = state.kind === 'ok' ? state.items : [];
@@ -1099,6 +1131,7 @@ function AtlasReferencePanel({
           <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)]">
             {items.map((kp) => {
               const score = typeof kp.searchScore === 'number' ? Math.round(kp.searchScore * 100) : null;
+              const evidence = kp.evidencePreview;
               return (
                 <li key={kp.id} className="px-4 py-3">
                   <div className="space-y-2">
@@ -1115,6 +1148,17 @@ function AtlasReferencePanel({
                       {kp.bodyMarkdown ? (
                         <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--ink-secondary)]">{kp.bodyMarkdown}</p>
                       ) : null}
+                      {evidence ? (
+                        <div className="mt-2 border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)] pl-2">
+                          <div className="flex items-start gap-1.5 text-xs leading-5 text-[var(--ink-secondary)]">
+                            <Quote className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[var(--aurora-1)]" />
+                            <p className="line-clamp-3">{evidence.quote}</p>
+                          </div>
+                          <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                            {evidence.carrierType} · {evidence.carrierTitle || `carrier #${evidence.carrierId}`}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
@@ -1122,11 +1166,21 @@ function AtlasReferencePanel({
                       </span>
                       <button
                         type="button"
-                        onClick={() => onInsert(kp)}
+                        onClick={() => onInsertLink(kp)}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] px-2.5 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]"
                       >
                         <Link2 className="w-3.5 h-3.5" />
-                        插入引用
+                        链接
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onInsertEvidence(kp)}
+                        disabled={!evidence?.quote}
+                        title={evidence?.quote ? '插入 evidence 引用' : '该 KP 暂无 evidence'}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-2.5 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                      >
+                        <Quote className="w-3.5 h-3.5" />
+                        证据
                       </button>
                     </div>
                   </div>

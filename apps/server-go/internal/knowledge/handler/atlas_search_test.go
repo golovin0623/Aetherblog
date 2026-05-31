@@ -90,3 +90,57 @@ func TestAtlasSearchKnowledgePointsKeepsKeywordOrderWhenSemanticUnavailable(t *t
 		t.Fatalf("keyword metadata = source %q score %#v", got[0].SearchSource, got[0].SearchScore)
 	}
 }
+
+func TestAtlasSearchEvidencePreviewUsesTextQuoteSelector(t *testing.T) {
+	note := "review note for this evidence"
+	got := toSearchEvidencePreview(
+		&atlasmodel.Annotation{
+			ID:        7,
+			CarrierID: 3,
+			Selectors: []byte(`[
+				{"type":"TextPositionSelector","start":10,"end":32},
+				{"type":"TextQuoteSelector","exact":"Atlas evidence quote"},
+				{"type":"FragmentSelector","value":"page=1"}
+			]`),
+			BodyText: &note,
+		},
+		&atlasmodel.Carrier{ID: 3, Type: "blog_post", Title: "Draft post"},
+	)
+	if got == nil {
+		t.Fatal("preview = nil, want evidence preview")
+	}
+	if got.AnnotationID != 7 || got.CarrierID != 3 || got.CarrierType != "blog_post" || got.CarrierTitle != "Draft post" {
+		t.Fatalf("unexpected preview identity: %+v", got)
+	}
+	if got.Quote != "Atlas evidence quote" {
+		t.Fatalf("quote = %q, want TextQuoteSelector exact", got.Quote)
+	}
+	if got.Note == nil || *got.Note != note {
+		t.Fatalf("note = %#v, want %q", got.Note, note)
+	}
+}
+
+func TestAtlasSearchEvidencePreviewFallsBackToBodyText(t *testing.T) {
+	note := "body text fallback"
+	got := toSearchEvidencePreview(
+		&atlasmodel.Annotation{
+			ID:        8,
+			CarrierID: 4,
+			Selectors: []byte(`[
+				{"type":"TextPositionSelector","start":1,"end":5},
+				{"type":"FragmentSelector","value":"page=2"}
+			]`),
+			BodyText: &note,
+		},
+		&atlasmodel.Carrier{ID: 4, Type: "pdf", Title: "Research PDF"},
+	)
+	if got == nil {
+		t.Fatal("preview = nil, want fallback preview")
+	}
+	if got.Quote != note {
+		t.Fatalf("quote = %q, want bodyText fallback", got.Quote)
+	}
+	if got.Note != nil {
+		t.Fatalf("note = %#v, want nil when note duplicates fallback quote", got.Note)
+	}
+}

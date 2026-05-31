@@ -256,9 +256,19 @@ export interface AtlasSearchResponse {
 
 export type AtlasSearchSource = 'keyword' | 'semantic' | 'keyword_semantic';
 
+export interface AtlasSearchEvidencePreview {
+  annotationId: number;
+  carrierId: number;
+  carrierType: AtlasCarrierType;
+  carrierTitle: string;
+  quote: string;
+  note?: string | null;
+}
+
 export interface AtlasSearchKnowledgePoint extends AtlasKnowledgePoint {
   searchScore?: number | null;
   searchSource?: AtlasSearchSource | string;
+  evidencePreview?: AtlasSearchEvidencePreview | null;
 }
 
 // ============================================================
