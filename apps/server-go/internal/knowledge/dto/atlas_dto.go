@@ -59,6 +59,15 @@ type EnsurePostCarrierRequest struct {
 	PostID int64 `json:"postId" validate:"required,gt=0"`
 }
 
+// EnsureWebCarrierRequest 是 POST /atlas/carriers/web 的请求体。
+type EnsureWebCarrierRequest struct {
+	SourceURL       string  `json:"sourceUrl" validate:"required"`
+	Title           string  `json:"title,omitempty"`
+	ContentMarkdown string  `json:"contentMarkdown" validate:"required"`
+	Author          *string `json:"author,omitempty"`
+	Language        *string `json:"language,omitempty"`
+}
+
 // CarrierTextPageResponse 是 PDF 文本层的页级锚定空间。
 type CarrierTextPageResponse struct {
 	Page      int    `json:"page"`

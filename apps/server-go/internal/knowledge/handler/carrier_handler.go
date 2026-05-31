@@ -4,8 +4,9 @@
 //   POST /carriers/markdown       懒创建/返回 markdown 类型 carrier
 //   POST /carriers/pdf            懒创建/返回 pdf 类型 carrier
 //   POST /carriers/post           懒创建/返回 blog_post 类型 carrier
+//   POST /carriers/web            创建/更新 web clip 类型 carrier
 //   GET  /carriers/:id            读 carrier 详情
-//   GET  /carriers/:id/text-layer  读 pdf carrier 当前文本层
+//   GET  /carriers/:id/text-layer  读 pdf/web carrier 当前文本层
 
 package handler
 
@@ -40,6 +41,7 @@ func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
 	g.POST("/carriers/post", h.EnsurePost, write)
+	g.POST("/carriers/web", h.EnsureWeb, write)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
 }
@@ -173,6 +175,36 @@ func (h *CarrierHandler) EnsurePost(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
+// EnsureWeb 创建 / 更新 web clip 类型 carrier。
+func (h *CarrierHandler) EnsureWeb(c echo.Context) error {
+	var req atlasdto.EnsureWebCarrierRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	web := h.atlas.WebClips()
+	if web == nil {
+		return response.FailWith(c, response.InternalError, "web clip carrier service 未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := web.CreateOrUpdateWebClipAs(c.Request().Context(), atlassvc.WebClipInput{
+		SourceURL:       req.SourceURL,
+		Title:           req.Title,
+		ContentMarkdown: req.ContentMarkdown,
+		Author:          req.Author,
+		Language:        req.Language,
+	}, scope.UserID)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, toCarrierResponse(carrier))
+}
+
 // Get 返回 carrier 详情。
 func (h *CarrierHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -196,7 +228,7 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
-// GetTextLayer 返回 PDF carrier 当前 content_hash 对应的页级文本层。
+// GetTextLayer 返回 PDF/Web carrier 当前 content_hash 对应的页级文本层。
 func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -216,8 +248,8 @@ func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	if !scope.canAccessOwner(carrier.OwnerID) {
 		return response.FailWith(c, response.Forbidden, "无权访问该载体")
 	}
-	if carrier.Type != "pdf" {
-		return response.FailWith(c, response.BadRequest, "仅 PDF 载体支持文本层读取")
+	if carrier.Type != "pdf" && carrier.Type != "web" {
+		return response.FailWith(c, response.BadRequest, "仅 PDF/Web 载体支持文本层读取")
 	}
 	layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(c.Request().Context(), carrier.ID, carrier.ContentHash)
 	if err != nil {

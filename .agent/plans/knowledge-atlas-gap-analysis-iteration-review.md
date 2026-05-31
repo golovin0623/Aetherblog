@@ -19,9 +19,10 @@
 - P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过, 并已用显式 live 模型 `gemini-3.1-flash-lite-preview` 跑通非 stub KP/relation 建议质量证据。
 - P2-02/P2-08 baseline: 新增 `POST /atlas/carriers/:id/suggestions` 与 `/suggestions/preview`，可从 Markdown note 或 PDF text layer 的整篇 root text 有界抽取 KP suggestions 入 Inbox；Markdown/PDF Reader 头部新增 `全文 AI 建议` 入口，并在生成前做 per-run cost preview 与 `maxCostUsd` 阈值拦截；仍保持“AI 只进建议箱、accept 才入图谱”的硬约束。
 - M2-02 baseline: 新增 `blog_post` carrier，`POST /atlas/carriers/post` 可把当前用户可访问的草稿/已发布文章包装为 `posts://{id}` 载体；migration `000075` 已同步放开 `atlas_carriers.type` CHECK 约束，避免真实数据库插入被旧枚举阻断；AI 写作工作台头部新增 Atlas 建议入口，复用 carrier preview/extract 预算与建议箱链路。
+- M2-03 baseline: 新增 `web` clip carrier API，`POST /atlas/carriers/web` 保存用户提供的网页 URL/title/Markdown 正文快照，持久化 text layer，并让 carrier-level preview/extract 能从 Web 正文生成 pending KP suggestions。
 - A3-02 baseline: AI 写作工作台新增 Atlas 参考面板，按当前标题/摘要/正文调用 scoped semantic Atlas search 拉取相关 KP，并可把 `Atlas KP #id` 引用链接插入正文。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、Web/video/audio 等更多输入形态、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、以及 carrier 级 AI 建议入口已补成 landing baseline，但生产环境实际回填仍需 release evidence。
+未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、video/audio 等更多输入形态、Web Reader/自动抓取 UI、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、以及 carrier 级 AI 建议入口已补成 landing baseline，但生产环境实际回填仍需 release evidence。
 
 ---
 
@@ -291,7 +292,7 @@ Priority semantics:
 | --- | --- | --- | --- | --- |
 | ATLAS-M2-01 | PDF carrier v1 | PDF.js 文本层 + page rect selector + annotation sidebar | PDF 可标注, annotation 能跳回页码/位置 | P1-01 |
 | ATLAS-M2-02 | Blog post carrier | **Landing baseline 已落地**: `blog_post` carrier 使用 `posts://{id}` source_uri, 按 owner/admin scope 读取 posts 表, migration `000075` 允许真实 `atlas_carriers.type='blog_post'` 行, AI 写作工作台可触发预算 preview + carrier KP 抽取 | 草稿/已发布文章可进入 Atlas carrier, 并以 pending KP suggestions 进入 Inbox | P0-05 |
-| ATLAS-M2-03 | Web clip carrier | 保存网页快照/正文/metadata, 支持 TextQuote 和原 URL | 类 Reader 的网页输入流可用 | P1-01 |
+| ATLAS-M2-03 | Web clip carrier | **API/text-layer baseline 已落地**: `POST /atlas/carriers/web` 保存网页 URL/title/Markdown 正文快照为 owner-scoped `web` carrier, 规范化 http(s) URL, 持久化 text layer, 并接入 carrier preview/extract | Web 正文可进入 Atlas carrier 并生成 pending KP suggestions；自动抓取/Readability UI 与 Web Reader 标注仍属后续 | P1-01 |
 | ATLAS-M2-04 | Video/audio transcript carrier | transcript-as-primary, time fragment selector, 跳转时间戳 | 视频/音频可按 transcript 标注与抽 KP | M2-03 |
 | ATLAS-M2-05 | Media library integration | 媒体详情页“加入 Atlas / 查看标注 / 抽取知识点” | 上传资源可进 Atlas | M2-01 |
 
@@ -360,7 +361,7 @@ Duration: 3-5 周。
 
 ### Sprint 4: Multimodal And Publishing
 Duration: 1-2 月。
-- ATLAS-M2-01 PDF · M2-02 blog post carrier baseline · M2-03 web clip · M2-05 media 集成 · A3-02 writing assistant baseline · A3-03/A3-04 公开知识面板/地图原型(依赖 Gate 已开)。
+- ATLAS-M2-01 PDF · M2-02 blog post carrier baseline · M2-03 web clip API/text-layer baseline · M2-05 media 集成 · A3-02 writing assistant baseline · A3-03/A3-04 公开知识面板/地图原型(依赖 Gate 已开)。
 - Exit: Atlas 从 admin 工具变成 AetherBlog 的内容组织与发布差异化能力。
 
 ---

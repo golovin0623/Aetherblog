@@ -17,6 +17,7 @@ type AtlasService struct {
 	markdown  *MarkdownCarrierService
 	pdf       *PdfCarrierService
 	blogPosts *BlogPostCarrierService
+	webClips  *WebClipCarrierService
 }
 
 // NewAtlasService 创建 AtlasService。
@@ -61,6 +62,16 @@ func (s *AtlasService) AttachBlogPosts(blogPosts *BlogPostCarrierService) {
 // BlogPosts 返回 Blog post 子服务（posts 表 → carrier）。
 func (s *AtlasService) BlogPosts() *BlogPostCarrierService {
 	return s.blogPosts
+}
+
+// AttachWebClips injects the web clip carrier service.
+func (s *AtlasService) AttachWebClips(webClips *WebClipCarrierService) {
+	s.webClips = webClips
+}
+
+// WebClips 返回 Web clip 子服务（URL snapshot -> carrier）。
+func (s *AtlasService) WebClips() *WebClipCarrierService {
+	return s.webClips
 }
 
 // Carriers 返回 CarrierRepo（CRUD）。Phase 1+ 由 handler 调。

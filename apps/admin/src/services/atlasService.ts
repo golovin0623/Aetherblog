@@ -107,6 +107,15 @@ export const atlasService = {
   ensurePostCarrier: (postId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/post`, { postId }),
 
+  ensureWebCarrier: (payload: {
+    sourceUrl: string;
+    title?: string;
+    contentMarkdown: string;
+    author?: string | null;
+    language?: string | null;
+  }): Promise<R<AtlasCarrier>> =>
+    api.post(`${base}/carriers/web`, payload),
+
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
 
   getCarrierTextLayer: (carrierId: number): Promise<R<AtlasCarrierTextLayer>> =>

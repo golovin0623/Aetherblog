@@ -613,6 +613,18 @@ func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope 
 			return "", err
 		}
 		return atlassvc.BlogPostText(post), nil
+	case "web":
+		if h.atlas == nil || h.atlas.Carriers() == nil {
+			return "", atlasError(response.InternalError, "Atlas carrier 服务未配置")
+		}
+		layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(ctx, carrier.ID, carrier.ContentHash)
+		if err != nil {
+			return "", err
+		}
+		if layer == nil || strings.TrimSpace(layer.TextContent) == "" {
+			return "", atlasError(response.BadRequest, "Web clip 文本层不存在，请先保存网页正文快照")
+		}
+		return strings.TrimSpace(layer.TextContent), nil
 	default:
 		return "", atlasError(response.BadRequest, fmt.Sprintf("暂不支持从 %s 载体生成 AI 建议", carrier.Type))
 	}

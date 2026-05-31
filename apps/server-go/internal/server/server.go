@@ -277,11 +277,14 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasAnnoRepo := atlasrepo.NewAnnotationRepo(atlasRepo)
 	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo))
 	atlasBlogPosts := atlassvc.NewBlogPostCarrierService(atlasCarrierRepo, atlassvc.NewPostRepoReader(postRepo))
+	atlasWebClips := atlassvc.NewWebClipCarrierService(atlasCarrierRepo)
 	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
 	atlasMarkdown.AttachVersioning(atlasVersioning)
 	atlasBlogPosts.AttachVersioning(atlasVersioning)
+	atlasWebClips.AttachVersioning(atlasVersioning)
 	atlasService := atlassvc.NewAtlasService(atlasRepo, atlasMarkdown)
 	atlasService.AttachBlogPosts(atlasBlogPosts)
+	atlasService.AttachWebClips(atlasWebClips)
 	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo, atlasCarrierRepo)
 	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read。
 	// PR #724 review fix: 所有 mutating routes (POST/PATCH/DELETE) 额外要求 content.atlas.write。
