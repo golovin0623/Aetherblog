@@ -34,10 +34,60 @@ func NewCarrierHandler(svc *atlassvc.AtlasService) *CarrierHandler {
 // Mount 挂载到 /atlas 子组。
 // 红线 RBAC (PR #724 review fix): POST 需 content.atlas.write，由 server.go 传入。
 func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	g.POST("/carriers/markdown/source", h.CreateMarkdownSource, write)
+	g.GET("/carriers/markdown/:noteId/source", h.GetMarkdownSource)
 	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
+}
+
+// CreateMarkdownSource 创建当前用户拥有的 Markdown source note，供非 admin Atlas Reader smoke 使用。
+func (h *CarrierHandler) CreateMarkdownSource(c echo.Context) error {
+	var req atlasdto.CreateMarkdownSourceRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	md := h.atlas.Markdown()
+	if md == nil {
+		return response.FailWith(c, response.InternalError, "markdown carrier service 未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	note, err := md.CreateNoteSourceAs(c.Request().Context(), req.Title, req.ContentMarkdown, scope.UserID)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, toMarkdownSourceResponse(note))
+}
+
+// GetMarkdownSource 返回当前调用者可访问的 Markdown note source 内容。
+func (h *CarrierHandler) GetMarkdownSource(c echo.Context) error {
+	noteID, err := strconv.ParseInt(c.Param("noteId"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的笔记 ID")
+	}
+	md := h.atlas.Markdown()
+	if md == nil {
+		return response.FailWith(c, response.InternalError, "markdown carrier service 未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	note, err := md.GetNoteSourceAs(c.Request().Context(), noteID, scope.UserID, scope.CanAdmin)
+	if err != nil {
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return response.FailWith(c, response.Forbidden, "无权访问该笔记的 Atlas source")
+		}
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, toMarkdownSourceResponse(note))
 }
 
 // EnsureMarkdown 懒创建 / 返回 markdown 类型 carrier。
@@ -169,6 +219,17 @@ func toCarrierResponse(c *atlasmodel.Carrier) atlasdto.CarrierResponse {
 		StatusMessage: c.StatusMessage,
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     c.UpdatedAt,
+	}
+}
+
+func toMarkdownSourceResponse(n *atlassvc.NoteSnapshot) atlasdto.MarkdownSourceResponse {
+	if n == nil {
+		return atlasdto.MarkdownSourceResponse{}
+	}
+	return atlasdto.MarkdownSourceResponse{
+		ID:              n.ID,
+		Title:           n.Title,
+		ContentMarkdown: n.Content,
 	}
 }
 

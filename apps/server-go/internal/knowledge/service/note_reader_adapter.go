@@ -10,7 +10,9 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
@@ -31,6 +33,32 @@ func (a *NoteRepoReader) GetNoteSnapshot(ctx context.Context, noteID int64) (*No
 	}
 	n, err := a.repo.FindByID(ctx, noteID)
 	if err != nil || n == nil {
+		return nil, err
+	}
+	return &NoteSnapshot{
+		ID:       n.ID,
+		Title:    n.Title,
+		Content:  n.ContentMarkdown,
+		AuthorID: n.AuthorID,
+	}, nil
+}
+
+// CreateNoteSnapshot 实现 NoteSourceWriter。
+func (a *NoteRepoReader) CreateNoteSnapshot(ctx context.Context, title string, content string, authorID int64) (*NoteSnapshot, error) {
+	if a == nil || a.repo == nil {
+		return nil, errors.New("note repo not configured")
+	}
+	authorIDPtr := authorID
+	n, err := a.repo.Create(ctx, &model.Note{
+		Title:           title,
+		ContentMarkdown: content,
+		AuthorID:        &authorIDPtr,
+		SourceType:      "manual",
+		SourceMeta:      []byte(`{}`),
+		WordCount:       len(strings.Fields(content)),
+		EmbeddingStatus: "PENDING",
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &NoteSnapshot{

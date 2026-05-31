@@ -51,6 +51,12 @@ export interface UpdateAnnotationPayload {
   anchorScore?: number;
 }
 
+export interface AtlasMarkdownSource {
+  id: number;
+  title: string;
+  contentMarkdown: string;
+}
+
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
 
@@ -63,6 +69,12 @@ export const atlasService = {
 
   ensureMarkdownCarrier: (noteId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/markdown`, { noteId }),
+
+  createMarkdownSource: (payload: { title?: string; contentMarkdown: string }): Promise<R<AtlasMarkdownSource>> =>
+    api.post(`${base}/carriers/markdown/source`, payload),
+
+  getMarkdownSource: (noteId: number): Promise<R<AtlasMarkdownSource>> =>
+    api.get(`${base}/carriers/markdown/${noteId}/source`),
 
   ensurePDFCarrier: (mediaFileId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/pdf`, { mediaFileId }),

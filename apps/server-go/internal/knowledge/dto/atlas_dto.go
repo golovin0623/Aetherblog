@@ -36,6 +36,19 @@ type EnsureMarkdownCarrierRequest struct {
 	NoteID int64 `json:"noteId" validate:"required,gt=0"`
 }
 
+// CreateMarkdownSourceRequest 是 POST /atlas/carriers/markdown/source 的请求体。
+type CreateMarkdownSourceRequest struct {
+	Title           string `json:"title"`
+	ContentMarkdown string `json:"contentMarkdown" validate:"required"`
+}
+
+// MarkdownSourceResponse 是 Atlas Reader 读取 note source 的最小响应。
+type MarkdownSourceResponse struct {
+	ID              int64  `json:"id"`
+	Title           string `json:"title"`
+	ContentMarkdown string `json:"contentMarkdown"`
+}
+
 // EnsurePDFCarrierRequest 是 POST /atlas/carriers/pdf 的请求体。
 type EnsurePDFCarrierRequest struct {
 	MediaFileID int64 `json:"mediaFileId" validate:"required,gt=0"`

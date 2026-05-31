@@ -26,16 +26,14 @@ import type {
   AtlasKnowledgePointType,
 } from '@aetherblog/types';
 
-import { atlasService } from '@/services/atlasService';
+import { atlasService, type AtlasMarkdownSource } from '@/services/atlasService';
 import { Skeleton } from '@/components/ui/skeleton';
-import { noteService } from '@/services/noteService';
-import type { NoteDetail } from '@/types/note';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { buildSelectorsFromDomRange, validateSelectors } from './lib/selectors';
 import { anchor } from './lib/anchoring';
 
 interface ReaderState {
-  note: NoteDetail | null;
+  note: AtlasMarkdownSource | null;
   carrier: AtlasCarrier | null;
   annotations: AtlasAnnotation[];
   loading: boolean;
@@ -109,7 +107,7 @@ export default function MarkdownReaderPage() {
       try {
         setState((s) => ({ ...s, loading: true, error: null }));
         const [noteRes, carrierRes] = await Promise.all([
-          noteService.getById(noteId),
+          atlasService.getMarkdownSource(noteId),
           atlasService.ensureMarkdownCarrier(noteId),
         ]);
         if (cancelled) return;

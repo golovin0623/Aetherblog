@@ -40,7 +40,7 @@ The backend can now create a PDF Atlas carrier from an uploaded media file:
 
 The Go backend reads the media bytes from the configured storage provider and calls the internal AI service endpoint `POST /v1/atlas/pdf/extract`. The extracted page-aware root text is stored in `atlas_carrier_text_layers`, while the carrier version points at an immutable `atlas-text-layer://pdf/<mediaId>/<hash>` URI.
 
-This is the text-layer ingest baseline. The current gateway smoke covers generated PDF upload, text-layer persistence, PDF Reader loading, and page-rectangle jump-back. A broader real-document PDF corpus and non-admin Reader sessions are still required before the R1 product gate is complete.
+This is the text-layer ingest baseline. The current gateway smoke covers generated PDF upload, text-layer persistence, PDF Reader loading, page-rectangle jump-back, and non-admin Markdown Reader sessions. A broader real-document PDF corpus is still required before the R1 product gate is complete.
 
 ## 4. Annotation To Knowledge Point
 
@@ -160,6 +160,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
 - R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with all 15 checks passed, including KP archive/restore/delete lifecycle checks.
+- Multi-user smoke gate: `node scripts/atlas/multiuser-smoke-gate.mjs --input <report.json>` with all 17 checks passed, including non-admin Markdown Reader sessions and cross-user Reader source denial.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.
 

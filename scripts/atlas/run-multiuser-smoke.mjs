@@ -22,6 +22,11 @@ const REQUIRED_CHECKS = [
   { id: 'author-b-login', surface: 'Non-admin Author B', path: '/admin/login' },
   { id: 'author-a-dashboard', surface: 'Non-admin Author A', path: '/admin/atlas' },
   { id: 'author-b-dashboard', surface: 'Non-admin Author B', path: '/admin/atlas' },
+  { id: 'author-a-create-reader-note', surface: 'Non-admin Reader', path: '/api/v1/admin/atlas/carriers/markdown/source' },
+  { id: 'author-b-create-reader-note', surface: 'Non-admin Reader', path: '/api/v1/admin/atlas/carriers/markdown/source' },
+  { id: 'author-a-reader-note', surface: 'Non-admin Reader', path: '/admin/atlas/reader/note/<noteAId>' },
+  { id: 'author-b-reader-note', surface: 'Non-admin Reader', path: '/admin/atlas/reader/note/<noteBId>' },
+  { id: 'author-b-reader-note-denied', surface: 'Non-admin Reader Isolation', path: '/api/v1/admin/atlas/carriers/markdown/<noteAId>/source' },
   { id: 'author-a-create-kp', surface: 'Non-admin Author A', path: '/api/v1/admin/atlas/knowledge-points' },
   { id: 'author-b-create-kp', surface: 'Non-admin Author B', path: '/api/v1/admin/atlas/knowledge-points' },
   { id: 'author-b-cannot-see-author-a', surface: 'Non-admin Isolation', path: '/api/v1/admin/atlas/knowledge-points' },
@@ -98,6 +103,35 @@ try {
   await visit(authorAPage, 'author-a-dashboard', '/admin/atlas', ['Aether Atlas', '知识图集']);
   await visit(authorBPage, 'author-b-dashboard', '/admin/atlas', ['Aether Atlas', '知识图集']);
 
+  const noteTitleA = `Atlas Reader A ${stamp}`;
+  const noteTitleB = `Atlas Reader B ${stamp}`;
+  const noteAnchorA = `Reader anchor A ${stamp}`;
+  const noteAnchorB = `Reader anchor B ${stamp}`;
+  const noteA = await api(authorAPage, 'POST', '/api/v1/admin/atlas/carriers/markdown/source', {
+    title: noteTitleA,
+    contentMarkdown: `# ${noteTitleA}\n\n${noteAnchorA} scoped markdown source for ${authorA.username}.\n\n- 标注入口`,
+  });
+  pass('author-a-create-reader-note', '/api/v1/admin/atlas/carriers/markdown/source', `note=${noteA.id}; title="${noteA.title}"`);
+
+  const noteB = await api(authorBPage, 'POST', '/api/v1/admin/atlas/carriers/markdown/source', {
+    title: noteTitleB,
+    contentMarkdown: `# ${noteTitleB}\n\n${noteAnchorB} scoped markdown source for ${authorB.username}.\n\n- 标注入口`,
+  });
+  pass('author-b-create-reader-note', '/api/v1/admin/atlas/carriers/markdown/source', `note=${noteB.id}; title="${noteB.title}"`);
+
+  await visit(authorAPage, 'author-a-reader-note', `/admin/atlas/reader/note/${noteA.id}`, [noteAnchorA]);
+  await visit(authorBPage, 'author-b-reader-note', `/admin/atlas/reader/note/${noteB.id}`, [noteAnchorB]);
+
+  const readerDenied = await rawApi(authorBPage, 'GET', `/api/v1/admin/atlas/carriers/markdown/${noteA.id}/source`);
+  if (readerDenied.ok || readerDenied.status !== 403) {
+    throw new Error(`author B reader source access returned HTTP ${readerDenied.status}, expected 403`);
+  }
+  pass(
+    'author-b-reader-note-denied',
+    `/api/v1/admin/atlas/carriers/markdown/${noteA.id}/source`,
+    `http_status=${readerDenied.status}; code=${readerDenied.json?.code ?? 'n/a'}`
+  );
+
   const titleA = `Atlas multi-user A ${stamp}`;
   const titleB = `Atlas multi-user B ${stamp}`;
   const kpA = await api(authorAPage, 'POST', '/api/v1/admin/atlas/knowledge-points', {
@@ -119,7 +153,7 @@ try {
     confidence: 0.89,
   });
   pass('author-b-create-kp', '/api/v1/admin/atlas/knowledge-points', `kp=${kpB.id}; author_id=${kpB.authorId}; title="${kpB.title}"`);
-  report.seeded = { authorAKpId: kpA.id, authorBKpId: kpB.id };
+  report.seeded = { authorANoteId: noteA.id, authorBNoteId: noteB.id, authorAKpId: kpA.id, authorBKpId: kpB.id };
 
   const authorBSearchA = await api(authorBPage, 'GET', `/api/v1/admin/atlas/knowledge-points?keyword=${encodeURIComponent(titleA)}&limit=20`);
   if (authorBSearchA.some((kp) => kp.id === kpA.id || kp.title === titleA)) {
