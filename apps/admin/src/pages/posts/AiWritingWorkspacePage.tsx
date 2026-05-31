@@ -30,6 +30,7 @@ import {
   BookOpen,
   RefreshCw,
   Link2,
+  Highlighter,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -154,6 +155,7 @@ export function AiWritingWorkspacePage() {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showAtlasPanel, setShowAtlasPanel] = useState(false);
   const [generatingAtlasSuggestions, setGeneratingAtlasSuggestions] = useState(false);
+  const [openingAtlasReader, setOpeningAtlasReader] = useState(false);
   const [atlasReferenceState, setAtlasReferenceState] = useState<AtlasReferenceState>({ kind: 'idle' });
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [compareSnapshots, setCompareSnapshots] = useState<{
@@ -398,6 +400,22 @@ export function AiWritingWorkspacePage() {
     }
   }, [postId]);
 
+  const openAtlasPostReader = useCallback(async () => {
+    if (!postId || Number.isNaN(postId)) {
+      toast.error('请先保存文章后再打开 Atlas Reader');
+      return;
+    }
+    setOpeningAtlasReader(true);
+    try {
+      const carrier = await atlasService.ensurePostCarrier(postId);
+      navigate(`/atlas/reader/blog-post/${carrier.data.id}`);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '打开 Atlas Reader 失败'));
+    } finally {
+      setOpeningAtlasReader(false);
+    }
+  }, [navigate, postId]);
+
   const refreshAtlasReferences = useCallback(async () => {
     const q = buildAtlasWritingQuery(title, summary, content);
     if (!q.trim()) {
@@ -484,6 +502,13 @@ export function AiWritingWorkspacePage() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <MobileIconButton
+                onClick={() => void openAtlasPostReader()}
+                disabled={openingAtlasReader}
+                label="Reader"
+              >
+                <Highlighter className="w-[18px] h-[18px]" />
+              </MobileIconButton>
               <MobileIconButton
                 onClick={() => void generateAtlasPostSuggestions()}
                 disabled={generatingAtlasSuggestions}
@@ -673,6 +698,14 @@ export function AiWritingWorkspacePage() {
               title="Atlas 参考"
             >
               <BookOpen className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={() => void openAtlasPostReader()}
+              disabled={openingAtlasReader}
+              title={openingAtlasReader ? '正在打开 Atlas Reader' : '打开 Atlas Reader'}
+            >
+              <Highlighter className="w-5 h-5" />
             </DesktopIconButton>
 
             <DesktopIconButton

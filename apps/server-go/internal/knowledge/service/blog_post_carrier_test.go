@@ -51,6 +51,9 @@ func TestBlogPostSourceURIAndText(t *testing.T) {
 	if got := BlogPostSourceURI(42); got != "posts://42" {
 		t.Fatalf("source uri = %q, want posts://42", got)
 	}
+	if got := BlogPostTextLayerStorageURI("abc123"); got != "atlas-text-layer://blog-post/abc123" {
+		t.Fatalf("text layer uri = %q, want blog-post text-layer URI", got)
+	}
 
 	text := BlogPostText(&PostSnapshot{
 		Title:   "Knowledge Atlas",

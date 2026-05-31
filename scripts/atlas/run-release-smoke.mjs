@@ -20,6 +20,7 @@ const REQUIRED_CHECKS = [
   { id: 'atlas-reader-note', surface: 'Atlas Reader', path: '/admin/atlas/reader/note/<noteId>' },
   { id: 'atlas-reader-pdf', surface: 'Atlas PDF Reader', path: '/admin/atlas/reader/pdf/<carrierId>' },
   { id: 'atlas-reader-web', surface: 'Atlas Web Reader', path: '/admin/atlas/reader/web/<carrierId>' },
+  { id: 'atlas-reader-blog-post', surface: 'Atlas Blog Post Reader', path: '/admin/atlas/reader/blog-post/<carrierId>' },
   { id: 'atlas-kp-list', surface: 'Atlas KP', path: '/admin/atlas/kps' },
   { id: 'atlas-kp-detail', surface: 'Atlas KP', path: '/admin/atlas/kp/<kpId>' },
   { id: 'atlas-kp-archive', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
@@ -77,6 +78,7 @@ try {
   await visit(page, 'atlas-reader-note', `/admin/atlas/reader/note/${seeded.note.id}`, [seeded.note.title, '标注']);
   await visit(page, 'atlas-reader-pdf', `/admin/atlas/reader/pdf/${seeded.pdfCarrier.id}`, ['PDF 标注', seeded.pdf.anchorText]);
   await visit(page, 'atlas-reader-web', `/admin/atlas/reader/web/${seeded.webCarrier.id}`, ['Web 标注', seeded.web.anchorText]);
+  await visit(page, 'atlas-reader-blog-post', `/admin/atlas/reader/blog-post/${seeded.blogPostCarrier.id}`, ['文章标注', seeded.blogPost.anchorText]);
   await visit(page, 'atlas-kp-list', '/admin/atlas/kps', ['Knowledge Points', seeded.kp.title]);
   await visit(page, 'atlas-kp-detail', `/admin/atlas/kp/${seeded.kp.id}`, [seeded.kp.title, '知识点']);
   await exerciseKPLifecycle(page, seeded.lifecycleKp);
@@ -254,6 +256,26 @@ async function seedAtlasData(page) {
     throw new Error(`Web text layer did not include expected smoke anchor; carrier=${webCarrier.id}`);
   }
 
+  const blogPostAnchorText = `Atlas Blog Post smoke anchor ${stamp}`;
+  const blogPost = await api(page, 'POST', '/api/v1/admin/posts', {
+    title: `Atlas Blog Post Smoke ${stamp}`,
+    summary: 'Atlas blog post smoke fixture',
+    content: [
+      `# Atlas Blog Post Smoke ${stamp}`,
+      '',
+      `${blogPostAnchorText} connects authored posts to Atlas annotations and AI suggestions.`,
+      '',
+      'This post is created by the release smoke runner and can be safely ignored after validation.',
+    ].join('\n'),
+    status: 'DRAFT',
+    tagIds: [],
+  });
+  const blogPostCarrier = await api(page, 'POST', '/api/v1/admin/atlas/carriers/post', { postId: blogPost.id });
+  const blogPostTextLayer = await api(page, 'GET', `/api/v1/admin/atlas/carriers/${blogPostCarrier.id}/text-layer`);
+  if (!String(blogPostTextLayer.text || '').includes(blogPostAnchorText)) {
+    throw new Error(`Blog post text layer did not include expected smoke anchor; carrier=${blogPostCarrier.id}`);
+  }
+
   return {
     note,
     carrier,
@@ -267,6 +289,8 @@ async function seedAtlasData(page) {
     pdfCarrier,
     web: { anchorText: webAnchorText, textLayer: webTextLayer },
     webCarrier,
+    blogPost: { post: blogPost, anchorText: blogPostAnchorText, textLayer: blogPostTextLayer },
+    blogPostCarrier,
   };
 }
 
@@ -547,6 +571,9 @@ function summarizeSeeded(seeded) {
     pdfPageCount: seeded.pdf.textLayer.pageCount,
     webCarrierId: seeded.webCarrier.id,
     webCharCount: seeded.web.textLayer.charCount,
+    blogPostId: seeded.blogPost.post.id,
+    blogPostCarrierId: seeded.blogPostCarrier.id,
+    blogPostCharCount: seeded.blogPost.textLayer.charCount,
   };
 }
 

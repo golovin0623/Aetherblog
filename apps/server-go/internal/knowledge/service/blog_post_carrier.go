@@ -58,10 +58,8 @@ func (s *BlogPostCarrierService) GetOrCreateForPostAs(ctx context.Context, postI
 
 	text := BlogPostText(post)
 	hash := contentSHA256(text)
-	metadata, err := json.Marshal(map[string]string{
-		"slug":   post.Slug,
-		"status": post.Status,
-	})
+	storageURI := BlogPostTextLayerStorageURI(hash)
+	metadata, err := blogPostMetadata(post, text)
 	if err != nil {
 		return nil, fmt.Errorf("marshal post metadata: %w", err)
 	}
@@ -74,7 +72,7 @@ func (s *BlogPostCarrierService) GetOrCreateForPostAs(ctx context.Context, postI
 		OwnerID:     post.AuthorID,
 		Status:      "ready",
 	}
-	carrier, justCreated, err := s.carriers.UpsertBySourceURI(ctx, candidate, uri)
+	carrier, justCreated, err := s.carriers.UpsertBySourceURI(ctx, candidate, storageURI)
 	if err != nil {
 		return nil, fmt.Errorf("upsert carrier: %w", err)
 	}
@@ -84,13 +82,31 @@ func (s *BlogPostCarrierService) GetOrCreateForPostAs(ctx context.Context, postI
 				return nil, fmt.Errorf("migrate annotations before hash bump: %w", err)
 			}
 		}
+		if err := s.persistTextLayer(ctx, carrier.ID, hash, storageURI, text); err != nil {
+			return nil, err
+		}
 		diff := []byte(`{"reason":"post_edited"}`)
-		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, uri, "post_edit", diff); err != nil {
+		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, storageURI, "post_edit", diff); err != nil {
 			return nil, fmt.Errorf("update carrier content after migration: %w", err)
+		}
+		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+			return nil, fmt.Errorf("update carrier metadata after content change: %w", err)
 		}
 		carrier.ContentHash = hash
 		carrier.Title = candidate.Title
 		carrier.Metadata = metadata
+		return carrier, nil
+	}
+	if err := s.persistTextLayer(ctx, carrier.ID, hash, storageURI, text); err != nil {
+		return nil, err
+	}
+	if !justCreated {
+		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+			return nil, fmt.Errorf("refresh carrier metadata: %w", err)
+		}
+		carrier.Title = candidate.Title
+		carrier.Metadata = metadata
+		carrier.Status = "ready"
 	}
 	return carrier, nil
 }
@@ -125,6 +141,11 @@ func BlogPostSourceURI(postID int64) string {
 	return fmt.Sprintf("posts://%d", postID)
 }
 
+// BlogPostTextLayerStorageURI constructs the immutable rootText storage URI for a blog post snapshot.
+func BlogPostTextLayerStorageURI(hash string) string {
+	return fmt.Sprintf("atlas-text-layer://blog-post/%s", hash)
+}
+
 // BlogPostText 构造用于 carrier-level AI 建议和标注迁移的稳定文本空间。
 func BlogPostText(post *PostSnapshot) string {
 	if post == nil {
@@ -141,4 +162,42 @@ func BlogPostText(post *PostSnapshot) string {
 		parts = append(parts, content)
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func (s *BlogPostCarrierService) persistTextLayer(ctx context.Context, carrierID int64, hash, storageURI, text string) error {
+	charCount := len([]rune(text))
+	pages, err := json.Marshal([]map[string]any{{
+		"page":      1,
+		"text":      text,
+		"charStart": 0,
+		"charEnd":   charCount,
+	}})
+	if err != nil {
+		return fmt.Errorf("marshal blog post text page: %w", err)
+	}
+	if err := s.carriers.UpsertTextLayer(ctx, &model.CarrierTextLayer{
+		CarrierID:   carrierID,
+		ContentHash: hash,
+		StorageURI:  storageURI,
+		PageCount:   1,
+		CharCount:   charCount,
+		TextContent: text,
+		Pages:       pages,
+	}); err != nil {
+		return fmt.Errorf("persist blog post text layer: %w", err)
+	}
+	return nil
+}
+
+func blogPostMetadata(post *PostSnapshot, text string) ([]byte, error) {
+	if post == nil {
+		return json.Marshal(map[string]any{})
+	}
+	return json.Marshal(map[string]any{
+		"slug":          strings.TrimSpace(post.Slug),
+		"status":        strings.TrimSpace(post.Status),
+		"textLayerURI":  BlogPostTextLayerStorageURI(contentSHA256(text)),
+		"contentFormat": "markdown",
+		"charCount":     len([]rune(text)),
+	})
 }

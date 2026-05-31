@@ -6,7 +6,7 @@
 //   POST /carriers/post           懒创建/返回 blog_post 类型 carrier
 //   POST /carriers/web            创建/更新 web clip 类型 carrier
 //   GET  /carriers/:id            读 carrier 详情
-//   GET  /carriers/:id/text-layer  读 pdf/web carrier 当前文本层
+//   GET  /carriers/:id/text-layer  读 pdf/blog_post/web carrier 当前文本层
 
 package handler
 
@@ -228,7 +228,7 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
-// GetTextLayer 返回 PDF/Web carrier 当前 content_hash 对应的页级文本层。
+// GetTextLayer 返回 PDF/BlogPost/Web carrier 当前 content_hash 对应的页级文本层。
 func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -248,19 +248,19 @@ func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	if !scope.canAccessOwner(carrier.OwnerID) {
 		return response.FailWith(c, response.Forbidden, "无权访问该载体")
 	}
-	if carrier.Type != "pdf" && carrier.Type != "web" {
-		return response.FailWith(c, response.BadRequest, "仅 PDF/Web 载体支持文本层读取")
+	if carrier.Type != "pdf" && carrier.Type != "blog_post" && carrier.Type != "web" {
+		return response.FailWith(c, response.BadRequest, "仅 PDF/BlogPost/Web 载体支持文本层读取")
 	}
 	layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(c.Request().Context(), carrier.ID, carrier.ContentHash)
 	if err != nil {
 		return response.Error(c, err)
 	}
 	if layer == nil {
-		return response.FailWith(c, response.NotFound, "PDF 文本层不存在或尚未完成抽取")
+		return response.FailWith(c, response.NotFound, "载体文本层不存在或尚未完成抽取")
 	}
 	out, err := toCarrierTextLayerResponse(layer)
 	if err != nil {
-		return response.FailWith(c, response.InternalError, "PDF 文本层页数据损坏")
+		return response.FailWith(c, response.InternalError, "载体文本层页数据损坏")
 	}
 	return response.OK(c, out)
 }
