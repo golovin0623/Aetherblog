@@ -1234,6 +1234,26 @@ VALUES ($1, $2, $3, $4::jsonb)`, runID, nodeID, toolCode, payload); err != nil {
 	return tx.Commit()
 }
 
+// HasApprovedDecision reports whether the given run/node has a recorded
+// 'approved' decision in agent_workflow_approvals. Used to gate the
+// approval-bypass on resume so that merely matching the resumeFromNode id is
+// not enough to skip a governed tool's approval gate.
+func (r *AgentWorkflowRepo) HasApprovedDecision(ctx context.Context, runID int64, nodeID string) (bool, error) {
+	if strings.TrimSpace(nodeID) == "" {
+		return false, nil
+	}
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `
+SELECT EXISTS (
+    SELECT 1 FROM agent_workflow_approvals
+    WHERE run_id = $1 AND node_id = $2 AND status = 'approved'
+)`, runID, nodeID)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func (r *AgentWorkflowRepo) ResumeRun(ctx context.Context, userID, runID int64, resumeFromNode *string) (*model.AgentWorkflowRun, error) {
 	var run model.AgentWorkflowRun
 	err := r.db.GetContext(ctx, &run, `

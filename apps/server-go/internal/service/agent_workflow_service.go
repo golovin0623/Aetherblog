@@ -947,8 +947,14 @@ func (s *AgentWorkflowService) executeRunDetached(workflow model.AgentWorkflow, 
 		return
 	}
 	if _, err := s.executeWorkflow(ctx, workflow, run, inputs, simulateExternal); err != nil {
+		// The run context may already be cancelled (e.g. it hit the maxDurationMs /
+		// 15-minute timeout, which is itself the error). Reusing it for the terminal
+		// update would fail with "context deadline exceeded" and leave the run stuck
+		// as 'running'. Persist the failed state with a fresh bounded context.
+		finishCtx, finishCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer finishCancel()
 		code, category, retryable := classifyWorkflowError(err.Error())
-		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
+		failed, finishErr := s.repo.FinishRunWithMeta(finishCtx, repository.AgentWorkflowRunFinishRequest{
 			RunID:         run.ID,
 			Status:        "failed",
 			Outputs:       "{}",
@@ -961,7 +967,7 @@ func (s *AgentWorkflowService) executeRunDetached(workflow model.AgentWorkflow, 
 			log.Warn().Err(finishErr).Int64("run_id", run.ID).Msg("agent workflow: finish failed run failed")
 			return
 		}
-		_ = s.repo.CreateNotification(ctx, run.UserID, &run.ID, "workflow_failed", "工作流运行失败", stringValue(failed.ErrorMessage), fmt.Sprintf("/admin/agent-workflows?run=%d", run.ID))
+		_ = s.repo.CreateNotification(finishCtx, run.UserID, &run.ID, "workflow_failed", "工作流运行失败", stringValue(failed.ErrorMessage), fmt.Sprintf("/admin/agent-workflows?run=%d", run.ID))
 	}
 }
 
@@ -1026,13 +1032,27 @@ type workflowTraceItem struct {
 }
 
 func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow model.AgentWorkflow, run model.AgentWorkflowRun, inputs string, simulateExternal bool) (*dto.AgentWorkflowRunSummary, error) {
+	// An approval-required tool may only be bypassed when a real 'approved' decision
+	// exists for this run/node. Matching the resumeFromNode id alone is not enough —
+	// otherwise any caller able to resume a paused run (incl. published/shared
+	// workflows) could skip the governed tool's approval gate.
+	approvalBypassNodeID := ""
+	if node := stringValue(run.ResumeFromNode); node != "" {
+		approved, apErr := s.repo.HasApprovedDecision(ctx, run.ID, node)
+		if apErr != nil {
+			return nil, apErr
+		}
+		if approved {
+			approvalBypassNodeID = node
+		}
+	}
 	// Tool definitions/handler config must be resolved against the workflow *owner*,
 	// not the invoker: a published workflow can be run by another user (run.UserID),
 	// and FindToolByCode(run.UserID, ...) would then fail to find the author's custom
 	// tool or prefer the invoker's same-code tool, executing a different handler than
 	// the one the owner published. Per-invoker data access (e.g. KB scoping) is handled
 	// downstream in ai-service via the invoker identity, not here.
-	tools, err := s.workflowToolSnapshot(ctx, workflow.UserID, workflow.DefinitionJSON, stringValue(run.ResumeFromNode))
+	tools, err := s.workflowToolSnapshot(ctx, workflow.UserID, workflow.DefinitionJSON, approvalBypassNodeID)
 	if err != nil {
 		return nil, err
 	}
