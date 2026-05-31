@@ -24,6 +24,7 @@ import (
 
 	atlasdto "github.com/golovin0623/aetherblog-server/internal/knowledge/dto"
 	atlasmodel "github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/knowledge/pkg/anchoring"
 	atlasrepo "github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 	atlassvc "github.com/golovin0623/aetherblog-server/internal/knowledge/service"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
@@ -77,6 +78,7 @@ func (h *SuggestionHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.GET("/suggestions/:id", h.Get)
 	g.POST("/suggestions/:id/accept", h.Accept, write)
 	g.POST("/suggestions/:id/reject", h.Reject, write)
+	g.POST("/carriers/:id/suggestions", h.GenerateCarrierSuggestions, write)
 	g.POST("/annotations/:id/suggestions", h.GenerateAnnotationSuggestions, write)
 	g.POST("/knowledge-points/:id/relation-suggestions", h.GenerateRelationSuggestion, write)
 }
@@ -321,6 +323,89 @@ func (h *SuggestionHandler) GenerateAnnotationSuggestions(c echo.Context) error 
 	return response.OK(c, out)
 }
 
+func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的载体 ID")
+	}
+	var req atlasdto.GenerateCarrierSuggestionsRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	maxCandidates, maxChars := normalizeCarrierSuggestionRequest(&req)
+	if err := h.assertCarrierScope(c, id); err != nil {
+		return writeAtlasError(c, err)
+	}
+	if h.atlas == nil || h.atlas.Carriers() == nil {
+		return response.FailWith(c, response.InternalError, "Atlas carrier 服务未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := h.atlas.Carriers().FindByID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if carrier == nil {
+		return response.FailWith(c, response.NotFound, "载体不存在")
+	}
+	text, err := h.carrierTextForSuggestion(c.Request().Context(), scope, carrier)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if len([]rune(text)) < 10 {
+		return response.FailWith(c, response.BadRequest, "载体文本过短，无法生成 AI 建议")
+	}
+
+	truncated := truncateRunes(text, maxChars)
+	var aiOut atlasExtractClaimsResponse
+	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", map[string]any{
+		"carrier_id":     carrier.ID,
+		"text":           truncated,
+		"max_candidates": maxCandidates,
+		"model_id":       req.ModelID,
+	}, &aiOut); err != nil {
+		return response.FailWith(c, response.InternalError, err.Error())
+	}
+
+	authorID := currentAtlasUserID(c)
+	out := make([]atlasdto.SuggestionResponse, 0, len(aiOut.Candidates))
+	for _, candidate := range aiOut.Candidates {
+		title := strings.TrimSpace(candidate.ProposedTitle)
+		if title == "" {
+			continue
+		}
+		created, err := h.svc.Create(c.Request().Context(), atlassvc.CreateSuggestionInput{
+			Kind:               "kp",
+			CarrierID:          &carrier.ID,
+			ProposedTitle:      &title,
+			ProposedBody:       stringPtrOrNil(candidate.ProposedBody),
+			ProposedKPType:     stringPtrOrNil(candidate.ProposedKPType),
+			ProposedConfidence: candidate.ProposedConfidence,
+			Rationale:          stringPtrOrNil(candidate.Rationale),
+			ModelID:            stringPtrOrNil(aiOut.ModelID),
+			TokensIn:           candidate.TokensIn,
+			TokensOut:          candidate.TokensOut,
+			CostUSD:            candidate.CostUSD,
+			AuthorID:           authorID,
+		})
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, err.Error())
+		}
+		out = append(out, toSuggestionResponse(created))
+	}
+	recordAtlasActivity(
+		h.activity,
+		c,
+		"atlas.suggestion_generate",
+		"从 Atlas 载体生成 KP 建议",
+		fmt.Sprintf("carrier_id=%d type=%s count=%d model=%s structured=%t chars=%d/%d", carrier.ID, carrier.Type, len(out), aiOut.ModelID, aiOut.Structured, len([]rune(truncated)), len([]rune(text))),
+		"SUCCESS",
+	)
+	return response.OK(c, out)
+}
+
 func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 	fromID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -391,6 +476,82 @@ func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 		"SUCCESS",
 	)
 	return response.OK(c, toSuggestionResponse(created))
+}
+
+func normalizeCarrierSuggestionRequest(req *atlasdto.GenerateCarrierSuggestionsRequest) (int, int) {
+	if req == nil {
+		return 8, 12000
+	}
+	maxCandidates := req.MaxCandidates
+	if maxCandidates <= 0 {
+		maxCandidates = 8
+	}
+	if maxCandidates > 20 {
+		maxCandidates = 20
+	}
+	maxChars := req.MaxChars
+	if maxChars <= 0 {
+		maxChars = 12000
+	}
+	if maxChars > 40000 {
+		maxChars = 40000
+	}
+	return maxCandidates, maxChars
+}
+
+func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope *atlasScope, carrier *atlasmodel.Carrier) (string, error) {
+	if carrier == nil {
+		return "", atlasError(response.NotFound, "载体不存在")
+	}
+	switch strings.ToLower(strings.TrimSpace(carrier.Type)) {
+	case "markdown":
+		if h.atlas == nil || h.atlas.Markdown() == nil {
+			return "", atlasError(response.InternalError, "Markdown carrier 服务未配置")
+		}
+		noteID, ok := markdownNoteIDFromCarrierSource(carrier.SourceURI)
+		if !ok {
+			return "", atlasError(response.BadRequest, "Markdown carrier source_uri 无法解析")
+		}
+		note, err := h.atlas.Markdown().GetNoteSourceAs(ctx, noteID, scope.UserID, scope.CanAdmin)
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return "", atlasError(response.Forbidden, "无权访问该 Markdown 来源")
+		}
+		if err != nil {
+			return "", err
+		}
+		text := anchoring.MarkdownToPlaintext(note.Content)
+		if strings.TrimSpace(note.Title) != "" {
+			text = note.Title + "\n\n" + text
+		}
+		return strings.TrimSpace(text), nil
+	case "pdf":
+		if h.atlas == nil || h.atlas.Carriers() == nil {
+			return "", atlasError(response.InternalError, "Atlas carrier 服务未配置")
+		}
+		layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(ctx, carrier.ID, carrier.ContentHash)
+		if err != nil {
+			return "", err
+		}
+		if layer == nil || strings.TrimSpace(layer.TextContent) == "" {
+			return "", atlasError(response.BadRequest, "PDF 文本层不存在，请先完成文本抽取")
+		}
+		return strings.TrimSpace(layer.TextContent), nil
+	default:
+		return "", atlasError(response.BadRequest, fmt.Sprintf("暂不支持从 %s 载体生成 AI 建议", carrier.Type))
+	}
+}
+
+func markdownNoteIDFromCarrierSource(sourceURI string) (int64, bool) {
+	trimmed := strings.TrimSpace(sourceURI)
+	raw := strings.TrimPrefix(trimmed, "notes://")
+	if raw == trimmed || strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
 }
 
 func (h *SuggestionHandler) assertSuggestionScope(c echo.Context, id int64) error {

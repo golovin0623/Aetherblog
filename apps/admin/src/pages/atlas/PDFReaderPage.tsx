@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Highlighter, LocateFixed, Trash2 } from 'lucide-react';
+import { ArrowLeft, Highlighter, LocateFixed, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type {
@@ -57,6 +57,7 @@ export default function PDFReaderPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<PDFReaderState>(initial);
   const [activeTarget, setActiveTarget] = useState<PageRectTarget | null>(null);
+  const [generatingCarrierSuggestions, setGeneratingCarrierSuggestions] = useState(false);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -239,6 +240,20 @@ export default function PDFReaderPage() {
     }
   }, [activeTarget?.annotationId]);
 
+  const handleGenerateCarrierSuggestions = useCallback(async () => {
+    if (!state.carrier) return;
+    setGeneratingCarrierSuggestions(true);
+    try {
+      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, { maxCandidates: 8 });
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从全文生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成全文 AI 建议失败'));
+    } finally {
+      setGeneratingCarrierSuggestions(false);
+    }
+  }, [state.carrier]);
+
   const handleJumpAnnotation = useCallback((annotation: AtlasAnnotation) => {
     const target = pageRectTargetFromAnnotation(annotation);
     if (!target) {
@@ -307,13 +322,23 @@ export default function PDFReaderPage() {
             <h1 className="truncate text-sm font-semibold text-[var(--ink-primary)]">{state.carrier.title}</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleHighlight()}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
-        >
-          <Highlighter className="h-4 w-4" /> 标注选区
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={generatingCarrierSuggestions}
+            onClick={() => void handleGenerateCarrierSuggestions()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" /> {generatingCarrierSuggestions ? '生成中' : '全文 AI 建议'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleHighlight()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
+          >
+            <Highlighter className="h-4 w-4" /> 标注选区
+          </button>
+        </div>
       </header>
 
       <main className="flex min-h-0 flex-1 overflow-hidden">

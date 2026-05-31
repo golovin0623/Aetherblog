@@ -95,6 +95,7 @@ export default function MarkdownReaderPage() {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [kpDraft, setKpDraft] = useState<KPDraft | null>(null);
   const [generatingAnnotationId, setGeneratingAnnotationId] = useState<number | null>(null);
+  const [generatingCarrierSuggestions, setGeneratingCarrierSuggestions] = useState(false);
 
   // 拉数据
   useEffect(() => {
@@ -310,6 +311,20 @@ export default function MarkdownReaderPage() {
     }
   }, []);
 
+  const handleGenerateCarrierSuggestions = useCallback(async () => {
+    if (!state.carrier) return;
+    setGeneratingCarrierSuggestions(true);
+    try {
+      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, { maxCandidates: 8 });
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从全文生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成全文 AI 建议失败'));
+    } finally {
+      setGeneratingCarrierSuggestions(false);
+    }
+  }, [state.carrier]);
+
   const stateBadgeMap: Record<AtlasAnnotation['anchorState'], { label: string; cls: string }> = {
     anchored: { label: '已锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-success)_20%,transparent)] text-[var(--signal-success)]' },
     soft_anchored: { label: '软锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)] text-[var(--signal-warn)]' },
@@ -404,13 +419,23 @@ export default function MarkdownReaderPage() {
             <h1 className="truncate text-sm font-semibold text-[var(--ink-primary)]">{state.note.title}</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleHighlight}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
-        >
-          <Highlighter className="h-4 w-4" /> 标注选区
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={generatingCarrierSuggestions}
+            onClick={() => void handleGenerateCarrierSuggestions()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" /> {generatingCarrierSuggestions ? '生成中' : '全文 AI 建议'}
+          </button>
+          <button
+            type="button"
+            onClick={handleHighlight}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
+          >
+            <Highlighter className="h-4 w-4" /> 标注选区
+          </button>
+        </div>
       </header>
 
       <main className="flex min-h-0 flex-1 overflow-hidden">

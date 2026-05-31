@@ -31,6 +31,13 @@ type GenerateAnnotationSuggestionsRequest struct {
 	ModelID       *string `json:"modelId,omitempty"`
 }
 
+// GenerateCarrierSuggestionsRequest 从整篇 carrier rootText 生成 KP 建议。
+type GenerateCarrierSuggestionsRequest struct {
+	MaxCandidates int     `json:"maxCandidates,omitempty"`
+	MaxChars      int     `json:"maxChars,omitempty"`
+	ModelID       *string `json:"modelId,omitempty"`
+}
+
 // GenerateRelationSuggestionRequest 为两条 KP 生成 relation 建议。
 type GenerateRelationSuggestionRequest struct {
 	ToKPID  int64   `json:"toKpId" validate:"required"`

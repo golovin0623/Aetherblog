@@ -231,6 +231,12 @@ export const atlasService = {
   ): Promise<R<AtlasSuggestion[]>> =>
     api.post(`${base}/annotations/${annotationId}/suggestions`, payload ?? {}),
 
+  generateCarrierSuggestions: (
+    carrierId: number,
+    payload?: { maxCandidates?: number; maxChars?: number; modelId?: string | null }
+  ): Promise<R<AtlasSuggestion[]>> =>
+    api.post(`${base}/carriers/${carrierId}/suggestions`, payload ?? {}),
+
   generateRelationSuggestion: (
     kpId: number,
     payload: { toKpId: number; modelId?: string | null }
