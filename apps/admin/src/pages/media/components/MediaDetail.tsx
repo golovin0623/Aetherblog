@@ -27,10 +27,11 @@ import {
   History,
   Tag,
   Move,
+  Sparkles,
 } from 'lucide-react';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl, mediaService } from '@/services/mediaService';
-import { atlasService } from '@/services/atlasService';
+import { ATLAS_CARRIER_SUGGESTION_MAX_COST_USD, atlasService } from '@/services/atlasService';
 import { format } from 'date-fns';
 import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
@@ -79,6 +80,11 @@ const detailSoftButtonClass = cn(
   'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
 );
 
+function formatAtlasCostUsd(value?: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '未知';
+  return `$${value.toFixed(4)}`;
+}
+
 function getRecordProp(value: unknown, key: string): unknown {
   if (!value || typeof value !== 'object') return undefined;
   return (value as Record<string, unknown>)[key];
@@ -106,7 +112,9 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [ensuringAtlas, setEnsuringAtlas] = useState(false);
   const [openingAtlas, setOpeningAtlas] = useState(false);
+  const [generatingAtlas, setGeneratingAtlas] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
@@ -173,16 +181,70 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     media.originalName.toLowerCase().endsWith('.pdf')
   );
 
+  const ensureAtlasPDFCarrier = async () => {
+    if (!isPDF) return;
+    const res = await atlasService.ensurePDFCarrier(media.id);
+    return res.data;
+  };
+
+  const handleEnsureAtlasPDF = async () => {
+    if (!isPDF) return;
+    setEnsuringAtlas(true);
+    try {
+      const carrier = await ensureAtlasPDFCarrier();
+      if (carrier) {
+        toast.success(`已加入 Atlas：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '加入 Atlas 失败'));
+    } finally {
+      setEnsuringAtlas(false);
+    }
+  };
+
   const handleOpenAtlasPDF = async () => {
     if (!isPDF) return;
     setOpeningAtlas(true);
     try {
-      const res = await atlasService.ensurePDFCarrier(media.id);
-      navigate(`/atlas/reader/pdf/${res.data.id}`);
+      const carrier = await ensureAtlasPDFCarrier();
+      if (carrier) {
+        navigate(`/atlas/reader/pdf/${carrier.id}`);
+      }
     } catch (err) {
       toast.error(extractApiErrorMessage(err, '打开 Atlas PDF Reader 失败'));
     } finally {
       setOpeningAtlas(false);
+    }
+  };
+
+  const handleGenerateAtlasPDFSuggestions = async () => {
+    if (!isPDF) return;
+    setGeneratingAtlas(true);
+    try {
+      const carrier = await ensureAtlasPDFCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从媒体全文生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 知识点失败'));
+    } finally {
+      setGeneratingAtlas(false);
     }
   };
 
@@ -275,11 +337,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
         {isPDF && (
           <button
             onClick={() => void handleOpenAtlasPDF()}
-            disabled={openingAtlas}
+            disabled={openingAtlas || ensuringAtlas || generatingAtlas}
             className={detailSoftButtonClass}
           >
             <FileText className="w-3.5 h-3.5" />
-            {openingAtlas ? '处理中...' : 'Atlas'}
+            {openingAtlas ? '打开中' : '查看标注'}
           </button>
         )}
         {onMove && (
@@ -365,6 +427,43 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
                 <div className={cn(detailPanelClass, 'p-3')}>
                   <p className="mb-1 text-[10px] uppercase text-[var(--ink-muted)]">MIME 类型</p>
                   <p className="font-mono text-xs text-[var(--ink-primary)]">{media.mimeType}</p>
+                </div>
+              )}
+
+              {isPDF && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureAtlasPDF()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {ensuringAtlas ? '处理中' : '加入 Atlas'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasPDF()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingAtlas ? '打开中' : '查看标注'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasPDFSuggestions()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingAtlas ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
                 </div>
               )}
 

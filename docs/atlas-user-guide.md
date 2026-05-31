@@ -42,6 +42,14 @@ The Go backend reads the media bytes from the configured storage provider and ca
 
 This is the text-layer ingest baseline. The current gateway smoke covers generated PDF upload, text-layer persistence, PDF Reader loading, page-rectangle jump-back, and non-admin Markdown Reader sessions. The R1 file-level PDF corpus gate also builds representative multi-page PDFs, extracts them through `pypdf`, and verifies recall across revision variants. Production/user PDF samples should still be rerun before release.
 
+PDF files can also enter Atlas from the media library detail panel:
+
+- `加入 Atlas` creates or reuses the PDF carrier for the uploaded media file.
+- `查看标注` opens the PDF Reader for that carrier.
+- `抽取知识点` previews the carrier-level AI run cost and then creates pending KP suggestions in the Atlas Inbox when the run stays within budget.
+
+This media-library path currently covers uploaded PDFs. Video/audio transcript carriers, image-specific extraction, and batch media workflows remain later multimodal work.
+
 ## 4. Annotation To Knowledge Point
 
 1. In the Reader annotation list, click `提炼 KP`.
@@ -135,6 +143,7 @@ Use `/admin/atlas/suggestions` to review pending suggestions.
 How to generate suggestions:
 
 - From a Markdown or PDF Reader header, click `全文 AI 建议`. Atlas first previews the run cost against the per-run budget, then sends a bounded slice of the current carrier root text through the AI service and creates carrier-bound pending KP suggestions in the Inbox. If the estimate exceeds the threshold, generation is cancelled before any suggestion is created.
+- From a PDF media detail panel, click `抽取知识点`. The media action first ensures the uploaded PDF has an Atlas carrier, then uses the same preflight budget and carrier-level suggestion pipeline as the PDF Reader.
 - From the AI Writing workspace for an existing post, open the Atlas Reader action to annotate the saved post text layer, or click the Atlas suggestion action to wrap the draft/published post as a `blog_post` carrier, preview the run cost, and create pending KP suggestions.
 - From the Reader annotation list, click `AI 建议` on an annotation. Atlas sends the selected evidence text through the AI service and creates pending KP suggestions.
 - From a KP detail page, select a target KP in the relation form and click the `AI` action. Atlas asks the AI service for one typed relation suggestion and places it in the Inbox.

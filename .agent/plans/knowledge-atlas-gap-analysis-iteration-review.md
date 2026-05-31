@@ -20,6 +20,7 @@
 - P2-02/P2-08 baseline: 新增 `POST /atlas/carriers/:id/suggestions` 与 `/suggestions/preview`，可从 Markdown note、PDF/blog_post/web text layer 的整篇 root text 有界抽取 KP suggestions 入 Inbox；Markdown/PDF/Web/Blog Post Reader 头部新增 `全文 AI 建议` 入口，并在生成前做 per-run cost preview 与 `maxCostUsd` 阈值拦截；仍保持“AI 只进建议箱、accept 才入图谱”的硬约束。
 - M2-02 baseline: 新增 `blog_post` carrier + Blog Post Reader，`POST /atlas/carriers/post` 可把当前用户可访问的草稿/已发布文章包装为 `posts://{id}` 载体并持久化 text layer；migration `000075` 已同步放开 `atlas_carriers.type` CHECK 约束，避免真实数据库插入被旧枚举阻断；AI 写作工作台头部可打开 `/atlas/reader/blog-post/:carrierId` 标注文章正文，也可复用 carrier preview/extract 预算与建议箱链路。
 - M2-03 baseline: 新增 `web` clip carrier + Web Reader，`POST /atlas/carriers/web` 保存用户提供的网页 URL/title/Markdown 正文快照，持久化 text layer；`/atlas` 可保存 Web 快照并跳转 `/atlas/reader/web/:carrierId` 标注正文，Web Reader 支持 annotation/full-text AI 建议与预算 preflight。
+- M2-05 baseline: 媒体详情页对 PDF 暴露 `加入 Atlas`、`查看标注`、`抽取知识点` 三个操作，复用 `ensurePDFCarrier`、PDF Reader 与 carrier-level AI suggestion preflight，使已上传 PDF 可直接进入 Atlas input stream；视频/音频/图片仍属后续多模态扩展。
 - A3-02 evidence-citation baseline: AI 写作工作台 Atlas 参考面板按当前标题/摘要/正文调用 scoped semantic Atlas search 拉取相关 KP；Search KP 结果可携带首条可访问 evidence quote，面板支持插入内部 KP 链接或不含 `/admin` 路径的公开 blockquote citation。
 
 未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、video/audio 等更多输入形态、浏览器/Readability 自动抓取 UI、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、以及 carrier 级 AI 建议入口已补成 landing baseline，但生产环境实际回填仍需 release evidence。
@@ -294,7 +295,7 @@ Priority semantics:
 | ATLAS-M2-02 | Blog post carrier | **Reader baseline 已落地**: `blog_post` carrier 使用 `posts://{id}` source_uri, 按 owner/admin scope 读取 posts 表并持久化 text layer；migration `000075` 允许真实 `atlas_carriers.type='blog_post'` 行；AI 写作工作台可打开 `/atlas/reader/blog-post/:carrierId` 标注正文、删除标注、触发 annotation/full-text AI 建议，也可触发预算 preview + carrier KP 抽取 | 草稿/已发布文章可进入 Atlas carrier, 被标注, 并以 pending KP suggestions 进入 Inbox；公开博客知识面板和引用格式仍属后续 | P0-05 |
 | ATLAS-M2-03 | Web clip carrier | **Reader baseline 已落地**: `POST /atlas/carriers/web` 保存网页 URL/title/Markdown 正文快照为 owner-scoped `web` carrier, 规范化 http(s) URL, 持久化 text layer；`/atlas` 提供 Web 快照入口并跳转 `/atlas/reader/web/:carrierId`；Web Reader 可标注正文、删除标注、触发 annotation/full-text AI 建议 | Web 正文可进入 Atlas carrier、被标注、并生成 pending KP suggestions；自动抓取/Readability UI 仍属后续 | P1-01 |
 | ATLAS-M2-04 | Video/audio transcript carrier | transcript-as-primary, time fragment selector, 跳转时间戳 | 视频/音频可按 transcript 标注与抽 KP | M2-03 |
-| ATLAS-M2-05 | Media library integration | 媒体详情页“加入 Atlas / 查看标注 / 抽取知识点” | 上传资源可进 Atlas | M2-01 |
+| ATLAS-M2-05 | Media library integration | **PDF baseline 已落地**: 媒体详情页识别 PDF 后提供 `加入 Atlas`、`查看标注`、`抽取知识点`; 三个入口复用 `POST /atlas/carriers/pdf` 的幂等 carrier 创建、`/atlas/reader/pdf/:carrierId` 的 text-layer Reader、以及 `/atlas/carriers/:id/suggestions/preview` + `/suggestions` 的预算预检生成链路 | 上传 PDF 可从媒体库直接进 Atlas carrier、回到 PDF Reader 标注、并生成 pending KP suggestions；视频/音频/图片统一媒体入口仍属 M2-04/后续多模态工作 | M2-01 |
 
 ### P3. Knowledge Activation And Publishing
 
