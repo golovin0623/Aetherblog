@@ -73,6 +73,13 @@ async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None, 
         if snapshot.requiresApproval:
             tools[code] = _approval_required_tool(code)
             continue
+        # Tool nodes always run through _execute_tool (no external-simulation path), so
+        # in a simulated/preview run we must install a side-effect-free stub instead of
+        # the real HTTP handler — otherwise an admin preview would issue real
+        # GET/POST/PATCH requests.
+        if payload.simulateExternal:
+            tools[code] = _simulated_tool(code, snapshot.handlerType)
+            continue
         if snapshot.handlerType == "http":
             tools[code] = _http_tool(snapshot.handlerConfig, snapshot.timeoutMs)
         elif snapshot.handlerType in {"mcp", "skill", "openapi"}:
@@ -255,6 +262,15 @@ def _approval_required_tool(code: str):
 def _not_connected_tool(code: str, handler_type: str):
     async def tool(_args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
         raise WorkflowExecutionError(f"{handler_type} tool {code} is not connected")
+
+    return tool
+
+
+def _simulated_tool(code: str, handler_type: str):
+    # Side-effect-free stand-in used when simulateExternal is set, so preview runs of
+    # tool nodes (which always run through _execute_tool) never issue real requests.
+    async def tool(args: dict[str, Any], _context: dict[str, Any]) -> dict[str, Any]:
+        return {"simulated": True, "tool": code, "handlerType": handler_type, "args": args}
 
     return tool
 
