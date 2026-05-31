@@ -1017,7 +1017,13 @@ type workflowTraceItem struct {
 }
 
 func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow model.AgentWorkflow, run model.AgentWorkflowRun, inputs string, simulateExternal bool) (*dto.AgentWorkflowRunSummary, error) {
-	tools, err := s.workflowToolSnapshot(ctx, run.UserID, workflow.DefinitionJSON, stringValue(run.ResumeFromNode))
+	// Tool definitions/handler config must be resolved against the workflow *owner*,
+	// not the invoker: a published workflow can be run by another user (run.UserID),
+	// and FindToolByCode(run.UserID, ...) would then fail to find the author's custom
+	// tool or prefer the invoker's same-code tool, executing a different handler than
+	// the one the owner published. Per-invoker data access (e.g. KB scoping) is handled
+	// downstream in ai-service via the invoker identity, not here.
+	tools, err := s.workflowToolSnapshot(ctx, workflow.UserID, workflow.DefinitionJSON, stringValue(run.ResumeFromNode))
 	if err != nil {
 		return nil, err
 	}
@@ -1842,8 +1848,15 @@ func validatePublicationOrigin(rawOrigins string, origin string) error {
 		}
 		if strings.Contains(allowed, "*.") {
 			prefix, suffix, _ := strings.Cut(allowed, "*.")
-			if strings.HasPrefix(origin, prefix) && strings.HasSuffix(origin, suffix) {
-				return nil
+			// The wildcard must match a real dot-delimited subdomain label, so the
+			// portion after the prefix has to end with ".suffix" (e.g. ".example.com").
+			// A plain HasSuffix(suffix) would also accept sibling domains such as
+			// https://badexample.com for the pattern https://*.example.com.
+			if suffix != "" && strings.HasPrefix(origin, prefix) {
+				host := origin[len(prefix):]
+				if strings.HasSuffix(host, "."+suffix) && len(host) > len(suffix)+1 {
+					return nil
+				}
 			}
 		}
 	}
