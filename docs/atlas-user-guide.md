@@ -112,9 +112,13 @@ Available controls:
 - Scope.
 - KP type filter.
 - Relation type filter.
+- Updated-time window filter.
+- Provenance and confidence filters.
+- Evidence health filters for KPs and relations.
+- Topology filters for orphan and hub KPs.
 - Hub folding for nodes with high incoming degree.
 
-Click a node to open its KP detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
+Click a node or relation to inspect metadata, evidence counts, degree, relation summary, and navigation actions without leaving the graph. Open a KP from the inspector when you need the full detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
 
 ## 9. AI Suggestions
 

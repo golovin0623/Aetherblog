@@ -121,6 +121,49 @@ func TestRelationRepoLinkAndListEvidence(t *testing.T) {
 	}
 }
 
+func TestRelationRepoCountEvidenceByRelationIDs(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewRelationRepo(base)
+	mock.ExpectQuery(`SELECT relation_id, COUNT\(\*\) AS count\s+FROM atlas_relation_evidence\s+WHERE relation_id = ANY\(\$1\)\s+GROUP BY relation_id`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"relation_id", "count"}).
+			AddRow(int64(21), int64(3)).
+			AddRow(int64(22), int64(1)))
+
+	counts, err := repo.CountEvidenceByRelationIDs(context.Background(), []int64{21, 22, 23})
+	if err != nil {
+		t.Fatalf("CountEvidenceByRelationIDs returned error: %v", err)
+	}
+	if counts[21] != 3 || counts[22] != 1 {
+		t.Fatalf("unexpected counts: %+v", counts)
+	}
+	if _, ok := counts[23]; ok {
+		t.Fatalf("unexpected zero-count entry for relation 23: %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestRelationRepoCountEvidenceByRelationIDsEmptyDoesNotQuery(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewRelationRepo(base)
+	counts, err := repo.CountEvidenceByRelationIDs(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("CountEvidenceByRelationIDs returned error: %v", err)
+	}
+	if len(counts) != 0 {
+		t.Fatalf("len(counts) = %d, want 0", len(counts))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unexpected sql query: %v", err)
+	}
+}
+
 func TestRelationRepoGraphHealthComputesLiveMetrics(t *testing.T) {
 	base, mock, cleanup := newAtlasRepoMock(t)
 	defer cleanup()

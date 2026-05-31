@@ -102,8 +102,10 @@ type RelationEvidenceResponse struct {
 
 // GraphResponse 是 GET /atlas/graph 的响应。
 type GraphResponse struct {
-	Nodes []KnowledgePointResponse `json:"nodes"`
-	Edges []TypedRelationResponse  `json:"edges"`
+	Nodes                  []KnowledgePointResponse `json:"nodes"`
+	Edges                  []TypedRelationResponse  `json:"edges"`
+	KPEvidenceCounts       map[int64]int64          `json:"kpEvidenceCounts,omitempty"`
+	RelationEvidenceCounts map[int64]int64          `json:"relationEvidenceCounts,omitempty"`
 }
 
 // GraphHealthResponse 是 GET /atlas/graph/health 的响应。

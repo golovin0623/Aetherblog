@@ -494,15 +494,30 @@ func (h *KPHandler) Graph(c echo.Context) error {
 		nodes[i] = toKPResponse(&kps[i])
 		nodeIDs[i] = kps[i].ID
 	}
+	kpEvidenceCounts, err := h.kp.CountEvidenceByKPIDs(c.Request().Context(), nodeIDs)
+	if err != nil {
+		return response.Error(c, err)
+	}
 	rels, err := h.rel.ListForNodeIDs(c.Request().Context(), nodeIDs, limit, authorID)
 	if err != nil {
 		return response.Error(c, err)
 	}
 	edges := make([]atlasdto.TypedRelationResponse, len(rels))
+	relationIDs := make([]int64, len(rels))
 	for i := range rels {
 		edges[i] = toRelationResponse(&rels[i])
+		relationIDs[i] = rels[i].ID
 	}
-	return response.OK(c, atlasdto.GraphResponse{Nodes: nodes, Edges: edges})
+	relationEvidenceCounts, err := h.rel.CountEvidenceByRelationIDs(c.Request().Context(), relationIDs)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, atlasdto.GraphResponse{
+		Nodes:                  nodes,
+		Edges:                  edges,
+		KPEvidenceCounts:       kpEvidenceCounts,
+		RelationEvidenceCounts: relationEvidenceCounts,
+	})
 }
 
 func (h *KPHandler) GraphHealth(c echo.Context) error {

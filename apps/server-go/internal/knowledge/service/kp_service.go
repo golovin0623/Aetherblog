@@ -207,6 +207,11 @@ func (s *KnowledgePointService) ListEvidence(ctx context.Context, kpID int64) ([
 	return s.kp.ListEvidenceAnnotations(ctx, kpID)
 }
 
+// CountEvidenceByKPIDs 批量统计 KP evidence 数量。
+func (s *KnowledgePointService) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[int64]int64, error) {
+	return s.kp.CountEvidenceByKPIDs(ctx, kpIDs)
+}
+
 // ListKPsForAnnotation 列出某标注支撑的所有 KP ID（双向投影用）。
 func (s *KnowledgePointService) ListKPsForAnnotation(ctx context.Context, annotationID int64) ([]int64, error) {
 	return s.kp.ListKPsForAnnotation(ctx, annotationID)
@@ -325,6 +330,11 @@ func (s *RelationService) ListAll(ctx context.Context, limit int) ([]model.Typed
 // ListForNodeIDs 图谱视图用：只返回两端都在当前 node set 内的边。
 func (s *RelationService) ListForNodeIDs(ctx context.Context, nodeIDs []int64, limit int, authorID *int64) ([]model.TypedRelation, error) {
 	return s.repo.ListForNodeIDs(ctx, nodeIDs, limit, authorID)
+}
+
+// CountEvidenceByRelationIDs 批量统计 relation evidence 数量。
+func (s *RelationService) CountEvidenceByRelationIDs(ctx context.Context, relationIDs []int64) (map[int64]int64, error) {
+	return s.repo.CountEvidenceByRelationIDs(ctx, relationIDs)
 }
 
 // GraphHealth 图谱健康指标。

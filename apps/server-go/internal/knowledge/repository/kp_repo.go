@@ -212,6 +212,29 @@ func (r *KPRepo) ListEvidenceAnnotations(ctx context.Context, kpID int64) ([]Evi
 	return rows, err
 }
 
+// CountEvidenceByKPIDs 批量统计 KP evidence 数量，Graph inspector / filters 使用。
+func (r *KPRepo) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[int64]int64, error) {
+	counts := map[int64]int64{}
+	if len(kpIDs) == 0 {
+		return counts, nil
+	}
+	rows := []struct {
+		KPID  int64 `db:"kp_id"`
+		Count int64 `db:"count"`
+	}{}
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT kp_id, COUNT(*) AS count
+		FROM atlas_annotation_kp_links
+		WHERE kp_id = ANY($1)
+		GROUP BY kp_id`, pq.Int64Array(kpIDs)); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.KPID] = row.Count
+	}
+	return counts, nil
+}
+
 // ListKPsForAnnotation 列出某标注支撑的所有 KP ID。
 func (r *KPRepo) ListKPsForAnnotation(ctx context.Context, annotationID int64) ([]int64, error) {
 	ids := []int64{}

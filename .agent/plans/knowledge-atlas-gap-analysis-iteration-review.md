@@ -262,8 +262,8 @@ Priority semantics:
 | --- | --- | --- | --- | --- |
 | ATLAS-G1-01 | Local graph | KP 详情增 local graph tab, 支持 depth 1/2/3 | 从 KP 看上下游, depth 改变即时生效 | P0-04 |
 | ATLAS-G1-02 | Zoom/pan/minimap | 引入成熟图库或自建 viewport transform | 200 节点内流畅探索, 节点不被裁切 | 选型见 §13 R-决策 |
-| ATLAS-G1-03 | Node/edge inspector | 点击节点/边打开右侧 inspector: 元信息、evidence、relations、actions | 不离开图谱即可理解节点和关系 | G1-02,P0-07 |
-| ATLAS-G1-04 | Graph filters | 时间窗口、provenance、confidence、evidence health、orphan/hub filters | 能回答“最近新增/AI 生成/缺证据”等治理问题 | G1-02 |
+| ATLAS-G1-03 | Node/edge inspector | **Landing baseline 已落地**: 点击 `/atlas/graph` 节点/边打开右侧 inspector，显示元信息、evidence count、degree、relation endpoints/body preview 和跳转动作 | 不离开图谱即可理解节点和关系；后续可补 evidence quote 预览与更细 action | G1-02,P0-07 |
+| ATLAS-G1-04 | Graph filters | **Landing baseline 已落地**: 时间窗口、provenance、confidence、KP/relation evidence health、orphan/hub filters；Graph API 返回 evidence-count maps 支撑证据健康过滤 | 能回答“最近新增/AI 生成/缺证据”等治理问题；后续可补 saved filter presets | G1-02 |
 | ATLAS-G1-05 | Layout persistence | 保存专题图/局部图的节点位置与视图状态 | 刷新后布局稳定, 不随机重排 | G1-02 |
 | ATLAS-G1-06 | Graph health metrics | 关系密度、孤立 KP、无 evidence KP/relation、hub 排行 | Dashboard 可见图谱健康状况 | P0-01,P1-12 |
 
@@ -351,7 +351,7 @@ Duration: 2-4 周。
 
 ### Sprint 3: Graph Search And AetherHub Integration
 Duration: 3-5 周。
-- ATLAS-P2-04 KP embedding baseline · P2-05 selected/empty-scope atlas recall baseline · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索语义 rerank · G1-02 zoom/pan/minimap · G1-03 inspector · G1-04 filters · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
+- ATLAS-P2-04 KP embedding baseline · P2-05 selected/empty-scope atlas recall baseline · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索语义 rerank · G1-02 zoom/pan/minimap · G1-03 inspector baseline · G1-04 filters baseline · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
 - Exit: 能对某 KP/子图/carrier 提问, 回答带 evidence citation 和跳转; 图谱可交互、可治理、布局稳定。
 
 ### Sprint 4: Multimodal And Publishing

@@ -80,3 +80,46 @@ func TestKPRepoLinkAnnotationUpsertsEvidenceRole(t *testing.T) {
 		t.Fatalf("unmet expectations: %v", err)
 	}
 }
+
+func TestKPRepoCountEvidenceByKPIDs(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewKPRepo(base)
+	mock.ExpectQuery(`SELECT kp_id, COUNT\(\*\) AS count\s+FROM atlas_annotation_kp_links\s+WHERE kp_id = ANY\(\$1\)\s+GROUP BY kp_id`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"kp_id", "count"}).
+			AddRow(int64(11), int64(2)).
+			AddRow(int64(12), int64(1)))
+
+	counts, err := repo.CountEvidenceByKPIDs(context.Background(), []int64{11, 12, 13})
+	if err != nil {
+		t.Fatalf("CountEvidenceByKPIDs returned error: %v", err)
+	}
+	if counts[11] != 2 || counts[12] != 1 {
+		t.Fatalf("unexpected counts: %+v", counts)
+	}
+	if _, ok := counts[13]; ok {
+		t.Fatalf("unexpected zero-count entry for kp 13: %+v", counts)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestKPRepoCountEvidenceByKPIDsEmptyDoesNotQuery(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewKPRepo(base)
+	counts, err := repo.CountEvidenceByKPIDs(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("CountEvidenceByKPIDs returned error: %v", err)
+	}
+	if len(counts) != 0 {
+		t.Fatalf("len(counts) = %d, want 0", len(counts))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unexpected sql query: %v", err)
+	}
+}

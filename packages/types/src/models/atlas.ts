@@ -204,6 +204,13 @@ export interface AtlasTypedRelation {
   updatedAt: string;
 }
 
+export interface AtlasGraphResponse {
+  nodes: AtlasKnowledgePoint[];
+  edges: AtlasTypedRelation[];
+  kpEvidenceCounts?: Record<string, number>;
+  relationEvidenceCounts?: Record<string, number>;
+}
+
 export interface AtlasRelationEvidence {
   relationId: number;
   annotationId: number;

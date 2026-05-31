@@ -10,6 +10,7 @@ import type {
   AtlasAnchorState,
   AtlasCarrier,
   AtlasCarrierTextLayer,
+  AtlasGraphResponse,
   AtlasGraphHealth,
   AtlasHealthResponse,
   AtlasKnowledgePoint,
@@ -181,7 +182,7 @@ export const atlasService = {
   getGraph: (
     limit?: number,
     params?: AtlasScopedParams
-  ): Promise<R<{ nodes: AtlasKnowledgePoint[]; edges: AtlasTypedRelation[] }>> =>
+  ): Promise<R<AtlasGraphResponse>> =>
     api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
 
   getGraphHealth: (params?: AtlasScopedParams & { hubLimit?: number }): Promise<R<AtlasGraphHealth>> =>

@@ -185,6 +185,29 @@ func (r *RelationRepo) ListForNodeIDs(ctx context.Context, nodeIDs []int64, limi
 	return rows, err
 }
 
+// CountEvidenceByRelationIDs 批量统计 relation evidence 数量，Graph inspector / filters 使用。
+func (r *RelationRepo) CountEvidenceByRelationIDs(ctx context.Context, relationIDs []int64) (map[int64]int64, error) {
+	counts := map[int64]int64{}
+	if len(relationIDs) == 0 {
+		return counts, nil
+	}
+	rows := []struct {
+		RelationID int64 `db:"relation_id"`
+		Count      int64 `db:"count"`
+	}{}
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT relation_id, COUNT(*) AS count
+		FROM atlas_relation_evidence
+		WHERE relation_id = ANY($1)
+		GROUP BY relation_id`, pq.Int64Array(relationIDs)); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.RelationID] = row.Count
+	}
+	return counts, nil
+}
+
 // GraphHealth 汇总当前 scope 下的关系密度、evidence 覆盖率和 hub 排名。
 func (r *RelationRepo) GraphHealth(ctx context.Context, authorID *int64, hubLimit int) (*GraphHealthMetrics, error) {
 	if hubLimit <= 0 {
