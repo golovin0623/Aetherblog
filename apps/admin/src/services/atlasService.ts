@@ -62,6 +62,9 @@ export const atlasService = {
   ensureMarkdownCarrier: (noteId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/markdown`, { noteId }),
 
+  ensurePDFCarrier: (mediaFileId: number): Promise<R<AtlasCarrier>> =>
+    api.post(`${base}/carriers/pdf`, { mediaFileId }),
+
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
 
   listAnnotations: (carrierId: number): Promise<R<AtlasAnnotation[]>> =>

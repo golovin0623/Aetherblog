@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.routes import atlas
 
@@ -86,3 +88,43 @@ async def test_suggest_relation_llm_rejects_invalid_relation_type_then_repairs()
     assert model_id == "atlas-model"
     assert suggestion.relation_type == "supports"
     assert suggestion.strength == pytest.approx(0.76)
+
+
+@pytest.mark.asyncio
+async def test_extract_pdf_text_returns_page_offsets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        atlas,
+        "extract_pdf_text_pages",
+        lambda _content: ["第一页内容", "", "第三页结论"],
+    )
+
+    result = await atlas.extract_pdf_text(
+        atlas.ExtractPDFTextRequest(
+            filename="atlas.pdf",
+            mime_type="application/pdf",
+            content_bytes=base64.b64encode(b"%PDF fake").decode("ascii"),
+        )
+    )
+
+    assert result.page_count == 3
+    assert result.char_count == len("第一页内容\n\n\n\n第三页结论")
+    assert result.pages[0].char_start == 0
+    assert result.pages[0].char_end == len("第一页内容")
+    assert result.pages[1].char_start == len("第一页内容\n\n")
+    assert result.pages[1].char_end == result.pages[1].char_start
+    assert result.pages[2].text == "第三页结论"
+    assert len(result.text_hash) == 64
+
+
+@pytest.mark.asyncio
+async def test_extract_pdf_text_rejects_invalid_base64() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await atlas.extract_pdf_text(
+            atlas.ExtractPDFTextRequest(
+                filename="atlas.pdf",
+                mime_type="application/pdf",
+                content_bytes="not-base64!!!",
+            )
+        )
+
+    assert exc.value.status_code == 400

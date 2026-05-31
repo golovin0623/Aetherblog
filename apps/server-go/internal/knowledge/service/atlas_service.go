@@ -15,6 +15,7 @@ type AtlasService struct {
 	repo     *repository.AtlasRepo
 	carriers *repository.CarrierRepo
 	markdown *MarkdownCarrierService
+	pdf      *PdfCarrierService
 }
 
 // NewAtlasService 创建 AtlasService。
@@ -39,6 +40,16 @@ func (s *AtlasService) HealthCheck(ctx context.Context) error {
 // Markdown 返回 Markdown 子服务（懒创建 / 内容指纹追踪）。Phase 1+ 用。
 func (s *AtlasService) Markdown() *MarkdownCarrierService {
 	return s.markdown
+}
+
+// AttachPDF injects the PDF carrier service after media dependencies are wired.
+func (s *AtlasService) AttachPDF(pdf *PdfCarrierService) {
+	s.pdf = pdf
+}
+
+// PDF 返回 PDF 子服务（媒体文件 → 文本层 carrier）。
+func (s *AtlasService) PDF() *PdfCarrierService {
+	return s.pdf
 }
 
 // Carriers 返回 CarrierRepo（CRUD）。Phase 1+ 由 handler 调。

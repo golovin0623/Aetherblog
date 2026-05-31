@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
+	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 )
 
 func TestAnnotationRepoSearchEscapesKeywordAndScopesAuthor(t *testing.T) {
@@ -33,6 +35,40 @@ func TestAnnotationRepoSearchEscapesKeywordAndScopesAuthor(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].AuthorID == nil || *rows[0].AuthorID != authorID {
 		t.Fatalf("unexpected rows: %+v", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestCarrierRepoUpsertTextLayerPersistsRootText(t *testing.T) {
+	base, mock, cleanup := newAtlasRepoMock(t)
+	defer cleanup()
+
+	repo := NewCarrierRepo(base)
+	mock.ExpectExec(`INSERT INTO atlas_carrier_text_layers`).
+		WithArgs(
+			int64(3),
+			"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			"atlas-text-layer://pdf/9/hash",
+			2,
+			12,
+			"page one\n\npage two",
+			[]byte(`[{"page":1}]`),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err := repo.UpsertTextLayer(context.Background(), &model.CarrierTextLayer{
+		CarrierID:   3,
+		ContentHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		StorageURI:  "atlas-text-layer://pdf/9/hash",
+		PageCount:   2,
+		CharCount:   12,
+		TextContent: "page one\n\npage two",
+		Pages:       []byte(`[{"page":1}]`),
+	})
+	if err != nil {
+		t.Fatalf("UpsertTextLayer returned error: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sql expectations: %v", err)

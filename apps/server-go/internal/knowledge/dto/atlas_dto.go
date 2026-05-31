@@ -36,6 +36,11 @@ type EnsureMarkdownCarrierRequest struct {
 	NoteID int64 `json:"noteId" validate:"required,gt=0"`
 }
 
+// EnsurePDFCarrierRequest 是 POST /atlas/carriers/pdf 的请求体。
+type EnsurePDFCarrierRequest struct {
+	MediaFileID int64 `json:"mediaFileId" validate:"required,gt=0"`
+}
+
 // ============================================================
 // Annotation
 // ============================================================

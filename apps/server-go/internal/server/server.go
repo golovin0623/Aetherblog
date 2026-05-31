@@ -362,6 +362,11 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	}
 	// Phase 1: MediaService 改造 — 注入 providerRepo 让 Upload/Delete 按 default provider 走对应后端。
 	mediaSvc := service.NewMediaService(mediaRepo, localStore, storageProviderRepo, s.Config.Upload.Path)
+	atlasService.AttachPDF(atlassvc.NewPdfCarrierService(
+		atlasCarrierRepo,
+		atlasPDFMediaReader{media: mediaSvc},
+		atlassvc.NewAIPDFTextExtractor(aiClient, internalToken),
+	))
 	// 批次 2: 注入 folder_permissions 校验依赖,Upload 时拦截越权写入私有文件夹
 	permissionRepo := repository.NewPermissionRepo(s.DB)
 	mediaSvc.SetFolderAccess(folderRepo, permissionRepo)

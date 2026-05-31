@@ -17,6 +17,7 @@ Phase 3 范围（本文件）:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -24,10 +25,11 @@ import re
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_llm_router, require_admin_or_internal
+from app.services.kb_indexer import extract_pdf_text_pages
 from app.services.usage_logger import estimate_tokens
 
 
@@ -40,6 +42,90 @@ router = APIRouter(
     prefix="/v1/atlas",
     dependencies=[Depends(require_admin_or_internal)],
 )
+
+
+# ============================================================
+# PDF text-layer extraction
+# ============================================================
+
+MAX_ATLAS_PDF_EXTRACT_BYTES = 20 * 1024 * 1024
+
+
+class ExtractPDFTextRequest(BaseModel):
+    """Go 后端推送的 PDF 原始字节，用于 Atlas PDF carrier ingest。"""
+
+    filename: Optional[str] = Field(default=None, max_length=255)
+    mime_type: Optional[str] = Field(default=None, max_length=128)
+    content_bytes: str = Field(default="", description="原始 PDF 字节的 base64 编码")
+
+
+class PDFTextPage(BaseModel):
+    page: int
+    text: str = ""
+    char_start: int
+    char_end: int
+
+
+class PDFTextLayerResponse(BaseModel):
+    text: str
+    text_hash: str
+    page_count: int
+    char_count: int
+    pages: list[PDFTextPage]
+    extractor: str = "pypdf"
+
+
+@router.post("/pdf/extract")
+async def extract_pdf_text(req: ExtractPDFTextRequest) -> PDFTextLayerResponse:
+    """从 PDF 字节流抽取 Atlas 可锚定的逐页文本层。
+
+    该端点只允许 admin JWT 或 Go 后端内部 token 访问（router 级依赖），并且不做
+    反向 URL 拉取，避免 SSRF；Go 端负责从受控媒体存储读取字节后推送进来。
+    """
+    try:
+        content = base64.b64decode(req.content_bytes or "", validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"content_bytes base64 解码失败: {exc}")
+
+    if len(content) > MAX_ATLAS_PDF_EXTRACT_BYTES:
+        raise HTTPException(status_code=413, detail="PDF 过大，Atlas 文本抽取上限 20MB")
+
+    mime = (req.mime_type or "").lower().split(";", 1)[0].strip()
+    filename = (req.filename or "").lower()
+    if mime and mime != "application/pdf" and not filename.endswith(".pdf"):
+        raise HTTPException(status_code=415, detail=f"不支持的 PDF MIME: {req.mime_type!r}")
+
+    try:
+        page_texts = extract_pdf_text_pages(content)
+    except Exception as exc:
+        logger.warning("atlas.pdf_extract_failed", extra={"data": {"error": str(exc)[:300]}})
+        raise HTTPException(status_code=422, detail=f"PDF 文本抽取失败: {exc}")
+
+    return _build_pdf_text_layer(page_texts)
+
+
+def _build_pdf_text_layer(page_texts: list[str]) -> PDFTextLayerResponse:
+    parts: list[str] = []
+    pages: list[PDFTextPage] = []
+    cursor = 0
+    for index, raw_text in enumerate(page_texts, start=1):
+        if index > 1:
+            parts.append("\n\n")
+            cursor += 2
+        text = (raw_text or "").strip()
+        start = cursor
+        parts.append(text)
+        cursor += len(text)
+        pages.append(PDFTextPage(page=index, text=text, char_start=start, char_end=cursor))
+
+    full_text = "".join(parts)
+    return PDFTextLayerResponse(
+        text=full_text,
+        text_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
+        page_count=len(page_texts),
+        char_count=len(full_text),
+        pages=pages,
+    )
 
 
 # ============================================================

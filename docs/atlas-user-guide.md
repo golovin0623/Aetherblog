@@ -30,7 +30,19 @@
 
 Inline highlights are non-destructive. They are rendered over the Markdown preview and do not modify the note body.
 
-## 3. Annotation To Knowledge Point
+## 3. PDF Carrier Ingest
+
+The backend can now create a PDF Atlas carrier from an uploaded media file:
+
+- Endpoint: `POST /api/v1/admin/atlas/carriers/pdf`
+- Body: `{ "mediaFileId": <media file id> }`
+- Access: requires `content.atlas.write`; non-admin users can only ingest their own uploaded PDF media.
+
+The Go backend reads the media bytes from the configured storage provider and calls the internal AI service endpoint `POST /v1/atlas/pdf/extract`. The extracted page-aware root text is stored in `atlas_carrier_text_layers`, while the carrier version points at an immutable `atlas-text-layer://pdf/<mediaId>/<hash>` URI.
+
+This is the text-layer ingest baseline. Browser page-rectangle jump-back and a full real-PDF gateway smoke report are still required before the R1 product gate is complete.
+
+## 4. Annotation To Knowledge Point
 
 1. In the Reader annotation list, click `提炼 KP`.
 2. Review and edit the KP draft:
@@ -43,7 +55,7 @@ Inline highlights are non-destructive. They are rendered over the Markdown previ
 3. Create the KP.
 4. The Reader links the annotation to the new KP as evidence. Re-linking the same annotation/KP updates the evidence role instead of silently keeping the old value.
 
-## 4. Manage Knowledge Points
+## 5. Manage Knowledge Points
 
 Use `/admin/atlas/kps` for global KP management.
 
@@ -63,7 +75,7 @@ Open a KP detail page to:
 - Delete the KP with confirmation.
 - Review evidence annotations and jump back to the source Reader route when the carrier maps to a note.
 
-## 5. Search Across Atlas
+## 6. Search Across Atlas
 
 Use `/admin/atlas/search` for a single keyword search across:
 
@@ -75,7 +87,7 @@ Search respects the same Atlas scope control as the dashboard: non-admin users s
 
 This is the keyword-search baseline. Semantic Atlas recall and GraphRAG ranking remain future gates.
 
-## 6. Create Relations
+## 7. Create Relations
 
 1. Open a KP detail page.
 2. In `Relations`, choose the relation type. The UI shows a short explanation for each type:
@@ -88,7 +100,7 @@ This is the keyword-search baseline. Semantic Atlas recall and GraphRAG ranking 
 
 Relation cards show direction, type, strength, rationale, and attached evidence quotes. Evidence makes a relation auditable: a relation without evidence can exist, but should be treated as less reliable until evidence is attached.
 
-## 7. Inspect The Graph
+## 8. Inspect The Graph
 
 Use `/admin/atlas/graph` for the global graph view.
 
@@ -102,7 +114,7 @@ Available controls:
 
 Click a node to open its KP detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
 
-## 8. AI Suggestions
+## 9. AI Suggestions
 
 Use `/admin/atlas/suggestions` to review pending suggestions.
 
@@ -120,7 +132,7 @@ Rules:
 
 The AI service now validates structured JSON output and retries once before falling back to deterministic heuristics. Do not treat suggestion quality as final model quality until the eval harness and acceptance-rate gates are complete.
 
-## 9. AetherHub Scope
+## 10. AetherHub Scope
 
 Current available handoff:
 
@@ -133,7 +145,7 @@ Current available handoff:
 
 This is a selected-scope baseline, not full semantic GraphRAG. Automatic Atlas recall from arbitrary questions still depends on the future embedding and graph-neighborhood recall gates.
 
-## 10. Release Checklist
+## 11. Release Checklist
 
 Before treating an Atlas iteration as a passed product gate, record evidence in `.agent/plans/knowledge-atlas-phase-gate-ledger.md`:
 

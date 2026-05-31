@@ -237,3 +237,59 @@ func (r *CarrierRepo) UpdateContent(ctx context.Context, carrierID int64, newHas
 
 	return tx.Commit()
 }
+
+// UpdateIngestState refreshes non-versioned carrier ingest metadata.
+func (r *CarrierRepo) UpdateIngestState(ctx context.Context, carrierID int64, metadata []byte, status string, statusMessage *string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE atlas_carriers
+		SET metadata=$1, status=$2, status_message=$3, updated_at=CURRENT_TIMESTAMP
+		WHERE id=$4`,
+		metadata,
+		status,
+		statusMessage,
+		carrierID,
+	)
+	return err
+}
+
+// UpsertTextLayer persists an extracted rootText artifact for a carrier version.
+func (r *CarrierRepo) UpsertTextLayer(
+	ctx context.Context,
+	layer *model.CarrierTextLayer,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO atlas_carrier_text_layers (
+			carrier_id, content_hash, storage_uri, page_count, char_count, text_content, pages
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (carrier_id, content_hash) DO UPDATE SET
+			storage_uri = EXCLUDED.storage_uri,
+			page_count = EXCLUDED.page_count,
+			char_count = EXCLUDED.char_count,
+			text_content = EXCLUDED.text_content,
+			pages = EXCLUDED.pages,
+			updated_at = CURRENT_TIMESTAMP`,
+		layer.CarrierID,
+		layer.ContentHash,
+		layer.StorageURI,
+		layer.PageCount,
+		layer.CharCount,
+		layer.TextContent,
+		layer.Pages,
+	)
+	return err
+}
+
+// FindTextLayerByStorageURI returns one extracted rootText artifact by storage_uri.
+func (r *CarrierRepo) FindTextLayerByStorageURI(ctx context.Context, storageURI string) (*model.CarrierTextLayer, error) {
+	var layer model.CarrierTextLayer
+	err := r.db.GetContext(ctx, &layer,
+		`SELECT * FROM atlas_carrier_text_layers WHERE storage_uri=$1 LIMIT 1`, storageURI)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &layer, nil
+}
