@@ -33,6 +33,30 @@ export interface AtlasScopedParams {
   authorId?: number;
 }
 
+export const ATLAS_CARRIER_SUGGESTION_MAX_COST_USD = 0.05;
+
+export interface GenerateCarrierSuggestionsPayload {
+  maxCandidates?: number;
+  maxChars?: number;
+  modelId?: string | null;
+  maxCostUsd?: number;
+}
+
+export interface AtlasCarrierSuggestionCostPreview {
+  carrierId: number;
+  modelId: string;
+  maxCandidates: number;
+  maxChars: number;
+  sourceChars: number;
+  truncatedChars: number;
+  estimatedTokensIn: number;
+  estimatedTokensOut: number;
+  estimatedCostUsd?: number | null;
+  maxCostUsd?: number | null;
+  budgetExceeded: boolean;
+  pricingMissing: boolean;
+}
+
 export interface CreateAnnotationPayload {
   carrierId: number;
   carrierVersionId?: number | null;
@@ -231,9 +255,15 @@ export const atlasService = {
   ): Promise<R<AtlasSuggestion[]>> =>
     api.post(`${base}/annotations/${annotationId}/suggestions`, payload ?? {}),
 
+  previewCarrierSuggestions: (
+    carrierId: number,
+    payload?: GenerateCarrierSuggestionsPayload
+  ): Promise<R<AtlasCarrierSuggestionCostPreview>> =>
+    api.post(`${base}/carriers/${carrierId}/suggestions/preview`, payload ?? {}),
+
   generateCarrierSuggestions: (
     carrierId: number,
-    payload?: { maxCandidates?: number; maxChars?: number; modelId?: string | null }
+    payload?: GenerateCarrierSuggestionsPayload
   ): Promise<R<AtlasSuggestion[]>> =>
     api.post(`${base}/carriers/${carrierId}/suggestions`, payload ?? {}),
 

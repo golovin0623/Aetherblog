@@ -13,8 +13,9 @@ from tests.support import FakeConn, FakePool
 
 
 class FakeAtlasLlm:
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(self, responses: list[str], *, chat_error: Exception | None = None) -> None:
         self.responses = responses
+        self.chat_error = chat_error
         self.chat_calls: list[dict[str, Any]] = []
 
     async def has_task_routing(self, *_args: Any, **_kwargs: Any) -> bool:
@@ -32,6 +33,8 @@ class FakeAtlasLlm:
 
     async def chat(self, **kwargs: Any) -> str:
         self.chat_calls.append(kwargs)
+        if self.chat_error is not None:
+            raise self.chat_error
         idx = min(len(self.chat_calls) - 1, len(self.responses) - 1)
         return self.responses[idx]
 
@@ -63,6 +66,69 @@ async def test_extract_claims_llm_retries_until_valid_json() -> None:
     assert candidates[0].proposed_kp_type == "claim"
     assert candidates[0].proposed_confidence == pytest.approx(0.82)
     assert len(llm.chat_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_preview_claim_extraction_estimates_cost_and_budget() -> None:
+    llm = FakeAtlasLlm([])
+
+    result = await atlas.preview_claim_extraction(
+        atlas.ClaimExtractionCostPreviewRequest(
+            text="Atlas root text keeps grounded evidence, cost preview, and budget guard visible.",
+            max_candidates=2,
+            max_cost_usd=0.000001,
+        ),
+        llm=llm,
+    )
+
+    assert result.model_id == "atlas-model"
+    assert result.estimated_tokens_in > 0
+    assert result.estimated_tokens_out == 192
+    assert result.estimated_cost_usd is not None
+    assert result.budget_exceeded is True
+    assert result.pricing_missing is False
+
+
+@pytest.mark.asyncio
+async def test_extract_claims_passes_cost_budget_to_llm() -> None:
+    llm = FakeAtlasLlm(
+        [
+            '{"candidates":[{"title":"Atlas keeps costs bounded","body":"Atlas extraction should honor the caller budget.","type":"claim","confidence":0.8,"rationale":"grounded"}]}',
+        ]
+    )
+
+    result = await atlas._extract_claims_with_structured_llm(
+        atlas.ExtractClaimsRequest(
+            carrier_id=7,
+            text="Atlas extraction should honor the caller budget and keep costs bounded.",
+            max_candidates=3,
+            max_cost_usd=0.0005,
+        ),
+        llm=llm,
+        user_id=12,
+    )
+
+    assert result is not None
+    assert llm.chat_calls[0]["max_cost_usd"] == pytest.approx(0.0005)
+
+
+@pytest.mark.asyncio
+async def test_extract_claims_budget_error_does_not_fallback() -> None:
+    llm = FakeAtlasLlm([], chat_error=ValueError("budget exceeded: maxCostUsd"))
+
+    with pytest.raises(HTTPException) as exc:
+        await atlas._extract_claims_with_structured_llm(
+            atlas.ExtractClaimsRequest(
+                carrier_id=7,
+                text="Atlas extraction should stop when the configured cost budget is exceeded.",
+                max_candidates=3,
+                max_cost_usd=0.000001,
+            ),
+            llm=llm,
+            user_id=12,
+        )
+
+    assert exc.value.status_code == 402
 
 
 @pytest.mark.asyncio

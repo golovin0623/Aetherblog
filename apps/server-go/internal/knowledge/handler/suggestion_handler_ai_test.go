@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 type fakeAtlasAISyncClient struct {
 	gotHeaders map[string]string
 	gotPath    string
+	gotBody    string
 	body       string
 	status     int
 }
@@ -25,11 +27,15 @@ func (f *fakeAtlasAISyncClient) DoSync(
 	_ context.Context,
 	_ string,
 	path string,
-	_ io.Reader,
+	body io.Reader,
 	headers map[string]string,
 ) (io.ReadCloser, int, error) {
 	f.gotPath = path
 	f.gotHeaders = headers
+	if body != nil {
+		raw, _ := io.ReadAll(body)
+		f.gotBody = string(raw)
+	}
 	if f.status == 0 {
 		f.status = http.StatusOK
 	}
@@ -82,6 +88,40 @@ func TestSuggestionHandlerMountsCarrierSuggestionRoute(t *testing.T) {
 		}
 	}
 	t.Fatalf("POST /atlas/carriers/:id/suggestions route was not mounted")
+}
+
+func TestSuggestionHandlerMountsCarrierSuggestionPreviewRoute(t *testing.T) {
+	e := echo.New()
+	h := &SuggestionHandler{}
+	h.Mount(e.Group("/atlas"), func(next echo.HandlerFunc) echo.HandlerFunc { return next })
+
+	for _, route := range e.Routes() {
+		if route.Method == http.MethodPost && route.Path == "/atlas/carriers/:id/suggestions/preview" {
+			return
+		}
+	}
+	t.Fatalf("POST /atlas/carriers/:id/suggestions/preview route was not mounted")
+}
+
+func TestCarrierSuggestionAIPayloadIncludesCostBudget(t *testing.T) {
+	budget := 0.05
+	modelID := "atlas-model"
+	payload := carrierSuggestionAIPayload(7, "Atlas root text", 8, &atlasdto.GenerateCarrierSuggestionsRequest{
+		ModelID:    &modelID,
+		MaxCostUSD: &budget,
+	})
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	encoded := string(raw)
+	if !strings.Contains(encoded, `"max_cost_usd":0.05`) {
+		t.Fatalf("payload missing max_cost_usd: %s", encoded)
+	}
+	if !strings.Contains(encoded, `"model_id":"atlas-model"`) {
+		t.Fatalf("payload missing model_id: %s", encoded)
+	}
 }
 
 func TestNormalizeCarrierSuggestionRequestDefaultsAndCaps(t *testing.T) {

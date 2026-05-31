@@ -78,6 +78,7 @@ func (h *SuggestionHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.GET("/suggestions/:id", h.Get)
 	g.POST("/suggestions/:id/accept", h.Accept, write)
 	g.POST("/suggestions/:id/reject", h.Reject, write)
+	g.POST("/carriers/:id/suggestions/preview", h.PreviewCarrierSuggestions, write)
 	g.POST("/carriers/:id/suggestions", h.GenerateCarrierSuggestions, write)
 	g.POST("/annotations/:id/suggestions", h.GenerateAnnotationSuggestions, write)
 	g.POST("/knowledge-points/:id/relation-suggestions", h.GenerateRelationSuggestion, write)
@@ -333,6 +334,9 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "请求体无法解析")
 	}
 	maxCandidates, maxChars := normalizeCarrierSuggestionRequest(&req)
+	if req.MaxCostUSD != nil && *req.MaxCostUSD < 0 {
+		return response.FailWith(c, response.BadRequest, "maxCostUsd 不能为负数")
+	}
 	if err := h.assertCarrierScope(c, id); err != nil {
 		return writeAtlasError(c, err)
 	}
@@ -360,12 +364,10 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 
 	truncated := truncateRunes(text, maxChars)
 	var aiOut atlasExtractClaimsResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", map[string]any{
-		"carrier_id":     carrier.ID,
-		"text":           truncated,
-		"max_candidates": maxCandidates,
-		"model_id":       req.ModelID,
-	}, &aiOut); err != nil {
+	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", carrierSuggestionAIPayload(carrier.ID, truncated, maxCandidates, &req), &aiOut); err != nil {
+		if isAtlasAIBudgetError(err) {
+			return response.FailWith(c, response.BadRequest, "预算阈值不足，已阻止本次 AI 建议生成")
+		}
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
 
@@ -404,6 +406,65 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 		"SUCCESS",
 	)
 	return response.OK(c, out)
+}
+
+func (h *SuggestionHandler) PreviewCarrierSuggestions(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的载体 ID")
+	}
+	var req atlasdto.GenerateCarrierSuggestionsRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	maxCandidates, maxChars := normalizeCarrierSuggestionRequest(&req)
+	if req.MaxCostUSD != nil && *req.MaxCostUSD < 0 {
+		return response.FailWith(c, response.BadRequest, "maxCostUsd 不能为负数")
+	}
+	if err := h.assertCarrierScope(c, id); err != nil {
+		return writeAtlasError(c, err)
+	}
+	if h.atlas == nil || h.atlas.Carriers() == nil {
+		return response.FailWith(c, response.InternalError, "Atlas carrier 服务未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := h.atlas.Carriers().FindByID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if carrier == nil {
+		return response.FailWith(c, response.NotFound, "载体不存在")
+	}
+	text, err := h.carrierTextForSuggestion(c.Request().Context(), scope, carrier)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if len([]rune(text)) < 10 {
+		return response.FailWith(c, response.BadRequest, "载体文本过短，无法预估 AI 建议成本")
+	}
+
+	truncated := truncateRunes(text, maxChars)
+	var aiOut atlasClaimExtractionCostPreviewResponse
+	if err := h.callAtlasAI(c, "/v1/atlas/claims/preview", carrierSuggestionPreviewAIPayload(truncated, maxCandidates, &req), &aiOut); err != nil {
+		return response.FailWith(c, response.InternalError, err.Error())
+	}
+	return response.OK(c, atlasdto.CarrierSuggestionCostPreviewResponse{
+		CarrierID:          carrier.ID,
+		ModelID:            aiOut.ModelID,
+		MaxCandidates:      maxCandidates,
+		MaxChars:           maxChars,
+		SourceChars:        len([]rune(text)),
+		TruncatedChars:     len([]rune(truncated)),
+		EstimatedTokensIn:  aiOut.EstimatedTokensIn,
+		EstimatedTokensOut: aiOut.EstimatedTokensOut,
+		EstimatedCostUSD:   aiOut.EstimatedCostUSD,
+		MaxCostUSD:         aiOut.MaxCostUSD,
+		BudgetExceeded:     aiOut.BudgetExceeded,
+		PricingMissing:     aiOut.PricingMissing,
+	})
 }
 
 func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
@@ -702,6 +763,16 @@ type atlasExtractClaimsResponse struct {
 	Attempts   int                     `json:"attempts"`
 }
 
+type atlasClaimExtractionCostPreviewResponse struct {
+	ModelID            string   `json:"model_id"`
+	EstimatedTokensIn  int      `json:"estimated_tokens_in"`
+	EstimatedTokensOut int      `json:"estimated_tokens_out"`
+	EstimatedCostUSD   *float64 `json:"estimated_cost_usd"`
+	MaxCostUSD         *float64 `json:"max_cost_usd"`
+	BudgetExceeded     bool     `json:"budget_exceeded"`
+	PricingMissing     bool     `json:"pricing_missing"`
+}
+
 type atlasAIClaimCandidate struct {
 	ProposedTitle      string   `json:"proposed_title"`
 	ProposedBody       string   `json:"proposed_body"`
@@ -723,6 +794,43 @@ type atlasRelationSuggestionResponse struct {
 	ModelID      string   `json:"model_id"`
 	Structured   bool     `json:"structured"`
 	Attempts     int      `json:"attempts"`
+}
+
+func carrierSuggestionAIPayload(carrierID int64, text string, maxCandidates int, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
+	payload := map[string]any{
+		"carrier_id":     carrierID,
+		"text":           text,
+		"max_candidates": maxCandidates,
+	}
+	if req != nil {
+		payload["model_id"] = req.ModelID
+		if req.MaxCostUSD != nil {
+			payload["max_cost_usd"] = *req.MaxCostUSD
+		}
+	}
+	return payload
+}
+
+func carrierSuggestionPreviewAIPayload(text string, maxCandidates int, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
+	payload := map[string]any{
+		"text":           text,
+		"max_candidates": maxCandidates,
+	}
+	if req != nil {
+		payload["model_id"] = req.ModelID
+		if req.MaxCostUSD != nil {
+			payload["max_cost_usd"] = *req.MaxCostUSD
+		}
+	}
+	return payload
+}
+
+func isAtlasAIBudgetError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "budget exceeded") && strings.Contains(message, "maxcost")
 }
 
 func (h *SuggestionHandler) callAtlasAI(c echo.Context, path string, payload any, out any) error {

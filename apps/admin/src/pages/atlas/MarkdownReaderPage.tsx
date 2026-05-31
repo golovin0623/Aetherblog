@@ -26,7 +26,11 @@ import type {
   AtlasKnowledgePointType,
 } from '@aetherblog/types';
 
-import { atlasService, type AtlasMarkdownSource } from '@/services/atlasService';
+import {
+  ATLAS_CARRIER_SUGGESTION_MAX_COST_USD,
+  atlasService,
+  type AtlasMarkdownSource,
+} from '@/services/atlasService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { buildSelectorsFromDomRange, validateSelectors } from './lib/selectors';
@@ -78,6 +82,11 @@ const KP_STATUS_OPTIONS: Array<{ value: AtlasKnowledgePointStatus; label: string
   { value: 'evergreen', label: 'Evergreen', description: '相对稳定、可长期复用' },
   { value: 'archived', label: 'Archived', description: '暂不参与主图谱' },
 ];
+
+function formatAtlasCostUsd(value?: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '费用未知';
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
+}
 
 const EVIDENCE_ROLE_OPTIONS: Array<{ value: EvidenceRole; label: string; description: string }> = [
   { value: 'evidence', label: '证据', description: '直接支撑该知识点' },
@@ -315,7 +324,22 @@ export default function MarkdownReaderPage() {
     if (!state.carrier) return;
     setGeneratingCarrierSuggestions(true);
     try {
-      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, { maxCandidates: 8 });
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(state.carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, payload);
       const count = res.data?.length ?? 0;
       toast.success(count > 0 ? `已从全文生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
     } catch (err) {

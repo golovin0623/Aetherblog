@@ -20,7 +20,7 @@ import type {
 } from '@aetherblog/types';
 
 import { Skeleton } from '@/components/ui/skeleton';
-import { atlasService } from '@/services/atlasService';
+import { ATLAS_CARRIER_SUGGESTION_MAX_COST_USD, atlasService } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { buildSelectorsFromTextRange, validateSelectors } from './lib/selectors';
 
@@ -49,6 +49,11 @@ const initial: PDFReaderState = {
 };
 
 const PDF_TEXT_LAYER_CONFORMS_TO = 'https://aetherblog.local/atlas/pdf-text-layer';
+
+function formatAtlasCostUsd(value?: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '费用未知';
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
+}
 
 export default function PDFReaderPage() {
   const { carrierId: carrierIdParam } = useParams<{ carrierId: string }>();
@@ -244,7 +249,22 @@ export default function PDFReaderPage() {
     if (!state.carrier) return;
     setGeneratingCarrierSuggestions(true);
     try {
-      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, { maxCandidates: 8 });
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(state.carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, payload);
       const count = res.data?.length ?? 0;
       toast.success(count > 0 ? `已从全文生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
     } catch (err) {

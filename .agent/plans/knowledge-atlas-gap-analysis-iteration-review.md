@@ -17,9 +17,9 @@
 - P1-02/P1-04/P1-08 baseline: Markdown Reader 支持从 annotation 提炼 KP; 新增 `/atlas/kps`; Atlas 已触达页面移除原生 `<select>` 与 spinner, 改用共享 `Select` 与 skeleton。
 - P1-07/P3-06 semantic search baseline: `/atlas/search` 保留 KP/Annotation/Carrier 关键词聚合，同时默认开启 `semantic=true` 语义重排；server-go 通过内部 token 调 ai-service `/v1/atlas/search/semantic`，复用 active-profile Atlas recall，按 scope hydrate KP，并在 AI 不可用时降级为关键词结果。
 - P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过, 并已用显式 live 模型 `gemini-3.1-flash-lite-preview` 跑通非 stub KP/relation 建议质量证据。
-- P2-02 baseline: 新增 `POST /atlas/carriers/:id/suggestions`，可从 Markdown note 或 PDF text layer 的整篇 root text 有界抽取 KP suggestions 入 Inbox；Markdown/PDF Reader 头部新增 `全文 AI 建议` 入口，仍保持“AI 只进建议箱、accept 才入图谱”的硬约束。
+- P2-02/P2-08 baseline: 新增 `POST /atlas/carriers/:id/suggestions` 与 `/suggestions/preview`，可从 Markdown note 或 PDF text layer 的整篇 root text 有界抽取 KP suggestions 入 Inbox；Markdown/PDF Reader 头部新增 `全文 AI 建议` 入口，并在生成前做 per-run cost preview 与 `maxCostUsd` 阈值拦截；仍保持“AI 只进建议箱、accept 才入图谱”的硬约束。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，还不是带后台 job、进度、成本预估和预算阈值的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、以及 carrier 级 AI 建议入口已补成 landing baseline，但生产环境实际回填仍需 release evidence。
+未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、以及 carrier 级 AI 建议入口已补成 landing baseline，但生产环境实际回填仍需 release evidence。
 
 ---
 
@@ -274,12 +274,12 @@ Priority semantics:
 | ID | Item | Fix | Acceptance criteria | Depends |
 | --- | --- | --- | --- | --- |
 | ATLAS-P2-01 | LiteLLM claim extraction（含结构化 wrapper） | 在 `llm_router` 上建 structured-output(pydantic) 校验 + retry wrapper; 替换 `atlas.py` stub 为 task routing + JSON schema | 输出符合 schema; 校验失败自动重试; tokens/cost 记入 suggestion | C-7 wrapper |
-| ATLAS-P2-02 | Batch carrier extraction | **Landing baseline 已落地**: `POST /atlas/carriers/:id/suggestions` 从 Markdown note 或 PDF text layer 的整篇 rootText 有界抽取 KP suggestions 入 Inbox；Reader 页面新增 `全文 AI 建议` 入口 | note/PDF carrier 可批量生成候选 KP，AI 产物仍不直写图谱；后台 job、进度、per-run cost preview、预算阈值仍属完整 P2-02/P2-08 后续 | P2-01 |
+| ATLAS-P2-02 | Batch carrier extraction | **Landing baseline 已落地**: `POST /atlas/carriers/:id/suggestions` 从 Markdown note 或 PDF text layer 的整篇 rootText 有界抽取 KP suggestions 入 Inbox；Reader 页面新增 `全文 AI 建议` 入口 | note/PDF carrier 可批量生成候选 KP，AI 产物仍不直写图谱；后台 job、进度和批量任务调度仍属完整 P2-02 后续 | P2-01 |
 | ATLAS-P2-03 | Relation suggestion | 给新 KP 推荐 top-N 关系候选, 解释 type 和证据 | 新建 KP 后 inbox 出现可用 relation suggestions | P2-01 |
 | ATLAS-P2-04 | KP embedding pipeline | **Landing baseline 已落地**: KP title/body/evidence 写 embedding; `000073` 增加 `embedding_profile_id/model_id/indexed_at` 和 dim bucket HNSW partial index; ai-service 内部 index route + server-go create/update/link/suggestion accept 异步触发; 复用 search profile 抽象 | 新建/更新/接受建议后的 KP 可进入语义召回；历史 KP 仍需 backfill/reindex | — |
 | ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / Markdown carrier note chunks / evidence / relations；无选中 KP 时发送空 scope 触发自动语义召回；(d) `/atlas/search` 复用该 recall path 做 search-page semantic rerank | AetherHub selected/empty Atlas scope 可召回 KP + evidence + relations; 选中 `notes://{id}` Markdown carrier 时可复用 note chunk embedding; 搜索页可语义重排 KP；community/global GraphRAG 后续推进 | P2-04 |
 | ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate; 本 PR 先落地固定语料 gate + explicit-model live gate, 后续继续扩展 prompt/model A/B 样本 | 切模型/改 prompt 前后可比较质量; 当前 gate 已能阻断 stub/无凭证伪通过 | P2-01,P1-12 |
-| ATLAS-P2-08 | Cost budget | 复用 `usage_logger`/`cost_usd`; 接全局价格页; per-run cost preview; 预算阈值告警 | 用户知道批量抽取消耗多少; 超阈值提示 | P2-01 |
+| ATLAS-P2-08 | Cost budget | **Landing baseline 已落地**: ai-service `/v1/atlas/claims/preview` 复用 `usage_logger.estimate_tokens` 与 LlmRouter price context 估算单次 carrier extraction 成本；server-go `/atlas/carriers/:id/suggestions/preview` 返回 Reader 可展示的预算结果；生成请求透传 `maxCostUsd`，超阈值时阻止生成 | 用户在 Reader 生成前可看到本次预估费用；缺少全局价格配置会提示；超阈值不会创建建议 | P2-01 |
 | ATLAS-P2-10 | 数据完整性硬化（NEW） | `proposed_kp_type` 加 CHECK(或 service 校验); `atlas_annotations.carrier_version_id` 加 partial FK index | 非法 kp_type 在 Create 即拒; re-anchor 查询不走 seq scan | — |
 | ATLAS-P2-11 | D2 note_embeddings 策略闭环（NEW） | **Landing baseline 已落地**: `000074` 补 `embedding_dim/model_id/token_count`、profile+chunk 唯一约束与 768/1024/1536/3072 HNSW buckets; ai-service `NoteIndexerService` + `/v1/notes/{id}/index` 写入 active search profile note chunks; server-go note create/update/duplicate/title-summary edits 异步触发; Atlas recall 对 Markdown carrier `notes://{id}` 复用 note chunk context | `note_embeddings` 不再是死表; Atlas 语义召回的数据源、profile、重建策略有测试；历史 notes 回填/重建命令后续补齐 | P2-04 |
 
@@ -431,7 +431,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 | --- | --- | --- | --- |
 | R-1 | 锚定算法仍不完整（`02-...md` 注明; 近期 commit 仍在改 reanchor/空间对齐） | P1-01 内嵌高亮可能漂移/orphan 误判 | 高亮区分 anchored/soft/orphan 三态视觉; 先对 anchored 渲染, soft/orphan 仅侧栏; 把锚定稳定性纳入 P0-08 测试 |
 | R-2 | LLM 抽取质量不稳定 | P1-03/P2-01 产出噪音, accept rate 低 | 结构化 schema + 校验 + 重试; eval harness(P2-07) 卡门槛; 始终人工 accept |
-| R-3 | 批量抽取成本失控 | P2-02 烧 token | P2-08 预算阈值 + per-run preview; 默认小批量 + 后台 job |
+| R-3 | 批量抽取成本失控 | P2-02 烧 token | 已有 Reader preflight cost preview + `maxCostUsd` 阈值拦截；完整后台 job 仍需默认小批量、进度与成本 rollup |
 | R-4 | 图渲染选型反复 | G1-* 返工 | §13 列为显式 Open Decision, S3 前定 |
 | R-5 | source_uri 全局唯一未对齐即开放多用户 | 跨用户碰撞 / 越权 | P0-11 作为 Gate 前置, 未绿不开放非 ADMIN |
 | R-6 | 关系类型四处手工同步漂移 | Go/SQL/TS/Python 校验不一致 | 选定单一来源(建议 TS const 或 SQL)生成其余, 或加跨语言 contract test(见 §13) |

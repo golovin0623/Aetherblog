@@ -33,9 +33,26 @@ type GenerateAnnotationSuggestionsRequest struct {
 
 // GenerateCarrierSuggestionsRequest 从整篇 carrier rootText 生成 KP 建议。
 type GenerateCarrierSuggestionsRequest struct {
-	MaxCandidates int     `json:"maxCandidates,omitempty"`
-	MaxChars      int     `json:"maxChars,omitempty"`
-	ModelID       *string `json:"modelId,omitempty"`
+	MaxCandidates int      `json:"maxCandidates,omitempty"`
+	MaxChars      int      `json:"maxChars,omitempty"`
+	ModelID       *string  `json:"modelId,omitempty"`
+	MaxCostUSD    *float64 `json:"maxCostUsd,omitempty"`
+}
+
+// CarrierSuggestionCostPreviewResponse 从整篇 carrier rootText 生成 KP 建议前的成本预估。
+type CarrierSuggestionCostPreviewResponse struct {
+	CarrierID          int64    `json:"carrierId"`
+	ModelID            string   `json:"modelId"`
+	MaxCandidates      int      `json:"maxCandidates"`
+	MaxChars           int      `json:"maxChars"`
+	SourceChars        int      `json:"sourceChars"`
+	TruncatedChars     int      `json:"truncatedChars"`
+	EstimatedTokensIn  int      `json:"estimatedTokensIn"`
+	EstimatedTokensOut int      `json:"estimatedTokensOut"`
+	EstimatedCostUSD   *float64 `json:"estimatedCostUsd,omitempty"`
+	MaxCostUSD         *float64 `json:"maxCostUsd,omitempty"`
+	BudgetExceeded     bool     `json:"budgetExceeded"`
+	PricingMissing     bool     `json:"pricingMissing"`
 }
 
 // GenerateRelationSuggestionRequest 为两条 KP 生成 relation 建议。

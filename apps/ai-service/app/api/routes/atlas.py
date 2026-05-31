@@ -352,6 +352,7 @@ class ExtractClaimsRequest(BaseModel):
     text: str = Field(..., min_length=10, description="要抽取的全文（Markdown / transcript）")
     max_candidates: int = Field(default=10, ge=1, le=50)
     model_id: Optional[str] = Field(default=None, description="LiteLLM model id，Phase 3 stub 忽略")
+    max_cost_usd: Optional[float] = Field(default=None, ge=0, description="本次抽取的最大美元预算")
 
 
 class ClaimCandidate(BaseModel):
@@ -371,6 +372,25 @@ class ExtractClaimsResponse(BaseModel):
     stub: bool = True
     structured: bool = False
     attempts: int = 0
+
+
+class ClaimExtractionCostPreviewRequest(BaseModel):
+    """预估一次 carrier claim extraction 的 token/cost 与预算命中状态。"""
+
+    text: str = Field(..., min_length=10, description="要抽取的全文（Markdown / transcript）")
+    max_candidates: int = Field(default=10, ge=1, le=50)
+    model_id: Optional[str] = Field(default=None, description="LiteLLM model id")
+    max_cost_usd: Optional[float] = Field(default=None, ge=0, description="本次抽取的最大美元预算")
+
+
+class ClaimExtractionCostPreviewResponse(BaseModel):
+    model_id: str
+    estimated_tokens_in: int
+    estimated_tokens_out: int
+    estimated_cost_usd: float | None = None
+    max_cost_usd: float | None = None
+    budget_exceeded: bool = False
+    pricing_missing: bool = False
 
 
 # 启发式关键词（Phase 3 stub 用，Phase 3 后期换为 LLM 抽取）
@@ -443,10 +463,22 @@ To KP #{to_kp_id}:
 """
 
 
+CLAIM_PREVIEW_OUTPUT_TOKENS_PER_CANDIDATE = 96
+
+
 def _split_chunks(text: str, max_chunks: int) -> list[str]:
     """切句子（Phase 3 stub 简化版，按中文标点 + 空行）。"""
     sentences = re.split(r"[。！？\n]+", text)
     return [s.strip() for s in sentences if len(s.strip()) >= 15][:max_chunks]
+
+
+@router.post("/claims/preview")
+async def preview_claim_extraction(
+    req: ClaimExtractionCostPreviewRequest,
+    llm=Depends(get_llm_router),
+) -> ClaimExtractionCostPreviewResponse:
+    usage_context = await _safe_usage_context(llm, "atlas_claims", None, req.model_id)
+    return _build_claim_extraction_cost_preview(req, usage_context)
 
 
 @router.post("/claims/extract")
@@ -524,6 +556,7 @@ async def _extract_claims_with_structured_llm(
                 custom_prompt=prompt,
                 model_id=req.model_id,
                 user_id=user_id,
+                max_cost_usd=req.max_cost_usd,
             )
             parsed = StructuredClaimsOutput.model_validate(_extract_json_object(raw))
             candidates = _structured_claims_to_candidates(
@@ -537,12 +570,46 @@ async def _extract_claims_with_structured_llm(
                 return candidates, model_id, attempt
             last_error = "empty candidates"
         except Exception as exc:
+            if _is_cost_budget_error(exc):
+                raise HTTPException(status_code=402, detail="budget exceeded: maxCostUsd") from exc
             last_error = str(exc)
             logger.warning(
                 "atlas.claims_structured_parse_failed",
                 extra={"data": {"attempt": attempt, "error": last_error[:300]}},
             )
     return None
+
+
+def _build_claim_extraction_cost_preview(
+    req: ClaimExtractionCostPreviewRequest,
+    usage_context: dict[str, Any],
+) -> ClaimExtractionCostPreviewResponse:
+    rendered_prompt = (
+        CLAIM_EXTRACTION_PROMPT
+        .replace("{content}", req.text)
+        .replace("{max_candidates}", str(req.max_candidates))
+    )
+    tokens_in = estimate_tokens(rendered_prompt)
+    tokens_out = max(1, req.max_candidates) * CLAIM_PREVIEW_OUTPUT_TOKENS_PER_CANDIDATE
+    pricing_missing = _cost_pricing_missing(usage_context)
+    estimated_cost = None
+    if not pricing_missing:
+        estimated_cost = _estimate_cost_usd(
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            usage_context=usage_context,
+        )
+    return ClaimExtractionCostPreviewResponse(
+        model_id=str(usage_context.get("model_id") or usage_context.get("model") or req.model_id or "atlas-llm"),
+        estimated_tokens_in=tokens_in,
+        estimated_tokens_out=tokens_out,
+        estimated_cost_usd=estimated_cost,
+        max_cost_usd=req.max_cost_usd,
+        budget_exceeded=estimated_cost is not None
+        and req.max_cost_usd is not None
+        and estimated_cost > req.max_cost_usd,
+        pricing_missing=pricing_missing,
+    )
 
 
 def _structured_claims_to_candidates(
@@ -844,6 +911,21 @@ def _extract_json_object(text: str) -> Any:
     if start == -1 or end == -1 or end <= start:
         raise ValueError("model output does not contain a JSON object")
     return json.loads(cleaned[start : end + 1])
+
+
+def _cost_pricing_missing(usage_context: dict[str, Any]) -> bool:
+    return _price_missing(usage_context.get("input_cost_per_1m")) or _price_missing(
+        usage_context.get("output_cost_per_1m")
+    )
+
+
+def _price_missing(value: Any) -> bool:
+    return value is None or value == ""
+
+
+def _is_cost_budget_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "budget exceeded" in message and "maxcost" in message
 
 
 def _estimate_cost_usd(
