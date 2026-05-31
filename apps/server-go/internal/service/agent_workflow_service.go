@@ -640,6 +640,15 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 	if err != nil || workflow == nil {
 		return nil, err
 	}
+	// The direct authenticated run path is for authoring/testing your OWN workflow.
+	// FindRunnableWorkflow also matches public workflows, but invoking someone else's
+	// published workflow must go through the slug path (InvokePublished), which
+	// enforces allowedOrigins, rateLimitPerMin, the publication input schema, and the
+	// published-version snapshot. Reject direct runs of non-owned workflows so this
+	// endpoint can't be used to bypass that governance.
+	if workflow.UserID != userID {
+		return nil, fmt.Errorf("workflow is not owned by caller; invoke it through its published endpoint")
+	}
 	return s.createRunForWorkflow(ctx, userID, *workflow, req, defaultPublicationInputSchema(workflow.DefinitionJSON))
 }
 
