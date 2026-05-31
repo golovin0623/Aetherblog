@@ -895,6 +895,14 @@ func (s *AgentWorkflowService) TestNode(ctx context.Context, userID, workflowID 
 	if err != nil || workflow == nil {
 		return nil, err
 	}
+	// Node testing is an authoring affordance for your OWN workflow. Like the direct
+	// run path, FindRunnableWorkflow also matches public workflows; without this check
+	// a non-owner could test a single node of someone else's public workflow and
+	// execute the owner's registered HTTP/tool handler outside the publication
+	// origin/rate/schema controls (the snapshot resolves with the owner's id).
+	if workflow.UserID != userID {
+		return nil, fmt.Errorf("workflow is not owned by caller")
+	}
 	definition := workflow.DefinitionJSON
 	if strings.TrimSpace(req.NodeID) == "" {
 		return nil, fmt.Errorf("nodeId is required")
