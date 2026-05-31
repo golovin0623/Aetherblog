@@ -70,15 +70,16 @@ async def _build_runner(payload: WorkflowExecutionRequest, user_id: int | None, 
         tools["kb_search"] = _kb_search_tool(pool, user_id)
 
     for code, snapshot in tool_snapshots.items():
-        if snapshot.requiresApproval:
-            tools[code] = _approval_required_tool(code)
-            continue
         # Tool nodes always run through _execute_tool (no external-simulation path), so
-        # in a simulated/preview run we must install a side-effect-free stub instead of
-        # the real HTTP handler — otherwise an admin preview would issue real
-        # GET/POST/PATCH requests.
+        # in a simulated/preview run we install a side-effect-free stub. This takes
+        # precedence over the approval gate: a preview should produce a simulated tool
+        # output, not pause the run / create an approval request, and must not issue
+        # real GET/POST/PATCH requests.
         if payload.simulateExternal:
             tools[code] = _simulated_tool(code, snapshot.handlerType)
+            continue
+        if snapshot.requiresApproval:
+            tools[code] = _approval_required_tool(code)
             continue
         if snapshot.handlerType == "http":
             tools[code] = _http_tool(snapshot.handlerConfig, snapshot.timeoutMs)
