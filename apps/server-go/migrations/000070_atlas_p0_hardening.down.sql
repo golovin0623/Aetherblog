@@ -1,4 +1,4 @@
--- rollback 000068: restore the previous global source_uri uniqueness and remove
+-- rollback 000070: restore the previous global source_uri uniqueness and remove
 -- the P0 hardening additions.
 
 DROP INDEX IF EXISTS idx_atlas_anno_carrier_version;

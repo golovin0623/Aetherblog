@@ -1,4 +1,4 @@
--- 000069: Persist extracted Atlas carrier text layers.
+-- 000071: Persist extracted Atlas carrier text layers.
 --
 -- PDF carriers need a stable rootText backing storage_uri instead of keeping
 -- extracted text in atlas_carriers.metadata. The text layer is keyed by
@@ -28,4 +28,3 @@ CREATE INDEX IF NOT EXISTS idx_atlas_carrier_text_layers_carrier
 
 COMMENT ON TABLE atlas_carrier_text_layers IS
     'Atlas extracted rootText artifacts for PDF and future non-markdown carriers. carrier_versions.storage_uri points to storage_uri.';
-
