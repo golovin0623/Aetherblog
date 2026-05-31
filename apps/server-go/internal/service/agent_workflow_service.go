@@ -802,6 +802,13 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 	if err != nil || run == nil {
 		return nil, err
 	}
+	// Resuming a paused run is the human approval decision: transition the pending
+	// approval row(s) to 'approved' so executeWorkflow's gate (HasApprovedDecision)
+	// recognizes this node as approved exactly once and the run can progress past the
+	// governed tool instead of immediately re-pausing.
+	if _, err := s.repo.ApproveResumeDecision(ctx, runID, resumeFromNode, userID); err != nil {
+		return nil, err
+	}
 	workflow, err := s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
 	if err != nil || workflow == nil {
 		return nil, err

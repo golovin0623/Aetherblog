@@ -1028,6 +1028,15 @@ RETURNING
 		return nil, err
 	}
 
+	// An approval-paused run already has node logs persisted by PauseRunForApproval
+	// (sequence 1..N). The final trace starts again at sequence 1, which would hit the
+	// unique (run_id, sequence) index. Replace any existing logs for the run before
+	// inserting the terminal trace so resumed runs can finalize.
+	if len(req.Logs) > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_workflow_node_logs WHERE run_id = $1`, req.RunID); err != nil {
+			return nil, err
+		}
+	}
 	for _, item := range req.Logs {
 		if item.InputJSON == "" {
 			item.InputJSON = "{}"
@@ -1232,6 +1241,28 @@ VALUES ($1, $2, $3, $4::jsonb)`, runID, nodeID, toolCode, payload); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ApproveResumeDecision records the human approval that a resume action represents:
+// it flips the pending agent_workflow_approvals row(s) for the run (optionally
+// scoped to a node) to 'approved'. This is the decision path that
+// HasApprovedDecision later checks, so a resumed approval-gated run can clear its
+// gate exactly once. Returns the number of rows transitioned.
+func (r *AgentWorkflowRepo) ApproveResumeDecision(ctx context.Context, runID int64, nodeID string, decidedBy int64) (int64, error) {
+	query := `
+UPDATE agent_workflow_approvals
+SET status = 'approved', decided_by = $2, decided_at = CURRENT_TIMESTAMP
+WHERE run_id = $1 AND status = 'pending'`
+	args := []any{runID, decidedBy}
+	if strings.TrimSpace(nodeID) != "" {
+		query += ` AND node_id = $3`
+		args = append(args, nodeID)
+	}
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // HasApprovedDecision reports whether the given run/node has a recorded
