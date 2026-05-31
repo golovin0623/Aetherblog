@@ -809,9 +809,20 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 	if _, err := s.repo.ApproveResumeDecision(ctx, runID, resumeFromNode, userID); err != nil {
 		return nil, err
 	}
-	workflow, err := s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
-	if err != nil || workflow == nil {
+	// Resume the definition the run actually paused on: run.Version, resumeFromNode,
+	// and the persisted node logs all refer to that snapshot. Reloading the mutable
+	// current workflow row would execute a newer (possibly edited) definition whose
+	// nodes/tools no longer match the paused run. Fall back to the current row only
+	// when the version snapshot is unavailable.
+	workflow, err := s.repo.FindWorkflowVersionSnapshot(ctx, run.WorkflowID, run.Version)
+	if err != nil {
 		return nil, err
+	}
+	if workflow == nil {
+		workflow, err = s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
+		if err != nil || workflow == nil {
+			return nil, err
+		}
 	}
 	if s.client == nil || s.internalToken == "" {
 		code, category, retryable := classifyWorkflowError("AI workflow executor is not connected")
