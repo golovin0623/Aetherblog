@@ -17,7 +17,7 @@
 - P1-02/P1-04/P1-08 baseline: Markdown Reader 支持从 annotation 提炼 KP; 新增 `/atlas/kps`; Atlas 已触达页面移除原生 `<select>` 与 spinner, 改用共享 `Select` 与 skeleton。
 - P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过, 并已用显式 live 模型 `gemini-3.1-flash-lite-preview` 跑通非 stub KP/relation 建议质量证据。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: GraphRAG/embedding、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、以及更大样本的 prompt/model A/B 与真实用户遥测。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate。
+未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、D2 `note_embeddings` worker、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、历史 KP embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate。
 
 ---
 
@@ -274,8 +274,8 @@ Priority semantics:
 | ATLAS-P2-01 | LiteLLM claim extraction（含结构化 wrapper） | 在 `llm_router` 上建 structured-output(pydantic) 校验 + retry wrapper; 替换 `atlas.py` stub 为 task routing + JSON schema | 输出符合 schema; 校验失败自动重试; tokens/cost 记入 suggestion | C-7 wrapper |
 | ATLAS-P2-02 | Batch carrier extraction | 对 note/post/PDF 批量生成 KP suggestions, 后台 job + 进度 | 大文档异步抽取, 不阻塞 UI | P2-01 |
 | ATLAS-P2-03 | Relation suggestion | 给新 KP 推荐 top-N 关系候选, 解释 type 和证据 | 新建 KP 后 inbox 出现可用 relation suggestions | P2-01 |
-| ATLAS-P2-04 | KP embedding pipeline | KP title/body/evidence 写 embedding; 建 HNSW partial index(按 dim 桶, `WHERE deleted=false AND archived=false`); KP SELECT 列接入 embedding; 复用 search profile 抽象 | KP 创建/更新后可语义搜索 | — |
-| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | (a) 复用 `llm_router.embed`+pgvector ANN+profile 做**语义召回**; (b) **新建** relation 邻域召回（recursive CTE 图遍历）, 与语义结果融合 | AetherHub 可召回 KP + evidence + relations | P2-04,P2-11 |
+| ATLAS-P2-04 | KP embedding pipeline | **Landing baseline 已落地**: KP title/body/evidence 写 embedding; `000073` 增加 `embedding_profile_id/model_id/indexed_at` 和 dim bucket HNSW partial index; ai-service 内部 index route + server-go create/update/link/suggestion accept 异步触发; 复用 search profile 抽象 | 新建/更新/接受建议后的 KP 可进入语义召回；历史 KP 仍需 backfill/reindex | — |
+| ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | **Landing baseline 已落地**: (a) 复用 `llm_router.embed`+pgvector ANN+active profile 做 KP 语义召回; (b) 新建 relation 邻域召回（recursive CTE 图遍历）; (c) AetherHub 将最后一条 user message 作为 query, 融合 selected KP / semantic KP / evidence / relations | AetherHub selected Atlas scope 可召回 KP + evidence + relations; empty-scope 自动 GraphRAG、search-page rerank、community/global query 后续推进 | P2-04 |
 | ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate; 本 PR 先落地固定语料 gate + explicit-model live gate, 后续继续扩展 prompt/model A/B 样本 | 切模型/改 prompt 前后可比较质量; 当前 gate 已能阻断 stub/无凭证伪通过 | P2-01,P1-12 |
 | ATLAS-P2-08 | Cost budget | 复用 `usage_logger`/`cost_usd`; 接全局价格页; per-run cost preview; 预算阈值告警 | 用户知道批量抽取消耗多少; 超阈值提示 | P2-01 |
 | ATLAS-P2-10 | 数据完整性硬化（NEW） | `proposed_kp_type` 加 CHECK(或 service 校验); `atlas_annotations.carrier_version_id` 加 partial FK index | 非法 kp_type 在 Create 即拒; re-anchor 查询不走 seq scan | — |
@@ -351,7 +351,7 @@ Duration: 2-4 周。
 
 ### Sprint 3: Graph Search And AetherHub Integration
 Duration: 3-5 周。
-- ATLAS-P2-04 KP embedding · P2-05 atlas recall(语义+图邻域) · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索 · P1-09 AetherHub Atlas scope · G1-02 zoom/pan/minimap · G1-03 inspector · G1-04 filters · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
+- ATLAS-P2-04 KP embedding baseline · P2-05 selected-scope atlas recall baseline · P2-11 D2 note_embeddings 策略闭环 · P1-07 全局搜索语义 rerank · P1-09 empty-scope AetherHub Atlas recall · G1-02 zoom/pan/minimap · G1-03 inspector · G1-04 filters · G1-05 layout persistence · G1-06 health metrics · P1-10 使用手册。
 - Exit: 能对某 KP/子图/carrier 提问, 回答带 evidence citation 和跳转; 图谱可交互、可治理、布局稳定。
 
 ### Sprint 4: Multimodal And Publishing
@@ -395,7 +395,8 @@ P0-04 ─▶ G1-01 ─▶ G1-02 ─▶ {G1-03,G1-04,G1-05}
 P0-05 ─▶ P0-06 ─▶ P1-03 ─▶ (质量) P2-01
 P0-07 ─▶ P1-06 ; P0-07 ─▶ P1-09(evidence 引用)
 P2-01(+structured wrapper) ─▶ {P2-02,P2-03,P2-07,P2-08}
-P2-04 embedding ─▶ P2-11(D2 embedding 策略) ─▶ P2-05 recall ─▶ {P1-09 语义增强, A3-02 writing, P2-06 community}
+P2-04 KP embedding baseline ─▶ P2-05 selected-scope recall baseline ─▶ {P1-09 语义增强, A3-02 writing}
+P2-11(D2 note embedding 策略) ─▶ {Markdown Carrier/notes 语义数据源, P2-06 community/global query}
 P0-08 测试 ─▶ P0-12 Phase Gate ledger ─▶ 后续 Phase 进入/回退判断
 P1-12 埋点 ─▶ §11 指标可计算
 ```
@@ -442,7 +443,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 
 1. **图渲染库**: 自建 viewport transform vs 引入 React Flow / Sigma.js / Cytoscape（影响 G1-02..05 工作量与包体积）。
 2. **Carrier 归属语义**: carrier 是“每用户私有”还是“跨用户共享、标注按 author 私有”? 直接决定 P0-11 的 `source_uri` 方案。
-3. **KP embedding profile**: 复用现有 search profile, 还是为 Atlas 建独立 `atlas_embedding_profiles`(模型/维度)?
+3. **KP embedding profile**: 本 PR baseline 已决策为复用现有 `search_profiles`，并在 KP 行记录 `embedding_profile_id/model_id/indexed_at`；只有当 Atlas 需要独立重建节奏或独立模型治理时再评估 `atlas_embedding_profiles`。
 4. **关系类型单一来源**: 选 TS const / SQL / 还是独立 schema 文件做生成源? 决定 R-6 落地方式。
 5. **是否永不引入图数据库**: 维持 Postgres 邻接表(recursive CTE)上限是多少节点/深度? 触及上限时的退路。
 6. **多用户开放时间点**: Multi-user Gate 何时开? 影响 P0-03/11 与 A3-03/04 的排期紧迫度。
@@ -462,7 +463,7 @@ P1-12 埋点 ─▶ §11 指标可计算
 - **结构化抽取需要 wrapper（更正 C-7）**: `llm_router` 不含 schema 校验 + 重试; P2-01 必须先建该 wrapper, 它同时服务 P2-03。
 - **community/Leiden 后移（更正 C-6）**: 非 Postgres 原生, 需 Python worker 把图载入内存; 与“暂不做 community 工作负载”一致 —— 归 Backlog, 近期 global query 用 degree/hub 主题分组 + 预计算邻域。
 - **关系类型单一来源**: 当前 Go/SQL/TS/Python 四处值一致但手工同步; 用生成或 contract test 固化（§13 决策 4）。
-- **D2 不可继续悬空**: `note_embeddings` 表和 notes AI UI 已存在; Atlas retrieval 若绕过它, 必须把 D2 决策正式反转并写回策划书, 否则就补 worker 并接入 Markdown Carrier。
+- **D2 不可继续悬空**: 当前 landing baseline 是 KP-only embedding + Atlas selected-scope semantic recall；`note_embeddings` 表和 notes AI UI 仍未形成 worker 闭环。后续必须恢复 note embedding worker 并让 Markdown Carrier 复用，或正式反转 D2 并写回策划书。
 - **图渲染**: 小 smoke 用现有 SVG MVP 可接受; 交互密集的长期探索建议用成熟渲染器（§13 决策 1）。
 - **红线合规**: 任何 Atlas UI 工作遵守 CLAUDE.md —— 无 spinner(用骨架屏)、不发明颜色、用共享 Select/Modal、`pnpm design-system:check` 保持 0 error; 新增 API/migration 同步 `docs/architecture.md` + `.claude/docs/`。
 

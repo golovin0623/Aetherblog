@@ -70,6 +70,8 @@ class AgentAtlasScope(BaseModel):
     carrierIds: list[int] | None = Field(default=None, max_length=6)
     neighborhoodDepth: int = Field(default=1, ge=0, le=2)
     includeEvidence: bool = True
+    semanticRecall: bool = True
+    semanticLimit: int = Field(default=8, ge=0, le=12)
 
 
 class AgentChatRequest(BaseModel):
@@ -739,148 +741,46 @@ async def _build_atlas_context_for_chat(
     *,
     atlas_scope: AgentAtlasScope | None,
     user_id: int | None,
+    llm_router=None,
+    messages: list[AgentChatMessage] | None = None,
 ) -> str | None:
     """Build an Aether Atlas context block for Agent chat.
 
-    This is the first AetherHub integration layer: it reads selected KPs, one-hop
-    relations, and evidence quotes. It deliberately scopes all reads by the
-    forwarded user id and does not perform embedding/GraphRAG recall yet.
+    It reads selected KPs/carriers, optionally expands with semantic KP recall
+    from the last user message, then adds relation-neighborhood and evidence
+    context. All reads remain scoped by the forwarded user id.
     """
     if atlas_scope is None or user_id is None:
         return None
+
     kp_ids = _dedupe_positive_ints(atlas_scope.kpIds, 12)
     carrier_ids = _dedupe_positive_ints(atlas_scope.carrierIds, 6)
-    if not kp_ids and not carrier_ids:
+    query = ""
+    for message in reversed(messages or []):
+        if message.role == "user":
+            query = (message.content or "").strip()
+            break
+    if not kp_ids and not carrier_ids and (not atlas_scope.semanticRecall or not query):
         return None
 
     try:
-        async with pool.acquire() as conn:
-            if carrier_ids:
-                carrier_kp_rows = await conn.fetch(
-                    """
-                    SELECT DISTINCT l.kp_id
-                    FROM atlas_annotation_kp_links l
-                    JOIN atlas_annotations a ON a.id = l.annotation_id
-                    JOIN atlas_carriers c ON c.id = a.carrier_id
-                    WHERE a.deleted = FALSE
-                      AND c.deleted = FALSE
-                      AND a.carrier_id = ANY($1::bigint[])
-                      AND (a.author_id = $2 OR a.author_id IS NULL)
-                      AND (c.owner_id = $2 OR c.owner_id IS NULL)
-                    LIMIT 12
-                    """,
-                    carrier_ids,
-                    user_id,
-                )
-                kp_ids = _dedupe_positive_ints(
-                    [*kp_ids, *[int(r["kp_id"]) for r in carrier_kp_rows]],
-                    12,
-                )
-            if not kp_ids:
-                return None
+        from app.services.atlas_recall import recall_atlas_context, render_atlas_context
 
-            kp_rows = await conn.fetch(
-                """
-                SELECT id, title, body_markdown, type, status, confidence, provenance
-                FROM atlas_knowledge_points
-                WHERE deleted = FALSE
-                  AND id = ANY($1::bigint[])
-                  AND (author_id = $2 OR author_id IS NULL)
-                ORDER BY updated_at DESC
-                LIMIT 12
-                """,
-                kp_ids,
-                user_id,
-            )
-            live_kp_ids = [int(r["id"]) for r in kp_rows]
-            if not live_kp_ids:
-                return None
-
-            relation_rows = []
-            if atlas_scope.neighborhoodDepth > 0:
-                relation_rows = await conn.fetch(
-                    """
-                    SELECT id, from_kp_id, to_kp_id, type, strength, body_markdown
-                    FROM atlas_typed_relations
-                    WHERE deleted = FALSE
-                      AND (from_kp_id = ANY($1::bigint[]) OR to_kp_id = ANY($1::bigint[]))
-                      AND (author_id = $2 OR author_id IS NULL)
-                    ORDER BY strength DESC, updated_at DESC
-                    LIMIT 32
-                    """,
-                    live_kp_ids,
-                    user_id,
-                )
-
-            evidence_rows = []
-            if atlas_scope.includeEvidence:
-                evidence_rows = await conn.fetch(
-                    """
-                    SELECT l.kp_id, l.role, a.id AS annotation_id, a.body_text, a.anchor_state,
-                           c.title AS carrier_title, c.source_uri
-                    FROM atlas_annotation_kp_links l
-                    JOIN atlas_annotations a ON a.id = l.annotation_id
-                    LEFT JOIN atlas_carriers c ON c.id = a.carrier_id
-                    WHERE l.kp_id = ANY($1::bigint[])
-                      AND a.deleted = FALSE
-                      AND (a.author_id = $2 OR a.author_id IS NULL)
-                    ORDER BY a.updated_at DESC
-                    LIMIT 24
-                    """,
-                    live_kp_ids,
-                    user_id,
-                )
+        context = await recall_atlas_context(
+            pool,
+            llm_router,
+            user_id=user_id,
+            query=query,
+            kp_ids=kp_ids,
+            carrier_ids=carrier_ids,
+            semantic_limit=atlas_scope.semanticLimit if atlas_scope.semanticRecall else 0,
+            neighborhood_depth=atlas_scope.neighborhoodDepth,
+            include_evidence=atlas_scope.includeEvidence,
+        )
+        return render_atlas_context(context)
     except Exception:
         logger.warning("agent.atlas_context_failed", extra={"data": {"kp_ids": kp_ids}})
         return None
-
-    parts: list[str] = [
-        "# Aether Atlas Context",
-        (
-            "Use this Atlas context as grounded knowledge. When citing it, include "
-            "citations like [KP #id] and [Evidence #annotation_id]. If the answer "
-            "depends on evidence, mention the evidence citation."
-        ),
-        "## Knowledge Points",
-    ]
-    for r in kp_rows:
-        body = (r["body_markdown"] or "").strip()
-        if len(body) > 900:
-            body = body[:900] + "…"
-        parts.append(
-            f"- [KP #{r['id']}] {r['title']} "
-            f"(type={r['type']}, status={r['status']}, confidence={float(r['confidence']):.2f}, provenance={r['provenance']})"
-        )
-        if body:
-            parts.append(f"  Body: {body}")
-
-    if relation_rows:
-        parts.append("## Relations")
-        for r in relation_rows:
-            rationale = (r["body_markdown"] or "").strip()
-            if len(rationale) > 360:
-                rationale = rationale[:360] + "…"
-            line = (
-                f"- [Relation #{r['id']}] KP #{r['from_kp_id']} --{r['type']} "
-                f"({float(r['strength']):.2f})--> KP #{r['to_kp_id']}"
-            )
-            if rationale:
-                line += f"; rationale: {rationale}"
-            parts.append(line)
-
-    if evidence_rows:
-        parts.append("## Evidence")
-        for r in evidence_rows:
-            quote = (r["body_text"] or "").strip()
-            if len(quote) > 500:
-                quote = quote[:500] + "…"
-            source = r["carrier_title"] or r["source_uri"] or "unknown source"
-            parts.append(
-                f"- [Evidence #{r['annotation_id']}] for [KP #{r['kp_id']}] "
-                f"role={r['role']} anchor={r['anchor_state']} source={source}: {quote}"
-            )
-
-    return "\n".join(parts)
 
 
 async def _build_picker_context(
@@ -1403,6 +1303,8 @@ async def agent_chat(
         pool,
         atlas_scope=payload.atlasScope,
         user_id=user_id,
+        llm_router=llm_router,
+        messages=payload.messages,
     )
     if kb_context:
         if context_block:

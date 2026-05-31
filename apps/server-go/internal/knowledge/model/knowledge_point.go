@@ -7,9 +7,9 @@ import "time"
 //
 // UUID 用 string 表示，避免引入 google/uuid 依赖。
 //
-// Phase 2 范围：不读取 embedding / embedding_dim 列（pgvector 需要专用 marshaller，
-// Phase 3 hybrid retrieval 上线时再引入 pgvector-go 并扩字段）。Repo 层 SELECT
-// 全部显式列出字段，跳过 embedding 列。
+// Go 管理侧不读取 embedding / embedding_dim / embedding_profile_id 等向量列；
+// Atlas semantic recall 由 ai-service 直接读写 pgvector，并按 active search profile
+// 过滤。Repo 层 SELECT 全部显式列出字段，跳过 embedding 列。
 type KnowledgePoint struct {
 	ID             int64     `db:"id"`
 	UUID           string    `db:"uuid"`

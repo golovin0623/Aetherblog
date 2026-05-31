@@ -11,9 +11,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -33,11 +35,48 @@ var (
 type KnowledgePointService struct {
 	kp        *repository.KPRepo
 	relations *repository.RelationRepo
+	indexer   KPEmbeddingIndexer
 }
 
 // NewKnowledgePointService 创建。
 func NewKnowledgePointService(kp *repository.KPRepo, rel *repository.RelationRepo) *KnowledgePointService {
 	return &KnowledgePointService{kp: kp, relations: rel}
+}
+
+// KPEmbeddingIndexer 是 ai-service Atlas KP embedding 写入器的最小接口。
+type KPEmbeddingIndexer interface {
+	IndexKnowledgePoint(ctx context.Context, kpID int64, userID *int64) (*AtlasIndexResult, error)
+}
+
+// AttachEmbeddingIndexer 注入异步 KP embedding 写入器。
+func (s *KnowledgePointService) AttachEmbeddingIndexer(indexer KPEmbeddingIndexer) {
+	s.indexer = indexer
+}
+
+// ScheduleEmbedding 异步触发 KP embedding 重写。
+func (s *KnowledgePointService) ScheduleEmbedding(ctx context.Context, kpID int64, userID *int64, reason string) {
+	if s == nil || s.indexer == nil || kpID <= 0 {
+		return
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(base, 3*time.Minute)
+		defer cancel()
+		result, err := s.indexer.IndexKnowledgePoint(bg, kpID, userID)
+		if err != nil {
+			log.Warn().Err(err).Int64("kp_id", kpID).Str("reason", reason).Msg("atlas kp embedding index failed")
+			return
+		}
+		log.Info().
+			Int64("kp_id", kpID).
+			Int64("profile_id", result.ProfileID).
+			Int("embedding_dim", result.EmbeddingDim).
+			Str("reason", reason).
+			Msg("atlas kp embedding indexed")
+	}()
 }
 
 // CreateKPInput 是创建 KP 的入参。

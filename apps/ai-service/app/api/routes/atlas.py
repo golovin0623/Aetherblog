@@ -28,8 +28,9 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_llm_router, require_admin_or_internal
+from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
 from app.services.kb_indexer import extract_pdf_text_pages
+from app.services.atlas_recall import upsert_knowledge_point_embedding
 from app.services.usage_logger import estimate_tokens
 
 
@@ -42,6 +43,46 @@ router = APIRouter(
     prefix="/v1/atlas",
     dependencies=[Depends(require_admin_or_internal)],
 )
+
+
+# ============================================================
+# Knowledge Point embedding
+# ============================================================
+
+class IndexKnowledgePointRequest(BaseModel):
+    user_id: int | None = Field(default=None, ge=1)
+
+
+class IndexKnowledgePointResponse(BaseModel):
+    kp_id: int
+    profile_id: int
+    model_id: str
+    embedding_dim: int
+
+
+@router.post("/knowledge-points/{kp_id}/index")
+async def index_knowledge_point(
+    kp_id: int,
+    req: IndexKnowledgePointRequest,
+    llm=Depends(get_llm_router),
+    pool=Depends(get_pg_pool),
+) -> IndexKnowledgePointResponse:
+    if kp_id <= 0:
+        raise HTTPException(status_code=400, detail="kp_id 必须为正整数")
+    result = await upsert_knowledge_point_embedding(
+        pool,
+        llm,
+        kp_id=kp_id,
+        user_id=req.user_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Knowledge Point 不存在或无权索引")
+    return IndexKnowledgePointResponse(
+        kp_id=result.kp_id,
+        profile_id=result.profile_id,
+        model_id=result.model_id,
+        embedding_dim=result.embedding_dim,
+    )
 
 
 # ============================================================

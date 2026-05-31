@@ -112,6 +112,7 @@ func (h *KPHandler) CreateKP(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+	h.kp.ScheduleEmbedding(c.Request().Context(), out.ID, authorID, "create")
 	return response.OK(c, toKPResponse(out))
 }
 
@@ -214,6 +215,7 @@ func (h *KPHandler) UpdateKP(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "知识点不存在")
 	}
+	h.kp.ScheduleEmbedding(c.Request().Context(), out.ID, currentAtlasUserID(c), "update")
 	return response.OK(c, toKPResponse(out))
 }
 
@@ -252,6 +254,7 @@ func (h *KPHandler) LinkAnnotation(c echo.Context) error {
 	if err := h.kp.LinkAnnotation(c.Request().Context(), kpID, req.AnnotationID, req.Role); err != nil {
 		return response.Error(c, err)
 	}
+	h.kp.ScheduleEmbedding(c.Request().Context(), kpID, currentAtlasUserID(c), "link_annotation")
 	recordAtlasActivity(
 		h.activity,
 		c,

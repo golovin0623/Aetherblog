@@ -85,7 +85,7 @@ Use `/admin/atlas/search` for a single keyword search across:
 
 Search respects the same Atlas scope control as the dashboard: non-admin users stay scoped to their own Atlas data, while admin users can choose all accessible records or only their own records.
 
-This is the keyword-search baseline. Semantic Atlas recall and GraphRAG ranking remain future gates.
+This page is still the keyword-search baseline. Semantic Atlas recall is available in the AetherHub handoff when Atlas scope is selected, but `/atlas/search` does not yet rerank results with vectors or GraphRAG.
 
 ## 7. Create Relations
 
@@ -142,10 +142,12 @@ Current available handoff:
 2. Open AetherHub.
 3. In the `Atlas` picker bar, add the KP nodes that should ground the next answer.
 4. Ask the question.
-5. AetherHub sends the selected KP ids as `atlasScope`. The AI service injects the selected KP, one-hop relations, and evidence quotes into the conversation context.
-6. Answers should cite Atlas context with `[KP #id]` and `[Evidence #annotation_id]` markers.
+5. AetherHub sends the selected KP ids as `atlasScope` with semantic recall enabled.
+6. The AI service uses the last user message as the recall query, then merges selected KPs, active-profile semantic KP hits, relation-neighborhood rows, and evidence quotes into the conversation context.
+7. New or updated KPs are indexed asynchronously after create, update, evidence link, or accepting a KP suggestion. Very recent edits may need the background indexing call to finish before they appear in semantic recall.
+8. Answers should cite Atlas context with `[KP #id]` and `[Evidence #annotation_id]` markers.
 
-This is a selected-scope baseline, not full semantic GraphRAG. Automatic Atlas recall from arbitrary questions still depends on the future embedding and graph-neighborhood recall gates.
+This is a selected-scope semantic baseline, not full automatic GraphRAG. Empty-scope Atlas recall from arbitrary questions, search-page semantic rerank, community/global graph query, historical KP backfill, and the D2 `note_embeddings` worker remain future gates.
 
 ## 11. Release Checklist
 

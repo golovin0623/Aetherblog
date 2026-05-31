@@ -194,6 +194,9 @@ func (h *SuggestionHandler) Accept(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "建议不存在")
 	}
+	if out.ResolvedKPID != nil {
+		h.kp.ScheduleEmbedding(c.Request().Context(), *out.ResolvedKPID, userID, "suggestion_accept")
+	}
 	recordAtlasActivity(
 		h.activity,
 		c,

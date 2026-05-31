@@ -294,6 +294,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasKPRepo := atlasrepo.NewKPRepo(atlasRepo)
 	atlasRelRepo := atlasrepo.NewRelationRepo(atlasRepo)
 	atlasKPSvc := atlassvc.NewKnowledgePointService(atlasKPRepo, atlasRelRepo)
+	atlasKPSvc.AttachEmbeddingIndexer(atlassvc.NewAtlasIndexerClient(aiClient, internalToken))
 	atlasRelSvc := atlassvc.NewRelationService(atlasRelRepo)
 	// Phase 3 新增 AI 建议子域。Accept 走原子 tx (PR #724 review fix)，需要直接 *sqlx.DB。
 	atlasSugRepo := atlasrepo.NewSuggestionRepo(atlasRepo)

@@ -785,6 +785,8 @@ export default function AetherHubWorkspacePage() {
                 kpIds: requestAtlasKps.map((kp) => kp.id),
                 neighborhoodDepth: 1,
                 includeEvidence: true,
+                semanticRecall: true,
+                semanticLimit: 8,
               }
             : null,
       };

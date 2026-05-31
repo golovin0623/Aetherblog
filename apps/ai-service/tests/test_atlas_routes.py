@@ -7,6 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.routes import atlas
+from app.services.atlas_recall import AtlasEmbeddingUpdate
 
 
 class FakeAtlasLlm:
@@ -128,3 +129,42 @@ async def test_extract_pdf_text_rejects_invalid_base64() -> None:
         )
 
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_index_knowledge_point_delegates_to_atlas_recall_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    pool = object()
+    llm = object()
+
+    async def fake_upsert(pool_arg: Any, llm_arg: Any, **kwargs: Any) -> AtlasEmbeddingUpdate:
+        captured["pool"] = pool_arg
+        captured["llm"] = llm_arg
+        captured.update(kwargs)
+        return AtlasEmbeddingUpdate(
+            kp_id=7,
+            profile_id=42,
+            model_id="text-embedding-3-small",
+            embedding_dim=1536,
+        )
+
+    monkeypatch.setattr(atlas, "upsert_knowledge_point_embedding", fake_upsert)
+
+    result = await atlas.index_knowledge_point(
+        7,
+        atlas.IndexKnowledgePointRequest(user_id=9),
+        llm=llm,
+        pool=pool,
+    )
+
+    assert captured == {
+        "pool": pool,
+        "llm": llm,
+        "kp_id": 7,
+        "user_id": 9,
+    }
+    assert result.kp_id == 7
+    assert result.profile_id == 42
+    assert result.embedding_dim == 1536

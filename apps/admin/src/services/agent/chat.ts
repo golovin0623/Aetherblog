@@ -26,6 +26,8 @@ export interface ChatStreamRequest {
     carrierIds?: number[];
     neighborhoodDepth?: number;
     includeEvidence?: boolean;
+    semanticRecall?: boolean;
+    semanticLimit?: number;
   } | null;
 }
 
