@@ -749,9 +749,19 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if !isRetryableRunStatus(run.Status) {
 		return nil, fmt.Errorf("run status %s is not retryable", run.Status)
 	}
-	workflow, err := s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
-	if err != nil || workflow == nil {
+	// Reproduce the definition the original run executed: a retry is linked to that
+	// run (and may resume from its current_node), so loading the mutable current row
+	// would run a newer (possibly edited) definition that no longer matches. Mirror the
+	// resume path — prefer the run's recorded version snapshot, fall back to current.
+	workflow, err := s.repo.FindWorkflowVersionSnapshot(ctx, run.WorkflowID, run.Version)
+	if err != nil {
 		return nil, err
+	}
+	if workflow == nil {
+		workflow, err = s.repo.FindRunnableWorkflow(ctx, userID, run.WorkflowID)
+		if err != nil || workflow == nil {
+			return nil, err
+		}
 	}
 	req := dto.AgentWorkflowRunRequest{
 		Inputs:           json.RawMessage(run.Inputs),
