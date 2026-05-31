@@ -13,11 +13,11 @@
 - P0-03/P0-11: Atlas 读写改为 RBAC + scope middleware, list/get/graph/relation/suggestion/carrier/annotation 执行 author/owner 过滤; `source_uri` 唯一性改为 live per-owner expression index。
 - P0-04/P0-07: Graph edge 查询按节点集和 author scope 收敛; relation evidence 增 repo/service/API, create relation 和 AI relation accept 都能绑定 evidence annotation。
 - P0-05/P0-06/P2-10: KP suggestion 必须绑定 carrier/annotation, create 阶段执行 ignored/pending fingerprint 去重, 并补 proposed KP type 校验与迁移约束。
-- P0-08/P0-12: 新增 Go repo/service/handler 测试、Atlas UI 红线 grep、phase gate ledger; R1 real-PDF corpus gate、R2 live relation-health gate、R4 runtime/build budget gate、R5 admin/multi-user smoke gate 均已有当前证据; 详细证据见 `.agent/plans/knowledge-atlas-phase-gate-ledger.md`。
+- P0-08/P0-12: 新增 Go repo/service/handler 测试、Atlas UI 红线 grep、phase gate ledger; R1 real-PDF corpus gate、R2 live relation-health gate、R3 live non-stub AI quality gate、R4 runtime/build budget gate、R5 admin/multi-user smoke gate 均已有当前证据; 详细证据见 `.agent/plans/knowledge-atlas-phase-gate-ledger.md`。
 - P1-02/P1-04/P1-08 baseline: Markdown Reader 支持从 annotation 提炼 KP; 新增 `/atlas/kps`; Atlas 已触达页面移除原生 `<select>` 与 spinner, 改用共享 `Select` 与 skeleton。
-- P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过。
+- P2-01/P2-07 baseline: Atlas AI claim/relation 结构化 wrapper 已存在; migration `000072` seed `atlas_claims` / `atlas_relations` task types 并继承默认 chat routing; `scripts/atlas/run-ai-quality-live-gate.mjs` 会阻断无可用凭证或回退到 `atlas-stub/heuristic-v1` 的 R3 伪通过, 并已用显式 live 模型 `gemini-3.1-flash-lite-preview` 跑通非 stub KP/relation 建议质量证据。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: R3 真实模型 accept/reject 质量证据、GraphRAG/embedding、公开知识地图、多模态输入和生产部署复跑证据。当前本地 R3 live gate 已证明 task/routing 种子存在, 但没有可用 AI credential, 因而不能把 heuristic fallback 当作 R3 通过。
+未在本 PR 宣称完成的项仍按本文路线图后移: GraphRAG/embedding、公开知识地图、多模态输入、生产部署复跑证据、生产默认 Atlas routing credential 配置、以及更大样本的 prompt/model A/B 与真实用户遥测。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate。
 
 ---
 
@@ -78,7 +78,7 @@
 | 三条铁律: `Annotation ≠ KP`; 9 种 typed relation; AI 不直写图谱 | schema/service 基本守住; suggestion accept 事务也守住 AI 不直写 | 继续作为所有 Sprint 的 invariant, 写入 P0-08 / §14 |
 | R1 锚定召回率 ≥90% 才能稳定进入 KP/图谱层 | Markdown reanchor 有 MVP, 但 PDF A1-1、跨版本 A1-3、综合 A1-4 未被当前代码证据证明 | P0-12 建 gate ledger; P0-08 增 R1 测试语料; P1-01 高亮只对 anchored 结果做强视觉承诺 |
 | R2 关系密度 ≥2, 不达标要回到关系建立 UX | 完成日志曾记录测试数据 `1/4=0.25`, 本文也确认关系 UX 和 evidence 缺口 | P1-06 / G1-06 优先做关系向导、健康指标, 不用 AI 自动补关系掩盖 UX |
-| R3 AI 接受率 <20% 必须砍掉自动建议 | 当前 `atlas.py` 是 stub, 无真实 accept rate | P2-07 eval + P1-12 埋点前, AI 只能是候选建议, 不能作为产品质量承诺 |
+| R3 AI 接受率 <20% 必须砍掉自动建议 | Landing PR 已把 Atlas AI 从纯 stub 提升为结构化 wrapper + explicit-model live gate; 当前本地 R3 live gate KP accept `100%`, relation accept `50%`, schema/grounding/non-stub/token coverage `100%` | AI 仍只能作为候选建议, 不自动写图谱; 生产 release 前复跑 live gate, 并继续用 P1-12 遥测和 P2-07 eval 监控 prompt/model 质量 |
 | R4 性能预算与设计系统 | Atlas 当前仍有 spinner/原生 select; Graph 手写 SVG 只适合小 smoke | P1-08 先修 UI 红线; G1-02 前做渲染库决策和 bundle gate |
 | R5 不破坏 notes / KB / blog | Atlas 将接入 notes、KB、AetherHub、blog publishing, 风险从“模块局部”变成“跨域契约” | P0-08 和 Sprint exit 必须包含 notes/KB/blog smoke, 不只跑 Atlas 单元测试 |
 | D1 保守编辑器路径 | 当前 Reader 复用 Markdown/CodeMirror 路线, 未引入 Yjs | 保持; 若 R1 不达标才重估 Y.RelativePosition/Tiptap |
@@ -95,7 +95,7 @@
 | Phase 0 | 数据骨架与栈决策 | migrations 000062-000063、权限码、决策记录均存在 | 基本通过, 但后续文档要同步 current HEAD 而不是沿用 2026-05-26 快照 |
 | Phase 1 | Markdown/PDF 标注稳定, R1 ≥90% | Markdown 标注与 reanchor MVP 存在; PDF viewer/稳定性、A1-1/A1-3/A1-4/A1-8 未完整证明 | 不可宣称 Phase 1 完整通过; 先补 R1 gate evidence |
 | Phase 2 | KP + typed relation + 可用图谱, R2 ≥2 | KP/relation CRUD 和 Graph MVP 存在; relation evidence API/UI 缺; 真实 R2 未达可判定状态 | 可称“Phase 2 code skeleton/MVP”, 不可称产品闭环完成 |
-| Phase 3 | AI suggestion + hybrid retrieval, R3 质量门 | suggestion inbox/accept/reject 存在; AI 是 stub; hybrid retrieval/真实 accept rate/eval 未完成 | 只能算链路 demo, 不能作为 AI 建图质量承诺 |
+| Phase 3 | AI suggestion + hybrid retrieval, R3 质量门 | suggestion inbox/accept/reject 存在; Atlas claim/relation 已有结构化 wrapper、task seed、固定语料 gate 与 explicit-model live R3 evidence; hybrid retrieval/embedding 仍未完成 | AI suggestion 质量门在本 PR 的 scoped baseline 可判定通过; GraphRAG/hybrid retrieval 仍属于后续阶段 |
 | Phase 4/5 | 多模态、视频/音频、FSRS、激活与发布 | schema 支持载体类型, 但具体 reader/selector/FSRS/公开流程未实现 | 保持后置; 任何公开知识地图前必须先过 Multi-user Gate |
 
 ---
@@ -276,7 +276,7 @@ Priority semantics:
 | ATLAS-P2-03 | Relation suggestion | 给新 KP 推荐 top-N 关系候选, 解释 type 和证据 | 新建 KP 后 inbox 出现可用 relation suggestions | P2-01 |
 | ATLAS-P2-04 | KP embedding pipeline | KP title/body/evidence 写 embedding; 建 HNSW partial index(按 dim 桶, `WHERE deleted=false AND archived=false`); KP SELECT 列接入 embedding; 复用 search profile 抽象 | KP 创建/更新后可语义搜索 | — |
 | ATLAS-P2-05 | Atlas recall（语义复用 + 图邻域新建, 更正 C-5） | (a) 复用 `llm_router.embed`+pgvector ANN+profile 做**语义召回**; (b) **新建** relation 邻域召回（recursive CTE 图遍历）, 与语义结果融合 | AetherHub 可召回 KP + evidence + relations | P2-04,P2-11 |
-| ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate | 切模型/改 prompt 前后可比较质量 | P2-01,P1-12 |
+| ATLAS-P2-07 | Eval harness | 建 claim/relation 建议评测集, 指标 precision/recall/NDCG/human accept rate; 本 PR 先落地固定语料 gate + explicit-model live gate, 后续继续扩展 prompt/model A/B 样本 | 切模型/改 prompt 前后可比较质量; 当前 gate 已能阻断 stub/无凭证伪通过 | P2-01,P1-12 |
 | ATLAS-P2-08 | Cost budget | 复用 `usage_logger`/`cost_usd`; 接全局价格页; per-run cost preview; 预算阈值告警 | 用户知道批量抽取消耗多少; 超阈值提示 | P2-01 |
 | ATLAS-P2-10 | 数据完整性硬化（NEW） | `proposed_kp_type` 加 CHECK(或 service 校验); `atlas_annotations.carrier_version_id` 加 partial FK index | 非法 kp_type 在 Create 即拒; re-anchor 查询不走 seq scan | — |
 | ATLAS-P2-11 | D2 note_embeddings 策略闭环（NEW） | 按策划书 D2 补 note embedding worker 并让 Markdown Carrier / Atlas recall 可复用, 或正式反转 D2 为 KP-only embedding 并更新 `task-knowledge-decisions.md` | `note_embeddings` 不再是死表; Atlas 语义召回的数据源、profile、重建策略有单一说明和测试 | P2-04 |
@@ -347,7 +347,7 @@ Duration: 1.5-2 周。
 ### Sprint 2: Real AI Suggestion Pipeline
 Duration: 2-4 周。
 - ATLAS-P2-01 结构化抽取(含 wrapper) · P1-03 annotation→AI suggestion · P2-03 relation suggestion · P2-02 批量抽取 · P2-07 eval harness · P2-08 cost budget。
-- Exit: AI 建议有 schema 校验、质量指标、成本与去重; accept rate 可作为产品指标。
+- Exit: AI 建议有 schema 校验、质量指标、成本与去重; accept rate 可作为产品指标。当前 landing PR 已完成 schema/quality/live accept-rate 的 gate baseline, 批量抽取、成本预览和更大样本 prompt/model A/B 仍按后续路线图推进。
 
 ### Sprint 3: Graph Search And AetherHub Integration
 Duration: 3-5 周。
