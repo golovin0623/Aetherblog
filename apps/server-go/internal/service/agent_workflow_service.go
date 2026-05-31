@@ -1902,14 +1902,14 @@ func (s *AgentWorkflowService) enforcePublicationRateLimit(ctx context.Context, 
 	}
 	since := time.Now().Add(-time.Minute)
 	if s.repo != nil {
-		count, err := s.repo.CountRecentPublicationInvocations(ctx, publication.ID, key, since)
+		// Atomic count+insert so concurrent invokes cannot both pass a low limit.
+		allowed, err := s.repo.TryRecordPublicationInvocation(ctx, publication.ID, &userID, key, publication.RateLimitPerMin, since)
 		if err != nil {
 			return err
 		}
-		if count >= publication.RateLimitPerMin {
+		if !allowed {
 			return fmt.Errorf("publication rate limit exceeded")
 		}
-		_ = s.repo.RecordPublicationInvocation(ctx, publication.ID, &userID, key)
 		return nil
 	}
 	s.rateMu.Lock()

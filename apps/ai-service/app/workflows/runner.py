@@ -260,11 +260,11 @@ class WorkflowRunner:
         if node.type == "loop":
             return self._execute_loop(node, context)
         if node.type == "llm":
-            return await self._execute_external(node, context, self.llm_executor, simulate_external)
+            return await self._execute_external(node, context, self.llm_executor, simulate_external, node_input)
         if node.type == "agent":
-            return await self._execute_external(node, context, self.agent_executor, simulate_external)
+            return await self._execute_external(node, context, self.agent_executor, simulate_external, node_input)
         if node.type == "code":
-            return await self._execute_external(node, context, self.code_executor, simulate_external)
+            return await self._execute_external(node, context, self.code_executor, simulate_external, node_input)
         raise WorkflowExecutionError(f"unsupported node type {node.type}")
 
     async def _execute_tool(self, node: WorkflowNode, context: dict[str, Any]) -> Any:
@@ -336,6 +336,7 @@ class WorkflowRunner:
         context: dict[str, Any],
         executor: ExternalExecutor | None,
         simulate_external: bool,
+        node_input: Any = None,
     ) -> Any:
         if simulate_external:
             payload: dict[str, Any] = {
@@ -352,7 +353,11 @@ class WorkflowRunner:
                 payload.update({"result": None})
             return payload
         if executor is not None:
-            result = executor(node, context)
+            # Expose the computed upstream input so llm/agent executors can default
+            # their `source` to the value flowing in along the edge (e.g. a loaded /
+            # extracted article), instead of falling back to the whole workflow inputs.
+            exec_context = {**context, "__node_input": node_input}
+            result = executor(node, exec_context)
             if hasattr(result, "__await__"):
                 return await result
             return result

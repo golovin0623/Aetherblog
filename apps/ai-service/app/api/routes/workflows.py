@@ -284,11 +284,26 @@ def _http_tool(config: dict[str, Any], timeout_ms: int | None):
     return tool
 
 
+def _resolve_node_source(node: WorkflowNode, context: dict[str, Any]) -> Any:
+    # Honor an explicit `source` template when configured. Otherwise default to the
+    # value flowing in along the incoming edge (the upstream node output the runner
+    # passed via __node_input) so an llm/agent node wired after a tool/extractor sees
+    # the loaded/extracted content, not just the raw workflow inputs. Fall back to the
+    # whole inputs only when there is genuinely no upstream value.
+    explicit = node.data.get("source")
+    if explicit is not None:
+        return resolve_template(explicit, context)
+    node_input = context.get("__node_input")
+    if node_input is not None:
+        return node_input
+    return context.get("inputs", {})
+
+
 def _llm_executor(llm_router: LlmRouter | None, user_id: int | None, budget: _WorkflowRunBudget):
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
             raise WorkflowExecutionError("llm executor is not connected")
-        source = resolve_template(node.data.get("source", "{{ inputs }}"), context)
+        source = _resolve_node_source(node, context)
         prompt = str(node.data.get("prompt") or node.data.get("systemPrompt") or "请基于输入完成任务。")
         model_id = str(node.data.get("modelId") or node.data.get("model") or "") or None
         provider_code = str(node.data.get("providerCode") or "") or None
@@ -318,7 +333,7 @@ def _agent_executor(
     async def executor(node: WorkflowNode, context: dict[str, Any]) -> dict[str, Any]:
         if llm_router is None:
             raise WorkflowExecutionError("agent executor is not connected")
-        source = resolve_template(node.data.get("source", "{{ inputs }}"), context)
+        source = _resolve_node_source(node, context)
         allowed = node.data.get("allowedTools") or node.data.get("allowed_tools") or []
         if not isinstance(allowed, list):
             allowed = []

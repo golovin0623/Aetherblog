@@ -1743,6 +1743,48 @@ VALUES ($1, $2, $3)`, publicationID, userID, clientKey)
 	return err
 }
 
+// TryRecordPublicationInvocation atomically enforces the per-minute rate limit:
+// it counts recent invocations and records the new one in a single transaction so
+// concurrent invokes cannot both pass a low limit (e.g. 1/min). It returns true
+// when the invocation was allowed and recorded, false when the limit is exceeded.
+func (r *AgentWorkflowRepo) TryRecordPublicationInvocation(ctx context.Context, publicationID int64, userID *int64, clientKey string, limit int, since time.Time) (bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	// Serialize concurrent invokes for the same publication+key via an advisory lock
+	// so the count-then-insert window cannot interleave.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+		fmt.Sprintf("agent_pub_invoke:%d:%s", publicationID, clientKey)); err != nil {
+		return false, err
+	}
+	var count int
+	if err := tx.GetContext(ctx, &count, `
+SELECT COUNT(*)
+FROM agent_publication_invocations
+WHERE publication_id = $1
+  AND client_key = $2
+  AND invoked_at >= $3`, publicationID, clientKey, since); err != nil {
+		return false, err
+	}
+	if count >= limit {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO agent_publication_invocations (publication_id, user_id, client_key)
+VALUES ($1, $2, $3)`, publicationID, userID, clientKey); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *AgentWorkflowRepo) CountRecentPublicationInvocations(ctx context.Context, publicationID int64, clientKey string, since time.Time) (int, error) {
 	var count int
 	err := r.db.GetContext(ctx, &count, `
