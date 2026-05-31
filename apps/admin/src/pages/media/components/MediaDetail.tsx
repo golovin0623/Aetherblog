@@ -115,6 +115,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [ensuringAtlas, setEnsuringAtlas] = useState(false);
   const [openingAtlas, setOpeningAtlas] = useState(false);
   const [generatingAtlas, setGeneratingAtlas] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState('');
+  const [transcriptCarrierId, setTranscriptCarrierId] = useState<number | null>(null);
+  const [savingTranscript, setSavingTranscript] = useState(false);
+  const [openingTranscript, setOpeningTranscript] = useState(false);
+  const [generatingTranscript, setGeneratingTranscript] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
@@ -146,6 +151,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       }
     );
   }, [media, queryClient]);
+
+  useEffect(() => {
+    setTranscriptDraft('');
+    setTranscriptCarrierId(null);
+  }, [initialMedia.id]);
 
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {
@@ -180,6 +190,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     media.mimeType?.toLowerCase() === 'application/pdf' ||
     media.originalName.toLowerCase().endsWith('.pdf')
   );
+  const isTranscriptMedia = media.fileType === 'VIDEO' || media.fileType === 'AUDIO';
 
   const ensureAtlasPDFCarrier = async () => {
     if (!isPDF) return;
@@ -247,6 +258,84 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
       setGeneratingAtlas(false);
     }
   };
+
+  const ensureAtlasTranscriptCarrier = async () => {
+    if (!isTranscriptMedia) return;
+    const transcriptMarkdown = transcriptDraft.trim();
+    if (!transcriptMarkdown) {
+      toast.message('请先填写转录文本');
+      return;
+    }
+    const res = await atlasService.ensureMediaTranscriptCarrier({
+      mediaFileId: media.id,
+      transcriptMarkdown,
+    });
+    setTranscriptCarrierId(res.data.id);
+    return res.data;
+  };
+
+  const handleSaveAtlasTranscript = async () => {
+    if (!isTranscriptMedia) return;
+    setSavingTranscript(true);
+    try {
+      const carrier = await ensureAtlasTranscriptCarrier();
+      if (carrier) {
+        toast.success(`已保存 Atlas 转录：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '保存 Atlas 转录失败'));
+    } finally {
+      setSavingTranscript(false);
+    }
+  };
+
+  const handleOpenAtlasTranscript = async () => {
+    if (!isTranscriptMedia) return;
+    setOpeningTranscript(true);
+    try {
+      const carrier = transcriptCarrierId ? { id: transcriptCarrierId } : await ensureAtlasTranscriptCarrier();
+      if (carrier) {
+        navigate(`/atlas/reader/transcript/${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas 转录 Reader 失败'));
+    } finally {
+      setOpeningTranscript(false);
+    }
+  };
+
+  const handleGenerateAtlasTranscriptSuggestions = async () => {
+    if (!isTranscriptMedia) return;
+    setGeneratingTranscript(true);
+    try {
+      const carrier = await ensureAtlasTranscriptCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从转录全文生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 转录知识点失败'));
+    } finally {
+      setGeneratingTranscript(false);
+    }
+  };
+
+  const transcriptBusy = savingTranscript || openingTranscript || generatingTranscript;
 
   const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [
     { id: 'info', label: '详情', icon: FileText },
@@ -462,6 +551,50 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       {generatingAtlas ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isTranscriptMedia && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas Transcript</p>
+                  </div>
+                  <textarea
+                    value={transcriptDraft}
+                    onChange={(event) => setTranscriptDraft(event.target.value)}
+                    placeholder="[00:12] Transcript"
+                    rows={6}
+                    className="min-h-[132px] w-full resize-y rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 py-2 font-mono text-xs leading-5 text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus:outline-none"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAtlasTranscript()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {savingTranscript ? '保存中' : '保存转录'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasTranscript()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingTranscript ? '打开中' : '查看转录'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasTranscriptSuggestions()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingTranscript ? '生成中' : '抽取知识点'}
                     </button>
                   </div>
                 </div>

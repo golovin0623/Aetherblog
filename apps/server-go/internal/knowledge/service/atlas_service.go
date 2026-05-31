@@ -12,12 +12,13 @@ import (
 
 // AtlasService 聚合 Atlas 子域的业务编排入口。
 type AtlasService struct {
-	repo      *repository.AtlasRepo
-	carriers  *repository.CarrierRepo
-	markdown  *MarkdownCarrierService
-	pdf       *PdfCarrierService
-	blogPosts *BlogPostCarrierService
-	webClips  *WebClipCarrierService
+	repo        *repository.AtlasRepo
+	carriers    *repository.CarrierRepo
+	markdown    *MarkdownCarrierService
+	pdf         *PdfCarrierService
+	blogPosts   *BlogPostCarrierService
+	webClips    *WebClipCarrierService
+	transcripts *TranscriptCarrierService
 }
 
 // NewAtlasService 创建 AtlasService。
@@ -72,6 +73,16 @@ func (s *AtlasService) AttachWebClips(webClips *WebClipCarrierService) {
 // WebClips 返回 Web clip 子服务（URL snapshot -> carrier）。
 func (s *AtlasService) WebClips() *WebClipCarrierService {
 	return s.webClips
+}
+
+// AttachTranscriptMedia injects the video/audio transcript carrier service.
+func (s *AtlasService) AttachTranscriptMedia(transcripts *TranscriptCarrierService) {
+	s.transcripts = transcripts
+}
+
+// TranscriptMedia 返回视频/音频转录载体子服务。
+func (s *AtlasService) TranscriptMedia() *TranscriptCarrierService {
+	return s.transcripts
 }
 
 // Carriers 返回 CarrierRepo（CRUD）。Phase 1+ 由 handler 调。

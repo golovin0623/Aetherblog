@@ -116,6 +116,13 @@ export const atlasService = {
   }): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/web`, payload),
 
+  ensureMediaTranscriptCarrier: (payload: {
+    mediaFileId: number;
+    transcriptMarkdown: string;
+    language?: string | null;
+  }): Promise<R<AtlasCarrier>> =>
+    api.post(`${base}/carriers/media-transcript`, payload),
+
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
 
   getCarrierTextLayer: (carrierId: number): Promise<R<AtlasCarrierTextLayer>> =>

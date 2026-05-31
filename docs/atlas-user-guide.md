@@ -48,7 +48,14 @@ PDF files can also enter Atlas from the media library detail panel:
 - `查看标注` opens the PDF Reader for that carrier.
 - `抽取知识点` previews the carrier-level AI run cost and then creates pending KP suggestions in the Atlas Inbox when the run stays within budget.
 
-This media-library path currently covers uploaded PDFs. Video/audio transcript carriers, image-specific extraction, and batch media workflows remain later multimodal work.
+Video and audio files can enter Atlas through a manual transcript baseline from the media detail panel:
+
+- Paste a transcript into the `Atlas Transcript` panel. Timestamp markers such as `[00:12]` or `[01:02:03]` are preserved as the primary text layer.
+- `保存转录` creates or updates a `video` or `audio` carrier for the uploaded media file.
+- `查看转录` opens `/admin/atlas/reader/transcript/<carrierId>`, where transcript text can be annotated and evidence links can jump back to the media URL with a `#t=<seconds>` fragment when a nearby timestamp is present.
+- `抽取知识点` uses the same carrier-level cost preview and pending KP suggestion pipeline as PDF, Markdown, Web, and Blog Post carriers.
+
+This media-library path currently covers uploaded PDF files plus manually supplied video/audio transcripts. Automatic speech-to-text ingestion, image-specific extraction, and richer batch media workflows remain later multimodal work.
 
 ## 4. Annotation To Knowledge Point
 
@@ -144,6 +151,7 @@ How to generate suggestions:
 
 - From a Markdown or PDF Reader header, click `全文 AI 建议`. Atlas first previews the run cost against the per-run budget, then sends a bounded slice of the current carrier root text through the AI service and creates carrier-bound pending KP suggestions in the Inbox. If the estimate exceeds the threshold, generation is cancelled before any suggestion is created.
 - From a PDF media detail panel, click `抽取知识点`. The media action first ensures the uploaded PDF has an Atlas carrier, then uses the same preflight budget and carrier-level suggestion pipeline as the PDF Reader.
+- From a video or audio media detail panel, paste a transcript and click `抽取知识点`. The media action first saves or reuses the transcript carrier, then runs the same preflight budget and carrier-level suggestion pipeline.
 - From the AI Writing workspace for an existing post, open the Atlas Reader action to annotate the saved post text layer, or click the Atlas suggestion action to wrap the draft/published post as a `blog_post` carrier, preview the run cost, and create pending KP suggestions.
 - From the Reader annotation list, click `AI 建议` on an annotation. Atlas sends the selected evidence text through the AI service and creates pending KP suggestions.
 - From a KP detail page, select a target KP in the relation form and click the `AI` action. Atlas asks the AI service for one typed relation suggestion and places it in the Inbox.

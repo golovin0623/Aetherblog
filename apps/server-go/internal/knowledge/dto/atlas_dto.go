@@ -68,6 +68,13 @@ type EnsureWebCarrierRequest struct {
 	Language        *string `json:"language,omitempty"`
 }
 
+// EnsureMediaTranscriptCarrierRequest 是 POST /atlas/carriers/media-transcript 的请求体。
+type EnsureMediaTranscriptCarrierRequest struct {
+	MediaFileID        int64   `json:"mediaFileId" validate:"required,gt=0"`
+	TranscriptMarkdown string  `json:"transcriptMarkdown" validate:"required"`
+	Language           *string `json:"language,omitempty"`
+}
+
 // CarrierTextPageResponse 是 PDF 文本层的页级锚定空间。
 type CarrierTextPageResponse struct {
 	Page      int    `json:"page"`

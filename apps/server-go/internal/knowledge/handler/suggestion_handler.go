@@ -613,7 +613,7 @@ func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope 
 			return "", err
 		}
 		return atlassvc.BlogPostText(post), nil
-	case "web":
+	case "web", "video", "audio":
 		if h.atlas == nil || h.atlas.Carriers() == nil {
 			return "", atlasError(response.InternalError, "Atlas carrier 服务未配置")
 		}
@@ -622,7 +622,10 @@ func (h *SuggestionHandler) carrierTextForSuggestion(ctx context.Context, scope 
 			return "", err
 		}
 		if layer == nil || strings.TrimSpace(layer.TextContent) == "" {
-			return "", atlasError(response.BadRequest, "Web clip 文本层不存在，请先保存网页正文快照")
+			if strings.EqualFold(carrier.Type, "web") {
+				return "", atlasError(response.BadRequest, "Web clip 文本层不存在，请先保存网页正文快照")
+			}
+			return "", atlasError(response.BadRequest, "转录文本层不存在，请先保存转录文本")
 		}
 		return strings.TrimSpace(layer.TextContent), nil
 	default:

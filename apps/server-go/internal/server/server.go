@@ -380,6 +380,12 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasPDFMediaReader{media: mediaSvc},
 		atlassvc.NewAIPDFTextExtractor(aiClient, internalToken),
 	))
+	atlasTranscripts := atlassvc.NewTranscriptCarrierService(
+		atlasCarrierRepo,
+		atlasTranscriptMediaReader{media: mediaSvc},
+	)
+	atlasTranscripts.AttachVersioning(atlasVersioning)
+	atlasService.AttachTranscriptMedia(atlasTranscripts)
 	// 批次 2: 注入 folder_permissions 校验依赖,Upload 时拦截越权写入私有文件夹
 	permissionRepo := repository.NewPermissionRepo(s.DB)
 	mediaSvc.SetFolderAccess(folderRepo, permissionRepo)
