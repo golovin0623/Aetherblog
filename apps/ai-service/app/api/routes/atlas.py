@@ -32,6 +32,7 @@ from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
 from app.services.kb_indexer import extract_pdf_text_pages
 from app.services.atlas_recall import upsert_knowledge_point_embedding
 from app.services.usage_logger import estimate_tokens
+from app.services.vector_store import SearchProfile, VectorStoreService
 
 
 logger = logging.getLogger("atlas")
@@ -58,6 +59,110 @@ class IndexKnowledgePointResponse(BaseModel):
     profile_id: int
     model_id: str
     embedding_dim: int
+
+
+class ReindexKnowledgePointsRequest(BaseModel):
+    user_id: int | None = Field(default=None, ge=1)
+    limit: int = Field(default=100, ge=1, le=500)
+    stale_only: bool = True
+
+
+class ReindexEmbeddingError(BaseModel):
+    id: int
+    error: str
+
+
+class ReindexKnowledgePointsResponse(BaseModel):
+    profile_id: int
+    model_id: str
+    selected_count: int
+    succeeded: int
+    failed: int
+    not_found: int
+    errors: list[ReindexEmbeddingError] = Field(default_factory=list)
+
+
+@router.post("/knowledge-points/index-batch")
+async def reindex_knowledge_points(
+    req: ReindexKnowledgePointsRequest,
+    llm=Depends(get_llm_router),
+    pool=Depends(get_pg_pool),
+) -> ReindexKnowledgePointsResponse:
+    """Backfill historical KP embeddings for the active search profile."""
+    profile = await VectorStoreService(pool, llm).get_active_profile()
+    kp_ids = await _fetch_kp_reindex_ids(
+        pool,
+        profile=profile,
+        user_id=req.user_id,
+        limit=req.limit,
+        stale_only=req.stale_only,
+    )
+
+    succeeded = 0
+    failed = 0
+    not_found = 0
+    errors: list[ReindexEmbeddingError] = []
+    for kp_id in kp_ids:
+        try:
+            result = await upsert_knowledge_point_embedding(
+                pool,
+                llm,
+                kp_id=kp_id,
+                user_id=req.user_id,
+                profile=profile,
+            )
+            if result is None:
+                not_found += 1
+            else:
+                succeeded += 1
+        except Exception as exc:
+            failed += 1
+            errors.append(ReindexEmbeddingError(id=kp_id, error=f"{type(exc).__name__}: {str(exc)[:300]}"))
+
+    return ReindexKnowledgePointsResponse(
+        profile_id=profile.id,
+        model_id=profile.model_id,
+        selected_count=len(kp_ids),
+        succeeded=succeeded,
+        failed=failed,
+        not_found=not_found,
+        errors=errors,
+    )
+
+
+async def _fetch_kp_reindex_ids(
+    pool,
+    *,
+    profile: SearchProfile,
+    user_id: int | None,
+    limit: int,
+    stale_only: bool,
+) -> list[int]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT kp.id
+            FROM atlas_knowledge_points kp
+            WHERE kp.deleted = FALSE
+              AND kp.archived = FALSE
+              AND ($1::bigint IS NULL OR kp.author_id = $1 OR kp.author_id IS NULL)
+              AND (
+                $4::boolean = FALSE
+                OR kp.embedding IS NULL
+                OR kp.embedding_dim IS NULL
+                OR kp.embedding_profile_id IS DISTINCT FROM $2
+                OR kp.embedding_model_id IS DISTINCT FROM $3
+              )
+            ORDER BY kp.updated_at DESC, kp.id DESC
+            LIMIT $5
+            """,
+            user_id,
+            profile.id,
+            profile.model_id,
+            stale_only,
+            limit,
+        )
+    return [int(row["id"]) for row in rows]
 
 
 @router.post("/knowledge-points/{kp_id}/index")

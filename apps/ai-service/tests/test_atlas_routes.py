@@ -8,6 +8,8 @@ from fastapi import HTTPException
 
 from app.api.routes import atlas
 from app.services.atlas_recall import AtlasEmbeddingUpdate
+from app.services.vector_store import SearchProfile
+from tests.support import FakeConn, FakePool
 
 
 class FakeAtlasLlm:
@@ -168,3 +170,68 @@ async def test_index_knowledge_point_delegates_to_atlas_recall_service(
     assert result.kp_id == 7
     assert result.profile_id == 42
     assert result.embedding_dim == 1536
+
+
+@pytest.mark.asyncio
+async def test_reindex_knowledge_points_indexes_stale_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = SearchProfile(
+        id=42,
+        code="active-search",
+        name="Active search",
+        description=None,
+        model_id="text-embedding-3-small",
+        chunker_kind="recursive",
+        chunk_size_tokens=512,
+        chunk_overlap_tokens=64,
+        status="active",
+    )
+
+    class FakeVectorStoreService:
+        def __init__(self, pool: Any, llm: Any) -> None:
+            self.pool = pool
+            self.llm = llm
+
+        async def get_active_profile(self) -> SearchProfile:
+            return profile
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        assert "FROM atlas_knowledge_points kp" in sql
+        assert "embedding_profile_id IS DISTINCT FROM $2" in sql
+        assert args == (9, 42, "text-embedding-3-small", True, 2)
+        return [{"id": 7}, {"id": 8}]
+
+    calls: list[dict[str, Any]] = []
+
+    async def fake_upsert(pool_arg: Any, llm_arg: Any, **kwargs: Any) -> AtlasEmbeddingUpdate:
+        calls.append({"pool": pool_arg, "llm": llm_arg, **kwargs})
+        if kwargs["kp_id"] == 8:
+            raise RuntimeError("embedding backend down")
+        return AtlasEmbeddingUpdate(
+            kp_id=kwargs["kp_id"],
+            profile_id=profile.id,
+            model_id=profile.model_id,
+            embedding_dim=1536,
+        )
+
+    monkeypatch.setattr(atlas, "VectorStoreService", FakeVectorStoreService)
+    monkeypatch.setattr(atlas, "upsert_knowledge_point_embedding", fake_upsert)
+    pool = FakePool(FakeConn(fetch=fetch))
+    llm = object()
+
+    result = await atlas.reindex_knowledge_points(
+        atlas.ReindexKnowledgePointsRequest(user_id=9, limit=2, stale_only=True),
+        llm=llm,
+        pool=pool,
+    )
+
+    assert result.profile_id == 42
+    assert result.model_id == "text-embedding-3-small"
+    assert result.selected_count == 2
+    assert result.succeeded == 1
+    assert result.failed == 1
+    assert result.not_found == 0
+    assert result.errors[0].id == 8
+    assert calls[0]["profile"] == profile
+    assert [call["kp_id"] for call in calls] == [7, 8]

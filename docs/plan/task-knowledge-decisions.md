@@ -29,14 +29,14 @@
 
 ## D2 · `note_embeddings` 表与 worker
 
-**当前选项**: **复活而非废弃**。表（`migration 000054`）+ admin UI 占位（`CreateNotePage.tsx` 的 "AI 索引状态" PanelGroup）已经接上 landing baseline worker：`000074` 补 profile/dim/model/token 与 HNSW 索引，ai-service `NoteIndexerService` 写 `note_embeddings`，Go `NoteService` 在 note 变更后异步触发索引。
+**当前选项**: **复活而非废弃**。表（`migration 000054`）+ admin UI 占位（`CreateNotePage.tsx` 的 "AI 索引状态" PanelGroup）已经接上 landing baseline worker：`000074` 补 profile/dim/model/token 与 HNSW 索引，ai-service `NoteIndexerService` 写 `note_embeddings`，Go `NoteService` 在 note 变更后异步触发索引，`scripts/atlas/reindex-embeddings.mjs` 可对历史 KP/note 执行 missing/stale backfill。
 
 **论据**:
 
 - 表结构已合理（`note_id / profile_id / chunk_index / chunk_text / parent_text / embedding / status`），与 KB 模块的 `kb_embeddings` 同模式。
 - admin UI 已经把 `embeddingStatus` 字段渲染出来——补 worker 是**回填用户预期**，不是新增 UI 负担。
 - Markdown Carrier 适配器已通过 `notes://{id}` 复用此表进入 Atlas recall，避免新建 `carrier_embeddings` 一张表导致两份索引数据。
-- 当前仍缺历史 notes 的批量 backfill/reindex；新建/更新后的 notes 已走异步索引。
+- 当前仍需在生产环境实际运行 backfill 并保存输出；新建/更新后的 notes 已走异步索引。
 
 **何时重估**:
 

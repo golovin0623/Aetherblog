@@ -148,7 +148,13 @@ Current available handoff:
 8. Notes are indexed asynchronously after create, full save, duplicate, and title/summary edits. Markdown carriers backed by `notes://{id}` can contribute `[Note #id chunk n]` context after this worker finishes.
 9. Answers should cite Atlas context with `[KP #id]`, `[Evidence #annotation_id]`, and `[Note #id chunk n]` markers where relevant.
 
-This is a selected-scope semantic baseline, not full automatic GraphRAG. Empty-scope Atlas recall from arbitrary questions, search-page semantic rerank, community/global graph query, and historical KP/note embedding backfill remain future gates.
+Historical KP/note rows can be backfilled through ai-service internal endpoints with:
+
+```bash
+AI_INTERNAL_SERVICE_TOKEN=... node scripts/atlas/reindex-embeddings.mjs --kind all --limit 100 --batches 20
+```
+
+This is a selected-scope semantic baseline, not full automatic GraphRAG. Empty-scope Atlas recall from arbitrary questions, search-page semantic rerank, community/global graph query, and production evidence from running the KP/note embedding backfill command remain future gates.
 
 ## 11. Release Checklist
 
