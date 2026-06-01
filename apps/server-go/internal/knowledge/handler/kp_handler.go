@@ -573,6 +573,9 @@ func (h *KPHandler) ExportGraph(c echo.Context) error {
 	case "graphml":
 		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="aether-atlas.graphml"`)
 		return c.Blob(http.StatusOK, "application/graphml+xml; charset=utf-8", []byte(buildAtlasGraphML(graph, scopeLabel, generatedAt)))
+	case "markdown", "md":
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="aether-atlas.md"`)
+		return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", []byte(buildAtlasMarkdown(graph, scopeLabel, generatedAt)))
 	default:
 		return response.FailWith(c, response.BadRequest, "不支持的导出格式")
 	}
@@ -687,6 +690,80 @@ func graphMLData(b *strings.Builder, key string, value string) {
 	b.WriteString(`">`)
 	xml.EscapeText(b, []byte(value))
 	b.WriteString(`</data>` + "\n")
+}
+
+func buildAtlasMarkdown(graph atlasdto.GraphResponse, scopeLabel string, generatedAt time.Time) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "---\n")
+	fmt.Fprintf(&b, "title: Aether Atlas Export\n")
+	fmt.Fprintf(&b, "format: markdown\n")
+	fmt.Fprintf(&b, "version: 1\n")
+	fmt.Fprintf(&b, "scope: %s\n", markdownMetaValue(scopeLabel))
+	fmt.Fprintf(&b, "generatedAt: %s\n", generatedAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "nodes: %d\n", len(graph.Nodes))
+	fmt.Fprintf(&b, "edges: %d\n", len(graph.Edges))
+	fmt.Fprintf(&b, "---\n\n")
+	fmt.Fprintf(&b, "# Aether Atlas Export\n\n")
+	fmt.Fprintf(&b, "- Scope: %s\n", markdownInline(scopeLabel))
+	fmt.Fprintf(&b, "- Generated at: %s\n", generatedAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "- Knowledge points: %d\n", len(graph.Nodes))
+	fmt.Fprintf(&b, "- Relations: %d\n\n", len(graph.Edges))
+
+	titleByID := make(map[int64]string, len(graph.Nodes))
+	fmt.Fprintf(&b, "## Knowledge Points\n\n")
+	for _, node := range graph.Nodes {
+		title := markdownInline(node.Title)
+		if title == "" {
+			title = "Untitled"
+		}
+		titleByID[node.ID] = title
+		fmt.Fprintf(&b, "### KP %d: %s\n\n", node.ID, title)
+		fmt.Fprintf(&b, "- UUID: %s\n", markdownInline(node.UUID))
+		fmt.Fprintf(&b, "- Type: %s\n", markdownInline(node.Type))
+		fmt.Fprintf(&b, "- Status: %s\n", markdownInline(node.Status))
+		fmt.Fprintf(&b, "- Provenance: %s\n", markdownInline(node.Provenance))
+		fmt.Fprintf(&b, "- Confidence: %.4f\n", node.Confidence)
+		fmt.Fprintf(&b, "- Archived: %t\n", node.Archived)
+		fmt.Fprintf(&b, "- Evidence count: %d\n", graph.KPEvidenceCounts[node.ID])
+		fmt.Fprintf(&b, "- Created at: %s\n", node.CreatedAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(&b, "- Updated at: %s\n\n", node.UpdatedAt.UTC().Format(time.RFC3339))
+		body := strings.TrimSpace(node.BodyMarkdown)
+		if body != "" {
+			fmt.Fprintf(&b, "%s\n\n", body)
+		}
+	}
+
+	fmt.Fprintf(&b, "## Relations\n\n")
+	if len(graph.Edges) == 0 {
+		fmt.Fprintf(&b, "_No relations in this export._\n")
+		return b.String()
+	}
+	for _, edge := range graph.Edges {
+		fmt.Fprintf(&b, "### Relation %d: KP %d %s KP %d\n\n", edge.ID, edge.FromKPID, markdownInline(edge.Type), edge.ToKPID)
+		fmt.Fprintf(&b, "- From: KP %d - %s\n", edge.FromKPID, markdownInline(titleByID[edge.FromKPID]))
+		fmt.Fprintf(&b, "- To: KP %d - %s\n", edge.ToKPID, markdownInline(titleByID[edge.ToKPID]))
+		fmt.Fprintf(&b, "- Type: %s\n", markdownInline(edge.Type))
+		fmt.Fprintf(&b, "- Strength: %.4f\n", edge.Strength)
+		fmt.Fprintf(&b, "- Provenance: %s\n", markdownInline(edge.Provenance))
+		fmt.Fprintf(&b, "- Evidence count: %d\n", graph.RelationEvidenceCounts[edge.ID])
+		fmt.Fprintf(&b, "- Created at: %s\n", edge.CreatedAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(&b, "- Updated at: %s\n\n", edge.UpdatedAt.UTC().Format(time.RFC3339))
+		if edge.BodyMarkdown != nil {
+			body := strings.TrimSpace(*edge.BodyMarkdown)
+			if body != "" {
+				fmt.Fprintf(&b, "%s\n\n", body)
+			}
+		}
+	}
+	return b.String()
+}
+
+func markdownMetaValue(value string) string {
+	return strings.ReplaceAll(strings.TrimSpace(value), "\n", " ")
+}
+
+func markdownInline(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 }
 
 // Search 聚合 KP、Annotation、Carrier 的轻量关键字搜索。

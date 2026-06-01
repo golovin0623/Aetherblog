@@ -45,7 +45,7 @@ import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
-import { atlasService } from '@/services/atlasService';
+import { atlasService, type AtlasGraphExportFormat } from '@/services/atlasService';
 import { extractApiErrorMessage } from '@/lib/utils';
 
 interface Node {
@@ -223,7 +223,7 @@ export default function AtlasGraphPage() {
   const [presetName, setPresetName] = useState('');
   const [activePresetId, setActivePresetId] = useState(NO_FILTER_PRESET);
   const [presetStatus, setPresetStatus] = useState<string | null>(null);
-  const [exportingFormat, setExportingFormat] = useState<'json' | 'graphml' | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<AtlasGraphExportFormat | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const draggedRef = useRef(false);
@@ -545,13 +545,13 @@ export default function AtlasGraphPage() {
     setPresetStatus(preset ? `已删除过滤预设 · ${preset.name}` : null);
   }, [activePresetId, filterPresets, persistFilterPresets]);
 
-  const exportGraph = useCallback(async (format: 'json' | 'graphml') => {
+  const exportGraph = useCallback(async (format: AtlasGraphExportFormat) => {
     if (exportingFormat) return;
     setExportingFormat(format);
     try {
       const blob = await atlasService.exportGraph(format, { scope, limit: 5000 });
-      downloadBlob(blob, `aether-atlas-${scope}-${formatDateForFilename(new Date())}.${format === 'graphml' ? 'graphml' : 'json'}`);
-      setPresetStatus(`已导出 ${format === 'graphml' ? 'GraphML' : 'JSON'} · ${scope === 'all' ? '全部范围' : '我的范围'}`);
+      downloadBlob(blob, `aether-atlas-${scope}-${formatDateForFilename(new Date())}.${exportExtension(format)}`);
+      setPresetStatus(`已导出 ${exportFormatLabel(format)} · ${scope === 'all' ? '全部范围' : '我的范围'}`);
     } catch (err) {
       setError(extractApiErrorMessage(err, '导出图谱失败'));
     } finally {
@@ -625,6 +625,14 @@ export default function AtlasGraphPage() {
               className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3 w-3" /> {exportingFormat === 'graphml' ? '导出中' : '导出 GraphML'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportGraph('markdown')}
+              disabled={Boolean(exportingFormat)}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-3 w-3" /> {exportingFormat === 'markdown' ? '导出中' : '导出 Markdown'}
             </button>
             <button
               type="button"
@@ -1293,6 +1301,18 @@ function formatDate(value: string): string {
 
 function formatDateForFilename(value: Date): string {
   return value.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+function exportExtension(format: AtlasGraphExportFormat): string {
+  if (format === 'graphml') return 'graphml';
+  if (format === 'markdown') return 'md';
+  return 'json';
+}
+
+function exportFormatLabel(format: AtlasGraphExportFormat): string {
+  if (format === 'graphml') return 'GraphML';
+  if (format === 'markdown') return 'Markdown';
+  return 'JSON';
 }
 
 function downloadBlob(blob: Blob, filename: string) {

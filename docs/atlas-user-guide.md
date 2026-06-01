@@ -142,7 +142,7 @@ Available controls:
 - Topology filters for orphan and hub KPs.
 - Hub folding for nodes with high incoming degree.
 - `保存过滤` stores the current keyword/type/relation/time/provenance/confidence/evidence/topology/hub-folding filter set as a named preset for the current graph scope. Use the preset menu to apply it later, or `删除预设` to remove it.
-- `导出 JSON` and `导出 GraphML` download a scoped graph snapshot for backup, review, or external graph-tool analysis.
+- `导出 JSON`, `导出 GraphML`, and `导出 Markdown` download a scoped graph snapshot for backup, review, or external graph-tool analysis.
 - Zoom controls, mouse-wheel zoom, drag panning, and reset view.
 - The minimap in the lower-right corner shows the current viewport and can jump to a graph region.
 - `保存布局` persists the current visible node positions plus zoom/pan viewport for the selected graph scope; `重置布局` clears that saved state.
@@ -157,6 +157,7 @@ Use the export buttons in `/admin/atlas/graph` when you need a portable snapshot
 
 - `导出 JSON` downloads the current Atlas scope as a raw JSON snapshot with version, generation time, scope label, KP nodes, typed relation edges, and evidence-count maps.
 - `导出 GraphML` downloads the same scoped graph in GraphML for external graph inspection tools.
+- `导出 Markdown` downloads a readable `.md` snapshot with frontmatter, KP sections, relation sections, metadata, and evidence counts. This is the lowest-friction format for note archives and manual migration review.
 - Export respects the same Atlas scope model as the graph API. `全部可访问` exports records visible to the current user, while `仅我的` limits the snapshot to the current user's Atlas graph.
 
 The export baseline is scope-aware and read-only. Import adapters for Obsidian, Tana, Readwise, Zotero, and other external systems remain later A3-05 work.
@@ -231,7 +232,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with every required check passed, including KP archive/restore/delete lifecycle checks and the carrier Reader surfaces.
 - Multi-user smoke gate: `node scripts/atlas/multiuser-smoke-gate.mjs --input <report.json>` with all 17 checks passed, including non-admin Markdown Reader sessions and cross-user Reader source denial.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
-- Export smoke for `/admin/atlas/graph` JSON and GraphML downloads when the change touches graph contracts or export code.
+- Export smoke for `/admin/atlas/graph` JSON, GraphML, and Markdown downloads when the change touches graph contracts or export code.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.
 
 Phase gates are stricter than MVP availability. A feature can have a usable baseline while its full product gate remains open because recall, quality, performance, or no-regression evidence is missing.

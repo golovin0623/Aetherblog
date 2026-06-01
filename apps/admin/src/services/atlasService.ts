@@ -90,6 +90,8 @@ export interface AtlasFetchedWebClip {
   language?: string | null;
 }
 
+export type AtlasGraphExportFormat = 'json' | 'graphml' | 'markdown';
+
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
 
@@ -247,7 +249,7 @@ export const atlasService = {
     api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
 
   exportGraph: (
-    format: 'json' | 'graphml',
+    format: AtlasGraphExportFormat,
     params?: AtlasScopedParams & { limit?: number }
   ): Promise<Blob> =>
     api.get(`${base}/export`, {

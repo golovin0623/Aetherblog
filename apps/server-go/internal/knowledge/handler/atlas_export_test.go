@@ -81,3 +81,72 @@ func TestBuildAtlasGraphML(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildAtlasMarkdown(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	body := "Relation body with evidence rationale."
+	graph := atlasdto.GraphResponse{
+		Nodes: []atlasdto.KnowledgePointResponse{
+			{
+				ID:           1,
+				UUID:         "kp-1",
+				Title:        "Typed claim",
+				BodyMarkdown: "Body text with **Markdown**.",
+				Type:         "claim",
+				Confidence:   0.92,
+				Status:       "evergreen",
+				Provenance:   "user",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			},
+			{
+				ID:           2,
+				UUID:         "kp-2",
+				Title:        "Target concept",
+				BodyMarkdown: "Target body.",
+				Type:         "concept",
+				Confidence:   0.81,
+				Status:       "growing",
+				Provenance:   "imported",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			},
+		},
+		Edges: []atlasdto.TypedRelationResponse{
+			{
+				ID:           2,
+				FromKPID:     1,
+				ToKPID:       2,
+				Type:         "supports",
+				Strength:     0.8,
+				BodyMarkdown: &body,
+				Provenance:   "user",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			},
+		},
+		KPEvidenceCounts:       map[int64]int64{1: 3, 2: 1},
+		RelationEvidenceCounts: map[int64]int64{2: 1},
+	}
+
+	got := buildAtlasMarkdown(graph, "mine", now)
+	for _, want := range []string{
+		`title: Aether Atlas Export`,
+		`format: markdown`,
+		`scope: mine`,
+		`# Aether Atlas Export`,
+		`## Knowledge Points`,
+		`### KP 1: Typed claim`,
+		`- Evidence count: 3`,
+		`Body text with **Markdown**.`,
+		`## Relations`,
+		`### Relation 2: KP 1 supports KP 2`,
+		`- From: KP 1 - Typed claim`,
+		`- To: KP 2 - Target concept`,
+		`Relation body with evidence rationale.`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Markdown export missing %q\n%s", want, got)
+		}
+	}
+}
