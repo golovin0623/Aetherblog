@@ -8,6 +8,7 @@ import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { carrierReaderHref } from './carrierReaderHref';
 
 type AtlasScopeFilter = 'all' | 'mine';
 
@@ -329,15 +330,4 @@ function Chip({ children, className }: { children: React.ReactNode; className?: 
       {children}
     </span>
   );
-}
-
-function carrierReaderHref(carrier: AtlasCarrier): string | null {
-  if (carrier.type === 'markdown' && carrier.sourceUri.startsWith('notes://')) {
-    const noteId = Number(carrier.sourceUri.slice('notes://'.length));
-    return Number.isFinite(noteId) && noteId > 0 ? `/atlas/reader/note/${noteId}` : null;
-  }
-  if (carrier.type === 'pdf') {
-    return `/atlas/reader/pdf/${carrier.id}`;
-  }
-  return null;
 }
