@@ -362,6 +362,10 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 	if carrier == nil {
 		return response.FailWith(c, response.NotFound, "载体不存在")
 	}
+	authorID, err := carrierSuggestionAuthorID(c, carrier)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
 	text, err := h.carrierTextForSuggestion(c.Request().Context(), scope, carrier)
 	if err != nil {
 		return writeAtlasError(c, err)
@@ -379,7 +383,6 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
 
-	authorID := currentAtlasUserID(c)
 	out := make([]atlasdto.SuggestionResponse, 0, len(aiOut.Candidates))
 	for _, candidate := range aiOut.Candidates {
 		title := strings.TrimSpace(candidate.ProposedTitle)
@@ -417,6 +420,16 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 		"SUCCESS",
 	)
 	return response.OK(c, out)
+}
+
+func carrierSuggestionAuthorID(_ echo.Context, carrier *atlasmodel.Carrier) (*int64, error) {
+	if carrier == nil {
+		return nil, atlasError(response.NotFound, "载体不存在")
+	}
+	if carrier.OwnerID != nil && *carrier.OwnerID > 0 {
+		return carrier.OwnerID, nil
+	}
+	return nil, atlasError(response.BadRequest, "载体缺少 owner，无法生成归属明确的 AI 建议")
 }
 
 func (h *SuggestionHandler) PreviewCarrierSuggestions(c echo.Context) error {

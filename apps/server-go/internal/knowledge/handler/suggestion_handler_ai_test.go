@@ -134,6 +134,39 @@ func TestCarrierSuggestionAIPayloadIncludesCostBudget(t *testing.T) {
 	}
 }
 
+func TestCarrierSuggestionAuthorIDPreservesCarrierOwner(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/atlas/carriers/7/suggestions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(middleware.ContextKeyLoginUser, &jwtutil.LoginUser{UserID: 1, Role: "ADMIN"})
+
+	ownerID := int64(99)
+	got, err := carrierSuggestionAuthorID(c, &atlasmodel.Carrier{ID: 7, OwnerID: &ownerID})
+	if err != nil {
+		t.Fatalf("carrierSuggestionAuthorID returned error: %v", err)
+	}
+	if got == nil || *got != ownerID {
+		t.Fatalf("authorID = %v, want carrier owner %d", got, ownerID)
+	}
+}
+
+func TestCarrierSuggestionAuthorIDRejectsOwnerlessCarrier(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/atlas/carriers/7/suggestions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(middleware.ContextKeyLoginUser, &jwtutil.LoginUser{UserID: 1, Role: "ADMIN"})
+
+	got, err := carrierSuggestionAuthorID(c, &atlasmodel.Carrier{ID: 7})
+	if err == nil {
+		t.Fatal("expected ownerless carrier to be rejected")
+	}
+	if got != nil {
+		t.Fatalf("authorID = %v, want nil on rejected ownerless carrier", got)
+	}
+}
+
 func TestNormalizeCarrierSuggestionRequestDefaultsAndCaps(t *testing.T) {
 	maxCandidates, maxChars := normalizeCarrierSuggestionRequest(&atlasdto.GenerateCarrierSuggestionsRequest{})
 	if maxCandidates != 8 {
