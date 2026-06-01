@@ -249,7 +249,7 @@ export interface AtlasGraphImportRelation {
 }
 
 export interface AtlasGraphImportResponse {
-  format: 'obsidian-markdown' | 'readwise-csv';
+  format: 'obsidian-markdown' | 'readwise-csv' | 'zotero-ris';
   dryRun: boolean;
   sourceTitle: string;
   carrierId?: number;

@@ -92,7 +92,7 @@ export interface AtlasFetchedWebClip {
 }
 
 export type AtlasGraphExportFormat = 'json' | 'graphml' | 'markdown';
-export type AtlasGraphImportFormat = 'obsidian-markdown' | 'readwise-csv';
+export type AtlasGraphImportFormat = 'obsidian-markdown' | 'readwise-csv' | 'zotero-ris';
 
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),

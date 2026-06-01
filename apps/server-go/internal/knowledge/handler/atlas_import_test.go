@@ -111,3 +111,66 @@ func TestParseReadwiseCSVImport(t *testing.T) {
 		t.Fatalf("expected Readwise import to avoid invented relations, got %#v", parsed.Relations)
 	}
 }
+
+func TestParseZoteroRISImport(t *testing.T) {
+	content := strings.Join([]string{
+		"TY  - JOUR",
+		"TI  - Designing data-intensive applications as socio-technical systems",
+		"AU  - Kleppmann, Martin",
+		"PY  - 2024",
+		"DO  - 10.1145/example",
+		"UR  - https://example.org/ddia",
+		"AB  - A reference summary that should become source evidence.",
+		"KW  - distributed systems",
+		"KW  - data architecture",
+		"ER  -",
+		"TY  - BOOK",
+		"T1  - The Structure of Scientific Revolutions",
+		"A1  - Kuhn, Thomas S.",
+		"Y1  - 1962",
+		"ER  -",
+	}, "\n")
+
+	parsed := parseZoteroRISImport(content, "")
+
+	if len(parsed.KnowledgePoints) != 2 {
+		t.Fatalf("expected 2 imported references, got %d: %#v", len(parsed.KnowledgePoints), parsed.KnowledgePoints)
+	}
+	if parsed.SourceMarkdown == "" {
+		t.Fatalf("expected generated source markdown")
+	}
+	for _, want := range []string{
+		"# Zotero RIS Import",
+		"## Designing data-intensive applications as socio-technical systems",
+		"- Type: JOUR",
+		"- Authors: Kleppmann, Martin",
+		"- Year: 2024",
+		"- DOI: 10.1145/example",
+		"- URL: https://example.org/ddia",
+		"- Tags: distributed systems, data architecture",
+		"A reference summary that should become source evidence.",
+	} {
+		if !strings.Contains(parsed.SourceMarkdown, want) {
+			t.Fatalf("source markdown missing %q\n%s", want, parsed.SourceMarkdown)
+		}
+	}
+	first := parsed.KnowledgePoints[0]
+	if first.Title != "Designing data-intensive applications as socio-technical systems" {
+		t.Fatalf("unexpected first title: %q", first.Title)
+	}
+	if first.Type != "source" {
+		t.Fatalf("unexpected first type: %q", first.Type)
+	}
+	if first.StartOffset <= 0 || first.EndOffset <= first.StartOffset || first.EndOffset > len(parsed.SourceMarkdown) {
+		t.Fatalf("unexpected offsets for generated source markdown: %#v", first)
+	}
+	if !strings.Contains(first.BodyMarkdown, "DOI: 10.1145/example") {
+		t.Fatalf("expected DOI metadata in first body: %q", first.BodyMarkdown)
+	}
+	if !strings.Contains(first.BodyMarkdown, "A reference summary that should become source evidence.") {
+		t.Fatalf("expected abstract in first body: %q", first.BodyMarkdown)
+	}
+	if len(parsed.Relations) != 0 {
+		t.Fatalf("expected Zotero RIS import to avoid invented relations, got %#v", parsed.Relations)
+	}
+}

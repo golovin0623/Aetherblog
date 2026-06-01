@@ -577,7 +577,7 @@ export default function AtlasGraphPage() {
       const res = await atlasService.importGraph({
         format,
         content,
-        sourceTitle: file.name.replace(/\.(md|markdown|csv)$/i, ''),
+        sourceTitle: file.name.replace(/\.(md|markdown|csv|ris)$/i, ''),
         defaultType: format === 'readwise-csv' ? 'claim' : 'source',
       });
       await load();
@@ -646,7 +646,7 @@ export default function AtlasGraphPage() {
             <input
               ref={importInputRef}
               type="file"
-              accept=".md,.markdown,.csv,text/markdown,text/plain,text/csv"
+              accept=".md,.markdown,.csv,.ris,text/markdown,text/plain,text/csv,application/x-research-info-systems"
               className="hidden"
               onChange={(event) => void importGraphFile(event)}
             />
@@ -1364,11 +1364,15 @@ function exportFormatLabel(format: AtlasGraphExportFormat): string {
 }
 
 function importFormatForFile(filename: string): AtlasGraphImportFormat {
-  return filename.toLowerCase().endsWith('.csv') ? 'readwise-csv' : 'obsidian-markdown';
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.csv')) return 'readwise-csv';
+  if (lower.endsWith('.ris')) return 'zotero-ris';
+  return 'obsidian-markdown';
 }
 
 function importFormatLabel(format: AtlasGraphImportFormat): string {
   if (format === 'readwise-csv') return 'Readwise CSV';
+  if (format === 'zotero-ris') return 'Zotero RIS';
   return 'Markdown';
 }
 

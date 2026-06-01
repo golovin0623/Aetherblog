@@ -753,6 +753,7 @@ type parsedImportRelation struct {
 var (
 	markdownHeadingPattern = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*#*\s*$`)
 	wikiLinkPattern        = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
+	risTagPattern          = regexp.MustCompile(`^([A-Z0-9]{2})\s+-\s?(.*)$`)
 )
 
 func normalizeAtlasImportFormat(format string) string {
@@ -761,6 +762,8 @@ func normalizeAtlasImportFormat(format string) string {
 		return "obsidian-markdown"
 	case "csv", "readwise", "readwise-csv":
 		return "readwise-csv"
+	case "ris", "zotero", "zotero-ris":
+		return "zotero-ris"
 	default:
 		return ""
 	}
@@ -774,6 +777,8 @@ func parseAtlasGraphImport(format string, content string, defaultType string) pa
 	switch format {
 	case "readwise-csv":
 		return parseReadwiseCSVImport(content, defaultType)
+	case "zotero-ris":
+		return parseZoteroRISImport(content, defaultType)
 	default:
 		return parseObsidianMarkdownImport(content, defaultType)
 	}
@@ -972,6 +977,80 @@ func parseReadwiseCSVImport(content string, defaultType string) parsedObsidianMa
 	return parsed
 }
 
+type parsedRISReference struct {
+	itemType string
+	fields   map[string][]string
+	lastTag  string
+}
+
+func parseZoteroRISImport(content string, defaultType string) parsedObsidianMarkdownImport {
+	content = normalizeMarkdownImportContent(content)
+	parsed := parsedObsidianMarkdownImport{}
+	if strings.TrimSpace(content) == "" {
+		return parsed
+	}
+	kpType := normalizeImportKPType(defaultType)
+	if strings.TrimSpace(defaultType) == "" {
+		kpType = "source"
+	}
+
+	records := parseRISReferences(content)
+	if len(records) == 0 {
+		parsed.Warnings = append(parsed.Warnings, "Zotero RIS 未解析到参考文献记录")
+		return parsed
+	}
+
+	var source strings.Builder
+	source.WriteString("# Zotero RIS Import\n\n")
+	for i, ref := range records {
+		title := firstNonEmptyString(
+			risFirstField(ref, "TI", "T1", "CT", "BT"),
+			fmt.Sprintf("Untitled Zotero Reference %d", i+1),
+		)
+		itemType := firstNonEmptyString(ref.itemType, "GEN")
+		authors := risFieldValues(ref, "AU", "A1")
+		year := risYear(risFirstField(ref, "PY", "Y1", "DA"))
+		doi := risFirstField(ref, "DO")
+		url := risFirstField(ref, "UR", "L2")
+		abstract := risFirstField(ref, "AB", "N2")
+		tags := risFieldValues(ref, "KW")
+
+		start := source.Len()
+		fmt.Fprintf(&source, "## %s\n\n", markdownInline(title))
+		fmt.Fprintf(&source, "- Type: %s\n", markdownInline(itemType))
+		if len(authors) > 0 {
+			fmt.Fprintf(&source, "- Authors: %s\n", markdownInline(strings.Join(authors, "; ")))
+		}
+		if year != "" {
+			fmt.Fprintf(&source, "- Year: %s\n", markdownInline(year))
+		}
+		if doi != "" {
+			fmt.Fprintf(&source, "- DOI: %s\n", markdownInline(doi))
+		}
+		if url != "" {
+			fmt.Fprintf(&source, "- URL: %s\n", markdownInline(url))
+		}
+		if len(tags) > 0 {
+			fmt.Fprintf(&source, "- Tags: %s\n", markdownInline(strings.Join(tags, ", ")))
+		}
+		if abstract != "" {
+			fmt.Fprintf(&source, "\n%s\n", markdownInline(abstract))
+		}
+		source.WriteString("\n")
+		end := source.Len()
+
+		parsed.KnowledgePoints = append(parsed.KnowledgePoints, parsedImportKnowledgePoint{
+			Title:        markdownInline(title),
+			BodyMarkdown: zoteroRISKPBody(itemType, authors, year, doi, url, tags, abstract),
+			Type:         kpType,
+			StartOffset:  start,
+			EndOffset:    end,
+		})
+	}
+	parsed.SourceMarkdown = source.String()
+	return parsed
+}
+
 func atlasImportSourceTitle(requested string, parsed parsedObsidianMarkdownImport) string {
 	title := strings.TrimSpace(requested)
 	if title != "" {
@@ -1063,6 +1142,129 @@ func csvFieldByHeaderAny(row []string, header map[string]int, keys ...string) st
 		}
 	}
 	return ""
+}
+
+func parseRISReferences(content string) []parsedRISReference {
+	var records []parsedRISReference
+	current := parsedRISReference{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		match := risTagPattern.FindStringSubmatch(line)
+		if match == nil {
+			if current.lastTag != "" {
+				values := current.fields[current.lastTag]
+				if len(values) > 0 {
+					values[len(values)-1] = strings.TrimSpace(values[len(values)-1] + " " + strings.TrimSpace(line))
+					current.fields[current.lastTag] = values
+				}
+			}
+			continue
+		}
+		tag := strings.ToUpper(strings.TrimSpace(match[1]))
+		value := strings.TrimSpace(match[2])
+		if tag == "TY" {
+			if !isEmptyRISReference(current) {
+				records = append(records, current)
+			}
+			current = parsedRISReference{
+				itemType: value,
+				fields:   make(map[string][]string),
+				lastTag:  tag,
+			}
+			continue
+		}
+		if current.fields == nil {
+			current.fields = make(map[string][]string)
+		}
+		if tag == "ER" {
+			if !isEmptyRISReference(current) {
+				records = append(records, current)
+			}
+			current = parsedRISReference{}
+			continue
+		}
+		current.fields[tag] = append(current.fields[tag], value)
+		current.lastTag = tag
+	}
+	if !isEmptyRISReference(current) {
+		records = append(records, current)
+	}
+	return records
+}
+
+func isEmptyRISReference(ref parsedRISReference) bool {
+	return strings.TrimSpace(ref.itemType) == "" && len(ref.fields) == 0
+}
+
+func risFieldValues(ref parsedRISReference, tags ...string) []string {
+	out := make([]string, 0)
+	for _, tag := range tags {
+		for _, value := range ref.fields[tag] {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				out = append(out, value)
+			}
+		}
+	}
+	return out
+}
+
+func risFirstField(ref parsedRISReference, tags ...string) string {
+	for _, value := range risFieldValues(ref, tags...) {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func risYear(value string) string {
+	value = strings.TrimSpace(value)
+	for _, field := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == '/' || r == '-' || r == ' '
+	}) {
+		if len(field) >= 4 {
+			candidate := field[:4]
+			allDigits := true
+			for _, r := range candidate {
+				if r < '0' || r > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				return candidate
+			}
+		}
+	}
+	return value
+}
+
+func zoteroRISKPBody(itemType string, authors []string, year string, doi string, url string, tags []string, abstract string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "- Type: %s\n", markdownInline(itemType))
+	if len(authors) > 0 {
+		fmt.Fprintf(&b, "- Authors: %s\n", markdownInline(strings.Join(authors, "; ")))
+	}
+	if year != "" {
+		fmt.Fprintf(&b, "- Year: %s\n", markdownInline(year))
+	}
+	if doi != "" {
+		fmt.Fprintf(&b, "- DOI: %s\n", markdownInline(doi))
+	}
+	if url != "" {
+		fmt.Fprintf(&b, "- URL: %s\n", markdownInline(url))
+	}
+	if len(tags) > 0 {
+		fmt.Fprintf(&b, "- Tags: %s\n", markdownInline(strings.Join(tags, ", ")))
+	}
+	if abstract != "" {
+		fmt.Fprintf(&b, "\n%s\n", markdownInline(abstract))
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func readwiseKPTitle(sourceTitle string, highlight string) string {

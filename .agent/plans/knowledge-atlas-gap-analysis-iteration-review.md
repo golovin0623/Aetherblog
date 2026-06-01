@@ -23,9 +23,9 @@
 - M2-04 baseline: 新增 video/audio transcript carrier，媒体详情页可保存手动转录文本为 `video`/`audio` carrier text layer，Transcript Reader 支持按转录文本标注、从邻近 `[mm:ss]`/`[hh:mm:ss]` 时间戳生成 media `#t=` 跳转，并复用全文 AI 建议与预算 preflight；自动 speech-to-text 和更细的分段播放器联动仍属后续。
 - M2-05 baseline: 媒体详情页对 PDF 暴露 `加入 Atlas`、`查看标注`、`抽取知识点` 三个操作，对 video/audio 暴露 `Atlas Transcript`、`保存转录`、`查看转录`、`抽取知识点`，对 image 暴露 `Atlas Image`、`保存描述`、`查看标注`、`抽取知识点`；已上传 PDF、手动转录音视频、手动图片描述/OCR 文本可直接进入 Atlas input stream，自动 OCR/多模态视觉抽取仍属后续。
 - A3-02 evidence-citation baseline: AI 写作工作台 Atlas 参考面板按当前标题/摘要/正文调用 scoped semantic Atlas search 拉取相关 KP；Search KP 结果可携带首条可访问 evidence quote，面板支持插入内部 KP 链接或不含 `/admin` 路径的公开 blockquote citation。
-- A3-05 export/import baseline: `/atlas/graph` 新增 scoped JSON / GraphML / Markdown 下载入口；后端 `GET /atlas/export` 复用 Graph scope/author 过滤，导出 KP、typed relation 与 evidence-count maps；GraphML 输出做 XML 转义并带 scope/generatedAt metadata；Markdown 输出 frontmatter、KP section、relation section 和 evidence counts，便于笔记归档与人工迁移复核；新增 Obsidian-style Markdown import，`POST /atlas/import` 将 Markdown heading 转为带 source annotation evidence 的 imported KP，并把同文件 `[[Wiki Link]]` 转为 typed `cites` relation；新增 Readwise CSV import，将 highlight row 转为带 source annotation evidence 的 imported claim KP，并保留 note/author/location/URL metadata。
+- A3-05 export/import baseline: `/atlas/graph` 新增 scoped JSON / GraphML / Markdown 下载入口；后端 `GET /atlas/export` 复用 Graph scope/author 过滤，导出 KP、typed relation 与 evidence-count maps；GraphML 输出做 XML 转义并带 scope/generatedAt metadata；Markdown 输出 frontmatter、KP section、relation section 和 evidence counts，便于笔记归档与人工迁移复核；新增 Obsidian-style Markdown import，`POST /atlas/import` 将 Markdown heading 转为带 source annotation evidence 的 imported KP，并把同文件 `[[Wiki Link]]` 转为 typed `cites` relation；新增 Readwise CSV import，将 highlight row 转为带 source annotation evidence 的 imported claim KP，并保留 note/author/location/URL metadata；新增 Zotero RIS import，将 bibliographic reference 转为带 source annotation evidence 的 imported source KP，并保留 authors/year/DOI/URL/abstract/tags metadata。
 
-未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、自动 speech-to-text、自动 OCR/多模态视觉抽取、更丰富的媒体播放器联动、浏览器扩展式一键捕获、Tana/Zotero 等更完整 A3-05 import adapters、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、carrier 级 AI 建议入口、scoped JSON/GraphML/Markdown 图谱导出、Obsidian Markdown 导入、以及 Readwise CSV 导入已补成 landing baseline，但生产环境实际回填仍需 release evidence。
+未在本 PR 宣称完成的项仍按本文路线图后移: full GraphRAG/community/global query、公开知识地图、自动 speech-to-text、自动 OCR/多模态视觉抽取、更丰富的媒体播放器联动、浏览器扩展式一键捕获、Tana 等更完整 A3-05 import adapters、生产部署复跑证据、生产默认 Atlas routing credential 配置、生产执行 KP/note embedding backfill、以及更大样本的 prompt/model A/B 与真实用户遥测。P2-02 当前是同步有界 baseline，并已补 per-run preflight cost preview 与预算阈值拦截，但还不是带后台 job、进度、持久预算策略和批量任务成本 rollup 的完整批量抽取系统。当前本地 R3 live gate 已证明非 stub 模型输出、accept/reject 度量、schema/grounding/token 覆盖均满足本 PR gate；D2 `note_embeddings` worker、历史 backfill 命令、搜索页语义重排、carrier 级 AI 建议入口、scoped JSON/GraphML/Markdown 图谱导出、Obsidian Markdown 导入、Readwise CSV 导入、以及 Zotero RIS 导入已补成 landing baseline，但生产环境实际回填仍需 release evidence。
 
 ---
 
@@ -308,7 +308,7 @@ Priority semantics:
 | ATLAS-A3-02 | Writing assistant integration | **Evidence-citation baseline 已落地**: AI writing workspace 以当前标题/摘要/正文调用 `atlasService.search({ semantic:true, scope:'mine' })` 拉取相关 KP；Search KP 结果携带首条可访问 evidence quote；面板可插入内部 `/admin/atlas/kp/:id` 链接，也可插入公开安全的 evidence blockquote citation | 写文章时可复用 scoped Atlas KP 和首条 evidence；多证据选择、自动推荐和写作 agent 综合仍属后续 polish | P2-05 |
 | ATLAS-A3-03 | Blog article knowledge panel | 前台文章显示关联 KP / 参考链 / 延伸阅读, 可配置公开范围 | 读者能看到文章背后的知识网络 | A3-04 |
 | ATLAS-A3-04 | Public knowledge map | 选择性发布专题子图, 隐藏私有 evidence | AetherBlog 差异化展示能力 | P0-03,P0-11 |
-| ATLAS-A3-05 | Export / import | **Export/import baseline 已落地**: `/atlas/graph` 可下载 scoped JSON / GraphML / Markdown, `GET /atlas/export` 复用 Graph scope/author 过滤并导出 KP、typed relation 与 evidence-count maps；`POST /atlas/import` 与 `导入文件` 支持 Obsidian-style Markdown heading -> imported KP + source annotation evidence、同文件 `[[Wiki Link]]` -> typed `cites` relation、Readwise CSV highlight row -> imported claim KP + source annotation evidence；Tana/Zotero 等 import adapters 后续推进 | 用户可备份/迁移当前图谱快照，并可从 Obsidian-style Markdown 或 Readwise CSV 种入初始图谱; 完整生态导入适配完成前仍不能宣称生态闭环 | P1-04 |
+| ATLAS-A3-05 | Export / import | **Export/import baseline 已落地**: `/atlas/graph` 可下载 scoped JSON / GraphML / Markdown, `GET /atlas/export` 复用 Graph scope/author 过滤并导出 KP、typed relation 与 evidence-count maps；`POST /atlas/import` 与 `导入文件` 支持 Obsidian-style Markdown heading -> imported KP + source annotation evidence、同文件 `[[Wiki Link]]` -> typed `cites` relation、Readwise CSV highlight row -> imported claim KP + source annotation evidence、Zotero RIS reference -> imported source KP + source annotation evidence；Tana 等 import adapters 后续推进 | 用户可备份/迁移当前图谱快照，并可从 Obsidian-style Markdown、Readwise CSV 或 Zotero RIS 种入初始图谱; 完整生态导入适配完成前仍不能宣称生态闭环 | P1-04 |
 | ATLAS-A3-06 | Whiteboard / topic board | KP 放入专题白板, 布局持久化, 支持 sections 和 cards | 类 Heptabase 的 sense-making 工作台 | G1-05 |
 
 ---
@@ -364,7 +364,7 @@ Duration: 3-5 周。
 
 ### Sprint 4: Multimodal And Publishing
 Duration: 1-2 月。
-- ATLAS-M2-01 PDF · M2-02 blog post carrier baseline · M2-03 web clip Reader baseline · M2-04 video/audio transcript baseline · M2-05 media 集成 · A3-02 writing assistant baseline · A3-05 scoped JSON/GraphML/Markdown export + Obsidian Markdown + Readwise CSV import baseline · A3-03/A3-04 公开知识面板/地图原型(依赖 Gate 已开)。
+- ATLAS-M2-01 PDF · M2-02 blog post carrier baseline · M2-03 web clip Reader baseline · M2-04 video/audio transcript baseline · M2-05 media 集成 · A3-02 writing assistant baseline · A3-05 scoped JSON/GraphML/Markdown export + Obsidian Markdown + Readwise CSV + Zotero RIS import baseline · A3-03/A3-04 公开知识面板/地图原型(依赖 Gate 已开)。
 - Exit: Atlas 从 admin 工具变成 AetherBlog 的内容组织与发布差异化能力。
 
 ---
@@ -387,8 +387,8 @@ Duration: 1-2 月。
 | P1-02 | S1 | G1-05 | S3 | A3-02 | S4 |
 | P1-03 | S2 | G1-06 | S3 | A3-03 | S4 |
 | P1-04 | S1 | P2-01 | S2 | A3-04 | S4 |
-| P2-02 | S2 | P2-03 | S2 | A3-05 | S4 (export + Obsidian/Readwise import baseline) |
-| **Backlog / Deferred** | P2-06(community), AV automatic speech-to-text, automatic OCR/multimodal image extraction, A3-01(FSRS), A3-05(Tana/Zotero import adapters), A3-06(whiteboard) | | | | |
+| P2-02 | S2 | P2-03 | S2 | A3-05 | S4 (export + Obsidian/Readwise/Zotero import baseline) |
+| **Backlog / Deferred** | P2-06(community), AV automatic speech-to-text, automatic OCR/multimodal image extraction, A3-01(FSRS), A3-05(Tana import adapter), A3-06(whiteboard) | | | | |
 
 > Backlog 项为显式后移（非遗漏）: 依赖较深、或属长期生态能力, 待 S0-S4 验证产品价值后再排期。
 
