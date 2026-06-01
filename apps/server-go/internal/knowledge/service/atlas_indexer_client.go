@@ -15,7 +15,7 @@ type atlasIndexAIClient interface {
 	DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error)
 }
 
-// AtlasIndexResult mirrors ai-service /v1/atlas/knowledge-points/{id}/index.
+// AtlasIndexResult mirrors ai-service /api/v1/atlas/knowledge-points/{id}/index.
 type AtlasIndexResult struct {
 	KPID         int64  `json:"kp_id"`
 	ProfileID    int64  `json:"profile_id"`
@@ -47,7 +47,7 @@ func (c *AtlasIndexerClient) IndexKnowledgePoint(ctx context.Context, kpID int64
 	if err != nil {
 		return nil, fmt.Errorf("marshal Atlas KP index request: %w", err)
 	}
-	path := fmt.Sprintf("/v1/atlas/knowledge-points/%d/index", kpID)
+	path := fmt.Sprintf("/api/v1/atlas/knowledge-points/%d/index", kpID)
 	respBody, statusCode, err := c.client.DoSync(ctx, http.MethodPost, path, bytes.NewReader(body), map[string]string{
 		"X-Internal-Service": c.internalToken,
 	})
@@ -70,7 +70,7 @@ func (c *AtlasIndexerClient) IndexKnowledgePoint(ctx context.Context, kpID int64
 	return &out, nil
 }
 
-// AtlasSemanticKnowledgePointHit mirrors ai-service /v1/atlas/search/semantic hits.
+// AtlasSemanticKnowledgePointHit mirrors ai-service /api/v1/atlas/search/semantic hits.
 type AtlasSemanticKnowledgePointHit struct {
 	ID           int64    `json:"id"`
 	Title        string   `json:"title"`
@@ -83,7 +83,7 @@ type AtlasSemanticKnowledgePointHit struct {
 	RecallSource string   `json:"recall_source"`
 }
 
-// AtlasSemanticSearchResult mirrors ai-service /v1/atlas/search/semantic.
+// AtlasSemanticSearchResult mirrors ai-service /api/v1/atlas/search/semantic.
 type AtlasSemanticSearchResult struct {
 	Query           string                           `json:"query"`
 	Limit           int                              `json:"limit"`
@@ -124,7 +124,7 @@ func (c *AtlasSemanticSearchClient) Search(ctx context.Context, query string, us
 	if err != nil {
 		return nil, fmt.Errorf("marshal Atlas semantic search request: %w", err)
 	}
-	respBody, statusCode, err := c.client.DoSync(ctx, http.MethodPost, "/v1/atlas/search/semantic", bytes.NewReader(body), map[string]string{
+	respBody, statusCode, err := c.client.DoSync(ctx, http.MethodPost, "/api/v1/atlas/search/semantic", bytes.NewReader(body), map[string]string{
 		"X-Internal-Service": c.internalToken,
 	})
 	if err != nil {

@@ -51,3 +51,24 @@ func TestAtlasEventHandlerRecordAllowsGraphSearch(t *testing.T) {
 		t.Fatalf("status = %v, want INFO", got.Status)
 	}
 }
+
+func TestAtlasEventHandlerMountRequiresWritePermission(t *testing.T) {
+	e := echo.New()
+	handler := NewAtlasEventHandler(&fakeAtlasActivityRecorder{})
+	writeCalled := false
+	handler.Mount(e.Group("/atlas"), func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			writeCalled = true
+			return next(c)
+		}
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/atlas/events", strings.NewReader(`{"eventType":"atlas.search"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if !writeCalled {
+		t.Fatal("POST /atlas/events did not pass through write middleware")
+	}
+}

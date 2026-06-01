@@ -205,7 +205,7 @@ export default function KnowledgePointsPage() {
                   <Chip className={cn(item.provenance === 'ai_suggested' && 'text-[var(--signal-warn)]')}>
                     {item.provenance}
                   </Chip>
-                  <span className="font-mono">conf {item.confidence.toFixed(2)}</span>
+                  <span className="font-mono">conf {item.confidence?.toFixed(2) ?? '0.00'}</span>
                 </div>
                 <ArrowRight className="hidden h-4 w-4 text-[var(--ink-muted)] md:block" />
               </Link>

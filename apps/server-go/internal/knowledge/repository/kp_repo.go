@@ -102,9 +102,9 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 	}
 	if f.HasEvidence != nil {
 		if *f.HasEvidence {
-			q += " AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l WHERE l.kp_id=atlas_knowledge_points.id)"
+			q += " AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l JOIN atlas_annotations a ON a.id=l.annotation_id AND a.deleted=false WHERE l.kp_id=atlas_knowledge_points.id)"
 		} else {
-			q += " AND NOT EXISTS (SELECT 1 FROM atlas_annotation_kp_links l WHERE l.kp_id=atlas_knowledge_points.id)"
+			q += " AND NOT EXISTS (SELECT 1 FROM atlas_annotation_kp_links l JOIN atlas_annotations a ON a.id=l.annotation_id AND a.deleted=false WHERE l.kp_id=atlas_knowledge_points.id)"
 		}
 	}
 	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
@@ -223,10 +223,11 @@ func (r *KPRepo) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[i
 		Count int64 `db:"count"`
 	}{}
 	if err := r.db.SelectContext(ctx, &rows, `
-		SELECT kp_id, COUNT(*) AS count
-		FROM atlas_annotation_kp_links
-		WHERE kp_id = ANY($1)
-		GROUP BY kp_id`, pq.Int64Array(kpIDs)); err != nil {
+		SELECT l.kp_id, COUNT(*) AS count
+		FROM atlas_annotation_kp_links l
+		JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = false
+		WHERE l.kp_id = ANY($1)
+		GROUP BY l.kp_id`, pq.Int64Array(kpIDs)); err != nil {
 		return nil, err
 	}
 	for _, row := range rows {

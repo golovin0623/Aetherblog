@@ -13,6 +13,8 @@ import (
 
 	atlasdto "github.com/golovin0623/aetherblog-server/internal/knowledge/dto"
 	atlasmodel "github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtutil"
 )
 
 type fakeAtlasAISyncClient struct {
@@ -47,18 +49,22 @@ func TestSuggestionHandlerCallAtlasAIUsesInternalTokenAndDecodes(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/atlas/annotations/1/suggestions", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set(middleware.ContextKeyLoginUser, &jwtutil.LoginUser{UserID: 42, Role: "AUTHOR"})
 	ai := &fakeAtlasAISyncClient{body: `{"model_id":"atlas-test","candidates":[]}`}
 	h := &SuggestionHandler{ai: ai, internalToken: "internal-token"}
 
 	var out atlasExtractClaimsResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", map[string]any{"text": "hello"}, &out); err != nil {
+	if err := h.callAtlasAI(c, "/api/v1/atlas/claims/extract", map[string]any{"text": "hello"}, &out); err != nil {
 		t.Fatalf("callAtlasAI returned error: %v", err)
 	}
-	if ai.gotPath != "/v1/atlas/claims/extract" {
-		t.Fatalf("path = %q, want /v1/atlas/claims/extract", ai.gotPath)
+	if ai.gotPath != "/api/v1/atlas/claims/extract" {
+		t.Fatalf("path = %q, want /api/v1/atlas/claims/extract", ai.gotPath)
 	}
 	if ai.gotHeaders["X-Internal-Service"] != "internal-token" {
 		t.Fatalf("internal token header missing")
+	}
+	if ai.gotHeaders["X-Forwarded-User-ID"] != "42" {
+		t.Fatalf("forwarded user header = %q, want 42", ai.gotHeaders["X-Forwarded-User-ID"])
 	}
 	if out.ModelID != "atlas-test" {
 		t.Fatalf("model id = %q, want atlas-test", out.ModelID)
@@ -106,7 +112,8 @@ func TestSuggestionHandlerMountsCarrierSuggestionPreviewRoute(t *testing.T) {
 func TestCarrierSuggestionAIPayloadIncludesCostBudget(t *testing.T) {
 	budget := 0.05
 	modelID := "atlas-model"
-	payload := carrierSuggestionAIPayload(7, "Atlas root text", 8, &atlasdto.GenerateCarrierSuggestionsRequest{
+	userID := int64(42)
+	payload := carrierSuggestionAIPayload(7, "Atlas root text", 8, &userID, &atlasdto.GenerateCarrierSuggestionsRequest{
 		ModelID:    &modelID,
 		MaxCostUSD: &budget,
 	})
@@ -121,6 +128,9 @@ func TestCarrierSuggestionAIPayloadIncludesCostBudget(t *testing.T) {
 	}
 	if !strings.Contains(encoded, `"model_id":"atlas-model"`) {
 		t.Fatalf("payload missing model_id: %s", encoded)
+	}
+	if !strings.Contains(encoded, `"user_id":42`) {
+		t.Fatalf("payload missing user_id: %s", encoded)
 	}
 }
 

@@ -15,7 +15,7 @@ type pdfAIClient interface {
 	DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error)
 }
 
-// AIPDFTextExtractor calls ai-service /v1/atlas/pdf/extract through the internal service channel.
+// AIPDFTextExtractor calls ai-service /api/v1/atlas/pdf/extract through the internal service channel.
 type AIPDFTextExtractor struct {
 	client        pdfAIClient
 	internalToken string
@@ -46,7 +46,7 @@ func (e *AIPDFTextExtractor) ExtractPDFText(ctx context.Context, content []byte,
 	if err != nil {
 		return nil, fmt.Errorf("marshal pdf extract request: %w", err)
 	}
-	respBody, statusCode, err := e.client.DoSync(ctx, http.MethodPost, "/v1/atlas/pdf/extract", bytes.NewReader(body), map[string]string{
+	respBody, statusCode, err := e.client.DoSync(ctx, http.MethodPost, "/api/v1/atlas/pdf/extract", bytes.NewReader(body), map[string]string{
 		"X-Internal-Service": e.internalToken,
 	})
 	if err != nil {

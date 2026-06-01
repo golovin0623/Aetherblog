@@ -31,7 +31,7 @@ func TestAtlasIndexerClientIndexKnowledgePoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IndexKnowledgePoint returned error: %v", err)
 	}
-	if ai.path != "/v1/atlas/knowledge-points/7/index" {
+	if ai.path != "/api/v1/atlas/knowledge-points/7/index" {
 		t.Fatalf("path = %q", ai.path)
 	}
 	if ai.headers["X-Internal-Service"] != "internal-token" {
@@ -90,7 +90,7 @@ func TestAtlasSemanticSearchClientSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
-	if ai.path != "/v1/atlas/search/semantic" {
+	if ai.path != "/api/v1/atlas/search/semantic" {
 		t.Fatalf("path = %q", ai.path)
 	}
 	if ai.headers["X-Internal-Service"] != "internal-token" {

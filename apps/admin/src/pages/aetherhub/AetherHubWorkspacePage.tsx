@@ -139,7 +139,8 @@ const SEND_SHORTCUT_OPTIONS: Array<{
   },
 ];
 
-function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasScope {
+function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasScope | undefined {
+  if (kps.length === 0) return undefined;
   return {
     kpIds: kps.map((kp) => kp.id),
     neighborhoodDepth: 1,
@@ -150,7 +151,7 @@ function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasSco
 }
 
 function describeAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): string {
-  if (kps.length === 0) return 'kp_ids=auto';
+  if (kps.length === 0) return 'kp_ids=none';
   return `kp_ids=${kps.map((kp) => kp.id).join(',')}`;
 }
 

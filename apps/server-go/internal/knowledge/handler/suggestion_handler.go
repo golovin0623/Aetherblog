@@ -273,11 +273,12 @@ func (h *SuggestionHandler) GenerateAnnotationSuggestions(c echo.Context) error 
 	}
 
 	var aiOut atlasExtractClaimsResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", map[string]any{
+	if err := h.callAtlasAI(c, "/api/v1/atlas/claims/extract", map[string]any{
 		"carrier_id":     annotation.CarrierID,
 		"text":           truncateRunes(text, 4000),
 		"max_candidates": req.MaxCandidates,
 		"model_id":       req.ModelID,
+		"user_id":        currentAtlasUserID(c),
 	}, &aiOut); err != nil {
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
@@ -309,6 +310,9 @@ func (h *SuggestionHandler) GenerateAnnotationSuggestions(c echo.Context) error 
 			AuthorID:           authorID,
 		})
 		if err != nil {
+			if errors.Is(err, atlassvc.ErrSuggestionIgnored) {
+				continue
+			}
 			return response.FailWith(c, response.BadRequest, err.Error())
 		}
 		out = append(out, toSuggestionResponse(created))
@@ -364,7 +368,7 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 
 	truncated := truncateRunes(text, maxChars)
 	var aiOut atlasExtractClaimsResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/claims/extract", carrierSuggestionAIPayload(carrier.ID, truncated, maxCandidates, &req), &aiOut); err != nil {
+	if err := h.callAtlasAI(c, "/api/v1/atlas/claims/extract", carrierSuggestionAIPayload(carrier.ID, truncated, maxCandidates, currentAtlasUserID(c), &req), &aiOut); err != nil {
 		if isAtlasAIBudgetError(err) {
 			return response.FailWith(c, response.BadRequest, "预算阈值不足，已阻止本次 AI 建议生成")
 		}
@@ -393,6 +397,9 @@ func (h *SuggestionHandler) GenerateCarrierSuggestions(c echo.Context) error {
 			AuthorID:           authorID,
 		})
 		if err != nil {
+			if errors.Is(err, atlassvc.ErrSuggestionIgnored) {
+				continue
+			}
 			return response.FailWith(c, response.BadRequest, err.Error())
 		}
 		out = append(out, toSuggestionResponse(created))
@@ -448,7 +455,7 @@ func (h *SuggestionHandler) PreviewCarrierSuggestions(c echo.Context) error {
 
 	truncated := truncateRunes(text, maxChars)
 	var aiOut atlasClaimExtractionCostPreviewResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/claims/preview", carrierSuggestionPreviewAIPayload(truncated, maxCandidates, &req), &aiOut); err != nil {
+	if err := h.callAtlasAI(c, "/api/v1/atlas/claims/preview", carrierSuggestionPreviewAIPayload(truncated, maxCandidates, currentAtlasUserID(c), &req), &aiOut); err != nil {
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
 	return response.OK(c, atlasdto.CarrierSuggestionCostPreviewResponse{
@@ -501,12 +508,13 @@ func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 	}
 
 	var aiOut atlasRelationSuggestionResponse
-	if err := h.callAtlasAI(c, "/v1/atlas/relations/suggest", map[string]any{
+	if err := h.callAtlasAI(c, "/api/v1/atlas/relations/suggest", map[string]any{
 		"from_kp_id": fromKP.ID,
 		"to_kp_id":   toKP.ID,
 		"from_text":  truncateRunes(kpTextForSuggestion(fromKP), 3000),
 		"to_text":    truncateRunes(kpTextForSuggestion(toKP), 3000),
 		"model_id":   req.ModelID,
+		"user_id":    currentAtlasUserID(c),
 	}, &aiOut); err != nil {
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
@@ -665,7 +673,7 @@ func blogPostIDFromCarrierSource(sourceURI string) (int64, bool) {
 func (h *SuggestionHandler) assertSuggestionScope(c echo.Context, id int64) error {
 	s, err := h.svc.Get(c.Request().Context(), id)
 	if err != nil {
-		return response.Error(c, err)
+		return err
 	}
 	if s == nil {
 		return atlasError(response.NotFound, "建议不存在")
@@ -843,11 +851,12 @@ type atlasRelationSuggestionResponse struct {
 	Attempts     int      `json:"attempts"`
 }
 
-func carrierSuggestionAIPayload(carrierID int64, text string, maxCandidates int, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
+func carrierSuggestionAIPayload(carrierID int64, text string, maxCandidates int, userID *int64, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
 	payload := map[string]any{
 		"carrier_id":     carrierID,
 		"text":           text,
 		"max_candidates": maxCandidates,
+		"user_id":        userID,
 	}
 	if req != nil {
 		payload["model_id"] = req.ModelID
@@ -858,10 +867,11 @@ func carrierSuggestionAIPayload(carrierID int64, text string, maxCandidates int,
 	return payload
 }
 
-func carrierSuggestionPreviewAIPayload(text string, maxCandidates int, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
+func carrierSuggestionPreviewAIPayload(text string, maxCandidates int, userID *int64, req *atlasdto.GenerateCarrierSuggestionsRequest) map[string]any {
 	payload := map[string]any{
 		"text":           text,
 		"max_candidates": maxCandidates,
+		"user_id":        userID,
 	}
 	if req != nil {
 		payload["model_id"] = req.ModelID
@@ -897,8 +907,9 @@ func (h *SuggestionHandler) callAtlasAI(c echo.Context, path string, payload any
 		path,
 		bytes.NewReader(body),
 		map[string]string{
-			"X-Internal-Service": h.internalToken,
-			"X-Request-ID":       ctxutil.TraceID(c),
+			"X-Internal-Service":  h.internalToken,
+			"X-Request-ID":        ctxutil.TraceID(c),
+			"X-Forwarded-User-ID": atlasForwardedUserID(c),
 		},
 	)
 	if err != nil {
@@ -916,6 +927,14 @@ func (h *SuggestionHandler) callAtlasAI(c echo.Context, path string, payload any
 		return fmt.Errorf("解析 AI 响应失败: %w", err)
 	}
 	return nil
+}
+
+func atlasForwardedUserID(c echo.Context) string {
+	userID := currentAtlasUserID(c)
+	if userID == nil {
+		return ""
+	}
+	return strconv.FormatInt(*userID, 10)
 }
 
 func annotationTextForSuggestion(a *atlasmodel.Annotation) string {

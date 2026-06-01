@@ -38,7 +38,11 @@ func NewAtlasEventHandler(activity atlasActivityRecorder) *AtlasEventHandler {
 	return &AtlasEventHandler{activity: activity}
 }
 
-func (h *AtlasEventHandler) Mount(g *echo.Group, _ echo.MiddlewareFunc) {
+func (h *AtlasEventHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
+	if write != nil {
+		g.POST("/events", h.Record, write)
+		return
+	}
 	g.POST("/events", h.Record)
 }
 

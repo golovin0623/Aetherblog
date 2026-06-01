@@ -196,10 +196,11 @@ func (r *RelationRepo) CountEvidenceByRelationIDs(ctx context.Context, relationI
 		Count      int64 `db:"count"`
 	}{}
 	if err := r.db.SelectContext(ctx, &rows, `
-		SELECT relation_id, COUNT(*) AS count
-		FROM atlas_relation_evidence
-		WHERE relation_id = ANY($1)
-		GROUP BY relation_id`, pq.Int64Array(relationIDs)); err != nil {
+		SELECT e.relation_id, COUNT(*) AS count
+		FROM atlas_relation_evidence e
+		JOIN atlas_annotations a ON a.id = e.annotation_id AND a.deleted = false
+		WHERE e.relation_id = ANY($1)
+		GROUP BY e.relation_id`, pq.Int64Array(relationIDs)); err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
@@ -317,6 +318,7 @@ SELECT
 		WHERE EXISTS (
 			SELECT 1
 			FROM atlas_annotation_kp_links l
+			JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = false
 			WHERE l.kp_id = k.id
 		)
 	) AS kp_evidence_count,
@@ -326,6 +328,7 @@ SELECT
 		WHERE EXISTS (
 			SELECT 1
 			FROM atlas_relation_evidence e
+			JOIN atlas_annotations a ON a.id = e.annotation_id AND a.deleted = false
 			WHERE e.relation_id = r.id
 		)
 		OR NULLIF(BTRIM(COALESCE(r.body_markdown, '')), '') IS NOT NULL

@@ -46,8 +46,8 @@ func TestAIPDFTextExtractorCallsInternalAtlasPDFEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractPDFText returned error: %v", err)
 	}
-	if client.path != "/v1/atlas/pdf/extract" {
-		t.Fatalf("path = %q, want /v1/atlas/pdf/extract", client.path)
+	if client.path != "/api/v1/atlas/pdf/extract" {
+		t.Fatalf("path = %q, want /api/v1/atlas/pdf/extract", client.path)
 	}
 	if client.headers["X-Internal-Service"] != "internal-token" {
 		t.Fatalf("X-Internal-Service header = %q", client.headers["X-Internal-Service"])

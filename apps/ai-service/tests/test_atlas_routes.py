@@ -17,8 +17,10 @@ class FakeAtlasLlm:
         self.responses = responses
         self.chat_error = chat_error
         self.chat_calls: list[dict[str, Any]] = []
+        self.routing_calls: list[dict[str, Any]] = []
 
     async def has_task_routing(self, *_args: Any, **_kwargs: Any) -> bool:
+        self.routing_calls.append({"args": _args, "kwargs": _kwargs})
         return True
 
     async def resolve_usage_context(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -37,6 +39,10 @@ class FakeAtlasLlm:
             raise self.chat_error
         idx = min(len(self.chat_calls) - 1, len(self.responses) - 1)
         return self.responses[idx]
+
+
+def test_atlas_router_uses_api_v1_prefix() -> None:
+    assert atlas.router.prefix == "/api/v1/atlas"
 
 
 @pytest.mark.asyncio
@@ -113,6 +119,29 @@ async def test_extract_claims_passes_cost_budget_to_llm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_extract_claims_endpoint_uses_request_user_id_for_routing() -> None:
+    llm = FakeAtlasLlm(
+        [
+            '{"candidates":[{"title":"Atlas follows user routing","body":"The structured model should resolve with the caller user id.","type":"claim","confidence":0.8,"rationale":"grounded"}]}',
+        ]
+    )
+
+    result = await atlas.extract_claims(
+        atlas.ExtractClaimsRequest(
+            carrier_id=7,
+            text="The structured model should resolve with the caller user id.",
+            max_candidates=3,
+            user_id=42,
+        ),
+        llm=llm,
+    )
+
+    assert result.structured is True
+    assert llm.routing_calls[0]["args"] == ("atlas_claims", 42)
+    assert llm.chat_calls[0]["user_id"] == 42
+
+
+@pytest.mark.asyncio
 async def test_extract_claims_budget_error_does_not_fallback() -> None:
     llm = FakeAtlasLlm([], chat_error=ValueError("budget exceeded: maxCostUsd"))
 
@@ -160,6 +189,30 @@ async def test_suggest_relation_llm_rejects_invalid_relation_type_then_repairs()
 
 
 @pytest.mark.asyncio
+async def test_suggest_relation_endpoint_uses_request_user_id_for_routing() -> None:
+    llm = FakeAtlasLlm(
+        [
+            '{"relation_type":"supports","strength":0.76,"rationale":"A 为 B 提供证据"}',
+        ]
+    )
+
+    result = await atlas.suggest_relation(
+        atlas.SuggestRelationRequest(
+            from_kp_id=1,
+            to_kp_id=2,
+            from_text="R1 锚定召回率要达到 90%",
+            to_text="Reader 高亮依赖稳定锚定",
+            user_id=42,
+        ),
+        llm=llm,
+    )
+
+    assert result.structured is True
+    assert llm.routing_calls[0]["args"] == ("atlas_relations", 42)
+    assert llm.chat_calls[0]["user_id"] == 42
+
+
+@pytest.mark.asyncio
 async def test_extract_pdf_text_returns_page_offsets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         atlas,
@@ -185,6 +238,17 @@ async def test_extract_pdf_text_returns_page_offsets(monkeypatch: pytest.MonkeyP
     assert len(result.text_hash) == 64
 
 
+def test_build_pdf_text_layer_uses_utf16_offsets_for_browser_reader() -> None:
+    result = atlas._build_pdf_text_layer(["a🙂b", "tail"])
+
+    assert result.text == "a🙂b\n\ntail"
+    assert result.char_count == 10
+    assert result.pages[0].char_start == 0
+    assert result.pages[0].char_end == 4
+    assert result.pages[1].char_start == 6
+    assert result.pages[1].char_end == 10
+
+
 @pytest.mark.asyncio
 async def test_extract_pdf_text_rejects_invalid_base64() -> None:
     with pytest.raises(HTTPException) as exc:
@@ -197,6 +261,31 @@ async def test_extract_pdf_text_rejects_invalid_base64() -> None:
         )
 
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_extract_pdf_text_rejects_oversized_base64_before_decoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(atlas, "MAX_ATLAS_PDF_EXTRACT_BYTES", 3)
+    decoded = False
+
+    def fake_b64decode(*_args: Any, **_kwargs: Any) -> bytes:
+        nonlocal decoded
+        decoded = True
+        return b""
+
+    monkeypatch.setattr(atlas.base64, "b64decode", fake_b64decode)
+
+    with pytest.raises(HTTPException) as exc:
+        await atlas.extract_pdf_text(
+            atlas.ExtractPDFTextRequest(
+                filename="atlas.pdf",
+                mime_type="application/pdf",
+                content_bytes="AAAAAA",
+            )
+        )
+
+    assert exc.value.status_code == 413
+    assert decoded is False
 
 
 @pytest.mark.asyncio

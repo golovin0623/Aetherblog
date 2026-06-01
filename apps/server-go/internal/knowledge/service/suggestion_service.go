@@ -20,10 +20,13 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
+
+var ErrSuggestionIgnored = errors.New("suggestion fingerprint ignored")
 
 // AISuggestionService 编排建议生命周期。
 //
@@ -118,7 +121,7 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 			return nil, err
 		}
 		if ignored {
-			return nil, errors.New("该建议已被用户忽略，不再加入 inbox")
+			return nil, ErrSuggestionIgnored
 		}
 	}
 	existing, err := s.sug.FindPendingByFingerprint(ctx, fingerprint, in.AuthorID)
@@ -128,7 +131,20 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 	if existing != nil {
 		return existing, nil
 	}
-	return s.sug.Create(ctx, sug)
+	created, err := s.sug.Create(ctx, sug)
+	if err == nil {
+		return created, nil
+	}
+	if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+		existing, findErr := s.sug.FindPendingByFingerprint(ctx, fingerprint, in.AuthorID)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if existing != nil {
+			return existing, nil
+		}
+	}
+	return nil, err
 }
 
 // List 列出建议。

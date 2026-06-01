@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,6 +48,12 @@ import (
 // 同时给 articleIds / tagSlugs context 留缓冲。
 const agentChatBodyLimit = 96 * 1024
 
+var errAgentAtlasReadDenied = errors.New("agent atlas scope requires content.atlas.read")
+
+type agentAtlasPermissionChecker interface {
+	UserHasPermission(ctx context.Context, userID int64, legacyRole string, permissionCode string) (bool, error)
+}
+
 // AgentHandler 处理 /api/v1/agent/* 端点。
 type AgentHandler struct {
 	client        *service.AIClient
@@ -56,7 +63,8 @@ type AgentHandler struct {
 	activitySvc   activityRecorder
 	// kbSvc 用于在转发 chat body 之前过滤 kbIds（SECURITY：防客户端拼装未授权 KB id）。
 	// nil 时跳过过滤（兼容旧 wire；正式部署必须注入）。
-	kbSvc *service.KBService
+	kbSvc     *service.KBService
+	atlasPerm agentAtlasPermissionChecker
 }
 
 // NewAgentHandler 注入 AI client、token 与本地查询所需 repo（@/# picker 走本地 DB，
@@ -81,6 +89,11 @@ func NewAgentHandler(
 // SetKBService 注入 KBService。server.go 在 wire 时调用一次。
 func (h *AgentHandler) SetKBService(kb *service.KBService) {
 	h.kbSvc = kb
+}
+
+// SetAtlasPermissionChecker 注入 Atlas read permission checker。
+func (h *AgentHandler) SetAtlasPermissionChecker(checker agentAtlasPermissionChecker) {
+	h.atlasPerm = checker
 }
 
 // Mount 注册到给定的路由组（约定为 /api/v1/agent，已套上 JWT 中间件）。
@@ -147,6 +160,18 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 		if filtered != nil {
 			bodyBytes = filtered
 		}
+	}
+	if filtered, ferr := h.filterBodyAtlasScope(c.Request().Context(), bodyBytes, lu.UserID, lu.Role); ferr != nil {
+		if errors.Is(ferr, errAgentAtlasReadDenied) {
+			log.Warn().Int64("user_id", lu.UserID).Msg("agent: atlasScope rejected by content.atlas.read")
+			h.recordChatActivity(c, len(bodyBytes), http.StatusForbidden, "atlasScope 无读取权限")
+			return response.FailWith(c, response.Forbidden, "无权使用 Atlas 上下文")
+		}
+		log.Warn().Err(ferr).Int64("user_id", lu.UserID).Msg("agent: atlasScope permission filter failed, rejecting request")
+		h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "atlasScope 解析或权限过滤失败")
+		return response.FailWith(c, response.BadRequest, "atlasScope 字段格式无效或权限解析失败")
+	} else if filtered != nil {
+		bodyBytes = filtered
 	}
 
 	headers := map[string]string{
@@ -588,4 +613,26 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 		Int64("user_id", userID).
 		Msg("agent: kbIds filtered by permission")
 	return rewrote, nil
+}
+
+func (h *AgentHandler) filterBodyAtlasScope(ctx context.Context, body []byte, userID int64, legacyRole string) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse chat body: %w", err)
+	}
+	scope, exists := raw["atlasScope"]
+	if !exists || string(scope) == "null" {
+		return nil, nil
+	}
+	if h.atlasPerm == nil {
+		return nil, errAgentAtlasReadDenied
+	}
+	ok, err := h.atlasPerm.UserHasPermission(ctx, userID, legacyRole, "content.atlas.read")
+	if err != nil {
+		return nil, fmt.Errorf("check atlas read permission: %w", err)
+	}
+	if !ok {
+		return nil, errAgentAtlasReadDenied
+	}
+	return nil, nil
 }

@@ -126,7 +126,7 @@ func TestRelationRepoCountEvidenceByRelationIDs(t *testing.T) {
 	defer cleanup()
 
 	repo := NewRelationRepo(base)
-	mock.ExpectQuery(`SELECT relation_id, COUNT\(\*\) AS count\s+FROM atlas_relation_evidence\s+WHERE relation_id = ANY\(\$1\)\s+GROUP BY relation_id`).
+	mock.ExpectQuery(`SELECT e\.relation_id, COUNT\(\*\) AS count\s+FROM atlas_relation_evidence e\s+JOIN atlas_annotations a ON a\.id = e\.annotation_id AND a\.deleted = false\s+WHERE e\.relation_id = ANY\(\$1\)\s+GROUP BY e\.relation_id`).
 		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"relation_id", "count"}).
 			AddRow(int64(21), int64(3)).

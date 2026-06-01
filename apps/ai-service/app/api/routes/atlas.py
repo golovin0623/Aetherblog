@@ -3,8 +3,8 @@
 落地手册: ../../docs/plan/task-aether-knowledge-system.md §3 Phase 3
 
 Phase 3 范围（本文件）:
-  - POST /v1/atlas/claims/extract   从 carrier 文本中抽取 claim 候选（→ KP 建议）
-  - POST /v1/atlas/relations/suggest 给定一对 KP，建议它们之间的 typed relation
+  - POST /api/v1/atlas/claims/extract   从 carrier 文本中抽取 claim 候选（→ KP 建议）
+  - POST /api/v1/atlas/relations/suggest 给定一对 KP，建议它们之间的 typed relation
 
 实现方式:
   - 优先通过 LlmRouter 走 structured JSON wrapper；输出必须通过 pydantic schema
@@ -36,12 +36,12 @@ from app.services.vector_store import SearchProfile, VectorStoreService
 
 
 logger = logging.getLogger("atlas")
-# PR #724 review fix (Codex P1): 整个 /v1/atlas/* 必须走 require_admin_or_internal,
+# PR #724 review fix (Codex P1): 整个 /api/v1/atlas/* 必须走 require_admin_or_internal,
 # 与 ai-service 其他敏感 AI 路由（agent、knowledge_bases）保持一致；
 # 允许：管理员 JWT 或 Go 后端的 X-Internal-Service 内部 token。
 router = APIRouter(
     tags=["atlas"],
-    prefix="/v1/atlas",
+    prefix="/api/v1/atlas",
     dependencies=[Depends(require_admin_or_internal)],
 )
 
@@ -295,8 +295,11 @@ async def extract_pdf_text(req: ExtractPDFTextRequest) -> PDFTextLayerResponse:
     该端点只允许 admin JWT 或 Go 后端内部 token 访问（router 级依赖），并且不做
     反向 URL 拉取，避免 SSRF；Go 端负责从受控媒体存储读取字节后推送进来。
     """
+    encoded = req.content_bytes or ""
+    if len(encoded) > _max_base64_chars(MAX_ATLAS_PDF_EXTRACT_BYTES):
+        raise HTTPException(status_code=413, detail="PDF 过大，Atlas 文本抽取上限 20MB")
     try:
-        content = base64.b64decode(req.content_bytes or "", validate=True)
+        content = base64.b64decode(encoded, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"content_bytes base64 解码失败: {exc}")
 
@@ -317,6 +320,10 @@ async def extract_pdf_text(req: ExtractPDFTextRequest) -> PDFTextLayerResponse:
     return _build_pdf_text_layer(page_texts)
 
 
+def _max_base64_chars(max_decoded_bytes: int) -> int:
+    return ((max_decoded_bytes + 2) // 3) * 4
+
+
 def _build_pdf_text_layer(page_texts: list[str]) -> PDFTextLayerResponse:
     parts: list[str] = []
     pages: list[PDFTextPage] = []
@@ -328,7 +335,7 @@ def _build_pdf_text_layer(page_texts: list[str]) -> PDFTextLayerResponse:
         text = (raw_text or "").strip()
         start = cursor
         parts.append(text)
-        cursor += len(text)
+        cursor += _utf16_units(text)
         pages.append(PDFTextPage(page=index, text=text, char_start=start, char_end=cursor))
 
     full_text = "".join(parts)
@@ -336,9 +343,13 @@ def _build_pdf_text_layer(page_texts: list[str]) -> PDFTextLayerResponse:
         text=full_text,
         text_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
         page_count=len(page_texts),
-        char_count=len(full_text),
+        char_count=cursor,
         pages=pages,
     )
+
+
+def _utf16_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
 
 
 # ============================================================
@@ -353,6 +364,7 @@ class ExtractClaimsRequest(BaseModel):
     max_candidates: int = Field(default=10, ge=1, le=50)
     model_id: Optional[str] = Field(default=None, description="LiteLLM model id，Phase 3 stub 忽略")
     max_cost_usd: Optional[float] = Field(default=None, ge=0, description="本次抽取的最大美元预算")
+    user_id: int | None = Field(default=None, ge=1)
 
 
 class ClaimCandidate(BaseModel):
@@ -381,6 +393,7 @@ class ClaimExtractionCostPreviewRequest(BaseModel):
     max_candidates: int = Field(default=10, ge=1, le=50)
     model_id: Optional[str] = Field(default=None, description="LiteLLM model id")
     max_cost_usd: Optional[float] = Field(default=None, ge=0, description="本次抽取的最大美元预算")
+    user_id: int | None = Field(default=None, ge=1)
 
 
 class ClaimExtractionCostPreviewResponse(BaseModel):
@@ -477,7 +490,7 @@ async def preview_claim_extraction(
     req: ClaimExtractionCostPreviewRequest,
     llm=Depends(get_llm_router),
 ) -> ClaimExtractionCostPreviewResponse:
-    usage_context = await _safe_usage_context(llm, "atlas_claims", None, req.model_id)
+    usage_context = await _safe_usage_context(llm, "atlas_claims", req.user_id, req.model_id)
     return _build_claim_extraction_cost_preview(req, usage_context)
 
 
@@ -486,7 +499,7 @@ async def extract_claims(
     req: ExtractClaimsRequest,
     llm=Depends(get_llm_router),
 ) -> ExtractClaimsResponse:
-    structured = await _extract_claims_with_structured_llm(req, llm=llm, user_id=None)
+    structured = await _extract_claims_with_structured_llm(req, llm=llm, user_id=req.user_id)
     if structured is not None:
         candidates, model_id, attempts = structured
         return ExtractClaimsResponse(
@@ -667,6 +680,7 @@ class SuggestRelationRequest(BaseModel):
     from_text: str = Field(..., min_length=5)
     to_text: str = Field(..., min_length=5)
     model_id: Optional[str] = None
+    user_id: int | None = Field(default=None, ge=1)
 
 
 class RelationSuggestion(BaseModel):
@@ -710,7 +724,7 @@ async def suggest_relation(
     优先使用 structured LLM wrapper；未配置 Atlas task routing 或模型失败时，
     回退到确定性启发式，确保 UI 主链路可用。
     """
-    structured = await _suggest_relation_with_structured_llm(req, llm=llm, user_id=None)
+    structured = await _suggest_relation_with_structured_llm(req, llm=llm, user_id=req.user_id)
     if structured is not None:
         suggestion, _, _ = structured
         return suggestion

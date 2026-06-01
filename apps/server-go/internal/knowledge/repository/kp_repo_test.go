@@ -45,7 +45,7 @@ func TestKPRepoListFiltersByProvenanceAndEvidence(t *testing.T) {
 	hasEvidence := true
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		`SELECT id, uuid, title, body_markdown, type, confidence, status, author_id, provenance, ai_suggestion_id, archived, deleted, created_at, updated_at FROM atlas_knowledge_points WHERE deleted=false AND provenance=$1 AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l WHERE l.kp_id=atlas_knowledge_points.id) ORDER BY updated_at DESC LIMIT $2`,
+		`SELECT id, uuid, title, body_markdown, type, confidence, status, author_id, provenance, ai_suggestion_id, archived, deleted, created_at, updated_at FROM atlas_knowledge_points WHERE deleted=false AND provenance=$1 AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l JOIN atlas_annotations a ON a.id=l.annotation_id AND a.deleted=false WHERE l.kp_id=atlas_knowledge_points.id) ORDER BY updated_at DESC LIMIT $2`,
 	)).
 		WithArgs(provenance, 200).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
@@ -86,7 +86,7 @@ func TestKPRepoCountEvidenceByKPIDs(t *testing.T) {
 	defer cleanup()
 
 	repo := NewKPRepo(base)
-	mock.ExpectQuery(`SELECT kp_id, COUNT\(\*\) AS count\s+FROM atlas_annotation_kp_links\s+WHERE kp_id = ANY\(\$1\)\s+GROUP BY kp_id`).
+	mock.ExpectQuery(`SELECT l\.kp_id, COUNT\(\*\) AS count\s+FROM atlas_annotation_kp_links l\s+JOIN atlas_annotations a ON a\.id = l\.annotation_id AND a\.deleted = false\s+WHERE l\.kp_id = ANY\(\$1\)\s+GROUP BY l\.kp_id`).
 		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"kp_id", "count"}).
 			AddRow(int64(11), int64(2)).
