@@ -232,13 +232,23 @@ async def upsert_knowledge_point_embedding(
                 kp.title,
                 kp.body_markdown,
                 COALESCE(
-                    array_agg(a.body_text ORDER BY a.updated_at DESC)
-                        FILTER (WHERE a.id IS NOT NULL AND btrim(a.body_text) <> ''),
+                    array_agg(COALESCE(NULLIF(btrim(a.body_text), ''), tq.quote) ORDER BY a.updated_at DESC)
+                        FILTER (
+                            WHERE a.id IS NOT NULL
+                              AND COALESCE(NULLIF(btrim(a.body_text), ''), tq.quote) IS NOT NULL
+                        ),
                     ARRAY[]::text[]
                 ) AS evidence_texts
             FROM atlas_knowledge_points kp
             LEFT JOIN atlas_annotation_kp_links l ON l.kp_id = kp.id
             LEFT JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = FALSE
+            LEFT JOIN LATERAL (
+                SELECT NULLIF(btrim(selector->>'exact'), '') AS quote
+                FROM jsonb_array_elements(a.selectors) AS selector
+                WHERE selector->>'type' = 'TextQuoteSelector'
+                  AND NULLIF(btrim(selector->>'exact'), '') IS NOT NULL
+                LIMIT 1
+            ) tq ON TRUE
             WHERE kp.id = $1
               AND kp.deleted = FALSE
               AND ($2::bigint IS NULL OR kp.author_id = $2 OR kp.author_id IS NULL)
@@ -716,12 +726,19 @@ async def _fetch_evidence(pool, kp_ids: list[int], user_id: int | None) -> list[
                 l.kp_id,
                 l.role,
                 a.id AS annotation_id,
-                a.body_text,
+                COALESCE(NULLIF(btrim(a.body_text), ''), tq.quote, '') AS body_text,
                 a.anchor_state,
                 c.title AS carrier_title,
                 c.source_uri
             FROM atlas_annotation_kp_links l
             JOIN atlas_annotations a ON a.id = l.annotation_id
+            LEFT JOIN LATERAL (
+                SELECT NULLIF(btrim(selector->>'exact'), '') AS quote
+                FROM jsonb_array_elements(a.selectors) AS selector
+                WHERE selector->>'type' = 'TextQuoteSelector'
+                  AND NULLIF(btrim(selector->>'exact'), '') IS NOT NULL
+                LIMIT 1
+            ) tq ON TRUE
             LEFT JOIN atlas_carriers c ON c.id = a.carrier_id
             WHERE l.kp_id = ANY($1::bigint[])
               AND a.deleted = FALSE

@@ -92,6 +92,41 @@ async def test_upsert_knowledge_point_embedding_uses_active_profile_and_evidence
 
 
 @pytest.mark.asyncio
+async def test_upsert_knowledge_point_embedding_uses_selector_quote_when_body_text_empty() -> None:
+    profile = _profile()
+
+    def fetchrow(sql: str, args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "search.active_profile_code" in sql:
+            return {"setting_value": profile.code}
+        if "FROM search_profiles WHERE code" in sql:
+            return profile.__dict__
+        if "FROM atlas_knowledge_points kp" in sql:
+            assert args == (7, 9)
+            assert "jsonb_array_elements(a.selectors)" in sql
+            assert "TextQuoteSelector" in sql
+            return {
+                "id": 7,
+                "title": "Atlas 需要 selector 证据",
+                "body_markdown": "KP 正文",
+                "evidence_texts": ["selector exact quote"],
+            }
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    conn = FakeConn(fetchrow=fetchrow)
+    llm = FakeEmbedLLM([0.4, 0.5, 0.6])
+
+    result = await upsert_knowledge_point_embedding(
+        FakePool(conn),
+        llm,
+        kp_id=7,
+        user_id=9,
+    )
+
+    assert result is not None
+    assert "Evidence:\n- selector exact quote" in llm.calls[0][0]
+
+
+@pytest.mark.asyncio
 async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neighborhood() -> None:
     profile = _profile(model_id="text-embedding-3-large")
     semantic_embedding = [0.05] * 3072
@@ -193,6 +228,60 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
     assert context.relations[0].depth == 1
     assert context.evidence[0].annotation_id == 501
     assert llm.calls[0][1]["embedding_model_id"] == "text-embedding-3-large"
+
+
+@pytest.mark.asyncio
+async def test_recall_atlas_context_evidence_uses_selector_quote_when_body_text_empty() -> None:
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "id = ANY($1::bigint[])" in sql and "FROM atlas_knowledge_points" in sql:
+            assert args == ([8], 9, "selected")
+            return [
+                {
+                    "id": 8,
+                    "title": "手动选择 KP",
+                    "body_markdown": "选中正文",
+                    "type": "claim",
+                    "status": "evergreen",
+                    "confidence": 0.86,
+                    "provenance": "user",
+                    "similarity": None,
+                    "recall_source": "selected",
+                }
+            ]
+        if "WITH RECURSIVE relation_walk" in sql:
+            return []
+        if "JOIN atlas_annotations a" in sql and "l.kp_id = ANY" in sql:
+            assert args == ([8], 9)
+            assert "jsonb_array_elements(a.selectors)" in sql
+            assert "TextQuoteSelector" in sql
+            return [
+                {
+                    "kp_id": 8,
+                    "role": "evidence",
+                    "annotation_id": 501,
+                    "body_text": "selector exact quote",
+                    "anchor_state": "anchored",
+                    "carrier_title": "载体标题",
+                    "source_uri": "note://1",
+                }
+            ]
+        raise AssertionError(f"unexpected fetch SQL: {sql}")
+
+    conn = FakeConn(fetch=fetch)
+    llm = FakeEmbedLLM()
+
+    context = await recall_atlas_context(
+        FakePool(conn),
+        llm,
+        user_id=9,
+        query="",
+        kp_ids=[8],
+        semantic_limit=0,
+        neighborhood_depth=1,
+        include_evidence=True,
+    )
+
+    assert context.evidence[0].body_text == "selector exact quote"
 
 
 def test_render_atlas_context_includes_recall_source_relations_and_evidence() -> None:
