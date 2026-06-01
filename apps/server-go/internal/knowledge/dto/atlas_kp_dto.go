@@ -122,6 +122,53 @@ type GraphExportResponse struct {
 	RelationEvidenceCounts map[int64]int64          `json:"relationEvidenceCounts,omitempty"`
 }
 
+// GraphImportRequest 是 POST /atlas/import 的请求体。
+type GraphImportRequest struct {
+	Format      string `json:"format"`
+	Content     string `json:"content" validate:"required"`
+	SourceTitle string `json:"sourceTitle,omitempty"`
+	DefaultType string `json:"defaultType,omitempty"`
+	DryRun      bool   `json:"dryRun"`
+}
+
+// GraphImportResponse 是 POST /atlas/import 的响应。
+type GraphImportResponse struct {
+	Format               string                              `json:"format"`
+	DryRun               bool                                `json:"dryRun"`
+	SourceTitle          string                              `json:"sourceTitle"`
+	CarrierID            *int64                              `json:"carrierId,omitempty"`
+	CreatedKPCount       int                                 `json:"createdKpCount"`
+	CreatedRelationCount int                                 `json:"createdRelationCount"`
+	KnowledgePoints      []GraphImportKnowledgePointResponse `json:"knowledgePoints"`
+	Relations            []GraphImportRelationResponse       `json:"relations"`
+	Warnings             []string                            `json:"warnings,omitempty"`
+}
+
+// GraphImportKnowledgePointResponse 是导入 KP 的预览/结果行。
+type GraphImportKnowledgePointResponse struct {
+	ID                   int64  `json:"id,omitempty"`
+	Title                string `json:"title"`
+	BodyMarkdown         string `json:"bodyMarkdown"`
+	Type                 string `json:"type"`
+	StartOffset          int    `json:"startOffset"`
+	EndOffset            int    `json:"endOffset"`
+	EvidenceAnnotationID int64  `json:"evidenceAnnotationId,omitempty"`
+}
+
+// GraphImportRelationResponse 是导入 relation 的预览/结果行。
+type GraphImportRelationResponse struct {
+	ID           int64   `json:"id,omitempty"`
+	FromIndex    int     `json:"fromIndex"`
+	ToIndex      int     `json:"toIndex"`
+	FromKPID     int64   `json:"fromKpId,omitempty"`
+	ToKPID       int64   `json:"toKpId,omitempty"`
+	FromTitle    string  `json:"fromTitle"`
+	ToTitle      string  `json:"toTitle"`
+	Type         string  `json:"type"`
+	Strength     float32 `json:"strength"`
+	BodyMarkdown string  `json:"bodyMarkdown"`
+}
+
 // GraphHealthResponse 是 GET /atlas/graph/health 的响应。
 type GraphHealthResponse struct {
 	ActiveKPCount                int64                    `json:"activeKpCount"`

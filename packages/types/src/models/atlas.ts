@@ -225,6 +225,41 @@ export interface AtlasGraphExportResponse {
   relationEvidenceCounts?: Record<string, number>;
 }
 
+export interface AtlasGraphImportKnowledgePoint {
+  id?: number;
+  title: string;
+  bodyMarkdown: string;
+  type: AtlasKnowledgePointType;
+  startOffset: number;
+  endOffset: number;
+  evidenceAnnotationId?: number;
+}
+
+export interface AtlasGraphImportRelation {
+  id?: number;
+  fromIndex: number;
+  toIndex: number;
+  fromKpId?: number;
+  toKpId?: number;
+  fromTitle: string;
+  toTitle: string;
+  type: AtlasRelationType;
+  strength: number;
+  bodyMarkdown: string;
+}
+
+export interface AtlasGraphImportResponse {
+  format: 'obsidian-markdown';
+  dryRun: boolean;
+  sourceTitle: string;
+  carrierId?: number;
+  createdKpCount: number;
+  createdRelationCount: number;
+  knowledgePoints: AtlasGraphImportKnowledgePoint[];
+  relations: AtlasGraphImportRelation[];
+  warnings?: string[];
+}
+
 export interface AtlasRelationEvidence {
   relationId: number;
   annotationId: number;

@@ -29,6 +29,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +88,7 @@ func (h *KPHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.GET("/graph", h.Graph)
 	g.GET("/graph/health", h.GraphHealth)
 	g.GET("/export", h.ExportGraph)
+	g.POST("/import", h.ImportGraph, write)
 	g.GET("/search", h.Search)
 }
 
@@ -579,6 +581,429 @@ func (h *KPHandler) ExportGraph(c echo.Context) error {
 	default:
 		return response.FailWith(c, response.BadRequest, "不支持的导出格式")
 	}
+}
+
+// ImportGraph imports a user supplied Atlas-compatible graph source.
+func (h *KPHandler) ImportGraph(c echo.Context) error {
+	var req atlasdto.GraphImportRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+
+	format := normalizeAtlasImportFormat(req.Format)
+	if format == "" {
+		return response.FailWith(c, response.BadRequest, "不支持的导入格式")
+	}
+	content := normalizeMarkdownImportContent(req.Content)
+	parsed := parseObsidianMarkdownImport(content, req.DefaultType)
+	sourceTitle := atlasImportSourceTitle(req.SourceTitle, parsed)
+	out := atlasImportResponseFromParsed(format, req.DryRun, sourceTitle, parsed)
+	if len(parsed.KnowledgePoints) == 0 {
+		return response.FailWith(c, response.BadRequest, "未解析到可导入的知识点")
+	}
+	if req.DryRun {
+		return response.OK(c, out)
+	}
+
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	if h.kp == nil || h.rel == nil || h.ann == nil || h.atlas == nil || h.atlas.Markdown() == nil {
+		return response.FailWith(c, response.InternalError, "Atlas 导入服务未完整配置")
+	}
+	authorID := scope.UserID
+	authorPtr := &authorID
+	md := h.atlas.Markdown()
+	note, err := md.CreateNoteSourceAs(c.Request().Context(), sourceTitle, content, scope.UserID)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	carrier, err := md.GetOrCreateForNoteAs(c.Request().Context(), note.ID, scope.UserID, scope.CanAdmin)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	out.CarrierID = &carrier.ID
+
+	kpIDs := make([]int64, len(parsed.KnowledgePoints))
+	annotationIDs := make([]int64, len(parsed.KnowledgePoints))
+	for i, kp := range parsed.KnowledgePoints {
+		annotation, err := h.createObsidianImportAnnotation(c, carrier.ID, content, sourceTitle, kp, authorPtr)
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, err.Error())
+		}
+		annotationIDs[i] = annotation.ID
+		confidence := float32(0.6)
+		status := "seed"
+		provenance := "imported"
+		created, err := h.kp.Create(c.Request().Context(), atlassvc.CreateKPInput{
+			Title:                 kp.Title,
+			BodyMarkdown:          kp.BodyMarkdown,
+			Type:                  kp.Type,
+			Confidence:            &confidence,
+			Status:                &status,
+			Provenance:            &provenance,
+			AuthorID:              authorPtr,
+			EvidenceAnnotationIDs: []int64{annotation.ID},
+		})
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, err.Error())
+		}
+		kpIDs[i] = created.ID
+		out.KnowledgePoints[i].ID = created.ID
+		out.KnowledgePoints[i].EvidenceAnnotationID = annotation.ID
+		out.CreatedKPCount++
+		h.kp.ScheduleEmbedding(c.Request().Context(), created.ID, authorPtr, "import")
+	}
+
+	for i, rel := range parsed.Relations {
+		if rel.FromIndex < 0 || rel.FromIndex >= len(kpIDs) || rel.ToIndex < 0 || rel.ToIndex >= len(kpIDs) {
+			continue
+		}
+		strength := rel.Strength
+		provenance := "imported"
+		body := rel.BodyMarkdown
+		evidenceIDs := []int64{}
+		if annotationIDs[rel.FromIndex] > 0 {
+			evidenceIDs = append(evidenceIDs, annotationIDs[rel.FromIndex])
+		}
+		created, err := h.rel.Create(c.Request().Context(), atlassvc.CreateRelationInput{
+			FromKPID:              kpIDs[rel.FromIndex],
+			ToKPID:                kpIDs[rel.ToIndex],
+			Type:                  rel.Type,
+			Strength:              &strength,
+			BodyMarkdown:          &body,
+			Provenance:            &provenance,
+			AuthorID:              authorPtr,
+			EvidenceAnnotationIDs: evidenceIDs,
+		})
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, err.Error())
+		}
+		out.Relations[i].ID = created.ID
+		out.Relations[i].FromKPID = created.FromKPID
+		out.Relations[i].ToKPID = created.ToKPID
+		out.CreatedRelationCount++
+	}
+
+	return response.OK(c, out)
+}
+
+func (h *KPHandler) createObsidianImportAnnotation(
+	c echo.Context,
+	carrierID int64,
+	content string,
+	sourceTitle string,
+	kp parsedImportKnowledgePoint,
+	authorID *int64,
+) (*atlasmodel.Annotation, error) {
+	bodyText := kp.Title
+	metaBytes, _ := json.Marshal(map[string]any{
+		"format":      "obsidian-markdown",
+		"sourceTitle": sourceTitle,
+		"kpTitle":     kp.Title,
+	})
+	return h.ann.Create(c.Request().Context(), atlassvc.CreateAnnotationInput{
+		CarrierID:   carrierID,
+		Selectors:   obsidianImportSelectors(content, kp),
+		BodyType:    "note",
+		BodyText:    &bodyText,
+		BodyMeta:    metaBytes,
+		AnchorState: strPtr("anchored"),
+		AnchorScore: float32Ptr(1),
+		AuthorID:    authorID,
+	})
+}
+
+type parsedObsidianMarkdownImport struct {
+	KnowledgePoints []parsedImportKnowledgePoint
+	Relations       []parsedImportRelation
+	Warnings        []string
+}
+
+type parsedImportKnowledgePoint struct {
+	Title        string
+	BodyMarkdown string
+	Type         string
+	StartOffset  int
+	EndOffset    int
+}
+
+type parsedImportRelation struct {
+	FromIndex    int
+	ToIndex      int
+	FromTitle    string
+	ToTitle      string
+	Type         string
+	Strength     float32
+	BodyMarkdown string
+}
+
+var (
+	markdownHeadingPattern = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*#*\s*$`)
+	wikiLinkPattern        = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
+)
+
+func normalizeAtlasImportFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "markdown", "md", "obsidian", "obsidian-markdown":
+		return "obsidian-markdown"
+	default:
+		return ""
+	}
+}
+
+func normalizeMarkdownImportContent(content string) string {
+	return strings.ReplaceAll(strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n")), "\r", "\n")
+}
+
+func parseObsidianMarkdownImport(content string, defaultType string) parsedObsidianMarkdownImport {
+	content = normalizeMarkdownImportContent(content)
+	kpType := normalizeImportKPType(defaultType)
+	parsed := parsedObsidianMarkdownImport{}
+	if content == "" {
+		return parsed
+	}
+
+	type heading struct {
+		title     string
+		lineStart int
+		bodyStart int
+		end       int
+	}
+	headings := make([]heading, 0)
+	for offset := 0; offset < len(content); {
+		lineStart := offset
+		lineEnd := strings.IndexByte(content[offset:], '\n')
+		nextOffset := len(content)
+		if lineEnd >= 0 {
+			nextOffset = offset + lineEnd + 1
+			lineEnd = offset + lineEnd
+		} else {
+			lineEnd = len(content)
+		}
+		line := content[lineStart:lineEnd]
+		if match := markdownHeadingPattern.FindStringSubmatch(line); match != nil {
+			title := cleanMarkdownHeadingTitle(match[2])
+			if title != "" {
+				headings = append(headings, heading{
+					title:     title,
+					lineStart: lineStart,
+					bodyStart: nextOffset,
+					end:       len(content),
+				})
+			}
+		}
+		offset = nextOffset
+	}
+
+	if len(headings) == 0 {
+		parsed.KnowledgePoints = append(parsed.KnowledgePoints, parsedImportKnowledgePoint{
+			Title:        "Imported Markdown",
+			BodyMarkdown: strings.TrimSpace(content),
+			Type:         kpType,
+			StartOffset:  0,
+			EndOffset:    len(content),
+		})
+		return parsed
+	}
+
+	for i := range headings {
+		if i+1 < len(headings) {
+			headings[i].end = headings[i+1].lineStart
+		}
+		body := ""
+		if headings[i].bodyStart <= headings[i].end {
+			body = strings.TrimSpace(content[headings[i].bodyStart:headings[i].end])
+		}
+		parsed.KnowledgePoints = append(parsed.KnowledgePoints, parsedImportKnowledgePoint{
+			Title:        headings[i].title,
+			BodyMarkdown: body,
+			Type:         kpType,
+			StartOffset:  headings[i].lineStart,
+			EndOffset:    headings[i].end,
+		})
+	}
+
+	titleToIndex := make(map[string]int, len(parsed.KnowledgePoints))
+	for i, kp := range parsed.KnowledgePoints {
+		key := normalizeWikiTitle(kp.Title)
+		if existing, ok := titleToIndex[key]; ok {
+			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("重复标题 %q，wiki-link 将指向第 %d 个同名知识点", kp.Title, existing+1))
+			continue
+		}
+		titleToIndex[key] = i
+	}
+	seenRelations := map[string]bool{}
+	for fromIndex, kp := range parsed.KnowledgePoints {
+		for _, match := range wikiLinkPattern.FindAllStringSubmatch(kp.BodyMarkdown, -1) {
+			targetTitle := normalizeWikiLinkTarget(match[1])
+			if targetTitle == "" {
+				continue
+			}
+			toIndex, ok := titleToIndex[normalizeWikiTitle(targetTitle)]
+			if !ok {
+				parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("未找到 wiki-link 目标 %q", targetTitle))
+				continue
+			}
+			if fromIndex == toIndex {
+				continue
+			}
+			key := fmt.Sprintf("%d:%d:cites", fromIndex, toIndex)
+			if seenRelations[key] {
+				continue
+			}
+			seenRelations[key] = true
+			body := fmt.Sprintf("Imported from Obsidian wiki link [[%s]].", targetTitle)
+			parsed.Relations = append(parsed.Relations, parsedImportRelation{
+				FromIndex:    fromIndex,
+				ToIndex:      toIndex,
+				FromTitle:    kp.Title,
+				ToTitle:      parsed.KnowledgePoints[toIndex].Title,
+				Type:         "cites",
+				Strength:     0.5,
+				BodyMarkdown: body,
+			})
+		}
+	}
+	return parsed
+}
+
+func atlasImportSourceTitle(requested string, parsed parsedObsidianMarkdownImport) string {
+	title := strings.TrimSpace(requested)
+	if title != "" {
+		return title
+	}
+	if len(parsed.KnowledgePoints) > 0 && strings.TrimSpace(parsed.KnowledgePoints[0].Title) != "" {
+		return parsed.KnowledgePoints[0].Title
+	}
+	return "Atlas Markdown Import"
+}
+
+func atlasImportResponseFromParsed(format string, dryRun bool, sourceTitle string, parsed parsedObsidianMarkdownImport) atlasdto.GraphImportResponse {
+	out := atlasdto.GraphImportResponse{
+		Format:          format,
+		DryRun:          dryRun,
+		SourceTitle:     sourceTitle,
+		KnowledgePoints: make([]atlasdto.GraphImportKnowledgePointResponse, len(parsed.KnowledgePoints)),
+		Relations:       make([]atlasdto.GraphImportRelationResponse, len(parsed.Relations)),
+		Warnings:        parsed.Warnings,
+	}
+	for i, kp := range parsed.KnowledgePoints {
+		out.KnowledgePoints[i] = atlasdto.GraphImportKnowledgePointResponse{
+			Title:        kp.Title,
+			BodyMarkdown: kp.BodyMarkdown,
+			Type:         kp.Type,
+			StartOffset:  kp.StartOffset,
+			EndOffset:    kp.EndOffset,
+		}
+	}
+	for i, rel := range parsed.Relations {
+		out.Relations[i] = atlasdto.GraphImportRelationResponse{
+			FromIndex:    rel.FromIndex,
+			ToIndex:      rel.ToIndex,
+			FromTitle:    rel.FromTitle,
+			ToTitle:      rel.ToTitle,
+			Type:         rel.Type,
+			Strength:     rel.Strength,
+			BodyMarkdown: rel.BodyMarkdown,
+		}
+	}
+	if dryRun {
+		out.CreatedKPCount = len(out.KnowledgePoints)
+		out.CreatedRelationCount = len(out.Relations)
+	}
+	return out
+}
+
+func obsidianImportSelectors(content string, kp parsedImportKnowledgePoint) []json.RawMessage {
+	start := clampInt(kp.StartOffset, 0, len(content))
+	end := clampInt(kp.EndOffset, start, len(content))
+	exact := strings.TrimSpace(content[start:end])
+	if exact == "" {
+		exact = kp.Title
+	}
+	return []json.RawMessage{
+		mustRawJSON(map[string]any{
+			"type":   "TextQuoteSelector",
+			"exact":  clipString(exact, 240),
+			"prefix": clipString(content[clampInt(start-80, 0, len(content)):start], 80),
+			"suffix": clipString(content[end:clampInt(end+80, end, len(content))], 80),
+		}),
+		mustRawJSON(map[string]any{
+			"type":  "TextPositionSelector",
+			"start": start,
+			"end":   end,
+		}),
+		mustRawJSON(map[string]any{
+			"type":  "FragmentSelector",
+			"value": "heading:" + normalizeWikiTitle(kp.Title),
+		}),
+	}
+}
+
+func cleanMarkdownHeadingTitle(title string) string {
+	return strings.TrimSpace(strings.Trim(title, "# \t"))
+}
+
+func normalizeImportKPType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "claim", "concept", "question", "definition", "method", "example", "person", "source":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "source"
+	}
+}
+
+func normalizeWikiLinkTarget(value string) string {
+	target := strings.TrimSpace(value)
+	if i := strings.Index(target, "|"); i >= 0 {
+		target = target[:i]
+	}
+	if i := strings.Index(target, "#"); i >= 0 {
+		target = target[:i]
+	}
+	target = strings.TrimSpace(strings.TrimSuffix(target, ".md"))
+	return target
+}
+
+func normalizeWikiTitle(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(strings.TrimSuffix(value, ".md"))), " "))
+}
+
+func mustRawJSON(value any) json.RawMessage {
+	b, _ := json.Marshal(value)
+	return b
+}
+
+func clipString(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= maxLen {
+		return value
+	}
+	return string(runes[:maxLen])
+}
+
+func strPtr(value string) *string {
+	return &value
+}
+
+func float32Ptr(value float32) *float32 {
+	return &value
+}
+
+func clampInt(value int, min int, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func (h *KPHandler) GraphHealth(c echo.Context) error {

@@ -10,6 +10,7 @@ import type {
   AtlasAnchorState,
   AtlasCarrier,
   AtlasCarrierTextLayer,
+  AtlasGraphImportResponse,
   AtlasGraphResponse,
   AtlasGraphHealth,
   AtlasHealthResponse,
@@ -91,6 +92,7 @@ export interface AtlasFetchedWebClip {
 }
 
 export type AtlasGraphExportFormat = 'json' | 'graphml' | 'markdown';
+export type AtlasGraphImportFormat = 'obsidian-markdown';
 
 export const atlasService = {
   health: (): Promise<R<AtlasHealthResponse>> => api.get(`${base}/health`),
@@ -256,6 +258,15 @@ export const atlasService = {
       params: { ...(params ?? {}), format },
       responseType: 'blob',
     }),
+
+  importGraph: (payload: {
+    format?: AtlasGraphImportFormat;
+    content: string;
+    sourceTitle?: string;
+    defaultType?: AtlasKnowledgePointType;
+    dryRun?: boolean;
+  }): Promise<R<AtlasGraphImportResponse>> =>
+    api.post(`${base}/import`, payload),
 
   getGraphHealth: (params?: AtlasScopedParams & { hubLimit?: number }): Promise<R<AtlasGraphHealth>> =>
     api.get(`${base}/graph/health`, { params }),

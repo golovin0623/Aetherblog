@@ -10,7 +10,12 @@
 //   * 支持按 KP type / relation type 过滤
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent, ReactNode, WheelEvent as ReactWheelEvent } from 'react';
+import type {
+  ChangeEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  WheelEvent as ReactWheelEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -28,6 +33,7 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  Upload,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -224,6 +230,8 @@ export default function AtlasGraphPage() {
   const [activePresetId, setActivePresetId] = useState(NO_FILTER_PRESET);
   const [presetStatus, setPresetStatus] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<AtlasGraphExportFormat | null>(null);
+  const [importingGraph, setImportingGraph] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const draggedRef = useRef(false);
@@ -546,7 +554,7 @@ export default function AtlasGraphPage() {
   }, [activePresetId, filterPresets, persistFilterPresets]);
 
   const exportGraph = useCallback(async (format: AtlasGraphExportFormat) => {
-    if (exportingFormat) return;
+    if (exportingFormat || importingGraph) return;
     setExportingFormat(format);
     try {
       const blob = await atlasService.exportGraph(format, { scope, limit: 5000 });
@@ -557,7 +565,31 @@ export default function AtlasGraphPage() {
     } finally {
       setExportingFormat(null);
     }
-  }, [exportingFormat, scope]);
+  }, [exportingFormat, importingGraph, scope]);
+
+  const importMarkdownFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || importingGraph) return;
+    setImportingGraph(true);
+    try {
+      const content = await file.text();
+      const res = await atlasService.importGraph({
+        format: 'obsidian-markdown',
+        content,
+        sourceTitle: file.name.replace(/\.(md|markdown)$/i, ''),
+        defaultType: 'source',
+      });
+      await load();
+      const imported = res.data;
+      setPresetStatus(`已导入 Markdown · ${imported?.createdKpCount ?? 0} KP · ${imported?.createdRelationCount ?? 0} 关系`);
+      setError(null);
+    } catch (err) {
+      setError(extractApiErrorMessage(err, '导入 Markdown 失败'));
+    } finally {
+      setImportingGraph(false);
+      event.target.value = '';
+    }
+  }, [importingGraph, load]);
 
   const handleWheel = useCallback((event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault();
@@ -610,10 +642,25 @@ export default function AtlasGraphPage() {
         icon={Compass}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".md,.markdown,text/markdown,text/plain"
+              className="hidden"
+              onChange={(event) => void importMarkdownFile(event)}
+            />
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              disabled={Boolean(exportingFormat) || importingGraph}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Upload className="h-3 w-3" /> {importingGraph ? '导入中' : '导入 Markdown'}
+            </button>
             <button
               type="button"
               onClick={() => void exportGraph('json')}
-              disabled={Boolean(exportingFormat)}
+              disabled={Boolean(exportingFormat) || importingGraph}
               className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3 w-3" /> {exportingFormat === 'json' ? '导出中' : '导出 JSON'}
@@ -621,7 +668,7 @@ export default function AtlasGraphPage() {
             <button
               type="button"
               onClick={() => void exportGraph('graphml')}
-              disabled={Boolean(exportingFormat)}
+              disabled={Boolean(exportingFormat) || importingGraph}
               className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3 w-3" /> {exportingFormat === 'graphml' ? '导出中' : '导出 GraphML'}
@@ -629,7 +676,7 @@ export default function AtlasGraphPage() {
             <button
               type="button"
               onClick={() => void exportGraph('markdown')}
-              disabled={Boolean(exportingFormat)}
+              disabled={Boolean(exportingFormat) || importingGraph}
               className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-3 w-3" /> {exportingFormat === 'markdown' ? '导出中' : '导出 Markdown'}
