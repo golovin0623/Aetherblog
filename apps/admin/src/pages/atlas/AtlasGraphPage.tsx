@@ -51,7 +51,7 @@ import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
-import { atlasService, type AtlasGraphExportFormat } from '@/services/atlasService';
+import { atlasService, type AtlasGraphExportFormat, type AtlasGraphImportFormat } from '@/services/atlasService';
 import { extractApiErrorMessage } from '@/lib/utils';
 
 interface Node {
@@ -567,24 +567,25 @@ export default function AtlasGraphPage() {
     }
   }, [exportingFormat, importingGraph, scope]);
 
-  const importMarkdownFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+  const importGraphFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || importingGraph) return;
     setImportingGraph(true);
     try {
       const content = await file.text();
+      const format = importFormatForFile(file.name);
       const res = await atlasService.importGraph({
-        format: 'obsidian-markdown',
+        format,
         content,
-        sourceTitle: file.name.replace(/\.(md|markdown)$/i, ''),
-        defaultType: 'source',
+        sourceTitle: file.name.replace(/\.(md|markdown|csv)$/i, ''),
+        defaultType: format === 'readwise-csv' ? 'claim' : 'source',
       });
       await load();
       const imported = res.data;
-      setPresetStatus(`已导入 Markdown · ${imported?.createdKpCount ?? 0} KP · ${imported?.createdRelationCount ?? 0} 关系`);
+      setPresetStatus(`已导入 ${importFormatLabel(format)} · ${imported?.createdKpCount ?? 0} KP · ${imported?.createdRelationCount ?? 0} 关系`);
       setError(null);
     } catch (err) {
-      setError(extractApiErrorMessage(err, '导入 Markdown 失败'));
+      setError(extractApiErrorMessage(err, '导入文件失败'));
     } finally {
       setImportingGraph(false);
       event.target.value = '';
@@ -645,9 +646,9 @@ export default function AtlasGraphPage() {
             <input
               ref={importInputRef}
               type="file"
-              accept=".md,.markdown,text/markdown,text/plain"
+              accept=".md,.markdown,.csv,text/markdown,text/plain,text/csv"
               className="hidden"
-              onChange={(event) => void importMarkdownFile(event)}
+              onChange={(event) => void importGraphFile(event)}
             />
             <button
               type="button"
@@ -655,7 +656,7 @@ export default function AtlasGraphPage() {
               disabled={Boolean(exportingFormat) || importingGraph}
               className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Upload className="h-3 w-3" /> {importingGraph ? '导入中' : '导入 Markdown'}
+              <Upload className="h-3 w-3" /> {importingGraph ? '导入中' : '导入文件'}
             </button>
             <button
               type="button"
@@ -1360,6 +1361,15 @@ function exportFormatLabel(format: AtlasGraphExportFormat): string {
   if (format === 'graphml') return 'GraphML';
   if (format === 'markdown') return 'Markdown';
   return 'JSON';
+}
+
+function importFormatForFile(filename: string): AtlasGraphImportFormat {
+  return filename.toLowerCase().endsWith('.csv') ? 'readwise-csv' : 'obsidian-markdown';
+}
+
+function importFormatLabel(format: AtlasGraphImportFormat): string {
+  if (format === 'readwise-csv') return 'Readwise CSV';
+  return 'Markdown';
 }
 
 function downloadBlob(blob: Blob, filename: string) {

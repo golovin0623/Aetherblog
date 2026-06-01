@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -60,5 +61,53 @@ func TestParseObsidianMarkdownImportFallsBackToSingleNote(t *testing.T) {
 	}
 	if parsed.KnowledgePoints[0].Type != "concept" {
 		t.Fatalf("unexpected fallback type: %q", parsed.KnowledgePoints[0].Type)
+	}
+}
+
+func TestParseReadwiseCSVImport(t *testing.T) {
+	content := strings.Join([]string{
+		`Book Title,Book Author,Text,Highlight Note,Source URL,Location Type,Location`,
+		`Designing Data-Intensive Applications,Martin Kleppmann,"Reliable systems need explicit tradeoffs.","Use in architecture note.",https://readwise.io/bookreview,Page,42`,
+		`Designing Data-Intensive Applications,Martin Kleppmann,"Batch and stream processing often converge.",,https://readwise.io/bookreview,Page,319`,
+	}, "\n")
+
+	parsed := parseReadwiseCSVImport(content, "claim")
+
+	if len(parsed.KnowledgePoints) != 2 {
+		t.Fatalf("expected 2 imported highlights, got %d: %#v", len(parsed.KnowledgePoints), parsed.KnowledgePoints)
+	}
+	if parsed.SourceMarkdown == "" {
+		t.Fatalf("expected generated source markdown")
+	}
+	for _, want := range []string{
+		"# Readwise Import",
+		"## Designing Data-Intensive Applications - Highlight 1",
+		"> Reliable systems need explicit tradeoffs.",
+		"- Note: Use in architecture note.",
+		"- URL: https://readwise.io/bookreview",
+		"- Location: Page 42",
+	} {
+		if !strings.Contains(parsed.SourceMarkdown, want) {
+			t.Fatalf("source markdown missing %q\n%s", want, parsed.SourceMarkdown)
+		}
+	}
+	first := parsed.KnowledgePoints[0]
+	if first.Title != "Designing Data-Intensive Applications - Reliable systems need explicit tradeoffs." {
+		t.Fatalf("unexpected first title: %q", first.Title)
+	}
+	if first.Type != "claim" {
+		t.Fatalf("unexpected first type: %q", first.Type)
+	}
+	if first.StartOffset <= 0 || first.EndOffset <= first.StartOffset || first.EndOffset > len(parsed.SourceMarkdown) {
+		t.Fatalf("unexpected offsets for generated source markdown: %#v", first)
+	}
+	if !strings.Contains(first.BodyMarkdown, "> Reliable systems need explicit tradeoffs.") {
+		t.Fatalf("unexpected first body: %q", first.BodyMarkdown)
+	}
+	if !strings.Contains(first.BodyMarkdown, "Author: Martin Kleppmann") {
+		t.Fatalf("expected author metadata in first body: %q", first.BodyMarkdown)
+	}
+	if len(parsed.Relations) != 0 {
+		t.Fatalf("expected Readwise import to avoid invented relations, got %#v", parsed.Relations)
 	}
 }

@@ -142,7 +142,7 @@ Available controls:
 - Topology filters for orphan and hub KPs.
 - Hub folding for nodes with high incoming degree.
 - `保存过滤` stores the current keyword/type/relation/time/provenance/confidence/evidence/topology/hub-folding filter set as a named preset for the current graph scope. Use the preset menu to apply it later, or `删除预设` to remove it.
-- `导入 Markdown` uploads an Obsidian-style `.md` file into the current user's Atlas graph.
+- `导入文件` uploads an Obsidian-style Markdown or Readwise CSV file into the current user's Atlas graph.
 - `导出 JSON`, `导出 GraphML`, and `导出 Markdown` download a scoped graph snapshot for backup, review, or external graph-tool analysis.
 - Zoom controls, mouse-wheel zoom, drag panning, and reset view.
 - The minimap in the lower-right corner shows the current viewport and can jump to a graph region.
@@ -156,8 +156,9 @@ Click a node or relation to inspect metadata, evidence counts, degree, relation 
 
 Use the import/export buttons in `/admin/atlas/graph` when you need to move a graph snapshot into or out of Atlas:
 
-- `导入 Markdown` accepts Obsidian-style `.md` / `.markdown` files. Top-level and nested Markdown headings become imported Knowledge Points backed by a generated Markdown source note and section evidence annotations.
+- `导入文件` accepts Obsidian-style `.md` / `.markdown` files. Top-level and nested Markdown headings become imported Knowledge Points backed by a generated Markdown source note and section evidence annotations.
 - Obsidian wiki links such as `[[Target Concept]]` create `cites` relations when the target heading exists in the same import file. Missing wiki-link targets are returned as warnings rather than silently inventing nodes.
+- Readwise `.csv` exports with `Title`/`Book Title`, `Author`/`Book Author`, `Highlight`/`Text`, note, URL/source URL, and location columns become imported claim KPs. Atlas generates a Markdown source note from the CSV rows, links each imported highlight back to a source annotation, and keeps note, author, location, and URL metadata in the KP body.
 - The import runs under the current authenticated user. Imported KPs are still subject to the normal Atlas write permission and evidence rule, so each created KP links back to the generated source annotation.
 
 - `导出 JSON` downloads the current Atlas scope as a raw JSON snapshot with version, generation time, scope label, KP nodes, typed relation edges, and evidence-count maps.
@@ -165,7 +166,7 @@ Use the import/export buttons in `/admin/atlas/graph` when you need to move a gr
 - `导出 Markdown` downloads a readable `.md` snapshot with frontmatter, KP sections, relation sections, metadata, and evidence counts. This is the lowest-friction format for note archives and manual migration review.
 - Export respects the same Atlas scope model as the graph API. `全部可访问` exports records visible to the current user, while `仅我的` limits the snapshot to the current user's Atlas graph.
 
-The current A3-05 baseline covers scoped JSON / GraphML / Markdown export and Obsidian-style Markdown import. Tana, Readwise, Zotero, richer Obsidian frontmatter/alias handling, and other external-system adapters remain later ecosystem work.
+The current A3-05 baseline covers scoped JSON / GraphML / Markdown export, Obsidian-style Markdown import, and Readwise CSV import. Tana, Zotero, richer Obsidian frontmatter/alias handling, and other external-system adapters remain later ecosystem work.
 
 ## 10. AI Suggestions
 

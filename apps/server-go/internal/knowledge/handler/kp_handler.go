@@ -25,6 +25,7 @@ package handler
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -598,7 +599,7 @@ func (h *KPHandler) ImportGraph(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "不支持的导入格式")
 	}
 	content := normalizeMarkdownImportContent(req.Content)
-	parsed := parseObsidianMarkdownImport(content, req.DefaultType)
+	parsed := parseAtlasGraphImport(format, content, req.DefaultType)
 	sourceTitle := atlasImportSourceTitle(req.SourceTitle, parsed)
 	out := atlasImportResponseFromParsed(format, req.DryRun, sourceTitle, parsed)
 	if len(parsed.KnowledgePoints) == 0 {
@@ -618,7 +619,12 @@ func (h *KPHandler) ImportGraph(c echo.Context) error {
 	authorID := scope.UserID
 	authorPtr := &authorID
 	md := h.atlas.Markdown()
-	note, err := md.CreateNoteSourceAs(c.Request().Context(), sourceTitle, content, scope.UserID)
+	sourceMarkdown := parsed.SourceMarkdown
+	if sourceMarkdown == "" {
+		sourceMarkdown = content
+	}
+	sourceMarkdown = normalizeMarkdownImportContent(sourceMarkdown)
+	note, err := md.CreateNoteSourceAs(c.Request().Context(), sourceTitle, sourceMarkdown, scope.UserID)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
@@ -631,7 +637,7 @@ func (h *KPHandler) ImportGraph(c echo.Context) error {
 	kpIDs := make([]int64, len(parsed.KnowledgePoints))
 	annotationIDs := make([]int64, len(parsed.KnowledgePoints))
 	for i, kp := range parsed.KnowledgePoints {
-		annotation, err := h.createObsidianImportAnnotation(c, carrier.ID, content, sourceTitle, kp, authorPtr)
+		annotation, err := h.createAtlasImportAnnotation(c, carrier.ID, sourceMarkdown, format, sourceTitle, kp, authorPtr)
 		if err != nil {
 			return response.FailWith(c, response.BadRequest, err.Error())
 		}
@@ -692,17 +698,18 @@ func (h *KPHandler) ImportGraph(c echo.Context) error {
 	return response.OK(c, out)
 }
 
-func (h *KPHandler) createObsidianImportAnnotation(
+func (h *KPHandler) createAtlasImportAnnotation(
 	c echo.Context,
 	carrierID int64,
 	content string,
+	format string,
 	sourceTitle string,
 	kp parsedImportKnowledgePoint,
 	authorID *int64,
 ) (*atlasmodel.Annotation, error) {
 	bodyText := kp.Title
 	metaBytes, _ := json.Marshal(map[string]any{
-		"format":      "obsidian-markdown",
+		"format":      format,
 		"sourceTitle": sourceTitle,
 		"kpTitle":     kp.Title,
 	})
@@ -719,6 +726,7 @@ func (h *KPHandler) createObsidianImportAnnotation(
 }
 
 type parsedObsidianMarkdownImport struct {
+	SourceMarkdown  string
 	KnowledgePoints []parsedImportKnowledgePoint
 	Relations       []parsedImportRelation
 	Warnings        []string
@@ -751,6 +759,8 @@ func normalizeAtlasImportFormat(format string) string {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "", "markdown", "md", "obsidian", "obsidian-markdown":
 		return "obsidian-markdown"
+	case "csv", "readwise", "readwise-csv":
+		return "readwise-csv"
 	default:
 		return ""
 	}
@@ -760,10 +770,20 @@ func normalizeMarkdownImportContent(content string) string {
 	return strings.ReplaceAll(strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n")), "\r", "\n")
 }
 
+func parseAtlasGraphImport(format string, content string, defaultType string) parsedObsidianMarkdownImport {
+	switch format {
+	case "readwise-csv":
+		return parseReadwiseCSVImport(content, defaultType)
+	default:
+		return parseObsidianMarkdownImport(content, defaultType)
+	}
+}
+
 func parseObsidianMarkdownImport(content string, defaultType string) parsedObsidianMarkdownImport {
 	content = normalizeMarkdownImportContent(content)
 	kpType := normalizeImportKPType(defaultType)
 	parsed := parsedObsidianMarkdownImport{}
+	parsed.SourceMarkdown = content
 	if content == "" {
 		return parsed
 	}
@@ -872,6 +892,86 @@ func parseObsidianMarkdownImport(content string, defaultType string) parsedObsid
 	return parsed
 }
 
+func parseReadwiseCSVImport(content string, defaultType string) parsedObsidianMarkdownImport {
+	content = normalizeMarkdownImportContent(content)
+	parsed := parsedObsidianMarkdownImport{}
+	if strings.TrimSpace(content) == "" {
+		return parsed
+	}
+	reader := csv.NewReader(strings.NewReader(content))
+	reader.FieldsPerRecord = -1
+	reader.TrimLeadingSpace = true
+	rows, err := reader.ReadAll()
+	if err != nil {
+		parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("Readwise CSV 解析失败: %v", err))
+		return parsed
+	}
+	if len(rows) == 0 {
+		return parsed
+	}
+	header := csvHeaderIndex(rows[0])
+	requiredHighlight, ok := csvHeaderAnyIndex(header, "highlight", "text", "highlight_text")
+	if !ok {
+		parsed.Warnings = append(parsed.Warnings, "Readwise CSV 缺少 Highlight/Text 列")
+		return parsed
+	}
+	kpType := normalizeImportKPType(defaultType)
+	if strings.TrimSpace(defaultType) == "" {
+		kpType = "claim"
+	}
+
+	var source strings.Builder
+	source.WriteString("# Readwise Import\n\n")
+	for _, row := range rows[1:] {
+		highlight := csvField(row, requiredHighlight)
+		if strings.TrimSpace(highlight) == "" {
+			continue
+		}
+		title := firstNonEmptyString(
+			csvFieldByHeaderAny(row, header, "title", "book_title", "document_title", "source_title", "full_title"),
+			"Untitled Source",
+		)
+		author := csvFieldByHeaderAny(row, header, "author", "book_author", "document_author")
+		note := csvFieldByHeaderAny(row, header, "note", "notes", "highlight_note")
+		url := csvFieldByHeaderAny(row, header, "url", "source_url", "highlight_url", "highlight_location_url", "location_url")
+		location := readwiseLocationValue(
+			csvFieldByHeaderAny(row, header, "location", "highlight_location"),
+			csvFieldByHeader(row, header, "location_type"),
+		)
+		highlightNumber := len(parsed.KnowledgePoints) + 1
+		sectionTitle := fmt.Sprintf("%s - Highlight %d", title, highlightNumber)
+
+		start := source.Len()
+		fmt.Fprintf(&source, "## %s\n\n", sectionTitle)
+		fmt.Fprintf(&source, "> %s\n\n", readwiseInline(highlight))
+		if strings.TrimSpace(note) != "" {
+			fmt.Fprintf(&source, "- Note: %s\n", markdownInline(note))
+		}
+		if strings.TrimSpace(author) != "" {
+			fmt.Fprintf(&source, "- Author: %s\n", markdownInline(author))
+		}
+		if strings.TrimSpace(location) != "" {
+			fmt.Fprintf(&source, "- Location: %s\n", markdownInline(location))
+		}
+		if strings.TrimSpace(url) != "" {
+			fmt.Fprintf(&source, "- URL: %s\n", markdownInline(url))
+		}
+		source.WriteString("\n")
+		end := source.Len()
+
+		body := readwiseKPBody(highlight, note, author, location, url)
+		parsed.KnowledgePoints = append(parsed.KnowledgePoints, parsedImportKnowledgePoint{
+			Title:        readwiseKPTitle(title, highlight),
+			BodyMarkdown: body,
+			Type:         kpType,
+			StartOffset:  start,
+			EndOffset:    end,
+		})
+	}
+	parsed.SourceMarkdown = source.String()
+	return parsed
+}
+
 func atlasImportSourceTitle(requested string, parsed parsedObsidianMarkdownImport) string {
 	title := strings.TrimSpace(requested)
 	if title != "" {
@@ -917,6 +1017,112 @@ func atlasImportResponseFromParsed(format string, dryRun bool, sourceTitle strin
 		out.CreatedRelationCount = len(out.Relations)
 	}
 	return out
+}
+
+func csvHeaderIndex(header []string) map[string]int {
+	out := make(map[string]int, len(header))
+	for i, value := range header {
+		key := strings.ToLower(strings.TrimSpace(value))
+		key = strings.ReplaceAll(key, " ", "_")
+		if key != "" {
+			out[key] = i
+		}
+	}
+	return out
+}
+
+func csvField(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[index])
+}
+
+func csvFieldByHeader(row []string, header map[string]int, key string) string {
+	index, ok := header[key]
+	if !ok {
+		return ""
+	}
+	return csvField(row, index)
+}
+
+func csvHeaderAnyIndex(header map[string]int, keys ...string) (int, bool) {
+	for _, key := range keys {
+		index, ok := header[key]
+		if ok {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+func csvFieldByHeaderAny(row []string, header map[string]int, keys ...string) string {
+	for _, key := range keys {
+		if value := csvFieldByHeader(row, header, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func readwiseKPTitle(sourceTitle string, highlight string) string {
+	prefix := strings.TrimSpace(sourceTitle)
+	if prefix == "" {
+		prefix = "Readwise Highlight"
+	}
+	snippet := markdownInline(highlight)
+	if snippet == "" {
+		return prefix
+	}
+	runes := []rune(snippet)
+	if len(runes) > 80 {
+		snippet = string(runes[:80])
+	}
+	return fmt.Sprintf("%s - %s", prefix, snippet)
+}
+
+func readwiseKPBody(highlight string, note string, author string, location string, url string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "> %s\n\n", readwiseInline(highlight))
+	if strings.TrimSpace(note) != "" {
+		fmt.Fprintf(&b, "Note: %s\n\n", strings.TrimSpace(note))
+	}
+	for _, row := range []struct {
+		label string
+		value string
+	}{
+		{"Author", author},
+		{"Location", location},
+		{"URL", url},
+	} {
+		if strings.TrimSpace(row.value) != "" {
+			fmt.Fprintf(&b, "- %s: %s\n", row.label, markdownInline(row.value))
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func readwiseLocationValue(location string, locationType string) string {
+	location = strings.TrimSpace(location)
+	locationType = strings.TrimSpace(locationType)
+	if location != "" && locationType != "" {
+		return fmt.Sprintf("%s %s", locationType, location)
+	}
+	return firstNonEmptyString(location, locationType)
+}
+
+func readwiseInline(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\n", " ")
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func obsidianImportSelectors(content string, kp parsedImportKnowledgePoint) []json.RawMessage {
