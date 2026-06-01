@@ -386,6 +386,12 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	)
 	atlasTranscripts.AttachVersioning(atlasVersioning)
 	atlasService.AttachTranscriptMedia(atlasTranscripts)
+	atlasImages := atlassvc.NewImageCarrierService(
+		atlasCarrierRepo,
+		atlasImageMediaReader{media: mediaSvc},
+	)
+	atlasImages.AttachVersioning(atlasVersioning)
+	atlasService.AttachImageMedia(atlasImages)
 	// 批次 2: 注入 folder_permissions 校验依赖,Upload 时拦截越权写入私有文件夹
 	permissionRepo := repository.NewPermissionRepo(s.DB)
 	mediaSvc.SetFolderAccess(folderRepo, permissionRepo)

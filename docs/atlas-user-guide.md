@@ -55,7 +55,14 @@ Video and audio files can enter Atlas through a manual transcript baseline from 
 - `查看转录` opens `/admin/atlas/reader/transcript/<carrierId>`, where transcript text can be annotated and evidence links can jump back to the media URL with a `#t=<seconds>` fragment when a nearby timestamp is present.
 - `抽取知识点` uses the same carrier-level cost preview and pending KP suggestion pipeline as PDF, Markdown, Web, and Blog Post carriers.
 
-This media-library path currently covers uploaded PDF files plus manually supplied video/audio transcripts. Automatic speech-to-text ingestion, image-specific extraction, and richer batch media workflows remain later multimodal work.
+Image files can enter Atlas through a manual image-description baseline from the media detail panel:
+
+- Paste a description, OCR text, or observation note into the `Atlas Image` panel.
+- `保存描述` creates or updates an `image` carrier for the uploaded media file.
+- `查看标注` opens `/admin/atlas/reader/image/<carrierId>`, where the original image and saved text layer are shown together and the description text can be annotated.
+- `抽取知识点` uses the same carrier-level cost preview and pending KP suggestion pipeline as PDF, Markdown, Web, Blog Post, and Transcript carriers.
+
+This media-library path currently covers uploaded PDF files, manually supplied video/audio transcripts, and manually supplied image descriptions/OCR text. Automatic speech-to-text ingestion, automatic OCR/multimodal image extraction, and richer batch media workflows remain later multimodal work.
 
 ## 4. Annotation To Knowledge Point
 
@@ -210,7 +217,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R3 AI quality fixed corpus: `node scripts/atlas/ai-quality-gate.mjs`.
 - R3 live AI quality gate: `ATLAS_SMOKE_PASSWORD=... node scripts/atlas/run-ai-quality-live-gate.mjs`, or `ATLAS_SMOKE_PASSWORD=... ATLAS_R3_MODEL_ID=<enabled-chat-model> node scripts/atlas/run-ai-quality-live-gate.mjs` for an explicit live model probe while production default routing is not credentialed. This gate must fail if Atlas task routing has no usable credential and no explicit model is supplied, or if generated suggestions fall back to `atlas-stub/heuristic-v1`.
 - R4 build-stat budget: `node scripts/atlas/performance-budget-gate.mjs --allow-missing-runtime`.
-- R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with all 15 checks passed, including KP archive/restore/delete lifecycle checks.
+- R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with every required check passed, including KP archive/restore/delete lifecycle checks and the carrier Reader surfaces.
 - Multi-user smoke gate: `node scripts/atlas/multiuser-smoke-gate.mjs --input <report.json>` with all 17 checks passed, including non-admin Markdown Reader sessions and cross-user Reader source denial.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.

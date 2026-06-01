@@ -21,6 +21,7 @@ const REQUIRED_CHECKS = [
   { id: 'atlas-reader-pdf', surface: 'Atlas PDF Reader', path: '/admin/atlas/reader/pdf/<carrierId>' },
   { id: 'atlas-reader-web', surface: 'Atlas Web Reader', path: '/admin/atlas/reader/web/<carrierId>' },
   { id: 'atlas-reader-blog-post', surface: 'Atlas Blog Post Reader', path: '/admin/atlas/reader/blog-post/<carrierId>' },
+  { id: 'atlas-reader-image', surface: 'Atlas Image Reader', path: '/admin/atlas/reader/image/<carrierId>' },
   { id: 'atlas-kp-list', surface: 'Atlas KP', path: '/admin/atlas/kps' },
   { id: 'atlas-kp-detail', surface: 'Atlas KP', path: '/admin/atlas/kp/<kpId>' },
   { id: 'atlas-kp-archive', surface: 'Atlas KP Lifecycle', path: '/admin/atlas/kp/<lifecycleKpId>' },
@@ -79,6 +80,7 @@ try {
   await visit(page, 'atlas-reader-pdf', `/admin/atlas/reader/pdf/${seeded.pdfCarrier.id}`, ['PDF 标注', seeded.pdf.anchorText]);
   await visit(page, 'atlas-reader-web', `/admin/atlas/reader/web/${seeded.webCarrier.id}`, ['Web 标注', seeded.web.anchorText]);
   await visit(page, 'atlas-reader-blog-post', `/admin/atlas/reader/blog-post/${seeded.blogPostCarrier.id}`, ['文章标注', seeded.blogPost.anchorText]);
+  await visit(page, 'atlas-reader-image', `/admin/atlas/reader/image/${seeded.imageCarrier.id}`, ['图片标注', seeded.image.anchorText]);
   await visit(page, 'atlas-kp-list', '/admin/atlas/kps', ['Knowledge Points', seeded.kp.title]);
   await visit(page, 'atlas-kp-detail', `/admin/atlas/kp/${seeded.kp.id}`, [seeded.kp.title, '知识点']);
   await exerciseKPLifecycle(page, seeded.lifecycleKp);
@@ -276,6 +278,24 @@ async function seedAtlasData(page) {
     throw new Error(`Blog post text layer did not include expected smoke anchor; carrier=${blogPostCarrier.id}`);
   }
 
+  const imageAnchorText = `Atlas Image smoke anchor ${stamp}`;
+  const imageMedia = await uploadImage(page, `atlas-smoke-${stamp}.png`);
+  const imageCarrier = await api(page, 'POST', '/api/v1/admin/atlas/carriers/image', {
+    mediaFileId: imageMedia.id,
+    descriptionMarkdown: [
+      `# Atlas Image Smoke ${stamp}`,
+      '',
+      `${imageAnchorText} connects image descriptions and OCR notes to Atlas annotations and AI suggestions.`,
+      '',
+      'This image description is created by the release smoke runner.',
+    ].join('\n'),
+    language: 'en',
+  });
+  const imageTextLayer = await api(page, 'GET', `/api/v1/admin/atlas/carriers/${imageCarrier.id}/text-layer`);
+  if (!String(imageTextLayer.text || '').includes(imageAnchorText)) {
+    throw new Error(`Image text layer did not include expected smoke anchor; carrier=${imageCarrier.id}`);
+  }
+
   return {
     note,
     carrier,
@@ -291,6 +311,8 @@ async function seedAtlasData(page) {
     webCarrier,
     blogPost: { post: blogPost, anchorText: blogPostAnchorText, textLayer: blogPostTextLayer },
     blogPostCarrier,
+    image: { media: imageMedia, anchorText: imageAnchorText, textLayer: imageTextLayer },
+    imageCarrier,
   };
 }
 
@@ -460,6 +482,28 @@ async function uploadPDF(page, filename, buffer) {
   return json.data;
 }
 
+async function uploadImage(page, filename) {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+    'base64'
+  );
+  const response = await page.request.post(joinUrl(args.baseUrl, '/api/v1/admin/media/upload'), {
+    multipart: {
+      file: {
+        name: filename,
+        mimeType: 'image/png',
+        buffer: png,
+      },
+    },
+  });
+  const text = await response.text();
+  const json = text ? JSON.parse(text) : {};
+  if (!response.ok() || json.code !== 200) {
+    throw new Error(`Image upload failed HTTP ${response.status()} code=${json.code ?? 'n/a'} message=${json.message ?? text.slice(0, 160)}`);
+  }
+  return json.data;
+}
+
 async function installRuntimeObservers(page, runtimeErrorsTarget) {
   page.on('pageerror', (error) => {
     runtimeErrorsTarget.push(`pageerror: ${error.message}`);
@@ -574,6 +618,9 @@ function summarizeSeeded(seeded) {
     blogPostId: seeded.blogPost.post.id,
     blogPostCarrierId: seeded.blogPostCarrier.id,
     blogPostCharCount: seeded.blogPost.textLayer.charCount,
+    imageMediaId: seeded.image.media.id,
+    imageCarrierId: seeded.imageCarrier.id,
+    imageCharCount: seeded.image.textLayer.charCount,
   };
 }
 

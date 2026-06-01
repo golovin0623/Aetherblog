@@ -43,6 +43,7 @@ const AtlasPDFReaderPage = lazy(() => import('./pages/atlas/PDFReaderPage'));
 const AtlasWebReaderPage = lazy(() => import('./pages/atlas/WebReaderPage'));
 const AtlasBlogPostReaderPage = lazy(() => import('./pages/atlas/BlogPostReaderPage'));
 const AtlasTranscriptReaderPage = lazy(() => import('./pages/atlas/TranscriptReaderPage'));
+const AtlasImageReaderPage = lazy(() => import('./pages/atlas/ImageReaderPage'));
 const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
 const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
 const AtlasSuggestionsPage = lazy(() => import('./pages/atlas/SuggestionsPage'));
@@ -139,6 +140,7 @@ function App() {
               <Route path="atlas/reader/web/:carrierId" element={<AtlasWebReaderPage />} />
               <Route path="atlas/reader/blog-post/:carrierId" element={<AtlasBlogPostReaderPage />} />
               <Route path="atlas/reader/transcript/:carrierId" element={<AtlasTranscriptReaderPage />} />
+              <Route path="atlas/reader/image/:carrierId" element={<AtlasImageReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
               <Route path="atlas/search" element={<AtlasSearchPage />} />
               <Route path="atlas/graph" element={<AtlasGraphPage />} />

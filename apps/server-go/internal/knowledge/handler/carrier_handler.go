@@ -7,8 +7,9 @@
 //   POST /carriers/web            创建/更新 web clip 类型 carrier
 //   POST /carriers/web/fetch      抓取网页并返回可编辑正文快照
 //   POST /carriers/media-transcript 创建/更新 video/audio transcript carrier
+//   POST /carriers/image          创建/更新 image description carrier
 //   GET  /carriers/:id            读 carrier 详情
-//   GET  /carriers/:id/text-layer  读 pdf/blog_post/web/video/audio carrier 当前文本层
+//   GET  /carriers/:id/text-layer  读 pdf/blog_post/web/video/audio/image carrier 当前文本层
 
 package handler
 
@@ -46,6 +47,7 @@ func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/web", h.EnsureWeb, write)
 	g.POST("/carriers/web/fetch", h.FetchWeb, write)
 	g.POST("/carriers/media-transcript", h.EnsureMediaTranscript, write)
+	g.POST("/carriers/image", h.EnsureImage, write)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
 }
@@ -266,6 +268,37 @@ func (h *CarrierHandler) EnsureMediaTranscript(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
+// EnsureImage 创建 / 更新 image 描述文本 carrier。
+func (h *CarrierHandler) EnsureImage(c echo.Context) error {
+	var req atlasdto.EnsureImageCarrierRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体无法解析")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	images := h.atlas.ImageMedia()
+	if images == nil {
+		return response.FailWith(c, response.InternalError, "image carrier service 未配置")
+	}
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	carrier, err := images.CreateOrUpdateForMediaAs(c.Request().Context(), atlassvc.ImageCarrierInput{
+		MediaFileID:         req.MediaFileID,
+		DescriptionMarkdown: req.DescriptionMarkdown,
+		Language:            req.Language,
+	}, scope.UserID, scope.CanAdmin)
+	if err != nil {
+		if errors.Is(err, atlassvc.ErrAtlasForbidden) {
+			return response.FailWith(c, response.Forbidden, "无权访问该图片的 Atlas 描述")
+		}
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, toCarrierResponse(carrier))
+}
+
 // Get 返回 carrier 详情。
 func (h *CarrierHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -289,7 +322,7 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
-// GetTextLayer 返回 PDF/BlogPost/Web/Transcript carrier 当前 content_hash 对应的页级文本层。
+// GetTextLayer 返回 PDF/BlogPost/Web/Transcript/Image carrier 当前 content_hash 对应的页级文本层。
 func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -309,8 +342,8 @@ func (h *CarrierHandler) GetTextLayer(c echo.Context) error {
 	if !scope.canAccessOwner(carrier.OwnerID) {
 		return response.FailWith(c, response.Forbidden, "无权访问该载体")
 	}
-	if carrier.Type != "pdf" && carrier.Type != "blog_post" && carrier.Type != "web" && carrier.Type != "video" && carrier.Type != "audio" {
-		return response.FailWith(c, response.BadRequest, "仅 PDF/BlogPost/Web/Transcript 载体支持文本层读取")
+	if carrier.Type != "pdf" && carrier.Type != "blog_post" && carrier.Type != "web" && carrier.Type != "video" && carrier.Type != "audio" && carrier.Type != "image" {
+		return response.FailWith(c, response.BadRequest, "仅 PDF/BlogPost/Web/Transcript/Image 载体支持文本层读取")
 	}
 	layer, err := h.atlas.Carriers().FindTextLayerByCarrierAndHash(c.Request().Context(), carrier.ID, carrier.ContentHash)
 	if err != nil {

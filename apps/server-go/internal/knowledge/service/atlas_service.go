@@ -19,6 +19,7 @@ type AtlasService struct {
 	blogPosts   *BlogPostCarrierService
 	webClips    *WebClipCarrierService
 	transcripts *TranscriptCarrierService
+	images      *ImageCarrierService
 }
 
 // NewAtlasService 创建 AtlasService。
@@ -83,6 +84,16 @@ func (s *AtlasService) AttachTranscriptMedia(transcripts *TranscriptCarrierServi
 // TranscriptMedia 返回视频/音频转录载体子服务。
 func (s *AtlasService) TranscriptMedia() *TranscriptCarrierService {
 	return s.transcripts
+}
+
+// AttachImageMedia injects the image carrier service.
+func (s *AtlasService) AttachImageMedia(images *ImageCarrierService) {
+	s.images = images
+}
+
+// ImageMedia 返回图片描述载体子服务。
+func (s *AtlasService) ImageMedia() *ImageCarrierService {
+	return s.images
 }
 
 // Carriers 返回 CarrierRepo（CRUD）。Phase 1+ 由 handler 调。

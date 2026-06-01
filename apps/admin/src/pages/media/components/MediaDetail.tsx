@@ -120,6 +120,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [savingTranscript, setSavingTranscript] = useState(false);
   const [openingTranscript, setOpeningTranscript] = useState(false);
   const [generatingTranscript, setGeneratingTranscript] = useState(false);
+  const [imageDescriptionDraft, setImageDescriptionDraft] = useState('');
+  const [imageCarrierId, setImageCarrierId] = useState<number | null>(null);
+  const [savingImageDescription, setSavingImageDescription] = useState(false);
+  const [openingImageAtlas, setOpeningImageAtlas] = useState(false);
+  const [generatingImageAtlas, setGeneratingImageAtlas] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
@@ -155,6 +160,8 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   useEffect(() => {
     setTranscriptDraft('');
     setTranscriptCarrierId(null);
+    setImageDescriptionDraft('');
+    setImageCarrierId(null);
   }, [initialMedia.id]);
 
   const handleCopyUrl = async () => {
@@ -336,6 +343,83 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   };
 
   const transcriptBusy = savingTranscript || openingTranscript || generatingTranscript;
+  const ensureAtlasImageCarrier = async () => {
+    if (!isImage) return;
+    const descriptionMarkdown = imageDescriptionDraft.trim();
+    if (!descriptionMarkdown) {
+      toast.message('请先填写图片描述或 OCR 文本');
+      return;
+    }
+    const res = await atlasService.ensureImageCarrier({
+      mediaFileId: media.id,
+      descriptionMarkdown,
+    });
+    setImageCarrierId(res.data.id);
+    return res.data;
+  };
+
+  const handleSaveAtlasImage = async () => {
+    if (!isImage) return;
+    setSavingImageDescription(true);
+    try {
+      const carrier = await ensureAtlasImageCarrier();
+      if (carrier) {
+        toast.success(`已保存 Atlas 图片描述：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '保存 Atlas 图片描述失败'));
+    } finally {
+      setSavingImageDescription(false);
+    }
+  };
+
+  const handleOpenAtlasImage = async () => {
+    if (!isImage) return;
+    setOpeningImageAtlas(true);
+    try {
+      const carrier = imageCarrierId ? { id: imageCarrierId } : await ensureAtlasImageCarrier();
+      if (carrier) {
+        navigate(`/atlas/reader/image/${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas 图片 Reader 失败'));
+    } finally {
+      setOpeningImageAtlas(false);
+    }
+  };
+
+  const handleGenerateAtlasImageSuggestions = async () => {
+    if (!isImage) return;
+    setGeneratingImageAtlas(true);
+    try {
+      const carrier = await ensureAtlasImageCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从图片描述生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 图片知识点失败'));
+    } finally {
+      setGeneratingImageAtlas(false);
+    }
+  };
+
+  const imageAtlasBusy = savingImageDescription || openingImageAtlas || generatingImageAtlas;
 
   const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [
     { id: 'info', label: '详情', icon: FileText },
@@ -414,6 +498,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
           >
             <Edit3 className="w-3.5 h-3.5" />
             编辑
+          </button>
+        )}
+        {isImage && (
+          <button
+            onClick={() => void handleOpenAtlasImage()}
+            disabled={imageAtlasBusy}
+            className={detailSoftButtonClass}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {openingImageAtlas ? '打开中' : '查看标注'}
           </button>
         )}
         <button
@@ -595,6 +689,50 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                       {generatingTranscript ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isImage && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas Image</p>
+                  </div>
+                  <textarea
+                    value={imageDescriptionDraft}
+                    onChange={(event) => setImageDescriptionDraft(event.target.value)}
+                    placeholder="描述图片内容、OCR 文本或可作为证据的观察笔记"
+                    rows={6}
+                    className="min-h-[132px] w-full resize-y rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 py-2 font-mono text-xs leading-5 text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus:outline-none"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAtlasImage()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {savingImageDescription ? '保存中' : '保存描述'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasImage()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingImageAtlas ? '打开中' : '查看标注'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasImageSuggestions()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingImageAtlas ? '生成中' : '抽取知识点'}
                     </button>
                   </div>
                 </div>
