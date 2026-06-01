@@ -118,7 +118,7 @@ export function ThemeToggle({
           relative flex items-center justify-center rounded-full
           bg-transparent hover:bg-[var(--bg-card)]
           border border-transparent hover:border-[var(--border-default)]
-          transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+          transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]
           ${buttonSize} ${className}
         `}
         title={toggleLabel}
@@ -185,7 +185,7 @@ export function ThemeToggle({
           relative flex items-center justify-center rounded-full
           bg-transparent hover:bg-[var(--bg-card)]
           border border-transparent hover:border-[var(--border-default)]
-          transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+          transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]
           ${buttonSize}
         `}
         title={labels.selectTitle}
@@ -236,7 +236,7 @@ export function ThemeToggle({
                   }}
                   className={`
                     w-full flex items-center gap-2 px-3 py-2 rounded-lg
-                    text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+                    text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]
                     ${theme === option.value
                       ? 'bg-[var(--color-primary)] bg-opacity-20 text-[var(--color-primary)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
