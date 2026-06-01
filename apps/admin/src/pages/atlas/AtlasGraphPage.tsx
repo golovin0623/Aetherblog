@@ -16,6 +16,7 @@ import {
   ArrowRight,
   CalendarDays,
   Compass,
+  Download,
   EyeOff,
   Filter,
   Maximize2,
@@ -222,6 +223,7 @@ export default function AtlasGraphPage() {
   const [presetName, setPresetName] = useState('');
   const [activePresetId, setActivePresetId] = useState(NO_FILTER_PRESET);
   const [presetStatus, setPresetStatus] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<'json' | 'graphml' | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const draggedRef = useRef(false);
@@ -543,6 +545,20 @@ export default function AtlasGraphPage() {
     setPresetStatus(preset ? `已删除过滤预设 · ${preset.name}` : null);
   }, [activePresetId, filterPresets, persistFilterPresets]);
 
+  const exportGraph = useCallback(async (format: 'json' | 'graphml') => {
+    if (exportingFormat) return;
+    setExportingFormat(format);
+    try {
+      const blob = await atlasService.exportGraph(format, { scope, limit: 5000 });
+      downloadBlob(blob, `aether-atlas-${scope}-${formatDateForFilename(new Date())}.${format === 'graphml' ? 'graphml' : 'json'}`);
+      setPresetStatus(`已导出 ${format === 'graphml' ? 'GraphML' : 'JSON'} · ${scope === 'all' ? '全部范围' : '我的范围'}`);
+    } catch (err) {
+      setError(extractApiErrorMessage(err, '导出图谱失败'));
+    } finally {
+      setExportingFormat(null);
+    }
+  }, [exportingFormat, scope]);
+
   const handleWheel = useCallback((event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault();
     const point = svgPointFromClient(event.currentTarget, event.clientX, event.clientY);
@@ -593,13 +609,31 @@ export default function AtlasGraphPage() {
         description={`图谱视图 · ${nodes.length} 节点 · ${edges.length} 关系${hidden ? ` · ${hidden} 个 hub 节点已折叠` : ''}`}
         icon={Compass}
         actions={
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)]"
-          >
-            <RefreshCw className="h-3 w-3" /> 刷新
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void exportGraph('json')}
+              disabled={Boolean(exportingFormat)}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-3 w-3" /> {exportingFormat === 'json' ? '导出中' : '导出 JSON'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportGraph('graphml')}
+              disabled={Boolean(exportingFormat)}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-3 w-3" /> {exportingFormat === 'graphml' ? '导出中' : '导出 GraphML'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs hover:bg-[var(--bg-substrate)]"
+            >
+              <RefreshCw className="h-3 w-3" /> 刷新
+            </button>
+          </div>
         }
       />
 
@@ -1255,6 +1289,21 @@ function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+function formatDateForFilename(value: Date): string {
+  return value.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
 }
 
 function truncate(s: string, n: number): string {

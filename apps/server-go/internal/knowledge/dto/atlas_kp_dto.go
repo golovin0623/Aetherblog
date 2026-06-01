@@ -110,6 +110,18 @@ type GraphResponse struct {
 	RelationEvidencePreviews map[int64]*SearchEvidencePreviewResponse `json:"relationEvidencePreviews,omitempty"`
 }
 
+// GraphExportResponse 是 GET /atlas/export?format=json 的可迁移图谱快照。
+type GraphExportResponse struct {
+	Format                 string                   `json:"format"`
+	Version                int                      `json:"version"`
+	GeneratedAt            time.Time                `json:"generatedAt"`
+	Scope                  string                   `json:"scope"`
+	Nodes                  []KnowledgePointResponse `json:"nodes"`
+	Edges                  []TypedRelationResponse  `json:"edges"`
+	KPEvidenceCounts       map[int64]int64          `json:"kpEvidenceCounts,omitempty"`
+	RelationEvidenceCounts map[int64]int64          `json:"relationEvidenceCounts,omitempty"`
+}
+
 // GraphHealthResponse 是 GET /atlas/graph/health 的响应。
 type GraphHealthResponse struct {
 	ActiveKPCount                int64                    `json:"activeKpCount"`

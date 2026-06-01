@@ -246,6 +246,15 @@ export const atlasService = {
   ): Promise<R<AtlasGraphResponse>> =>
     api.get(`${base}/graph`, { params: { ...(params ?? {}), ...(limit ? { limit } : {}) } }),
 
+  exportGraph: (
+    format: 'json' | 'graphml',
+    params?: AtlasScopedParams & { limit?: number }
+  ): Promise<Blob> =>
+    api.get(`${base}/export`, {
+      params: { ...(params ?? {}), format },
+      responseType: 'blob',
+    }),
+
   getGraphHealth: (params?: AtlasScopedParams & { hubLimit?: number }): Promise<R<AtlasGraphHealth>> =>
     api.get(`${base}/graph/health`, { params }),
 

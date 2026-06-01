@@ -214,6 +214,17 @@ export interface AtlasGraphResponse {
   relationEvidencePreviews?: Record<string, AtlasSearchEvidencePreview>;
 }
 
+export interface AtlasGraphExportResponse {
+  format: 'json';
+  version: number;
+  generatedAt: string;
+  scope: string;
+  nodes: AtlasKnowledgePoint[];
+  edges: AtlasTypedRelation[];
+  kpEvidenceCounts?: Record<string, number>;
+  relationEvidenceCounts?: Record<string, number>;
+}
+
 export interface AtlasRelationEvidence {
   relationId: number;
   annotationId: number;

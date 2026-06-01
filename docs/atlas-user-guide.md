@@ -142,6 +142,7 @@ Available controls:
 - Topology filters for orphan and hub KPs.
 - Hub folding for nodes with high incoming degree.
 - `保存过滤` stores the current keyword/type/relation/time/provenance/confidence/evidence/topology/hub-folding filter set as a named preset for the current graph scope. Use the preset menu to apply it later, or `删除预设` to remove it.
+- `导出 JSON` and `导出 GraphML` download a scoped graph snapshot for backup, review, or external graph-tool analysis.
 - Zoom controls, mouse-wheel zoom, drag panning, and reset view.
 - The minimap in the lower-right corner shows the current viewport and can jump to a graph region.
 - `保存布局` persists the current visible node positions plus zoom/pan viewport for the selected graph scope; `重置布局` clears that saved state.
@@ -150,7 +151,17 @@ Click a KP or relation to open the inspector. The inspector shows metadata, evid
 
 Click a node or relation to inspect metadata, evidence counts, degree, relation summary, and navigation actions without leaving the graph. Open a KP from the inspector when you need the full detail page. On a KP detail page, use the local graph section to inspect depth 1, 2, or 3 neighborhoods without leaving the KP.
 
-## 9. AI Suggestions
+## 9. Export Atlas Graph
+
+Use the export buttons in `/admin/atlas/graph` when you need a portable snapshot outside the admin UI:
+
+- `导出 JSON` downloads the current Atlas scope as a raw JSON snapshot with version, generation time, scope label, KP nodes, typed relation edges, and evidence-count maps.
+- `导出 GraphML` downloads the same scoped graph in GraphML for external graph inspection tools.
+- Export respects the same Atlas scope model as the graph API. `全部可访问` exports records visible to the current user, while `仅我的` limits the snapshot to the current user's Atlas graph.
+
+The export baseline is scope-aware and read-only. Import adapters for Obsidian, Tana, Readwise, Zotero, and other external systems remain later A3-05 work.
+
+## 10. AI Suggestions
 
 Use `/admin/atlas/suggestions` to review pending suggestions.
 
@@ -174,7 +185,7 @@ The AI service now validates structured JSON output and retries once before fall
 
 Carrier-level extraction is currently a synchronous bounded baseline for Reader and writing-workspace usage. It includes a preflight token/cost estimate, pricing-missing warning, and per-run `maxCostUsd` threshold guard. Blog-post carriers use `posts://{id}` source URIs and require migration `000075` so the database CHECK constraint accepts `blog_post` carrier rows. The AI Writing workspace can open `/admin/atlas/reader/blog-post/:carrierId`, where the saved article text layer can be highlighted, deleted, and used for annotation-level or full-text AI suggestions. Web clip carriers are available through `POST /atlas/carriers/web`: the caller supplies `sourceUrl`, title, and Markdown body text, and Atlas stores a scoped `web` carrier plus a reusable text layer. The admin Atlas dashboard can also call `POST /atlas/carriers/web/fetch` from the Web snapshot modal to fetch a public http(s) page, extract a readable title/author/language/body draft, let the user edit that draft, then save it into `/admin/atlas/reader/web/:carrierId`. The fetch baseline rejects private/loopback targets, non-default ports, unsupported content types, oversized responses, and weak pages with no readable body. Browser extension capture, richer site metadata extraction, large async batch jobs, progress reporting, persistent user-configurable budgets, and batch-job cost rollups remain later P2-02/P2-08 work.
 
-## 10. AetherHub Scope
+## 11. AetherHub Scope
 
 Current available handoff:
 
@@ -196,13 +207,13 @@ AI_INTERNAL_SERVICE_TOKEN=... node scripts/atlas/reindex-embeddings.mjs --kind a
 
 This is an automatic semantic recall baseline, not full GraphRAG. The admin search page now has a semantic rerank baseline, while community/global graph query and production evidence from running the KP/note embedding backfill command remain future gates.
 
-## 11. AI Writing Workspace
+## 12. AI Writing Workspace
 
 In `/admin/posts/ai-writing/:id`, the Atlas reference action searches the current user's Atlas KP set with a bounded query built from the current title, summary, and body. The panel lists related KPs, semantic scores when available, and the first accessible evidence quote for each KP when the KP has linked evidence.
 
 Use `链接` to add an internal Markdown link like `Atlas KP #42` to the current cursor position. Use `证据` to insert a public-safe blockquote citation containing the evidence quote, source carrier title, KP id, and evidence annotation id without linking readers into `/admin`. Richer writing-agent synthesis remains later work.
 
-## 12. Release Checklist
+## 13. Release Checklist
 
 Before treating an Atlas iteration as a passed product gate, record evidence in `.agent/plans/knowledge-atlas-phase-gate-ledger.md`:
 
@@ -220,6 +231,7 @@ Before treating an Atlas iteration as a passed product gate, record evidence in 
 - R5 smoke report template: `node scripts/atlas/release-smoke-gate.mjs --print-template`; full release evidence requires `--input <report.json>` with every required check passed, including KP archive/restore/delete lifecycle checks and the carrier Reader surfaces.
 - Multi-user smoke gate: `node scripts/atlas/multiuser-smoke-gate.mjs --input <report.json>` with all 17 checks passed, including non-admin Markdown Reader sessions and cross-user Reader source denial.
 - Browser smoke for dashboard, Reader, KP list/detail, Graph, and Suggestions.
+- Export smoke for `/admin/atlas/graph` JSON and GraphML downloads when the change touches graph contracts or export code.
 - Cross-surface smoke for Notes, KnowledgeBase, Blog, and AetherHub when the change touches shared contracts.
 
 Phase gates are stricter than MVP availability. A feature can have a usable baseline while its full product gate remains open because recall, quality, performance, or no-regression evidence is missing.

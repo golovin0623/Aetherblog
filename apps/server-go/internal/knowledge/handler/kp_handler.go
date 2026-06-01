@@ -26,9 +26,12 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -83,6 +86,7 @@ func (h *KPHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 
 	g.GET("/graph", h.Graph)
 	g.GET("/graph/health", h.GraphHealth)
+	g.GET("/export", h.ExportGraph)
 	g.GET("/search", h.Search)
 }
 
@@ -474,13 +478,21 @@ func (h *KPHandler) DeleteRelation(c echo.Context) error {
 // ---------- Graph ----------
 
 func (h *KPHandler) Graph(c echo.Context) error {
-	scope, err := currentAtlasScope(c)
+	graph, _, err := h.graphResponseForRequest(c)
 	if err != nil {
 		return writeAtlasError(c, err)
 	}
+	return response.OK(c, graph)
+}
+
+func (h *KPHandler) graphResponseForRequest(c echo.Context) (atlasdto.GraphResponse, string, error) {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return atlasdto.GraphResponse{}, "", err
+	}
 	authorID, err := scope.authorFilter(c)
 	if err != nil {
-		return writeAtlasError(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	limit := 5000
 	if v := c.QueryParam("limit"); v != "" {
@@ -490,7 +502,7 @@ func (h *KPHandler) Graph(c echo.Context) error {
 	}
 	kps, err := h.kp.List(c.Request().Context(), atlasrepo.KPListFilter{Limit: limit, AuthorID: authorID})
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	nodes := make([]atlasdto.KnowledgePointResponse, len(kps))
 	nodeIDs := make([]int64, len(kps))
@@ -500,11 +512,11 @@ func (h *KPHandler) Graph(c echo.Context) error {
 	}
 	kpEvidenceCounts, err := h.kp.CountEvidenceByKPIDs(c.Request().Context(), nodeIDs)
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	rels, err := h.rel.ListForNodeIDs(c.Request().Context(), nodeIDs, limit, authorID)
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	edges := make([]atlasdto.TypedRelationResponse, len(rels))
 	relationIDs := make([]int64, len(rels))
@@ -514,24 +526,56 @@ func (h *KPHandler) Graph(c echo.Context) error {
 	}
 	relationEvidenceCounts, err := h.rel.CountEvidenceByRelationIDs(c.Request().Context(), relationIDs)
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	kpEvidencePreviews, err := h.attachGraphKPEvidencePreviews(c.Request().Context(), nodeIDs, authorID)
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
 	relationEvidencePreviews, err := h.attachGraphRelationEvidencePreviews(c.Request().Context(), relationIDs, authorID)
 	if err != nil {
-		return response.Error(c, err)
+		return atlasdto.GraphResponse{}, "", err
 	}
-	return response.OK(c, atlasdto.GraphResponse{
+	return atlasdto.GraphResponse{
 		Nodes:                    nodes,
 		Edges:                    edges,
 		KPEvidenceCounts:         kpEvidenceCounts,
 		RelationEvidenceCounts:   relationEvidenceCounts,
 		KPEvidencePreviews:       kpEvidencePreviews,
 		RelationEvidencePreviews: relationEvidencePreviews,
-	})
+	}, atlasExportScopeLabel(scope, authorID), nil
+}
+
+// ExportGraph returns a scoped Atlas graph snapshot as JSON or GraphML.
+func (h *KPHandler) ExportGraph(c echo.Context) error {
+	graph, scopeLabel, err := h.graphResponseForRequest(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	format := strings.ToLower(strings.TrimSpace(c.QueryParam("format")))
+	if format == "" {
+		format = "json"
+	}
+	generatedAt := time.Now().UTC()
+	switch format {
+	case "json":
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="aether-atlas.json"`)
+		return c.JSON(http.StatusOK, atlasdto.GraphExportResponse{
+			Format:                 "json",
+			Version:                1,
+			GeneratedAt:            generatedAt,
+			Scope:                  scopeLabel,
+			Nodes:                  graph.Nodes,
+			Edges:                  graph.Edges,
+			KPEvidenceCounts:       graph.KPEvidenceCounts,
+			RelationEvidenceCounts: graph.RelationEvidenceCounts,
+		})
+	case "graphml":
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="aether-atlas.graphml"`)
+		return c.Blob(http.StatusOK, "application/graphml+xml; charset=utf-8", []byte(buildAtlasGraphML(graph, scopeLabel, generatedAt)))
+	default:
+		return response.FailWith(c, response.BadRequest, "不支持的导出格式")
+	}
 }
 
 func (h *KPHandler) GraphHealth(c echo.Context) error {
@@ -554,6 +598,95 @@ func (h *KPHandler) GraphHealth(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.OK(c, toGraphHealthResponse(metrics))
+}
+
+func atlasExportScopeLabel(scope *atlasScope, authorID *int64) string {
+	if authorID == nil {
+		return "all"
+	}
+	if scope != nil && *authorID == scope.UserID {
+		return "mine"
+	}
+	return fmt.Sprintf("author:%d", *authorID)
+}
+
+func buildAtlasGraphML(graph atlasdto.GraphResponse, scopeLabel string, generatedAt time.Time) string {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<graphml xmlns="http://graphml.graphdrawing.org/xmlns">` + "\n")
+	for _, key := range []struct {
+		id       string
+		attrType string
+	}{
+		{"scope", "string"},
+		{"generatedAt", "string"},
+		{"uuid", "string"},
+		{"title", "string"},
+		{"bodyMarkdown", "string"},
+		{"type", "string"},
+		{"status", "string"},
+		{"provenance", "string"},
+		{"confidence", "double"},
+		{"archived", "boolean"},
+		{"evidenceCount", "long"},
+		{"createdAt", "string"},
+		{"updatedAt", "string"},
+		{"strength", "double"},
+	} {
+		graphMLKey(&b, key.id, key.attrType)
+	}
+	b.WriteString(`  <graph id="aether-atlas" edgedefault="directed">` + "\n")
+	graphMLData(&b, "scope", scopeLabel)
+	graphMLData(&b, "generatedAt", generatedAt.Format(time.RFC3339))
+	for _, node := range graph.Nodes {
+		fmt.Fprintf(&b, `    <node id="kp-%d">`+"\n", node.ID)
+		graphMLData(&b, "uuid", node.UUID)
+		graphMLData(&b, "title", node.Title)
+		graphMLData(&b, "bodyMarkdown", node.BodyMarkdown)
+		graphMLData(&b, "type", node.Type)
+		graphMLData(&b, "status", node.Status)
+		graphMLData(&b, "provenance", node.Provenance)
+		graphMLData(&b, "confidence", fmt.Sprintf("%.4f", node.Confidence))
+		graphMLData(&b, "archived", fmt.Sprintf("%t", node.Archived))
+		graphMLData(&b, "evidenceCount", fmt.Sprintf("%d", graph.KPEvidenceCounts[node.ID]))
+		graphMLData(&b, "createdAt", node.CreatedAt.UTC().Format(time.RFC3339))
+		graphMLData(&b, "updatedAt", node.UpdatedAt.UTC().Format(time.RFC3339))
+		b.WriteString(`    </node>` + "\n")
+	}
+	for _, edge := range graph.Edges {
+		fmt.Fprintf(&b, `    <edge id="rel-%d" source="kp-%d" target="kp-%d">`+"\n", edge.ID, edge.FromKPID, edge.ToKPID)
+		graphMLData(&b, "type", edge.Type)
+		graphMLData(&b, "strength", fmt.Sprintf("%.4f", edge.Strength))
+		graphMLData(&b, "provenance", edge.Provenance)
+		if edge.BodyMarkdown != nil {
+			graphMLData(&b, "bodyMarkdown", *edge.BodyMarkdown)
+		}
+		graphMLData(&b, "evidenceCount", fmt.Sprintf("%d", graph.RelationEvidenceCounts[edge.ID]))
+		graphMLData(&b, "createdAt", edge.CreatedAt.UTC().Format(time.RFC3339))
+		graphMLData(&b, "updatedAt", edge.UpdatedAt.UTC().Format(time.RFC3339))
+		b.WriteString(`    </edge>` + "\n")
+	}
+	b.WriteString(`  </graph>` + "\n")
+	b.WriteString(`</graphml>` + "\n")
+	return b.String()
+}
+
+func graphMLKey(b *strings.Builder, id string, attrType string) {
+	b.WriteString(`  <key id="`)
+	xml.EscapeText(b, []byte(id))
+	b.WriteString(`" for="all" attr.name="`)
+	xml.EscapeText(b, []byte(id))
+	b.WriteString(`" attr.type="`)
+	xml.EscapeText(b, []byte(attrType))
+	b.WriteString(`"/>` + "\n")
+}
+
+func graphMLData(b *strings.Builder, key string, value string) {
+	b.WriteString(`      <data key="`)
+	xml.EscapeText(b, []byte(key))
+	b.WriteString(`">`)
+	xml.EscapeText(b, []byte(value))
+	b.WriteString(`</data>` + "\n")
 }
 
 // Search 聚合 KP、Annotation、Carrier 的轻量关键字搜索。
