@@ -71,6 +71,7 @@ async def test_extract_claims_llm_retries_until_valid_json() -> None:
     assert candidates[0].proposed_title == "Atlas 应保持证据链"
     assert candidates[0].proposed_kp_type == "claim"
     assert candidates[0].proposed_confidence == pytest.approx(0.82)
+    assert candidates[0].tokens_in > atlas.estimate_tokens("Atlas 的 KP 必须能回到原始 evidence，关系也必须能解释来源。")
     assert len(llm.chat_calls) == 2
 
 

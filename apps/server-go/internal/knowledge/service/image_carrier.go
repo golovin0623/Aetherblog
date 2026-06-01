@@ -161,12 +161,12 @@ func ImageCarrierText(in ImageCarrierInput) string {
 }
 
 func (s *ImageCarrierService) persistTextLayer(ctx context.Context, carrierID int64, hash, storageURI string, text string) error {
-	charCount := len([]rune(text))
+	charCount := textLayerCharCount(text)
 	pages, err := json.Marshal([]map[string]any{{
-		"page":      1,
-		"text":      text,
-		"charStart": 0,
-		"charEnd":   charCount,
+		"page":       1,
+		"text":       text,
+		"char_start": 0,
+		"char_end":   charCount,
 	}})
 	if err != nil {
 		return fmt.Errorf("marshal image text page: %w", err)
@@ -196,7 +196,7 @@ func imageCarrierMetadata(media *ImageMediaSnapshot, storageURI string, text str
 		"contentFormat": "image_description",
 		"width":         media.Width,
 		"height":        media.Height,
-		"charCount":     len([]rune(text)),
+		"charCount":     textLayerCharCount(text),
 	})
 }
 

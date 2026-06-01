@@ -559,6 +559,7 @@ async def _extract_claims_with_structured_llm(
                 "\nYour previous output did not validate. Fix the JSON only. "
                 f"Validation error: {last_error[:300]}\n"
             )
+        rendered_prompt = _render_claim_extraction_prompt(prompt, req.text, req.max_candidates)
         try:
             raw = await llm.chat(
                 prompt_variables={
@@ -574,7 +575,7 @@ async def _extract_claims_with_structured_llm(
             parsed = StructuredClaimsOutput.model_validate(_extract_json_object(raw))
             candidates = _structured_claims_to_candidates(
                 parsed,
-                req_text=req.text,
+                prompt_text=rendered_prompt,
                 response_text=raw,
                 usage_context=usage_context,
                 limit=req.max_candidates,
@@ -597,11 +598,7 @@ def _build_claim_extraction_cost_preview(
     req: ClaimExtractionCostPreviewRequest,
     usage_context: dict[str, Any],
 ) -> ClaimExtractionCostPreviewResponse:
-    rendered_prompt = (
-        CLAIM_EXTRACTION_PROMPT
-        .replace("{content}", req.text)
-        .replace("{max_candidates}", str(req.max_candidates))
-    )
+    rendered_prompt = _render_claim_extraction_prompt(CLAIM_EXTRACTION_PROMPT, req.text, req.max_candidates)
     tokens_in = estimate_tokens(rendered_prompt)
     tokens_out = max(1, req.max_candidates) * CLAIM_PREVIEW_OUTPUT_TOKENS_PER_CANDIDATE
     pricing_missing = _cost_pricing_missing(usage_context)
@@ -625,16 +622,20 @@ def _build_claim_extraction_cost_preview(
     )
 
 
+def _render_claim_extraction_prompt(prompt: str, text: str, max_candidates: int) -> str:
+    return prompt.replace("{content}", text).replace("{max_candidates}", str(max_candidates))
+
+
 def _structured_claims_to_candidates(
     parsed: StructuredClaimsOutput,
     *,
-    req_text: str,
+    prompt_text: str,
     response_text: str,
     usage_context: dict[str, Any],
     limit: int,
 ) -> list[ClaimCandidate]:
     raw_candidates = parsed.candidates[:limit]
-    tokens_in = estimate_tokens(req_text)
+    tokens_in = estimate_tokens(prompt_text)
     tokens_out_total = estimate_tokens(response_text)
     per_candidate_cost = _estimate_cost_usd(
         tokens_in=tokens_in,

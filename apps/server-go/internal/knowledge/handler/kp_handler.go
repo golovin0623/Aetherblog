@@ -103,12 +103,24 @@ func (h *KPHandler) CreateKP(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+	evidenceAuthorIDs := make([]*int64, 0, len(req.EvidenceAnnotationIDs))
 	for _, annotationID := range req.EvidenceAnnotationIDs {
-		if err := h.assertAnnotationScope(c, annotationID); err != nil {
+		annotation, err := h.assertAnnotationScopeAndGet(c, annotationID)
+		if err != nil {
 			return writeAtlasError(c, err)
+		}
+		if annotation != nil {
+			evidenceAuthorIDs = append(evidenceAuthorIDs, annotation.AuthorID)
 		}
 	}
 	authorID := currentAtlasUserID(c)
+	if len(evidenceAuthorIDs) > 0 {
+		var err error
+		authorID, err = commonAtlasAuthorID("evidence", authorID, evidenceAuthorIDs...)
+		if err != nil {
+			return writeAtlasError(c, err)
+		}
+	}
 	out, err := h.kp.Create(c.Request().Context(), atlassvc.CreateKPInput{
 		Title:                 req.Title,
 		BodyMarkdown:          req.BodyMarkdown,
@@ -209,7 +221,8 @@ func (h *KPHandler) UpdateKP(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求体无法解析")
 	}
-	if _, err := h.assertKPScope(c, id); err != nil {
+	scopedKP, err := h.assertKPScope(c, id)
+	if err != nil {
 		return writeAtlasError(c, err)
 	}
 	out, err := h.kp.Update(c.Request().Context(), id, atlassvc.UpdateKPInput{
@@ -226,7 +239,11 @@ func (h *KPHandler) UpdateKP(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "知识点不存在")
 	}
-	h.kp.ScheduleEmbedding(c.Request().Context(), out.ID, currentAtlasUserID(c), "update")
+	embeddingAuthorID := out.AuthorID
+	if embeddingAuthorID == nil && scopedKP != nil {
+		embeddingAuthorID = scopedKP.AuthorID
+	}
+	h.kp.ScheduleEmbedding(c.Request().Context(), out.ID, cloneAtlasAuthorID(embeddingAuthorID), "update")
 	return response.OK(c, toKPResponse(out))
 }
 
@@ -256,7 +273,8 @@ func (h *KPHandler) LinkAnnotation(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	if _, err := h.assertKPScope(c, kpID); err != nil {
+	scopedKP, err := h.assertKPScope(c, kpID)
+	if err != nil {
 		return writeAtlasError(c, err)
 	}
 	if err := h.assertAnnotationScope(c, req.AnnotationID); err != nil {
@@ -265,7 +283,7 @@ func (h *KPHandler) LinkAnnotation(c echo.Context) error {
 	if err := h.kp.LinkAnnotation(c.Request().Context(), kpID, req.AnnotationID, req.Role); err != nil {
 		return response.Error(c, err)
 	}
-	h.kp.ScheduleEmbedding(c.Request().Context(), kpID, currentAtlasUserID(c), "link_annotation")
+	h.kp.ScheduleEmbedding(c.Request().Context(), kpID, cloneAtlasAuthorID(scopedKP.AuthorID), "link_annotation")
 	recordAtlasActivity(
 		h.activity,
 		c,
@@ -345,10 +363,12 @@ func (h *KPHandler) CreateRelation(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	if _, err := h.assertKPScope(c, req.FromKPID); err != nil {
+	fromKP, err := h.assertKPScope(c, req.FromKPID)
+	if err != nil {
 		return writeAtlasError(c, err)
 	}
-	if _, err := h.assertKPScope(c, req.ToKPID); err != nil {
+	toKP, err := h.assertKPScope(c, req.ToKPID)
+	if err != nil {
 		return writeAtlasError(c, err)
 	}
 	for _, annotationID := range req.EvidenceAnnotationIDs {
@@ -357,6 +377,10 @@ func (h *KPHandler) CreateRelation(c echo.Context) error {
 		}
 	}
 	authorID := currentAtlasUserID(c)
+	authorID, err = commonAtlasAuthorID("relation endpoints", authorID, fromKP.AuthorID, toKP.AuthorID)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
 	out, err := h.rel.Create(c.Request().Context(), atlassvc.CreateRelationInput{
 		FromKPID:              req.FromKPID,
 		ToKPID:                req.ToKPID,
@@ -1072,12 +1096,13 @@ func atlasImportResponseFromParsed(format string, dryRun bool, sourceTitle strin
 		Warnings:        parsed.Warnings,
 	}
 	for i, kp := range parsed.KnowledgePoints {
+		start, end := readerOffsetRange(parsed.SourceMarkdown, kp.StartOffset, kp.EndOffset)
 		out.KnowledgePoints[i] = atlasdto.GraphImportKnowledgePointResponse{
 			Title:        kp.Title,
 			BodyMarkdown: kp.BodyMarkdown,
 			Type:         kp.Type,
-			StartOffset:  kp.StartOffset,
-			EndOffset:    kp.EndOffset,
+			StartOffset:  start,
+			EndOffset:    end,
 		}
 	}
 	for i, rel := range parsed.Relations {
@@ -1328,18 +1353,19 @@ func firstNonEmptyString(values ...string) string {
 }
 
 func obsidianImportSelectors(content string, kp parsedImportKnowledgePoint) []json.RawMessage {
-	start := clampInt(kp.StartOffset, 0, len(content))
-	end := clampInt(kp.EndOffset, start, len(content))
-	exact := strings.TrimSpace(content[start:end])
+	byteStart := clampInt(kp.StartOffset, 0, len(content))
+	byteEnd := clampInt(kp.EndOffset, byteStart, len(content))
+	exact := strings.TrimSpace(content[byteStart:byteEnd])
 	if exact == "" {
 		exact = kp.Title
 	}
+	start, end := readerOffsetRange(content, byteStart, byteEnd)
 	return []json.RawMessage{
 		mustRawJSON(map[string]any{
 			"type":   "TextQuoteSelector",
 			"exact":  clipString(exact, 240),
-			"prefix": clipString(content[clampInt(start-80, 0, len(content)):start], 80),
-			"suffix": clipString(content[end:clampInt(end+80, end, len(content))], 80),
+			"prefix": clipStringTail(content[:byteStart], 80),
+			"suffix": clipString(content[byteEnd:], 80),
 		}),
 		mustRawJSON(map[string]any{
 			"type":  "TextPositionSelector",
@@ -1394,6 +1420,34 @@ func clipString(value string, maxLen int) string {
 		return value
 	}
 	return string(runes[:maxLen])
+}
+
+func clipStringTail(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) <= maxLen {
+		return value
+	}
+	return string(runes[len(runes)-maxLen:])
+}
+
+func readerOffsetRange(content string, startByte int, endByte int) (int, int) {
+	startByte = clampInt(startByte, 0, len(content))
+	endByte = clampInt(endByte, startByte, len(content))
+	start := utf16CodeUnits(content[:startByte])
+	return start, start + utf16CodeUnits(content[startByte:endByte])
+}
+
+func utf16CodeUnits(value string) int {
+	total := 0
+	for _, r := range value {
+		if r > 0xFFFF {
+			total += 2
+			continue
+		}
+		total++
+	}
+	return total
 }
 
 func strPtr(value string) *string {
@@ -2006,24 +2060,29 @@ func (h *KPHandler) assertRelationScope(c echo.Context, id int64) (*atlasmodel.T
 }
 
 func (h *KPHandler) assertAnnotationScope(c echo.Context, id int64) error {
+	_, err := h.assertAnnotationScopeAndGet(c, id)
+	return err
+}
+
+func (h *KPHandler) assertAnnotationScopeAndGet(c echo.Context, id int64) (*atlasmodel.Annotation, error) {
 	if h.ann == nil {
-		return nil
+		return nil, nil
 	}
 	a, err := h.ann.Get(c.Request().Context(), id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if a == nil {
-		return atlasError(response.NotFound, "标注不存在")
+		return nil, atlasError(response.NotFound, "标注不存在")
 	}
 	scope, err := currentAtlasScope(c)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !scope.canAccessAuthor(a.AuthorID) {
-		return atlasError(response.Forbidden, "无权访问该标注")
+		return nil, atlasError(response.Forbidden, "无权访问该标注")
 	}
-	return nil
+	return a, nil
 }
 
 // ---------- 转换 ----------

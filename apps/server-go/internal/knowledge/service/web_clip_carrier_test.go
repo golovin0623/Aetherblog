@@ -13,6 +13,9 @@ func TestWebClipSourceURIAndText(t *testing.T) {
 	if uri != "https://example.com/articles/atlas?q=1" {
 		t.Fatalf("source uri = %q, want normalized https URL without fragment", uri)
 	}
+	if got := WebTextLayerStorageURI(9, uri, "abc123"); !strings.HasPrefix(got, "atlas-text-layer://web/9/") || !strings.HasSuffix(got, "/abc123") {
+		t.Fatalf("web text layer uri = %q, want owner/source/hash URI", got)
+	}
 
 	for _, raw := range []string{"javascript:alert(1)", "ftp://example.com/file", "/relative/path", "https://"} {
 		if got, err := NormalizeWebClipSourceURI(raw); err == nil {

@@ -87,9 +87,6 @@ func (s *PdfCarrierService) getOrCreateForMediaFile(ctx context.Context, mediaFi
 	if s.media == nil {
 		return nil, errors.New("media reader not configured")
 	}
-	if s.extractor == nil {
-		return nil, errors.New("pdf text extractor not configured")
-	}
 	uri := PdfSourceURI(mediaFileID)
 
 	media, err := s.media.GetPdfSnapshot(ctx, mediaFileID)
@@ -106,6 +103,35 @@ func (s *PdfCarrierService) getOrCreateForMediaFile(ctx context.Context, mediaFi
 		return nil, fmt.Errorf("media file %d is not a PDF", mediaFileID)
 	}
 
+	existing, err := s.carriers.FindBySourceURIForOwner(ctx, uri, media.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("find carrier: %w", err)
+	}
+	if existing != nil && existing.ContentHash != "" && pdfCarrierMetadataMatchesMedia(existing.Metadata, media) {
+		layer, err := s.carriers.FindTextLayerByCarrierAndHash(ctx, existing.ID, existing.ContentHash)
+		if err != nil {
+			return nil, fmt.Errorf("find existing pdf text layer: %w", err)
+		}
+		if layer != nil {
+			metadata, err := pdfMetadataForStoredLayer(media, layer)
+			if err != nil {
+				return nil, fmt.Errorf("build pdf metadata: %w", err)
+			}
+			title := firstNonEmpty(media.Title, media.OriginalName, fmt.Sprintf("pdf-%d", media.ID))
+			if err := s.carriers.UpdateDisplayAndIngestState(ctx, existing.ID, title, existing.Author, existing.Language, metadata, "ready", nil); err != nil {
+				return nil, fmt.Errorf("refresh pdf carrier metadata: %w", err)
+			}
+			existing.Title = title
+			existing.Metadata = metadata
+			existing.Status = "ready"
+			existing.StatusMessage = nil
+			return existing, nil
+		}
+	}
+
+	if s.extractor == nil {
+		return nil, errors.New("pdf text extractor not configured")
+	}
 	content, mimeType, filename, err := s.media.DownloadBytes(ctx, mediaFileID, maxPDFCarrierBytes)
 	if err != nil {
 		return nil, fmt.Errorf("download pdf media %d: %w", mediaFileID, err)
@@ -129,11 +155,6 @@ func (s *PdfCarrierService) getOrCreateForMediaFile(ctx context.Context, mediaFi
 		return nil, fmt.Errorf("build pdf metadata: %w", err)
 	}
 
-	existing, err := s.carriers.FindBySourceURIForOwner(ctx, uri, media.OwnerID)
-	if err != nil {
-		return nil, fmt.Errorf("find carrier: %w", err)
-	}
-
 	// 文件重新上传导致文本 hash 变化时，先持久化新文本层，再推进 carrier version。
 	// 这样 UpdateContent 失败时可安全重试，不会丢失 rootText 证据。
 	if existing != nil {
@@ -152,9 +173,11 @@ func (s *PdfCarrierService) getOrCreateForMediaFile(ctx context.Context, mediaFi
 			}
 			existing.ContentHash = hash
 		}
-		if err := s.carriers.UpdateIngestState(ctx, existing.ID, metadata, "ready", nil); err != nil {
+		title := firstNonEmpty(media.Title, media.OriginalName, fmt.Sprintf("pdf-%d", media.ID))
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, existing.ID, title, existing.Author, existing.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("update pdf carrier ingest state: %w", err)
 		}
+		existing.Title = title
 		existing.Metadata = metadata
 		existing.Status = "ready"
 		existing.StatusMessage = nil
@@ -220,6 +243,38 @@ func pdfMetadata(media *PdfMediaSnapshot, layer *PDFTextLayer, storageURI string
 		"charCount":           layer.CharCount,
 		"extractor":           firstNonEmpty(layer.Extractor, "ai-service/pypdf"),
 	})
+}
+
+func pdfMetadataForStoredLayer(media *PdfMediaSnapshot, layer *model.CarrierTextLayer) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"fileUrl":             media.FileURL,
+		"fileSize":            media.FileSize,
+		"mimeType":            media.MimeType,
+		"originalName":        media.OriginalName,
+		"textLayerStorageUri": layer.StorageURI,
+		"pageCount":           layer.PageCount,
+		"charCount":           layer.CharCount,
+		"extractor":           "cached",
+	})
+}
+
+func pdfCarrierMetadataMatchesMedia(metadata []byte, media *PdfMediaSnapshot) bool {
+	if media == nil || len(metadata) == 0 {
+		return false
+	}
+	var stored struct {
+		FileURL      string `json:"fileUrl"`
+		FileSize     int64  `json:"fileSize"`
+		MimeType     string `json:"mimeType"`
+		OriginalName string `json:"originalName"`
+	}
+	if err := json.Unmarshal(metadata, &stored); err != nil {
+		return false
+	}
+	return strings.TrimSpace(stored.FileURL) == strings.TrimSpace(media.FileURL) &&
+		stored.FileSize == media.FileSize &&
+		strings.TrimSpace(stored.MimeType) == strings.TrimSpace(media.MimeType) &&
+		strings.TrimSpace(stored.OriginalName) == strings.TrimSpace(media.OriginalName)
 }
 
 func isPDFMedia(media *PdfMediaSnapshot) bool {

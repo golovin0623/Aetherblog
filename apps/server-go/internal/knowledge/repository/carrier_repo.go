@@ -252,6 +252,38 @@ func (r *CarrierRepo) UpdateIngestState(ctx context.Context, carrierID int64, me
 	return err
 }
 
+// UpdateDisplayAndIngestState refreshes non-versioned carrier display fields and ingest metadata.
+func (r *CarrierRepo) UpdateDisplayAndIngestState(
+	ctx context.Context,
+	carrierID int64,
+	title string,
+	author *string,
+	language *string,
+	metadata []byte,
+	status string,
+	statusMessage *string,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE atlas_carriers
+		SET title=$1,
+		    author=$2,
+		    language=$3,
+		    metadata=$4,
+		    status=$5,
+		    status_message=$6,
+		    updated_at=CURRENT_TIMESTAMP
+		WHERE id=$7`,
+		title,
+		author,
+		language,
+		metadata,
+		status,
+		statusMessage,
+		carrierID,
+	)
+	return err
+}
+
 // UpsertTextLayer persists an extracted rootText artifact for a carrier version.
 func (r *CarrierRepo) UpsertTextLayer(
 	ctx context.Context,

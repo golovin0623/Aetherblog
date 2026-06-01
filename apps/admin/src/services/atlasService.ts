@@ -107,6 +107,9 @@ export const atlasService = {
   ensureMarkdownCarrier: (noteId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/markdown`, { noteId }),
 
+  getMarkdownCarrier: (noteId: number): Promise<R<AtlasCarrier>> =>
+    api.get(`${base}/carriers/markdown/${noteId}`),
+
   createMarkdownSource: (payload: { title?: string; contentMarkdown: string }): Promise<R<AtlasMarkdownSource>> =>
     api.post(`${base}/carriers/markdown/source`, payload),
 
@@ -118,6 +121,12 @@ export const atlasService = {
 
   ensurePostCarrier: (postId: number): Promise<R<AtlasCarrier>> =>
     api.post(`${base}/carriers/post`, { postId }),
+
+  getPostCarrier: (postId: number): Promise<R<AtlasCarrier>> =>
+    api.get(`${base}/carriers/post/${postId}`),
+
+  getMediaCarrier: (mediaFileId: number): Promise<R<AtlasCarrier>> =>
+    api.get(`${base}/carriers/media/${mediaFileId}`),
 
   ensureWebCarrier: (payload: {
     sourceUrl: string;

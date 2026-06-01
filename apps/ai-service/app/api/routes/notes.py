@@ -121,13 +121,16 @@ async def _fetch_note_reindex_ids(
               AND (
                 $4::boolean = FALSE
                 OR n.embedding_status IN ('PENDING', 'FAILED')
-                OR NOT EXISTS (
+                OR (
+                  n.embedding_status IS DISTINCT FROM 'SKIPPED'
+                  AND NOT EXISTS (
                     SELECT 1
                     FROM note_embeddings ne
                     WHERE ne.note_id = n.id
                       AND ne.profile_id = $2
                       AND ne.status = 'INDEXED'
                       AND ne.model_id = $3
+                  )
                 )
               )
             ORDER BY n.updated_at DESC, n.id DESC

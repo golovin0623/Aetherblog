@@ -186,10 +186,14 @@ func (h *SuggestionHandler) Accept(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
 	}
-	if err := h.assertSuggestionScope(c, id); err != nil {
+	suggestion, err := h.assertSuggestionScope(c, id)
+	if err != nil {
 		return writeAtlasError(c, err)
 	}
-	userID := currentAtlasUserID(c)
+	userID := cloneAtlasAuthorID(suggestion.AuthorID)
+	if userID == nil {
+		userID = currentAtlasUserID(c)
+	}
 	out, err := h.svc.Accept(c.Request().Context(), id, userID)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -216,7 +220,7 @@ func (h *SuggestionHandler) Reject(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的 ID")
 	}
-	if err := h.assertSuggestionScope(c, id); err != nil {
+	if _, err := h.assertSuggestionScope(c, id); err != nil {
 		return writeAtlasError(c, err)
 	}
 	lu := middleware.GetLoginUser(c)
@@ -670,22 +674,22 @@ func blogPostIDFromCarrierSource(sourceURI string) (int64, bool) {
 	return id, true
 }
 
-func (h *SuggestionHandler) assertSuggestionScope(c echo.Context, id int64) error {
+func (h *SuggestionHandler) assertSuggestionScope(c echo.Context, id int64) (*atlasmodel.AISuggestion, error) {
 	s, err := h.svc.Get(c.Request().Context(), id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if s == nil {
-		return atlasError(response.NotFound, "建议不存在")
+		return nil, atlasError(response.NotFound, "建议不存在")
 	}
 	scope, err := currentAtlasScope(c)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !scope.canAccessAuthor(s.AuthorID) {
-		return atlasError(response.Forbidden, "无权访问该建议")
+		return nil, atlasError(response.Forbidden, "无权访问该建议")
 	}
-	return h.assertSuggestionSourceScope(c, s.CarrierID, s.AnnotationID, s.FromKPID, s.ToKPID)
+	return s, h.assertSuggestionSourceScope(c, s.CarrierID, s.AnnotationID, s.FromKPID, s.ToKPID)
 }
 
 func (h *SuggestionHandler) assertSuggestionSourceScope(

@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	atlasdto "github.com/golovin0623/aetherblog-server/internal/knowledge/dto"
 	atlasmodel "github.com/golovin0623/aetherblog-server/internal/knowledge/model"
@@ -28,12 +29,17 @@ import (
 // AnnotationHandler 处理 /annotations/* + /carriers/:id/annotations。
 type AnnotationHandler struct {
 	svc      *atlassvc.AnnotationService
+	kp       *atlassvc.KnowledgePointService
 	activity atlasActivityRecorder
 }
 
 // NewAnnotationHandler 创建。
-func NewAnnotationHandler(svc *atlassvc.AnnotationService, activity atlasActivityRecorder) *AnnotationHandler {
-	return &AnnotationHandler{svc: svc, activity: activity}
+func NewAnnotationHandler(svc *atlassvc.AnnotationService, activity atlasActivityRecorder, kp ...*atlassvc.KnowledgePointService) *AnnotationHandler {
+	var kpSvc *atlassvc.KnowledgePointService
+	if len(kp) > 0 {
+		kpSvc = kp[0]
+	}
+	return &AnnotationHandler{svc: svc, kp: kpSvc, activity: activity}
 }
 
 // Mount 挂载到 /atlas 子组。
@@ -66,8 +72,12 @@ func (h *AnnotationHandler) Create(c echo.Context) error {
 	if err != nil {
 		return writeAtlasError(c, err)
 	}
-	if err := h.assertCarrierScope(c, req.CarrierID, scope); err != nil {
+	ownerID, err := h.assertCarrierScopeAndOwner(c, req.CarrierID, scope)
+	if err != nil {
 		return writeAtlasError(c, err)
+	}
+	if ownerID != nil {
+		authorID = cloneAtlasAuthorID(ownerID)
 	}
 	a, err := h.svc.Create(c.Request().Context(), atlassvc.CreateAnnotationInput{
 		CarrierID:        req.CarrierID,
@@ -143,6 +153,7 @@ func (h *AnnotationHandler) Update(c echo.Context) error {
 	if out == nil {
 		return response.FailWith(c, response.NotFound, "标注不存在")
 	}
+	h.scheduleLinkedKPEmbeddings(c, id, "annotation_update")
 	return response.OK(c, toAnnotationResponse(out))
 }
 
@@ -158,6 +169,7 @@ func (h *AnnotationHandler) Delete(c echo.Context) error {
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
+	h.scheduleLinkedKPEmbeddings(c, id, "annotation_delete")
 	return response.OKEmpty(c)
 }
 
@@ -191,17 +203,22 @@ func (h *AnnotationHandler) ListByCarrier(c echo.Context) error {
 }
 
 func (h *AnnotationHandler) assertCarrierScope(c echo.Context, carrierID int64, scope *atlasScope) error {
+	_, err := h.assertCarrierScopeAndOwner(c, carrierID, scope)
+	return err
+}
+
+func (h *AnnotationHandler) assertCarrierScopeAndOwner(c echo.Context, carrierID int64, scope *atlasScope) (*int64, error) {
 	found, ownerID, err := h.svc.CarrierOwner(c.Request().Context(), carrierID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !found {
-		return atlasError(response.NotFound, "载体不存在")
+		return nil, atlasError(response.NotFound, "载体不存在")
 	}
 	if !scope.canAccessOwner(ownerID) {
-		return atlasError(response.Forbidden, "无权访问该载体")
+		return nil, atlasError(response.Forbidden, "无权访问该载体")
 	}
-	return nil
+	return ownerID, nil
 }
 
 func (h *AnnotationHandler) assertAnnotationScope(c echo.Context, id int64) error {
@@ -227,6 +244,28 @@ func decodeRelPos(s *string) ([]byte, error) {
 		return nil, nil
 	}
 	return base64.StdEncoding.DecodeString(*s)
+}
+
+func (h *AnnotationHandler) scheduleLinkedKPEmbeddings(c echo.Context, annotationID int64, reason string) {
+	if h.kp == nil {
+		return
+	}
+	ids, err := h.kp.ListKPsForAnnotation(c.Request().Context(), annotationID)
+	if err != nil {
+		log.Warn().Err(err).Int64("annotation_id", annotationID).Str("reason", reason).Msg("atlas linked kp lookup failed")
+		return
+	}
+	for _, kpID := range ids {
+		kp, err := h.kp.Get(c.Request().Context(), kpID)
+		if err != nil {
+			log.Warn().Err(err).Int64("kp_id", kpID).Int64("annotation_id", annotationID).Str("reason", reason).Msg("atlas linked kp owner lookup failed")
+			continue
+		}
+		if kp == nil {
+			continue
+		}
+		h.kp.ScheduleEmbedding(c.Request().Context(), kpID, cloneAtlasAuthorID(kp.AuthorID), reason)
+	}
 }
 
 func toAnnotationResponse(a *atlasmodel.Annotation) atlasdto.AnnotationResponse {

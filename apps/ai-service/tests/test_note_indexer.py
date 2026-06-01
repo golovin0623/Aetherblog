@@ -82,6 +82,7 @@ async def test_note_indexer_writes_profile_bound_note_chunks() -> None:
     ]
 
     assert len(conn.executemany_calls) == 1
+    assert any("FOR UPDATE" in sql for sql, _ in conn.fetchval_calls)
     insert_sql, rows = conn.executemany_calls[0]
     assert "INSERT INTO note_embeddings" in insert_sql
     assert "embedding_dim" in insert_sql
@@ -136,5 +137,6 @@ async def test_note_indexer_marks_blank_note_skipped_without_embedding() -> None
     assert outcome.chunk_count == 0
     assert llm.calls == []
     assert conn.executemany_calls == []
+    assert any("FOR UPDATE" in sql for sql, _ in conn.fetchval_calls)
     assert any("DELETE FROM note_embeddings" in sql for sql, _ in conn.execute_calls)
     assert any("embedding_status = 'SKIPPED'" in sql for sql, _ in conn.execute_calls)

@@ -269,8 +269,7 @@ async def upsert_knowledge_point_embedding(
                 embedding_dim = $2,
                 embedding_profile_id = $3,
                 embedding_model_id = $4,
-                embedding_indexed_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
+                embedding_indexed_at = CURRENT_TIMESTAMP
             WHERE id = $5
               AND deleted = FALSE
               AND ($6::bigint IS NULL OR author_id = $6 OR author_id IS NULL)

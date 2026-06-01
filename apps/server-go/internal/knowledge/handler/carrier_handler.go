@@ -41,9 +41,12 @@ func NewCarrierHandler(svc *atlassvc.AtlasService) *CarrierHandler {
 func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/markdown/source", h.CreateMarkdownSource, write)
 	g.GET("/carriers/markdown/:noteId/source", h.GetMarkdownSource)
+	g.GET("/carriers/markdown/:noteId", h.GetMarkdownCarrier)
 	g.POST("/carriers/markdown", h.EnsureMarkdown, write)
 	g.POST("/carriers/pdf", h.EnsurePDF, write)
+	g.GET("/carriers/post/:postId", h.GetPostCarrier)
 	g.POST("/carriers/post", h.EnsurePost, write)
+	g.GET("/carriers/media/:mediaFileId", h.GetMediaCarrier)
 	g.POST("/carriers/web", h.EnsureWeb, write)
 	g.POST("/carriers/web/fetch", h.FetchWeb, write)
 	g.POST("/carriers/media-transcript", h.EnsureMediaTranscript, write)
@@ -127,6 +130,15 @@ func (h *CarrierHandler) EnsureMarkdown(c echo.Context) error {
 	return response.OK(c, toCarrierResponse(carrier))
 }
 
+// GetMarkdownCarrier 返回已存在的 markdown carrier，不触发懒创建。
+func (h *CarrierHandler) GetMarkdownCarrier(c echo.Context) error {
+	noteID, err := strconv.ParseInt(c.Param("noteId"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的笔记 ID")
+	}
+	return h.getCarrierBySourceURI(c, atlassvc.MarkdownSourceURI(noteID), "markdown")
+}
+
 // EnsurePDF 懒创建 / 返回 pdf 类型 carrier。
 func (h *CarrierHandler) EnsurePDF(c echo.Context) error {
 	var req atlasdto.EnsurePDFCarrierRequest
@@ -179,6 +191,24 @@ func (h *CarrierHandler) EnsurePost(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OK(c, toCarrierResponse(carrier))
+}
+
+// GetPostCarrier 返回已存在的 blog post carrier，不触发懒创建。
+func (h *CarrierHandler) GetPostCarrier(c echo.Context) error {
+	postID, err := strconv.ParseInt(c.Param("postId"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的文章 ID")
+	}
+	return h.getCarrierBySourceURI(c, atlassvc.BlogPostSourceURI(postID), "blog_post")
+}
+
+// GetMediaCarrier 返回已存在的 media-backed carrier，不触发懒创建/抽取。
+func (h *CarrierHandler) GetMediaCarrier(c echo.Context) error {
+	mediaFileID, err := strconv.ParseInt(c.Param("mediaFileId"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的媒体 ID")
+	}
+	return h.getCarrierBySourceURI(c, atlassvc.MediaSourceURI(mediaFileID), "pdf", "image", "video", "audio")
 }
 
 // EnsureWeb 创建 / 更新 web clip 类型 carrier。
@@ -315,6 +345,41 @@ func (h *CarrierHandler) Get(c echo.Context) error {
 	scope, err := currentAtlasScope(c)
 	if err != nil {
 		return writeAtlasError(c, err)
+	}
+	if !scope.canAccessOwner(carrier.OwnerID) {
+		return response.FailWith(c, response.Forbidden, "无权访问该载体")
+	}
+	return response.OK(c, toCarrierResponse(carrier))
+}
+
+func (h *CarrierHandler) getCarrierBySourceURI(c echo.Context, sourceURI string, allowedTypes ...string) error {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	var carrier *atlasmodel.Carrier
+	if scope.CanAdmin {
+		carrier, err = h.atlas.Carriers().FindBySourceURI(c.Request().Context(), sourceURI)
+	} else {
+		carrier, err = h.atlas.Carriers().FindBySourceURIForOwner(c.Request().Context(), sourceURI, &scope.UserID)
+	}
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if carrier == nil {
+		return response.FailWith(c, response.NotFound, "载体不存在")
+	}
+	if len(allowedTypes) > 0 {
+		allowed := false
+		for _, t := range allowedTypes {
+			if carrier.Type == t {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return response.FailWith(c, response.NotFound, "载体不存在")
+		}
 	}
 	if !scope.canAccessOwner(carrier.OwnerID) {
 		return response.FailWith(c, response.Forbidden, "无权访问该载体")

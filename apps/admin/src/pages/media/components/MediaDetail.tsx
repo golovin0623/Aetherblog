@@ -104,6 +104,10 @@ function getBackupRemoveFailure(error: unknown): BackupRemoveFailure | null {
   };
 }
 
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
+}
+
 /**
  * 媒体详情侧边栏组件 - 高级玻璃态设计
  */
@@ -281,6 +285,17 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     return res.data;
   };
 
+  const getExistingMediaCarrier = async (types: string[]) => {
+    try {
+      const res = await atlasService.getMediaCarrier(media.id);
+      if (!types.includes(res.data.type)) return null;
+      return res.data;
+    } catch (err) {
+      if (isAtlasNotFound(err)) return null;
+      throw err;
+    }
+  };
+
   const handleSaveAtlasTranscript = async () => {
     if (!isTranscriptMedia) return;
     setSavingTranscript(true);
@@ -300,8 +315,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     if (!isTranscriptMedia) return;
     setOpeningTranscript(true);
     try {
-      const carrier = transcriptCarrierId ? { id: transcriptCarrierId } : await ensureAtlasTranscriptCarrier();
+      const carrier = transcriptCarrierId
+        ? { id: transcriptCarrierId }
+        : (await getExistingMediaCarrier(['video', 'audio'])) ?? (await ensureAtlasTranscriptCarrier());
       if (carrier) {
+        setTranscriptCarrierId(carrier.id);
         navigate(`/atlas/reader/transcript/${carrier.id}`);
       }
     } catch (err) {
@@ -377,8 +395,11 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     if (!isImage) return;
     setOpeningImageAtlas(true);
     try {
-      const carrier = imageCarrierId ? { id: imageCarrierId } : await ensureAtlasImageCarrier();
+      const carrier = imageCarrierId
+        ? { id: imageCarrierId }
+        : (await getExistingMediaCarrier(['image'])) ?? (await ensureAtlasImageCarrier());
       if (carrier) {
+        setImageCarrierId(carrier.id);
         navigate(`/atlas/reader/image/${carrier.id}`);
       }
     } catch (err) {

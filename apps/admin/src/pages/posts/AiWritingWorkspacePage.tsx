@@ -435,7 +435,7 @@ export function AiWritingWorkspacePage() {
     }
     setOpeningAtlasReader(true);
     try {
-      const carrier = await atlasService.ensurePostCarrier(postId);
+      const carrier = await getOrEnsurePostCarrier(postId);
       navigate(`/atlas/reader/blog-post/${carrier.data.id}`);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, '打开 Atlas Reader 失败'));
@@ -1066,6 +1066,21 @@ export function AiWritingWorkspacePage() {
       </AnimatePresence>
     </div>
   );
+}
+
+async function getOrEnsurePostCarrier(postId: number) {
+  try {
+    return await atlasService.getPostCarrier(postId);
+  } catch (error) {
+    if (isAtlasNotFound(error)) {
+      return atlasService.ensurePostCarrier(postId);
+    }
+    throw error;
+  }
+}
+
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
 }
 
 function AtlasReferencePanel({

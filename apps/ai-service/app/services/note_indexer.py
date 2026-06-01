@@ -153,6 +153,12 @@ class NoteIndexerService:
         try:
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
+                    locked_note_id = await conn.fetchval(
+                        "SELECT id FROM notes WHERE id = $1 AND deleted = FALSE FOR UPDATE",
+                        note_id,
+                    )
+                    if locked_note_id is None:
+                        raise RuntimeError("note disappeared before embedding write")
                     await conn.execute(
                         "DELETE FROM note_embeddings WHERE note_id = $1 AND profile_id = $2",
                         note_id,
@@ -241,6 +247,22 @@ class NoteIndexerService:
     async def _write_empty(self, note_id: int, profile: SearchProfile) -> NoteIndexOutcome:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
+                locked_note_id = await conn.fetchval(
+                    "SELECT id FROM notes WHERE id = $1 AND deleted = FALSE FOR UPDATE",
+                    note_id,
+                )
+                if locked_note_id is None:
+                    return NoteIndexOutcome(
+                        note_id=note_id,
+                        profile_id=profile.id,
+                        model_id=profile.model_id,
+                        embedding_dim=0,
+                        chunk_count=0,
+                        doc_chars=0,
+                        doc_tokens=0,
+                        status="FAILED",
+                        error="note disappeared before empty write",
+                    )
                 await conn.execute(
                     "DELETE FROM note_embeddings WHERE note_id = $1 AND profile_id = $2",
                     note_id,

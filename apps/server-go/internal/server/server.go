@@ -275,7 +275,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasRepo := atlasrepo.NewAtlasRepo(s.DB)
 	atlasCarrierRepo := atlasrepo.NewCarrierRepo(atlasRepo)
 	atlasAnnoRepo := atlasrepo.NewAnnotationRepo(atlasRepo)
-	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo))
+	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo, noteSvc))
 	atlasBlogPosts := atlassvc.NewBlogPostCarrierService(atlasCarrierRepo, atlassvc.NewPostRepoReader(postRepo))
 	atlasWebClips := atlassvc.NewWebClipCarrierService(atlasCarrierRepo)
 	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
@@ -310,7 +310,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasGroup,
 		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
-		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc),
+		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc, atlasKPSvc),
 		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, atlasService, atlassvc.NewAtlasSemanticSearchClient(aiClient, internalToken), activitySvc),
 		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, aiClient, internalToken, activitySvc),
 		atlashandler.NewAtlasEventHandler(activitySvc),

@@ -59,6 +59,7 @@ async def test_reindex_notes_indexes_missing_active_profile_chunks(
     def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
         assert "FROM notes n" in sql
         assert "NOT EXISTS" in sql
+        assert "embedding_status IS DISTINCT FROM 'SKIPPED'" in sql
         assert args == (9, 42, "text-embedding-3-small", True, 3)
         return [{"id": 11}, {"id": 12}]
 

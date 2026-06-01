@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -61,6 +62,29 @@ func TestParseObsidianMarkdownImportFallsBackToSingleNote(t *testing.T) {
 	}
 	if parsed.KnowledgePoints[0].Type != "concept" {
 		t.Fatalf("unexpected fallback type: %q", parsed.KnowledgePoints[0].Type)
+	}
+}
+
+func TestObsidianImportSelectorsUseReaderOffsets(t *testing.T) {
+	content := "前缀🙂\n\n## 重复\n\n第一段\n\n## 重复\n\n第二段"
+	start := strings.LastIndex(content, "## 重复")
+	kp := parsedImportKnowledgePoint{Title: "重复", StartOffset: start, EndOffset: len(content)}
+
+	selectors := obsidianImportSelectors(content, kp)
+	var position struct {
+		Type  string `json:"type"`
+		Start int    `json:"start"`
+		End   int    `json:"end"`
+	}
+	if err := json.Unmarshal(selectors[1], &position); err != nil {
+		t.Fatalf("unmarshal position selector: %v", err)
+	}
+	wantStart, wantEnd := readerOffsetRange(content, start, len(content))
+	if position.Start != wantStart || position.End != wantEnd {
+		t.Fatalf("position = %d..%d, want %d..%d", position.Start, position.End, wantStart, wantEnd)
+	}
+	if position.Start == start {
+		t.Fatalf("position start used UTF-8 byte offset %d, want reader offset", start)
 	}
 }
 

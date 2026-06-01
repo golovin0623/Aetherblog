@@ -3,7 +3,7 @@
 // 路由: /atlas/reader/note/:noteId
 //
 // 流程:
-//   1. 路由参数 noteId → POST /atlas/carriers/markdown 懒创建 carrier
+//   1. 路由参数 noteId → 优先 GET 已有 carrier；404 时再懒创建 carrier
 //   2. 拉取 carrier 详情 + 该 carrier 下所有 annotations
 //   3. 渲染 markdown （reuse @aetherblog/editor MarkdownPreview）+ 在文本里高亮标注
 //   4. 监听文本选区 → buildSelectorsFromTextRange → POST /atlas/annotations
@@ -119,7 +119,7 @@ export default function MarkdownReaderPage() {
         setState((s) => ({ ...s, loading: true, error: null }));
         const [noteRes, carrierRes] = await Promise.all([
           atlasService.getMarkdownSource(noteId),
-          atlasService.ensureMarkdownCarrier(noteId),
+          getOrEnsureMarkdownCarrier(noteId),
         ]);
         if (cancelled) return;
         const carrier = carrierRes.data;
@@ -256,8 +256,11 @@ export default function MarkdownReaderPage() {
           status: kpDraft.status,
           confidence: kpDraft.confidence,
           provenance: 'user',
+          evidenceAnnotationIds: [kpDraft.annotation.id],
         });
-        await atlasService.linkAnnotationToKP(res.data.id, kpDraft.annotation.id, kpDraft.evidenceRole);
+        if (kpDraft.evidenceRole !== 'evidence') {
+          await atlasService.linkAnnotationToKP(res.data.id, kpDraft.annotation.id, kpDraft.evidenceRole);
+        }
         toast.success(`已提炼为 KP #${res.data.id}`);
         setKpDraft(null);
         navigate(`/atlas/kp/${res.data.id}`);
@@ -661,4 +664,19 @@ export default function MarkdownReaderPage() {
       </Modal>
     </div>
   );
+}
+
+async function getOrEnsureMarkdownCarrier(noteId: number) {
+  try {
+    return await atlasService.getMarkdownCarrier(noteId);
+  } catch (error) {
+    if (isAtlasNotFound(error)) {
+      return atlasService.ensureMarkdownCarrier(noteId);
+    }
+    throw error;
+  }
+}
+
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
 }

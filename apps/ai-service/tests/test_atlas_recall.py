@@ -87,6 +87,7 @@ async def test_upsert_knowledge_point_embedding_uses_active_profile_and_evidence
     sql, args = conn.execute_calls[0]
     assert "UPDATE atlas_knowledge_points" in sql
     assert "embedding_profile_id" in sql
+    assert "updated_at" not in sql
     assert args == ([0.4, 0.5, 0.6], 3, 42, "text-embedding-3-small", 7, 9)
 
 

@@ -116,7 +116,7 @@ func (s *TranscriptCarrierService) CreateOrUpdateForMediaAs(ctx context.Context,
 		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, storageURI, "transcript_update", diff); err != nil {
 			return nil, fmt.Errorf("update transcript carrier content after migration: %w", err)
 		}
-		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, candidate.Author, candidate.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("update transcript carrier metadata after content change: %w", err)
 		}
 		carrier.Type = carrierType
@@ -132,7 +132,7 @@ func (s *TranscriptCarrierService) CreateOrUpdateForMediaAs(ctx context.Context,
 		return nil, err
 	}
 	if !justCreated {
-		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, candidate.Author, candidate.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("refresh transcript carrier metadata: %w", err)
 		}
 		carrier.Type = carrierType
@@ -164,12 +164,12 @@ func TranscriptCarrierText(in TranscriptCarrierInput) string {
 }
 
 func (s *TranscriptCarrierService) persistTextLayer(ctx context.Context, carrierID int64, hash, storageURI string, text string) error {
-	charCount := len([]rune(text))
+	charCount := textLayerCharCount(text)
 	pages, err := json.Marshal([]map[string]any{{
-		"page":      1,
-		"text":      text,
-		"charStart": 0,
-		"charEnd":   charCount,
+		"page":       1,
+		"text":       text,
+		"char_start": 0,
+		"char_end":   charCount,
 	}})
 	if err != nil {
 		return fmt.Errorf("marshal transcript text page: %w", err)
@@ -199,7 +199,7 @@ func transcriptCarrierMetadata(media *TranscriptMediaSnapshot, carrierType strin
 		"contentFormat":      "transcript",
 		"timestampFormat":    "inline",
 		"timestampSelectors": true,
-		"charCount":          len([]rune(text)),
+		"charCount":          textLayerCharCount(text),
 	})
 }
 

@@ -18,12 +18,22 @@ import (
 
 // NoteRepoReader 是 NoteReader 的实现，背靠现有 NoteRepo。
 type NoteRepoReader struct {
-	repo *repository.NoteRepo
+	repo      *repository.NoteRepo
+	scheduler NoteEmbeddingScheduler
+}
+
+// NoteEmbeddingScheduler schedules note embedding writes for created Atlas source notes.
+type NoteEmbeddingScheduler interface {
+	ScheduleEmbedding(ctx context.Context, noteID int64, userID *int64, reason string)
 }
 
 // NewNoteRepoReader 构造适配器。
-func NewNoteRepoReader(repo *repository.NoteRepo) *NoteRepoReader {
-	return &NoteRepoReader{repo: repo}
+func NewNoteRepoReader(repo *repository.NoteRepo, scheduler ...NoteEmbeddingScheduler) *NoteRepoReader {
+	var noteScheduler NoteEmbeddingScheduler
+	if len(scheduler) > 0 {
+		noteScheduler = scheduler[0]
+	}
+	return &NoteRepoReader{repo: repo, scheduler: noteScheduler}
 }
 
 // GetNoteSnapshot 实现 NoteReader。
@@ -60,6 +70,9 @@ func (a *NoteRepoReader) CreateNoteSnapshot(ctx context.Context, title string, c
 	})
 	if err != nil {
 		return nil, err
+	}
+	if a.scheduler != nil {
+		a.scheduler.ScheduleEmbedding(ctx, n.ID, n.AuthorID, "atlas_source_create")
 	}
 	return &NoteSnapshot{
 		ID:       n.ID,

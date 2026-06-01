@@ -68,12 +68,12 @@ func (s *WebClipCarrierService) CreateOrUpdateWebClipAs(ctx context.Context, in 
 		return nil, errors.New("contentMarkdown 不能为空")
 	}
 	hash := contentSHA256(text)
-	storageURI := WebTextLayerStorageURI(hash)
-	metadata, err := webClipMetadata(uri, text)
+	ownerID := userID
+	storageURI := WebTextLayerStorageURI(ownerID, uri, hash)
+	metadata, err := webClipMetadata(uri, text, storageURI)
 	if err != nil {
 		return nil, err
 	}
-	ownerID := userID
 	candidate := &model.Carrier{
 		Type:        "web",
 		SourceURI:   uri,
@@ -102,7 +102,7 @@ func (s *WebClipCarrierService) CreateOrUpdateWebClipAs(ctx context.Context, in 
 		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, storageURI, "web_clip_update", diff); err != nil {
 			return nil, fmt.Errorf("update web carrier content after migration: %w", err)
 		}
-		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, candidate.Author, candidate.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("update web carrier metadata after content change: %w", err)
 		}
 		carrier.ContentHash = hash
@@ -110,10 +110,23 @@ func (s *WebClipCarrierService) CreateOrUpdateWebClipAs(ctx context.Context, in 
 		carrier.Author = candidate.Author
 		carrier.Language = candidate.Language
 		carrier.Metadata = metadata
+		carrier.Status = "ready"
+		carrier.StatusMessage = nil
 		return carrier, nil
 	}
 	if err := s.persistTextLayer(ctx, carrier.ID, hash, storageURI, text); err != nil {
 		return nil, err
+	}
+	if !justCreated {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, candidate.Author, candidate.Language, metadata, "ready", nil); err != nil {
+			return nil, fmt.Errorf("refresh web carrier metadata: %w", err)
+		}
+		carrier.Title = candidate.Title
+		carrier.Author = candidate.Author
+		carrier.Language = candidate.Language
+		carrier.Metadata = metadata
+		carrier.Status = "ready"
+		carrier.StatusMessage = nil
 	}
 	return carrier, nil
 }
@@ -140,8 +153,8 @@ func NormalizeWebClipSourceURI(raw string) (string, error) {
 }
 
 // WebTextLayerStorageURI constructs the immutable rootText storage URI for a web snapshot.
-func WebTextLayerStorageURI(hash string) string {
-	return fmt.Sprintf("atlas-text-layer://web/%s", hash)
+func WebTextLayerStorageURI(ownerID int64, sourceURL string, hash string) string {
+	return fmt.Sprintf("atlas-text-layer://web/%d/%s/%s", ownerID, contentSHA256(sourceURL), hash)
 }
 
 // WebClipText builds the stable text space used for AI suggestions and annotation migration.
@@ -157,12 +170,12 @@ func WebClipText(in WebClipInput) string {
 }
 
 func (s *WebClipCarrierService) persistTextLayer(ctx context.Context, carrierID int64, hash, storageURI, text string) error {
-	charCount := len([]rune(text))
+	charCount := textLayerCharCount(text)
 	pages, err := json.Marshal([]map[string]any{{
-		"page":      1,
-		"text":      text,
-		"charStart": 0,
-		"charEnd":   charCount,
+		"page":       1,
+		"text":       text,
+		"char_start": 0,
+		"char_end":   charCount,
 	}})
 	if err != nil {
 		return fmt.Errorf("marshal web text page: %w", err)
@@ -181,12 +194,12 @@ func (s *WebClipCarrierService) persistTextLayer(ctx context.Context, carrierID 
 	return nil
 }
 
-func webClipMetadata(sourceURL string, text string) ([]byte, error) {
+func webClipMetadata(sourceURL string, text string, storageURI string) ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"sourceUrl":     sourceURL,
-		"textLayerURI":  WebTextLayerStorageURI(contentSHA256(text)),
+		"textLayerURI":  storageURI,
 		"contentFormat": "markdown",
-		"charCount":     len([]rune(text)),
+		"charCount":     textLayerCharCount(text),
 		"capturedAt":    time.Now().UTC().Format(time.RFC3339),
 	})
 }
