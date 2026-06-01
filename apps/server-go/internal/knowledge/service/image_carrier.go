@@ -118,7 +118,7 @@ func (s *ImageCarrierService) CreateOrUpdateForMediaAs(ctx context.Context, in I
 		if err := s.carriers.UpdateContent(ctx, carrier.ID, hash, storageURI, "image_description_update", diff); err != nil {
 			return nil, fmt.Errorf("update image carrier content after migration: %w", err)
 		}
-		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, nil, candidate.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("update image carrier metadata after content change: %w", err)
 		}
 		carrier.Type = carrierType
@@ -134,7 +134,7 @@ func (s *ImageCarrierService) CreateOrUpdateForMediaAs(ctx context.Context, in I
 		return nil, err
 	}
 	if !justCreated {
-		if err := s.carriers.UpdateIngestState(ctx, carrier.ID, metadata, "ready", nil); err != nil {
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, carrier.ID, candidate.Title, nil, candidate.Language, metadata, "ready", nil); err != nil {
 			return nil, fmt.Errorf("refresh image carrier metadata: %w", err)
 		}
 		carrier.Type = carrierType
