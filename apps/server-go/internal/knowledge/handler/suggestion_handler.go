@@ -523,6 +523,10 @@ func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 	if fromKP == nil || toKP == nil {
 		return response.FailWith(c, response.NotFound, "KP 不存在")
 	}
+	authorID, err := relationSuggestionAuthorID(c, fromKP, toKP)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
 
 	var aiOut atlasRelationSuggestionResponse
 	if err := h.callAtlasAI(c, "/api/v1/atlas/relations/suggest", map[string]any{
@@ -548,7 +552,7 @@ func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 		TokensIn:             aiOut.TokensIn,
 		TokensOut:            aiOut.TokensOut,
 		CostUSD:              aiOut.CostUSD,
-		AuthorID:             currentAtlasUserID(c),
+		AuthorID:             authorID,
 	})
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -562,6 +566,10 @@ func (h *SuggestionHandler) GenerateRelationSuggestion(c echo.Context) error {
 		"SUCCESS",
 	)
 	return response.OK(c, toSuggestionResponse(created))
+}
+
+func relationSuggestionAuthorID(c echo.Context, fromKP, toKP *atlasmodel.KnowledgePoint) (*int64, error) {
+	return commonAtlasAuthorID("relation endpoints", currentAtlasUserID(c), fromKP.AuthorID, toKP.AuthorID)
 }
 
 func normalizeCarrierSuggestionRequest(req *atlasdto.GenerateCarrierSuggestionsRequest) (int, int) {

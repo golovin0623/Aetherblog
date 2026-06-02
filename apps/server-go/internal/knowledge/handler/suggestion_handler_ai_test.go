@@ -167,6 +167,27 @@ func TestCarrierSuggestionAuthorIDRejectsOwnerlessCarrier(t *testing.T) {
 	}
 }
 
+func TestRelationSuggestionAuthorIDPreservesCommonKPOwner(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/atlas/knowledge-points/7/relation-suggestions", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(middleware.ContextKeyLoginUser, &jwtutil.LoginUser{UserID: 1, Role: "ADMIN"})
+
+	ownerID := int64(99)
+	got, err := relationSuggestionAuthorID(
+		c,
+		&atlasmodel.KnowledgePoint{ID: 7, AuthorID: &ownerID},
+		&atlasmodel.KnowledgePoint{ID: 8, AuthorID: &ownerID},
+	)
+	if err != nil {
+		t.Fatalf("relationSuggestionAuthorID returned error: %v", err)
+	}
+	if got == nil || *got != ownerID {
+		t.Fatalf("authorID = %v, want common KP owner %d", got, ownerID)
+	}
+}
+
 func TestNormalizeCarrierSuggestionRequestDefaultsAndCaps(t *testing.T) {
 	maxCandidates, maxChars := normalizeCarrierSuggestionRequest(&atlasdto.GenerateCarrierSuggestionsRequest{})
 	if maxCandidates != 8 {
