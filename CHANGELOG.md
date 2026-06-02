@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 日志查看器脏字符 + 双模式（优化 / 原始）对齐 (2026-06-02, branch claude/log-formatting-colors-GnUyi)
+
+**背景：** admin 仪表盘日志查看器出现「脏字符」（`[90m` `[32mINF[0m` 等 ANSI 色码渲染成方块），既不美观也无色彩。根因：本地 `start.sh` 把服务的彩色 stdout 重定向进了内部 writer 已经在写「干净 JSON」的同一个 `*.log` 文件 —— 双写 + ANSI 污染（Docker 下 stdout 走 `docker logs`，文件本就干净，故仅本地复现）。参考 CLI Proxy API 的日志观感，全面对齐「优化模式」与「原始模式」两套展示。
+
+**Fixed — 源头去污（双写 + ANSI）：**
+- `start.sh` — backend / ai-service 的 stdout/stderr 改重定向到 `*.console.log`，把 `*.log` 留给各服务内部 writer 独占写入干净 JSON；`wait_for_*` 崩溃兜底 tail 同步指向 console.log。
+- `apps/server-go/internal/handler/system_monitor_handler.go` — 删除有损的服务端 `formatLogLine` 预格式化，`GET /system/logs` 原样回传日志行，前端才能拿到 `caller` / `latency_ms` / 自定义字段做富渲染（移除随之多余的 `encoding/json` 引入）。
+
+**Added — 前端 ANSI 处理 + 双模式渲染：**
+- `apps/admin/src/lib/ansi.ts` — `stripAnsi`（剥离色码供结构化解析）/ `tokenizeAnsi`（色码 → design-token 彩色片段供原始模式还原）/ `hasAnsi`。
+- `apps/admin/src/lib/logEntry.ts` — 统一解析 zerolog JSON（`time` UnixMs）/ ai-service JSON（`timestamp` ISO）/ 纯文本·ANSI 控制台行，永不抛错。
+- `apps/admin/src/pages/dashboard/components/RealtimeLogViewer.tsx` —
+  - **优化模式**：结构化卡片（时间 / 级别徽章 / 服务 chip / caller / HTTP method·path·status·latency / 额外字段 chips）。
+  - **原始模式**：终端风格还原 —— JSON 行用 design-token 颜色重建 zerolog 控制台那一行，ANSI 文本行按色码渲染彩色片段；两条路径均零脏字符。
+  - 颜色全部映射设计系统 token（青→`--signal-info`、品红→`--aurora-4`），`design-system:check` 保持 0 error。
+
+**📄 文档影响：** 已更新 `CHANGELOG.md`、`.claude/docs/backend-runtime.md`（§4 新增「日志查看管线」）、`.claude/docs/startup-and-env.md`（§7 本地日志文件分工）；未改 API 路由 / DB schema，无需更新 `architecture.md` / migrations。
+
 ### Changed — 积压 PR 评审合并：树构建 O(N) 优化 + ConfirmModal 无障碍 (2026-05-30, branch claude/pr-review-consolidation-PH4fL)
 
 **背景：** 一次性消化 9 个积压自动化 PR（#713/#720/#722/#723/#730/#732/#735/#739/#742），逐一核验是否合理、是否与现网代码重复，并把各 PR 上的 code-review 建议一并分析后择优合并到本 PR。

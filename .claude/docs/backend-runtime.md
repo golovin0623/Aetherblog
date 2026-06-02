@@ -293,6 +293,27 @@ AI 工具箱：`AIToolsPage` → `AIToolsWorkspace` → `ToolResultRenderer` 按
 
 仪表盘日志查看器右上角「运行时」下拉直接联动 backend / ai-service 两个 select。
 
+### 日志查看管线（干净 JSON 源 + 前端双模式渲染）
+
+> 触发：日志查看器出现「脏字符 / 无色彩」或要改两种展示模式时读本节。
+
+**数据源必须是干净 JSON。** 两个服务各自把结构化日志写进自己的文件：
+
+| 文件 | 写入方 | 格式 |
+| --- | --- | --- |
+| `logs/backend.log` | Go `zerolog` 内部 file writer | JSON（`time` 为 UnixMs 数字、含 `caller`） |
+| `logs/ai-service.log` | Python `JSONFormatter` FileHandler | JSON（`timestamp` 为 ISO 字符串） |
+| `logs/*.console.log` | start.sh 重定向的进程 stdout/stderr | 彩色控制台 + panic（仅人看 / 崩溃兜底，gitignored） |
+
+**铁律：start.sh 不得把彩色 stdout 灌进 `*.log`。** `cmd/server/main.go` 的 ConsoleWriter 写 stdout（彩色），内部 writer 写 `backend.log`（JSON）。若 start.sh 把 stdout 也重定向进 `backend.log`，会与 JSON **双写**并夹带 ANSI 色码 → admin 渲染脏字符。故 `start.sh` 一律把进程 stdout 重定向到 `backend.console.log` / `ai-service.console.log`（见 `startup-and-env.md`）。Docker 下 stdout 走 `docker logs`，`*.log` 天然干净。
+
+**API 原样回传，解析在前端。** `GET /v1/admin/system/logs` 不再做服务端预格式化（旧的 `formatLogLine` 已删除）——直接回传原始行，让前端拿到 `caller` / `latency_ms` / 自定义字段做富渲染。级别过滤 / 时间排序仍在 `LogViewerService.readAggregated` 按 JSON 字段完成。
+
+**前端两种模式**（`apps/admin/src/pages/dashboard/components/RealtimeLogViewer.tsx` + `src/lib/{ansi,logEntry}.ts`）：
+- **优化模式**（默认）：结构化卡片 —— 时间 / 级别徽章 / 服务 chip / caller / HTTP method·path·status·latency / 额外字段 chips。
+- **原始模式**：终端风格还原 —— JSON 行用 design-token 颜色重建 zerolog 控制台那一行；夹带 ANSI 的文本行用 `tokenizeAnsi` 还原配色。两条路径都**零脏字符**（`stripAnsi` / `tokenizeAnsi` 双保险）。
+- 颜色一律映射设计系统 token（青→`--signal-info`、品红→`--aurora-4`），不发明新颜色。
+
 ---
 
 ## 5. VanBlog 迁移（migration_handler）

@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { Select } from '@aetherblog/ui';
+import { tokenizeAnsi, hasAnsi } from '@/lib/ansi';
+import { parseLogEntry, type ParsedLogEntry, type LogLevel } from '@/lib/logEntry';
 
 interface RealtimeLogViewerProps {
   containerId?: string | null;
@@ -191,100 +193,10 @@ function mergeLogsIncrementally(previous: string[], incoming: string[], maxLines
 }
 
 /* =============================================================
- * 日志行结构化解析
- * -------------------------------------------------------------
- * 把一行裸日志解析成可分列渲染的字段。无法解析的部分原样降级到 message。
- * 关键判断：
- *   • 级别用 \b 边界匹配独立 token，避免 "WARNING" 被识别为 "WARN"
- *   • ISO 时间戳与 nginx 时间戳两套并行
- *   • HTTP 行结构识别后单独高亮 method/path/status
+ * 日志行解析 —— 见 @/lib/logEntry.parseLogEntry。
+ * 后端现在回传原始日志行（JSON 或控制台文本），解析与 ANSI 处理统一在
+ * 前端完成，供「优化模式」结构化卡片与「原始模式」终端还原两套渲染复用。
  * ============================================================= */
-
-type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
-
-interface ParsedLogLine {
-  /** 原始行 */
-  raw: string;
-  /** 解析出的时间戳（HH:mm:ss / HH:mm:ss.SSS / 完整 ISO） */
-  timestamp: string | null;
-  /** 标准化级别（WARNING → WARN, PANIC → FATAL） */
-  level: LogLevel | null;
-  /** HTTP 方法（解析自 nginx access log） */
-  method: string | null;
-  /** HTTP 路径 */
-  path: string | null;
-  /** HTTP 状态码（数字） */
-  status: number | null;
-  /** 主消息 —— 去掉时间戳/级别后的剩余内容 */
-  message: string;
-}
-
-const LEVEL_NORMALIZE: Record<string, LogLevel> = {
-  TRACE: 'TRACE',
-  DEBUG: 'DEBUG',
-  INFO:  'INFO',
-  WARN:  'WARN',
-  WARNING: 'WARN',
-  ERROR: 'ERROR',
-  FATAL: 'FATAL',
-  PANIC: 'FATAL',
-};
-
-// 时间戳 / 级别正则锚定到行首：日志行的时间戳 / 级别永远在前面，
-// 不锚定会让消息正文里的 ISO 数字串或 "WARN" 词被误识别。
-const ISO_TS_RE = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?:Z|[+-]\d{2}:?\d{2})?/;
-const NGINX_TS_RE = /^\[(\d{2})\/(\w{3})\/(\d{4}):(\d{2}:\d{2}:\d{2})\s/;
-const LEVEL_RE = /\b(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|PANIC)\b/;
-const HTTP_RE = /"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+([^\s"]+)\s+HTTP\/[\d.]+"\s+(\d{3})/;
-
-function parseLogLine(line: string): ParsedLogLine {
-  const result: ParsedLogLine = {
-    raw: line,
-    timestamp: null,
-    level: null,
-    method: null,
-    path: null,
-    status: null,
-    message: line,
-  };
-
-  let stripped = line;
-
-  // 1. 时间戳 —— ISO 优先，nginx 兜底；命中后从 message 中剥离避免重复展示
-  const isoMatch = line.match(ISO_TS_RE);
-  if (isoMatch) {
-    result.timestamp = isoMatch[2]; // 仅取 HH:mm:ss(.SSS) 部分，节省列宽
-    stripped = stripped.replace(isoMatch[0], '').trim();
-  } else {
-    const ngMatch = line.match(NGINX_TS_RE);
-    if (ngMatch) {
-      result.timestamp = ngMatch[4];
-      stripped = stripped.replace(ngMatch[0], '').trim();
-    }
-  }
-
-  // 2. 级别 token
-  const lvlMatch = stripped.match(LEVEL_RE);
-  if (lvlMatch) {
-    const upper = lvlMatch[1].toUpperCase();
-    result.level = LEVEL_NORMALIZE[upper] ?? null;
-    // 仅从 message 头部剥离单个紧贴空白/冒号的 level token
-    stripped = stripped.replace(new RegExp(`^\\s*${lvlMatch[1]}\\s*[:|]?\\s*`, 'i'), '');
-  }
-
-  // 3. HTTP（nginx access log 主要场景）—— 命中后也从 message 剥离，
-  //    渲染期不再需要二次 regex 匹配
-  const httpMatch = line.match(HTTP_RE);
-  if (httpMatch) {
-    result.method = httpMatch[1];
-    result.path = httpMatch[2];
-    result.status = parseInt(httpMatch[3], 10);
-    stripped = stripped.replace(httpMatch[0], '').trim();
-  }
-
-  result.message = stripped.trim();
-  return result;
-}
 
 /* =============================================================
  * 视觉常量 —— 级别 / HTTP method / status 的色板
@@ -346,6 +258,70 @@ const METHOD_TONE: Record<string, string> = {
   HEAD:    'text-[var(--ink-muted)]',
   OPTIONS: 'text-[var(--ink-muted)]',
 };
+
+// 级别 → 文本色（原始模式终端还原用，对齐 zerolog 控制台配色）
+const LEVEL_TEXT_TONE: Record<LogLevel, string> = {
+  TRACE: 'text-[var(--ink-muted)]',
+  DEBUG: 'text-[var(--signal-info)]',
+  INFO:  'text-[var(--signal-success)]',
+  WARN:  'text-[var(--signal-warn)]',
+  ERROR: 'text-[var(--signal-danger)]',
+  FATAL: 'text-[var(--signal-danger)]',
+};
+
+// 原始模式的三字母级别缩写
+const LEVEL_ABBR: Record<LogLevel, string> = {
+  TRACE: 'TRC', DEBUG: 'DBG', INFO: 'INF', WARN: 'WRN', ERROR: 'ERR', FATAL: 'FTL',
+};
+
+/* =============================================================
+ * 原始模式 —— 终端风格还原
+ * -------------------------------------------------------------
+ * JSON 行：用 design-token 颜色重建 zerolog 控制台那一行（时间灰、级别着色、
+ *   caller 暗、`>` info 色、key= 着色），既忠实又零脏字符。
+ * 文本行：含 ANSI 则按色码渲染彩色片段，否则纯文本降级。
+ * ============================================================= */
+function RawLogEntry({ entry, original }: { entry: ParsedLogEntry; original: string }) {
+  if (!entry.isJson) {
+    if (hasAnsi(original)) {
+      return (
+        <>
+          {tokenizeAnsi(original).map((tok, i) => (
+            <span key={i} className={tok.cls || undefined}>{tok.text}</span>
+          ))}
+        </>
+      );
+    }
+    return <span className="text-[var(--ink-secondary)]">{entry.raw || ' '}</span>;
+  }
+
+  const tone = entry.level ? LEVEL_TEXT_TONE[entry.level] : 'text-[var(--ink-muted)]';
+  const abbr = entry.level ? LEVEL_ABBR[entry.level] : '???';
+  return (
+    <span className="break-all">
+      {entry.time && <span className="text-[var(--ink-muted)]">{entry.time} </span>}
+      <span className={cn('font-semibold', tone)}>{abbr}</span>{' '}
+      {entry.caller && <span className="text-[var(--ink-muted)] opacity-80">{entry.caller} </span>}
+      <span className="text-[var(--signal-info)]">&gt; </span>
+      {entry.message && <span className="text-[var(--ink-primary)] font-medium">{entry.message}</span>}
+      {entry.method && entry.path && (
+        <span>{' '}<span className="text-[var(--ink-secondary)]">{entry.method} {entry.path}</span></span>
+      )}
+      {entry.status !== null && (
+        <span>{' '}<span className="text-[var(--signal-info)]">status=</span><span className="text-[var(--ink-secondary)]">{entry.status}</span></span>
+      )}
+      {entry.latencyMs !== null && (
+        <span>{' '}<span className="text-[var(--signal-info)]">latency_ms=</span><span className="text-[var(--ink-secondary)]">{entry.latencyMs}</span></span>
+      )}
+      {entry.fields.map(([k, v]) => (
+        <span key={k}>{' '}<span className="text-[var(--signal-info)]">{k}=</span><span className="text-[var(--ink-secondary)]">{v}</span></span>
+      ))}
+      {entry.traceId && (
+        <span>{' '}<span className="text-[var(--signal-info)]">traceId=</span><span className="text-[var(--ink-muted)]">{entry.traceId}</span></span>
+      )}
+    </span>
+  );
+}
 
 export function RealtimeLogViewer({
   containerId,
@@ -750,7 +726,7 @@ export function RealtimeLogViewer({
   // 提前解析日志行，避免每次 render 时 map 中重复跑 4 个 regex。
   // 跟着 visibleLogs 变化重算 —— 关键字过滤后子集变小，解析开销也随之缩减。
   const parsedVisibleLogs = useMemo(
-    () => visibleLogs.map((line) => parseLogLine(line)),
+    () => visibleLogs.map((line) => parseLogEntry(line)),
     [visibleLogs],
   );
 
@@ -1326,37 +1302,41 @@ export function RealtimeLogViewer({
           </div>
         ) : visibleLogs.length > 0 ? rawMode ? (
           <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
-            {visibleLogs.map((line, index) => (
+            {parsedVisibleLogs.map((entry, index) => (
               <div
-                key={`raw-${index}-${line.slice(0, 24)}`}
+                key={`raw-${index}-${entry.raw.slice(0, 24)}`}
                 className={cn(
-                  'leading-relaxed text-[var(--ink-secondary)]',
+                  'leading-relaxed',
                   compactMode ? 'px-2 py-0.5' : 'px-2 py-1',
                   wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto'
                 )}
               >
-                {line || ' '}
+                <RawLogEntry entry={entry} original={visibleLogs[index] ?? entry.raw} />
               </div>
             ))}
           </div>
         ) : (
           <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
-            {parsedVisibleLogs.map((parsed, index) => {
-              const line = parsed.raw;
-              const lvlStyle = parsed.level ? LEVEL_STYLES[parsed.level] : null;
+            {parsedVisibleLogs.map((entry, index) => {
+              const lvlStyle = entry.level ? LEVEL_STYLES[entry.level] : null;
+              const isHttp = Boolean(entry.method && entry.path && entry.status !== null);
+              // 多服务聚合（ALL）下才展示服务来源 chip，单服务视图冗余
+              const showService = Boolean(entry.service && filterLevel === 'ALL');
+              // HTTP 行的 message 默认是 "request"，与方法/路径重复，不再赘述
+              const httpNote = entry.message && entry.message !== 'request' ? entry.message : null;
 
-              // 主行的左侧光带颜色（替代原 includes 误判）
-              const stripeColor = parsed.level === 'ERROR' || parsed.level === 'FATAL'
+              // 主行的左侧光带颜色
+              const stripeColor = entry.level === 'ERROR' || entry.level === 'FATAL'
                 ? 'before:bg-[var(--signal-danger)]'
-                : parsed.level === 'WARN'
+                : entry.level === 'WARN'
                   ? 'before:bg-[var(--signal-warn)]'
-                  : parsed.level === 'DEBUG' || parsed.level === 'TRACE'
+                  : entry.level === 'DEBUG' || entry.level === 'TRACE'
                     ? 'before:bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]'
                     : '';
 
               return (
                 <div
-                  key={`${index}-${line.slice(0, 24)}`}
+                  key={`${index}-${entry.raw.slice(0, 24)}`}
                   className={cn(
                     'group relative rounded-md flex items-start gap-2.5',
                     'transition-colors duration-[var(--dur-instant)]',
@@ -1374,14 +1354,14 @@ export function RealtimeLogViewer({
                   {showLineMeta && (
                     <div className="shrink-0 w-[100px] text-[10px] font-mono text-[var(--ink-muted)] tnum leading-relaxed select-none pt-px">
                       <span className="opacity-60">#{(index + 1).toString().padStart(4, ' ')}</span>
-                      {parsed.timestamp && (
-                        <span className="ml-1.5">{parsed.timestamp}</span>
+                      {entry.time && (
+                        <span className="ml-1.5">{entry.time}</span>
                       )}
                     </div>
                   )}
-                  {!showLineMeta && parsed.timestamp && (
+                  {!showLineMeta && entry.time && (
                     <span className="shrink-0 font-mono text-[var(--ink-muted)] tnum leading-relaxed pt-px text-[0.92em]">
-                      {parsed.timestamp}
+                      {entry.time}
                     </span>
                   )}
 
@@ -1397,29 +1377,56 @@ export function RealtimeLogViewer({
                     </span>
                   )}
 
-                  {/* 主体（HTTP / 普通文本） */}
+                  {/* 服务来源 chip（仅 ALL 聚合视图） */}
+                  {showService && (
+                    <span className="shrink-0 inline-flex items-center h-[18px] px-1.5 rounded text-[10px] font-mono text-[var(--ink-muted)] border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] mt-px">
+                      {entry.service}
+                    </span>
+                  )}
+
+                  {/* 主体（HTTP / 普通文本 + 结构化字段 chips） */}
                   <div className={cn(
                     'flex-1 min-w-0 leading-relaxed',
                     wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto'
                   )}>
-                    {parsed.method && parsed.path && parsed.status !== null ? (
+                    {isHttp ? (
                       <span className="inline-flex items-center gap-2 flex-wrap">
-                        <span className={cn('font-mono font-semibold text-[0.92em]', METHOD_TONE[parsed.method] ?? 'text-[var(--ink-secondary)]')}>
-                          {parsed.method}
+                        <span className={cn('font-mono font-semibold text-[0.92em]', METHOD_TONE[entry.method!] ?? 'text-[var(--ink-secondary)]')}>
+                          {entry.method}
                         </span>
-                        <span className="text-[var(--ink-primary)] truncate">{parsed.path}</span>
-                        <span className={cn('inline-flex items-center px-1.5 rounded font-mono font-semibold text-[10px] tnum', statusToneClasses(parsed.status))}>
-                          {parsed.status}
+                        <span className="text-[var(--ink-primary)] truncate">{entry.path}</span>
+                        <span className={cn('inline-flex items-center px-1.5 rounded font-mono font-semibold text-[10px] tnum', statusToneClasses(entry.status!))}>
+                          {entry.status}
                         </span>
-                        {parsed.message && (
-                          <span className="text-[var(--ink-muted)] text-[0.92em]">
-                            {parsed.message}
-                          </span>
+                        {entry.latencyMs !== null && (
+                          <span className="font-mono text-[10px] text-[var(--ink-muted)] tnum">{entry.latencyMs}ms</span>
+                        )}
+                        {httpNote && (
+                          <span className="text-[var(--ink-muted)] text-[0.92em]">{httpNote}</span>
                         )}
                       </span>
                     ) : (
-                      <span className={lvlStyle ? 'text-[var(--ink-secondary)]' : 'text-[var(--ink-secondary)]'}>
-                        {parsed.message || parsed.raw}
+                      <span className="inline-flex items-baseline gap-2 flex-wrap">
+                        <span className="text-[var(--ink-secondary)] break-all">{entry.message || entry.raw}</span>
+                        {entry.caller && (
+                          <span className="font-mono text-[10px] text-[var(--ink-muted)] opacity-70">{entry.caller}</span>
+                        )}
+                      </span>
+                    )}
+
+                    {/* 结构化字段 chips（HTTP 的 ip 等 / 普通行的额外键） */}
+                    {entry.fields.length > 0 && (
+                      <span className="inline-flex items-center gap-1.5 flex-wrap align-middle ml-2">
+                        {entry.fields.map(([k, v]) => (
+                          <span
+                            key={k}
+                            className="inline-flex items-baseline gap-0.5 px-1.5 py-px rounded text-[10px] font-mono bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+                          >
+                            <span className="text-[var(--signal-info)]">{k}</span>
+                            <span className="text-[var(--ink-muted)]">=</span>
+                            <span className="inline-block max-w-[220px] truncate align-bottom text-[var(--ink-secondary)]">{v}</span>
+                          </span>
+                        ))}
                       </span>
                     )}
                   </div>

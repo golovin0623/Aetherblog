@@ -158,3 +158,14 @@ docker compose up -d            # 仅起 PostgreSQL + Redis
 docker compose logs -f          # 跟踪日志
 docker compose down             # 停中间件
 ```
+
+## 7. 本地日志文件分工（start.sh）
+
+`start.sh` 把每个服务的 stdout/stderr 重定向到 `*.console.log`，**而不是** `*.log`：
+
+| 文件 | 内容 | 用途 |
+| --- | --- | --- |
+| `logs/backend.log` / `logs/ai-service.log` | 服务内部 writer 写的**干净 JSON** | admin 日志查看器读取（结构化解析 + 双模式渲染） |
+| `logs/backend.console.log` / `logs/ai-service.console.log` | 重定向的彩色 stdout + panic | 人工查看 / `wait_for_*` 崩溃兜底 tail |
+
+> ⚠️ **不要把进程 stdout 重定向回 `*.log`** —— 会与内部 JSON writer 双写并夹带 ANSI 色码，admin 渲染出脏字符。原理详见 `backend-runtime.md` §4「日志查看管线」。

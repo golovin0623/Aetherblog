@@ -1216,20 +1216,24 @@ start_backend() {
 
             echo -e "${BLUE}   启动后端服务...${NC}"
             local backend_pid
-            backend_pid=$(start_detached_process "$BACKEND_DIR" "$LOG_DIR/backend.log" "$BACKEND_DIR/bin/server")
+            # 把进程的彩色 stdout/stderr 重定向到 *.console.log，而不是 backend.log。
+            # backend.log 由 Go 内部 writer 独占写入「干净 JSON」（供 admin 日志查看器
+            # 结构化解析）；若把彩色控制台输出也灌进同一个文件，会与 JSON 双写并夹带
+            # ANSI 色码 → 前端渲染出脏字符。console.log 仍捕获 panic 供 wait_for_* 兜底。
+            backend_pid=$(start_detached_process "$BACKEND_DIR" "$LOG_DIR/backend.console.log" "$BACKEND_DIR/bin/server")
             echo $backend_pid > "$PID_DIR/backend.pid"
 
-            if ! wait_for_process "$backend_pid" "后端服务" "$LOG_DIR/backend.log"; then
+            if ! wait_for_process "$backend_pid" "后端服务" "$LOG_DIR/backend.console.log"; then
                 record_failure "后端服务"
                 return
             fi
 
-            if ! wait_for_pid_port "$backend_pid" 8080 "后端服务" "$LOG_DIR/backend.log"; then
+            if ! wait_for_pid_port "$backend_pid" 8080 "后端服务" "$LOG_DIR/backend.console.log"; then
                 record_failure "后端服务"
                 return
             fi
 
-            if ! wait_for_http "http://127.0.0.1:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.log"; then
+            if ! wait_for_http "http://127.0.0.1:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.console.log"; then
                 record_failure "后端服务"
                 return
             fi
@@ -1332,16 +1336,16 @@ start_ai_service() {
         fi
 
         local ai_pid
-        ai_pid=$(start_detached_process "$AI_DIR" "$LOG_DIR/ai-service.log" ".venv/bin/uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
+        ai_pid=$(start_detached_process "$AI_DIR" "$LOG_DIR/ai-service.console.log" ".venv/bin/uvicorn" "app.main:app" "--reload" "--host" "0.0.0.0" "--port" "8000")
         echo $ai_pid > "$PID_DIR/ai-service.pid"
         sleep 1
 
-        if ! wait_for_process "$ai_pid" "AI 服务" "$LOG_DIR/ai-service.log"; then
+        if ! wait_for_process "$ai_pid" "AI 服务" "$LOG_DIR/ai-service.console.log"; then
             record_failure "AI 服务"
             return
         fi
 
-        if ! wait_for_http "http://localhost:8000/health" "AI 服务" "$LOG_DIR/ai-service.log"; then
+        if ! wait_for_http "http://localhost:8000/health" "AI 服务" "$LOG_DIR/ai-service.console.log"; then
             record_failure "AI 服务"
             return
         fi
