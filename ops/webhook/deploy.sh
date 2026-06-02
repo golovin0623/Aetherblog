@@ -258,6 +258,11 @@ restart_gateway_for_dns_refresh() {
 restart_gateway_if_upstreams_changed() {
   local svc
   for svc in "$@"; do
+    if [ "$svc" = "gateway" ]; then
+      return
+    fi
+  done
+  for svc in "$@"; do
     if service_requires_gateway_restart "$svc"; then
       restart_gateway_for_dns_refresh "changed services: $*"
       return

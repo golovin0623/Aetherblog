@@ -82,21 +82,30 @@ uses_compose_socket_proxy() {
 
 ENV_COMPOSE_PROFILES="${COMPOSE_PROFILES:-$(get_project_env_value COMPOSE_PROFILES)}"
 ENV_MONITOR_URL="${DOCKER_SOCKET_PROXY_URL:-$(get_project_env_value DOCKER_SOCKET_PROXY_URL)}"
-COMPOSE_PROFILE_ARGS=()
 if compose_profile_enabled_in "$ENV_COMPOSE_PROFILES" "with-monitor" || uses_compose_socket_proxy "$ENV_MONITOR_URL"; then
-  COMPOSE_PROFILE_ARGS=(--profile with-monitor)
+  if ! compose_profile_enabled_in "$ENV_COMPOSE_PROFILES" "with-monitor"; then
+    if [ -n "$ENV_COMPOSE_PROFILES" ]; then
+      export COMPOSE_PROFILES="${ENV_COMPOSE_PROFILES},with-monitor"
+    else
+      export COMPOSE_PROFILES="with-monitor"
+    fi
+  else
+    export COMPOSE_PROFILES="$ENV_COMPOSE_PROFILES"
+  fi
+elif [ -n "$ENV_COMPOSE_PROFILES" ]; then
+  export COMPOSE_PROFILES="$ENV_COMPOSE_PROFILES"
 fi
 
 dc() {
   if docker compose version &>/dev/null; then
-    docker compose -f "$COMPOSE_FILE" "${COMPOSE_PROFILE_ARGS[@]}" "$@"
+    docker compose -f "$COMPOSE_FILE" "$@"
   else
-    docker-compose -f "$COMPOSE_FILE" "${COMPOSE_PROFILE_ARGS[@]}" "$@"
+    docker-compose -f "$COMPOSE_FILE" "$@"
   fi
 }
 
 ensure_monitor_proxy() {
-  if [ ${#COMPOSE_PROFILE_ARGS[@]} -eq 0 ]; then
+  if ! compose_profile_enabled_in "${COMPOSE_PROFILES:-}" "with-monitor"; then
     return
   fi
 
@@ -179,7 +188,7 @@ echo ""
 if [ "$PULL" = true ]; then
   echo -e "${BLUE}[2/3] 拉取最新镜像...${NC}"
   dc pull "${TARGETS[@]}"
-  if [ ${#COMPOSE_PROFILE_ARGS[@]} -gt 0 ]; then
+  if compose_profile_enabled_in "${COMPOSE_PROFILES:-}" "with-monitor"; then
     dc pull docker-socket-proxy
   fi
   echo ""
