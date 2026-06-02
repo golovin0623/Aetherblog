@@ -284,6 +284,68 @@ async def test_recall_atlas_context_evidence_uses_selector_quote_when_body_text_
     assert context.evidence[0].body_text == "selector exact quote"
 
 
+@pytest.mark.asyncio
+async def test_recall_atlas_context_user_scope_rejects_unowned_null_rows() -> None:
+    seen: set[str] = set()
+
+    def assert_no_null_owner_bypass(sql: str) -> None:
+        assert "OR author_id IS NULL" not in sql
+        assert "OR a.author_id IS NULL" not in sql
+        assert "OR c.owner_id IS NULL" not in sql
+        assert "OR r.author_id IS NULL" not in sql
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        assert_no_null_owner_bypass(sql)
+        if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            seen.add("carrier_kps")
+            assert args == ([3], 9)
+            return []
+        if "notes://" in sql and "FROM atlas_carriers c" in sql:
+            seen.add("carrier_notes")
+            assert args == ([3], 9)
+            return []
+        if "id = ANY($1::bigint[])" in sql and "FROM atlas_knowledge_points" in sql:
+            seen.add("selected_kps")
+            assert args == ([8], 9, "selected")
+            return [
+                {
+                    "id": 8,
+                    "title": "Scoped KP",
+                    "body_markdown": "Only the owner can inject this row",
+                    "type": "claim",
+                    "status": "evergreen",
+                    "confidence": 0.86,
+                    "provenance": "user",
+                    "similarity": None,
+                    "recall_source": "selected",
+                }
+            ]
+        if "WITH RECURSIVE relation_walk" in sql:
+            seen.add("relations")
+            assert args == ([8], 9, 1)
+            return []
+        if "JOIN atlas_annotations a" in sql and "l.kp_id = ANY" in sql:
+            seen.add("evidence")
+            assert args == ([8], 9)
+            return []
+        raise AssertionError(f"unexpected fetch SQL: {sql}")
+
+    context = await recall_atlas_context(
+        FakePool(FakeConn(fetch=fetch)),
+        None,
+        user_id=9,
+        query="",
+        kp_ids=[8],
+        carrier_ids=[3],
+        semantic_limit=0,
+        neighborhood_depth=1,
+        include_evidence=True,
+    )
+
+    assert [kp.id for kp in context.knowledge_points] == [8]
+    assert seen == {"carrier_kps", "carrier_notes", "selected_kps", "relations", "evidence"}
+
+
 def test_render_atlas_context_includes_recall_source_relations_and_evidence() -> None:
     context = AtlasRecallContext(
         knowledge_points=[

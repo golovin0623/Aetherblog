@@ -228,7 +228,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     if (!isPDF) return;
     setOpeningAtlas(true);
     try {
-      const carrier = await ensureAtlasPDFCarrier();
+      const carrier = (await getExistingMediaCarrier(['pdf'])) ?? (await ensureAtlasPDFCarrier());
       if (carrier) {
         navigate(`/atlas/reader/pdf/${carrier.id}`);
       }

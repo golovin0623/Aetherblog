@@ -169,7 +169,7 @@ async def _fetch_kp_reindex_ids(
             FROM atlas_knowledge_points kp
             WHERE kp.deleted = FALSE
               AND kp.archived = FALSE
-              AND ($1::bigint IS NULL OR kp.author_id = $1 OR kp.author_id IS NULL)
+              AND ($1::bigint IS NULL OR kp.author_id = $1)
               AND (
                 $4::boolean = FALSE
                 OR kp.embedding IS NULL

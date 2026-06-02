@@ -104,7 +104,7 @@ func TestRelationRepoLinkAndListEvidence(t *testing.T) {
 	}
 
 	now := time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(`SELECT relation_id, annotation_id, created_at\s+FROM atlas_relation_evidence\s+WHERE relation_id=\$1`).
+	mock.ExpectQuery(`SELECT e\.relation_id, e\.annotation_id, e\.created_at\s+FROM atlas_relation_evidence e\s+JOIN atlas_annotations a ON a\.id = e\.annotation_id AND a\.deleted = false\s+WHERE e\.relation_id=\$1`).
 		WithArgs(int64(10)).
 		WillReturnRows(sqlmock.NewRows([]string{"relation_id", "annotation_id", "created_at"}).
 			AddRow(int64(10), int64(20), now))

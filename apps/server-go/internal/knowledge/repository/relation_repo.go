@@ -433,10 +433,11 @@ func (r *RelationRepo) LinkEvidenceTx(ctx context.Context, tx *sqlx.Tx, relation
 func (r *RelationRepo) ListEvidence(ctx context.Context, relationID int64) ([]RelationEvidenceLink, error) {
 	rows := []RelationEvidenceLink{}
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT relation_id, annotation_id, created_at
-		FROM atlas_relation_evidence
-		WHERE relation_id=$1
-		ORDER BY created_at ASC`, relationID)
+		SELECT e.relation_id, e.annotation_id, e.created_at
+		FROM atlas_relation_evidence e
+		JOIN atlas_annotations a ON a.id = e.annotation_id AND a.deleted = false
+		WHERE e.relation_id=$1
+		ORDER BY e.created_at ASC`, relationID)
 	return rows, err
 }
 

@@ -251,7 +251,7 @@ async def upsert_knowledge_point_embedding(
             ) tq ON TRUE
             WHERE kp.id = $1
               AND kp.deleted = FALSE
-              AND ($2::bigint IS NULL OR kp.author_id = $2 OR kp.author_id IS NULL)
+              AND ($2::bigint IS NULL OR kp.author_id = $2)
             GROUP BY kp.id, kp.title, kp.body_markdown
             """,
             kp_id,
@@ -282,7 +282,7 @@ async def upsert_knowledge_point_embedding(
                 embedding_indexed_at = CURRENT_TIMESTAMP
             WHERE id = $5
               AND deleted = FALSE
-              AND ($6::bigint IS NULL OR author_id = $6 OR author_id IS NULL)
+              AND ($6::bigint IS NULL OR author_id = $6)
             """,
             embedding,
             dim,
@@ -435,8 +435,8 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int 
             WHERE a.deleted = FALSE
               AND c.deleted = FALSE
               AND a.carrier_id = ANY($1::bigint[])
-              AND ($2::bigint IS NULL OR a.author_id = $2 OR a.author_id IS NULL)
-              AND ($2::bigint IS NULL OR c.owner_id = $2 OR c.owner_id IS NULL)
+              AND ($2::bigint IS NULL OR a.author_id = $2)
+              AND ($2::bigint IS NULL OR c.owner_id = $2)
             LIMIT 12
             """,
             carrier_ids,
@@ -454,7 +454,7 @@ async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: in
             WHERE c.id = ANY($1::bigint[])
               AND c.type = 'markdown'
               AND c.deleted = FALSE
-              AND ($2::bigint IS NULL OR c.owner_id = $2 OR c.owner_id IS NULL)
+              AND ($2::bigint IS NULL OR c.owner_id = $2)
               AND c.source_uri ~ '^notes://[0-9]+$'
             LIMIT 12
             """,
@@ -490,7 +490,7 @@ async def _fetch_kps_by_ids(
             FROM atlas_knowledge_points
             WHERE deleted = FALSE
               AND id = ANY($1::bigint[])
-              AND ($2::bigint IS NULL OR author_id = $2 OR author_id IS NULL)
+              AND ($2::bigint IS NULL OR author_id = $2)
             ORDER BY array_position($1::bigint[], id)
             LIMIT 24
             """,
@@ -561,7 +561,7 @@ async def _semantic_recall_with_vector(
                   AND embedding IS NOT NULL
                   AND deleted = FALSE
                   AND archived = FALSE
-                  AND ($6::bigint IS NULL OR author_id = $6 OR author_id IS NULL)
+                  AND ($6::bigint IS NULL OR author_id = $6)
                 ORDER BY embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
             )
@@ -620,7 +620,7 @@ async def _semantic_note_recall_with_vector(
                   AND ne.status = 'INDEXED'
                   AND ne.embedding IS NOT NULL
                   AND n.deleted = FALSE
-                  AND ($6::bigint IS NULL OR n.author_id = $6 OR n.author_id IS NULL)
+                  AND ($6::bigint IS NULL OR n.author_id = $6)
                   AND ne.note_id = ANY($8::bigint[])
                 ORDER BY ne.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
@@ -665,7 +665,7 @@ async def _fetch_relation_neighborhood(
                     ARRAY[r.from_kp_id, r.to_kp_id]::bigint[] AS path
                 FROM atlas_typed_relations r
                 WHERE r.deleted = FALSE
-                  AND ($2::bigint IS NULL OR r.author_id = $2 OR r.author_id IS NULL)
+                  AND ($2::bigint IS NULL OR r.author_id = $2)
                   AND (r.from_kp_id = ANY($1::bigint[]) OR r.to_kp_id = ANY($1::bigint[]))
 
                 UNION ALL
@@ -687,7 +687,7 @@ async def _fetch_relation_neighborhood(
                   ON (r.from_kp_id = rw.from_kp_id OR r.from_kp_id = rw.to_kp_id
                    OR r.to_kp_id = rw.from_kp_id OR r.to_kp_id = rw.to_kp_id)
                 WHERE r.deleted = FALSE
-                  AND ($2::bigint IS NULL OR r.author_id = $2 OR r.author_id IS NULL)
+                  AND ($2::bigint IS NULL OR r.author_id = $2)
                   AND rw.depth < $3
                   AND NOT (
                     r.from_kp_id = ANY(rw.path)
@@ -742,7 +742,7 @@ async def _fetch_evidence(pool, kp_ids: list[int], user_id: int | None) -> list[
             LEFT JOIN atlas_carriers c ON c.id = a.carrier_id
             WHERE l.kp_id = ANY($1::bigint[])
               AND a.deleted = FALSE
-              AND ($2::bigint IS NULL OR a.author_id = $2 OR a.author_id IS NULL)
+              AND ($2::bigint IS NULL OR a.author_id = $2)
             ORDER BY array_position($1::bigint[], l.kp_id), a.updated_at DESC
             LIMIT 32
             """,
