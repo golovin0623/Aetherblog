@@ -37,9 +37,11 @@ class ApiClient {
         const originalRequest = error.config as RetriableAxiosRequestConfig | undefined;
         const requestUrl = originalRequest?.url || '';
 
-        // 对于认证相关请求，尝试刷新 token
+        // 401 表示认证状态可能过期，才尝试刷新 token。
+        // 403 是已认证但权限不足，不能触发刷新后登出；Atlas 等非 ADMIN
+        // 精确授权页面会遇到 admin-only 辅助接口 403，页面应自行降级处理。
         if (
-          (status === 401 || status === 403) &&
+          status === 401 &&
           originalRequest &&
           !originalRequest._retry &&
           !this.isAuthRequest(requestUrl)
@@ -53,9 +55,9 @@ class ApiClient {
           }
         }
 
-        // 只对核心认证 API 的 401/403 触发登出
+        // 只对认证失效的 401 触发登出；403 保持为权限错误。
         // AI 服务、第三方 API 等的错误不触发登出，只抛出错误让页面处理
-        if (status === 401 || status === 403) {
+        if (status === 401) {
           const authStore = useAuthStore.getState();
           
           // AI 相关请求的认证错误不触发登出

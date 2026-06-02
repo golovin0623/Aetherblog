@@ -306,6 +306,118 @@ async def test_agent_stream_splits_gemini_thought_content_parts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_build_atlas_context_uses_last_user_message_for_semantic_recall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    captured: dict[str, Any] = {}
+    llm_router = object()
+    pool = object()
+
+    async def fake_recall_atlas_context(_pool: Any, _llm: Any, **kwargs: Any):
+        captured["pool"] = _pool
+        captured["llm"] = _llm
+        captured.update(kwargs)
+        return atlas_recall_module.AtlasRecallContext(
+            knowledge_points=[
+                {
+                    "id": 8,
+                    "title": "语义召回 KP",
+                    "body_markdown": "",
+                    "type": "claim",
+                    "status": "evergreen",
+                    "confidence": 0.8,
+                    "provenance": "user",
+                    "similarity": 0.76,
+                    "recall_source": "semantic",
+                }
+            ]
+        )
+
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _ctx: "rendered atlas")
+
+    rendered = await agent_module._build_atlas_context_for_chat(
+        pool,
+        atlas_scope=agent_module.AgentAtlasScope(
+            kpIds=[7],
+            neighborhoodDepth=2,
+            includeEvidence=False,
+            semanticRecall=True,
+            semanticLimit=5,
+        ),
+        user_id=9,
+        llm_router=llm_router,
+        messages=[
+            AgentChatMessage(role="user", content="旧问题"),
+            AgentChatMessage(role="assistant", content="旧回答"),
+            AgentChatMessage(role="user", content="证据链如何影响 Atlas 召回？"),
+        ],
+    )
+
+    assert rendered == "rendered atlas"
+    assert captured == {
+        "pool": pool,
+        "llm": llm_router,
+        "user_id": 9,
+        "query": "证据链如何影响 Atlas 召回？",
+        "kp_ids": [7],
+        "carrier_ids": [],
+        "semantic_limit": 5,
+        "neighborhood_depth": 2,
+        "include_evidence": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_build_atlas_context_uses_empty_scope_for_semantic_recall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    captured: dict[str, Any] = {}
+    llm_router = object()
+    pool = object()
+
+    async def fake_recall_atlas_context(_pool: Any, _llm: Any, **kwargs: Any):
+        captured["pool"] = _pool
+        captured["llm"] = _llm
+        captured.update(kwargs)
+        return atlas_recall_module.AtlasRecallContext()
+
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _ctx: "empty scope atlas")
+
+    rendered = await agent_module._build_atlas_context_for_chat(
+        pool,
+        atlas_scope=agent_module.AgentAtlasScope(
+            kpIds=[],
+            neighborhoodDepth=1,
+            includeEvidence=True,
+            semanticRecall=True,
+            semanticLimit=8,
+        ),
+        user_id=9,
+        llm_router=llm_router,
+        messages=[AgentChatMessage(role="user", content="哪些知识点可以解释当前问题？")],
+    )
+
+    assert rendered == "empty scope atlas"
+    assert captured == {
+        "pool": pool,
+        "llm": llm_router,
+        "user_id": 9,
+        "query": "哪些知识点可以解释当前问题？",
+        "kp_ids": [],
+        "carrier_ids": [],
+        "semantic_limit": 8,
+        "neighborhood_depth": 1,
+        "include_evidence": True,
+    }
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_records_usage_log_for_stream(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_completion_kwargs: dict[str, Any] = {}
 

@@ -25,6 +25,42 @@ type CreateSuggestionRequest struct {
 	CostUSD              *float64 `json:"costUsd,omitempty"`
 }
 
+// GenerateAnnotationSuggestionsRequest 从单条 annotation 生成 KP 建议。
+type GenerateAnnotationSuggestionsRequest struct {
+	MaxCandidates int     `json:"maxCandidates,omitempty"`
+	ModelID       *string `json:"modelId,omitempty"`
+}
+
+// GenerateCarrierSuggestionsRequest 从整篇 carrier rootText 生成 KP 建议。
+type GenerateCarrierSuggestionsRequest struct {
+	MaxCandidates int      `json:"maxCandidates,omitempty"`
+	MaxChars      int      `json:"maxChars,omitempty"`
+	ModelID       *string  `json:"modelId,omitempty"`
+	MaxCostUSD    *float64 `json:"maxCostUsd,omitempty"`
+}
+
+// CarrierSuggestionCostPreviewResponse 从整篇 carrier rootText 生成 KP 建议前的成本预估。
+type CarrierSuggestionCostPreviewResponse struct {
+	CarrierID          int64    `json:"carrierId"`
+	ModelID            string   `json:"modelId"`
+	MaxCandidates      int      `json:"maxCandidates"`
+	MaxChars           int      `json:"maxChars"`
+	SourceChars        int      `json:"sourceChars"`
+	TruncatedChars     int      `json:"truncatedChars"`
+	EstimatedTokensIn  int      `json:"estimatedTokensIn"`
+	EstimatedTokensOut int      `json:"estimatedTokensOut"`
+	EstimatedCostUSD   *float64 `json:"estimatedCostUsd,omitempty"`
+	MaxCostUSD         *float64 `json:"maxCostUsd,omitempty"`
+	BudgetExceeded     bool     `json:"budgetExceeded"`
+	PricingMissing     bool     `json:"pricingMissing"`
+}
+
+// GenerateRelationSuggestionRequest 为两条 KP 生成 relation 建议。
+type GenerateRelationSuggestionRequest struct {
+	ToKPID  int64   `json:"toKpId" validate:"required"`
+	ModelID *string `json:"modelId,omitempty"`
+}
+
 // SuggestionResponse AI 建议对外形态。
 type SuggestionResponse struct {
 	ID                   int64     `json:"id"`
@@ -44,9 +80,11 @@ type SuggestionResponse struct {
 	TokensIn             *int      `json:"tokensIn,omitempty"`
 	TokensOut            *int      `json:"tokensOut,omitempty"`
 	CostUSD              *float64  `json:"costUsd,omitempty"`
+	Fingerprint          *string   `json:"fingerprint,omitempty"`
 	Status               string    `json:"status"`
 	ResolvedKPID         *int64    `json:"resolvedKpId,omitempty"`
 	ResolvedRelationID   *int64    `json:"resolvedRelationId,omitempty"`
+	AuthorID             *int64    `json:"authorId,omitempty"`
 	CreatedAt            time.Time `json:"createdAt"`
 	UpdatedAt            time.Time `json:"updatedAt"`
 }

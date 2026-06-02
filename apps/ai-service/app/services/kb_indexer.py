@@ -62,10 +62,11 @@ def _strip_html(html: str) -> str:
     return collapsed.strip()
 
 
-def _parse_pdf(content: bytes) -> str:
-    """从 pdf 字节流抽取所有页面文本，页与页之间用双换行分隔。
+def extract_pdf_text_pages(content: bytes) -> list[str]:
+    """从 PDF 字节流抽取逐页文本。
 
-    依赖 pypdf；缺失时抛 RuntimeError 让调用方写 FAILED。
+    依赖 pypdf；缺失时抛 RuntimeError 让调用方写 FAILED。返回值保留空页占位，
+    Atlas PDF carrier 需要页码与 char offset 的稳定映射。
     """
     try:
         import pypdf  # type: ignore
@@ -80,10 +81,13 @@ def _parse_pdf(content: bytes) -> str:
         except Exception as exc:
             logger.warning("kb_parse.pdf_page_failed", extra={"data": {"page": i, "error": str(exc)[:200]}})
             txt = ""
-        txt = txt.strip()
-        if txt:
-            parts.append(txt)
-    return "\n\n".join(parts)
+        parts.append(txt.strip())
+    return parts
+
+
+def _parse_pdf(content: bytes) -> str:
+    """从 pdf 字节流抽取所有页面文本，页与页之间用双换行分隔。"""
+    return "\n\n".join(page for page in extract_pdf_text_pages(content) if page)
 
 
 def _parse_docx(content: bytes) -> str:

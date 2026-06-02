@@ -36,6 +36,85 @@ type EnsureMarkdownCarrierRequest struct {
 	NoteID int64 `json:"noteId" validate:"required,gt=0"`
 }
 
+// CreateMarkdownSourceRequest 是 POST /atlas/carriers/markdown/source 的请求体。
+type CreateMarkdownSourceRequest struct {
+	Title           string `json:"title"`
+	ContentMarkdown string `json:"contentMarkdown" validate:"required"`
+}
+
+// MarkdownSourceResponse 是 Atlas Reader 读取 note source 的最小响应。
+type MarkdownSourceResponse struct {
+	ID              int64  `json:"id"`
+	Title           string `json:"title"`
+	ContentMarkdown string `json:"contentMarkdown"`
+}
+
+// EnsurePDFCarrierRequest 是 POST /atlas/carriers/pdf 的请求体。
+type EnsurePDFCarrierRequest struct {
+	MediaFileID int64 `json:"mediaFileId" validate:"required,gt=0"`
+}
+
+// EnsurePostCarrierRequest 是 POST /atlas/carriers/post 的请求体。
+type EnsurePostCarrierRequest struct {
+	PostID int64 `json:"postId" validate:"required,gt=0"`
+}
+
+// EnsureWebCarrierRequest 是 POST /atlas/carriers/web 的请求体。
+type EnsureWebCarrierRequest struct {
+	SourceURL       string  `json:"sourceUrl" validate:"required"`
+	Title           string  `json:"title,omitempty"`
+	ContentMarkdown string  `json:"contentMarkdown" validate:"required"`
+	Author          *string `json:"author,omitempty"`
+	Language        *string `json:"language,omitempty"`
+}
+
+// FetchWebCarrierRequest 是 POST /atlas/carriers/web/fetch 的请求体。
+type FetchWebCarrierRequest struct {
+	SourceURL string `json:"sourceUrl" validate:"required"`
+}
+
+// FetchWebCarrierResponse 是网页自动抓取后的可编辑快照草稿。
+type FetchWebCarrierResponse struct {
+	SourceURL       string  `json:"sourceUrl"`
+	Title           string  `json:"title"`
+	ContentMarkdown string  `json:"contentMarkdown"`
+	Author          *string `json:"author,omitempty"`
+	Language        *string `json:"language,omitempty"`
+}
+
+// EnsureMediaTranscriptCarrierRequest 是 POST /atlas/carriers/media-transcript 的请求体。
+type EnsureMediaTranscriptCarrierRequest struct {
+	MediaFileID        int64   `json:"mediaFileId" validate:"required,gt=0"`
+	TranscriptMarkdown string  `json:"transcriptMarkdown" validate:"required"`
+	Language           *string `json:"language,omitempty"`
+}
+
+// EnsureImageCarrierRequest 是 POST /atlas/carriers/image 的请求体。
+type EnsureImageCarrierRequest struct {
+	MediaFileID         int64   `json:"mediaFileId" validate:"required,gt=0"`
+	DescriptionMarkdown string  `json:"descriptionMarkdown" validate:"required"`
+	Language            *string `json:"language,omitempty"`
+}
+
+// CarrierTextPageResponse 是 PDF 文本层的页级锚定空间。
+type CarrierTextPageResponse struct {
+	Page      int    `json:"page"`
+	Text      string `json:"text"`
+	CharStart int    `json:"charStart"`
+	CharEnd   int    `json:"charEnd"`
+}
+
+// CarrierTextLayerResponse 是 GET /atlas/carriers/:id/text-layer 的响应。
+type CarrierTextLayerResponse struct {
+	CarrierID   int64                     `json:"carrierId"`
+	ContentHash string                    `json:"contentHash"`
+	StorageURI  string                    `json:"storageUri"`
+	PageCount   int                       `json:"pageCount"`
+	CharCount   int                       `json:"charCount"`
+	Text        string                    `json:"text"`
+	Pages       []CarrierTextPageResponse `json:"pages"`
+}
+
 // ============================================================
 // Annotation
 // ============================================================

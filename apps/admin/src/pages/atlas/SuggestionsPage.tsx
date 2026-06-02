@@ -7,15 +7,36 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Brain, Check, Compass, Loader2, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Check, Compass, RefreshCw, Sparkles, X } from 'lucide-react';
+import { Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
+import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService, type AtlasSuggestion } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 type StatusFilter = AtlasSuggestion['status'] | 'all';
 type KindFilter = AtlasSuggestion['kind'] | 'all';
+type AtlasScopeFilter = 'all' | 'mine';
+
+const STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: '全部状态' },
+];
+
+const KIND_OPTIONS = [
+  { value: 'all', label: '全部种类' },
+  { value: 'kp', label: 'KP' },
+  { value: 'relation', label: 'Relation' },
+];
+
+const SCOPE_OPTIONS = [
+  { value: 'all', label: '全部可访问' },
+  { value: 'mine', label: '仅我的' },
+];
 
 export default function SuggestionsPage() {
   const navigate = useNavigate();
@@ -23,6 +44,7 @@ export default function SuggestionsPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<StatusFilter>('pending');
   const [kind, setKind] = useState<KindFilter>('all');
+  const [scope, setScope] = useState<AtlasScopeFilter>('all');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -30,6 +52,7 @@ export default function SuggestionsPage() {
       const res = await atlasService.listSuggestions({
         status: status === 'all' ? undefined : status,
         kind: kind === 'all' ? undefined : kind,
+        scope,
         limit: 200,
       });
       setItems(res.data ?? []);
@@ -38,7 +61,7 @@ export default function SuggestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, kind]);
+  }, [status, kind, scope]);
 
   useEffect(() => {
     void refresh();
@@ -75,31 +98,6 @@ export default function SuggestionsPage() {
     [refresh]
   );
 
-  // P3-DEMO: 一键创建一条样例建议（无 LLM；用于验证 accept/reject UX）
-  //
-  // PR #724 review fix (Codex P2): 过去硬编码 carrierId=1，但 atlas_ai_suggestions.carrier_id
-  // 有 FK 到 atlas_carriers(id)。新数据库 / 重建 schema 后 carrier #1 不一定存在，
-  // demo 按钮总是 FK 失败。schema 允许 carrier_id 为 NULL（CHECK 只要 kind=kp 时
-  // proposed_title 非空），因此 demo 创建时**不绑定 carrier_id** 即可。
-  const handleDemoCreate = useCallback(async () => {
-    try {
-      const res = await atlasService.createSuggestion({
-        kind: 'kp',
-        // carrierId 故意不传：demo 数据不与具体载体挂钩
-        proposedTitle: `Demo 建议 ${new Date().toLocaleTimeString('zh-CN')}`,
-        proposedBody: '这是一条来自 P3-DEMO 的样例 KP 建议（未经过 LLM）。Phase 3 后期接入 ai-service 后此入口将被替换为真正的 claim extraction。',
-        proposedKpType: 'concept',
-        proposedConfidence: 0.6,
-        rationale: 'P3-DEMO：手动创建用于验证 accept/reject 链路',
-        modelId: 'demo/fake',
-      });
-      toast.success(`已创建样例建议 #${res.data.id}`);
-      await refresh();
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, '创建样例失败'));
-    }
-  }, [refresh]);
-
   return (
     <div className="space-y-4">
       <AdminModuleHeader
@@ -108,14 +106,6 @@ export default function SuggestionsPage() {
         icon={Sparkles}
         actions={
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleDemoCreate()}
-              className="inline-flex h-9 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-3 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]"
-              title="不调用 LLM，仅写入一条 demo 建议用于验证链路"
-            >
-              <Brain className="h-3 w-3" /> P3-DEMO 创建样例
-            </button>
             <button
               type="button"
               onClick={() => void refresh()}
@@ -128,37 +118,41 @@ export default function SuggestionsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] px-3 py-2 text-xs">
-        <label className="inline-flex items-center gap-1">
-          状态:
-          <select
+        <div className="w-36">
+          <Select
+            value={scope}
+            onValueChange={(next) => setScope(next as AtlasScopeFilter)}
+            options={SCOPE_OPTIONS}
+            size="sm"
+            ariaLabel="Atlas 数据范围"
+          />
+        </div>
+        <div className="w-40">
+          <Select
             value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            className="h-7 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-1.5"
-          >
-            <option value="pending">pending</option>
-            <option value="accepted">accepted</option>
-            <option value="rejected">rejected</option>
-            <option value="all">all</option>
-          </select>
-        </label>
-        <label className="inline-flex items-center gap-1">
-          种类:
-          <select
+            onValueChange={(next) => setStatus(next as StatusFilter)}
+            options={STATUS_OPTIONS}
+            size="sm"
+            ariaLabel="建议状态过滤"
+          />
+        </div>
+        <div className="w-40">
+          <Select
             value={kind}
-            onChange={(e) => setKind(e.target.value as KindFilter)}
-            className="h-7 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] px-1.5"
-          >
-            <option value="all">all</option>
-            <option value="kp">kp</option>
-            <option value="relation">relation</option>
-          </select>
-        </label>
+            onValueChange={(next) => setKind(next as KindFilter)}
+            options={KIND_OPTIONS}
+            size="sm"
+            ariaLabel="建议种类过滤"
+          />
+        </div>
         <span className="ml-auto text-[var(--ink-muted)]">{items.length} 条</span>
       </div>
 
       {loading ? (
-        <div className="flex h-60 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-32 rounded-2xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          ))}
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-leaf)] p-10 text-center text-sm text-[var(--ink-secondary)]">

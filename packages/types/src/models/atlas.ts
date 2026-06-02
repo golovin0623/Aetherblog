@@ -16,6 +16,7 @@ export type AtlasCarrierType =
   | 'pdf'
   | 'epub'
   | 'markdown'
+  | 'blog_post'
   | 'web'
   | 'video'
   | 'audio'
@@ -140,6 +141,23 @@ export interface AtlasCarrierVersion {
   createdAt: string;
 }
 
+export interface AtlasCarrierTextPage {
+  page: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface AtlasCarrierTextLayer {
+  carrierId: number;
+  contentHash: string;
+  storageUri: string;
+  pageCount: number;
+  charCount: number;
+  text: string;
+  pages: AtlasCarrierTextPage[];
+}
+
 export interface AtlasAnnotation {
   id: number;
   carrierId: number;
@@ -185,6 +203,120 @@ export interface AtlasTypedRelation {
   authorId?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AtlasGraphResponse {
+  nodes: AtlasKnowledgePoint[];
+  edges: AtlasTypedRelation[];
+  kpEvidenceCounts?: Record<string, number>;
+  relationEvidenceCounts?: Record<string, number>;
+  kpEvidencePreviews?: Record<string, AtlasSearchEvidencePreview>;
+  relationEvidencePreviews?: Record<string, AtlasSearchEvidencePreview>;
+}
+
+export interface AtlasGraphExportResponse {
+  format: 'json';
+  version: number;
+  generatedAt: string;
+  scope: string;
+  nodes: AtlasKnowledgePoint[];
+  edges: AtlasTypedRelation[];
+  kpEvidenceCounts?: Record<string, number>;
+  relationEvidenceCounts?: Record<string, number>;
+}
+
+export interface AtlasGraphImportKnowledgePoint {
+  id?: number;
+  title: string;
+  bodyMarkdown: string;
+  type: AtlasKnowledgePointType;
+  startOffset: number;
+  endOffset: number;
+  evidenceAnnotationId?: number;
+}
+
+export interface AtlasGraphImportRelation {
+  id?: number;
+  fromIndex: number;
+  toIndex: number;
+  fromKpId?: number;
+  toKpId?: number;
+  fromTitle: string;
+  toTitle: string;
+  type: AtlasRelationType;
+  strength: number;
+  bodyMarkdown: string;
+}
+
+export interface AtlasGraphImportResponse {
+  format: 'obsidian-markdown' | 'readwise-csv' | 'zotero-ris';
+  dryRun: boolean;
+  sourceTitle: string;
+  carrierId?: number;
+  createdKpCount: number;
+  createdRelationCount: number;
+  knowledgePoints: AtlasGraphImportKnowledgePoint[];
+  relations: AtlasGraphImportRelation[];
+  warnings?: string[];
+}
+
+export interface AtlasRelationEvidence {
+  relationId: number;
+  annotationId: number;
+  createdAt: string;
+}
+
+export interface AtlasGraphHealthHub {
+  kpId: number;
+  title: string;
+  degree: number;
+  inDegree: number;
+  outDegree: number;
+}
+
+export interface AtlasGraphHealth {
+  activeKpCount: number;
+  relationCount: number;
+  relationDensity: number;
+  orphanKpCount: number;
+  orphanKpRatio: number;
+  kpEvidenceCount: number;
+  kpEvidenceCoverage: number;
+  relationEvidenceCount: number;
+  relationEvidenceCoverage: number;
+  missingEvidenceKpCount: number;
+  missingEvidenceRelationCount: number;
+  aiKpCount: number;
+  topHubs: AtlasGraphHealthHub[];
+}
+
+export interface AtlasSearchResponse {
+  query: string;
+  limit: number;
+  total: number;
+  semanticEnabled?: boolean;
+  semanticAvailable?: boolean;
+  semanticStatus?: string;
+  knowledgePoints: AtlasSearchKnowledgePoint[];
+  annotations: AtlasAnnotation[];
+  carriers: AtlasCarrier[];
+}
+
+export type AtlasSearchSource = 'keyword' | 'semantic' | 'keyword_semantic';
+
+export interface AtlasSearchEvidencePreview {
+  annotationId: number;
+  carrierId: number;
+  carrierType: AtlasCarrierType;
+  carrierTitle: string;
+  quote: string;
+  note?: string | null;
+}
+
+export interface AtlasSearchKnowledgePoint extends AtlasKnowledgePoint {
+  searchScore?: number | null;
+  searchSource?: AtlasSearchSource | string;
+  evidencePreview?: AtlasSearchEvidencePreview | null;
 }
 
 // ============================================================

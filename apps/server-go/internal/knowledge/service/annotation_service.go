@@ -27,12 +27,17 @@ var (
 
 // AnnotationService 处理标注业务编排。
 type AnnotationService struct {
-	repo *repository.AnnotationRepo
+	repo     *repository.AnnotationRepo
+	carriers *repository.CarrierRepo
 }
 
 // NewAnnotationService 创建。
-func NewAnnotationService(repo *repository.AnnotationRepo) *AnnotationService {
-	return &AnnotationService{repo: repo}
+func NewAnnotationService(repo *repository.AnnotationRepo, carriers ...*repository.CarrierRepo) *AnnotationService {
+	var carrierRepo *repository.CarrierRepo
+	if len(carriers) > 0 {
+		carrierRepo = carriers[0]
+	}
+	return &AnnotationService{repo: repo, carriers: carrierRepo}
 }
 
 // CreateAnnotationInput 是 POST /atlas/annotations 的请求模型。
@@ -120,9 +125,31 @@ func (s *AnnotationService) Get(ctx context.Context, id int64) (*model.Annotatio
 	return s.repo.FindByID(ctx, id)
 }
 
+// CarrierOwner 返回 carrier 的 owner，用于 handler 层做 Atlas scope 校验。
+func (s *AnnotationService) CarrierOwner(ctx context.Context, carrierID int64) (bool, *int64, error) {
+	if s.carriers == nil {
+		return true, nil, nil
+	}
+	carrier, err := s.carriers.FindByID(ctx, carrierID)
+	if err != nil || carrier == nil {
+		return carrier != nil, nil, err
+	}
+	return true, carrier.OwnerID, nil
+}
+
 // ListByCarrier 列出 carrier 下所有未删除标注。
 func (s *AnnotationService) ListByCarrier(ctx context.Context, carrierID int64) ([]model.Annotation, error) {
 	return s.repo.FindByCarrier(ctx, carrierID)
+}
+
+// ListByCarrierForAuthor 列出某作者在 carrier 下的标注。
+func (s *AnnotationService) ListByCarrierForAuthor(ctx context.Context, carrierID, authorID int64) ([]model.Annotation, error) {
+	return s.repo.FindByCarrierForAuthor(ctx, carrierID, authorID)
+}
+
+// Search 在标注正文与 selectors 中检索。
+func (s *AnnotationService) Search(ctx context.Context, keyword string, authorID *int64, limit int) ([]model.Annotation, error) {
+	return s.repo.Search(ctx, keyword, authorID, limit)
 }
 
 // Update 部分更新。

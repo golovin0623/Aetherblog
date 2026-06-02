@@ -65,6 +65,15 @@ class AgentChatMessage(BaseModel):
     content: str = Field(..., description="内容")
 
 
+class AgentAtlasScope(BaseModel):
+    kpIds: list[int] | None = Field(default=None, max_length=12)
+    carrierIds: list[int] | None = Field(default=None, max_length=6)
+    neighborhoodDepth: int = Field(default=1, ge=0, le=2)
+    includeEvidence: bool = True
+    semanticRecall: bool = True
+    semanticLimit: int = Field(default=8, ge=0, le=12)
+
+
 class AgentChatRequest(BaseModel):
     sessionId: str = Field(..., min_length=1, max_length=128)
     mode: Literal["chat", "cowork", "code"] = "chat"
@@ -83,6 +92,9 @@ class AgentChatRequest(BaseModel):
     # 在选中的 KB 内做语义召回（每 KB 的 active profile 决定 model + top_k + threshold），
     # 把命中的 chunk 拼成额外 system 段注入给 LLM。
     kbIds: list[int] | None = Field(default=None, max_length=10)
+    # Atlas picker 选中的 KnowledgePoint scope。读取时仍会按 X-Forwarded-User-ID
+    # 约束 author，避免客户端手工拼接其他用户的 KP。
+    atlasScope: AgentAtlasScope | None = None
     # 前端侧栏按模型 capabilities.parameters / settings.extendParams 生成的
     # 本轮模型参数覆盖。只允许少量兼容字段进入 LiteLLM 请求，避免把任意 JSON
     # 直接透传给上游。
@@ -705,6 +717,72 @@ async def _build_kb_context_for_chat(
     return render_kb_context(hits)
 
 
+def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
+    out: list[int] = []
+    seen: set[int] = set()
+    for value in values or []:
+        if isinstance(value, bool):
+            continue
+        try:
+            item = int(value)
+        except (TypeError, ValueError):
+            continue
+        if item <= 0 or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _build_atlas_context_for_chat(
+    pool,
+    *,
+    atlas_scope: AgentAtlasScope | None,
+    user_id: int | None,
+    llm_router=None,
+    messages: list[AgentChatMessage] | None = None,
+) -> str | None:
+    """Build an Aether Atlas context block for Agent chat.
+
+    It reads selected KPs/carriers, optionally expands with semantic KP recall
+    from the last user message, then adds relation-neighborhood and evidence
+    context. All reads remain scoped by the forwarded user id.
+    """
+    if atlas_scope is None or user_id is None:
+        return None
+
+    kp_ids = _dedupe_positive_ints(atlas_scope.kpIds, 12)
+    carrier_ids = _dedupe_positive_ints(atlas_scope.carrierIds, 6)
+    query = ""
+    for message in reversed(messages or []):
+        if message.role == "user":
+            query = (message.content or "").strip()
+            break
+    if not kp_ids and not carrier_ids and (not atlas_scope.semanticRecall or not query):
+        return None
+
+    try:
+        from app.services.atlas_recall import recall_atlas_context, render_atlas_context
+
+        context = await recall_atlas_context(
+            pool,
+            llm_router,
+            user_id=user_id,
+            query=query,
+            kp_ids=kp_ids,
+            carrier_ids=carrier_ids,
+            semantic_limit=atlas_scope.semanticLimit if atlas_scope.semanticRecall else 0,
+            neighborhood_depth=atlas_scope.neighborhoodDepth,
+            include_evidence=atlas_scope.includeEvidence,
+        )
+        return render_atlas_context(context)
+    except Exception:
+        logger.warning("agent.atlas_context_failed", extra={"data": {"kp_ids": kp_ids}})
+        return None
+
+
 async def _build_picker_context(
     pool,
     *,
@@ -1221,11 +1299,23 @@ async def agent_chat(
         kb_ids=payload.kbIds,
         messages=payload.messages,
     )
+    atlas_context = await _build_atlas_context_for_chat(
+        pool,
+        atlas_scope=payload.atlasScope,
+        user_id=user_id,
+        llm_router=llm_router,
+        messages=payload.messages,
+    )
     if kb_context:
         if context_block:
             context_block = context_block + "\n\n---\n\n" + kb_context
         else:
             context_block = kb_context
+    if atlas_context:
+        if context_block:
+            context_block = context_block + "\n\n---\n\n" + atlas_context
+        else:
+            context_block = atlas_context
     chat_messages = _build_chat_messages(payload, context_block=context_block)
 
     # SSRF 守卫

@@ -26,11 +26,17 @@ import {
   Eye,
   Columns,
   ShieldCheck,
+  Network,
+  BookOpen,
+  RefreshCw,
+  Link2,
+  Highlighter,
+  Quote,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
-import { cn } from '@/lib/utils';
+import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 // Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
@@ -47,11 +53,13 @@ import { AiChatPanel } from '@/components/ai/AiChatPanel';
 // 类型定义
 import type { AiCapability } from '@/types/writing-workflow';
 import type { ContentSnapshot } from '@/types/content-history';
+import type { AtlasSearchKnowledgePoint } from '@aetherblog/types';
 
 // 编辑器扩展
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
 import { aiService } from '@/services/aiService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
+import { atlasService, ATLAS_CARRIER_SUGGESTION_MAX_COST_USD } from '@/services/atlasService';
 import { loadToolParams } from '@/components/ai/ToolParamsPanel';
 import { toast } from 'sonner';
 
@@ -61,6 +69,54 @@ function workflowErrorMessage(error: unknown, fallback: string) {
   if (typeof responseMessage === 'string' && responseMessage.trim()) return responseMessage;
   if (typeof candidate.message === 'string' && candidate.message.trim()) return candidate.message;
   return fallback;
+}
+
+function formatAtlasCostUsd(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '未知';
+  if (value === 0) return '$0';
+  return `$${value.toFixed(6)}`;
+}
+
+const ATLAS_WRITING_QUERY_LIMIT = 900;
+
+function buildAtlasWritingQuery(title: string, summary: string, content: string) {
+  const combined = [title, summary, content]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('\n\n');
+  return combined.slice(0, ATLAS_WRITING_QUERY_LIMIT);
+}
+
+function atlasReferenceMarkdown(kp: AtlasSearchKnowledgePoint) {
+  const safeTitle = kp.title.replaceAll('[', '\\[').replaceAll(']', '\\]');
+  return `[Atlas KP #${kp.id}: ${safeTitle}](/admin/atlas/kp/${kp.id})`;
+}
+
+function normalizeAtlasCitationText(text: string) {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+function atlasEvidenceCitationMarkdown(kp: AtlasSearchKnowledgePoint) {
+  const evidence = kp.evidencePreview;
+  if (!evidence?.quote) return atlasReferenceMarkdown(kp);
+
+  const title = normalizeAtlasCitationText(kp.title);
+  const quote = normalizeAtlasCitationText(evidence.quote);
+  const carrierTitle = normalizeAtlasCitationText(evidence.carrierTitle);
+  const sourceParts = [
+    carrierTitle ? `来源：${carrierTitle}` : null,
+    `KP #${kp.id}: ${title}`,
+    `evidence #${evidence.annotationId}`,
+  ].filter(Boolean);
+  const lines = [
+    `> ${quote}`,
+    '>',
+    `> Atlas 引用 - ${sourceParts.join(' · ')}`,
+  ];
+  if (evidence.note) {
+    lines.push('', `标注备注：${normalizeAtlasCitationText(evidence.note)}`);
+  }
+  return lines.join('\n');
 }
 
 // AI 工具能力定义
@@ -94,7 +150,13 @@ const AI_CAPABILITIES: AiCapability[] = [
 ];
 
 type EditorViewMode = 'edit' | 'preview' | 'split';
-type MobilePanel = 'history' | 'chat' | 'workflow' | null;
+type MobilePanel = 'history' | 'chat' | 'workflow' | 'atlas' | null;
+
+type AtlasReferenceState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ok'; items: AtlasSearchKnowledgePoint[]; semanticAvailable?: boolean }
+  | { kind: 'error'; message: string };
 
 export function AiWritingWorkspacePage() {
   const navigate = useNavigate();
@@ -119,6 +181,10 @@ export function AiWritingWorkspacePage() {
   const [showWorkflowNav, setShowWorkflowNav] = useState(true);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
+  const [showAtlasPanel, setShowAtlasPanel] = useState(false);
+  const [generatingAtlasSuggestions, setGeneratingAtlasSuggestions] = useState(false);
+  const [openingAtlasReader, setOpeningAtlasReader] = useState(false);
+  const [atlasReferenceState, setAtlasReferenceState] = useState<AtlasReferenceState>({ kind: 'idle' });
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [compareSnapshots, setCompareSnapshots] = useState<{
     snapshot1: ContentSnapshot;
@@ -329,6 +395,118 @@ export function AiWritingWorkspacePage() {
     }
   }, [postId]);
 
+  const generateAtlasPostSuggestions = useCallback(async () => {
+    if (!postId || Number.isNaN(postId)) {
+      toast.error('请先保存文章后再生成 Atlas 建议');
+      return;
+    }
+    setGeneratingAtlasSuggestions(true);
+    try {
+      const carrier = await atlasService.ensurePostCarrier(postId);
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.data.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.data.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从文章生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '生成 Atlas 建议失败'));
+    } finally {
+      setGeneratingAtlasSuggestions(false);
+    }
+  }, [postId]);
+
+  const openAtlasPostReader = useCallback(async () => {
+    if (!postId || Number.isNaN(postId)) {
+      toast.error('请先保存文章后再打开 Atlas Reader');
+      return;
+    }
+    setOpeningAtlasReader(true);
+    try {
+      const carrier = await getOrEnsurePostCarrier(postId);
+      navigate(`/atlas/reader/blog-post/${carrier.data.id}`);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '打开 Atlas Reader 失败'));
+    } finally {
+      setOpeningAtlasReader(false);
+    }
+  }, [navigate, postId]);
+
+  const refreshAtlasReferences = useCallback(async () => {
+    const q = buildAtlasWritingQuery(title, summary, content);
+    if (!q.trim()) {
+      toast.error('请先写入标题或正文后再检索 Atlas 参考');
+      return;
+    }
+    setAtlasReferenceState({ kind: 'loading' });
+    try {
+      const res = await atlasService.search({ q, scope: 'mine', semantic: true, limit: 6 });
+      setAtlasReferenceState({
+        kind: 'ok',
+        items: res.data.knowledgePoints,
+        semanticAvailable: res.data.semanticAvailable,
+      });
+      if (res.data.knowledgePoints.length === 0) {
+        toast.message('没有找到相关 Atlas KP');
+      }
+    } catch (error) {
+      setAtlasReferenceState({ kind: 'error', message: extractApiErrorMessage(error, 'Atlas 参考检索失败') });
+    }
+  }, [content, summary, title]);
+
+  const toggleAtlasReferencePanel = useCallback(() => {
+    const shouldOpen = isMobile ? mobilePanel !== 'atlas' : !showAtlasPanel;
+    if (isMobile) {
+      setMobilePanel(shouldOpen ? 'atlas' : null);
+    } else {
+      setShowAtlasPanel(shouldOpen);
+    }
+    if (shouldOpen && atlasReferenceState.kind === 'idle') {
+      void refreshAtlasReferences();
+    }
+  }, [atlasReferenceState.kind, isMobile, mobilePanel, refreshAtlasReferences, showAtlasPanel]);
+
+  const insertAtlasReference = useCallback(async (kp: AtlasSearchKnowledgePoint, mode: 'link' | 'evidence' = 'link') => {
+    const markdown = mode === 'evidence' ? atlasEvidenceCitationMarkdown(kp) : atlasReferenceMarkdown(kp);
+    const view = editorViewRef.current;
+    if (postId) {
+      await historyManager.createSnapshot({
+        title,
+        content,
+        summary,
+        source: 'user-edit',
+        sourceName: mode === 'evidence' ? '插入 Atlas evidence 前' : '插入 Atlas 引用前',
+      });
+    }
+    if (view) {
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
+        changes: { from, to, insert: markdown },
+        selection: { anchor: from + markdown.length },
+      });
+      setContent(view.state.doc.toString());
+      view.focus();
+    } else {
+      setContent((current) => {
+        const separator = current.trim() ? '\n\n' : '';
+        return `${current}${separator}${markdown}`;
+      });
+    }
+    toast.success(mode === 'evidence' ? `已插入 KP #${kp.id} evidence` : `已插入 KP #${kp.id} 引用`);
+  }, [content, historyManager, postId, summary, title]);
+
   return (
     <div className="absolute inset-0 flex flex-col bg-[var(--bg-void)]">
       {/* ============ 移动端头部：双排紧凑布局 ============ */}
@@ -351,13 +529,29 @@ export function AiWritingWorkspacePage() {
                 </span>
               </div>
             </div>
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
-            >
-              <Save className="w-3.5 h-3.5" />
-              保存
-            </button>
+            <div className="flex items-center gap-1">
+              <MobileIconButton
+                onClick={() => void openAtlasPostReader()}
+                disabled={openingAtlasReader}
+                label="Reader"
+              >
+                <Highlighter className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={() => void generateAtlasPostSuggestions()}
+                disabled={generatingAtlasSuggestions}
+                label="Atlas"
+              >
+                <Network className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
+              >
+                <Save className="w-3.5 h-3.5" />
+                保存
+              </button>
+            </div>
           </div>
 
           {/* Row 2 · 模式 + 控制条 */}
@@ -419,6 +613,13 @@ export function AiWritingWorkspacePage() {
                 label="对话"
               >
                 <MessageSquare className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={toggleAtlasReferencePanel}
+                active={mobilePanel === 'atlas'}
+                label="Atlas 参考"
+              >
+                <BookOpen className="w-[18px] h-[18px]" />
               </MobileIconButton>
               <MobileIconButton
                 onClick={() => void runArticleAuditWorkflow()}
@@ -520,10 +721,34 @@ export function AiWritingWorkspacePage() {
             </DesktopIconButton>
 
             <DesktopIconButton
+              onClick={toggleAtlasReferencePanel}
+              active={showAtlasPanel}
+              title="Atlas 参考"
+            >
+              <BookOpen className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={() => void openAtlasPostReader()}
+              disabled={openingAtlasReader}
+              title={openingAtlasReader ? '正在打开 Atlas Reader' : '打开 Atlas Reader'}
+            >
+              <Highlighter className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
               onClick={() => void runArticleAuditWorkflow()}
               title="运行 Article Audit"
             >
               <ShieldCheck className="w-5 h-5" />
+            </DesktopIconButton>
+
+            <DesktopIconButton
+              onClick={() => void generateAtlasPostSuggestions()}
+              disabled={generatingAtlasSuggestions}
+              title={generatingAtlasSuggestions ? '正在生成 Atlas 建议' : '生成 Atlas 建议'}
+            >
+              <Network className="w-5 h-5" />
             </DesktopIconButton>
 
             {workflowMode === 'guided' && (
@@ -716,6 +941,28 @@ export function AiWritingWorkspacePage() {
             )}
           </AnimatePresence>
         )}
+
+        {!isMobile && (
+          <AnimatePresence>
+            {showAtlasPanel && (
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 340, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
+              >
+                <AtlasReferencePanel
+                  state={atlasReferenceState}
+                  onRefresh={() => void refreshAtlasReferences()}
+                  onInsertLink={(kp) => void insertAtlasReference(kp, 'link')}
+                  onInsertEvidence={(kp) => void insertAtlasReference(kp, 'evidence')}
+                  onClose={() => setShowAtlasPanel(false)}
+                />
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        )}
       </div>
 
       {/* ============ 移动端：底部抽屉面板 ============ */}
@@ -795,6 +1042,15 @@ export function AiWritingWorkspacePage() {
               </div>
             </div>
           )}
+          {mobilePanel === 'atlas' && (
+            <AtlasReferencePanel
+              state={atlasReferenceState}
+              onRefresh={() => void refreshAtlasReferences()}
+              onInsertLink={(kp) => void insertAtlasReference(kp, 'link')}
+              onInsertEvidence={(kp) => void insertAtlasReference(kp, 'evidence')}
+              onClose={closeMobilePanel}
+            />
+          )}
         </MobileBottomSheet>
       )}
 
@@ -808,6 +1064,153 @@ export function AiWritingWorkspacePage() {
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+async function getOrEnsurePostCarrier(postId: number) {
+  try {
+    return await atlasService.getPostCarrier(postId);
+  } catch (error) {
+    if (isAtlasNotFound(error)) {
+      return atlasService.ensurePostCarrier(postId);
+    }
+    throw error;
+  }
+}
+
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
+}
+
+function AtlasReferencePanel({
+  state,
+  onRefresh,
+  onInsertLink,
+  onInsertEvidence,
+  onClose,
+}: {
+  state: AtlasReferenceState;
+  onRefresh: () => void;
+  onInsertLink: (kp: AtlasSearchKnowledgePoint) => void;
+  onInsertEvidence: (kp: AtlasSearchKnowledgePoint) => void;
+  onClose: () => void;
+}) {
+  const items = state.kind === 'ok' ? state.items : [];
+  return (
+    <div className="h-full w-[340px] max-w-full flex flex-col bg-[var(--bg-substrate)]">
+      <div className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <BookOpen className="w-4 h-4 text-[var(--aurora-1)] flex-shrink-0" />
+          <h3 className="font-mono text-[var(--fs-micro)] uppercase tracking-[0.18em] text-[var(--ink-muted)] truncate">
+            Atlas 参考
+          </h3>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={state.kind === 'loading'}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] disabled:opacity-40"
+            aria-label="刷新 Atlas 参考"
+            title="刷新 Atlas 参考"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+            aria-label="关闭 Atlas 参考"
+            title="关闭 Atlas 参考"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {state.kind === 'idle' ? (
+          <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">等待检索。</div>
+        ) : state.kind === 'loading' ? (
+          <div className="space-y-3 px-4 py-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="h-20 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+            ))}
+          </div>
+        ) : state.kind === 'error' ? (
+          <div className="px-4 py-6 text-sm text-[var(--signal-danger)]">{state.message}</div>
+        ) : items.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">没有匹配的 KP。</div>
+        ) : (
+          <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)]">
+            {items.map((kp) => {
+              const score = typeof kp.searchScore === 'number' ? Math.round(kp.searchScore * 100) : null;
+              const evidence = kp.evidencePreview;
+              return (
+                <li key={kp.id} className="px-4 py-3">
+                  <div className="space-y-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-[var(--ink-muted)]">KP #{kp.id}</span>
+                        {score !== null ? (
+                          <span className="rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-2 py-0.5 font-mono text-[10px] text-[var(--aurora-1)]">
+                            {score}%
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm font-semibold text-[var(--ink-primary)]">{kp.title}</p>
+                      {kp.bodyMarkdown ? (
+                        <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--ink-secondary)]">{kp.bodyMarkdown}</p>
+                      ) : null}
+                      {evidence ? (
+                        <div className="mt-2 border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)] pl-2">
+                          <div className="flex items-start gap-1.5 text-xs leading-5 text-[var(--ink-secondary)]">
+                            <Quote className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[var(--aurora-1)]" />
+                            <p className="line-clamp-3">{evidence.quote}</p>
+                          </div>
+                          <p className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                            {evidence.carrierType} · {evidence.carrierTitle || `carrier #${evidence.carrierId}`}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        {kp.type}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onInsertLink(kp)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] px-2.5 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        链接
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onInsertEvidence(kp)}
+                        disabled={!evidence?.quote}
+                        title={evidence?.quote ? '插入 evidence 引用' : '该 KP 暂无 evidence'}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-2.5 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                      >
+                        <Quote className="w-3.5 h-3.5" />
+                        证据
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {state.kind === 'ok' && state.semanticAvailable === false ? (
+        <div className="border-t border-[color-mix(in_oklch,var(--signal-warn)_24%,transparent)] px-4 py-3 text-xs text-[var(--ink-secondary)]">
+          语义召回不可用，当前为关键词结果。
+        </div>
+      ) : null}
     </div>
   );
 }

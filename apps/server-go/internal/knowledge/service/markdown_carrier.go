@@ -27,6 +27,11 @@ type NoteReader interface {
 	GetNoteSnapshot(ctx context.Context, noteID int64) (*NoteSnapshot, error)
 }
 
+// NoteSourceWriter 是 Atlas scoped source note 创建所需的最小写接口。
+type NoteSourceWriter interface {
+	CreateNoteSnapshot(ctx context.Context, title string, content string, authorID int64) (*NoteSnapshot, error)
+}
+
 // NoteSnapshot 是 Atlas 需要的 note 字段子集。
 type NoteSnapshot struct {
 	ID       int64
@@ -41,6 +46,9 @@ type MarkdownCarrierService struct {
 	notes      NoteReader
 	versioning *CarrierVersioningService // P1-09: 内容变更时跑标注迁移；可为 nil（向后兼容）
 }
+
+// ErrAtlasForbidden 表示调用者没有访问目标 Atlas 资源的权限。
+var ErrAtlasForbidden = errors.New("atlas resource forbidden")
 
 // NewMarkdownCarrierService 创建服务。
 func NewMarkdownCarrierService(carriers *repository.CarrierRepo, notes NoteReader) *MarkdownCarrierService {
@@ -59,21 +67,49 @@ func (s *MarkdownCarrierService) AttachVersioning(v *CarrierVersioningService) {
 // 会同时 miss FindBySourceURI 各自 INSERT 造成重复行。现在改走 CarrierRepo.UpsertBySourceURI
 // 单一 INSERT ... ON CONFLICT (source_uri) 路径 + migration 000066 加 UNIQUE 约束。
 func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID int64) (*model.Carrier, error) {
-	if noteID <= 0 {
-		return nil, errors.New("invalid note id")
+	return s.getOrCreateForNote(ctx, noteID, 0, true)
+}
+
+// GetOrCreateForNoteAs 懒创建/返回当前调用者可访问的 Markdown carrier。
+func (s *MarkdownCarrierService) GetOrCreateForNoteAs(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
+	return s.getOrCreateForNote(ctx, noteID, userID, canAdmin)
+}
+
+// GetNoteSourceAs 返回当前调用者可访问的 note source 内容，供 Atlas Reader 避开 legacy admin-only notes API。
+func (s *MarkdownCarrierService) GetNoteSourceAs(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*NoteSnapshot, error) {
+	note, err := s.loadScopedNote(ctx, noteID, userID, canAdmin)
+	if err != nil {
+		return nil, err
 	}
+	return note, nil
+}
+
+// CreateNoteSourceAs 创建当前调用者拥有的 Atlas source note。
+func (s *MarkdownCarrierService) CreateNoteSourceAs(ctx context.Context, title string, content string, userID int64) (*NoteSnapshot, error) {
 	if s.notes == nil {
 		return nil, errors.New("note reader not configured")
 	}
+	writer, ok := s.notes.(NoteSourceWriter)
+	if !ok {
+		return nil, errors.New("note writer not configured")
+	}
+	title = strings.TrimSpace(title)
+	content = strings.TrimSpace(content)
+	if title == "" {
+		title = "Atlas source note"
+	}
+	if content == "" {
+		return nil, errors.New("contentMarkdown 不能为空")
+	}
+	return writer.CreateNoteSnapshot(ctx, title, content, userID)
+}
 
+func (s *MarkdownCarrierService) getOrCreateForNote(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
 	uri := MarkdownSourceURI(noteID)
 
-	note, err := s.notes.GetNoteSnapshot(ctx, noteID)
+	note, err := s.loadScopedNote(ctx, noteID, userID, canAdmin)
 	if err != nil {
 		return nil, fmt.Errorf("load note %d: %w", noteID, err)
-	}
-	if note == nil {
-		return nil, fmt.Errorf("note %d not found", noteID)
 	}
 
 	hash := contentSHA256(note.Content)
@@ -129,6 +165,26 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 		carrier.ContentHash = hash
 	}
 	return carrier, nil
+}
+
+func (s *MarkdownCarrierService) loadScopedNote(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*NoteSnapshot, error) {
+	if noteID <= 0 {
+		return nil, errors.New("invalid note id")
+	}
+	if s.notes == nil {
+		return nil, errors.New("note reader not configured")
+	}
+	note, err := s.notes.GetNoteSnapshot(ctx, noteID)
+	if err != nil {
+		return nil, err
+	}
+	if note == nil {
+		return nil, fmt.Errorf("note %d not found", noteID)
+	}
+	if !canAdmin && (note.AuthorID == nil || *note.AuthorID != userID) {
+		return nil, ErrAtlasForbidden
+	}
+	return note, nil
 }
 
 // MarkdownSourceURI 构造 markdown 载体的 source_uri。集中在一处便于将来调整。

@@ -3,7 +3,7 @@
 // 路由: /atlas/reader/note/:noteId
 //
 // 流程:
-//   1. 路由参数 noteId → POST /atlas/carriers/markdown 懒创建 carrier
+//   1. 路由参数 noteId → 优先 GET 已有 carrier；404 时再懒创建 carrier
 //   2. 拉取 carrier 详情 + 该 carrier 下所有 annotations
 //   3. 渲染 markdown （reuse @aetherblog/editor MarkdownPreview）+ 在文本里高亮标注
 //   4. 监听文本选区 → buildSelectorsFromTextRange → POST /atlas/annotations
@@ -12,23 +12,33 @@
 // 红线 C1-3: UI 必走 @aetherblog/ui；本页直接用 lucide icons + 基础 div，
 // 不重造组件，复杂组件（如 dialog）从既有页拷模式。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MarkdownPreview } from '@aetherblog/editor';
-import { ArrowLeft, Highlighter, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Brain, Highlighter, Sparkles, Trash2 } from 'lucide-react';
+import { Modal, Select } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
-import type { AtlasAnnotation, AtlasCarrier } from '@aetherblog/types';
+import type {
+  AtlasAnnotation,
+  AtlasCarrier,
+  AtlasKnowledgePointStatus,
+  AtlasKnowledgePointType,
+} from '@aetherblog/types';
 
-import { atlasService } from '@/services/atlasService';
-import { noteService } from '@/services/noteService';
-import type { NoteDetail } from '@/types/note';
+import {
+  ATLAS_CARRIER_SUGGESTION_MAX_COST_USD,
+  atlasService,
+  type AtlasMarkdownSource,
+} from '@/services/atlasService';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { buildSelectorsFromDomRange, validateSelectors } from './lib/selectors';
 import { anchor } from './lib/anchoring';
+import { unwrapAnnotationMarks, wrapTextRange } from './lib/domHighlight';
 
 interface ReaderState {
-  note: NoteDetail | null;
+  note: AtlasMarkdownSource | null;
   carrier: AtlasCarrier | null;
   annotations: AtlasAnnotation[];
   loading: boolean;
@@ -43,6 +53,49 @@ const initial: ReaderState = {
   error: null,
 };
 
+type EvidenceRole = 'evidence' | 'definition' | 'example' | 'counter';
+
+interface KPDraft {
+  annotation: AtlasAnnotation;
+  title: string;
+  bodyMarkdown: string;
+  type: AtlasKnowledgePointType;
+  status: AtlasKnowledgePointStatus;
+  confidence: number;
+  evidenceRole: EvidenceRole;
+  submitting: boolean;
+}
+
+const KP_TYPE_OPTIONS: Array<{ value: AtlasKnowledgePointType; label: string; description: string }> = [
+  { value: 'claim', label: '主张', description: '可被证据支持或反驳的判断' },
+  { value: 'concept', label: '概念', description: '稳定术语、主题或对象' },
+  { value: 'question', label: '问题', description: '尚未回答或需要继续探索' },
+  { value: 'definition', label: '定义', description: '对术语边界的解释' },
+  { value: 'method', label: '方法', description: '可复用的流程或技术' },
+  { value: 'example', label: '例子', description: '支撑理解的实例' },
+  { value: 'person', label: '人物', description: '作者、研究者或相关人物' },
+  { value: 'source', label: '来源', description: '可被引用的材料来源' },
+];
+
+const KP_STATUS_OPTIONS: Array<{ value: AtlasKnowledgePointStatus; label: string; description: string }> = [
+  { value: 'seed', label: 'Seed', description: '刚提炼的种子知识点' },
+  { value: 'growing', label: 'Growing', description: '仍在补证据和关系' },
+  { value: 'evergreen', label: 'Evergreen', description: '相对稳定、可长期复用' },
+  { value: 'archived', label: 'Archived', description: '暂不参与主图谱' },
+];
+
+function formatAtlasCostUsd(value?: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '费用未知';
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
+}
+
+const EVIDENCE_ROLE_OPTIONS: Array<{ value: EvidenceRole; label: string; description: string }> = [
+  { value: 'evidence', label: '证据', description: '直接支撑该知识点' },
+  { value: 'definition', label: '定义', description: '解释该知识点的边界' },
+  { value: 'example', label: '例子', description: '作为说明性样例' },
+  { value: 'counter', label: '反例', description: '对该知识点形成反向证据' },
+];
+
 export default function MarkdownReaderPage() {
   const { noteId: noteIdParam } = useParams<{ noteId: string }>();
   const navigate = useNavigate();
@@ -50,6 +103,9 @@ export default function MarkdownReaderPage() {
 
   const [state, setState] = useState<ReaderState>(initial);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const [kpDraft, setKpDraft] = useState<KPDraft | null>(null);
+  const [generatingAnnotationId, setGeneratingAnnotationId] = useState<number | null>(null);
+  const [generatingCarrierSuggestions, setGeneratingCarrierSuggestions] = useState(false);
 
   // 拉数据
   useEffect(() => {
@@ -62,8 +118,8 @@ export default function MarkdownReaderPage() {
       try {
         setState((s) => ({ ...s, loading: true, error: null }));
         const [noteRes, carrierRes] = await Promise.all([
-          noteService.getById(noteId),
-          atlasService.ensureMarkdownCarrier(noteId),
+          atlasService.getMarkdownSource(noteId),
+          getOrEnsureMarkdownCarrier(noteId),
         ]);
         if (cancelled) return;
         const carrier = carrierRes.data;
@@ -156,6 +212,66 @@ export default function MarkdownReaderPage() {
     }
   }, []);
 
+  const handleOpenKPDraft = useCallback((annotation: AtlasAnnotation) => {
+      const quote = annotation.selectors.find((s) => s.type === 'TextQuoteSelector') as
+        | import('@aetherblog/types').TextQuoteSelector
+        | undefined;
+      const exact = quote?.exact?.trim();
+      if (!exact) {
+        toast.error('该标注缺少 TextQuoteSelector，无法提炼为 KP');
+        return;
+      }
+      const title = exact.length > 72 ? `${exact.slice(0, 72)}...` : exact;
+      setKpDraft({
+        annotation,
+        title,
+        bodyMarkdown: exact,
+        type: 'claim',
+        status: 'seed',
+        confidence: 0.72,
+        evidenceRole: 'evidence',
+        submitting: false,
+      });
+    }, []);
+
+  const handleSubmitKPDraft = useCallback(
+    async () => {
+      if (!kpDraft) return;
+      const title = kpDraft.title.trim();
+      const bodyMarkdown = kpDraft.bodyMarkdown.trim();
+      if (!title) {
+        toast.error('请填写 KP 标题');
+        return;
+      }
+      if (kpDraft.confidence < 0 || kpDraft.confidence > 1) {
+        toast.error('Confidence 必须在 0 到 1 之间');
+        return;
+      }
+      setKpDraft((draft) => (draft ? { ...draft, submitting: true } : draft));
+      try {
+        const res = await atlasService.createKnowledgePoint({
+          title,
+          bodyMarkdown,
+          type: kpDraft.type,
+          status: kpDraft.status,
+          confidence: kpDraft.confidence,
+          provenance: 'user',
+          evidenceAnnotationIds: [kpDraft.annotation.id],
+        });
+        if (kpDraft.evidenceRole !== 'evidence') {
+          await atlasService.linkAnnotationToKP(res.data.id, kpDraft.annotation.id, kpDraft.evidenceRole);
+        }
+        toast.success(`已提炼为 KP #${res.data.id}`);
+        setKpDraft(null);
+        navigate(`/atlas/kp/${res.data.id}`);
+      } catch (err) {
+        setKpDraft((draft) => (draft ? { ...draft, submitting: false } : draft));
+        toast.error(extractApiErrorMessage(err, '提炼 KP 失败'));
+      }
+    },
+    [kpDraft, navigate]
+  );
+
   // 重新对齐（点击 orphan / soft 状态的 reanchor 按钮）
   //
   // PR #724 review fix (Codex P1, MarkdownReaderPage.tsx:164):
@@ -195,25 +311,104 @@ export default function MarkdownReaderPage() {
     [state.note]
   );
 
+  const handleGenerateAISuggestion = useCallback(async (annotation: AtlasAnnotation) => {
+    setGeneratingAnnotationId(annotation.id);
+    try {
+      const res = await atlasService.generateAnnotationSuggestions(annotation.id, { maxCandidates: 3 });
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成 AI 建议失败'));
+    } finally {
+      setGeneratingAnnotationId(null);
+    }
+  }, []);
+
+  const handleGenerateCarrierSuggestions = useCallback(async () => {
+    if (!state.carrier) return;
+    setGeneratingCarrierSuggestions(true);
+    try {
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(state.carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(state.carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从全文生成 ${count} 条 AI 建议，前往 Inbox 处理` : 'AI 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '生成全文 AI 建议失败'));
+    } finally {
+      setGeneratingCarrierSuggestions(false);
+    }
+  }, [state.carrier]);
+
   const stateBadgeMap: Record<AtlasAnnotation['anchorState'], { label: string; cls: string }> = {
     anchored: { label: '已锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-success)_20%,transparent)] text-[var(--signal-success)]' },
     soft_anchored: { label: '软锚定', cls: 'bg-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)] text-[var(--signal-warn)]' },
     orphan: { label: '失锚', cls: 'bg-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--signal-danger)]' },
   };
 
-  // 把锚定的 anchored / soft_anchored 标注按 TextPosition 排序 + 渲染高亮
+  // 把锚定的 anchored / soft_anchored 标注渲染到 MarkdownPreview 的 DOM textContent 空间。
   const highlightedMarkdown = useMemo(() => {
     if (!state.note) return '';
     const text = state.note.contentMarkdown ?? '';
-    // Phase 1 简化：不在 markdown 源里插入高亮 span（会破坏渲染）；
-    // 高亮通过侧栏 + 选区呈现，正文保持原样。复杂的内嵌高亮留给 Phase 2 UI 改造。
     return text;
   }, [state.note]);
 
+  useLayoutEffect(() => {
+    const root = previewRef.current;
+    if (!root || state.loading || !state.note) return;
+    unwrapAnnotationMarks(root);
+    const fullText = root.textContent ?? '';
+    const ranges = state.annotations
+      .map((annotation) => {
+        if (annotation.anchorState === 'orphan') return null;
+        const outcome = anchor(fullText, annotation.selectors);
+        if (outcome.start < 0 || outcome.end <= outcome.start || outcome.state === 'orphan') return null;
+        return {
+          id: annotation.id,
+          start: outcome.start,
+          end: outcome.end,
+          state: annotation.anchorState === 'soft_anchored' || outcome.state === 'soft_anchored'
+            ? 'soft_anchored'
+            : 'anchored',
+        } as const;
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x))
+      .sort((a, b) => a.start - b.start || b.end - a.end);
+
+    let cursor = -1;
+    for (const range of ranges) {
+      if (range.start < cursor) continue;
+      wrapTextRange(root, range.start, range.end, range.id, range.state);
+      cursor = range.end;
+    }
+  }, [state.annotations, state.loading, state.note]);
+
   if (state.loading) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--ink-muted)]" />
+      <div className="grid h-[calc(100vh-4rem)] min-h-[640px] grid-cols-[minmax(0,1fr)_360px] gap-0">
+        <div className="space-y-4 bg-[var(--bg-substrate)] p-6">
+          <Skeleton className="h-10 w-64 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <Skeleton className="h-96 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          <Skeleton className="h-56 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+        </div>
+        <aside className="space-y-3 border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-24 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+          ))}
+        </aside>
       </div>
     );
   }
@@ -252,13 +447,23 @@ export default function MarkdownReaderPage() {
             <h1 className="truncate text-sm font-semibold text-[var(--ink-primary)]">{state.note.title}</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleHighlight}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
-        >
-          <Highlighter className="h-4 w-4" /> 标注选区
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={generatingCarrierSuggestions}
+            onClick={() => void handleGenerateCarrierSuggestions()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" /> {generatingCarrierSuggestions ? '生成中' : '全文 AI 建议'}
+          </button>
+          <button
+            type="button"
+            onClick={handleHighlight}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)]"
+          >
+            <Highlighter className="h-4 w-4" /> 标注选区
+          </button>
+        </div>
       </header>
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
@@ -310,6 +515,21 @@ export default function MarkdownReaderPage() {
                       <p className="mt-1 text-[var(--ink-secondary)]">{a.bodyText}</p>
                     )}
                     <footer className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenKPDraft(a)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] px-2 text-[10px] text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+                      >
+                        <Brain className="h-3 w-3" /> 提炼 KP
+                      </button>
+                      <button
+                        type="button"
+                        disabled={generatingAnnotationId === a.id}
+                        onClick={() => void handleGenerateAISuggestion(a)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_25%,transparent)] px-2 text-[10px] text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Sparkles className="h-3 w-3" /> AI 建议
+                      </button>
                       {a.anchorState !== 'anchored' && (
                         <button
                           type="button"
@@ -334,6 +554,129 @@ export default function MarkdownReaderPage() {
           )}
         </aside>
       </main>
+
+      <Modal
+        isOpen={Boolean(kpDraft)}
+        onClose={() => {
+          if (!kpDraft?.submitting) setKpDraft(null);
+        }}
+        title="提炼为知识点"
+        size="lg"
+      >
+        {kpDraft && (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubmitKPDraft();
+            }}
+          >
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">标题</span>
+              <input
+                value={kpDraft.title}
+                onChange={(event) => setKpDraft((draft) => (draft ? { ...draft, title: event.target.value } : draft))}
+                className="w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">正文</span>
+              <textarea
+                value={kpDraft.bodyMarkdown}
+                onChange={(event) => setKpDraft((draft) => (draft ? { ...draft, bodyMarkdown: event.target.value } : draft))}
+                rows={6}
+                className="w-full resize-none rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 text-sm leading-6 text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-[var(--ink-secondary)]">类型</span>
+                <Select
+                  value={kpDraft.type}
+                  onValueChange={(next) => setKpDraft((draft) => (draft ? { ...draft, type: next as AtlasKnowledgePointType } : draft))}
+                  options={KP_TYPE_OPTIONS}
+                  ariaLabel="知识点类型"
+                  size="sm"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-[var(--ink-secondary)]">状态</span>
+                <Select
+                  value={kpDraft.status}
+                  onValueChange={(next) => setKpDraft((draft) => (draft ? { ...draft, status: next as AtlasKnowledgePointStatus } : draft))}
+                  options={KP_STATUS_OPTIONS}
+                  ariaLabel="知识点状态"
+                  size="sm"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-[var(--ink-secondary)]">证据角色</span>
+                <Select
+                  value={kpDraft.evidenceRole}
+                  onValueChange={(next) => setKpDraft((draft) => (draft ? { ...draft, evidenceRole: next as EvidenceRole } : draft))}
+                  options={EVIDENCE_ROLE_OPTIONS}
+                  ariaLabel="证据角色"
+                  size="sm"
+                />
+              </label>
+            </div>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--ink-secondary)]">
+                Confidence · {kpDraft.confidence.toFixed(2)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={kpDraft.confidence}
+                onChange={(event) => setKpDraft((draft) => (draft ? { ...draft, confidence: Number(event.target.value) } : draft))}
+                className="w-full accent-[var(--aurora-1)]"
+              />
+            </label>
+
+            <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] p-3 text-xs text-[var(--ink-secondary)]">
+              Evidence annotation #{kpDraft.annotation.id} 会与新 KP 建立链接，role 使用上方选择的证据角色。
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={kpDraft.submitting}
+                onClick={() => setKpDraft(null)}
+                className="inline-flex h-9 items-center rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-3 text-xs text-[var(--ink-secondary)] hover:bg-[var(--bg-substrate)] disabled:opacity-60"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={kpDraft.submitting}
+                className="inline-flex h-9 items-center rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] disabled:opacity-60"
+              >
+                {kpDraft.submitting ? '创建中...' : '创建 KP'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
+}
+
+async function getOrEnsureMarkdownCarrier(noteId: number) {
+  try {
+    return await atlasService.getMarkdownCarrier(noteId);
+  } catch (error) {
+    if (isAtlasNotFound(error)) {
+      return atlasService.ensureMarkdownCarrier(noteId);
+    }
+    throw error;
+  }
+}
+
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
 }

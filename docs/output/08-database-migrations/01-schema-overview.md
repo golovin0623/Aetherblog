@@ -144,7 +144,7 @@ idx_posts_hidden_status (is_hidden, status, published_at DESC)    -- 000027
 - `note_tags` / `note_tag_links`: 独立于文章 `tags` 的笔记标签体系。
 - `notes`: `title`, `content_markdown`, `summary`, `folder_id`, `author_id`, `source_type`, `source_meta`, pinned/favorite/archive/delete 状态,`embedding_status`。
 - `note_links`: 笔记内双链,保存 `source_note_id`,可选 `target_note_id`,以及 `target_title/link_text/position`。
-- `note_embeddings`: 笔记向量 chunk,关联 `search_profiles`,字段含 `chunk_text`, `parent_text`, `embedding vector`, `status`, `error_message`。
+- `note_embeddings`: 笔记向量 chunk,关联 `search_profiles`,字段含 `chunk_text`, `parent_text`, `embedding vector`, `embedding_dim`, `model_id`, `token_count`, `status`, `error_message`；000074 追加 profile/dim 过滤索引与 768/1024/1536/3072 HNSW partial index。
 
 000055 将 `idx_notes_fulltext` 与 `idx_posts_fulltext` 都改为 `left(..., 200000)` 后再生成 `tsvector`,避免 PostgreSQL 对超长 tsvector 抛 `SQLSTATE 54000`。
 

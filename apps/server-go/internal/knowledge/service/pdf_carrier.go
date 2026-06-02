@@ -1,55 +1,86 @@
-// Atlas — Phase 1 P1-02 PdfCarrierService (skeleton)
+// Atlas — Phase 1 P1-02 PdfCarrierService
 //
-// 范围（本 session 完成）:
-//   * 从一个已存在的 media_files 行（用户已通过 admin 媒体库上传 PDF）创建 atlas_carriers 行
-//   * source_uri 约定: media://{media_file_id}
-//   * 文本抽取（pdf.js / pypdf）在 Phase 1 后期单独完成；本骨架不抽文本，
-//     content_hash 暂用 mediaID + size 的 sha256 占位
-//
-// Phase 1 后期任务（P1-02 production）:
-//   * pdfjs 文本层 + 页面 bbox 提取 → 写入 carrier metadata
-//   * 文本流（按页拼接）作为标注锚定的 rootText 持久化到 carrier_versions.storage_uri
+// 从 media_files 里的 PDF 创建 atlas_carriers，并通过 ai-service 抽取逐页文本层。
 
 package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
 
+const maxPDFCarrierBytes int64 = 20 * 1024 * 1024
+
 // PdfMediaSnapshot 是 PdfCarrierService 需要的 media 子集字段。
 type PdfMediaSnapshot struct {
-	ID       int64
-	Title    string
-	FileURL  string
-	FileSize int64
-	OwnerID  *int64
+	ID           int64
+	Title        string
+	OriginalName string
+	FileURL      string
+	FileSize     int64
+	MimeType     string
+	FileType     string
+	OwnerID      *int64
 }
 
 // PdfMediaReader 是最小读接口，由 server.go 用 media service 适配。
 type PdfMediaReader interface {
 	GetPdfSnapshot(ctx context.Context, mediaFileID int64) (*PdfMediaSnapshot, error)
+	DownloadBytes(ctx context.Context, mediaFileID int64, maxBytes int64) ([]byte, string, string, error)
+}
+
+// PDFTextPage 是抽取后的页级文本层。
+type PDFTextPage struct {
+	Page      int    `json:"page"`
+	Text      string `json:"text"`
+	CharStart int    `json:"char_start"`
+	CharEnd   int    `json:"char_end"`
+}
+
+// PDFTextLayer 是 PDF 抽取器返回的完整文本层。
+type PDFTextLayer struct {
+	Text      string        `json:"text"`
+	TextHash  string        `json:"text_hash"`
+	PageCount int           `json:"page_count"`
+	CharCount int           `json:"char_count"`
+	Pages     []PDFTextPage `json:"pages"`
+	Extractor string        `json:"extractor"`
+}
+
+// PDFTextExtractor 抽取 PDF 文本层；生产环境由 ai-service 适配器实现。
+type PDFTextExtractor interface {
+	ExtractPDFText(ctx context.Context, content []byte, mimeType string, filename string) (*PDFTextLayer, error)
 }
 
 // PdfCarrierService 处理 pdf 类型 carrier 的懒创建。
 type PdfCarrierService struct {
-	carriers *repository.CarrierRepo
-	media    PdfMediaReader
+	carriers  *repository.CarrierRepo
+	media     PdfMediaReader
+	extractor PDFTextExtractor
 }
 
 // NewPdfCarrierService 创建。
-func NewPdfCarrierService(carriers *repository.CarrierRepo, media PdfMediaReader) *PdfCarrierService {
-	return &PdfCarrierService{carriers: carriers, media: media}
+func NewPdfCarrierService(carriers *repository.CarrierRepo, media PdfMediaReader, extractor PDFTextExtractor) *PdfCarrierService {
+	return &PdfCarrierService{carriers: carriers, media: media, extractor: extractor}
 }
 
 // GetOrCreateForMediaFile 把 media_files.id 包装为 atlas_carriers 行（幂等）。
 func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFileID int64) (*model.Carrier, error) {
+	return s.getOrCreateForMediaFile(ctx, mediaFileID, 0, true)
+}
+
+// GetOrCreateForMediaFileAs 懒创建/返回当前调用者可访问的 PDF carrier。
+func (s *PdfCarrierService) GetOrCreateForMediaFileAs(ctx context.Context, mediaFileID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
+	return s.getOrCreateForMediaFile(ctx, mediaFileID, userID, canAdmin)
+}
+
+func (s *PdfCarrierService) getOrCreateForMediaFile(ctx context.Context, mediaFileID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
 	if mediaFileID <= 0 {
 		return nil, errors.New("invalid media_file id")
 	}
@@ -58,11 +89,6 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 	}
 	uri := PdfSourceURI(mediaFileID)
 
-	existing, err := s.carriers.FindBySourceURI(ctx, uri)
-	if err != nil {
-		return nil, fmt.Errorf("find carrier: %w", err)
-	}
-
 	media, err := s.media.GetPdfSnapshot(ctx, mediaFileID)
 	if err != nil {
 		return nil, fmt.Errorf("load media %d: %w", mediaFileID, err)
@@ -70,24 +96,91 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 	if media == nil {
 		return nil, fmt.Errorf("media file %d not found", mediaFileID)
 	}
-	// 占位指纹：mediaID + size。Phase 1 后期换为对文件字节流计算的真 sha256。
-	hash := contentSHA256(fmt.Sprintf("media://%d:size=%d", media.ID, media.FileSize))
-	metadata := []byte(fmt.Sprintf(`{"fileUrl":%q,"fileSize":%d}`, media.FileURL, media.FileSize))
+	if !canAdmin && (media.OwnerID == nil || *media.OwnerID != userID) {
+		return nil, ErrAtlasForbidden
+	}
+	if !isPDFMedia(media) {
+		return nil, fmt.Errorf("media file %d is not a PDF", mediaFileID)
+	}
 
-	// PR #725 review fix (Gemini medium, pdf_carrier.go:78): 文件重新上传导致 size 变化时，
-	// existing.ContentHash 不再匹配。过去直接返回 existing 会让 carrier hash + metadata 永久 stale
-	// 且无法触发版本迁移。现在镜像 MarkdownCarrierService 行为：检测 hash 变化 → UpdateContent bump v_n。
+	existing, err := s.carriers.FindBySourceURIForOwner(ctx, uri, media.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("find carrier: %w", err)
+	}
+	if existing != nil && existing.ContentHash != "" && pdfCarrierMetadataMatchesMedia(existing.Metadata, media) {
+		layer, err := s.carriers.FindTextLayerByCarrierAndHash(ctx, existing.ID, existing.ContentHash)
+		if err != nil {
+			return nil, fmt.Errorf("find existing pdf text layer: %w", err)
+		}
+		if layer != nil {
+			metadata, err := pdfMetadataForStoredLayer(media, layer)
+			if err != nil {
+				return nil, fmt.Errorf("build pdf metadata: %w", err)
+			}
+			title := firstNonEmpty(media.Title, media.OriginalName, fmt.Sprintf("pdf-%d", media.ID))
+			if err := s.carriers.UpdateDisplayAndIngestState(ctx, existing.ID, title, existing.Author, existing.Language, metadata, "ready", nil); err != nil {
+				return nil, fmt.Errorf("refresh pdf carrier metadata: %w", err)
+			}
+			existing.Title = title
+			existing.Metadata = metadata
+			existing.Status = "ready"
+			existing.StatusMessage = nil
+			return existing, nil
+		}
+	}
+
+	if s.extractor == nil {
+		return nil, errors.New("pdf text extractor not configured")
+	}
+	content, mimeType, filename, err := s.media.DownloadBytes(ctx, mediaFileID, maxPDFCarrierBytes)
+	if err != nil {
+		return nil, fmt.Errorf("download pdf media %d: %w", mediaFileID, err)
+	}
+	mimeType = firstNonEmpty(mimeType, media.MimeType)
+	filename = firstNonEmpty(filename, media.OriginalName, media.Title)
+	layer, err := s.extractor.ExtractPDFText(ctx, content, mimeType, filename)
+	if err != nil {
+		return nil, fmt.Errorf("extract pdf text layer: %w", err)
+	}
+	if layer == nil {
+		return nil, errors.New("pdf text extractor returned empty layer")
+	}
+	hash := strings.TrimSpace(layer.TextHash)
+	if hash == "" {
+		hash = contentSHA256(layer.Text)
+	}
+	storageURI := PdfTextLayerStorageURI(media.ID, hash)
+	metadata, err := pdfMetadata(media, layer, storageURI)
+	if err != nil {
+		return nil, fmt.Errorf("build pdf metadata: %w", err)
+	}
+
+	// 文件重新上传导致文本 hash 变化时，先持久化新文本层，再推进 carrier version。
+	// 这样 UpdateContent 失败时可安全重试，不会丢失 rootText 证据。
 	if existing != nil {
+		if err := s.persistTextLayer(ctx, existing.ID, hash, storageURI, layer); err != nil {
+			return nil, err
+		}
 		if existing.ContentHash != hash {
-			diff := []byte(`{"reason":"pdf_reuploaded"}`)
-			if err := s.carriers.UpdateContent(ctx, existing.ID, hash, uri, "reupload", diff); err != nil {
+			diff, _ := json.Marshal(map[string]any{
+				"reason":     "pdf_reuploaded",
+				"pageCount":  layer.PageCount,
+				"charCount":  layer.CharCount,
+				"storageUri": storageURI,
+			})
+			if err := s.carriers.UpdateContent(ctx, existing.ID, hash, storageURI, "reupload", diff); err != nil {
 				return nil, fmt.Errorf("bump pdf carrier version: %w", err)
 			}
 			existing.ContentHash = hash
-			existing.Metadata = metadata
-			// 注：PDF 标注的版本迁移与 markdown 不同——pdf.js 抽取的文本与 markdown→plaintext
-			// 不在同一空间，Phase 1 后期 PDF Reader 上线时再补 MigrateAnnotations 集成。
 		}
+		title := firstNonEmpty(media.Title, media.OriginalName, fmt.Sprintf("pdf-%d", media.ID))
+		if err := s.carriers.UpdateDisplayAndIngestState(ctx, existing.ID, title, existing.Author, existing.Language, metadata, "ready", nil); err != nil {
+			return nil, fmt.Errorf("update pdf carrier ingest state: %w", err)
+		}
+		existing.Title = title
+		existing.Metadata = metadata
+		existing.Status = "ready"
+		existing.StatusMessage = nil
 		return existing, nil
 	}
 
@@ -98,13 +191,14 @@ func (s *PdfCarrierService) GetOrCreateForMediaFile(ctx context.Context, mediaFi
 		Title:       firstNonEmpty(media.Title, fmt.Sprintf("pdf-%d", media.ID)),
 		Metadata:    metadata,
 		OwnerID:     media.OwnerID,
-		// Phase 1 骨架：状态先标 ingesting，真正抽取完成后由 worker 转 ready。
-		Status:        "ingesting",
-		StatusMessage: ptrStr("等待 pdfjs 文本抽取（Phase 1 后期）"),
+		Status:      "ready",
 	}
-	created, err := s.carriers.Create(ctx, c, uri)
+	created, _, err := s.carriers.UpsertBySourceURI(ctx, c, storageURI)
 	if err != nil {
 		return nil, fmt.Errorf("create pdf carrier: %w", err)
+	}
+	if err := s.persistTextLayer(ctx, created.ID, hash, storageURI, layer); err != nil {
+		return nil, err
 	}
 	return created, nil
 }
@@ -114,9 +208,78 @@ func PdfSourceURI(mediaID int64) string {
 	return fmt.Sprintf("media://%d", mediaID)
 }
 
-func ptrStr(s string) *string { return &s }
+// PdfTextLayerStorageURI constructs the immutable rootText storage URI referenced by carrier_versions.
+func PdfTextLayerStorageURI(mediaID int64, hash string) string {
+	return fmt.Sprintf("atlas-text-layer://pdf/%d/%s", mediaID, hash)
+}
 
-// 复用 contentSHA256 + firstNonEmpty（在 markdown_carrier.go 中已定义）。
-// 这里再写一份本地 alias 仅是为了在单测 / mock 时方便替换；当前直接共享。
-var _ = sha256.Size // 让 go vet 高兴；hex pkg 也已被 markdown_carrier 引入
-var _ = hex.EncodedLen
+func (s *PdfCarrierService) persistTextLayer(ctx context.Context, carrierID int64, hash, storageURI string, layer *PDFTextLayer) error {
+	pages, err := json.Marshal(layer.Pages)
+	if err != nil {
+		return fmt.Errorf("marshal pdf text pages: %w", err)
+	}
+	if err := s.carriers.UpsertTextLayer(ctx, &model.CarrierTextLayer{
+		CarrierID:   carrierID,
+		ContentHash: hash,
+		StorageURI:  storageURI,
+		PageCount:   layer.PageCount,
+		CharCount:   layer.CharCount,
+		TextContent: layer.Text,
+		Pages:       pages,
+	}); err != nil {
+		return fmt.Errorf("persist pdf text layer: %w", err)
+	}
+	return nil
+}
+
+func pdfMetadata(media *PdfMediaSnapshot, layer *PDFTextLayer, storageURI string) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"fileUrl":             media.FileURL,
+		"fileSize":            media.FileSize,
+		"mimeType":            media.MimeType,
+		"originalName":        media.OriginalName,
+		"textLayerStorageUri": storageURI,
+		"pageCount":           layer.PageCount,
+		"charCount":           layer.CharCount,
+		"extractor":           firstNonEmpty(layer.Extractor, "ai-service/pypdf"),
+	})
+}
+
+func pdfMetadataForStoredLayer(media *PdfMediaSnapshot, layer *model.CarrierTextLayer) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"fileUrl":             media.FileURL,
+		"fileSize":            media.FileSize,
+		"mimeType":            media.MimeType,
+		"originalName":        media.OriginalName,
+		"textLayerStorageUri": layer.StorageURI,
+		"pageCount":           layer.PageCount,
+		"charCount":           layer.CharCount,
+		"extractor":           "cached",
+	})
+}
+
+func pdfCarrierMetadataMatchesMedia(metadata []byte, media *PdfMediaSnapshot) bool {
+	if media == nil || len(metadata) == 0 {
+		return false
+	}
+	var stored struct {
+		FileURL      string `json:"fileUrl"`
+		FileSize     int64  `json:"fileSize"`
+		MimeType     string `json:"mimeType"`
+		OriginalName string `json:"originalName"`
+	}
+	if err := json.Unmarshal(metadata, &stored); err != nil {
+		return false
+	}
+	return strings.TrimSpace(stored.FileURL) == strings.TrimSpace(media.FileURL) &&
+		stored.FileSize == media.FileSize &&
+		strings.TrimSpace(stored.MimeType) == strings.TrimSpace(media.MimeType) &&
+		strings.TrimSpace(stored.OriginalName) == strings.TrimSpace(media.OriginalName)
+}
+
+func isPDFMedia(media *PdfMediaSnapshot) bool {
+	mimeType := strings.ToLower(strings.TrimSpace(media.MimeType))
+	originalName := strings.ToLower(strings.TrimSpace(media.OriginalName))
+	title := strings.ToLower(strings.TrimSpace(media.Title))
+	return mimeType == "application/pdf" || strings.HasSuffix(originalName, ".pdf") || strings.HasSuffix(title, ".pdf")
+}

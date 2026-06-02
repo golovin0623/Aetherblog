@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Copy,
   FileText,
+  GitBranch,
   Hash,
   Layers3,
   LayoutDashboard,
@@ -59,7 +60,9 @@ import {
   fetchAgentKnowledgeBases,
   type AgentKnowledgeBase,
 } from '@/services/knowledgeBaseService';
+import { atlasService } from '@/services/atlasService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
+import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
@@ -111,7 +114,9 @@ type CapabilityPanelTab = 'space' | 'params';
 type SpacePreviewTarget =
   | { kind: 'article'; article: AgentArticle }
   | { kind: 'kb'; kb: AgentKnowledgeBase }
+  | { kind: 'atlas'; kp: AtlasKnowledgePoint }
   | { kind: 'tag'; tag: AgentTag };
+type AetherHubAtlasScope = NonNullable<ChatStreamRequest['atlasScope']>;
 
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
 const SEND_SHORTCUT_OPTIONS: Array<{
@@ -133,6 +138,29 @@ const SEND_SHORTCUT_OPTIONS: Array<{
     description: 'Enter 直接换行',
   },
 ];
+
+function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasScope | undefined {
+  if (kps.length === 0) return undefined;
+  return {
+    kpIds: kps.map((kp) => kp.id),
+    neighborhoodDepth: 1,
+    includeEvidence: true,
+    semanticRecall: true,
+    semanticLimit: 8,
+  };
+}
+
+function describeAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): string {
+  if (kps.length === 0) return 'kp_ids=none';
+  return `kp_ids=${kps.map((kp) => kp.id).join(',')}`;
+}
+
+function countAtlasCitations(text: string): number {
+  return (
+    text.match(/\[(?:(?:KP|Evidence|Annotation)\s*#\d+|Note\s*#\d+\s+chunk\s+\d+)\]/gi)
+      ?.length ?? 0
+  );
+}
 
 type StandardModelParamKey =
   | 'temperature'
@@ -469,10 +497,12 @@ export default function AetherHubWorkspacePage() {
   const [selectedTags, setSelectedTags] = useState<AgentTag[]>([]);
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
+  const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
     setSelectedKbs([]);
+    setSelectedAtlasKps([]);
   }, [activeId]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
@@ -657,6 +687,7 @@ export default function AetherHubWorkspacePage() {
         selectedArticles?: AgentArticle[];
         selectedTags?: AgentTag[];
         selectedKbs?: AgentKnowledgeBase[];
+        selectedAtlasKps?: AtlasKnowledgePoint[];
       },
     ) => {
       const text = rawText.trim();
@@ -690,6 +721,7 @@ export default function AetherHubWorkspacePage() {
       const requestArticles = override?.selectedArticles ?? selectedArticles;
       const requestTags = override?.selectedTags ?? selectedTags;
       const requestKbs = override?.selectedKbs ?? selectedKbs;
+      const requestAtlasKps = override?.selectedAtlasKps ?? selectedAtlasKps;
       const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -706,6 +738,7 @@ export default function AetherHubWorkspacePage() {
         setSelectedArticles([]);
         setSelectedTags([]);
         setSelectedKbs([]);
+        setSelectedAtlasKps([]);
       }
       setStreaming(true);
 
@@ -766,13 +799,16 @@ export default function AetherHubWorkspacePage() {
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
         kbIds: requestKbs.length > 0 ? requestKbs.map((k) => k.id) : null,
+        atlasScope: buildAetherHubAtlasScope(requestAtlasKps),
       };
+      let assistantContent = '';
 
       try {
         await streamAgentChat(
           req,
           {
             onDelta: (chunk) => {
+              assistantContent += chunk;
               setSessions((prev) =>
                 prev.map((s) =>
                   s.id !== sessionId
@@ -809,8 +845,16 @@ export default function AetherHubWorkspacePage() {
               );
             },
             onSources: (sources) => patchAssistant({ sources }),
-            onDone: () =>
-              patchAssistant({ pending: false, finishedAt: Date.now() }),
+            onDone: () => {
+              const citationCount = countAtlasCitations(assistantContent);
+              void atlasService.recordEvent({
+                eventType: 'atlas.aetherhub_atlas_answer',
+                title: 'AetherHub Atlas answer',
+                description: `${describeAetherHubAtlasScope(requestAtlasKps)}; citation_count=${citationCount}`,
+                status: citationCount > 0 ? 'SUCCESS' : 'WARNING',
+              }).catch(() => undefined);
+              patchAssistant({ pending: false, finishedAt: Date.now() });
+            },
             onError: (message) =>
               patchAssistant({ pending: false, error: message, finishedAt: Date.now() }),
           },
@@ -831,7 +875,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, modelsState],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState],
   );
 
   const handleEditMessage = useCallback(
@@ -863,6 +907,7 @@ export default function AetherHubWorkspacePage() {
         selectedArticles: [],
         selectedTags: [],
         selectedKbs: [],
+        selectedAtlasKps: [],
       });
     },
     [activeSession, streaming, handleSend],
@@ -906,6 +951,7 @@ export default function AetherHubWorkspacePage() {
           setSelectedArticles([]);
           setSelectedTags([]);
           setSelectedKbs([]);
+          setSelectedAtlasKps([]);
           toast.success('已清空当前对话');
           return;
         case '/new':
@@ -1022,6 +1068,7 @@ export default function AetherHubWorkspacePage() {
               selectedArticles={selectedArticles}
               selectedTags={selectedTags}
               selectedKbs={selectedKbs}
+              selectedAtlasKps={selectedAtlasKps}
               onPickArticle={(article) =>
                 setSelectedArticles((prev) =>
                   prev.find((a) => a.id === article.id) ? prev : [...prev, article],
@@ -1037,6 +1084,11 @@ export default function AetherHubWorkspacePage() {
                   prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
                 )
               }
+              onPickAtlasKp={(kp) =>
+                setSelectedAtlasKps((prev) =>
+                  prev.find((item) => item.id === kp.id) ? prev : [...prev, kp],
+                )
+              }
               onRemoveArticle={(id) =>
                 setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
               }
@@ -1044,6 +1096,7 @@ export default function AetherHubWorkspacePage() {
                 setSelectedTags((prev) => prev.filter((t) => t.slug !== slug))
               }
               onRemoveKb={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
+              onRemoveAtlasKp={(id) => setSelectedAtlasKps((prev) => prev.filter((kp) => kp.id !== id))}
               onSlashCommand={handleSlashCommand}
               onEditMessage={handleEditMessage}
               onRetryMessage={handleRetryMessage}
@@ -1058,6 +1111,7 @@ export default function AetherHubWorkspacePage() {
             selectedArticles={selectedArticles}
             selectedTags={selectedTags}
             selectedKbs={selectedKbs}
+            selectedAtlasKps={selectedAtlasKps}
             displayMode={displayMode}
             onSetDisplayMode={setDisplayMode}
             streamAnimation={streamAnimation}
@@ -1072,6 +1126,7 @@ export default function AetherHubWorkspacePage() {
               setSelectedTags((prev) => prev.filter((t) => t.slug !== slug))
             }
             onRemoveKb={(id) => setSelectedKbs((prev) => prev.filter((k) => k.id !== id))}
+            onRemoveAtlasKp={(id) => setSelectedAtlasKps((prev) => prev.filter((kp) => kp.id !== id))}
           />
 
           <MobileContextSheet
@@ -1101,6 +1156,7 @@ export default function AetherHubWorkspacePage() {
               setSelectedArticles([]);
               setSelectedTags([]);
               setSelectedKbs([]);
+              setSelectedAtlasKps([]);
               toast.success('已清空当前对话');
             }}
           />
@@ -1934,12 +1990,15 @@ function WorkspaceCanvas({
   selectedArticles,
   selectedTags,
   selectedKbs,
+  selectedAtlasKps,
   onPickArticle,
   onPickTag,
   onPickKb,
+  onPickAtlasKp,
   onRemoveArticle,
   onRemoveTag,
   onRemoveKb,
+  onRemoveAtlasKp,
   onSlashCommand,
   onEditMessage,
   onRetryMessage,
@@ -1965,12 +2024,15 @@ function WorkspaceCanvas({
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
+  selectedAtlasKps: AtlasKnowledgePoint[];
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
+  onPickAtlasKp: (kp: AtlasKnowledgePoint) => void;
   onRemoveArticle: (id: number) => void;
   onRemoveTag: (slug: string) => void;
   onRemoveKb: (id: number) => void;
+  onRemoveAtlasKp: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
   onEditMessage: (message: AgentMessage) => void;
   onRetryMessage: (message: AgentMessage) => void;
@@ -2107,12 +2169,15 @@ function WorkspaceCanvas({
         selectedArticles={selectedArticles}
         selectedTags={selectedTags}
         selectedKbs={selectedKbs}
+        selectedAtlasKps={selectedAtlasKps}
         onPickArticle={onPickArticle}
         onPickTag={onPickTag}
         onPickKb={onPickKb}
+        onPickAtlasKp={onPickAtlasKp}
         onRemoveArticle={onRemoveArticle}
         onRemoveTag={onRemoveTag}
         onRemoveKb={onRemoveKb}
+        onRemoveAtlasKp={onRemoveAtlasKp}
         onSlashCommand={onSlashCommand}
       />
     </main>
@@ -2911,12 +2976,15 @@ function Composer({
   selectedArticles,
   selectedTags,
   selectedKbs,
+  selectedAtlasKps,
   onPickArticle,
   onPickTag,
   onPickKb,
+  onPickAtlasKp,
   onRemoveArticle,
   onRemoveTag,
   onRemoveKb,
+  onRemoveAtlasKp,
   onSlashCommand,
 }: {
   value: string;
@@ -2932,12 +3000,15 @@ function Composer({
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
+  selectedAtlasKps: AtlasKnowledgePoint[];
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
+  onPickAtlasKp: (kp: AtlasKnowledgePoint) => void;
   onRemoveArticle: (id: number) => void;
   onRemoveTag: (slug: string) => void;
   onRemoveKb: (id: number) => void;
+  onRemoveAtlasKp: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2945,11 +3016,12 @@ function Composer({
   const atBtnRef = useRef<HTMLButtonElement | null>(null);
   const hashBtnRef = useRef<HTMLButtonElement | null>(null);
   const kbBtnRef = useRef<HTMLButtonElement | null>(null);
+  const atlasBtnRef = useRef<HTMLButtonElement | null>(null);
   const slashBtnRef = useRef<HTMLButtonElement | null>(null);
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const sendMenuCloseTimerRef = useRef<number | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
-  const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'slash' | null>(null);
+  const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'atlas' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -2982,14 +3054,15 @@ function Composer({
     onChange(e.target.value);
   };
 
-  const togglePicker = (k: 'article' | 'tag' | 'kb' | 'slash') => {
+  const togglePicker = (k: 'article' | 'tag' | 'kb' | 'atlas' | 'slash') => {
     setPicker((cur) => (cur === k ? null : k));
   };
 
   const selectedArticleCount = selectedArticles.length;
   const selectedTagCount = selectedTags.length;
   const selectedKbCount = selectedKbs.length;
-  const selectedContextCount = selectedArticleCount + selectedTagCount + selectedKbCount;
+  const selectedAtlasCount = selectedAtlasKps.length;
+  const selectedContextCount = selectedArticleCount + selectedTagCount + selectedKbCount + selectedAtlasCount;
   const selectedContextVisible = selectedContextCount > 0;
   const compactSelectedContext = picker !== null && selectedContextCount > 1;
   const trayScrollEnabled = selectedContextCount > 6;
@@ -3089,6 +3162,13 @@ function Composer({
             onClose={() => setPicker(null)}
             onPick={(kb) => onPickKb(kb)}
           />
+          <AtlasKPPicker
+            open={picker === 'atlas'}
+            anchorRef={atlasBtnRef}
+            selectedIds={new Set(selectedAtlasKps.map((kp) => kp.id))}
+            onClose={() => setPicker(null)}
+            onPick={(kp) => onPickAtlasKp(kp)}
+          />
           <TagPicker
             open={picker === 'tag'}
             anchorRef={hashBtnRef}
@@ -3164,6 +3244,37 @@ function Composer({
                           onClick={() => onRemoveKb(kb.id)}
                           className="inline-flex !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                           aria-label={`移除知识库 ${kb.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </motion.span>
+                    ))}
+                    {selectedAtlasKps.map((kp) => (
+                      <motion.span
+                        key={`atlas-${kp.id}`}
+                        layout
+                        initial={{ opacity: 0, scale: 0.98, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -3 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                        className={cn(
+                          'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] pl-2.5 pr-1 text-[12px] text-[var(--ink-secondary)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_7%,transparent)]',
+                          compactSelectedContext
+                            ? 'max-w-[calc(50%_-_0.1875rem)] flex-[0_1_auto]'
+                            : picker
+                              ? 'max-w-[min(17rem,calc(100%-0.25rem))] flex-[0_1_auto]'
+                              : 'max-w-[min(17rem,72vw)] shrink-0',
+                        )}
+                      >
+                        <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-2)]" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate" title={kp.title}>
+                          {kp.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveAtlasKp(kp.id)}
+                          className="inline-flex !h-6 !w-6 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                          aria-label={`移除 Atlas KP ${kp.title}`}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -3246,7 +3357,7 @@ function Composer({
             onBlur={() => setFocused(false)}
             rows={1}
             disabled={streaming}
-            placeholder="问灵境，知识库 · @ 文章 · # 标签 · / 命令"
+            placeholder="问灵境，知识库 · Atlas · @ 文章 · # 标签 · / 命令"
             spellCheck={false}
             autoComplete="off"
             className={cn(
@@ -3280,6 +3391,15 @@ function Composer({
                 onClick={() => togglePicker('kb')}
               >
                 <BookOpen className="h-3.5 w-3.5" />
+              </ToolButton>
+              <ToolButton
+                ref={atlasBtnRef}
+                title="选择 Atlas KP"
+                active={picker === 'atlas'}
+                count={selectedAtlasCount}
+                onClick={() => togglePicker('atlas')}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
               </ToolButton>
               <ToolButton
                 ref={atBtnRef}
@@ -3872,6 +3992,141 @@ function KnowledgeBasePicker({
 }
 
 // =============================================================================
+// AtlasKPPicker —— 选 Atlas KP
+// =============================================================================
+
+function AtlasKPPicker({
+  open,
+  onClose,
+  anchorRef,
+  selectedIds,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+  selectedIds: Set<number>;
+  onPick: (kp: AtlasKnowledgePoint) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<AtlasKnowledgePoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const q = query.trim();
+    const timer = window.setTimeout(
+      () => {
+        setLoading(true);
+        setError(null);
+        atlasService
+          .listKnowledgePoints({ keyword: q || undefined, limit: 100, scope: 'mine' })
+          .then((res) => {
+            if (cancelled) return;
+            setItems((res.data || []).filter((kp) => !kp.archived && kp.status !== 'archived'));
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            setItems([]);
+            setError(err instanceof Error ? err.message : 'Atlas KP 加载失败');
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
+          });
+      },
+      q ? 180 : 0,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, query]);
+
+  const showInitialLoading = loading && items.length === 0;
+  const showEmpty = !loading && !error && items.length === 0;
+
+  return (
+    <PickerPopover
+      open={open}
+      onClose={onClose}
+      anchorRef={anchorRef}
+      ariaLabel="选择 Atlas KP"
+      className="w-full sm:w-[min(380px,calc(100vw-1.5rem))]"
+    >
+      <PickerPanelHeader
+        title="Atlas KP"
+        description="选择本轮回答要引用的知识点"
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="搜索 KP…"
+        inputRef={inputRef}
+      />
+      <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:h-[300px] sm:max-h-none sm:flex-none sm:py-1">
+        {showInitialLoading && (
+          <div className="absolute inset-x-3 top-4 space-y-2" aria-label="Atlas KP 加载中">
+            <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+            <div className="h-11 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+            <div className="h-11 animate-pulse rounded-xl bg-[var(--hub-control)]" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+            {error}
+          </div>
+        )}
+        {showEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            暂无可用 KP
+          </div>
+        )}
+        {items.length > 0 && (
+          <div className={cn('transition-opacity duration-150', loading ? 'opacity-50' : 'opacity-100')}>
+            {items.map((kp) => {
+              const selected = selectedIds.has(kp.id);
+              return (
+                <button
+                  key={kp.id}
+                  type="button"
+                  onClick={() => {
+                    if (!selected) onPick(kp);
+                  }}
+                  aria-disabled={selected}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors sm:rounded-none sm:py-2',
+                    selected
+                      ? 'cursor-default text-[var(--aurora-2)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+                  )}
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--aurora-2)]">
+                    <GitBranch className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm sm:text-[13px]">{kp.title}</span>
+                    <span className="mt-0.5 block truncate text-[11.5px] text-[var(--ink-muted)]">
+                      {kp.type} · {kp.status} · conf {kp.confidence.toFixed(2)}
+                    </span>
+                  </span>
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PickerPopover>
+  );
+}
+
+// =============================================================================
 // ArticlePicker —— @ 选文章
 // =============================================================================
 
@@ -4216,6 +4471,7 @@ function ContextPanel({
   selectedArticles,
   selectedTags,
   selectedKbs,
+  selectedAtlasKps,
   displayMode,
   onSetDisplayMode,
   streamAnimation,
@@ -4226,6 +4482,7 @@ function ContextPanel({
   onRemoveArticle,
   onRemoveTag,
   onRemoveKb,
+  onRemoveAtlasKp,
 }: {
   session: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
@@ -4233,6 +4490,7 @@ function ContextPanel({
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
+  selectedAtlasKps: AtlasKnowledgePoint[];
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
   streamAnimation: StreamAnimationMode;
@@ -4243,6 +4501,7 @@ function ContextPanel({
   onRemoveArticle: (id: number) => void;
   onRemoveTag: (slug: string) => void;
   onRemoveKb: (id: number) => void;
+  onRemoveAtlasKp: (id: number) => void;
 }) {
   const [activeTab, setActiveTab] = useState<CapabilityPanelTab>('space');
   const [preview, setPreview] = useState<SpacePreviewTarget | null>(null);
@@ -4272,7 +4531,7 @@ function ContextPanel({
   }, [numericParams, extendParams]);
   const sessionParamCount = Object.keys(cleanModelParams(session?.modelParams) || {}).length;
 
-  const spaceCount = selectedArticles.length + selectedTags.length + selectedKbs.length;
+  const spaceCount = selectedArticles.length + selectedTags.length + selectedKbs.length + selectedAtlasKps.length;
   const hasSpaceItems = spaceCount > 0;
 
   useEffect(() => {
@@ -4413,9 +4672,10 @@ function ContextPanel({
                           title="最终空间"
                           description="这些资源会作为本轮对话的召回边界与参考材料。"
                         >
-                          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5 sm:gap-2">
                             <SpaceMetric label="文章" value={selectedArticles.length} />
                             <SpaceMetric label="知识库" value={selectedKbs.length} />
+                            <SpaceMetric label="Atlas" value={selectedAtlasKps.length} />
                             <SpaceMetric label="标签" value={selectedTags.length} />
                             <SpaceMetric label="文件" value={selectedKbs.reduce((sum, kb) => sum + kb.fileCount, 0)} />
                           </div>
@@ -4431,7 +4691,7 @@ function ContextPanel({
                                 当前空间为空
                               </p>
                               <p className="mt-1 text-[12px] leading-snug text-[var(--ink-muted)]">
-                                在输入框里选择文章、标签或知识库后，这里会形成最终上下文空间。
+                                在输入框里选择文章、标签、知识库或 Atlas KP 后，这里会形成最终上下文空间。
                               </p>
                             </div>
                           )}
@@ -4464,6 +4724,18 @@ function ContextPanel({
                                   description={kb.activeProfile?.name || '点击查看知识库召回配置与空间信息'}
                                   onOpen={() => setPreview({ kind: 'kb', kb })}
                                   onRemove={() => onRemoveKb(kb.id)}
+                                />
+                              ))}
+                              {selectedAtlasKps.map((kp) => (
+                                <SpaceResourceRow
+                                  key={`space-atlas-${kp.id}`}
+                                  icon={<GitBranch className="h-4 w-4" />}
+                                  tone="tag"
+                                  title={kp.title}
+                                  meta={`Atlas KP · ${kp.type} · ${kp.status}`}
+                                  description={kp.bodyMarkdown || '点击查看 Atlas KP 范围信息'}
+                                  onOpen={() => setPreview({ kind: 'atlas', kp })}
+                                  onRemove={() => onRemoveAtlasKp(kp.id)}
                                 />
                               ))}
                               {selectedTags.map((tag) => (
@@ -5131,10 +5403,18 @@ function SpacePreviewDialog({
                       ? preview.article.title
                       : preview.kind === 'kb'
                         ? preview.kb.name
-                        : preview.tag.name}
+                        : preview.kind === 'atlas'
+                          ? preview.kp.title
+                          : preview.tag.name}
                   </h3>
                   <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
-                    {preview.kind === 'article' ? 'Article' : preview.kind === 'kb' ? 'Knowledge Base' : 'Tag'}
+                    {preview.kind === 'article'
+                      ? 'Article'
+                      : preview.kind === 'kb'
+                        ? 'Knowledge Base'
+                        : preview.kind === 'atlas'
+                          ? 'Atlas KP'
+                          : 'Tag'}
                   </p>
                 </div>
                 <button
@@ -5187,6 +5467,24 @@ function SpacePreviewDialog({
                     <MetadataRow label="文件数" value={preview.kb.fileCount} mono />
                     <MetadataRow label="分块数" value={preview.kb.chunkCount} mono />
                     <MetadataRow label="Profile" value={preview.kb.activeProfile?.name || '默认'} />
+                  </div>
+                )}
+
+                {preview.kind === 'atlas' && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-[var(--hub-control)] p-4">
+                      <div className="mb-3 flex items-center gap-2 text-[var(--aurora-2)]">
+                        <GitBranch className="h-4 w-4" />
+                        <span className="text-sm font-medium text-[var(--ink-primary)]">Atlas KP</span>
+                      </div>
+                      <p className="line-clamp-6 text-sm leading-6 text-[var(--ink-secondary)]">
+                        {preview.kp.bodyMarkdown || '发送时会携带该 KP ID，由后端按 Atlas scope 注入 KP、邻接关系与 evidence。'}
+                      </p>
+                    </div>
+                    <MetadataRow label="KP ID" value={preview.kp.id} mono />
+                    <MetadataRow label="类型" value={preview.kp.type} />
+                    <MetadataRow label="状态" value={preview.kp.status} />
+                    <MetadataRow label="来源" value={preview.kp.provenance} />
                   </div>
                 )}
 

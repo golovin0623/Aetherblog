@@ -8,8 +8,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // CarrierRepo 操作 atlas_carriers / atlas_carrier_versions。
@@ -36,6 +38,24 @@ func (r *CarrierRepo) FindBySourceURI(ctx context.Context, sourceURI string) (*m
 	return &c, nil
 }
 
+// FindBySourceURIForOwner 用 source_uri + owner 查找未删除载体。
+func (r *CarrierRepo) FindBySourceURIForOwner(ctx context.Context, sourceURI string, ownerID *int64) (*model.Carrier, error) {
+	var c model.Carrier
+	err := r.db.GetContext(ctx, &c,
+		`SELECT * FROM atlas_carriers
+		 WHERE source_uri=$1
+		   AND COALESCE(owner_id, 0) = COALESCE($2::bigint, 0)
+		   AND deleted=false
+		 LIMIT 1`, sourceURI, ownerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // FindByID 按 ID 查询未删除载体。
 func (r *CarrierRepo) FindByID(ctx context.Context, id int64) (*model.Carrier, error) {
 	var c model.Carrier
@@ -48,6 +68,34 @@ func (r *CarrierRepo) FindByID(ctx context.Context, id int64) (*model.Carrier, e
 		return nil, err
 	}
 	return &c, nil
+}
+
+// Search 在可访问载体的标题、来源 URI 与作者字段中做轻量关键字搜索。
+func (r *CarrierRepo) Search(ctx context.Context, keyword string, ownerID *int64, limit int) ([]model.Carrier, error) {
+	if keyword == "" {
+		return []model.Carrier{}, nil
+	}
+	q := `SELECT * FROM atlas_carriers
+		WHERE deleted=false
+		  AND (title ILIKE $1 OR source_uri ILIKE $1 OR author ILIKE $1)`
+	args := []any{"%" + dbutil.EscapeLike(keyword) + "%"}
+	idx := 2
+	if ownerID != nil {
+		q += " AND owner_id=$" + strconv.Itoa(idx)
+		args = append(args, *ownerID)
+		idx++
+	}
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 100 {
+		limit = 100
+	}
+	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
+	args = append(args, limit)
+
+	rows := []model.Carrier{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
+	return rows, err
 }
 
 // Create 原子创建 Carrier + 第 1 版 CarrierVersion。
@@ -93,16 +141,17 @@ func (r *CarrierRepo) Create(ctx context.Context, c *model.Carrier, storageURI s
 	return &out, nil
 }
 
-// UpsertBySourceURI 原子地插入或返回已存在的 carrier，按 source_uri 唯一约束去重。
+// UpsertBySourceURI 原子地插入或返回已存在的 carrier，按 owner+source_uri 唯一索引去重。
 //
 // PR #724 review fix (Codex P1): GetOrCreateForNote 过去做 read-then-insert 没有锁，
 // 并发首次打开同一 note 会同时 miss + 同时 INSERT 造成 source_uri 重复 carrier。
-// 本方法走 INSERT ... ON CONFLICT (source_uri) DO UPDATE source_uri = EXCLUDED.source_uri
+// 本方法走 INSERT ... ON CONFLICT (COALESCE(owner_id,0), source_uri) DO UPDATE source_uri = EXCLUDED.source_uri
 // 模式 + xmax = 0 探测是否真插入。RETURNING 始终返回行（DO UPDATE 无副作用）。
 //
 // 返回 (carrier, justCreated, err)：
-//   justCreated=true 表示本次实际 INSERT，调用方需要再写一行 v1 carrier_version
-//   justCreated=false 表示行已存在，仅返回已有 carrier（含旧 hash），调用方按需做版本迁移
+//
+//	justCreated=true 表示本次实际 INSERT，调用方需要再写一行 v1 carrier_version
+//	justCreated=false 表示行已存在，仅返回已有 carrier（含旧 hash），调用方按需做版本迁移
 func (r *CarrierRepo) UpsertBySourceURI(ctx context.Context, c *model.Carrier, storageURI string) (*model.Carrier, bool, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -118,7 +167,7 @@ func (r *CarrierRepo) UpsertBySourceURI(ctx context.Context, c *model.Carrier, s
 			metadata, owner_id, status, status_message
 		)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT (source_uri) DO UPDATE
+		ON CONFLICT ((COALESCE(owner_id, 0)), source_uri) WHERE deleted=false DO UPDATE
 			SET source_uri = EXCLUDED.source_uri
 		RETURNING
 			id, type, source_uri, content_hash, title, author, language,
@@ -187,4 +236,109 @@ func (r *CarrierRepo) UpdateContent(ctx context.Context, carrierID int64, newHas
 	}
 
 	return tx.Commit()
+}
+
+// UpdateIngestState refreshes non-versioned carrier ingest metadata.
+func (r *CarrierRepo) UpdateIngestState(ctx context.Context, carrierID int64, metadata []byte, status string, statusMessage *string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE atlas_carriers
+		SET metadata=$1, status=$2, status_message=$3, updated_at=CURRENT_TIMESTAMP
+		WHERE id=$4`,
+		metadata,
+		status,
+		statusMessage,
+		carrierID,
+	)
+	return err
+}
+
+// UpdateDisplayAndIngestState refreshes non-versioned carrier display fields and ingest metadata.
+func (r *CarrierRepo) UpdateDisplayAndIngestState(
+	ctx context.Context,
+	carrierID int64,
+	title string,
+	author *string,
+	language *string,
+	metadata []byte,
+	status string,
+	statusMessage *string,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE atlas_carriers
+		SET title=$1,
+		    author=$2,
+		    language=$3,
+		    metadata=$4,
+		    status=$5,
+		    status_message=$6,
+		    updated_at=CURRENT_TIMESTAMP
+		WHERE id=$7`,
+		title,
+		author,
+		language,
+		metadata,
+		status,
+		statusMessage,
+		carrierID,
+	)
+	return err
+}
+
+// UpsertTextLayer persists an extracted rootText artifact for a carrier version.
+func (r *CarrierRepo) UpsertTextLayer(
+	ctx context.Context,
+	layer *model.CarrierTextLayer,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO atlas_carrier_text_layers (
+			carrier_id, content_hash, storage_uri, page_count, char_count, text_content, pages
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (carrier_id, content_hash) DO UPDATE SET
+			storage_uri = EXCLUDED.storage_uri,
+			page_count = EXCLUDED.page_count,
+			char_count = EXCLUDED.char_count,
+			text_content = EXCLUDED.text_content,
+			pages = EXCLUDED.pages,
+			updated_at = CURRENT_TIMESTAMP`,
+		layer.CarrierID,
+		layer.ContentHash,
+		layer.StorageURI,
+		layer.PageCount,
+		layer.CharCount,
+		layer.TextContent,
+		layer.Pages,
+	)
+	return err
+}
+
+// FindTextLayerByStorageURI returns one extracted rootText artifact by storage_uri.
+func (r *CarrierRepo) FindTextLayerByStorageURI(ctx context.Context, storageURI string) (*model.CarrierTextLayer, error) {
+	var layer model.CarrierTextLayer
+	err := r.db.GetContext(ctx, &layer,
+		`SELECT * FROM atlas_carrier_text_layers WHERE storage_uri=$1 LIMIT 1`, storageURI)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &layer, nil
+}
+
+// FindTextLayerByCarrierAndHash returns the extracted text layer for the carrier's current content hash.
+func (r *CarrierRepo) FindTextLayerByCarrierAndHash(ctx context.Context, carrierID int64, contentHash string) (*model.CarrierTextLayer, error) {
+	var layer model.CarrierTextLayer
+	err := r.db.GetContext(ctx, &layer,
+		`SELECT * FROM atlas_carrier_text_layers WHERE carrier_id=$1 AND content_hash=$2 LIMIT 1`,
+		carrierID,
+		contentHash,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &layer, nil
 }

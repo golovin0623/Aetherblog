@@ -20,10 +20,13 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
+
+var ErrSuggestionIgnored = errors.New("suggestion fingerprint ignored")
 
 // AISuggestionService 编排建议生命周期。
 //
@@ -75,6 +78,12 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 	if in.Kind == "kp" && in.ProposedTitle == nil {
 		return nil, errors.New("kp 建议必须有 proposed_title")
 	}
+	if in.Kind == "kp" && in.CarrierID == nil && in.AnnotationID == nil {
+		return nil, errors.New("kp 建议必须绑定 carrier 或 annotation 作为证据来源")
+	}
+	if in.ProposedKPType != nil && !allowedKPTypes[*in.ProposedKPType] {
+		return nil, fmt.Errorf("不支持的 proposed kp type: %s", *in.ProposedKPType)
+	}
 	if in.Kind == "relation" {
 		if in.FromKPID == nil || in.ToKPID == nil || in.ProposedRelationType == nil {
 			return nil, errors.New("relation 建议必须有 from/to/type")
@@ -104,7 +113,38 @@ func (s *AISuggestionService) Create(ctx context.Context, in CreateSuggestionInp
 		Status:               "pending",
 		AuthorID:             in.AuthorID,
 	}
-	return s.sug.Create(ctx, sug)
+	fingerprint := fingerprintSuggestion(sug)
+	sug.Fingerprint = &fingerprint
+	if in.AuthorID != nil && *in.AuthorID > 0 {
+		ignored, err := s.sug.IsIgnored(ctx, fingerprint, *in.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		if ignored {
+			return nil, ErrSuggestionIgnored
+		}
+	}
+	existing, err := s.sug.FindPendingByFingerprint(ctx, fingerprint, in.AuthorID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+	created, err := s.sug.Create(ctx, sug)
+	if err == nil {
+		return created, nil
+	}
+	if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+		existing, findErr := s.sug.FindPendingByFingerprint(ctx, fingerprint, in.AuthorID)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if existing != nil {
+			return existing, nil
+		}
+	}
+	return nil, err
 }
 
 // List 列出建议。
@@ -218,6 +258,16 @@ func (s *AISuggestionService) Accept(ctx context.Context, id int64, userID *int6
 			return nil, fmt.Errorf("insert relation: %w", err)
 		}
 		resolvedRelID = &newID
+
+		if sug.AnnotationID != nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO atlas_relation_evidence (relation_id, annotation_id)
+				VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				newID, *sug.AnnotationID,
+			); err != nil {
+				return nil, fmt.Errorf("link relation evidence: %w", err)
+			}
+		}
 	}
 
 	// MarkResolved 同事务

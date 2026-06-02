@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // AnnotationRepo 操作 atlas_annotations。
@@ -62,6 +63,44 @@ func (r *AnnotationRepo) FindByCarrier(ctx context.Context, carrierID int64) ([]
 		`SELECT * FROM atlas_annotations
 		 WHERE carrier_id=$1 AND deleted=false
 		 ORDER BY created_at ASC`, carrierID)
+	return rows, err
+}
+
+// FindByCarrierForAuthor 列出某作者在 carrier 下的未删除标注。
+func (r *AnnotationRepo) FindByCarrierForAuthor(ctx context.Context, carrierID int64, authorID int64) ([]model.Annotation, error) {
+	rows := []model.Annotation{}
+	err := r.db.SelectContext(ctx, &rows,
+		`SELECT * FROM atlas_annotations
+		 WHERE carrier_id=$1 AND author_id=$2 AND deleted=false
+		 ORDER BY created_at ASC`, carrierID, authorID)
+	return rows, err
+}
+
+// Search 在标注正文与 selectors 文本中做轻量关键字搜索。
+func (r *AnnotationRepo) Search(ctx context.Context, keyword string, authorID *int64, limit int) ([]model.Annotation, error) {
+	if keyword == "" {
+		return []model.Annotation{}, nil
+	}
+	q := `SELECT * FROM atlas_annotations
+		WHERE deleted=false
+		  AND (body_text ILIKE $1 OR selectors::text ILIKE $1)`
+	args := []any{"%" + dbutil.EscapeLike(keyword) + "%"}
+	idx := 2
+	if authorID != nil {
+		q += " AND author_id=$" + strconv.Itoa(idx)
+		args = append(args, *authorID)
+		idx++
+	}
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 100 {
+		limit = 100
+	}
+	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
+	args = append(args, limit)
+
+	rows := []model.Annotation{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
 	return rows, err
 }
 

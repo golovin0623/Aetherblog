@@ -60,12 +60,14 @@ func (r *KPRepo) FindByID(ctx context.Context, id int64) (*model.KnowledgePoint,
 
 // KPListFilter 是列表筛选。
 type KPListFilter struct {
-	AuthorID *int64
-	Type     *string
-	Status   *string
-	Keyword  *string
-	Limit    int
-	Offset   int
+	AuthorID    *int64
+	Type        *string
+	Status      *string
+	Provenance  *string
+	Keyword     *string
+	HasEvidence *bool
+	Limit       int
+	Offset      int
 }
 
 // List 按筛选列出。Phase 2 不分页（< 1k KP）；Limit 0 表示 200 上限。
@@ -88,10 +90,22 @@ func (r *KPRepo) List(ctx context.Context, f KPListFilter) ([]model.KnowledgePoi
 		args = append(args, *f.Status)
 		idx++
 	}
+	if f.Provenance != nil && *f.Provenance != "" {
+		q += " AND provenance=$" + strconv.Itoa(idx)
+		args = append(args, *f.Provenance)
+		idx++
+	}
 	if f.Keyword != nil && *f.Keyword != "" {
 		q += " AND (title ILIKE $" + strconv.Itoa(idx) + " OR body_markdown ILIKE $" + strconv.Itoa(idx) + ")"
 		args = append(args, "%"+dbutil.EscapeLike(*f.Keyword)+"%")
 		idx++
+	}
+	if f.HasEvidence != nil {
+		if *f.HasEvidence {
+			q += " AND EXISTS (SELECT 1 FROM atlas_annotation_kp_links l JOIN atlas_annotations a ON a.id=l.annotation_id AND a.deleted=false WHERE l.kp_id=atlas_knowledge_points.id)"
+		} else {
+			q += " AND NOT EXISTS (SELECT 1 FROM atlas_annotation_kp_links l JOIN atlas_annotations a ON a.id=l.annotation_id AND a.deleted=false WHERE l.kp_id=atlas_knowledge_points.id)"
+		}
 	}
 	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
 	// PR #724 review fix (Codex P2, kp_repo.go:99): 上限从 200 提到 5000，与 /atlas/graph
@@ -160,7 +174,7 @@ func (r *KPRepo) SoftDelete(ctx context.Context, id int64) error {
 	return err
 }
 
-// LinkAnnotation 在 atlas_annotation_kp_links 写一行（幂等：ON CONFLICT DO NOTHING）。
+// LinkAnnotation 在 atlas_annotation_kp_links 写一行；重复关联时刷新 evidence role。
 func (r *KPRepo) LinkAnnotation(ctx context.Context, kpID, annotationID int64, role string) error {
 	if role == "" {
 		role = "evidence"
@@ -168,7 +182,7 @@ func (r *KPRepo) LinkAnnotation(ctx context.Context, kpID, annotationID int64, r
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO atlas_annotation_kp_links (annotation_id, kp_id, role)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (annotation_id, kp_id) DO NOTHING`,
+		ON CONFLICT (annotation_id, kp_id) DO UPDATE SET role=EXCLUDED.role`,
 		annotationID, kpID, role,
 	)
 	return err
@@ -195,6 +209,87 @@ func (r *KPRepo) ListEvidenceAnnotations(ctx context.Context, kpID int64) ([]Evi
 		SELECT annotation_id, kp_id, role
 		FROM atlas_annotation_kp_links
 		WHERE kp_id=$1`, kpID)
+	return rows, err
+}
+
+// CountEvidenceByKPIDs 批量统计 KP evidence 数量，Graph inspector / filters 使用。
+func (r *KPRepo) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[int64]int64, error) {
+	counts := map[int64]int64{}
+	if len(kpIDs) == 0 {
+		return counts, nil
+	}
+	rows := []struct {
+		KPID  int64 `db:"kp_id"`
+		Count int64 `db:"count"`
+	}{}
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT l.kp_id, COUNT(*) AS count
+		FROM atlas_annotation_kp_links l
+		JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = false
+		WHERE l.kp_id = ANY($1)
+		GROUP BY l.kp_id`, pq.Int64Array(kpIDs)); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.KPID] = row.Count
+	}
+	return counts, nil
+}
+
+// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence annotation per KP
+// for graph inspector previews.
+func (r *KPRepo) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]EvidencePreviewRow, error) {
+	if len(kpIDs) == 0 {
+		return []EvidencePreviewRow{}, nil
+	}
+	q := `
+WITH ranked AS (
+	SELECT
+		l.kp_id AS subject_id,
+		a.id AS annotation_id,
+		a.carrier_id,
+		a.selectors,
+		a.body_text,
+		a.author_id AS annotation_author_id,
+		c.type AS carrier_type,
+		c.title AS carrier_title,
+		c.owner_id AS carrier_owner_id,
+		ROW_NUMBER() OVER (
+			PARTITION BY l.kp_id
+			ORDER BY l.created_at ASC, l.annotation_id ASC
+		) AS rn
+	FROM atlas_annotation_kp_links l
+	JOIN atlas_annotations a ON a.id = l.annotation_id AND a.deleted = false
+	JOIN atlas_carriers c ON c.id = a.carrier_id AND c.deleted = false
+	WHERE l.kp_id = ANY($1)`
+	args := []any{pq.Int64Array(kpIDs)}
+	q += `
+	  AND (
+		NULLIF(BTRIM(COALESCE(a.body_text, '')), '') IS NOT NULL
+		OR a.selectors::text LIKE '%TextQuoteSelector%'
+	  )`
+	if authorID != nil {
+		q += `
+	  AND a.author_id = $2
+	  AND c.owner_id = $2`
+		args = append(args, *authorID)
+	}
+	q += `
+)
+SELECT
+	subject_id,
+	annotation_id,
+	carrier_id,
+	selectors,
+	body_text,
+	annotation_author_id,
+	carrier_type,
+	carrier_title,
+	carrier_owner_id
+FROM ranked
+WHERE rn = 1`
+	rows := []EvidencePreviewRow{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
 	return rows, err
 }
 

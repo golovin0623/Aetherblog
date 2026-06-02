@@ -232,6 +232,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc, internalToken)
 	postSvc.SetAccessService(accessSvc)
 	noteSvc := service.NewNoteService(noteRepo, s.Redis)
+	noteSvc.AttachEmbeddingIndexer(service.NewNoteIndexerClient(aiClient, internalToken))
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
@@ -274,20 +275,33 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasRepo := atlasrepo.NewAtlasRepo(s.DB)
 	atlasCarrierRepo := atlasrepo.NewCarrierRepo(atlasRepo)
 	atlasAnnoRepo := atlasrepo.NewAnnotationRepo(atlasRepo)
-	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo))
+	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo, noteSvc))
+	atlasBlogPosts := atlassvc.NewBlogPostCarrierService(atlasCarrierRepo, atlassvc.NewPostRepoReader(postRepo))
+	atlasWebClips := atlassvc.NewWebClipCarrierService(atlasCarrierRepo)
 	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
 	atlasMarkdown.AttachVersioning(atlasVersioning)
+	atlasBlogPosts.AttachVersioning(atlasVersioning)
+	atlasWebClips.AttachVersioning(atlasVersioning)
 	atlasService := atlassvc.NewAtlasService(atlasRepo, atlasMarkdown)
-	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo)
+	atlasService.AttachBlogPosts(atlasBlogPosts)
+	atlasService.AttachWebClips(atlasWebClips)
+	atlasAnnoSvc := atlassvc.NewAnnotationService(atlasAnnoRepo, atlasCarrierRepo)
 	// P1-10 权限闸门：/atlas/* 至少需要 content.atlas.read。
 	// PR #724 review fix: 所有 mutating routes (POST/PATCH/DELETE) 额外要求 content.atlas.write。
 	// 沿用 accessSvc 作为 PermissionChecker（与 /admin/access 路由一致）。
-	atlasGroup := admin.Group("/atlas", middleware.RequirePermission(accessSvc, "content.atlas.read"))
+	// 注意这里使用 accessAdmin 而非 admin：Atlas 的多用户 Gate 由 content.atlas.* 权限与
+	// handler 层 owner/author scope 共同控制，不再被 legacy ADMIN 角色硬编码挡住。
+	atlasGroup := accessAdmin.Group(
+		"/atlas",
+		middleware.RequirePermission(accessSvc, "content.atlas.read"),
+		atlashandler.AtlasScopeMiddleware(accessSvc),
+	)
 	atlasWriteMW := middleware.RequirePermission(accessSvc, "content.atlas.write")
 	// Phase 2 新增 KP + Relation + Graph 子域
 	atlasKPRepo := atlasrepo.NewKPRepo(atlasRepo)
 	atlasRelRepo := atlasrepo.NewRelationRepo(atlasRepo)
 	atlasKPSvc := atlassvc.NewKnowledgePointService(atlasKPRepo, atlasRelRepo)
+	atlasKPSvc.AttachEmbeddingIndexer(atlassvc.NewAtlasIndexerClient(aiClient, internalToken))
 	atlasRelSvc := atlassvc.NewRelationService(atlasRelRepo)
 	// Phase 3 新增 AI 建议子域。Accept 走原子 tx (PR #724 review fix)，需要直接 *sqlx.DB。
 	atlasSugRepo := atlasrepo.NewSuggestionRepo(atlasRepo)
@@ -296,9 +310,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlasGroup,
 		atlasWriteMW,
 		atlashandler.NewCarrierHandler(atlasService),
-		atlashandler.NewAnnotationHandler(atlasAnnoSvc),
-		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc),
-		atlashandler.NewSuggestionHandler(atlasSugSvc),
+		atlashandler.NewAnnotationHandler(atlasAnnoSvc, activitySvc, atlasKPSvc),
+		atlashandler.NewKPHandler(atlasKPSvc, atlasRelSvc, atlasAnnoSvc, atlasService, atlassvc.NewAtlasSemanticSearchClient(aiClient, internalToken), activitySvc),
+		atlashandler.NewSuggestionHandler(atlasSugSvc, atlasKPSvc, atlasAnnoSvc, atlasService, aiClient, internalToken, activitySvc),
+		atlashandler.NewAtlasEventHandler(activitySvc),
 	)
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)
@@ -360,6 +375,23 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	}
 	// Phase 1: MediaService 改造 — 注入 providerRepo 让 Upload/Delete 按 default provider 走对应后端。
 	mediaSvc := service.NewMediaService(mediaRepo, localStore, storageProviderRepo, s.Config.Upload.Path)
+	atlasService.AttachPDF(atlassvc.NewPdfCarrierService(
+		atlasCarrierRepo,
+		atlasPDFMediaReader{media: mediaSvc},
+		atlassvc.NewAIPDFTextExtractor(aiClient, internalToken),
+	))
+	atlasTranscripts := atlassvc.NewTranscriptCarrierService(
+		atlasCarrierRepo,
+		atlasTranscriptMediaReader{media: mediaSvc},
+	)
+	atlasTranscripts.AttachVersioning(atlasVersioning)
+	atlasService.AttachTranscriptMedia(atlasTranscripts)
+	atlasImages := atlassvc.NewImageCarrierService(
+		atlasCarrierRepo,
+		atlasImageMediaReader{media: mediaSvc},
+	)
+	atlasImages.AttachVersioning(atlasVersioning)
+	atlasService.AttachImageMedia(atlasImages)
 	// 批次 2: 注入 folder_permissions 校验依赖,Upload 时拦截越权写入私有文件夹
 	permissionRepo := repository.NewPermissionRepo(s.DB)
 	mediaSvc.SetFolderAccess(folderRepo, permissionRepo)
@@ -437,6 +469,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	//   · picker（120/min/user）—— GET /models /articles /tags 只命中本地 DB，
 	//     `@` picker 一边输入一边搜，给 4x 头部空间避免用户还没发消息就 429。
 	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo, activitySvc)
+	agentHandler.SetAtlasPermissionChecker(accessSvc)
 	agentGroup := api.Group("/v1/agent", authMW, pwdRotated)
 	agentHandler.Mount(
 		agentGroup,

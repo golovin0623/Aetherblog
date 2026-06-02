@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -26,9 +27,11 @@ import {
   History,
   Tag,
   Move,
+  Sparkles,
 } from 'lucide-react';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl, mediaService } from '@/services/mediaService';
+import { ATLAS_CARRIER_SUGGESTION_MAX_COST_USD, atlasService } from '@/services/atlasService';
 import { format } from 'date-fns';
 import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
@@ -77,6 +80,11 @@ const detailSoftButtonClass = cn(
   'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
 );
 
+function formatAtlasCostUsd(value?: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '未知';
+  return `$${value.toFixed(4)}`;
+}
+
 function getRecordProp(value: unknown, key: string): unknown {
   if (!value || typeof value !== 'object') return undefined;
   return (value as Record<string, unknown>)[key];
@@ -96,6 +104,10 @@ function getBackupRemoveFailure(error: unknown): BackupRemoveFailure | null {
   };
 }
 
+function isAtlasNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === 404;
+}
+
 /**
  * 媒体详情侧边栏组件 - 高级玻璃态设计
  */
@@ -104,6 +116,20 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [ensuringAtlas, setEnsuringAtlas] = useState(false);
+  const [openingAtlas, setOpeningAtlas] = useState(false);
+  const [generatingAtlas, setGeneratingAtlas] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState('');
+  const [transcriptCarrierId, setTranscriptCarrierId] = useState<number | null>(null);
+  const [savingTranscript, setSavingTranscript] = useState(false);
+  const [openingTranscript, setOpeningTranscript] = useState(false);
+  const [generatingTranscript, setGeneratingTranscript] = useState(false);
+  const [imageDescriptionDraft, setImageDescriptionDraft] = useState('');
+  const [imageCarrierId, setImageCarrierId] = useState<number | null>(null);
+  const [savingImageDescription, setSavingImageDescription] = useState(false);
+  const [openingImageAtlas, setOpeningImageAtlas] = useState(false);
+  const [generatingImageAtlas, setGeneratingImageAtlas] = useState(false);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: media = initialMedia } = useQuery({
     queryKey: ['media', 'detail', initialMedia.id],
@@ -135,6 +161,13 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
     );
   }, [media, queryClient]);
 
+  useEffect(() => {
+    setTranscriptDraft('');
+    setTranscriptCarrierId(null);
+    setImageDescriptionDraft('');
+    setImageCarrierId(null);
+  }, [initialMedia.id]);
+
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {
       const fullUrl = getMediaUrl(media);
@@ -164,6 +197,250 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
   const Icon = typeIcons[media.fileType] || FileText;
   const fullUrl = getMediaUrl(media);
   const isImage = media.fileType === 'IMAGE';
+  const isPDF = media.fileType === 'DOCUMENT' && (
+    media.mimeType?.toLowerCase() === 'application/pdf' ||
+    media.originalName.toLowerCase().endsWith('.pdf')
+  );
+  const isTranscriptMedia = media.fileType === 'VIDEO' || media.fileType === 'AUDIO';
+
+  const ensureAtlasPDFCarrier = async () => {
+    if (!isPDF) return;
+    const res = await atlasService.ensurePDFCarrier(media.id);
+    return res.data;
+  };
+
+  const handleEnsureAtlasPDF = async () => {
+    if (!isPDF) return;
+    setEnsuringAtlas(true);
+    try {
+      const carrier = await ensureAtlasPDFCarrier();
+      if (carrier) {
+        toast.success(`已加入 Atlas：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '加入 Atlas 失败'));
+    } finally {
+      setEnsuringAtlas(false);
+    }
+  };
+
+  const handleOpenAtlasPDF = async () => {
+    if (!isPDF) return;
+    setOpeningAtlas(true);
+    try {
+      const carrier = (await getExistingMediaCarrier(['pdf'])) ?? (await ensureAtlasPDFCarrier());
+      if (carrier) {
+        navigate(`/atlas/reader/pdf/${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas PDF Reader 失败'));
+    } finally {
+      setOpeningAtlas(false);
+    }
+  };
+
+  const handleGenerateAtlasPDFSuggestions = async () => {
+    if (!isPDF) return;
+    setGeneratingAtlas(true);
+    try {
+      const carrier = await ensureAtlasPDFCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从媒体全文生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 知识点失败'));
+    } finally {
+      setGeneratingAtlas(false);
+    }
+  };
+
+  const ensureAtlasTranscriptCarrier = async () => {
+    if (!isTranscriptMedia) return;
+    const transcriptMarkdown = transcriptDraft.trim();
+    if (!transcriptMarkdown) {
+      toast.message('请先填写转录文本');
+      return;
+    }
+    const res = await atlasService.ensureMediaTranscriptCarrier({
+      mediaFileId: media.id,
+      transcriptMarkdown,
+    });
+    setTranscriptCarrierId(res.data.id);
+    return res.data;
+  };
+
+  const getExistingMediaCarrier = async (types: string[]) => {
+    try {
+      const res = await atlasService.getMediaCarrier(media.id);
+      if (!types.includes(res.data.type)) return null;
+      return res.data;
+    } catch (err) {
+      if (isAtlasNotFound(err)) return null;
+      throw err;
+    }
+  };
+
+  const handleSaveAtlasTranscript = async () => {
+    if (!isTranscriptMedia) return;
+    setSavingTranscript(true);
+    try {
+      const carrier = await ensureAtlasTranscriptCarrier();
+      if (carrier) {
+        toast.success(`已保存 Atlas 转录：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '保存 Atlas 转录失败'));
+    } finally {
+      setSavingTranscript(false);
+    }
+  };
+
+  const handleOpenAtlasTranscript = async () => {
+    if (!isTranscriptMedia) return;
+    setOpeningTranscript(true);
+    try {
+      const carrier = transcriptCarrierId
+        ? { id: transcriptCarrierId }
+        : (await getExistingMediaCarrier(['video', 'audio'])) ?? (await ensureAtlasTranscriptCarrier());
+      if (carrier) {
+        setTranscriptCarrierId(carrier.id);
+        navigate(`/atlas/reader/transcript/${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas 转录 Reader 失败'));
+    } finally {
+      setOpeningTranscript(false);
+    }
+  };
+
+  const handleGenerateAtlasTranscriptSuggestions = async () => {
+    if (!isTranscriptMedia) return;
+    setGeneratingTranscript(true);
+    try {
+      const carrier = await ensureAtlasTranscriptCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从转录全文生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 转录知识点失败'));
+    } finally {
+      setGeneratingTranscript(false);
+    }
+  };
+
+  const transcriptBusy = savingTranscript || openingTranscript || generatingTranscript;
+  const ensureAtlasImageCarrier = async () => {
+    if (!isImage) return;
+    const descriptionMarkdown = imageDescriptionDraft.trim();
+    if (!descriptionMarkdown) {
+      toast.message('请先填写图片描述或 OCR 文本');
+      return;
+    }
+    const res = await atlasService.ensureImageCarrier({
+      mediaFileId: media.id,
+      descriptionMarkdown,
+    });
+    setImageCarrierId(res.data.id);
+    return res.data;
+  };
+
+  const handleSaveAtlasImage = async () => {
+    if (!isImage) return;
+    setSavingImageDescription(true);
+    try {
+      const carrier = await ensureAtlasImageCarrier();
+      if (carrier) {
+        toast.success(`已保存 Atlas 图片描述：carrier #${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '保存 Atlas 图片描述失败'));
+    } finally {
+      setSavingImageDescription(false);
+    }
+  };
+
+  const handleOpenAtlasImage = async () => {
+    if (!isImage) return;
+    setOpeningImageAtlas(true);
+    try {
+      const carrier = imageCarrierId
+        ? { id: imageCarrierId }
+        : (await getExistingMediaCarrier(['image'])) ?? (await ensureAtlasImageCarrier());
+      if (carrier) {
+        setImageCarrierId(carrier.id);
+        navigate(`/atlas/reader/image/${carrier.id}`);
+      }
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '打开 Atlas 图片 Reader 失败'));
+    } finally {
+      setOpeningImageAtlas(false);
+    }
+  };
+
+  const handleGenerateAtlasImageSuggestions = async () => {
+    if (!isImage) return;
+    setGeneratingImageAtlas(true);
+    try {
+      const carrier = await ensureAtlasImageCarrier();
+      if (!carrier) return;
+      const payload = { maxCandidates: 8, maxCostUsd: ATLAS_CARRIER_SUGGESTION_MAX_COST_USD };
+      const preview = await atlasService.previewCarrierSuggestions(carrier.id, payload);
+      if (preview.data?.budgetExceeded) {
+        toast.warning(
+          `预估费用 ${formatAtlasCostUsd(preview.data.estimatedCostUsd)} 超过本次预算 ${formatAtlasCostUsd(preview.data.maxCostUsd)}，已取消生成`
+        );
+        return;
+      }
+      if (preview.data?.pricingMissing) {
+        toast.warning('当前模型缺少全局价格配置，无法预估本次费用；将继续生成并保留预算上限');
+      } else {
+        toast.message(
+          `本次预估 ${formatAtlasCostUsd(preview.data?.estimatedCostUsd)} / 上限 ${formatAtlasCostUsd(preview.data?.maxCostUsd)}`
+        );
+      }
+      const res = await atlasService.generateCarrierSuggestions(carrier.id, payload);
+      const count = res.data?.length ?? 0;
+      toast.success(count > 0 ? `已从图片描述生成 ${count} 条 Atlas 建议，前往 Inbox 处理` : 'Atlas 未生成可用建议');
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, '抽取 Atlas 图片知识点失败'));
+    } finally {
+      setGeneratingImageAtlas(false);
+    }
+  };
+
+  const imageAtlasBusy = savingImageDescription || openingImageAtlas || generatingImageAtlas;
 
   const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [
     { id: 'info', label: '详情', icon: FileText },
@@ -244,6 +521,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
             编辑
           </button>
         )}
+        {isImage && (
+          <button
+            onClick={() => void handleOpenAtlasImage()}
+            disabled={imageAtlasBusy}
+            className={detailSoftButtonClass}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {openingImageAtlas ? '打开中' : '查看标注'}
+          </button>
+        )}
         <button
           onClick={() => setShareDialogOpen(true)}
           className={detailSoftButtonClass}
@@ -251,6 +538,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
           <Share2 className="w-3.5 h-3.5" />
           分享
         </button>
+        {isPDF && (
+          <button
+            onClick={() => void handleOpenAtlasPDF()}
+            disabled={openingAtlas || ensuringAtlas || generatingAtlas}
+            className={detailSoftButtonClass}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            {openingAtlas ? '打开中' : '查看标注'}
+          </button>
+        )}
         {onMove && (
           <button
             onClick={() => onMove(media.id, media.originalName)}
@@ -334,6 +631,131 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
                 <div className={cn(detailPanelClass, 'p-3')}>
                   <p className="mb-1 text-[10px] uppercase text-[var(--ink-muted)]">MIME 类型</p>
                   <p className="font-mono text-xs text-[var(--ink-primary)]">{media.mimeType}</p>
+                </div>
+              )}
+
+              {isPDF && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleEnsureAtlasPDF()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {ensuringAtlas ? '处理中' : '加入 Atlas'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasPDF()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingAtlas ? '打开中' : '查看标注'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasPDFSuggestions()}
+                      disabled={ensuringAtlas || openingAtlas || generatingAtlas}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingAtlas ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isTranscriptMedia && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas Transcript</p>
+                  </div>
+                  <textarea
+                    value={transcriptDraft}
+                    onChange={(event) => setTranscriptDraft(event.target.value)}
+                    placeholder="[00:12] Transcript"
+                    rows={6}
+                    className="min-h-[132px] w-full resize-y rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 py-2 font-mono text-xs leading-5 text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus:outline-none"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAtlasTranscript()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {savingTranscript ? '保存中' : '保存转录'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasTranscript()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingTranscript ? '打开中' : '查看转录'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasTranscriptSuggestions()}
+                      disabled={transcriptBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingTranscript ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isImage && (
+                <div className={cn(detailPanelClass, 'space-y-3 p-3')}>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--ink-muted)]">Atlas Image</p>
+                  </div>
+                  <textarea
+                    value={imageDescriptionDraft}
+                    onChange={(event) => setImageDescriptionDraft(event.target.value)}
+                    placeholder="描述图片内容、OCR 文本或可作为证据的观察笔记"
+                    rows={6}
+                    className="min-h-[132px] w-full resize-y rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 py-2 font-mono text-xs leading-5 text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus:outline-none"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAtlasImage()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {savingImageDescription ? '保存中' : '保存描述'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenAtlasImage()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {openingImageAtlas ? '打开中' : '查看标注'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateAtlasImageSuggestions()}
+                      disabled={imageAtlasBusy}
+                      className={detailSoftButtonClass}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {generatingImageAtlas ? '生成中' : '抽取知识点'}
+                    </button>
+                  </div>
                 </div>
               )}
 

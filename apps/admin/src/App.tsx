@@ -37,10 +37,17 @@ const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWor
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
 const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
+const AtlasKnowledgePointsPage = lazy(() => import('./pages/atlas/KnowledgePointsPage'));
 const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderPage'));
+const AtlasPDFReaderPage = lazy(() => import('./pages/atlas/PDFReaderPage'));
+const AtlasWebReaderPage = lazy(() => import('./pages/atlas/WebReaderPage'));
+const AtlasBlogPostReaderPage = lazy(() => import('./pages/atlas/BlogPostReaderPage'));
+const AtlasTranscriptReaderPage = lazy(() => import('./pages/atlas/TranscriptReaderPage'));
+const AtlasImageReaderPage = lazy(() => import('./pages/atlas/ImageReaderPage'));
 const AtlasKnowledgePointPage = lazy(() => import('./pages/atlas/KnowledgePointPage'));
 const AtlasGraphPage = lazy(() => import('./pages/atlas/AtlasGraphPage'));
 const AtlasSuggestionsPage = lazy(() => import('./pages/atlas/SuggestionsPage'));
+const AtlasSearchPage = lazy(() => import('./pages/atlas/AtlasSearchPage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -127,8 +134,15 @@ function App() {
               <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
               <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
               <Route path="atlas" element={<AtlasPage />} />
+              <Route path="atlas/kps" element={<AtlasKnowledgePointsPage />} />
               <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
+              <Route path="atlas/reader/pdf/:carrierId" element={<AtlasPDFReaderPage />} />
+              <Route path="atlas/reader/web/:carrierId" element={<AtlasWebReaderPage />} />
+              <Route path="atlas/reader/blog-post/:carrierId" element={<AtlasBlogPostReaderPage />} />
+              <Route path="atlas/reader/transcript/:carrierId" element={<AtlasTranscriptReaderPage />} />
+              <Route path="atlas/reader/image/:carrierId" element={<AtlasImageReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
+              <Route path="atlas/search" element={<AtlasSearchPage />} />
               <Route path="atlas/graph" element={<AtlasGraphPage />} />
               <Route path="atlas/suggestions" element={<AtlasSuggestionsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />

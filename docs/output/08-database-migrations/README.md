@@ -90,11 +90,11 @@
 | AI 检索 / 向量 | 000015, 000034–000037, 000041, 000044 | post_embeddings, search_profiles, post_vectors(已 drop) |
 | Profile 断点续跑 | 000056 | post_embeddings.chunk_hash, chunk_count |
 | 搜索配置 | 000031, 000032, 000045 | site_settings.search.* |
-| Notes | 000054, 000055 | notes, note_folders, note_tags, note_embeddings, fulltext 限长 |
+| Notes | 000054, 000055, 000074 | notes, note_folders, note_tags, note_embeddings, fulltext 限长, note embedding profile/HNSW |
 | 用户/团队 RBAC | 000051, 000063 | permissions, roles, role_permissions, user_roles, teams, team_members, content_shares, atlas permissions |
 | Agent Workflow | 000052 | agent_connectors, agent_tools, agent_agents, agent_workflows, agent_* |
 | KB / 知识库 | 000057–000061, 000067 | media_folders system flags, knowledge_bases, kb_profiles, kb_members, kb_files, kb_embeddings, KB schema repair |
-| Atlas / 知识图集 | 000062–000066 | atlas_carriers, atlas_annotations, atlas_knowledge_points, atlas_typed_relations, suggestions |
+| Atlas / 知识图集 | 000062–000066, 000070–000073 | atlas_carriers, atlas_annotations, atlas_knowledge_points, atlas_typed_relations, suggestions, carrier text layers, task routing seed, KP embedding profile/HNSW |
 | 统计 / 审计 | 000006, 000022, 000046 | visit_records, visit_daily_stats, daily_stats, sys_operation_log, activity_events |
 | AI 使用埋点 | 000016, 000023–000025, 000030 | ai_usage_logs |
 | 站点设置 | 000001, 000013, 000014, 000029 | site_settings, friend_links |

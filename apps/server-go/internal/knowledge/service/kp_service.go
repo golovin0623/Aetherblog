@@ -11,9 +11,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/model"
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -33,6 +35,7 @@ var (
 type KnowledgePointService struct {
 	kp        *repository.KPRepo
 	relations *repository.RelationRepo
+	indexer   KPEmbeddingIndexer
 }
 
 // NewKnowledgePointService 创建。
@@ -40,16 +43,52 @@ func NewKnowledgePointService(kp *repository.KPRepo, rel *repository.RelationRep
 	return &KnowledgePointService{kp: kp, relations: rel}
 }
 
+// KPEmbeddingIndexer 是 ai-service Atlas KP embedding 写入器的最小接口。
+type KPEmbeddingIndexer interface {
+	IndexKnowledgePoint(ctx context.Context, kpID int64, userID *int64) (*AtlasIndexResult, error)
+}
+
+// AttachEmbeddingIndexer 注入异步 KP embedding 写入器。
+func (s *KnowledgePointService) AttachEmbeddingIndexer(indexer KPEmbeddingIndexer) {
+	s.indexer = indexer
+}
+
+// ScheduleEmbedding 异步触发 KP embedding 重写。
+func (s *KnowledgePointService) ScheduleEmbedding(ctx context.Context, kpID int64, userID *int64, reason string) {
+	if s == nil || s.indexer == nil || kpID <= 0 {
+		return
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(base, 3*time.Minute)
+		defer cancel()
+		result, err := s.indexer.IndexKnowledgePoint(bg, kpID, userID)
+		if err != nil {
+			log.Warn().Err(err).Int64("kp_id", kpID).Str("reason", reason).Msg("atlas kp embedding index failed")
+			return
+		}
+		log.Info().
+			Int64("kp_id", kpID).
+			Int64("profile_id", result.ProfileID).
+			Int("embedding_dim", result.EmbeddingDim).
+			Str("reason", reason).
+			Msg("atlas kp embedding indexed")
+	}()
+}
+
 // CreateKPInput 是创建 KP 的入参。
 type CreateKPInput struct {
-	Title          string
-	BodyMarkdown   string
-	Type           string
-	Confidence     *float32
-	Status         *string
-	Provenance     *string
-	AISuggestionID *int64
-	AuthorID       *int64
+	Title                 string
+	BodyMarkdown          string
+	Type                  string
+	Confidence            *float32
+	Status                *string
+	Provenance            *string
+	AISuggestionID        *int64
+	AuthorID              *int64
 	EvidenceAnnotationIDs []int64
 }
 
@@ -168,6 +207,16 @@ func (s *KnowledgePointService) ListEvidence(ctx context.Context, kpID int64) ([
 	return s.kp.ListEvidenceAnnotations(ctx, kpID)
 }
 
+// CountEvidenceByKPIDs 批量统计 KP evidence 数量。
+func (s *KnowledgePointService) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[int64]int64, error) {
+	return s.kp.CountEvidenceByKPIDs(ctx, kpIDs)
+}
+
+// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence preview row per KP.
+func (s *KnowledgePointService) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
+	return s.kp.FirstEvidencePreviewRowsByKPIDs(ctx, kpIDs, authorID)
+}
+
 // ListKPsForAnnotation 列出某标注支撑的所有 KP ID（双向投影用）。
 func (s *KnowledgePointService) ListKPsForAnnotation(ctx context.Context, annotationID int64) ([]int64, error) {
 	return s.kp.ListKPsForAnnotation(ctx, annotationID)
@@ -189,14 +238,15 @@ func NewRelationService(repo *repository.RelationRepo) *RelationService {
 
 // CreateRelationInput 创建入参。
 type CreateRelationInput struct {
-	FromKPID       int64
-	ToKPID         int64
-	Type           string
-	Strength       *float32
-	BodyMarkdown   *string
-	Provenance     *string
-	AISuggestionID *int64
-	AuthorID       *int64
+	FromKPID              int64
+	ToKPID                int64
+	Type                  string
+	Strength              *float32
+	BodyMarkdown          *string
+	Provenance            *string
+	AISuggestionID        *int64
+	AuthorID              *int64
+	EvidenceAnnotationIDs []int64
 }
 
 // Create 校验 9 种类型 + 不自环（schema 已挡 + 这里二次防护）。
@@ -237,6 +287,9 @@ func (s *RelationService) Create(ctx context.Context, in CreateRelationInput) (*
 		AISuggestionID: in.AISuggestionID,
 		AuthorID:       in.AuthorID,
 	}
+	if len(in.EvidenceAnnotationIDs) > 0 {
+		return s.repo.CreateAndLinkEvidenceInTx(ctx, t, in.EvidenceAnnotationIDs)
+	}
 	return s.repo.Create(ctx, t)
 }
 
@@ -246,13 +299,57 @@ func (s *RelationService) Get(ctx context.Context, id int64) (*model.TypedRelati
 }
 
 // ListForKP 列出 KP 的关系（dir = in | out | all）。
-func (s *RelationService) ListForKP(ctx context.Context, kpID int64, dir string) ([]model.TypedRelation, error) {
-	return s.repo.ListForKP(ctx, kpID, dir)
+func (s *RelationService) ListForKP(ctx context.Context, kpID int64, dir string, authorID *int64) ([]model.TypedRelation, error) {
+	return s.repo.ListForKP(ctx, kpID, dir, authorID)
+}
+
+// LinkEvidence 关联 relation 的 evidence annotation。
+func (s *RelationService) LinkEvidence(ctx context.Context, relationID, annotationID int64) error {
+	if relationID <= 0 || annotationID <= 0 {
+		return errors.New("invalid id")
+	}
+	return s.repo.LinkEvidence(ctx, relationID, annotationID)
+}
+
+// ListEvidence 列出 relation evidence。
+func (s *RelationService) ListEvidence(ctx context.Context, relationID int64) ([]repository.RelationEvidenceLink, error) {
+	if relationID <= 0 {
+		return nil, errors.New("invalid relation id")
+	}
+	return s.repo.ListEvidence(ctx, relationID)
+}
+
+// DeleteEvidence 删除 relation evidence 关联。
+func (s *RelationService) DeleteEvidence(ctx context.Context, relationID, annotationID int64) error {
+	if relationID <= 0 || annotationID <= 0 {
+		return errors.New("invalid id")
+	}
+	return s.repo.DeleteEvidence(ctx, relationID, annotationID)
 }
 
 // ListAll 图谱视图用。
 func (s *RelationService) ListAll(ctx context.Context, limit int) ([]model.TypedRelation, error) {
 	return s.repo.ListAll(ctx, limit)
+}
+
+// ListForNodeIDs 图谱视图用：只返回两端都在当前 node set 内的边。
+func (s *RelationService) ListForNodeIDs(ctx context.Context, nodeIDs []int64, limit int, authorID *int64) ([]model.TypedRelation, error) {
+	return s.repo.ListForNodeIDs(ctx, nodeIDs, limit, authorID)
+}
+
+// CountEvidenceByRelationIDs 批量统计 relation evidence 数量。
+func (s *RelationService) CountEvidenceByRelationIDs(ctx context.Context, relationIDs []int64) (map[int64]int64, error) {
+	return s.repo.CountEvidenceByRelationIDs(ctx, relationIDs)
+}
+
+// FirstEvidencePreviewRowsByRelationIDs returns one scoped evidence preview row per relation.
+func (s *RelationService) FirstEvidencePreviewRowsByRelationIDs(ctx context.Context, relationIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
+	return s.repo.FirstEvidencePreviewRowsByRelationIDs(ctx, relationIDs, authorID)
+}
+
+// GraphHealth 图谱健康指标。
+func (s *RelationService) GraphHealth(ctx context.Context, authorID *int64, hubLimit int) (*repository.GraphHealthMetrics, error) {
+	return s.repo.GraphHealth(ctx, authorID, hubLimit)
 }
 
 // Delete 软删除。

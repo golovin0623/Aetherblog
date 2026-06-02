@@ -22,6 +22,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Highlighter,
   Image,
   Italic,
   Link2,
@@ -47,7 +48,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Tooltip } from '@aetherblog/ui';
+import { Select, Tooltip } from '@aetherblog/ui';
 
 import { noteService } from '@/services/noteService';
 import type { CreateNoteRequest, NoteDetail, NoteFolderItem, NoteTagItem } from '@/types/note';
@@ -224,7 +225,7 @@ export default function CreateNotePage() {
     isFavorite,
   }), [content, folderId, isFavorite, isPinned, sourceTitle, sourceType, sourceUrl, summary, tagInput, title]);
 
-  const handleSave = async () => {
+  const handleSave = async (options: { redirectNew?: boolean } = {}) => {
     setSaving(true);
     setSaveState('saving');
     try {
@@ -240,15 +241,27 @@ export default function CreateNotePage() {
       setSaveState('saved');
       toast.success('笔记已保存');
       void loadMeta();
-      if (!noteId) {
+      if (!noteId && options.redirectNew !== false) {
         navigate(`/notes/${res.data.id}/edit`, { replace: true });
       }
+      return res.data;
     } catch (error) {
       setSaveState('failed');
       toast.error(extractApiErrorMessage(error, '保存笔记失败'));
+      return null;
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleOpenAtlasReader = async () => {
+    let targetNoteId = noteId;
+    if (!targetNoteId || dirty) {
+      const saved = await handleSave({ redirectNew: false });
+      if (!saved) return;
+      targetNoteId = saved.id;
+    }
+    navigate(`/atlas/reader/note/${targetNoteId}`);
   };
 
   useEffect(() => {
@@ -355,6 +368,18 @@ export default function CreateNotePage() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
+          <Tooltip content="在 Atlas Reader 中标注" side="bottom" delay={0}>
+            <button
+              type="button"
+              onClick={() => void handleOpenAtlasReader()}
+              disabled={saving}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 text-sm font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
+              aria-label="在 Atlas Reader 中标注"
+            >
+              <Highlighter className="h-4 w-4" />
+              <span className="hidden sm:inline">Atlas</span>
+            </button>
+          </Tooltip>
           <button
             type="button"
             onClick={() => setPanelOpen((open) => !open)}
@@ -694,6 +719,10 @@ function NoteInfoPanel({
   const currentFolder = folders.find((folder) => String(folder.id) === folderId);
   const tagCount = parseTags(tagInput).length;
   const currentSource = sourceOptions.find((item) => item.value === sourceType)?.label || '手动';
+  const folderOptions = [
+    { value: '__unfiled__', label: '未整理' },
+    ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+  ];
 
   const content = (
     <aside className={cn(
@@ -730,10 +759,13 @@ function NoteInfoPanel({
 
           <FieldLabel>文件夹</FieldLabel>
           <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
-            <select value={folderId} onChange={(event) => setFolderId(event.target.value)} className="note-side-field">
-              <option value="">未整理</option>
-              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-            </select>
+            <Select
+              value={folderId || '__unfiled__'}
+              onValueChange={(value) => setFolderId(value === '__unfiled__' ? '' : value)}
+              options={folderOptions}
+              size="md"
+              ariaLabel="笔记文件夹"
+            />
             <button
               type="button"
               onClick={onCreateFolder}
