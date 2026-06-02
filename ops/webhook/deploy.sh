@@ -188,6 +188,83 @@ if [ "$DEPLOY_MODE" = "rollback" ]; then
   export VERSION="$ROLLBACK_VERSION"
 fi
 
+compose_profile_enabled() {
+  local profile=$1
+  local profiles="${COMPOSE_PROFILES:-}"
+  profiles="${profiles// /,}"
+  case ",$profiles," in
+    *",$profile,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+append_compose_profile() {
+  local profile=$1
+  if compose_profile_enabled "$profile"; then
+    return
+  fi
+  if [ -n "${COMPOSE_PROFILES:-}" ]; then
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES},$profile"
+  else
+    export COMPOSE_PROFILES="$profile"
+  fi
+}
+
+uses_compose_socket_proxy() {
+  case "$1" in
+    http://docker-socket-proxy|http://docker-socket-proxy:*|http://docker-socket-proxy/*|https://docker-socket-proxy|https://docker-socket-proxy:*|https://docker-socket-proxy/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+if uses_compose_socket_proxy "${DOCKER_SOCKET_PROXY_URL:-}"; then
+  append_compose_profile "with-monitor"
+  echo "[$(date -Iseconds)] Container monitoring uses docker-socket-proxy; COMPOSE_PROFILES=${COMPOSE_PROFILES}"
+elif [ -n "${DOCKER_SOCKET_PROXY_URL:-}" ]; then
+  echo "[$(date -Iseconds)] Container monitoring uses external Docker proxy URL; leaving COMPOSE_PROFILES=${COMPOSE_PROFILES:-<empty>}"
+fi
+
+ensure_monitor_proxy() {
+  if ! compose_profile_enabled "with-monitor"; then
+    return
+  fi
+  echo "[$(date -Iseconds)] Ensuring docker-socket-proxy is running"
+  docker compose -f "$COMPOSE_FILE" up -d docker-socket-proxy
+}
+
+service_requires_gateway_restart() {
+  case "$1" in
+    backend|admin|blog|ai-service)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+restart_gateway_for_dns_refresh() {
+  local reason=$1
+  echo "[$(date -Iseconds)] Restarting gateway to refresh Docker DNS for upstreams ($reason)"
+  if ! docker compose -f "$COMPOSE_FILE" restart gateway; then
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps gateway
+  fi
+}
+
+restart_gateway_if_upstreams_changed() {
+  local svc
+  for svc in "$@"; do
+    if service_requires_gateway_restart "$svc"; then
+      restart_gateway_for_dns_refresh "changed services: $*"
+      return
+    fi
+  done
+}
+
 echo "[$(date -Iseconds)] Using DOCKER_REGISTRY=$DOCKER_REGISTRY VERSION=$VERSION"
 echo "[$(date -Iseconds)] Validating docker compose config"
 docker compose -f "$COMPOSE_FILE" config --quiet
@@ -420,6 +497,7 @@ run_full_deploy() {
 
   echo "[$(date -Iseconds)] Running docker compose up -d (full)"
   docker compose -f "$COMPOSE_FILE" up -d
+  restart_gateway_for_dns_refresh "full deploy"
 }
 
 run_incremental_deploy() {
@@ -439,8 +517,11 @@ run_incremental_deploy() {
 
   run_pre_deploy_migrations
 
+  ensure_monitor_proxy
+
   echo "[$(date -Iseconds)] Recreating containers (--no-deps): ${services[*]}"
   docker compose -f "$COMPOSE_FILE" up -d --no-deps "${services[@]}"
+  restart_gateway_if_upstreams_changed "${services[@]}"
 }
 
 run_canary_deploy() {
@@ -464,8 +545,11 @@ run_canary_deploy() {
   # canary 默认触达 backend/ai-service，同样先跑 migration 保障兼容性
   run_pre_deploy_migrations
 
+  ensure_monitor_proxy
+
   echo "[$(date -Iseconds)] Running docker compose up -d (canary): ${services[*]}"
   docker compose -f "$COMPOSE_FILE" up -d "${services[@]}"
+  restart_gateway_if_upstreams_changed "${services[@]}"
 }
 
 case "$DEPLOY_MODE" in

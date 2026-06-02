@@ -193,6 +193,14 @@ docker-compose -f docker-compose.prod.yml pull
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
+如需启用生产容器监控，不要把 `/var/run/docker.sock` 直接挂到 backend。请在
+`.env` 中同时设置 `COMPOSE_PROFILES=with-monitor` 与
+`DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375`，再执行：
+
+```bash
+docker-compose -f docker-compose.prod.yml --profile with-monitor up -d
+```
+
 生产模式通过 **Nginx 网关 (:7899)** 统一路由：
 
 | 路由 | 服务 |

@@ -35,11 +35,125 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   TARGETS=("${APP_SERVICES[@]}")
 fi
 
+get_project_env_value() {
+  local key=$1
+  local line value
+
+  if [ ! -f "$PROJECT_ROOT/.env" ]; then
+    return 0
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+      "$key="*)
+        value="${line#*=}"
+        value="${value%\"}"
+        value="${value#\"}"
+        value="${value%\'}"
+        value="${value#\'}"
+        printf '%s' "$value"
+        return 0
+        ;;
+    esac
+  done < "$PROJECT_ROOT/.env"
+}
+
+compose_profile_enabled_in() {
+  local profiles=$1
+  local profile=$2
+  profiles="${profiles// /,}"
+  case ",$profiles," in
+    *",$profile,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+uses_compose_socket_proxy() {
+  case "$1" in
+    http://docker-socket-proxy|http://docker-socket-proxy:*|http://docker-socket-proxy/*|https://docker-socket-proxy|https://docker-socket-proxy:*|https://docker-socket-proxy/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ENV_COMPOSE_PROFILES="${COMPOSE_PROFILES:-$(get_project_env_value COMPOSE_PROFILES)}"
+ENV_MONITOR_URL="${DOCKER_SOCKET_PROXY_URL:-$(get_project_env_value DOCKER_SOCKET_PROXY_URL)}"
+COMPOSE_PROFILE_ARGS=()
+if compose_profile_enabled_in "$ENV_COMPOSE_PROFILES" "with-monitor" || uses_compose_socket_proxy "$ENV_MONITOR_URL"; then
+  COMPOSE_PROFILE_ARGS=(--profile with-monitor)
+fi
+
 dc() {
   if docker compose version &>/dev/null; then
-    docker compose -f "$COMPOSE_FILE" "$@"
+    docker compose -f "$COMPOSE_FILE" "${COMPOSE_PROFILE_ARGS[@]}" "$@"
   else
-    docker-compose -f "$COMPOSE_FILE" "$@"
+    docker-compose -f "$COMPOSE_FILE" "${COMPOSE_PROFILE_ARGS[@]}" "$@"
+  fi
+}
+
+ensure_monitor_proxy() {
+  if [ ${#COMPOSE_PROFILE_ARGS[@]} -eq 0 ]; then
+    return
+  fi
+
+  local proxy_status
+  proxy_status=$(docker inspect -f '{{.State.Status}}' aetherblog-docker-socket-proxy 2>/dev/null || echo "not_found")
+  if [ "$proxy_status" = "running" ]; then
+    echo -e "${GREEN}✅ docker-socket-proxy 运行中，容器监控代理可用${NC}"
+    return
+  fi
+
+  echo -e "${YELLOW}⚠️  容器监控已配置，正在启动 docker-socket-proxy...${NC}"
+  dc up -d docker-socket-proxy
+}
+
+service_requires_gateway_restart() {
+  case "$1" in
+    backend|admin|blog|ai-service)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+targets_include() {
+  local expected=$1
+  local target
+  for target in "${TARGETS[@]}"; do
+    if [ "$target" = "$expected" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+targets_need_gateway_restart() {
+  local target
+  for target in "${TARGETS[@]}"; do
+    if service_requires_gateway_restart "$target"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+refresh_gateway_if_needed() {
+  if ! targets_need_gateway_restart || targets_include "gateway"; then
+    return
+  fi
+
+  echo -e "${YELLOW}⚠️  上游服务已重启，正在刷新 gateway 的 Docker DNS 解析...${NC}"
+  if dc restart gateway >/dev/null 2>&1; then
+    RESTARTED+=("gateway(dns-refresh)")
+  else
+    dc up -d --no-deps gateway
+    RECREATED+=("gateway(dns-refresh)")
   fi
 }
 
@@ -65,11 +179,16 @@ echo ""
 if [ "$PULL" = true ]; then
   echo -e "${BLUE}[2/3] 拉取最新镜像...${NC}"
   dc pull "${TARGETS[@]}"
+  if [ ${#COMPOSE_PROFILE_ARGS[@]} -gt 0 ]; then
+    dc pull docker-socket-proxy
+  fi
   echo ""
 else
   echo -e "${BLUE}[2/3] 跳过镜像拉取（使用 --pull 启用）${NC}"
   echo ""
 fi
+
+ensure_monitor_proxy
 
 echo -e "${BLUE}[3/3] 重启应用容器: ${TARGETS[*]}${NC}"
 START_TIME=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
@@ -94,6 +213,8 @@ done
 if [ ${#RECREATED[@]} -gt 0 ]; then
   dc up -d --no-deps "${RECREATED[@]}"
 fi
+
+refresh_gateway_if_needed
 
 END_TIME=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
 ELAPSED=$(( (END_TIME - START_TIME) ))
