@@ -3336,6 +3336,27 @@
 .global-pricing-table {
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
+}
+
+.global-pricing-col-model {
+  width: 38%;
+}
+
+.global-pricing-col-provider {
+  width: 12%;
+}
+
+.global-pricing-col-price {
+  width: 8%;
+}
+
+.global-pricing-col-status {
+  width: 12%;
+}
+
+.global-pricing-col-actions {
+  width: 14%;
 }
 
 .global-pricing-table thead {
@@ -3366,10 +3387,28 @@
 .global-pricing-table th:nth-child(3),
 .global-pricing-table th:nth-child(4),
 .global-pricing-table th:nth-child(5),
+.global-pricing-table th:nth-child(6),
+.global-pricing-table th:nth-child(7),
 .global-pricing-table td:nth-child(3),
 .global-pricing-table td:nth-child(4),
-.global-pricing-table td:nth-child(5) {
+.global-pricing-table td:nth-child(5),
+.global-pricing-table td:nth-child(6),
+.global-pricing-table td:nth-child(7) {
   white-space: nowrap;
+}
+
+.global-pricing-status-badge,
+.global-pricing-row-actions {
+  white-space: nowrap;
+}
+
+.global-pricing-row-actions {
+  flex-wrap: nowrap;
+}
+
+.global-pricing-table td:first-child > .font-mono {
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .global-pricing-row {
@@ -3429,6 +3468,232 @@
 
 .global-pricing-icon-button:hover {
   background: color-mix(in oklch, var(--signal-danger) 12%, transparent);
+}
+
+.global-pricing-sync-overlay {
+  --intelligence-border: rgb(from var(--ink-primary) r g b / 0.1);
+  --intelligence-control-hover: rgb(from var(--ink-primary) r g b / 0.075);
+}
+
+:root.dark .global-pricing-sync-overlay {
+  --intelligence-border: rgba(255, 255, 255, 0.1);
+  --intelligence-control-hover: rgba(255, 255, 255, 0.095);
+}
+
+.global-pricing-sync-dialog {
+  display: flex;
+  max-height: 90dvh;
+  flex-direction: column;
+  overflow: hidden;
+  border-color: var(--intelligence-border);
+  border-radius: 1.15rem 1.15rem 0 0;
+  background: var(--bg-leaf);
+  color: var(--ink-primary);
+}
+
+.global-pricing-sync-header,
+.global-pricing-sync-options,
+.global-pricing-sync-footer {
+  border-color: var(--intelligence-border);
+}
+
+.global-pricing-sync-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--intelligence-border);
+  padding: 1rem;
+}
+
+.global-pricing-sync-close {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: var(--text-muted);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.global-pricing-sync-close:hover {
+  background: var(--intelligence-control-hover);
+  color: var(--text-primary);
+}
+
+.global-pricing-sync-options {
+  border-bottom: 1px solid var(--intelligence-border);
+  padding: 0.9rem 1rem;
+}
+
+.global-pricing-sync-check {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.global-pricing-sync-check small {
+  display: block;
+  margin-top: 0.18rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.global-pricing-sync-table-wrap {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.global-pricing-sync-table {
+  width: 100%;
+  min-width: 760px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.86rem;
+}
+
+.global-pricing-sync-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-leaf);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.global-pricing-sync-table th,
+.global-pricing-sync-table td {
+  border-bottom: 1px solid var(--intelligence-border);
+  padding: 0.85rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.global-pricing-sync-table th:first-child,
+.global-pricing-sync-table td:first-child {
+  width: 2.75rem;
+  padding-left: 1rem;
+}
+
+.global-pricing-sync-table th:nth-child(2),
+.global-pricing-sync-table td:nth-child(2) {
+  width: 32%;
+}
+
+.global-pricing-sync-table th:nth-child(3),
+.global-pricing-sync-table td:nth-child(3) {
+  width: 5.75rem;
+  white-space: nowrap;
+}
+
+.global-pricing-sync-table th:nth-child(n + 4),
+.global-pricing-sync-table td:nth-child(n + 4) {
+  width: 7rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.global-pricing-sync-model {
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.global-pricing-sync-model span,
+.global-pricing-sync-model small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.global-pricing-sync-model span {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.global-pricing-sync-model small {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.global-pricing-sync-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--intelligence-border);
+  padding: 0.9rem 1rem;
+}
+
+.global-pricing-sync-secondary,
+.global-pricing-sync-primary {
+  display: inline-flex;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.8rem;
+  padding: 0 1rem;
+  font-size: 0.85rem;
+  font-weight: 760;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.global-pricing-sync-secondary {
+  border: 1px solid var(--intelligence-border);
+  color: var(--text-secondary);
+}
+
+.global-pricing-sync-secondary:hover {
+  background: var(--intelligence-control-hover);
+}
+
+.global-pricing-sync-primary {
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, var(--aurora-1), var(--aurora-3));
+  color: #fff;
+}
+
+:root.dark .global-pricing-sync-primary {
+  color: var(--bg-void);
+}
+
+.global-pricing-sync-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.global-pricing-sync-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@media (min-width: 640px) {
+  .global-pricing-sync-dialog {
+    border-radius: 1.15rem;
+  }
+}
+
+:root.dark .global-pricing-sync-dialog,
+:root.dark .global-pricing-sync-table thead {
+  background: var(--bg-raised);
 }
 
 @keyframes intelligence-skeleton-shimmer {
@@ -3729,7 +3994,7 @@
   }
 
   .global-pricing-table {
-    min-width: 900px;
+    min-width: 1400px;
   }
 
   .global-pricing-table th,
@@ -5950,6 +6215,35 @@ html[data-theme-transition] .codex-ambient-blob {
   box-shadow: none;
 }
 
+.global-pricing-header .global-pricing-sync-action {
+  min-height: 2rem;
+  flex-shrink: 0;
+  border-color: color-mix(in oklch, var(--aurora-1) 28%, transparent);
+  background:
+    linear-gradient(180deg,
+      color-mix(in oklch, var(--aurora-1) 14%, var(--bg-raised)),
+      color-mix(in oklch, var(--aurora-3) 7%, var(--bg-primary)));
+  padding: 0 0.78rem;
+  color: color-mix(in oklch, var(--ink-primary) 84%, var(--aurora-1));
+  font-size: 0.78rem;
+  font-weight: 820;
+  letter-spacing: 0;
+  box-shadow:
+    inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.38),
+    0 12px 24px -24px color-mix(in oklch, var(--aurora-1) 60%, black);
+}
+
+.global-pricing-header .global-pricing-sync-action:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--aurora-1) 42%, transparent);
+  background:
+    linear-gradient(180deg,
+      color-mix(in oklch, var(--aurora-1) 19%, var(--bg-raised)),
+      color-mix(in oklch, var(--aurora-3) 10%, var(--bg-primary)));
+  box-shadow:
+    inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.42),
+    0 16px 30px -24px color-mix(in oklch, var(--aurora-1) 70%, black);
+}
+
 .global-pricing-header .global-pricing-refresh-action:hover:not(:disabled) {
   border-color: transparent;
   background: transparent;
@@ -5965,6 +6259,7 @@ html[data-theme-transition] .codex-ambient-blob {
 }
 
 .global-pricing-header .global-pricing-refresh-action svg,
+.global-pricing-header .global-pricing-sync-action svg,
 .analytics-header .analytics-archive-action svg {
   transition:
     transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -5973,6 +6268,10 @@ html[data-theme-transition] .codex-ambient-blob {
 
 .global-pricing-header .global-pricing-refresh-action:hover:not(:disabled) svg {
   transform: rotate(135deg) scale(1.08);
+}
+
+.global-pricing-header .global-pricing-sync-action:hover:not(:disabled) svg {
+  transform: translateY(-1px) scale(1.05);
 }
 
 .analytics-header .analytics-archive-action {
@@ -6052,6 +6351,13 @@ html[data-theme-transition] .codex-ambient-blob {
     font-size: 0;
   }
 
+  .global-pricing-header.intelligence-header[data-has-actions='true'] .global-pricing-sync-action {
+    min-height: 1.95rem;
+    padding: 0 0.62rem;
+    border-radius: 0.85rem;
+    font-size: 0.72rem;
+  }
+
   .analytics-header.intelligence-header[data-has-actions='true'] .intelligence-segmented {
     flex: 1 1 auto;
     min-width: 0;
@@ -6068,6 +6374,7 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .global-pricing-header.intelligence-header[data-has-actions='true'] .global-pricing-refresh-action svg,
+  .global-pricing-header.intelligence-header[data-has-actions='true'] .global-pricing-sync-action svg,
 .analytics-header.intelligence-header[data-has-actions='true'] .analytics-archive-action svg {
     width: 1rem;
     height: 1rem;
@@ -6346,6 +6653,10 @@ html[data-theme-transition] .codex-ambient-blob {
     position: relative;
   }
 
+  .global-pricing-header.intelligence-header .intelligence-header-copy > .min-w-0 {
+    padding-right: 10.25rem;
+  }
+
   .global-pricing-header.intelligence-header[data-has-actions='true'] .intelligence-header-actions {
     position: absolute;
     top: 1rem;
@@ -6384,6 +6695,18 @@ html[data-theme-transition] .codex-ambient-blob {
     max-height: 3.25rem;
     line-height: 1.42;
     -webkit-line-clamp: 3;
+  }
+}
+
+@media (max-width: 420px) {
+  .global-pricing-header.intelligence-header .intelligence-header-copy > .min-w-0 {
+    padding-right: 0;
+    padding-top: 2.35rem;
+  }
+
+  .global-pricing-header.intelligence-header[data-has-actions='true'] .intelligence-header-actions {
+    left: 1rem;
+    right: auto;
   }
 }
 

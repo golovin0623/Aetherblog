@@ -498,7 +498,7 @@ class GlobalPricingService:
 
         Returns: (source, source_model_count, proposals)
         """
-        catalog = get_catalog(source)
+        catalog = get_catalog(source, force_reload=True)
         coverage_rows = await self.coverage(enabled_only=enabled_only)
 
         proposals: list[PricingSyncProposal] = []
@@ -564,7 +564,7 @@ class GlobalPricingService:
         已有全局价格的 model_id：仅在 ``overwrite_existing=True`` 时更新，
         且更新时保留操作员维护的 notes / display_name。
         """
-        catalog = get_catalog(source)
+        catalog = get_catalog(source, force_reload=True)
         coverage_rows = await self.coverage(enabled_only=enabled_only)
         selected = set(model_ids) if model_ids is not None else None
 
@@ -617,11 +617,20 @@ class GlobalPricingService:
                 display_name = existing["display_name"] if existing else cov.display_name
                 notes = existing["notes"] if existing else None
                 pricing = dict(existing["pricing"]) if existing else {}
-                pricing["currency"] = "USD"
             else:
                 display_name = cov.display_name
                 notes = None
-                pricing = {"currency": "USD"}
+                pricing = {}
+
+            pricing.update(
+                {
+                    "currency": "USD",
+                    "source": catalog.source,
+                    "sourceKey": entry.source_key,
+                }
+            )
+            if entry.mode:
+                pricing["mode"] = entry.mode
 
             await self.upsert(
                 model_id=cov.model_id,

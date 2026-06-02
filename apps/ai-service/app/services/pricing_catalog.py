@@ -3,12 +3,12 @@
 价格目录（pricing catalog）—— 自动价格同步的数据来源。
 
 业界中转站（NewAPI / one-api 等）最终都参照 BerriAI/litellm 维护的
-``model_prices_and_context_window.json`` 作为「绝对价基准」。本服务已把
-``litellm`` 列为依赖，运行时即可通过 ``litellm.model_cost`` 拿到这张表
-（~1000+ 模型，单位 USD/token），无需任何网络请求。
+``model_prices_and_context_window.json`` 作为「绝对价基准」。同步时优先拉取
+LiteLLM 主仓库最新 JSON；短时网络不可用时回退到本服务依赖的
+``litellm.model_cost`` 本地表，避免价格同步完全不可用。
 
 本模块只做两件事：
-1. 把 ``litellm.model_cost`` 归一化成 ``model_id -> CatalogEntry``（USD / 1M tokens）。
+1. 把 LiteLLM 价格表归一化成 ``model_id -> CatalogEntry``（USD / 1M tokens）。
 2. 提供「数据库 model_id → 目录条目」的匹配级联：精确 → 去供应商前缀 →
    去日期/版本后缀 → 大小写不敏感，对齐 NewAPI 同步时的归一约定。
 
@@ -17,10 +17,19 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
+import httpx
+
 TOKENS_PER_MILLION = 1_000_000
+LITELLM_MODEL_COST_URL = (
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
+    "model_prices_and_context_window.json"
+)
+
+logger = logging.getLogger("ai-service")
 
 # 去掉模型名尾部的日期 / 版本快照后缀：
 # -2024-08-06 / -20240806 / -240806 / -1106 / -0125 / -0613 / @001 / -latest / -preview
@@ -124,15 +133,9 @@ class PricingCatalog:
 _CATALOG_CACHE: dict[str, PricingCatalog] = {}
 
 
-def _load_litellm_entries() -> dict[str, CatalogEntry]:
-    try:
-        import litellm
-    except ImportError as exc:  # pragma: no cover - 依赖缺失才会触发
-        raise PricingCatalogUnavailable("litellm 未安装，无法加载内置价格表") from exc
-
-    raw = getattr(litellm, "model_cost", None)
+def _entries_from_litellm_map(raw: object) -> dict[str, CatalogEntry]:
     if not isinstance(raw, dict) or not raw:
-        raise PricingCatalogUnavailable("litellm.model_cost 不可用或为空")
+        raise PricingCatalogUnavailable("LiteLLM 价格表不可用或为空")
 
     entries: dict[str, CatalogEntry] = {}
     for key, spec in raw.items():
@@ -141,8 +144,12 @@ def _load_litellm_entries() -> dict[str, CatalogEntry]:
             continue
         input_per_1m = _per_1m(spec.get("input_cost_per_token"))
         output_per_1m = _per_1m(spec.get("output_cost_per_token"))
-        cached_per_1m = _per_1m(spec.get("cache_read_input_token_cost"))
-        if input_per_1m is None and output_per_1m is None:
+        cached_per_1m = _per_1m(
+            spec.get("cache_read_input_token_cost")
+            if spec.get("cache_read_input_token_cost") is not None
+            else spec.get("input_cost_per_token_cache_hit")
+        )
+        if input_per_1m is None and output_per_1m is None and cached_per_1m is None:
             continue
         mode = spec.get("mode")
         entries[key] = CatalogEntry(
@@ -153,19 +160,47 @@ def _load_litellm_entries() -> dict[str, CatalogEntry]:
             mode=mode if isinstance(mode, str) else None,
         )
     if not entries:
-        raise PricingCatalogUnavailable("litellm 价格表里没有可用的定价条目")
+        raise PricingCatalogUnavailable("LiteLLM 价格表里没有可用的定价条目")
     return entries
+
+
+def _load_litellm_remote_entries() -> dict[str, CatalogEntry]:
+    with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+        response = client.get(LITELLM_MODEL_COST_URL)
+        response.raise_for_status()
+        return _entries_from_litellm_map(response.json())
+
+
+def _load_litellm_local_entries() -> dict[str, CatalogEntry]:
+    try:
+        import litellm
+    except ImportError as exc:  # pragma: no cover - 依赖缺失才会触发
+        raise PricingCatalogUnavailable("litellm 未安装，无法加载内置价格表") from exc
+
+    return _entries_from_litellm_map(getattr(litellm, "model_cost", None))
+
+
+def _load_litellm_entries() -> tuple[dict[str, CatalogEntry], str]:
+    try:
+        return _load_litellm_remote_entries(), "litellm latest"
+    except Exception as exc:  # pragma: no cover - network fallback path
+        logger.warning(
+            "Failed to refresh LiteLLM pricing catalog, falling back to local model_cost",
+            extra={"data": {"error_class": type(exc).__name__}},
+        )
+    return _load_litellm_local_entries(), "litellm local"
 
 
 def get_catalog(source: str = "litellm", *, force_reload: bool = False) -> PricingCatalog:
     """加载（并缓存）指定数据源的价格目录。
 
-    目前只支持 ``litellm`` 内置表；该表导入后是静态的，故进程内缓存。
+    目前只支持 ``litellm``。默认优先使用远程最新表，失败才回退本地表。
     """
     if source != "litellm":
         raise PricingCatalogUnavailable(f"不支持的价格数据源: {source}")
     if not force_reload and source in _CATALOG_CACHE:
         return _CATALOG_CACHE[source]
-    catalog = PricingCatalog(_load_litellm_entries(), source=source)
+    entries, source_label = _load_litellm_entries()
+    catalog = PricingCatalog(entries, source=source_label)
     _CATALOG_CACHE[source] = catalog
     return catalog
