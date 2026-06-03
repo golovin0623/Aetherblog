@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -498,7 +499,9 @@ class GlobalPricingService:
 
         Returns: (source, source_model_count, proposals)
         """
-        catalog = get_catalog(source, force_reload=True)
+        # get_catalog(force_reload=True) 会发同步 HTTP 拉取 LiteLLM 远程价格表，
+        # 直接在 async 里调用会阻塞事件循环最长 ~8s；丢到线程池里跑。
+        catalog = await asyncio.to_thread(get_catalog, source, force_reload=True)
         coverage_rows = await self.coverage(enabled_only=enabled_only)
 
         proposals: list[PricingSyncProposal] = []
@@ -564,7 +567,8 @@ class GlobalPricingService:
         已有全局价格的 model_id：仅在 ``overwrite_existing=True`` 时更新，
         且更新时保留操作员维护的 notes / display_name。
         """
-        catalog = get_catalog(source, force_reload=True)
+        # 同 preview：force_reload 的同步网络 I/O 丢线程池，避免阻塞事件循环。
+        catalog = await asyncio.to_thread(get_catalog, source, force_reload=True)
         coverage_rows = await self.coverage(enabled_only=enabled_only)
         selected = set(model_ids) if model_ids is not None else None
 
@@ -617,10 +621,32 @@ class GlobalPricingService:
                 display_name = existing["display_name"] if existing else cov.display_name
                 notes = existing["notes"] if existing else None
                 pricing = dict(existing["pricing"]) if existing else {}
+                # 数据源未提供的子价（None）保留操作员现值，不要清零 —— 与
+                # _proposal_status 的「只比对数据源确有提供的字段」语义对齐。
+                # 否则缓存价独有（仅 cache_read_input_token_cost）的目录条目会把
+                # 操作员维护的 input/output 价格写成 None。
+                src_input = (
+                    entry.input_per_1m
+                    if entry.input_per_1m is not None
+                    else cov.global_input_per_1m
+                )
+                src_output = (
+                    entry.output_per_1m
+                    if entry.output_per_1m is not None
+                    else cov.global_output_per_1m
+                )
+                src_cached = (
+                    entry.cached_input_per_1m
+                    if entry.cached_input_per_1m is not None
+                    else cov.global_cached_input_per_1m
+                )
             else:
                 display_name = cov.display_name
                 notes = None
                 pricing = {}
+                src_input = entry.input_per_1m
+                src_output = entry.output_per_1m
+                src_cached = entry.cached_input_per_1m
 
             pricing.update(
                 {
@@ -636,9 +662,9 @@ class GlobalPricingService:
                 model_id=cov.model_id,
                 display_name=display_name,
                 currency="USD",
-                input_cost_per_1m=entry.input_per_1m,
-                output_cost_per_1m=entry.output_per_1m,
-                cached_input_cost_per_1m=entry.cached_input_per_1m,
+                input_cost_per_1m=src_input,
+                output_cost_per_1m=src_output,
+                cached_input_cost_per_1m=src_cached,
                 pricing=pricing,
                 notes=notes,
             )

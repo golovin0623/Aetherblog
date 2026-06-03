@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -28,6 +29,11 @@ LITELLM_MODEL_COST_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/"
     "model_prices_and_context_window.json"
 )
+# 远程拉取超时：连接 3s 内必须握上手（不通的环境快速失败），整体 8s 封顶。
+_REMOTE_TIMEOUT = httpx.Timeout(8.0, connect=3.0)
+# 远程失败后的「负缓存」窗口：TTL 内不再重复发起远程探测，直接回退本地表，
+# 避免离线环境下每次 preview/apply 都白等一次连接超时。
+_REMOTE_FAILURE_TTL_SECONDS = 300.0
 
 logger = logging.getLogger("ai-service")
 
@@ -165,7 +171,7 @@ def _entries_from_litellm_map(raw: object) -> dict[str, CatalogEntry]:
 
 
 def _load_litellm_remote_entries() -> dict[str, CatalogEntry]:
-    with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+    with httpx.Client(timeout=_REMOTE_TIMEOUT, follow_redirects=True) as client:
         response = client.get(LITELLM_MODEL_COST_URL)
         response.raise_for_status()
         return _entries_from_litellm_map(response.json())
@@ -180,10 +186,21 @@ def _load_litellm_local_entries() -> dict[str, CatalogEntry]:
     return _entries_from_litellm_map(getattr(litellm, "model_cost", None))
 
 
+_remote_failure_until: float = 0.0
+
+
 def _load_litellm_entries() -> tuple[dict[str, CatalogEntry], str]:
+    global _remote_failure_until
+    now = time.monotonic()
+    # 上一次远程拉取刚失败且还在 TTL 内：不再发起远程探测，直接用本地表。
+    if now < _remote_failure_until:
+        return _load_litellm_local_entries(), "litellm local"
     try:
-        return _load_litellm_remote_entries(), "litellm latest"
+        entries = _load_litellm_remote_entries()
+        _remote_failure_until = 0.0  # 远程恢复，清掉负缓存。
+        return entries, "litellm latest"
     except Exception as exc:  # pragma: no cover - network fallback path
+        _remote_failure_until = now + _REMOTE_FAILURE_TTL_SECONDS
         logger.warning(
             "Failed to refresh LiteLLM pricing catalog, falling back to local model_cost",
             extra={"data": {"error_class": type(exc).__name__}},
