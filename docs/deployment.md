@@ -306,20 +306,27 @@ root 用户下的 SSH 测试成功不代表 `deploy-webhook.service` 能拉代�
 
 操作步骤：
 ```bash
-# 1) .env 加上：
-echo 'DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375' >> .env
+# 1) 编辑 .env，确保存在下面两行。COMPOSE_PROFILES 是持久开关，避免
+#    webhook / 普通 docker compose up -d 只注入 URL，却跳过 profile 服务。
+COMPOSE_PROFILES=with-monitor
+DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375
 
 # 2) 用 with-monitor profile 启动（不会影响默认 profile 已运行的服务，
 #    docker-socket-proxy 只是新增一个容器加入 aetherblog-network）：
 docker-compose -f docker-compose.prod.yml --profile with-monitor up -d
 ```
 
+若后台报 `lookup docker-socket-proxy ... no such host`，说明 backend 已拿到
+`DOCKER_SOCKET_PROXY_URL`，但 `docker-socket-proxy` profile 服务没有启动或不在
+同一个 compose 网络中。执行上面的第 2 步，或确认 `.env` 已设置
+`COMPOSE_PROFILES=with-monitor` 后重新部署 / 重建 backend。
+
 完成后 admin "容器监控" 面板应能拉到 backend / blog / postgres / redis / ai-service 等容器的 CPU / 内存实时指标。
 
 **安全约束**（不要轻易绕过）：
 - 永远不要把 `/var/run/docker.sock` 直接 bind-mount 到 `backend` 容器；
 - 永远不要把容器 UID 加回宿主 `docker` 组（`group_add: docker`）；
-- proxy 容器自身仅持 docker.sock 的 `:ro` 挂载，且 `read_only: true` + `cap_drop: ALL` 加固，被攻破时仍受 API 白名单保护。
+- proxy 容器自身仅持 docker.sock 的 `:ro` 挂载，且 `cap_drop: ALL` + `no-new-privileges` 加固。注意 `tecnativa/docker-socket-proxy` 启动脚本需要读取 `/usr/local/etc/haproxy/haproxy.cfg.template` 并生成 `haproxy.cfg`，因此该服务不能使用 `read_only: true`；安全边界主要依赖 Docker API 白名单、capability 剥离、backend 不直挂 socket，以及不挂载任何宿主目录。
 
 ---
 

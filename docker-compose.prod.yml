@@ -202,7 +202,6 @@ services:
       - CHOWN
       - SETUID
       - SETGID
-    read_only: true
     tmpfs:
       - /run:rw,size=4M,mode=0755
       - /tmp:rw,size=4M,mode=1777
