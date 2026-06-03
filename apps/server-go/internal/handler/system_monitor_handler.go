@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -189,10 +188,10 @@ func (h *SystemMonitorHandler) GetLogs(c echo.Context) error {
 	if err != nil {
 		return response.Fail(c, err.Error())
 	}
-	// 将 JSON 格式的日志行转换为前端日志查看器可直接展示的可读文本格式
-	for i, line := range result.Lines {
-		result.Lines[i] = formatLogLine(line)
-	}
+	// 原样回传日志行（JSON 或控制台文本）。结构化解析、ANSI 色码还原与两种展示
+	// 模式（优化 / 原始）统一交由前端 RealtimeLogViewer 处理 —— 服务端不再做
+	// 有损预格式化，前端才能拿到 caller / latency_ms / 自定义字段做富渲染，
+	// 并在「原始」模式忠实还原终端配色（对齐 CLI Proxy API 的观感）。
 	return response.OK(c, result)
 }
 
@@ -562,53 +561,6 @@ func measureLatency(fn func() error) int64 {
 		return -1
 	}
 	return time.Since(start).Milliseconds()
-}
-
-// formatLogLine 将 JSON 格式的日志行转换为统一的可读文本格式：
-//
-//	[模块名称    ] 时间戳           级别  链路ID   日志内容
-//
-// 示例：[backend   ] 2026-03-29 16:12:00 INFO  d171f7b3 GET /api/v1/admin/posts → 200 (12ms)
-// 若输入不是合法 JSON，则原样返回。
-func formatLogLine(line string) string {
-	var entry map[string]any
-	if json.Unmarshal([]byte(line), &entry) != nil {
-		return line // 非 JSON 格式，原样返回
-	}
-
-	svc := fmt.Sprint(entry["service"])
-	level := strings.ToUpper(fmt.Sprint(entry["level"]))
-	msg := fmt.Sprint(entry["message"])
-	traceId, _ := entry["traceId"].(string)
-	// traceId 为空时显示占位符，过长时截取前 8 位
-	if traceId == "" {
-		traceId = "--------"
-	} else if len(traceId) > 8 {
-		traceId = traceId[:8]
-	}
-
-	// 解析时间戳：支持毫秒时间戳（数字）和 RFC3339 字符串两种格式
-	ts := ""
-	if t, ok := entry["time"].(float64); ok {
-		ts = time.UnixMilli(int64(t)).Format("2006-01-02 15:04:05")
-	} else if t, ok := entry["timestamp"].(string); ok {
-		if parsed, err := time.Parse(time.RFC3339Nano, t); err == nil {
-			ts = parsed.Format("2006-01-02 15:04:05")
-		} else {
-			ts = t
-		}
-	}
-
-	// 构建日志正文：HTTP 请求日志单独格式化，包含方法/路径/状态码/延迟
-	body := msg
-	if method, ok := entry["method"].(string); ok {
-		path, _ := entry["path"].(string)
-		status, _ := entry["status"].(float64)
-		latency, _ := entry["latency_ms"].(float64)
-		body = fmt.Sprintf("%s %s → %d (%dms)", method, path, int(status), int(latency))
-	}
-
-	return fmt.Sprintf("[%-10s] %s %-5s %s %s", svc, ts, level, traceId, body)
 }
 
 // dirSizeAndCount 递归计算指定目录下所有文件的总大小（字节）和文件数量。
