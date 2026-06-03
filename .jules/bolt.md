@@ -1,0 +1,3 @@
+## 2025-03-09 - Go Backend Concurrent Query Aggregation
+**Learning:** When an endpoint like `GetDashboard` needs to execute many (e.g., 10) independent aggregate queries (like `COUNT(*)` or `SUM()`) against a PostgreSQL database, executing them sequentially leads to N sequential network roundtrips, significantly inflating latency. Go's concurrency primitives make parallelizing these trivial and highly effective.
+**Action:** Always identify independent read-only database queries in Go handlers/repositories and run them concurrently using `sync.WaitGroup` and a buffered error channel (or `golang.org/x/sync/errgroup`) to bound the total latency to the slowest query rather than the sum of all queries.

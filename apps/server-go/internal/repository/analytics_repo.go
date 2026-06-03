@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -119,65 +120,108 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 	today := time.Now().Format("2006-01-02")
 
 	var d DashboardData
+	var wg sync.WaitGroup
+	errCh := make(chan error, 10)
+
+	wg.Add(10)
 
 	// 统计已发布且未删除的文章数
-	if err := r.db.GetContext(ctx, &d.PostCount,
-		`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.PostCount,
+			`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计已审核通过的评论数
-	if err := r.db.GetContext(ctx, &d.CommentCount,
-		`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.CommentCount,
+			`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计所有未删除文章的浏览量总和
-	if err := r.db.GetContext(ctx, &d.ViewTotal,
-		`SELECT COALESCE(SUM(view_count), 0) FROM posts WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.ViewTotal,
+			`SELECT COALESCE(SUM(view_count), 0) FROM posts WHERE deleted = false`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计今日非机器人访客数（按创建日期过滤）
-	if err := r.db.GetContext(ctx, &d.TodayVisits,
-		`SELECT COUNT(*) FROM visit_records WHERE is_bot = false AND DATE(created_at) = $1`, today); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.TodayVisits,
+			`SELECT COUNT(*) FROM visit_records WHERE is_bot = false AND DATE(created_at) = $1`, today); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计未删除媒体文件数
-	if err := r.db.GetContext(ctx, &d.MediaCount,
-		`SELECT COUNT(*) FROM media_files WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.MediaCount,
+			`SELECT COUNT(*) FROM media_files WHERE deleted = false`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计未删除媒体文件的存储总大小
-	if err := r.db.GetContext(ctx, &d.MediaSize,
-		`SELECT COALESCE(SUM(file_size), 0) FROM media_files WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.MediaSize,
+			`SELECT COALESCE(SUM(file_size), 0) FROM media_files WHERE deleted = false`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计分类总数
-	if err := r.db.GetContext(ctx, &d.CategoryCount,
-		`SELECT COUNT(*) FROM categories`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.CategoryCount,
+			`SELECT COUNT(*) FROM categories`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计标签总数
-	if err := r.db.GetContext(ctx, &d.TagCount,
-		`SELECT COUNT(*) FROM tags`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.TagCount,
+			`SELECT COUNT(*) FROM tags`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计所有未删除文章的总字数
-	if err := r.db.GetContext(ctx, &d.TotalWords,
-		`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.TotalWords,
+			`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false`); err != nil {
+			errCh <- err
+		}
+	}()
 
 	// 统计历史累计独立访客数（排除机器人，基于 visitor_hash 去重）
-	if err := r.db.GetContext(ctx, &d.UniqueVisitors,
-		`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false`); err != nil {
-		return nil, err
+	go func() {
+		defer wg.Done()
+		if err := r.db.GetContext(ctx, &d.UniqueVisitors,
+			`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false`); err != nil {
+			errCh <- err
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &d, nil
