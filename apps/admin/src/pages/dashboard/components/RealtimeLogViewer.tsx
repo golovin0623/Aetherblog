@@ -1321,7 +1321,7 @@ export function RealtimeLogViewer({
               const lvlStyle = entry.level ? LEVEL_STYLES[entry.level] : null;
               const isHttp = Boolean(entry.method && entry.path && entry.status !== null);
               // 多服务聚合（ALL）下才展示服务来源 chip，单服务视图冗余
-              const showService = Boolean(entry.service && filterLevel === 'ALL');
+              const showService = Boolean(entry.service && !containerId);
               // HTTP 行的 message 默认是 "request"，与方法/路径重复，不再赘述
               const httpNote = entry.message && entry.message !== 'request' ? entry.message : null;
 
