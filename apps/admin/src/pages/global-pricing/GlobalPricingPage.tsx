@@ -64,7 +64,7 @@ function formatPrice(value: number | null | undefined, currency = 'USD'): string
 function CoverageBadge({ row }: { row: GlobalPricingCoverageRow }) {
   if (!row.has_global) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
+      <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
         <XCircle className="w-3 h-3" />
         未配置
       </span>
@@ -72,14 +72,14 @@ function CoverageBadge({ row }: { row: GlobalPricingCoverageRow }) {
   }
   if (row.out_of_sync_count === 0 && row.missing_count === 0) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500">
+      <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500">
         <CheckCircle2 className="w-3 h-3" />
         全部同步
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs text-orange-500">
+    <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs text-orange-500">
       <AlertCircle className="w-3 h-3" />
       {row.out_of_sync_count + row.missing_count} 行待同步
     </span>
@@ -208,33 +208,21 @@ export default function GlobalPricingPage() {
             : `未配置 ${stats.missing} · 脱锚 ${stats.outOfSync}`
         }
         actions={
-          <div className="flex items-center gap-2">
-            <motion.button
-              onClick={() => setSyncDialogOpen(true)}
-              title="从 LiteLLM 内置价格表自动同步"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="intelligence-action-button global-pricing-sync-action inline-flex items-center gap-1.5 px-3"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-medium">同步价格</span>
-            </motion.button>
-            <motion.button
-              onClick={handleRefresh}
-              aria-label="刷新全局模型价格"
-              aria-busy={isRefreshing}
-              data-refreshing={isRefreshing ? 'true' : 'false'}
-              title="刷新全局模型价格"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="intelligence-action-button global-pricing-refresh-action"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
-              />
-              <span className="sr-only">刷新</span>
-            </motion.button>
-          </div>
+          <motion.button
+            onClick={handleRefresh}
+            aria-label="刷新全局模型价格"
+            aria-busy={isRefreshing}
+            data-refreshing={isRefreshing ? 'true' : 'false'}
+            title="刷新全局模型价格"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="intelligence-action-button global-pricing-refresh-action"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+            />
+            <span className="sr-only">刷新</span>
+          </motion.button>
         }
       />
 
@@ -282,6 +270,16 @@ export default function GlobalPricingPage() {
             ariaLabel="价格配置筛选"
             className="global-pricing-filter"
           />
+          <motion.button
+            onClick={() => setSyncDialogOpen(true)}
+            title="从 LiteLLM 最新价格表同步"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="global-pricing-toolbar-sync-action"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>同步价格</span>
+          </motion.button>
         </div>
 
         <div className="global-pricing-table-wrap">
@@ -292,7 +290,7 @@ export default function GlobalPricingPage() {
               <div className="text-sm">没有符合条件的模型</div>
             </div>
           ) : (
-            <table className="global-pricing-table tnum w-full min-w-[980px] text-sm">
+            <table className="global-pricing-table tnum w-full min-w-[1400px] text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="text-left text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
                   <th className="font-medium">Model ID</th>

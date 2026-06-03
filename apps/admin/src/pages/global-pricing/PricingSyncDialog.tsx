@@ -1,4 +1,4 @@
-// 从价格数据源（LiteLLM 内置表）自动同步价格的弹窗
+// 从价格数据源（LiteLLM 最新价格表）自动同步价格的弹窗
 // ref: §5.1 - AI Service / 全局价格管理 / 自动同步
 
 import { useEffect, useMemo, useState } from 'react';
@@ -102,8 +102,7 @@ export function PricingSyncDialog({ onClose }: Props) {
     runPreview(next);
   };
 
-  const isSelectable = (p: PricingSyncProposal) =>
-    p.status === 'new' || p.status === 'update';
+  const isSelectable = (p: PricingSyncProposal) => p.will_apply;
 
   const selectableIds = useMemo(
     () => proposals.filter(isSelectable).map((p) => p.model_id),
@@ -113,6 +112,8 @@ export function PricingSyncDialog({ onClose }: Props) {
     selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
 
   const toggleOne = (modelId: string) => {
+    const proposal = proposals.find((p) => p.model_id === modelId);
+    if (!proposal || !isSelectable(proposal)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(modelId)) next.delete(modelId);
@@ -147,41 +148,43 @@ export function PricingSyncDialog({ onClose }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
+      className="global-pricing-sync-overlay fixed inset-0 z-[55] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+        initial={{ scale: 0.96, y: 18 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 18 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-4xl max-h-[88vh] sm:max-h-[90vh] flex flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
+        className="global-pricing-sync-dialog w-full border shadow-2xl sm:max-w-4xl"
       >
-        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--text-primary)]">
-              <Sparkles className="w-5 h-5" />
-              从 LiteLLM 同步价格
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+        <div className="global-pricing-sync-header">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[var(--aurora-1)]" />
+              <h2 className="truncate text-lg font-semibold text-[var(--text-primary)]">
+                从 LiteLLM 同步价格
+              </h2>
+            </div>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
               {preview
                 ? `数据源 ${preview.source} · ${preview.source_model_count} 条定价 · 命中 ${preview.matched_count}/${preview.total_candidates} 个 model_id`
-                : '正在加载内置价格目录…'}
+                : '正在加载最新价格目录…'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="global-pricing-sync-close"
+            aria-label="关闭 LiteLLM 价格同步"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-5 pb-3 space-y-3">
-          <label className="flex items-start gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+        <div className="global-pricing-sync-options">
+          <label className="global-pricing-sync-check">
             <input
               type="checkbox"
-              className="mt-0.5"
               checked={overwriteExisting}
               disabled={isLoadingPreview || isApplying}
               onChange={(e) => handleToggleOverwrite(e.target.checked)}
@@ -195,7 +198,7 @@ export function PricingSyncDialog({ onClose }: Props) {
           </label>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-5">
+        <div className="global-pricing-sync-table-wrap">
           {isLoadingPreview ? (
             <div className="flex items-center justify-center h-48 gap-2 text-[var(--text-muted)] text-sm">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -206,10 +209,10 @@ export function PricingSyncDialog({ onClose }: Props) {
               没有可同步的启用模型
             </div>
           ) : (
-            <table className="w-full text-sm tnum">
-              <thead className="sticky top-0 z-10 bg-[var(--bg-primary)]">
-                <tr className="text-left text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] border-b border-[var(--border-default)]">
-                  <th className="py-2 pr-2 font-medium">
+            <table className="global-pricing-sync-table tnum">
+              <thead>
+                <tr>
+                  <th>
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -218,11 +221,11 @@ export function PricingSyncDialog({ onClose }: Props) {
                       aria-label="全选可同步项"
                     />
                   </th>
-                  <th className="py-2 pr-2 font-medium">Model ID</th>
-                  <th className="py-2 px-2 font-medium">状态</th>
-                  <th className="py-2 px-2 font-medium text-right">输入 / 1M</th>
-                  <th className="py-2 px-2 font-medium text-right">输出 / 1M</th>
-                  <th className="py-2 pl-2 font-medium text-right">缓存 / 1M</th>
+                  <th>Model ID</th>
+                  <th>状态</th>
+                  <th>输入 / 1M</th>
+                  <th>输出 / 1M</th>
+                  <th>缓存 / 1M</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,11 +233,8 @@ export function PricingSyncDialog({ onClose }: Props) {
                   const selectable = isSelectable(p);
                   const meta = STATUS_META[p.status];
                   return (
-                    <tr
-                      key={p.model_id}
-                      className="border-b border-[var(--border-subtle)] last:border-0"
-                    >
-                      <td className="py-2 pr-2 align-top">
+                    <tr key={p.model_id}>
+                      <td>
                         <input
                           type="checkbox"
                           checked={selected.has(p.model_id)}
@@ -242,24 +242,22 @@ export function PricingSyncDialog({ onClose }: Props) {
                           onChange={() => toggleOne(p.model_id)}
                         />
                       </td>
-                      <td className="py-2 pr-2 align-top">
-                        <div className="font-mono text-[var(--text-primary)] break-all">
-                          {p.model_id}
+                      <td>
+                        <div className="global-pricing-sync-model">
+                          <span>{p.model_id}</span>
+                          {p.matched_key && p.matched_key !== p.model_id && (
+                            <small>{p.matched_key}</small>
+                          )}
                         </div>
-                        {p.matched_key && p.matched_key !== p.model_id && (
-                          <div className="text-[10px] text-[var(--text-muted)] mt-0.5 font-mono break-all">
-                            ← {p.matched_key}
-                          </div>
-                        )}
                       </td>
-                      <td className="py-2 px-2 align-top">
+                      <td>
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ${meta.className}`}
+                          className={`global-pricing-status-badge inline-flex items-center rounded-full px-2 py-1 text-xs ${meta.className}`}
                         >
                           {meta.label}
                         </span>
                       </td>
-                      <td className="py-2 px-2 align-top text-right font-mono text-[var(--text-primary)]">
+                      <td>
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_input_per_1m)}
@@ -271,7 +269,7 @@ export function PricingSyncDialog({ onClose }: Props) {
                             </div>
                           )}
                       </td>
-                      <td className="py-2 px-2 align-top text-right font-mono text-[var(--text-primary)]">
+                      <td>
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_output_per_1m)}
@@ -283,7 +281,7 @@ export function PricingSyncDialog({ onClose }: Props) {
                             </div>
                           )}
                       </td>
-                      <td className="py-2 pl-2 align-top text-right font-mono text-[var(--text-primary)]">
+                      <td>
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_cached_input_per_1m)}
@@ -296,7 +294,7 @@ export function PricingSyncDialog({ onClose }: Props) {
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 p-5 border-t border-[var(--border-default)]">
+        <div className="global-pricing-sync-footer">
           <div className="text-xs text-[var(--text-muted)]">
             已选 {selected.size} 项
             {preview && preview.matched_count < preview.total_candidates && (
@@ -310,7 +308,7 @@ export function PricingSyncDialog({ onClose }: Props) {
               onClick={onClose}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
+              className="global-pricing-sync-secondary"
             >
               取消
             </motion.button>
@@ -319,7 +317,7 @@ export function PricingSyncDialog({ onClose }: Props) {
               disabled={isApplying || isLoadingPreview || selected.size === 0}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+              className="global-pricing-sync-primary"
             >
               {isApplying && <Loader2 className="w-4 h-4 animate-spin" />}
               应用所选（{selected.size}）
