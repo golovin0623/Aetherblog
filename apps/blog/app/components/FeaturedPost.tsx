@@ -21,6 +21,33 @@ interface FeaturedPostProps {
   };
 }
 
+const SUMMARY_PREVIEW_MAX_LENGTH = 500;
+
+function stripMarkdownForSummary(markdown: string) {
+  return markdown
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[^\n]*\n?|\n?```/g, ' '))
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^(\s*>+\s*)+/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateSummary(text: string) {
+  return text.length > SUMMARY_PREVIEW_MAX_LENGTH
+    ? `${text.slice(0, SUMMARY_PREVIEW_MAX_LENGTH).trimEnd()}...`
+    : text;
+}
+
 const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const router = useRouter();
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
@@ -34,9 +61,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
       return post.summary;
     }
     if (post.contentPreview) {
-      return post.contentPreview.length > 500
-        ? `${post.contentPreview.slice(0, 500)}...`
-        : post.contentPreview;
+      return truncateSummary(stripMarkdownForSummary(post.contentPreview));
     }
     return '暂无摘要';
   })();

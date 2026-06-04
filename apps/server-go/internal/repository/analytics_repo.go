@@ -120,35 +120,39 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 	today := time.Now().Format("2006-01-02")
 
 	var (
-		postCount      int64
+		postStats struct {
+			PostCount  int64 `db:"post_count"`
+			ViewTotal  int64 `db:"view_total"`
+			TotalWords int64 `db:"total_words"`
+		}
+		mediaStats struct {
+			MediaCount int64 `db:"media_count"`
+			MediaSize  int64 `db:"media_size"`
+		}
 		commentCount   int64
-		viewTotal      int64
 		todayVisits    int64
-		mediaCount     int64
-		mediaSize      int64
 		categoryCount  int64
 		tagCount       int64
-		totalWords     int64
 		uniqueVisitors int64
 	)
 
-	// 统计已发布且未删除的文章数
 	g, queryCtx := errgroup.WithContext(ctx)
+
+	// posts 表的全局统计可在一次扫描内完成，避免同表多次并发查询挤占连接池。
 	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &postCount,
-			`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'`)
+		return r.db.GetContext(queryCtx, &postStats,
+			`SELECT
+			    COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS post_count,
+			    COALESCE(SUM(view_count), 0) AS view_total,
+			    COALESCE(SUM(word_count), 0) AS total_words
+			 FROM posts
+			 WHERE deleted = false`)
 	})
 
 	// 统计已审核通过的评论数
 	g.Go(func() error {
 		return r.db.GetContext(queryCtx, &commentCount,
 			`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'`)
-	})
-
-	// 统计所有未删除文章的浏览量总和
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &viewTotal,
-			`SELECT COALESCE(SUM(view_count), 0) FROM posts WHERE deleted = false`)
 	})
 
 	// 统计今日非机器人访客数（按创建日期过滤）
@@ -160,16 +164,14 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 			   AND created_at < $1::date + INTERVAL '1 day'`, today)
 	})
 
-	// 统计未删除媒体文件数
+	// media_files 表的数量和容量统计共享同一过滤条件，合并为一次查询。
 	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &mediaCount,
-			`SELECT COUNT(*) FROM media_files WHERE deleted = false`)
-	})
-
-	// 统计未删除媒体文件的存储总大小
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &mediaSize,
-			`SELECT COALESCE(SUM(file_size), 0) FROM media_files WHERE deleted = false`)
+		return r.db.GetContext(queryCtx, &mediaStats,
+			`SELECT
+			    COUNT(*) AS media_count,
+			    COALESCE(SUM(file_size), 0) AS media_size
+			 FROM media_files
+			 WHERE deleted = false`)
 	})
 
 	// 统计分类总数
@@ -184,12 +186,6 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 			`SELECT COUNT(*) FROM tags`)
 	})
 
-	// 统计所有未删除文章的总字数
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &totalWords,
-			`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false`)
-	})
-
 	// 统计历史累计独立访客数（排除机器人，基于 visitor_hash 去重）
 	g.Go(func() error {
 		return r.db.GetContext(queryCtx, &uniqueVisitors,
@@ -201,15 +197,15 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 	}
 
 	return &DashboardData{
-		PostCount:      postCount,
+		PostCount:      postStats.PostCount,
 		CommentCount:   commentCount,
-		ViewTotal:      viewTotal,
+		ViewTotal:      postStats.ViewTotal,
 		TodayVisits:    todayVisits,
-		MediaCount:     mediaCount,
-		MediaSize:      mediaSize,
+		MediaCount:     mediaStats.MediaCount,
+		MediaSize:      mediaStats.MediaSize,
 		CategoryCount:  categoryCount,
 		TagCount:       tagCount,
-		TotalWords:     totalWords,
+		TotalWords:     postStats.TotalWords,
 		UniqueVisitors: uniqueVisitors,
 	}, nil
 }
@@ -301,92 +297,87 @@ type TrendsData struct {
 // 使用 date_trunc('month', NOW()) 精确划定月份边界。
 func (r *AnalyticsRepo) GetTrends(ctx context.Context) (*TrendsData, error) {
 	var (
-		postsThisMonth    int64
-		postsLastMonth    int64
-		commentsThisMonth int64
-		commentsLastMonth int64
-		viewsThisMonth    int64
-		viewsLastMonth    int64
-		visitorsThisMonth int64
-		visitorsLastMonth int64
-		wordsThisMonth    int64
-		wordsLastMonth    int64
+		postStats struct {
+			PostsThisMonth int64 `db:"posts_this_month"`
+			PostsLastMonth int64 `db:"posts_last_month"`
+			WordsThisMonth int64 `db:"words_this_month"`
+			WordsLastMonth int64 `db:"words_last_month"`
+		}
+		commentStats struct {
+			CommentsThisMonth int64 `db:"comments_this_month"`
+			CommentsLastMonth int64 `db:"comments_last_month"`
+		}
+		visitStats struct {
+			ViewsThisMonth    int64 `db:"views_this_month"`
+			ViewsLastMonth    int64 `db:"views_last_month"`
+			VisitorsThisMonth int64 `db:"visitors_this_month"`
+			VisitorsLastMonth int64 `db:"visitors_last_month"`
+		}
 	)
 
-	// 本月新发布文章数
 	g, queryCtx := errgroup.WithContext(ctx)
+
+	// posts 表趋势指标共享状态和时间过滤，使用条件聚合减少往返。
 	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &postsThisMonth,
-			`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-			 AND published_at >= date_trunc('month', NOW())`)
+		return r.db.GetContext(queryCtx, &postStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW())
+			    ) AS posts_this_month,
+			    COUNT(*) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND published_at < date_trunc('month', NOW())
+			    ) AS posts_last_month,
+			    COALESCE(SUM(word_count) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW())
+			    ), 0) AS words_this_month,
+			    COALESCE(SUM(word_count) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND published_at < date_trunc('month', NOW())
+			    ), 0) AS words_last_month
+			 FROM posts
+			 WHERE deleted = false
+			   AND status = 'PUBLISHED'
+			   AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
 	})
 
-	// 上月新发布文章数（上月月初 ≤ published_at < 本月月初）
+	// comments 表趋势指标共享审核状态和时间过滤。
 	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &postsLastMonth,
-			`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-			 AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-			 AND published_at < date_trunc('month', NOW())`)
+		return r.db.GetContext(queryCtx, &commentStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS comments_this_month,
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS comments_last_month
+			 FROM comments
+			 WHERE status = 'APPROVED'
+			   AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
 	})
 
-	// 本月已审核评论数
+	// visit_records 表趋势指标共享机器人过滤和时间范围。
 	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &commentsThisMonth,
-			`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'
-			 AND created_at >= date_trunc('month', NOW())`)
-	})
-
-	// 上月已审核评论数
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &commentsLastMonth,
-			`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'
-			 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-			 AND created_at < date_trunc('month', NOW())`)
-	})
-
-	// 本月访问量（来自 visit_records，排除机器人）
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &viewsThisMonth,
-			`SELECT COUNT(*) FROM visit_records WHERE is_bot = false
-			 AND created_at >= date_trunc('month', NOW())`)
-	})
-
-	// 上月访问量
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &viewsLastMonth,
-			`SELECT COUNT(*) FROM visit_records WHERE is_bot = false
-			 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-			 AND created_at < date_trunc('month', NOW())`)
-	})
-
-	// 本月独立访客数（基于 visitor_hash 去重）
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &visitorsThisMonth,
-			`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false
-			 AND created_at >= date_trunc('month', NOW())`)
-	})
-
-	// 上月独立访客数
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &visitorsLastMonth,
-			`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false
-			 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-			 AND created_at < date_trunc('month', NOW())`)
-	})
-
-	// 本月发布文章总字数
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &wordsThisMonth,
-			`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-			 AND published_at >= date_trunc('month', NOW())`)
-	})
-
-	// 上月发布文章总字数
-	g.Go(func() error {
-		return r.db.GetContext(queryCtx, &wordsLastMonth,
-			`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-			 AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-			 AND published_at < date_trunc('month', NOW())`)
+		return r.db.GetContext(queryCtx, &visitStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS views_this_month,
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS views_last_month,
+			    COUNT(DISTINCT visitor_hash) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS visitors_this_month,
+			    COUNT(DISTINCT visitor_hash) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS visitors_last_month
+			 FROM visit_records
+			 WHERE is_bot = false
+			   AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -394,16 +385,16 @@ func (r *AnalyticsRepo) GetTrends(ctx context.Context) (*TrendsData, error) {
 	}
 
 	return &TrendsData{
-		PostsThisMonth:    postsThisMonth,
-		PostsLastMonth:    postsLastMonth,
-		CommentsThisMonth: commentsThisMonth,
-		CommentsLastMonth: commentsLastMonth,
-		ViewsThisMonth:    viewsThisMonth,
-		ViewsLastMonth:    viewsLastMonth,
-		VisitorsThisMonth: visitorsThisMonth,
-		VisitorsLastMonth: visitorsLastMonth,
-		WordsThisMonth:    wordsThisMonth,
-		WordsLastMonth:    wordsLastMonth,
+		PostsThisMonth:    postStats.PostsThisMonth,
+		PostsLastMonth:    postStats.PostsLastMonth,
+		CommentsThisMonth: commentStats.CommentsThisMonth,
+		CommentsLastMonth: commentStats.CommentsLastMonth,
+		ViewsThisMonth:    visitStats.ViewsThisMonth,
+		ViewsLastMonth:    visitStats.ViewsLastMonth,
+		VisitorsThisMonth: visitStats.VisitorsThisMonth,
+		VisitorsLastMonth: visitStats.VisitorsLastMonth,
+		WordsThisMonth:    postStats.WordsThisMonth,
+		WordsLastMonth:    postStats.WordsLastMonth,
 	}, nil
 }
 
