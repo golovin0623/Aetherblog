@@ -1,0 +1,4 @@
+## 2024-06-06 - Prevent Path Traversal and SSRF in Echo Proxy Handlers
+**Vulnerability:** Path extraction in Echo reverse proxy handlers (`AiHandler.ProxyProviders` and `SearchHandler.ProxyProfiles`) was improperly using `c.Request().URL.EscapedPath()` combined with `strings.TrimPrefix()`. This allows attackers to bypass WAFs or introduce routing inconsistencies via encoded slashes or traversal sequences.
+**Learning:** `EscapedPath()` does not fully clean or decode URI representations when custom extraction is applied, which can conceal directory traversal (`..` or `%2F..`) from naive checks.
+**Prevention:** Always use `c.Param("*")` to securely extract wildcard sub-paths in Echo 4.x. Because `c.Param("*")` correctly unescapes and strips leading slashes, conditionally prepend the slash, and pass the sub-path exactly as parsed to downstreams while validating against path traversal attempts.

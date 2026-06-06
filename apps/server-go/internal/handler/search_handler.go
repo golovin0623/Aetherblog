@@ -472,20 +472,30 @@ func (h *SearchHandler) EmbeddingStatus(c echo.Context) error {
 //   - profile CRUD（list / create / activate / deprecate / delete）走同步代理 DoSync
 //   - 唯一的流式端点 ``POST /{code}/reindex/stream`` 走 DoStream + line-by-line forward
 //     （借用 ai_handler 的 validateSSELine 白名单 + bufio.Scanner 实现，避免代码重复）
-//   - 路径透传保留 ``EscapedPath()``，与 ai_handler.ProxyProviders 一致防止
-//     `..` / `%2F` 注入
+//   - 路径提取使用 c.Param("*")，与 ai_handler.ProxyProviders 一致，防止
+//     手动 `EscapedPath()` 提取带来的路由绕过和 `..` / `%2F` 注入
 //
 // SSE 帧通过 nginx 时已在 ``/api/v1/admin/search`` location 配 ``proxy_buffering off``
 // + ``proxy_read_timeout 600s``，浏览器看到的延迟仅是 ai-service emit 间隔。
 func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
-	// 取 EscapedPath() 保留客户端原始编码
-	escapedFull := c.Request().URL.EscapedPath()
+	// 动态提取代理前缀
+	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
+
+	// 使用 c.Param("*") 提取子路径，保留原始编码
+	param := c.Param("*")
+	encodedSubPath := ""
+	if param != "" {
+		encodedSubPath = "/" + param
+	} else if strings.HasSuffix(c.Request().URL.EscapedPath(), "/") {
+		encodedSubPath = "/"
+	}
+
 	// AI service 的路由前缀已包含完整 ``/api/v1/admin/search/profiles``，
-	// 这里直接拿原始路径透传即可（escapedFull 已是 ``/api/v1/admin/search/profiles[/...]``）。
-	targetPath := escapedFull
+	// 这里需要完整的前缀加上子路径。
+	targetPath := proxyPrefix + encodedSubPath
 
 	// 多级解码尝试，发现 `..` 后整体拒绝（深度防御）
-	probe := targetPath
+	probe := encodedSubPath
 	for {
 		decoded, err := url.PathUnescape(probe)
 		if err != nil {
