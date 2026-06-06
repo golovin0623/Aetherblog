@@ -82,3 +82,16 @@ func TestBuildPostContentPreviewTruncatesByRune(t *testing.T) {
 		t.Fatalf("expected ellipsis suffix, got %q", *preview)
 	}
 }
+
+func TestBuildPostContentPreviewTrimsLeadingTitleSeparator(t *testing.T) {
+	content := "# 标题：正文开头"
+
+	preview := buildPostContentPreview("标题", &content)
+
+	if preview == nil {
+		t.Fatal("expected preview")
+	}
+	if got := *preview; got != "正文开头" {
+		t.Fatalf("preview = %q, want %q", got, "正文开头")
+	}
+}

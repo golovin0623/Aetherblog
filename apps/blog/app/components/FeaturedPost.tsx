@@ -36,7 +36,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
             ? post.contentPreview.slice(0, 500) + (post.contentPreview.length > 500 ? '...' : '')
             : '暂无摘要';
   }, [post.passwordRequired, post.summary, post.contentPreview]);
-  const previewContent = post.contentPreview?.trim() || post.summary?.trim() || '';
+  const previewContent = post.summary?.trim() || post.contentPreview?.trim() || '';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 点击交互元素时阻止导航

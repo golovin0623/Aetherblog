@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -89,6 +90,16 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 	path, err := safeUploadFilePath(h.baseDir, key)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件路径")
+	}
+	fileInfo, statErr := os.Stat(path)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return response.FailWith(c, response.NotFound, "文件不存在")
+		}
+		return response.FailWith(c, response.BadRequest, "无效的文件路径")
+	}
+	if fileInfo.IsDir() {
+		return response.FailWith(c, response.NotFound, "文件不存在")
 	}
 	c.Response().Header().Set("Cache-Control", immutableUploadCacheControl)
 	return c.File(path)

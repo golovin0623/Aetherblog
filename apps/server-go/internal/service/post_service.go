@@ -778,6 +778,7 @@ var (
 	markdownQuotePrefixRe = regexp.MustCompile(`(?m)^\s*>\s?`)
 	markdownStyleRe       = regexp.MustCompile(`[*_~]{1,3}`)
 	markdownWhitespaceRe  = regexp.MustCompile(`\s+`)
+	previewReplacer       = strings.NewReplacer("\u00a0", " ", "\r", " ", "\n", " ")
 )
 
 func buildPostContentPreview(title string, content *string) *string {
@@ -808,7 +809,7 @@ func trimLeadingPreviewTitle(title, preview string) string {
 	for _, separator := range []string{" ", "：", ":", "-", "—"} {
 		prefix := normalizedTitle + separator
 		if strings.HasPrefix(preview, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(preview, normalizedTitle))
+			return strings.TrimSpace(strings.TrimPrefix(preview, prefix))
 		}
 	}
 	if preview == normalizedTitle {
@@ -828,7 +829,7 @@ func stripMarkdownForPostPreview(markdown string) string {
 	text = markdownHeadingRe.ReplaceAllString(text, "")
 	text = markdownListPrefixRe.ReplaceAllString(text, "")
 	text = markdownQuotePrefixRe.ReplaceAllString(text, "")
-	text = strings.NewReplacer("\u00a0", " ", "\r", " ", "\n", " ").Replace(text)
+	text = previewReplacer.Replace(text)
 	text = markdownStyleRe.ReplaceAllString(text, "")
 	text = strings.ReplaceAll(text, "|", " ")
 	text = markdownWhitespaceRe.ReplaceAllString(text, " ")

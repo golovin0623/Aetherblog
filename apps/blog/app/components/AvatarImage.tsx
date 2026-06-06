@@ -45,16 +45,23 @@ export default function AvatarImage({
   className,
 }: AvatarImageProps) {
   const cachedImage = useCachedImage(src, { enabled: Boolean(src), preload: false });
-  const [status, setStatus] = useState<LoadStatus>(() => (cachedImage.isLoaded ? 'loaded' : 'loading'));
+  const cachedStatus: LoadStatus = cachedImage.isError
+    ? 'error'
+    : cachedImage.isLoaded
+      ? 'loaded'
+      : 'loading';
+  const [prevSrc, setPrevSrc] = useState(src);
+  const [status, setStatus] = useState<LoadStatus>(() => cachedStatus);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  useEffect(() => {
-    setStatus(cachedImage.isLoaded ? 'loaded' : 'loading');
-  }, [cachedImage.isLoaded, src]);
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setStatus(cachedStatus);
+  }
 
   useEffect(() => {
-    if (cachedImage.isError) setStatus('error');
-  }, [cachedImage.isError]);
+    setStatus(cachedStatus);
+  }, [cachedStatus, src]);
 
   // 探测缓存命中（onLoad 在 React 绑定事件前已触发的场景），避免骨架屏在
   // 已缓存图片上永久残留。

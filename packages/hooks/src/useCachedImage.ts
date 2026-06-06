@@ -143,18 +143,29 @@ export function useCachedImage(
   const enabled = options.enabled ?? true;
   const preload = options.preload ?? true;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const [snapshot, setSnapshot] = useState<CachedImageSnapshot>(() => getSnapshot(normalizedSrc));
+  const [prevSrc, setPrevSrc] = useState(normalizedSrc);
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+  const [snapshot, setSnapshot] = useState<CachedImageSnapshot>(() =>
+    normalizedSrc && enabled ? getSnapshot(normalizedSrc) : { status: 'idle' },
+  );
+
+  let currentSnapshot = snapshot;
+  if (normalizedSrc !== prevSrc || enabled !== prevEnabled) {
+    currentSnapshot = normalizedSrc && enabled ? getSnapshot(normalizedSrc) : { status: 'idle' };
+    setPrevSrc(normalizedSrc);
+    setPrevEnabled(enabled);
+    setSnapshot(currentSnapshot);
+  }
 
   useEffect(() => {
     if (!normalizedSrc || !enabled) {
-      setSnapshot({ status: 'idle' });
       return undefined;
     }
 
-    setSnapshot(getSnapshot(normalizedSrc));
     const unsubscribe = subscribe(normalizedSrc, () => {
       setSnapshot(getSnapshot(normalizedSrc));
     });
+    setSnapshot(getSnapshot(normalizedSrc));
 
     if (preload) {
       preloadCachedImage(normalizedSrc, { timeoutMs }).catch(() => undefined);
@@ -163,11 +174,11 @@ export function useCachedImage(
   }, [enabled, normalizedSrc, preload, timeoutMs]);
 
   return {
-    ...snapshot,
+    ...currentSnapshot,
     src: normalizedSrc,
-    isIdle: snapshot.status === 'idle',
-    isLoading: snapshot.status === 'loading',
-    isLoaded: snapshot.status === 'loaded',
-    isError: snapshot.status === 'error',
+    isIdle: currentSnapshot.status === 'idle',
+    isLoading: currentSnapshot.status === 'loading',
+    isLoaded: currentSnapshot.status === 'loaded',
+    isError: currentSnapshot.status === 'error',
   };
 }

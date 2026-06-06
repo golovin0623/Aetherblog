@@ -108,3 +108,26 @@ func TestUploadAccessHandlerServesLocalFileWithImmutableCache(t *testing.T) {
 		t.Fatalf("Cache-Control = %q, want %q", got, immutableUploadCacheControl)
 	}
 }
+
+func TestUploadAccessHandlerMissingLocalFileDoesNotSetImmutableCache(t *testing.T) {
+	base := t.TempDir()
+	key := "2026/06/missing.png"
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/uploads/"+key, nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("*")
+	ctx.SetParamValues(key)
+
+	handler := NewUploadAccessHandler(nil, base)
+	if err := handler.Serve(ctx); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("Cache-Control = %q, want empty header", got)
+	}
+}

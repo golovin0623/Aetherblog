@@ -1,4 +1,4 @@
-import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react';
+import type { ImgHTMLAttributes, ReactNode } from 'react';
 import {
   markCachedImageFailed,
   markCachedImageLoaded,
@@ -29,13 +29,8 @@ export function CachedAvatar({
     preload: false,
     timeoutMs,
   });
-  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    setFailed(false);
-  }, [normalizedSrc]);
-
-  if (!normalizedSrc || failed || cachedImage.isError) {
+  if (!normalizedSrc || cachedImage.isError) {
     return <>{fallback}</>;
   }
 
@@ -57,7 +52,6 @@ export function CachedAvatar({
         onLoad?.(event);
       }}
       onError={(event) => {
-        setFailed(true);
         markCachedImageFailed(normalizedSrc);
         onError?.(event);
       }}
