@@ -2,6 +2,11 @@
 
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
+import {
+  markCachedImageFailed,
+  markCachedImageLoaded,
+  useCachedImage,
+} from '@aetherblog/hooks';
 
 interface AvatarImageProps {
   src: string;
@@ -18,11 +23,6 @@ interface AvatarImageProps {
 }
 
 type LoadStatus = 'loading' | 'loaded' | 'error';
-
-// 本会话内已成功加载过的头像 URL。侧栏抽屉是懒挂载（createPortal 仅在打开时
-// 渲染），其 AvatarImage 每次打开都全新挂载；首页早已用同一 URL 加载并缓存好，
-// 此处据此把后续挂载直接初始化为 loaded —— 不再重放骨架屏/淡入，做到秒开。
-const loadedSrcCache = new Set<string>();
 
 /**
  * 头像图片：骨架屏 shimmer 占位 + 加载完成淡入。
@@ -44,32 +44,31 @@ export default function AvatarImage({
   ariaHidden,
   className,
 }: AvatarImageProps) {
-  const [prevSrc, setPrevSrc] = useState(src);
-  const [status, setStatus] = useState<LoadStatus>(() =>
-    loadedSrcCache.has(src) ? 'loaded' : 'loading'
-  );
+  const cachedImage = useCachedImage(src, { enabled: Boolean(src), preload: false });
+  const [status, setStatus] = useState<LoadStatus>(() => (cachedImage.isLoaded ? 'loaded' : 'loading'));
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // 派生状态：src 变化时在渲染期间同步重置 status，避免「先用旧 status 渲染新
-  // src（如已 loaded → opacity-100 显示未加载完的破图）再 effect 改回 loading」
-  // 的闪烁（React 官方「根据 prop 变化调整 state」模式）。
-  if (src !== prevSrc) {
-    setPrevSrc(src);
-    setStatus(loadedSrcCache.has(src) ? 'loaded' : 'loading');
-  }
+  useEffect(() => {
+    setStatus(cachedImage.isLoaded ? 'loaded' : 'loading');
+  }, [cachedImage.isLoaded, src]);
+
+  useEffect(() => {
+    if (cachedImage.isError) setStatus('error');
+  }, [cachedImage.isError]);
 
   // 探测缓存命中（onLoad 在 React 绑定事件前已触发的场景），避免骨架屏在
   // 已缓存图片上永久残留。
   useEffect(() => {
     const img = imgRef.current;
     if (img && img.complete && img.naturalWidth > 0) {
-      loadedSrcCache.add(src);
+      markCachedImageLoaded(src, img.naturalWidth || undefined, img.naturalHeight || undefined);
       setStatus('loaded');
     }
   }, [src]);
 
   const markLoaded = () => {
-    loadedSrcCache.add(src);
+    const image = imgRef.current;
+    markCachedImageLoaded(src, image?.naturalWidth || undefined, image?.naturalHeight || undefined);
     setStatus('loaded');
   };
 
@@ -93,7 +92,10 @@ export default function AvatarImage({
           draggable={draggable}
           aria-hidden={ariaHidden}
           onLoad={markLoaded}
-          onError={() => setStatus('error')}
+          onError={() => {
+            markCachedImageFailed(src);
+            setStatus('error');
+          }}
           className={`${className ?? ''} transition-opacity duration-500 ease-out ${
             status === 'loaded' ? 'opacity-100' : 'opacity-0'
           }`}

@@ -11,12 +11,12 @@ interface FeaturedPostProps {
   post: {
     title: string;
     slug: string;
-    summary?: string;
+    summary?: string | null;
     coverImage?: string;
     publishedAt: string;
     category?: { name: string; slug: string };
     tags?: { name: string; slug: string }[];
-    contentPreview?: string; // 可选的原始内容用于预览
+    contentPreview?: string | null; // 可选的原始内容用于预览
     passwordRequired?: boolean; // 新增：是否需要密码
   };
 }
@@ -33,9 +33,10 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
       : post.summary
         ? post.summary
         : post.contentPreview
-            ? post.contentPreview.slice(0, 500) + '...'
+            ? post.contentPreview.slice(0, 500) + (post.contentPreview.length > 500 ? '...' : '')
             : '暂无摘要';
   }, [post.passwordRequired, post.summary, post.contentPreview]);
+  const previewContent = post.contentPreview?.trim() || post.summary?.trim() || '';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 点击交互元素时阻止导航
@@ -235,7 +236,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                 ) : (
                     // 正常预览区域
                     <div className="p-8 h-full overflow-hidden">
-                        {post.contentPreview ? (
+                        {previewContent ? (
                             <div
                                 className="h-full text-sm antialiased"
                                 style={{
@@ -243,7 +244,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                                     WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)'
                                 }}
                             >
-                                <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
+                                <MiniMarkdownPreview content={previewContent} maxLength={2000} />
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">

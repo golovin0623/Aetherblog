@@ -8,20 +8,19 @@ import FeaturedPost from '../components/FeaturedPost';
 import AuthorProfileCard from '../components/AuthorProfileCard';
 import PostsLoading from './PostsLoading';
 import { API_ENDPOINTS } from '../lib/api';
-import { logger } from '../lib/logger';
 import { useSiteSettings } from '../components/SiteSettingsProvider';
 
 interface Post {
   id: number;
   title: string;
   slug: string;
-  summary: string;
+  summary?: string | null;
   coverImage?: string;
   publishedAt: string;
   viewCount?: number;
   category?: { name: string; slug: string };
   tags?: { name: string; slug: string }[];
-  contentPreview?: string;
+  contentPreview?: string | null;
   passwordRequired?: boolean;
 }
 
@@ -52,6 +51,7 @@ export default function PostsPage() {
         title: item.title,
         slug: item.slug,
         summary: item.summary,
+        contentPreview: item.contentPreview,
         coverImage: item.coverImage,
         viewCount: item.viewCount,
         publishedAt: item.publishedAt 
@@ -62,16 +62,6 @@ export default function PostsPage() {
         passwordRequired: item.passwordRequired,
       };
 
-      // 获取内容预览
-      try {
-        const contentRes = await fetch(API_ENDPOINTS.postBySlug(item.slug));
-        if (contentRes.ok) {
-          const contentJson = await contentRes.json();
-          post.contentPreview = contentJson.data?.content || '';
-        }
-      } catch (e) {
-        logger.warn('Failed to fetch content preview', e);
-      }
       return post;
     },
     staleTime: 5 * 60 * 1000, // 缓存 5 分钟
@@ -97,6 +87,7 @@ export default function PostsPage() {
         title: item.title,
         slug: item.slug,
         summary: item.summary,
+        contentPreview: item.contentPreview,
         coverImage: item.coverImage,
         viewCount: item.viewCount,
         publishedAt: item.publishedAt 
@@ -253,6 +244,7 @@ export default function PostsPage() {
                       title={post.title}
                       slug={post.slug}
                       summary={post.summary}
+                      contentPreview={post.contentPreview}
                       category={post.category}
                       tags={post.tags}
                       publishedAt={post.publishedAt}

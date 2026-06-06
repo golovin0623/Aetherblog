@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/labstack/echo/v4"
 )
 
 func TestSafeUploadFilePathRejectsTraversal(t *testing.T) {
@@ -71,5 +76,35 @@ func TestUploadAccessHandlerPointsToUploadsKey(t *testing.T) {
 				t.Fatalf("pointsToUploadsKey(%q, %q) = %v, want %v", tt.target, key, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUploadAccessHandlerServesLocalFileWithImmutableCache(t *testing.T) {
+	base := t.TempDir()
+	key := "2026/06/avatar.png"
+	path := filepath.Join(base, "2026", "06", "avatar.png")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("png"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/uploads/"+key, nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	ctx.SetParamNames("*")
+	ctx.SetParamValues(key)
+
+	handler := NewUploadAccessHandler(nil, base)
+	if err := handler.Serve(ctx); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != immutableUploadCacheControl {
+		t.Fatalf("Cache-Control = %q, want %q", got, immutableUploadCacheControl)
 	}
 }

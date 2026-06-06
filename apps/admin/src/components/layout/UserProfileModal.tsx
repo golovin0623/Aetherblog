@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { cn, formatFileSize } from '@/lib/utils';
+import { CachedAvatar } from '@/components/common/CachedAvatar';
 import {
   compressImageFile,
   IMAGE_COMPRESSION_THRESHOLD,
@@ -393,7 +394,12 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                         <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
                           <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-[var(--border-subtle)] overflow-hidden bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center group-hover:border-primary/50 transition-all duration-300 shadow-lg">
                             {avatar ? (
-                              <img src={getMediaUrl(avatar)} alt="Avatar" className="w-full h-full object-cover" />
+                              <CachedAvatar
+                                src={getMediaUrl(avatar)}
+                                alt="Avatar"
+                                className="w-full h-full object-cover"
+                                fallback={<User className="w-8 h-8 md:w-10 md:h-10 text-[var(--text-muted)]" />}
+                              />
                             ) : (
                               <User className="w-8 h-8 md:w-10 md:h-10 text-[var(--text-muted)]" />
                             )}

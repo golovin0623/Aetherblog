@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { startTransition, useCallback, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { CachedAvatar } from '@/components/common/CachedAvatar';
 import { UserProfileModal } from './UserProfileModal';
 import { SidebarSearchPalette } from './SidebarSearchPalette';
 import { getMediaUrl } from '@/services/mediaService';
@@ -532,10 +533,11 @@ function SidebarContent({
           <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all overflow-hidden">
               {user?.avatar ? (
-                <img
+                <CachedAvatar
                   src={getMediaUrl(user.avatar)}
                   alt={user.nickname}
                   className="w-full h-full object-cover"
+                  fallback={<User className="w-4 h-4 text-primary" />}
                 />
               ) : (
                 <User className="w-4 h-4 text-primary" />

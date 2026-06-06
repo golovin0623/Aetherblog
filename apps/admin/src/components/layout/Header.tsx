@@ -2,6 +2,8 @@ import { Bell, User, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { cn } from '@/lib/utils';
+import { CachedAvatar } from '@/components/common/CachedAvatar';
+import { getMediaUrl } from '@/services/mediaService';
 
 export function Header() {
   const { user, logout } = useAuthStore();
@@ -44,10 +46,11 @@ export function Header() {
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
             {user?.avatar ? (
-              <img
-                src={user.avatar}
+              <CachedAvatar
+                src={getMediaUrl(user.avatar)}
                 alt={user.nickname}
                 className="w-full h-full rounded-full object-cover"
+                fallback={<User className="w-4 h-4 text-primary" />}
               />
             ) : (
               <User className="w-4 h-4 text-primary" />

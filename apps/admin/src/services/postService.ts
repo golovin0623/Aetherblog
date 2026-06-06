@@ -6,7 +6,7 @@ export interface Post {
   title: string;
   slug: string;
   content: string;
-  summary: string;
+  summary: string | null;
   coverImage: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   categoryId: number | null;
@@ -32,7 +32,8 @@ export interface PostListItem {
   id: number;
   title: string;
   slug: string;
-  summary: string;
+  summary: string | null;
+  contentPreview?: string | null;
   coverImage: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   categoryName: string | null;

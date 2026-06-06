@@ -15,6 +15,8 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+const immutableUploadCacheControl = "public, max-age=31536000, immutable"
+
 // PublicMediaHandler 提供面向博客前台的稳定媒体访问入口。
 //
 // 文章正文保存 /api/v1/public/media/{id},这里在请求时按当前媒体状态跳转到
@@ -88,6 +90,7 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件路径")
 	}
+	c.Response().Header().Set("Cache-Control", immutableUploadCacheControl)
 	return c.File(path)
 }
 

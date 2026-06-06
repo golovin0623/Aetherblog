@@ -35,7 +35,8 @@ export interface Post {
   id: number;
   title: string;
   slug: string;
-  summary: string;
+  summary?: string | null;
+  contentPreview?: string | null;
   coverImage?: string;
   publishedAt: string;
   viewCount?: number;

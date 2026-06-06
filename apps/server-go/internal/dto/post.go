@@ -4,41 +4,41 @@ import "time"
 
 // CreatePostRequest 是 POST 和 PUT /admin/posts 接口的请求体 DTO，用于创建或全量更新文章。
 type CreatePostRequest struct {
-	Title        string     `json:"title"      validate:"required,max=200"` // 文章标题，最多 200 个字符（必填）
-	Content      string     `json:"content"    validate:"required"`          // 文章正文内容（必填）
+	Title        string     `json:"title"      validate:"required,max=200"`   // 文章标题，最多 200 个字符（必填）
+	Content      string     `json:"content"    validate:"required"`           // 文章正文内容（必填）
 	Summary      *string    `json:"summary"    validate:"omitempty,max=2000"` // 文章摘要，最多 2000 个字符（与 posts.summary VARCHAR(2000) 一致，可选）
-	CoverImage   *string    `json:"coverImage"`                              // 封面图片 URL（可选）
-	CategoryID   *int64     `json:"categoryId"`                              // 所属分类 ID（可选）
-	TagIDs       []int64    `json:"tagIds"`                                  // 文章标签 ID 列表（可选）
-	Status       string     `json:"status"`                                  // 文章状态：DRAFT（草稿）| PUBLISHED（已发布）| ARCHIVED（已归档）
-	Slug         *string    `json:"slug"`                                    // 自定义 URL 别名（可选，留空则自动生成）
-	Password     *string    `json:"password"`                                // 文章访问密码（可选，设置后需验证才可查看）
-	IsHidden     *bool      `json:"isHidden"`                                // 是否在文章列表中隐藏（可选）
-	IsPinned     *bool      `json:"isPinned"`                                // 是否置顶（可选）
-	PinPriority  *int       `json:"pinPriority"`                             // 置顶优先级，数值越大越靠前（可选）
-	AllowComment *bool      `json:"allowComment"`                            // 是否允许评论（可选）
-	PublishedAt  *time.Time `json:"publishedAt"`                             // 指定发布时间，用于定时发布（可选）
+	CoverImage   *string    `json:"coverImage"`                               // 封面图片 URL（可选）
+	CategoryID   *int64     `json:"categoryId"`                               // 所属分类 ID（可选）
+	TagIDs       []int64    `json:"tagIds"`                                   // 文章标签 ID 列表（可选）
+	Status       string     `json:"status"`                                   // 文章状态：DRAFT（草稿）| PUBLISHED（已发布）| ARCHIVED（已归档）
+	Slug         *string    `json:"slug"`                                     // 自定义 URL 别名（可选，留空则自动生成）
+	Password     *string    `json:"password"`                                 // 文章访问密码（可选，设置后需验证才可查看）
+	IsHidden     *bool      `json:"isHidden"`                                 // 是否在文章列表中隐藏（可选）
+	IsPinned     *bool      `json:"isPinned"`                                 // 是否置顶（可选）
+	PinPriority  *int       `json:"pinPriority"`                              // 置顶优先级，数值越大越靠前（可选）
+	AllowComment *bool      `json:"allowComment"`                             // 是否允许评论（可选）
+	PublishedAt  *time.Time `json:"publishedAt"`                              // 指定发布时间，用于定时发布（可选）
 }
 
 // UpdatePostPropertiesRequest 是 PATCH /admin/posts/{id}/properties 接口的请求体 DTO，
 // 用于局部更新文章属性，所有字段均为可选（omitempty）。
 type UpdatePostPropertiesRequest struct {
-	Title        *string    `json:"title"        validate:"omitempty,max=200"` // 文章标题（可选）
+	Title        *string    `json:"title"        validate:"omitempty,max=200"`  // 文章标题（可选）
 	Summary      *string    `json:"summary"      validate:"omitempty,max=2000"` // 文章摘要，最多 2000 个字符（与 posts.summary VARCHAR(2000) 一致，可选）
-	CoverImage   *string    `json:"coverImage"`                                // 封面图片 URL（可选）
-	CategoryID   *int64     `json:"categoryId"`                                // 所属分类 ID（可选）
-	TagIDs       []int64    `json:"tagIds"`                                    // 文章标签 ID 列表（可选）
-	Status       *string    `json:"status"`                                    // 文章状态（可选）
-	IsPinned     *bool      `json:"isPinned"`                                  // 是否置顶（可选）
-	PinPriority  *int       `json:"pinPriority"`                               // 置顶优先级（可选）
-	AllowComment *bool      `json:"allowComment"`                              // 是否允许评论（可选）
-	Password     *string    `json:"password"`                                  // 文章访问密码（可选）
-	IsHidden     *bool      `json:"isHidden"`                                  // 是否隐藏（可选）
-	Slug         *string    `json:"slug"`                                      // URL 别名（可选）
-	CreatedAt    *time.Time `json:"createdAt"`                                 // 创建时间（可选，用于手动修正）
-	UpdatedAt    *time.Time `json:"updatedAt"`                                 // 更新时间（可选，用于手动修正）
-	PublishedAt  *time.Time `json:"publishedAt"`                               // 发布时间（可选）
-	ViewCount    *int64     `json:"viewCount"`                                 // 浏览量（可选，用于手动修正）
+	CoverImage   *string    `json:"coverImage"`                                 // 封面图片 URL（可选）
+	CategoryID   *int64     `json:"categoryId"`                                 // 所属分类 ID（可选）
+	TagIDs       []int64    `json:"tagIds"`                                     // 文章标签 ID 列表（可选）
+	Status       *string    `json:"status"`                                     // 文章状态（可选）
+	IsPinned     *bool      `json:"isPinned"`                                   // 是否置顶（可选）
+	PinPriority  *int       `json:"pinPriority"`                                // 置顶优先级（可选）
+	AllowComment *bool      `json:"allowComment"`                               // 是否允许评论（可选）
+	Password     *string    `json:"password"`                                   // 文章访问密码（可选）
+	IsHidden     *bool      `json:"isHidden"`                                   // 是否隐藏（可选）
+	Slug         *string    `json:"slug"`                                       // URL 别名（可选）
+	CreatedAt    *time.Time `json:"createdAt"`                                  // 创建时间（可选，用于手动修正）
+	UpdatedAt    *time.Time `json:"updatedAt"`                                  // 更新时间（可选，用于手动修正）
+	PublishedAt  *time.Time `json:"publishedAt"`                                // 发布时间（可选）
+	ViewCount    *int64     `json:"viewCount"`                                  // 浏览量（可选，用于手动修正）
 }
 
 // PostPasswordRequest 是验证加密文章访问密码的请求体 DTO。
@@ -63,58 +63,59 @@ type TagInfo struct {
 
 // PostListItem 是文章分页列表中的单条文章数据 DTO。
 type PostListItem struct {
-	ID               int64      `json:"id"`               // 文章 ID
-	Title            string     `json:"title"`            // 文章标题
-	Slug             string     `json:"slug"`             // URL 别名
-	Summary          *string    `json:"summary"`          // 文章摘要（可为空）
-	CoverImage       *string    `json:"coverImage"`       // 封面图片 URL（可为空）
-	Status           string     `json:"status"`           // 文章状态
-	CategoryName     *string    `json:"categoryName"`     // 所属分类名称（可为空）
-	TagNames         []string   `json:"tagNames"`         // 标签名称列表
-	ViewCount        int64      `json:"viewCount"`        // 浏览量
-	CommentCount     int64      `json:"commentCount"`     // 评论数
-	IsPinned         bool       `json:"isPinned"`         // 是否置顶
-	PinPriority      int        `json:"pinPriority"`      // 置顶优先级
-	IsHidden         bool       `json:"isHidden"`         // 是否隐藏
-	PasswordRequired bool       `json:"passwordRequired"` // 是否需要密码才能查看
-	PublishedAt      *time.Time `json:"publishedAt"`      // 发布时间（未发布则为空）
-	CreatedAt        time.Time  `json:"createdAt"`        // 创建时间
+	ID               int64      `json:"id"`                       // 文章 ID
+	Title            string     `json:"title"`                    // 文章标题
+	Slug             string     `json:"slug"`                     // URL 别名
+	Summary          *string    `json:"summary"`                  // 文章摘要（可为空）
+	ContentPreview   *string    `json:"contentPreview,omitempty"` // 无摘要公开列表的正文预览（可为空）
+	CoverImage       *string    `json:"coverImage"`               // 封面图片 URL（可为空）
+	Status           string     `json:"status"`                   // 文章状态
+	CategoryName     *string    `json:"categoryName"`             // 所属分类名称（可为空）
+	TagNames         []string   `json:"tagNames"`                 // 标签名称列表
+	ViewCount        int64      `json:"viewCount"`                // 浏览量
+	CommentCount     int64      `json:"commentCount"`             // 评论数
+	IsPinned         bool       `json:"isPinned"`                 // 是否置顶
+	PinPriority      int        `json:"pinPriority"`              // 置顶优先级
+	IsHidden         bool       `json:"isHidden"`                 // 是否隐藏
+	PasswordRequired bool       `json:"passwordRequired"`         // 是否需要密码才能查看
+	PublishedAt      *time.Time `json:"publishedAt"`              // 发布时间（未发布则为空）
+	CreatedAt        time.Time  `json:"createdAt"`                // 创建时间
 }
 
 // PostDetail 是文章详情接口的完整响应 DTO。
 type PostDetail struct {
-	ID                 int64              `json:"id"`                        // 文章 ID
-	Title              string             `json:"title"`                     // 文章标题
-	Slug               string             `json:"slug"`                      // URL 别名
-	Content            *string            `json:"content"`                   // 文章正文内容（可为空，加密文章未验证时为空）
-	Summary            *string            `json:"summary"`                   // 文章摘要（可为空）
-	CoverImage         *string            `json:"coverImage"`                // 封面图片 URL（可为空）
-	Status             string             `json:"status"`                    // 文章状态
-	Category           *CategoryInfo      `json:"category"`                  // 所属分类信息（可为空）
-	CategoryID         *int64             `json:"categoryId"`                // 所属分类 ID（可为空）
-	CategoryName       *string            `json:"categoryName"`              // 所属分类名称（可为空）
-	Tags               []TagInfo          `json:"tags"`                      // 文章标签列表
-	ViewCount          int64              `json:"viewCount"`                 // 浏览量
-	CommentCount       int64              `json:"commentCount"`              // 评论数
-	LikeCount          int64              `json:"likeCount"`                 // 点赞数
-	WordCount          int                `json:"wordCount"`                 // 正文字数
-	ReadingTime        int                `json:"readingTime"`               // 预计阅读时间（分钟）
-	IsPinned           bool               `json:"isPinned"`                  // 是否置顶
-	PinPriority        int                `json:"pinPriority"`               // 置顶优先级
-	IsHidden           bool               `json:"isHidden"`                  // 是否隐藏
-	AllowComment       bool               `json:"allowComment"`              // 是否允许评论
-	PasswordRequired   bool               `json:"passwordRequired"`          // 是否需要密码才能查看
-	HasPassword        bool               `json:"hasPassword"`               // 文章是否设置了访问密码（管理端用于 UI 显示，不暴露密码值）
-	SEOTitle           *string            `json:"seoTitle"`                  // SEO 标题（可为空）
-	SEODescription     *string            `json:"seoDescription"`            // SEO 描述（可为空）
-	SEOKeywords        *string            `json:"seoKeywords"`               // SEO 关键词（可为空）
-	LegacyAuthorName   *string            `json:"legacyAuthorName"`          // 历史遗留作者名称（旧数据迁移用，可为空）
-	LegacyVisitedCount int64              `json:"legacyVisitedCount"`        // 历史遗留访问量（旧数据迁移用）
-	PublishedAt        *time.Time         `json:"publishedAt"`               // 发布时间（未发布则为空）
-	ScheduledAt        *time.Time         `json:"scheduledAt"`               // 定时发布时间（可为空）
-	CreatedAt          time.Time          `json:"createdAt"`                 // 创建时间
-	UpdatedAt          time.Time          `json:"updatedAt"`                 // 最后更新时间
-	Draft              *CreatePostRequest `json:"draft,omitempty"`           // 草稿内容（存在未保存草稿时返回）
+	ID                 int64              `json:"id"`                 // 文章 ID
+	Title              string             `json:"title"`              // 文章标题
+	Slug               string             `json:"slug"`               // URL 别名
+	Content            *string            `json:"content"`            // 文章正文内容（可为空，加密文章未验证时为空）
+	Summary            *string            `json:"summary"`            // 文章摘要（可为空）
+	CoverImage         *string            `json:"coverImage"`         // 封面图片 URL（可为空）
+	Status             string             `json:"status"`             // 文章状态
+	Category           *CategoryInfo      `json:"category"`           // 所属分类信息（可为空）
+	CategoryID         *int64             `json:"categoryId"`         // 所属分类 ID（可为空）
+	CategoryName       *string            `json:"categoryName"`       // 所属分类名称（可为空）
+	Tags               []TagInfo          `json:"tags"`               // 文章标签列表
+	ViewCount          int64              `json:"viewCount"`          // 浏览量
+	CommentCount       int64              `json:"commentCount"`       // 评论数
+	LikeCount          int64              `json:"likeCount"`          // 点赞数
+	WordCount          int                `json:"wordCount"`          // 正文字数
+	ReadingTime        int                `json:"readingTime"`        // 预计阅读时间（分钟）
+	IsPinned           bool               `json:"isPinned"`           // 是否置顶
+	PinPriority        int                `json:"pinPriority"`        // 置顶优先级
+	IsHidden           bool               `json:"isHidden"`           // 是否隐藏
+	AllowComment       bool               `json:"allowComment"`       // 是否允许评论
+	PasswordRequired   bool               `json:"passwordRequired"`   // 是否需要密码才能查看
+	HasPassword        bool               `json:"hasPassword"`        // 文章是否设置了访问密码（管理端用于 UI 显示，不暴露密码值）
+	SEOTitle           *string            `json:"seoTitle"`           // SEO 标题（可为空）
+	SEODescription     *string            `json:"seoDescription"`     // SEO 描述（可为空）
+	SEOKeywords        *string            `json:"seoKeywords"`        // SEO 关键词（可为空）
+	LegacyAuthorName   *string            `json:"legacyAuthorName"`   // 历史遗留作者名称（旧数据迁移用，可为空）
+	LegacyVisitedCount int64              `json:"legacyVisitedCount"` // 历史遗留访问量（旧数据迁移用）
+	PublishedAt        *time.Time         `json:"publishedAt"`        // 发布时间（未发布则为空）
+	ScheduledAt        *time.Time         `json:"scheduledAt"`        // 定时发布时间（可为空）
+	CreatedAt          time.Time          `json:"createdAt"`          // 创建时间
+	UpdatedAt          time.Time          `json:"updatedAt"`          // 最后更新时间
+	Draft              *CreatePostRequest `json:"draft,omitempty"`    // 草稿内容（存在未保存草稿时返回）
 }
 
 // AdjacentPost 是文章上一篇/下一篇导航中的文章简要信息。
