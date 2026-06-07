@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Calendar, Folder, ArrowRight, Lock } from 'lucide-react';
@@ -21,21 +21,50 @@ interface FeaturedPostProps {
   };
 }
 
+const SUMMARY_PREVIEW_MAX_LENGTH = 500;
+
+function stripMarkdownForSummary(markdown: string) {
+  return markdown
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[^\n]*\n?|\n?```/g, ' '))
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^(\s*>+\s*)+/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateSummary(text: string) {
+  return text.length > SUMMARY_PREVIEW_MAX_LENGTH
+    ? `${text.slice(0, SUMMARY_PREVIEW_MAX_LENGTH).trimEnd()}...`
+    : text;
+}
+
 const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const router = useRouter();
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 1000 });
 
-  // 使用 useMemo 记忆化摘要计算，防止聚光灯效果导致的频繁重渲染重复执行
-  const displaySummary = useMemo(() => {
-    return post.passwordRequired
-      ? '这是一篇加密文章，请输入密码后查看。'
-      : post.summary
-        ? post.summary
-        : post.contentPreview
-            ? post.contentPreview.slice(0, 500) + '...'
-            : '暂无摘要';
-  }, [post.passwordRequired, post.summary, post.contentPreview]);
+  const displaySummary = (() => {
+    if (post.passwordRequired) {
+      return '这是一篇加密文章，请输入密码后查看。';
+    }
+    if (post.summary) {
+      return post.summary;
+    }
+    if (post.contentPreview) {
+      return truncateSummary(stripMarkdownForSummary(post.contentPreview));
+    }
+    return '暂无摘要';
+  })();
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 点击交互元素时阻止导航

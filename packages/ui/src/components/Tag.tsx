@@ -8,9 +8,17 @@ interface TagProps {
   removable?: boolean;
   onRemove?: () => void;
   className?: string;
+  removeButtonAriaLabel?: string;
 }
 
-export function Tag({ children, color, removable, onRemove, className }: TagProps) {
+export function Tag({
+  children,
+  color,
+  removable,
+  onRemove,
+  className,
+  removeButtonAriaLabel = 'Remove tag',
+}: TagProps) {
   return (
     <span
       className={cn(
@@ -26,8 +34,11 @@ export function Tag({ children, color, removable, onRemove, className }: TagProp
       {children}
       {removable && (
         <button
+          type="button"
           onClick={onRemove}
-          className="ml-1 p-0.5 rounded-full hover:bg-white/10 transition-colors"
+          aria-label={removeButtonAriaLabel}
+          title={removeButtonAriaLabel}
+          className="ml-1 p-0.5 rounded-full hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
         >
           <X className="w-3 h-3" />
         </button>
