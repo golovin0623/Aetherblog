@@ -420,8 +420,8 @@ func (h *SearchHandler) RetryFailed(c echo.Context) error {
 // 语义：
 //   - 若当前无活跃任务 → 返回 200 + {status:"idle"}，前端据此清理本地 job 面板
 //   - 若有任务 → 触发 context.CancelFunc，任务 goroutine 会尽快退出:
-//       * IndexBatchPosts 内部的逐篇 http 调用发现 ctx.Done 后立刻返回 context.Canceled
-//       * ProxyReindex / ProxyRetryFailed 基于 aiClient.DoStream(ctx, …) 也会立即断开
+//   - IndexBatchPosts 内部的逐篇 http 调用发现 ctx.Done 后立刻返回 context.Canceled
+//   - ProxyReindex / ProxyRetryFailed 基于 aiClient.DoStream(ctx, …) 也会立即断开
 //     残留的 PENDING 文章保持 PENDING 状态（下次触发索引时仍会被选中），
 //     避免"取消后状态被强改成 FAILED"引起用户混淆
 func (h *SearchHandler) Cancel(c echo.Context) error {
@@ -466,23 +466,25 @@ func (h *SearchHandler) EmbeddingStatus(c echo.Context) error {
 	return searchProxyResponse(c, body, statusCode)
 }
 
-// ProxyProfiles 通配代理 ``/v1/admin/search/profiles[/*]`` 到 ai-service。
+// ProxyProfiles 通配代理 “/v1/admin/search/profiles[/*]“ 到 ai-service。
 //
 // 设计取舍：
 //   - profile CRUD（list / create / activate / deprecate / delete）走同步代理 DoSync
-//   - 唯一的流式端点 ``POST /{code}/reindex/stream`` 走 DoStream + line-by-line forward
+//   - 唯一的流式端点 “POST /{code}/reindex/stream“ 走 DoStream + line-by-line forward
 //     （借用 ai_handler 的 validateSSELine 白名单 + bufio.Scanner 实现，避免代码重复）
-//   - 路径透传保留 ``EscapedPath()``，与 ai_handler.ProxyProviders 一致防止
+//   - 路径透传保留 “EscapedPath()“，与 ai_handler.ProxyProviders 一致防止
 //     `..` / `%2F` 注入
 //
-// SSE 帧通过 nginx 时已在 ``/api/v1/admin/search`` location 配 ``proxy_buffering off``
-// + ``proxy_read_timeout 600s``，浏览器看到的延迟仅是 ai-service emit 间隔。
+// SSE 帧通过 nginx 时已在 “/api/v1/admin/search“ location 配 “proxy_buffering off“
+// + “proxy_read_timeout 600s“，浏览器看到的延迟仅是 ai-service emit 间隔。
 func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
-	// 取 EscapedPath() 保留客户端原始编码
-	escapedFull := c.Request().URL.EscapedPath()
-	// AI service 的路由前缀已包含完整 ``/api/v1/admin/search/profiles``，
-	// 这里直接拿原始路径透传即可（escapedFull 已是 ``/api/v1/admin/search/profiles[/...]``）。
-	targetPath := escapedFull
+	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
+	param := c.Param("*")
+	encodedSubPath := ""
+	if param != "" {
+		encodedSubPath = "/" + param
+	}
+	targetPath := proxyPrefix + encodedSubPath
 
 	// 多级解码尝试，发现 `..` 后整体拒绝（深度防御）
 	probe := targetPath

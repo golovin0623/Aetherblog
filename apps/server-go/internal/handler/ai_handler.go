@@ -120,10 +120,11 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 动态提取代理前缀：c.Path() = "/api/v1/admin/providers/*" → 去掉 "*" 再去掉尾 "/"
 	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
 
-	// 使用 EscapedPath() 保留客户端原始编码，避免 Echo 自动解码带来的注入/绕过
-	escapedFull := c.Request().URL.EscapedPath()
-	// subPath 保留前导斜杠；`/providers` → "" / `/providers/` → "/" / `/providers/foo/` → "/foo/"
-	encodedSubPath := strings.TrimPrefix(escapedFull, proxyPrefix)
+	param := c.Param("*")
+	encodedSubPath := ""
+	if param != "" {
+		encodedSubPath = "/" + param
+	}
 
 	// 多级解码，尽力发现隐藏的 `..`；遇到非法百分号编码时 break 而非 400
 	probe := encodedSubPath
