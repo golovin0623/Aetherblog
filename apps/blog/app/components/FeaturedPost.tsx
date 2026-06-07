@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Calendar, Folder, ArrowRight, Lock } from 'lucide-react';
@@ -11,12 +11,12 @@ interface FeaturedPostProps {
   post: {
     title: string;
     slug: string;
-    summary?: string;
+    summary?: string | null;
     coverImage?: string;
     publishedAt: string;
     category?: { name: string; slug: string };
     tags?: { name: string; slug: string }[];
-    contentPreview?: string; // 可选的原始内容用于预览
+    contentPreview?: string | null; // 可选的原始内容用于预览
     passwordRequired?: boolean; // 新增：是否需要密码
   };
 }
@@ -53,7 +53,8 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 1000 });
 
-  const displaySummary = (() => {
+  // 使用 useMemo 记忆化摘要计算，防止聚光灯效果导致的频繁重渲染重复执行
+  const displaySummary = useMemo(() => {
     if (post.passwordRequired) {
       return '这是一篇加密文章，请输入密码后查看。';
     }
@@ -64,7 +65,8 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
       return truncateSummary(stripMarkdownForSummary(post.contentPreview));
     }
     return '暂无摘要';
-  })();
+  }, [post.passwordRequired, post.summary, post.contentPreview]);
+  const previewContent = post.summary?.trim() || post.contentPreview?.trim() || '';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 点击交互元素时阻止导航
@@ -264,7 +266,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                 ) : (
                     // 正常预览区域
                     <div className="p-8 h-full overflow-hidden">
-                        {post.contentPreview ? (
+                        {previewContent ? (
                             <div
                                 className="h-full text-sm antialiased"
                                 style={{
@@ -272,7 +274,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                                     WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)'
                                 }}
                             >
-                                <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
+                                <MiniMarkdownPreview content={previewContent} maxLength={2000} />
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">

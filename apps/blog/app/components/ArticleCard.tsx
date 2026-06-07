@@ -8,7 +8,8 @@ import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 interface ArticleCardProps {
   title: string;
   slug: string;
-  summary?: string;
+  summary?: string | null;
+  contentPreview?: string | null;
   category?: { name: string; slug: string };
   tags?: { name: string; slug: string }[];
   publishedAt: string;
@@ -23,6 +24,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   title,
   slug,
   summary,
+  contentPreview,
   category,
   tags = [],
   publishedAt,
@@ -39,9 +41,17 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   const visibleTags = tags.slice(0, maxVisibleTags);
   const remainingTagCount = tags.length - maxVisibleTags;
 
+  const previewSource = useMemo(() => {
+    const manualSummary = summary?.trim();
+    if (manualSummary) return { text: manualSummary, automatic: false };
+    const automaticPreview = contentPreview?.trim();
+    if (automaticPreview) return { text: automaticPreview, automatic: true };
+    return null;
+  }, [contentPreview, summary]);
+
   const displaySummary = useMemo(() => {
-    if (!summary) return null;
-    const processed = summary
+    if (!previewSource) return null;
+    const processed = previewSource.text
       .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
       .replace(/^:::\s*$/gm, '')
       .replace(/<!--\s*more\s*-->/g, '')
@@ -49,8 +59,12 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
       .replace(/\n+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    return processed.slice(0, 140) + (processed.length > 140 ? '…' : '');
-  }, [summary]);
+    if (!processed) return null;
+    return {
+      text: processed.slice(0, 140) + (processed.length > 140 ? '…' : ''),
+      automatic: previewSource.automatic,
+    };
+  }, [previewSource]);
 
   return (
     <Link
@@ -130,18 +144,25 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
               <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Encrypted</span>
             </div>
           ) : displaySummary ? (
-            <p
-              className="font-editorial italic text-[15px] leading-[1.65]"
-              style={{
-                color: 'rgb(from var(--ink-secondary) r g b / 0.9)',
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              } as React.CSSProperties}
-            >
-              {displaySummary}
-            </p>
+            <div className="space-y-2">
+              <p
+                className="font-editorial italic text-[15px] leading-[1.65]"
+                style={{
+                  color: 'rgb(from var(--ink-secondary) r g b / 0.9)',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                } as React.CSSProperties}
+              >
+                {displaySummary.text}
+              </p>
+              {displaySummary.automatic && (
+                <span className="inline-flex rounded-sm font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  自动截取
+                </span>
+              )}
+            </div>
           ) : null}
         </div>
 

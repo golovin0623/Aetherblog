@@ -2,10 +2,10 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import Image from 'next/image';
 import AnimatedCounter from '../components/AnimatedCounter';
 import { sanitizeImageUrl } from '@/app/lib/sanitizeUrl';
 import type { SiteSettings } from '@/app/lib/services';
+import { CachedAvatarImage } from '@/app/components/CachedAvatarImage';
 
 interface Props {
   isVisible: boolean;
@@ -29,8 +29,6 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
     settings.authorAvatar || settings.author_avatar || '',
     ''
   );
-  const needsUnoptimized =
-    authorAvatar.startsWith('/api/uploads') || authorAvatar.startsWith('/uploads');
 
   const statItems = [
     { label: '文章', value: stats.posts || 0 },
@@ -63,13 +61,15 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
         >
           <div className="w-28 h-28 rounded-full overflow-hidden shadow-[0_14px_36px_-14px_rgba(15,23,42,0.28),0_6px_16px_-6px_rgba(15,23,42,0.14)] dark:shadow-[0_16px_40px_-14px_rgba(0,0,0,0.65),0_6px_18px_-6px_rgba(0,0,0,0.45)]">
             {authorAvatar ? (
-              <Image
+              <CachedAvatarImage
                 src={authorAvatar}
                 alt={authorName}
-                width={112}
-                height={112}
                 className="w-full h-full object-cover"
-                unoptimized={needsUnoptimized}
+                fallback={
+                  <div className="w-full h-full bg-[var(--bg-raised)] flex items-center justify-center text-h2 font-display text-[var(--aurora-1)]">
+                    {authorName.charAt(0).toUpperCase()}
+                  </div>
+                }
               />
             ) : (
               <div className="w-full h-full bg-[var(--bg-raised)] flex items-center justify-center text-h2 font-display text-[var(--aurora-1)]">

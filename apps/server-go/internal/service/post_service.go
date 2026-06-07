@@ -378,7 +378,7 @@ func (s *PostService) GetPublished(ctx context.Context, p pagination.Params) (*r
 	tagsMap, _ := s.repo.FindTagsByPostIDs(ctx, postIDs)
 	items := make([]dto.PostListItem, len(rows))
 	for i, r := range rows {
-		items[i] = toListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
+		items[i] = toPublicListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
 	}
 	pr := response.NewPageResult(items, total, p.PageNum, p.PageSize)
 	return &pr, nil
@@ -482,7 +482,7 @@ func (s *PostService) GetByCategory(ctx context.Context, categoryID int64, p pag
 	tagsMap, _ := s.repo.FindTagsByPostIDs(ctx, postIDs)
 	items := make([]dto.PostListItem, len(rows))
 	for i, r := range rows {
-		items[i] = toListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
+		items[i] = toPublicListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
 	}
 	pr := response.NewPageResult(items, total, p.PageNum, p.PageSize)
 	return &pr, nil
@@ -501,7 +501,7 @@ func (s *PostService) GetByTag(ctx context.Context, tagID int64, p pagination.Pa
 	tagsMap, _ := s.repo.FindTagsByPostIDs(ctx, postIDs)
 	items := make([]dto.PostListItem, len(rows))
 	for i, r := range rows {
-		items[i] = toListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
+		items[i] = toPublicListItem(&r.Post, r.CategoryName, tagsMap[r.ID])
 	}
 	pr := response.NewPageResult(items, total, p.PageNum, p.PageSize)
 	return &pr, nil
@@ -749,6 +749,91 @@ func toListItem(p *model.Post, catName *string, tags []model.Tag) dto.PostListIt
 		PasswordRequired: p.Password != nil && *p.Password != "",
 		PublishedAt:      p.PublishedAt, CreatedAt: p.CreatedAt,
 	}
+}
+
+func toPublicListItem(p *model.Post, catName *string, tags []model.Tag) dto.PostListItem {
+	item := toListItem(p, catName, tags)
+	if !item.PasswordRequired && !hasText(item.Summary) {
+		item.ContentPreview = buildPostContentPreview(p.Title, p.ContentMarkdown)
+	}
+	return item
+}
+
+func hasText(value *string) bool {
+	return value != nil && strings.TrimSpace(*value) != ""
+}
+
+const postListContentPreviewMaxRunes = 220
+
+var (
+	markdownFenceRe       = regexp.MustCompile("(?s)```.*?```")
+	markdownInlineCodeRe  = regexp.MustCompile("`([^`]+)`")
+	markdownImageRe       = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	markdownLinkRe        = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+	markdownHtmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	markdownHtmlTagRe     = regexp.MustCompile(`(?is)</?[a-z][a-z0-9]*[^>]*>`)
+	markdownAdmonitionRe  = regexp.MustCompile(`(?m)^:::\s*(\w+.*)?$`)
+	markdownHeadingRe     = regexp.MustCompile(`(?m)^#{1,6}\s+`)
+	markdownListPrefixRe  = regexp.MustCompile(`(?m)^\s*(?:>\s*)?(?:[-*+]\s+|\d+\.\s+)`)
+	markdownQuotePrefixRe = regexp.MustCompile(`(?m)^\s*>\s?`)
+	markdownStyleRe       = regexp.MustCompile(`[*_~]{1,3}`)
+	markdownWhitespaceRe  = regexp.MustCompile(`\s+`)
+	previewReplacer       = strings.NewReplacer("\u00a0", " ", "\r", " ", "\n", " ")
+)
+
+func buildPostContentPreview(title string, content *string) *string {
+	if content == nil {
+		return nil
+	}
+	preview := stripMarkdownForPostPreview(*content)
+	preview = trimLeadingPreviewTitle(title, preview)
+	if preview == "" {
+		return nil
+	}
+	runes := []rune(preview)
+	if len(runes) > postListContentPreviewMaxRunes {
+		preview = strings.TrimSpace(string(runes[:postListContentPreviewMaxRunes])) + "…"
+	}
+	if preview == "" {
+		return nil
+	}
+	return &preview
+}
+
+func trimLeadingPreviewTitle(title, preview string) string {
+	normalizedTitle := stripMarkdownForPostPreview(title)
+	preview = strings.TrimSpace(preview)
+	if normalizedTitle == "" || preview == "" {
+		return preview
+	}
+	for _, separator := range []string{" ", "：", ":", "-", "—"} {
+		prefix := normalizedTitle + separator
+		if strings.HasPrefix(preview, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(preview, prefix))
+		}
+	}
+	if preview == normalizedTitle {
+		return ""
+	}
+	return preview
+}
+
+func stripMarkdownForPostPreview(markdown string) string {
+	text := markdownFenceRe.ReplaceAllString(markdown, " ")
+	text = markdownInlineCodeRe.ReplaceAllString(text, "$1")
+	text = markdownImageRe.ReplaceAllString(text, " ")
+	text = markdownLinkRe.ReplaceAllString(text, "$1")
+	text = markdownHtmlCommentRe.ReplaceAllString(text, " ")
+	text = markdownHtmlTagRe.ReplaceAllString(text, " ")
+	text = markdownAdmonitionRe.ReplaceAllString(text, " ")
+	text = markdownHeadingRe.ReplaceAllString(text, "")
+	text = markdownListPrefixRe.ReplaceAllString(text, "")
+	text = markdownQuotePrefixRe.ReplaceAllString(text, "")
+	text = previewReplacer.Replace(text)
+	text = markdownStyleRe.ReplaceAllString(text, "")
+	text = strings.ReplaceAll(text, "|", " ")
+	text = markdownWhitespaceRe.ReplaceAllString(text, " ")
+	return strings.TrimSpace(text)
 }
 
 // nonAlphanumRe 匹配非字母数字字符（用于 slug 清理）。

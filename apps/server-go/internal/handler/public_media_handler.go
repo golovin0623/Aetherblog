@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
+
+const immutableUploadCacheControl = "public, max-age=31536000, immutable"
 
 // PublicMediaHandler 提供面向博客前台的稳定媒体访问入口。
 //
@@ -88,6 +91,17 @@ func (h *UploadAccessHandler) Serve(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件路径")
 	}
+	fileInfo, statErr := os.Stat(path)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return response.FailWith(c, response.NotFound, "文件不存在")
+		}
+		return response.FailWith(c, response.BadRequest, "无效的文件路径")
+	}
+	if fileInfo.IsDir() {
+		return response.FailWith(c, response.NotFound, "文件不存在")
+	}
+	c.Response().Header().Set("Cache-Control", immutableUploadCacheControl)
 	return c.File(path)
 }
 

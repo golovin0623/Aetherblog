@@ -299,7 +299,7 @@ export default function PostsPage() {
         await postService.create({
           title: `${original.data.title} (复制)`,
           content: original.data.content,
-          summary: original.data.summary,
+          summary: original.data.summary || undefined,
           coverImage: original.data.coverImage || undefined,
           categoryId: original.data.categoryId || undefined,
           tagIds: original.data.tags.map(t => t.id),

@@ -3,6 +3,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  markCachedImageFailed,
+  markCachedImageLoaded,
+  useCachedImage,
+} from '@aetherblog/hooks';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 // 多层阴影：外部投影 + 内部高光 → 3D 气泡质感
@@ -34,27 +39,25 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
   isMobile,
   size,
 }) => {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const safeAvatar = sanitizeImageUrl(avatar, '');
   const safeUrl = sanitizeImageUrl(url, '#');
   const hasValidAvatar = safeAvatar !== '' && safeAvatar.trim() !== '';
-  const showFallback = !hasValidAvatar || imageError;
+  const cachedAvatar = useCachedImage(hasValidAvatar ? safeAvatar : '', {
+    enabled: hasValidAvatar,
+    timeoutMs: 5000,
+  });
+  const showFallback = !hasValidAvatar || cachedAvatar.isError;
 
-  // 图片加载超时
-  useEffect(() => {
-    if (!hasValidAvatar) return;
-    const timeout = setTimeout(() => {
-      if (!imageLoaded) setImageError(true);
-    }, 5000);
-    return () => clearTimeout(timeout);
-  }, [hasValidAvatar, imageLoaded]);
-
-  const handleImageLoad = useCallback(() => setImageLoaded(true), []);
-  const handleImageError = useCallback(() => setImageError(true), []);
+  const handleImageLoad = useCallback(
+    (img: HTMLImageElement) => {
+      markCachedImageLoaded(safeAvatar, img.naturalWidth || undefined, img.naturalHeight || undefined);
+    },
+    [safeAvatar],
+  );
+  const handleImageError = useCallback(() => markCachedImageFailed(safeAvatar), [safeAvatar]);
 
   // 桌面端悬浮 tooltip
   const handleMouseEnter = useCallback(() => {
@@ -146,10 +149,10 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
                 alt={name}
                 width={size}
                 height={size}
-                onLoad={handleImageLoad}
+                onLoadingComplete={handleImageLoad}
                 onError={handleImageError}
                 className={`relative z-[1] w-full h-full object-cover transition-opacity duration-200 ${
-                  imageLoaded ? 'opacity-100' : 'opacity-0'
+                  cachedAvatar.isLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
                 aria-hidden="true"
                 /* 友链头像来自任意外部域名,关闭 next/image 域名白名单校验

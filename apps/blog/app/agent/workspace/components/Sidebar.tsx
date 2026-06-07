@@ -20,6 +20,7 @@ import {
   UserCircle,
 } from 'lucide-react';
 import { useTheme } from '@aetherblog/hooks';
+import { CachedAvatarImage } from '@/app/components/CachedAvatarImage';
 import type { AgentSession } from '../../lib/agentSessions';
 import { groupSessionsByRecency } from '../../lib/agentSessions';
 import type { AgentUser } from '../../lib/agentAuth';
@@ -537,8 +538,12 @@ function ProfileBar({
   const avatarNode = (
     <div className="w-11 h-11 md:w-8 md:h-8 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 flex items-center justify-center text-[var(--ink-primary)] text-sm font-medium overflow-hidden flex-shrink-0">
       {user.avatar ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+        <CachedAvatarImage
+          src={user.avatar}
+          alt=""
+          className="w-full h-full object-cover"
+          fallback={(user.nickname || user.username || '?').slice(0, 1).toUpperCase()}
+        />
       ) : (
         (user.nickname || user.username || '?').slice(0, 1).toUpperCase()
       )}
@@ -643,8 +648,12 @@ function ProfileMenuHeader({ user }: { user: AgentUser }) {
     <div className="px-3.5 py-3 flex items-center gap-3">
       <div className="w-9 h-9 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 flex items-center justify-center text-[var(--ink-primary)] text-sm font-medium overflow-hidden flex-shrink-0">
         {user.avatar ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+          <CachedAvatarImage
+            src={user.avatar}
+            alt=""
+            className="w-full h-full object-cover"
+            fallback={<UserCircle className="w-5 h-5 text-[var(--ink-muted)]" aria-hidden="true" />}
+          />
         ) : (
           <UserCircle className="w-5 h-5 text-[var(--ink-muted)]" aria-hidden="true" />
         )}

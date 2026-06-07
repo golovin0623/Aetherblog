@@ -1,8 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { ExternalLink } from 'lucide-react';
+import {
+  markCachedImageFailed,
+  markCachedImageLoaded,
+  useCachedImage,
+} from '@aetherblog/hooks';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 interface FriendCardProps {
@@ -28,8 +33,6 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
   rss,
   index = 0,
 }) => {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   // 智能检测图片宽高比
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
 
@@ -39,38 +42,29 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
 
   // 检测是否有有效的头像 URL
   const hasValidAvatar = safeAvatar !== '' && safeAvatar.trim() !== '';
-
-  // 图片加载超时处理
-  useEffect(() => {
-    if (!hasValidAvatar) return;
-    
-    const timeout = setTimeout(() => {
-      if (!imageLoaded) {
-        setImageError(true);
-      }
-    }, 5000); // 5秒超时
-
-    return () => clearTimeout(timeout);
-  }, [hasValidAvatar, imageLoaded]);
+  const cachedAvatar = useCachedImage(hasValidAvatar ? safeAvatar : '', {
+    enabled: hasValidAvatar,
+    timeoutMs: 5000,
+  });
 
   const handleImageLoad = (img: HTMLImageElement) => {
     const aspectRatio = img.naturalWidth / img.naturalHeight;
     // 宽高比在 0.7~1.4 之间视为"接近正方形"，使用填充模式
     setIsSquareImage(aspectRatio >= 0.7 && aspectRatio <= 1.4);
-    setImageLoaded(true);
+    markCachedImageLoaded(safeAvatar, img.naturalWidth || undefined, img.naturalHeight || undefined);
   };
 
   // 根据图片比例动态决定样式
   // - 正方形图片: 填满圆形 (object-cover)
   // - 非正方形: 缩放适配 + 内边距 (object-contain + padding)
-  const imageClass = isSquareImage === null
+  const imageClass = !cachedAvatar.isLoaded || isSquareImage === null
     ? "h-full w-full object-contain p-1.5 opacity-0" // 加载中先隐藏，避免闪烁
     : isSquareImage
       ? "h-full w-full object-cover opacity-100 transition-opacity duration-200"
       : "h-full w-full object-contain p-1.5 opacity-100 transition-opacity duration-200";
   
   // 是否显示回退的首字母头像
-  const showFallback = !hasValidAvatar || imageError;
+  const showFallback = !hasValidAvatar || cachedAvatar.isError;
 
   return (
     <a
@@ -133,7 +127,7 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
                   fill
                   sizes="56px"
                   onLoadingComplete={handleImageLoad}
-                  onError={() => setImageError(true)}
+                  onError={() => markCachedImageFailed(safeAvatar)}
                   className={imageClass}
                   aria-hidden="true"
                   /* 友链头像来自任意外部域名(博主网站、Google/GitHub/自建 CDN 等),

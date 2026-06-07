@@ -4,7 +4,7 @@ export interface Post {
   title: string;
   slug: string;
   content?: string;
-  summary?: string;
+  summary?: string | null;
   coverImage?: string;
   status: PostStatus;
   category?: Category;
@@ -31,7 +31,8 @@ export interface PostListItem {
   id: number;
   title: string;
   slug: string;
-  summary?: string;
+  summary?: string | null;
+  contentPreview?: string | null;
   coverImage?: string;
   status: PostStatus;
   categoryName?: string;

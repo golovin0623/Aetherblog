@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { Button, Select, type SelectOption } from '@aetherblog/ui';
 import { cn, formatDateTime } from '@/lib/utils';
 import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layout/AdminModuleHeader';
+import { CachedAvatar } from '@/components/common/CachedAvatar';
 import { accessService } from '@/services/accessService';
 import { getMediaUrl } from '@/services/mediaService';
 import type {
@@ -1545,26 +1546,21 @@ function RoleToggle({ value, onChange, compact = false }: { value: string[]; onC
 function UserAvatar({ user }: { user: ManagedUser | TeamMember }) {
   const rawAvatar = 'avatar' in user ? user.avatar : undefined;
   const avatarSrc = rawAvatar ? getMediaUrl(rawAvatar) : '';
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-  }, [avatarSrc]);
-
   const label = userDisplayName(user);
+  const fallback = <UserRound className="h-[18px] w-[18px]" />;
 
   return (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-primary))] text-[var(--aurora-1)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]" title={label}>
-      {avatarSrc && !failed ? (
-        <img
+      {avatarSrc ? (
+        <CachedAvatar
           src={avatarSrc}
           alt={`${label}头像`}
           className="h-full w-full object-cover"
           loading="lazy"
-          onError={() => setFailed(true)}
+          fallback={fallback}
         />
       ) : (
-        <UserRound className="h-[18px] w-[18px]" />
+        fallback
       )}
     </span>
   );

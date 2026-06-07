@@ -64,6 +64,7 @@ import { atlasService } from '@/services/atlasService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
 import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
+import { CachedAvatar } from '@/components/common/CachedAvatar';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
   type AgentArticle,
@@ -1682,24 +1683,7 @@ function UserAvatar({
   currentUser: CurrentUser;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-  }, [currentUser.avatarUrl]);
-
-  if (currentUser.avatarUrl && !failed) {
-    return (
-      <img
-        src={currentUser.avatarUrl}
-        alt={currentUser.nickname}
-        onError={() => setFailed(true)}
-        className={cn('shrink-0 rounded-full object-cover ring-1 ring-[var(--hub-border)]', className)}
-      />
-    );
-  }
-
-  return (
+  const fallback = (
     <div
       className={cn(
         'grid shrink-0 place-items-center rounded-full text-sm font-semibold text-[var(--hub-on-accent)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] [background:var(--hub-gradient)]',
@@ -1710,6 +1694,17 @@ function UserAvatar({
     >
       {currentUser.initial}
     </div>
+  );
+
+  if (!currentUser.avatarUrl) return fallback;
+
+  return (
+    <CachedAvatar
+      src={currentUser.avatarUrl}
+      alt={currentUser.nickname}
+      className={cn('shrink-0 rounded-full object-cover ring-1 ring-[var(--hub-border)]', className)}
+      fallback={fallback}
+    />
   );
 }
 
@@ -2544,11 +2539,20 @@ function Avatar({
 }) {
   if (isUser && currentUser.avatarUrl) {
     return (
-      <img
+      <CachedAvatar
         src={currentUser.avatarUrl}
         alt={currentUser.nickname}
         className="rounded-full object-cover"
         style={{ height: size, width: size }}
+        fallback={
+          <span
+            className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]"
+            style={{ height: size, width: size }}
+            aria-hidden="true"
+          >
+            <UserIcon style={{ width: size * 0.5, height: size * 0.5 }} />
+          </span>
+        }
       />
     );
   }

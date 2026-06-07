@@ -236,8 +236,14 @@ function resolveLocalPath(fileUrl: string): string {
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
+  if (fileUrl.startsWith('/api/uploads')) {
+    return fileUrl;
+  }
   if (fileUrl.startsWith('/uploads')) {
     return `/api${fileUrl}`;
+  }
+  if (fileUrl.startsWith('uploads/')) {
+    return `/api/${fileUrl}`;
   }
   // 既不是绝对 URL 也不是 /uploads,可能是 storage key,直接返回让上层兜底
   return fileUrl;

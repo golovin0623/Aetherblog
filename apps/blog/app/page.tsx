@@ -168,6 +168,7 @@ export default async function HomePage() {
                 title={post.title}
                 slug={post.slug}
                 summary={post.summary}
+                contentPreview={post.contentPreview}
                 category={post.categoryName ? { name: post.categoryName, slug: post.categoryName } : undefined}
                 tags={post.tagNames?.map(name => ({ name, slug: name }))}
                 publishedAt={new Date(post.publishedAt).toLocaleDateString('zh-CN')}
