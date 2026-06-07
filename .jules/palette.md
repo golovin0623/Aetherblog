@@ -1,0 +1,3 @@
+## 2025-02-14 - TableOfContents Focus Management
+**Learning:** When implementing smooth scrolling in-page navigation (e.g., Table of Contents), visually scrolling to the target is insufficient for accessibility. Keyboard and screen reader users remain focused on the original trigger link, making sequential navigation (`Tab`) disorienting as it proceeds from the old location rather than the new heading.
+**Action:** Always explicitly set `tabIndex="-1"` on the destination element (if it is not naturally focusable) and call `focus({ preventScroll: true })` programmatically immediately after triggering the smooth scroll.
