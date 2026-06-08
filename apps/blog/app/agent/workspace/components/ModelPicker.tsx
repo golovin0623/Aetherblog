@@ -388,7 +388,7 @@ export default function ModelPicker({
           'relative flex min-h-[58px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all active:scale-[0.985]',
           !value.modelId
             ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-            : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]',
+            : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]',
         )}
       >
         {!value.modelId && (
@@ -481,7 +481,7 @@ export default function ModelPicker({
                         'relative flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-all active:scale-[0.985]',
                         isActive
                           ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                          : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]',
+                          : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]',
                       )}
                     >
                       {isActive && (

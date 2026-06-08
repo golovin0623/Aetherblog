@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { spring } from '@aetherblog/ui';
 import {
   ArrowUp,
   AtSign,
@@ -18,7 +19,6 @@ import {
   SlidersHorizontal,
   SlashSquare,
   Square,
-  Mic,
   Maximize2,
   Minimize2,
   X,
@@ -241,12 +241,12 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         }}
         className={[
           'group/composer rounded-[26px] px-3 pt-3.5 pb-2.5 sm:rounded-[28px] sm:px-3.5',
-          'transition-[box-shadow,border-color,background-color] duration-300 ease-aether',
+          'transition-[box-shadow,border-color,background-color] duration-quick ease-aether',
           'bg-[var(--bg-raised)]',
           'border',
           focused
-            ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] shadow-[0_16px_42px_-24px_color-mix(in_oklch,var(--aurora-1)_46%,transparent),0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
-            : 'border-[var(--ink-subtle)]/18 shadow-[0_12px_34px_-28px_rgba(0,0,0,0.42)]',
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)] shadow-[0_18px_46px_-26px_color-mix(in_oklch,var(--aurora-1)_42%,transparent),0_0_0_3.5px_color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+            : 'border-[var(--ink-subtle)]/16 shadow-[0_12px_34px_-28px_rgba(0,0,0,0.42)]',
         ].join(' ')}
         style={bottomSafeArea ? { paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' } : undefined}
       >
@@ -425,31 +425,30 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               >
                 <SlashSquare className="w-3.5 h-3.5" />
               </ToolButton>
-              {/* 语音输入暂为占位 —— 移动端横向空间紧张时优先让出给主要工具
-                  （@ # /），桌面端继续暴露占位以维持视觉提示功能。 */}
-              <ToolButton title="语音输入（待接入）" disabled mobileHidden>
-                <Mic className="w-3.5 h-3.5" />
-              </ToolButton>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center justify-end gap-1">
-            <button
+            <motion.button
               type="button"
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? '收起输入框' : '展开输入框'}
               aria-label={expanded ? '收起输入框' : '展开输入框'}
+              whileTap={{ scale: 0.88 }}
+              transition={spring.precise}
               className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-leaf)] hover:text-[var(--ink-primary)]"
             >
               {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
+            </motion.button>
 
             {busy ? (
-              <button
+              <motion.button
                 type="button"
                 onClick={onAbort}
                 aria-label="停止生成"
-                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] transition-all hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] active:scale-95 md:h-8 md:px-3"
+                whileTap={{ scale: 0.96 }}
+                transition={spring.precise}
+                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] md:h-8 md:px-3"
               >
                 <span
                   aria-hidden="true"
@@ -458,14 +457,16 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 />
                 <Square className="w-3 h-3 fill-current" />
                 停止
-              </button>
+              </motion.button>
             ) : (
-              <div
+              <motion.div
                 ref={sendMenuRef}
+                whileTap={{ scale: 0.97 }}
+                transition={spring.precise}
                 className={[
                   'relative flex h-11 shrink-0 items-center rounded-full border transition-[background-color,border-color,box-shadow] duration-quick ease-aether md:h-8',
                   canSend
-                    ? 'border-transparent bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_18px_-10px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)]'
+                    ? 'border-transparent bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_20px_-10px_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]'
                     : 'border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] text-[var(--ink-muted)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
                 ].join(' ')}
               >
@@ -475,9 +476,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                   aria-label="发送"
                   title={`发送（${activeShortcut.label}）`}
                   className={[
-                    'relative inline-flex h-11 w-11 items-center justify-center rounded-l-full bg-transparent transition-all duration-quick ease-aether md:h-8 md:w-8',
+                    'relative inline-flex h-11 w-11 items-center justify-center rounded-l-full bg-transparent transition-colors duration-quick ease-aether md:h-8 md:w-8',
                     canSend
-                      ? 'hover:bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)] active:scale-95'
+                      ? 'hover:bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)]'
                       : 'cursor-not-allowed opacity-58',
                   ].join(' ')}
                 >
@@ -498,7 +499,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                   aria-haspopup="menu"
                   aria-expanded={sendMenuOpen}
                   title="选择发送方式"
-                  className="inline-flex h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-all duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] active:scale-95 md:h-8 md:w-8"
+                  className="inline-flex h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] md:h-8 md:w-8"
                 >
                   <ChevronDown className={`h-4 w-4 transition-transform md:h-3.5 md:w-3.5 ${sendMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -533,7 +534,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                             className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
                               selected
                                 ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                                : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
+                                : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
                             }`}
                           >
                             <span className="inline-flex h-7 w-12 shrink-0 items-center justify-center gap-1 rounded-lg bg-[var(--bg-leaf)] font-mono text-[12px] text-[var(--ink-secondary)]">
@@ -553,7 +554,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
+              </motion.div>
             )}
           </div>
         </div>
@@ -584,7 +585,7 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
     ? 'hidden md:inline-flex md:h-8 md:w-8'
     : 'inline-flex h-11 w-11 md:h-8 md:w-8';
   return (
-    <button
+    <motion.button
       ref={ref}
       type="button"
       title={title}
@@ -592,12 +593,14 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
       onClick={onClick}
       aria-label={count > 0 ? `${title}，已选择 ${count} 项` : title}
       aria-pressed={active}
-      className={`${sizeClass} relative shrink-0 items-center justify-center rounded-full transition-all duration-quick ease-aether ${
+      whileTap={disabled ? undefined : { scale: 0.88 }}
+      transition={spring.precise}
+      className={`${sizeClass} relative shrink-0 items-center justify-center rounded-full transition-colors duration-quick ease-aether ${
         disabled
           ? 'opacity-40 cursor-not-allowed'
         : active
-          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)] active:scale-95'
-          : 'hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] active:scale-95'
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
+          : 'hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)]'
       }`}
     >
       {children}
@@ -609,7 +612,7 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
           {count > 9 ? '9+' : count}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 });
 

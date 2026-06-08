@@ -163,9 +163,9 @@ export default function Sidebar({
           type="button"
           onClick={wrappedCreate}
           data-interactive
-          className="group/new w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/45 hover:text-[var(--aurora-1)] transition-all text-[13px] font-medium active:scale-[0.98] active:translate-y-px"
+          className="group/new inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--ink-subtle)]/18 bg-[var(--bg-raised)] px-3 py-2 text-[13px] font-medium text-[var(--ink-primary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-[transform,border-color,box-shadow] duration-quick ease-aether hover:-translate-y-px hover:border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)] hover:shadow-[0_8px_22px_-14px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)] active:translate-y-0 active:scale-[0.98]"
         >
-          <Plus className="w-3.5 h-3.5 transition-transform group-hover/new:rotate-90" />
+          <Plus className="h-3.5 w-3.5 text-[var(--ink-muted)] transition-[transform,color] duration-quick ease-aether group-hover/new:rotate-90 group-hover/new:text-[var(--aurora-1)]" />
           新对话
         </button>
 
@@ -176,7 +176,7 @@ export default function Sidebar({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="搜索对话…"
-            className="w-full pl-8 pr-2 py-1.5 rounded-lg bg-[var(--bg-raised)]/70 border border-[var(--ink-subtle)]/15 text-[var(--ink-secondary)] placeholder-[var(--ink-muted)]/60 text-[12px] outline-none focus:border-[var(--aurora-1)]/40 focus:ring-1 focus:ring-[var(--aurora-1)]/15"
+            className="w-full rounded-lg border border-[var(--ink-subtle)]/14 bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] py-1.5 pl-8 pr-2 text-[12px] text-[var(--ink-secondary)] placeholder-[var(--ink-muted)]/60 outline-none transition-[border-color,box-shadow] duration-quick ease-aether focus:border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]"
           />
         </div>
       </div>
@@ -205,16 +205,25 @@ export default function Sidebar({
                   return (
                     <li key={s.id}>
                       <div
-                        className={`group/sess relative rounded-lg flex items-center gap-2 px-2.5 py-2 text-[12.5px] cursor-pointer transition-all ${
-                          !isEditing && !menuOpen ? 'active:scale-[0.985] active:bg-[var(--bg-raised)]' : ''
+                        className={`group/sess relative flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] cursor-pointer transition-[background-color,color] duration-quick ease-aether ${
+                          !isEditing && !menuOpen ? 'active:scale-[0.985]' : ''
                         } ${
                           isActive
-                            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
-                            : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
-                        } ${menuOpen ? 'bg-[var(--bg-raised)]/80' : ''}`}
+                            ? 'bg-[var(--bg-raised)] text-[var(--ink-primary)]'
+                            : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
+                        } ${menuOpen && !isActive ? 'bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]' : ''}`}
                         onClick={() => !isEditing && !menuOpen && wrappedSelect(s.id)}
                       >
-                        <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 opacity-80" />
+                        {/* 激活态:中性底 + 左缘 2px 极光线(§05 Nav 规范),不再整块紫色底色 */}
+                        {isActive && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute bottom-1.5 left-0 top-1.5 w-[2px] rounded-full bg-[var(--aurora-1)] shadow-[0_0_8px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]"
+                          />
+                        )}
+                        <MessageSquare
+                          className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? 'text-[var(--aurora-1)]' : 'opacity-70'}`}
+                        />
                         {isEditing ? (
                           <input
                             autoFocus
@@ -568,7 +577,7 @@ function ProfileBar({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="账户菜单"
-        className="md:hidden w-full flex items-center gap-3 px-1.5 py-1 rounded-xl hover:bg-[var(--bg-raised)]/50 active:scale-[0.985] transition-all"
+        className="md:hidden w-full flex items-center gap-3 px-1.5 py-1 rounded-xl hover:bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] active:scale-[0.985] transition-all"
       >
         {avatarNode}
         <div className="min-w-0 flex-1 text-left">

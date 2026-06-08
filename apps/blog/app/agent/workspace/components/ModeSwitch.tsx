@@ -144,7 +144,7 @@ export default function ModeSwitch({ value, onChange, variant = 'segmented' }: P
                   ? `relative flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-[12px] font-medium tracking-[-0.01em] transition-colors ${
                       isActive
                         ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
-                        : 'border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:text-[var(--ink-primary)]'
+                        : 'border-[var(--ink-subtle)]/15 bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:text-[var(--ink-primary)]'
                     }`
                   : `relative inline-flex items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-[12px] font-medium tracking-[-0.01em] transition-all duration-200 ${
                       isActive

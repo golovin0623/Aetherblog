@@ -110,7 +110,7 @@ export default function TagPicker({
                 className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${
                   checked
                     ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                    : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
+                    : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
                 }`}
               >
                 <Hash className="w-3.5 h-3.5 flex-shrink-0 opacity-80" />
