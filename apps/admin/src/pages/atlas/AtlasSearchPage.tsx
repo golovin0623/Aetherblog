@@ -33,6 +33,9 @@ export default function AtlasSearchPage() {
   const [scope, setScope] = useState<AtlasScopeFilter>(urlScope);
   const [semantic, setSemantic] = useState(urlSemantic);
   const [state, setState] = useState<SearchState>(urlQuery ? { kind: 'loading' } : { kind: 'idle' });
+  // 「标注」命中但其载体未独立命中搜索时，carrier 不在结果桶里 —— 按 carrierId 兜底拉取，
+  // 让标注结果的「跳 Reader」对全部命中生效（codex review P2）。
+  const [resolvedCarriers, setResolvedCarriers] = useState<Map<number, AtlasCarrier>>(() => new Map());
 
   const runSearch = useCallback(async (nextQuery: string, nextScope: AtlasScopeFilter, nextSemantic: boolean) => {
     const q = nextQuery.trim();
@@ -80,8 +83,44 @@ export default function AtlasSearchPage() {
   // 原本 annotation 结果是纯文本死路（无任何链接）。
   const carrierById = useMemo(() => {
     if (state.kind !== 'ok') return new Map<number, AtlasCarrier>();
-    // 后端空切片可能序列化为 null，取数前兜底成空数组，避免 .map 抛 TypeError。
-    return new Map((state.data.carriers ?? []).map((carrier) => [carrier.id, carrier] as const));
+    // 兜底拉取的载体打底，搜索命中桶里的载体覆盖在上（保证 null 切片不炸）。
+    const map = new Map<number, AtlasCarrier>(resolvedCarriers);
+    (state.data.carriers ?? []).forEach((carrier) => map.set(carrier.id, carrier));
+    return map;
+  }, [state, resolvedCarriers]);
+
+  // 对「命中标注但其载体未命中」的情况按 carrierId 兜底拉取载体，补齐 Reader 回链。
+  useEffect(() => {
+    if (state.kind !== 'ok') {
+      setResolvedCarriers((prev) => (prev.size ? new Map() : prev));
+      return;
+    }
+    const inBucket = new Set((state.data.carriers ?? []).map((carrier) => carrier.id));
+    const missing = Array.from(
+      new Set(
+        (state.data.annotations ?? [])
+          .map((annotation) => annotation.carrierId)
+          .filter((id): id is number => typeof id === 'number' && id > 0 && !inBucket.has(id))
+      )
+    );
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const results = await Promise.allSettled(missing.map((id) => atlasService.getCarrier(id)));
+      if (cancelled) return;
+      setResolvedCarriers((prev) => {
+        const next = new Map(prev);
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value?.data) {
+            next.set(result.value.data.id, result.value.data);
+          }
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [state]);
 
   return (
