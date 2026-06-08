@@ -316,7 +316,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		atlashandler.NewAtlasEventHandler(activitySvc),
 	)
 	commentRepo := repository.NewCommentRepo(s.DB)
-	commentSvc := service.NewCommentService(commentRepo, postRepo)
+	commentSvc := service.NewCommentService(commentRepo, postRepo, settingSvc)
 	handler.NewCommentHandler(commentSvc, activitySvc).MountAdmin(admin.Group("/comments"))
 
 	// --- 公开路由 ---
@@ -411,6 +411,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	mediaHandler := handler.NewMediaHandler(mediaSvc, activitySvc)
 	mediaHandler.SetBackupScheduler(syncSvc)
+	mediaHandler.SetSettingService(settingSvc) // 让后台 upload_max_size 上传大小限制生效
 	mediaHandler.Mount(admin.Group("/media"))
 	handler.NewPublicMediaHandler(mediaSvc).Mount(public.Group("/media"))
 	handler.NewUploadAccessHandler(mediaSvc, s.Config.Upload.Path).Mount(api.Group("/uploads"))

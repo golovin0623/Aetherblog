@@ -5,6 +5,7 @@ import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
 import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
+import AnalyticsScripts from './components/AnalyticsScripts';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import { getPreferredSiteIconUrl } from '@aetherblog/utils';
@@ -94,6 +95,11 @@ export default async function RootLayout({
             可配置 Google Fonts 由 FontProvider 在客户端按当前设置动态加载。 */}
         <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* SEO 统计脚本：按后台配置的百度 / Google Analytics ID 注入 */}
+        <AnalyticsScripts
+          baiduId={settings.baidu_analytics_id}
+          googleId={settings.google_analytics_id}
+        />
         <Providers>
           <SiteSettingsProvider settings={settings}>
             <FontProvider initialFont={fontFamily}>

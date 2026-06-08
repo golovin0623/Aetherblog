@@ -45,6 +45,34 @@ type MediaHandler struct {
 	mediaRepo   *repository.MediaRepo   // 可选;UploadContent 用来读旧记录给版本快照
 	activitySvc *service.ActivityService
 	backupSched mediaBackupScheduler
+	settingSvc  *service.SiteSettingService // 可选;读取 upload_max_size 使后台上传大小限制生效(nil 时退回 100MB 硬上限)
+}
+
+// maxUploadHardCeilingBytes 是上传大小的绝对硬上限(100MB)。
+// 后台 upload_max_size(MB) 在此之内生效;配置缺失/非法/超过该值时回落到硬上限,
+// 避免管理员误填 0 或空值导致整站无法上传。
+const maxUploadHardCeilingBytes int64 = 100 * 1024 * 1024
+
+// maxUploadBytes 返回当前生效的单文件上传上限(字节)。
+// 读取 site_settings.upload_max_size(单位 MB):0 < v*MB <= 硬上限时按配置值,
+// 否则回落到 100MB 硬上限。settingSvc 未注入或读取失败同样回落,保证上传不被误伤。
+func (h *MediaHandler) maxUploadBytes(ctx context.Context) int64 {
+	if h.settingSvc == nil {
+		return maxUploadHardCeilingBytes
+	}
+	v, err := h.settingSvc.GetValue(ctx, "upload_max_size")
+	if err != nil || v == "" {
+		return maxUploadHardCeilingBytes
+	}
+	mb, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || mb <= 0 {
+		return maxUploadHardCeilingBytes
+	}
+	limit := mb * 1024 * 1024
+	if limit > maxUploadHardCeilingBytes {
+		return maxUploadHardCeilingBytes
+	}
+	return limit
 }
 
 type mediaBackupScheduler interface {
@@ -87,6 +115,12 @@ func (h *MediaHandler) SetBackupScheduler(scheduler mediaBackupScheduler) {
 	h.backupSched = scheduler
 }
 
+// SetSettingService 注入站点设置服务,使 upload_max_size 等后台配置在上传校验时生效。
+// 不注入时上传大小退回 100MB 硬上限(见 maxUploadBytes)。
+func (h *MediaHandler) SetSettingService(settingSvc *service.SiteSettingService) {
+	h.settingSvc = settingSvc
+}
+
 // Mount 在指定路由组上注册所有媒体管理路由。
 func (h *MediaHandler) Mount(g *echo.Group) {
 	g.POST("/upload", h.Upload)
@@ -116,7 +150,7 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
-	const maxUploadSize = 100 * 1024 * 1024 // 100 MB
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
 	if fh.Size > maxUploadSize {
 		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
 	}
@@ -173,9 +207,20 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
 
+	// 批量路径同样按 upload_max_size 校验单文件大小（此前批量上传完全不校验大小，
+	// 连 100MB 硬上限都被绕过）。超限文件计为失败项，不中断其余文件。
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
+
 	// 逐个上传，失败的文件不中断整体流程
 	var results []interface{}
 	for _, fh := range files {
+		if fh.Size > maxUploadSize {
+			results = append(results, map[string]interface{}{
+				"error":    fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)),
+				"filename": fh.Filename,
+			})
+			continue
+		}
 		vo, err := h.svc.Upload(c.Request().Context(), fh, uploaderID, folderID)
 		if err != nil {
 			results = append(results, map[string]interface{}{"error": err.Error(), "filename": fh.Filename})
@@ -590,7 +635,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
-	const maxUploadSize = 100 * 1024 * 1024 // 100 MB
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
 	if fh.Size > maxUploadSize {
 		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
 	}

@@ -156,6 +156,9 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
 
 function CommentSectionBase({ postId, settings }: CommentSectionProps) {
   const formId = useId();
+  // 评论审核策略：comment_audit 默认开启；与后端 CommentService 的初始状态判定一致，
+  // 用于决定提交后的提示文案与表单顶部的预期说明，避免"提示说要审核但其实已直接发布"的割裂。
+  const requiresAudit = settings.comment_audit !== false;
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -262,7 +265,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
         parentId: replyTo?.id
       });
 
-      setSuccess('评论提交成功，审核通过后显示');
+      setSuccess(requiresAudit ? '评论提交成功，审核通过后显示' : '评论发布成功');
       setContent('');
       setReplyTo(null);
 
@@ -488,7 +491,15 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         )}
                       </AnimatePresence>
 
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                        {requiresAudit ? (
+                          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                            评论将在管理员审核通过后公开显示
+                          </p>
+                        ) : (
+                          <span className="hidden sm:block" aria-hidden="true" />
+                        )}
+                        <div className="flex items-center justify-end gap-3">
                         {replyTo && (
                           <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
                             改为发表新评论
@@ -511,6 +522,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                             </>
                           )}
                         </button>
+                        </div>
                       </div>
                     </div>
                   </form>

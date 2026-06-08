@@ -48,7 +48,11 @@ interface Props {
 
 export default function SiteSettingsProvider({ children, settings }: Props) {
   const postPageSize = Number(settings.post_page_size) || 6;
-  const showBanner = settings.show_banner !== 'false' && settings.show_banner !== false;
+  // 欢迎页开关以 welcome_enabled 为准（后台唯一入口），show_banner 仅作 legacy 兜底，
+  // 与 app/page.tsx 的判定公式保持一致。
+  const welcomeEnabled = settings.welcome_enabled !== 'false' && settings.welcome_enabled !== false;
+  const legacyBanner = settings.show_banner !== 'false' && settings.show_banner !== false;
+  const showBanner = welcomeEnabled && legacyBanner;
 
   // 1. 强制暗黑模式
   useEffect(() => {

@@ -18,11 +18,33 @@ import (
 type CommentService struct {
 	repo     *repository.CommentRepo
 	postRepo *repository.PostRepo
+	// settings 可选；用于读取站点级评论开关（comment_enabled）与审核策略
+	// （comment_audit）。为 nil 时退化为「允许评论 + 强制审核」的安全默认值，
+	// 保证旧调用路径与单测不受影响。
+	settings *SiteSettingService
 }
 
-// NewCommentService 使用给定的评论仓储和文章仓储创建 CommentService 实例。
-func NewCommentService(repo *repository.CommentRepo, postRepo *repository.PostRepo) *CommentService {
-	return &CommentService{repo: repo, postRepo: postRepo}
+// NewCommentService 使用给定的评论仓储、文章仓储与站点设置服务创建 CommentService 实例。
+// settings 可传 nil（退化为安全默认值），生产路径应注入以使后台评论开关真实生效。
+func NewCommentService(repo *repository.CommentRepo, postRepo *repository.PostRepo, settings *SiteSettingService) *CommentService {
+	return &CommentService{repo: repo, postRepo: postRepo, settings: settings}
+}
+
+// boolSetting 读取布尔型站点配置；服务未注入、键缺失或解析为空时返回 fallback。
+// "true" / "1" / "yes" 视为 true，其余非空值视为 false。
+func (s *CommentService) boolSetting(ctx context.Context, key string, fallback bool) bool {
+	if s.settings == nil {
+		return fallback
+	}
+	v, err := s.settings.GetValue(ctx, key)
+	if err != nil {
+		log.Warn().Err(err).Str("key", key).Msg("comment: read site setting failed, using fallback")
+		return fallback
+	}
+	if v == "" {
+		return fallback
+	}
+	return v == "true" || v == "1" || v == "yes"
 }
 
 // --- 管理端接口 ---
@@ -219,6 +241,12 @@ func (s *CommentService) GetByPost(ctx context.Context, postID int64) ([]dto.Com
 // 业务规则：若提供了 ParentID，则父评论必须存在且归属于同一篇文章。
 // 错误场景：父评论不存在或不属于当前文章。
 func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.CreateCommentRequest, ip, userAgent string) (*dto.CommentVO, error) {
+	// 站点级评论总开关：管理员在「系统设置 → 评论设置」关闭后，公开提交接口
+	// 必须拒绝，避免直接打 API 绕过前端隐藏的评论框继续灌评论。默认 true（缺配置不误伤）。
+	if !s.boolSetting(ctx, "comment_enabled", true) {
+		return nil, errors.New("站点已关闭评论功能")
+	}
+
 	// SECURITY (VULN-043): 校验文章状态 —— 草稿 / 软删除 / 隐藏 / 关闭评论 的文章
 	// 不应接受新评论。旧实现任何 postID 都放行，会污染审核队列并为幽灵评论
 	// 提供落地点。
@@ -246,6 +274,13 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 	ipPtr := strPtr(ip)
 	uaPtr := strPtr(userAgent)
 
+	// 审核策略：comment_audit 开启（默认）时新评论进入 PENDING 待审核队列；
+	// 关闭时直接 APPROVED 立即对外可见，使后台「评论需审核」开关真实生效。
+	initialStatus := "PENDING"
+	if !s.boolSetting(ctx, "comment_audit", true) {
+		initialStatus = "APPROVED"
+	}
+
 	c := &model.Comment{
 		PostID:    postID,
 		ParentID:  req.ParentID,
@@ -253,7 +288,7 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 		Email:     email,
 		Website:   website,
 		Content:   req.Content,
-		Status:    "PENDING", // 新评论初始状态为待审核
+		Status:    initialStatus,
 		IP:        ipPtr,
 		UserAgent: uaPtr,
 		IsAdmin:   false,
@@ -261,6 +296,12 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 
 	if err := s.repo.Create(ctx, c); err != nil {
 		return nil, err
+	}
+
+	// 审核关闭时评论即时 APPROVED，需刷新文章评论数缓存使公开计数准确
+	// （PENDING 不计入公开计数，无需刷新）。对齐 Approve() 的异步刷新模式。
+	if initialStatus == "APPROVED" {
+		s.refreshPostCommentCountAsync(c.PostID)
 	}
 
 	vo := toCommentVO(*c)
