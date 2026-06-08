@@ -369,7 +369,8 @@ function SidebarContent({
           <div
             ref={searchAnchorRef}
             className={cn(
-              'overflow-hidden transition-all duration-300',
+              'overflow-hidden rounded-lg transition-[width,opacity,margin,box-shadow] duration-300',
+              'focus-within:shadow-[0_0_0_2px_color-mix(in_oklch,var(--aurora-1)_24%,transparent)]',
               effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
             )}
           >
@@ -394,7 +395,7 @@ function SidebarContent({
                 'w-full px-3 py-1.5 rounded-lg text-sm',
                 'bg-[var(--bg-card)] border border-border',
                 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
-                'focus:outline-none focus:border-primary/50',
+                'focus:outline-none focus-visible:outline-none focus:border-primary/50 focus:!shadow-none focus:!ring-0 focus-visible:!ring-0',
                 'transition-colors duration-200'
               )}
             />

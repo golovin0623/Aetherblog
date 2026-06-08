@@ -77,7 +77,7 @@ function hasActiveMediaSync(items?: MediaItem[]): boolean {
 
 const mediaPanelClass = cn(
   'media-neutral-surface access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
-  'p-3 shadow-sm sm:p-3.5 lg:p-4'
+  'p-3 shadow-sm sm:p-4'
 );
 
 const mediaShellClass = cn(
@@ -627,12 +627,12 @@ export default function MediaPage() {
 
   return (
     <div
-      className="media-library-page admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-visible p-4 text-[var(--ink-primary)] md:-m-6 md:h-[calc(100%+3rem)] md:overflow-hidden md:p-6"
+      className="media-library-page admin-grid-page box-border min-h-full overflow-visible p-4 text-[var(--ink-primary)] md:h-full md:overflow-hidden md:p-6"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 md:h-full lg:px-8">
+      <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 md:h-full lg:px-8">
         <AdminModuleHeader
           className="media-balanced-actions-module-header"
           title="媒体库"
@@ -662,7 +662,7 @@ export default function MediaPage() {
           }
         />
 
-        <div className={cn(mediaPanelClass, 'flex flex-col gap-2.5 sm:gap-3')}>
+        <div className={cn(mediaPanelClass, 'flex flex-col gap-3 sm:gap-4')}>
           <div className="order-2 grid grid-cols-1 gap-2.5 xl:order-1 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
             <div className="relative min-w-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />

@@ -290,8 +290,6 @@ export default function CategoriesPage() {
           onTabChange={handleTabChange}
           currentLabel={isCategoryTab ? '分类库' : '标签库'}
           activeSummary={`匹配 ${stats.filteredTotal} / ${stats.total} · 覆盖 ${stats.totalPosts} 篇`}
-          showCurrentLabel={false}
-          showActiveSummary={false}
           actions={
             <button
               type="button"
@@ -339,7 +337,7 @@ export default function CategoriesPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-h-[34px] flex-wrap items-center gap-2">
             <div className="flex min-w-[60px] items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
               {isCategoryTab ? <Folder className="h-3.5 w-3.5" /> : <TagIcon className="h-3.5 w-3.5" />}
               <span>概览</span>
