@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 模型中心能力对齐升级 (2026-06-09, branch feat/model-center-alignment)
+
+**背景：** 模型中心（`apps/admin/src/pages/ai-config` + `apps/ai-service`）对标主流模型/供应商配置中心，存在能力词表三层不一致、参数控件不可读、远程拉取缺能力/定价、加载态用文字等缺口。本轮自研补齐并融入，不在源码明面引入对标项目标识。
+
+**Added — 后端能力对齐：**
+- `apps/ai-service/app/services/model_capabilities.py` —— 新增纯函数能力基准模块：`normalize_abilities`（别名/缩写/snake_case 统一为 8 个规范 camelCase 标志）、`infer_model_type`、`infer_capabilities`（按命名启发式补能力）。100% 覆盖。
+- `apps/ai-service/app/services/remote_model_fetcher.py` —— 远程拉取的模型自动携带规范能力与正确类型；新增 **Google(Gemini) 抓取**（密钥走请求头、回填上下文窗口）；捕获聚合站 `pricing.{prompt,completion}` 单价（USD/Token→每百万）与 `context_length`；修复 `utcfromtimestamp` 弃用。
+
+**Added — 前端能力与体验对齐：**
+- `apps/admin/src/pages/ai-config/utils/modelParams.ts` —— 自研参数控件目录（分组+中文标签+说明+能力推荐）。
+- `ModelConfigDialog` —— 扩展参数升级为分组可读控件，新增「屏蔽采样参数 disabledParams」；动效迁移设计系统预设。
+- `ModelList` —— **骨架屏**替换「加载中…」文本（修正铁律 3.6）+ 能力分面筛选；`ModelCard` —— NEW 徽章。
+- `types.ts` —— 扩展 `ModelSettings.disabledParams` 与 `ModelPricing`（cacheWrite/图像·视频分项）。
+
+**Changed — 合规去明面化：** 剥离预设 URL 抄录的引流追踪参数（`utm_source=…`/`invited_by=…`）；清除源码「LobeChat 风格/参考」等注释（8 处）；`lobeIcons.ts`→中性适配层 `brandIcons.ts`，第三方品牌图标依赖收敛单点。
+
+**测试：** 后端 pytest 全过（新模块 100%/86%，并修复 4 个环境相关历史失败用例）；前端新建首套 vitest 22 个全过；typecheck / eslint / 构建 / `design-system:check`(0 error) 全绿。
+
+**📄 文档影响：** 已新增 `docs/model-center-alignment-report.md`（完整升级报告）、更新本 `CHANGELOG.md`；能力/抓取属 AI 模块演进，建议后续在 `docs/AI_MODULE_PLAN_V2.md` 追记；未改 API 路由 / DB schema（新能力字段存 `capabilities` JSONB），无需 migrations。
+
 ### Fixed — 日志查看器脏字符 + 双模式（优化 / 原始）对齐 (2026-06-02, branch claude/log-formatting-colors-GnUyi)
 
 **背景：** admin 仪表盘日志查看器出现「脏字符」（`[90m` `[32mINF[0m` 等 ANSI 色码渲染成方块），既不美观也无色彩。根因：本地 `start.sh` 把服务的彩色 stdout 重定向进了内部 writer 已经在写「干净 JSON」的同一个 `*.log` 文件 —— 双写 + ANSI 污染（Docker 下 stdout 走 `docker logs`，文件本就干净，故仅本地复现）。参考 CLI Proxy API 的日志观感，全面对齐「优化模式」与「原始模式」两套展示。

@@ -552,7 +552,7 @@ export default function AetherHubWorkspacePage() {
     window.localStorage.setItem('aetherblog.admin.aetherhub.fontSize', String(fontSize));
   }, [fontSize]);
 
-  // ----- 发送触发方式：对齐 LobeHub 的可配置发送键位。 -----
+  // ----- 发送触发方式：可配置的发送键位。 -----
   const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
   useEffect(() => {
     if (typeof window === 'undefined') return;

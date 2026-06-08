@@ -1,5 +1,5 @@
 // 供应商卡片组件
-// ref: §5.1 - AI Service 架构 (LobeChat 风格)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';

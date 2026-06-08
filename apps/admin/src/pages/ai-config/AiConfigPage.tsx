@@ -1,5 +1,5 @@
 // AI 配置中心主页面 (重构版)
-// ref: §5.1 - AI Service 架构 (LobeChat 风格)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';

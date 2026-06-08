@@ -1,12 +1,12 @@
-// AI 供应商图标组件 (使用 @lobehub/icons)
+// AI 供应商图标组件
 // ref: §5.1 - AI Service 架构
 
 import type { ComponentType, CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 
-import { getBrandIconSvgMaskUrl, resolveBrandIconId, getBrandIconPreviewUrl } from '../utils/lobeIcons';
+import { getBrandIconSvgMaskUrl, resolveBrandIconId, getBrandIconPreviewUrl } from '../utils/brandIcons';
 
-// 动态导入 LobeHub 图标 (避免 tree-shaking 问题)
+// 具名导入品牌图标（避免 tree-shaking 问题）
 import OpenAI from '@lobehub/icons/es/OpenAI';
 import Anthropic from '@lobehub/icons/es/Anthropic';
 import Google from '@lobehub/icons/es/Google';
