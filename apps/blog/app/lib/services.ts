@@ -94,6 +94,16 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
 // base」全部失效，永远回落到硬编码默认值——且 siteUrl 回落到 localhost，污染线上
 // canonical 与社交分享卡。这里补一层别名归一：camelCase 缺失时用对应 snake_case 回填，
 // 两套读法同时生效，且不覆盖后端已注入的 authorName 等 camelCase 字段。
+function isAbsoluteHttpUrl(value: unknown): boolean {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function normalizeSiteSettings(raw: Record<string, unknown>): SiteSettings {
   const merged: Record<string, unknown> = { ...raw };
   const alias = (camel: string, snake: string) => {
@@ -106,8 +116,16 @@ function normalizeSiteSettings(raw: Record<string, unknown>): SiteSettings {
   alias('siteTitle', 'site_name');
   alias('siteDescription', 'site_description');
   alias('siteKeywords', 'site_keywords');
-  alias('siteUrl', 'site_url');
   alias('siteSubtitle', 'footer_signature');
+  // siteUrl 仅在 site_url 是合法绝对 http(s) URL 时才别名 —— layout.tsx 会 new URL(siteUrl)，
+  // 后台保存走按钮而非原生表单校验，漏写协议的 "example.com" 等非法值会让 metadata 生成抛错、
+  // 整页崩。非法值不别名，交由下游回落到默认 URL（见 layout / sitemap / robots 的 fallback）。
+  if (
+    (merged.siteUrl === undefined || merged.siteUrl === null || merged.siteUrl === '') &&
+    isAbsoluteHttpUrl(merged.site_url)
+  ) {
+    merged.siteUrl = (merged.site_url as string).trim();
+  }
   return merged as SiteSettings;
 }
 
