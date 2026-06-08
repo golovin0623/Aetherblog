@@ -33,8 +33,6 @@ import {
   Import,
   List,
   ListTree,
-  Loader2,
-  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -662,21 +660,6 @@ export default function CloudExplorerPage() {
           icon={Cloud}
           currentLabel={listRefreshing ? '同步中' : providerLabel}
           activeSummary={`当前前缀：${prefixLabel} · 第 ${pageNum} 页 · 当前页 ${objects.length} 项 · 容量 ${formatFileSize(totalSize)}`}
-          actions={
-            <button
-              type="button"
-              onClick={() => refetch()}
-              disabled={!providerId || isFetching}
-              className="admin-module-action-button activity-refresh-button"
-              data-refreshing={listRefreshing}
-              title={listRefreshing ? '正在刷新' : '刷新'}
-              aria-label="刷新云端对象"
-              aria-busy={listRefreshing}
-            >
-              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
-            </button>
-          }
         />
 
         <div className={cn(cloudPanelClass, 'space-y-4')}>
