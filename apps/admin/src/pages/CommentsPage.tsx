@@ -229,7 +229,6 @@ export default function CommentsPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [manualRefreshing, setManualRefreshing] = useState(false);
-  const [refreshPulse, setRefreshPulse] = useState(0);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState('');
   const [total, setTotal] = useState(0);
@@ -295,12 +294,6 @@ export default function CommentsPage() {
   useEffect(() => {
     setPageNum(1);
   }, [debouncedSearch]);
-
-  const handleRefresh = async () => {
-    if (manualRefreshing) return;
-    setRefreshPulse((value) => value + 1);
-    await fetchComments({ preserveList: true });
-  };
 
   const handleStatusChange = (status: UIStatus) => {
     setSelectedStatus(status);
@@ -471,21 +464,6 @@ export default function CommentsPage() {
           icon={MessageSquare}
           currentLabel={listRefreshing ? '同步中' : '审核队列'}
           activeSummary={`当前匹配 ${total} 条评论，第 ${pageNum}/${totalPages} 页`}
-          actions={
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={manualRefreshing}
-              className="admin-module-action-button activity-refresh-button"
-              data-refreshing={listRefreshing}
-              title={listRefreshing ? '正在刷新' : '刷新'}
-              aria-label="刷新评论列表"
-              aria-busy={listRefreshing}
-            >
-              <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-              <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
-            </button>
-          }
         />
 
         <div className={cn(commentPanelClass, 'space-y-4')}>
@@ -676,7 +654,7 @@ export default function CommentsPage() {
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${selectedStatus}-${debouncedSearch}-${pageNum}-${pageSize}-${refreshPulse}`}
+                key={`${selectedStatus}-${debouncedSearch}-${pageNum}-${pageSize}`}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: listRefreshing ? 0.62 : 1, y: listRefreshing ? 2 : 0 }}
                 exit={{ opacity: 0 }}

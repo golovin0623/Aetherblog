@@ -135,15 +135,13 @@ export default function FriendsPage() {
   const [deleteTarget, setDeleteTarget] = useState<FriendLink | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [manualRefreshing, setManualRefreshing] = useState(false);
-  const [refreshPulse, setRefreshPulse] = useState(0);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const debouncedSearch = useDebounce(searchQuery.trim(), 250);
 
   const queryClient = useQueryClient();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const { data: friends = [], isLoading, isFetching, refetch } = useQuery({
+  const { data: friends = [], isLoading, isFetching } = useQuery({
     queryKey: ['friends'],
     queryFn: () => friendService.getAll(),
   });
@@ -188,7 +186,7 @@ export default function FriendsPage() {
   const total = filteredFriends.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageFriends = filteredFriends.slice((pageNum - 1) * pageSize, pageNum * pageSize);
-  const listRefreshing = (isFetching && !isLoading) || manualRefreshing;
+  const listRefreshing = isFetching && !isLoading;
 
   useEffect(() => {
     setPageNum(1);
@@ -288,20 +286,6 @@ export default function FriendsPage() {
     const newOrder = arrayMove(friends, oldIndex, newIndex);
     queryClient.setQueryData<FriendLink[]>(['friends'], newOrder);
     reorderMutation.mutate(newOrder.map((friend) => friend.id));
-  }
-
-  async function handleRefresh() {
-    if (manualRefreshing) return;
-    setManualRefreshing(true);
-    setRefreshPulse((value) => value + 1);
-    try {
-      await Promise.all([
-        refetch(),
-        new Promise((resolve) => window.setTimeout(resolve, 420)),
-      ]);
-    } finally {
-      setManualRefreshing(false);
-    }
   }
 
   function handlePageSizeChange(nextSize: number) {
@@ -496,37 +480,23 @@ export default function FriendsPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
-          className="compact-actions-module-header"
+          className="compact-actions-module-header friends-actions-module-header"
           title="友情链接"
           description="管理友链展示、排序与状态。"
           icon={Link2}
           currentLabel={listRefreshing ? '同步中' : '站点目录'}
           activeSummary={`匹配 ${total} · 公开 ${stats.visible} · 离线 ${stats.offline}`}
           actions={
-            <>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={manualRefreshing}
-                className="admin-module-action-button activity-refresh-button"
-                data-refreshing={listRefreshing}
-                title={listRefreshing ? '正在刷新' : '刷新'}
-                aria-label="刷新友情链接"
-                aria-busy={listRefreshing}
-              >
-                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={openCreateForm}
-                className="admin-module-action-button"
-                aria-label="新增友链"
-              >
-                <Plus className="h-4 w-4" />
-                <span className="sr-only">新增友链</span>
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="admin-module-action-button friends-header-action friends-header-create-action"
+              aria-label="新建友链"
+              title="新建友链"
+            >
+              <Plus className="h-4 w-4" />
+              <span>新建</span>
+            </button>
           }
         />
 
@@ -722,7 +692,7 @@ export default function FriendsPage() {
               <SortableContext items={pageFriends.map((friend) => friend.id)} strategy={verticalListSortingStrategy}>
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={`${statusFilter}-${debouncedSearch}-${pageNum}-${pageSize}-${refreshPulse}`}
+                    key={`${statusFilter}-${debouncedSearch}-${pageNum}-${pageSize}`}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: listRefreshing ? 0.62 : 1, y: listRefreshing ? 2 : 0 }}
                     exit={{ opacity: 0 }}

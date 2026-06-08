@@ -8,7 +8,6 @@ import {
   Trash2,
   Pencil,
   Inbox,
-  RefreshCw,
   Search,
   X,
 } from 'lucide-react';
@@ -72,8 +71,6 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [manualRefreshing, setManualRefreshing] = useState(false);
-  const [refreshPulse, setRefreshPulse] = useState(0);
   const debouncedSearch = useDebounce(searchQuery.trim(), 250);
 
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -225,17 +222,6 @@ export default function CategoriesPage() {
   };
 
   const isCategoryTab = activeTab === 'categories';
-  const listRefreshing = manualRefreshing;
-
-  const handleRefresh = async () => {
-    setManualRefreshing(true);
-    try {
-      await fetchData({ preserveList: true });
-      setRefreshPulse((value) => value + 1);
-    } finally {
-      setManualRefreshing(false);
-    }
-  };
 
   const handleTabChange = (nextTab: Tab) => {
     if (nextTab === activeTab) return;
@@ -302,36 +288,21 @@ export default function CategoriesPage() {
           tabs={taxonomyTabs}
           activeKey={activeTab}
           onTabChange={handleTabChange}
-          currentLabel={listRefreshing ? '同步中' : isCategoryTab ? '分类库' : '标签库'}
+          currentLabel={isCategoryTab ? '分类库' : '标签库'}
           activeSummary={`匹配 ${stats.filteredTotal} / ${stats.total} · 覆盖 ${stats.totalPosts} 篇`}
           showCurrentLabel={false}
           showActiveSummary={false}
           actions={
-            <>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={listRefreshing || loading}
-                className="admin-module-action-button activity-refresh-button"
-                data-refreshing={listRefreshing}
-                title={listRefreshing ? '正在刷新' : '刷新'}
-                aria-label="刷新分类标签"
-                aria-busy={listRefreshing}
-              >
-                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={openCreate}
-                className="admin-module-action-button taxonomy-header-icon-action"
-                aria-label={isCategoryTab ? '新建分类' : '新建标签'}
-                title={isCategoryTab ? '新建分类' : '新建标签'}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="sr-only">{isCategoryTab ? '新建分类' : '新建标签'}</span>
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="admin-module-action-button taxonomy-header-create-action"
+              aria-label={isCategoryTab ? '新建分类' : '新建标签'}
+              title={isCategoryTab ? '新建分类' : '新建标签'}
+            >
+              <Plus className="h-4 w-4" />
+              <span>新建</span>
+            </button>
           }
         />
 
@@ -460,38 +431,7 @@ export default function CategoriesPage() {
           </AnimatePresence>
         </div>
 
-        <div className={cn(taxonomyShellClass, 'relative')} data-refreshing={listRefreshing}>
-          <AnimatePresence>
-            {listRefreshing && (
-              <>
-                <motion.div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-[3.65rem] z-20 h-px overflow-hidden bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <motion.span
-                    className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-transparent via-[var(--aurora-1)] to-transparent"
-                    initial={{ x: '-100%' }}
-                    animate={{ x: '220%' }}
-                    transition={{ duration: 1.05, repeat: Infinity, ease: [0.16, 1, 0.3, 1] }}
-                  />
-                </motion.div>
-                <motion.div
-                  className="pointer-events-none absolute right-4 top-[4.35rem] z-20 inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_88%,transparent)] px-2.5 text-xs font-semibold text-[var(--ink-secondary)] shadow-[0_10px_26px_-20px_rgba(0,0,0,0.45)] backdrop-blur"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--aurora-1)]" />
-                  刷新中
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-
+        <div className={cn(taxonomyShellClass, 'relative')}>
           <AdminSectionHeader
             icon={isCategoryTab ? <Folder className="h-4 w-4" /> : <TagIcon className="h-4 w-4" />}
             title={isCategoryTab ? '分类目录' : '标签集合'}
@@ -509,7 +449,7 @@ export default function CategoriesPage() {
                 </span>
               </>
             }
-            aside={<AdminSectionCount>{loading ? '加载中' : listRefreshing ? '刷新中' : `${stats.filteredTotal}/${stats.total}`}</AdminSectionCount>}
+            aside={<AdminSectionCount>{loading ? '加载中' : `${stats.filteredTotal}/${stats.total}`}</AdminSectionCount>}
           />
 
           {loading ? (
@@ -542,9 +482,9 @@ export default function CategoriesPage() {
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${activeTab}-${debouncedSearch}-${refreshPulse}`}
+                key={`${activeTab}-${debouncedSearch}`}
                 initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: listRefreshing ? 0.62 : 1, y: listRefreshing ? 2 : 0 }}
+                animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="p-4 sm:p-5"
