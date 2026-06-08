@@ -331,3 +331,31 @@ async def test_fetch_google_models_strips_prefix_and_reads_limits(monkeypatch):
     # 密钥走请求头，不进 URL
     assert fake_client.last_headers["x-goog-api-key"] == "g-test"
     assert models[0].capabilities["abilities"]["vision"] is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_google_models_appends_v1beta_when_missing(monkeypatch):
+    # 默认 Google 预设 baseUrl 不含版本段，须自动补 /v1beta 才是 list-models 端点
+    request = httpx.Request("GET", "https://generativelanguage.googleapis.com/v1beta/models")
+    response = httpx.Response(
+        200, json={"models": [{"name": "models/gemini-2.0-flash"}]}, request=request,
+    )
+    fake_client = FakeAsyncClient(response)
+    monkeypatch.setattr(
+        "app.services.remote_model_fetcher.httpx.AsyncClient",
+        lambda timeout=20: fake_client,
+    )
+
+    provider = ProviderInfo(
+        id=3, code="google", name="Google", display_name="Google", api_type="google",
+        base_url="https://generativelanguage.googleapis.com",  # 无版本段
+        doc_url=None, icon=None, is_enabled=True, priority=1, capabilities={}, config_schema=None,
+    )
+    credential = CredentialInfo(
+        id=3, provider_id=3, provider_code="google", api_type="google", api_key="g-test",
+        base_url="https://generativelanguage.googleapis.com", extra_config={}, is_default=True,
+    )
+
+    fetcher = RemoteModelFetcher()
+    await fetcher.fetch_models(provider, credential)
+    assert fake_client.last_url == "https://generativelanguage.googleapis.com/v1beta/models"

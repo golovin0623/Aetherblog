@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -85,6 +86,19 @@ def _extract_remote_pricing(item: dict[str, Any]) -> tuple[float | None, float |
     if output_per_1m is not None:
         pricing_caps["output"] = output_per_1m
     return input_per_1m, output_per_1m, pricing_caps
+
+
+def _ensure_gemini_version(base_url: str) -> str:
+    """确保 Gemini base 带 API 版本段。
+
+    内置 Google 预设的 baseUrl 为 ``https://generativelanguage.googleapis.com``（无版本），
+    而 list-models 端点在 ``/v1beta/models``。若 base 已带版本段（v1 / v1beta / v1alpha…）则保持，
+    否则补 ``/v1beta``，避免默认凭证抓取打到不存在的 ``/models``。
+    """
+    trimmed = base_url.rstrip("/")
+    if re.search(r"/v\d+\w*$", trimmed):
+        return trimmed
+    return f"{trimmed}/v1beta"
 
 
 def _format_released_at(value: Any) -> str | None:
@@ -249,10 +263,11 @@ class RemoteModelFetcher:
         if not validate_external_url(base_url):
             raise ValueError("Blocked: base_url resolves to a private/internal network")
 
+        base_url = _ensure_gemini_version(base_url)
         url = f"{base_url}/models"
         headers = {
             "Content-Type": "application/json",
-            "x-goog-api-key": credential.api_key.strip(),
+            "x-goog-api-key": (credential.api_key or "").strip(),
         }
 
         async with httpx.AsyncClient(timeout=20) as client:

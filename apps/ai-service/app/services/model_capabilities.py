@@ -195,7 +195,7 @@ def infer_capabilities(model_id: str, model_type: str | None = None) -> dict[str
     if mtype in NON_CHAT_TYPES:
         if mtype == "image":
             abilities["imageOutput"] = True
-        elif mtype == "text2video":
+        elif mtype in ("text2video", "video"):
             abilities["video"] = True
         # embedding / tts / stt / realtime / music 不暴露对话能力标志
         return {key: True for key in CANONICAL_ABILITIES if abilities.get(key)}

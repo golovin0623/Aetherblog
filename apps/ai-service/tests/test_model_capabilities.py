@@ -106,6 +106,11 @@ def test_infer_capabilities_text2video_model():
     assert infer_capabilities("sora-2") == {"video": True}
 
 
+def test_infer_capabilities_explicit_video_type():
+    # 显式 video 类型也应获得 video 能力（与 text2video 对齐）
+    assert infer_capabilities("some-video-model", model_type="video") == {"video": True}
+
+
 def test_infer_capabilities_chat_model_with_image_output():
     # 对话型多模态出图模型应在保留对话能力的同时带 imageOutput
     caps = infer_capabilities("gemini-2.5-flash-image-preview")

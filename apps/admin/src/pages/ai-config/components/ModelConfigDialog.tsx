@@ -273,7 +273,7 @@ export default function ModelConfigDialog({
         extendParams: form.settings.extendParams.length ? form.settings.extendParams : undefined,
         searchImpl: form.settings.searchImpl,
         searchProvider: form.settings.searchProvider || undefined,
-        disabledParams: form.settings.disabledParams.length ? form.settings.disabledParams : undefined,
+        disabledParams: form.settings.disabledParams?.length ? form.settings.disabledParams : undefined,
       },
       config: {
         deploymentName: showDeployName && form.config.deploymentName ? form.config.deploymentName : undefined,
@@ -351,10 +351,10 @@ export default function ModelConfigDialog({
 
   const toggleDisabledParam = (id: SamplingParam) => {
     setForm((prev) => {
-      const has = prev.settings.disabledParams.includes(id);
-      const disabledParams = has
-        ? prev.settings.disabledParams.filter((p) => p !== id)
-        : [...prev.settings.disabledParams, id];
+      const current = prev.settings.disabledParams || [];
+      const disabledParams = current.includes(id)
+        ? current.filter((p) => p !== id)
+        : [...current, id];
       return { ...prev, settings: { ...prev.settings, disabledParams } };
     });
   };
@@ -774,7 +774,7 @@ export default function ModelConfigDialog({
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {SAMPLING_PARAMS.map((p) => {
-                  const active = form.settings.disabledParams.includes(p.id);
+                  const active = form.settings.disabledParams?.includes(p.id) ?? false;
                   return (
                     <motion.button
                       key={p.id}
