@@ -4,7 +4,7 @@
 // 在此之前 Reader 没有任何 Atlas 内入口，用户只能从笔记/媒体/写作模块反向摸进去。
 // 本页让「已有读物」可见、可继续，并提供零依赖的「添加读物」冷启动。
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -50,7 +50,8 @@ function typeMeta(type: string) {
   return TYPE_META[type] ?? { icon: FileText, label: type };
 }
 
-function formatTime(value: string): string {
+function formatTime(value: string | null | undefined): string {
+  if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -62,17 +63,22 @@ export default function ReadingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeFilter>('all');
   const [addOpen, setAddOpen] = useState(false);
+  // 请求序列号：快速切换 scope 时只让最新一次请求写状态，避免先发后到的竞态。
+  const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
       const res = await atlasService.listCarriers({ scope, limit: 100 });
+      if (seq !== requestSeq.current) return;
       setItems(res.data ?? []);
       setError(null);
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(extractApiErrorMessage(err, '加载读物失败'));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [scope]);
 

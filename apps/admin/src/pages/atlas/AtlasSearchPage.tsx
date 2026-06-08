@@ -80,7 +80,8 @@ export default function AtlasSearchPage() {
   // 原本 annotation 结果是纯文本死路（无任何链接）。
   const carrierById = useMemo(() => {
     if (state.kind !== 'ok') return new Map<number, AtlasCarrier>();
-    return new Map(state.data.carriers.map((carrier) => [carrier.id, carrier] as const));
+    // 后端空切片可能序列化为 null，取数前兜底成空数组，避免 .map 抛 TypeError。
+    return new Map((state.data.carriers ?? []).map((carrier) => [carrier.id, carrier] as const));
   }, [state]);
 
   return (

@@ -69,13 +69,18 @@ export function AddReadingDialog({
     setFetching(true);
     try {
       const res = await atlasService.fetchWebClip({ sourceUrl: url });
+      const clip = res?.data;
+      if (!clip) {
+        toast.error('抓取网页正文失败：返回数据为空');
+        return;
+      }
       setWeb((form) => ({
         ...form,
-        sourceUrl: res.data.sourceUrl || form.sourceUrl,
-        title: res.data.title || form.title,
-        contentMarkdown: res.data.contentMarkdown || form.contentMarkdown,
-        author: res.data.author ?? form.author,
-        language: res.data.language ?? form.language,
+        sourceUrl: clip.sourceUrl || form.sourceUrl,
+        title: clip.title || form.title,
+        contentMarkdown: clip.contentMarkdown || form.contentMarkdown,
+        author: clip.author ?? form.author,
+        language: clip.language ?? form.language,
       }));
       toast.success('网页正文已抓取');
     } catch (err) {
@@ -105,11 +110,16 @@ export function AddReadingDialog({
         author: web.author.trim() || undefined,
         language: web.language.trim() || undefined,
       });
+      const id = res?.data?.id;
+      if (!id) {
+        toast.error('保存网页读物失败：未返回有效 ID');
+        return;
+      }
       toast.success('网页读物已保存');
       onCreated?.();
       reset();
       onClose();
-      navigate(`/atlas/reader/web/${res.data.id}`);
+      navigate(`/atlas/reader/web/${id}`);
     } catch (err) {
       toast.error(extractApiErrorMessage(err, '保存网页读物失败'));
     } finally {
@@ -129,11 +139,16 @@ export function AddReadingDialog({
         title: paste.title.trim() || undefined,
         contentMarkdown: paste.contentMarkdown,
       });
+      const id = res?.data?.id;
+      if (!id) {
+        toast.error('保存文本读物失败：未返回有效 ID');
+        return;
+      }
       toast.success('文本读物已保存');
       onCreated?.();
       reset();
       onClose();
-      navigate(`/atlas/reader/note/${res.data.id}`);
+      navigate(`/atlas/reader/note/${id}`);
     } catch (err) {
       toast.error(extractApiErrorMessage(err, '保存文本读物失败'));
     } finally {
