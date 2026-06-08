@@ -494,7 +494,6 @@ export default function FriendsPage() {
               aria-label="新建友链"
               title="新建友链"
             >
-              <Plus className="h-4 w-4" />
               <span>新建</span>
             </button>
           }
