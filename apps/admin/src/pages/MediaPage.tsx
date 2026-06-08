@@ -627,7 +627,7 @@ export default function MediaPage() {
 
   return (
     <div
-      className="media-library-page admin-grid-page min-h-full overflow-visible p-4 text-[var(--ink-primary)] md:h-full md:overflow-hidden md:p-6"
+      className="media-library-page admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-visible p-4 text-[var(--ink-primary)] md:-m-6 md:h-[calc(100%+3rem)] md:overflow-hidden md:p-6"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
