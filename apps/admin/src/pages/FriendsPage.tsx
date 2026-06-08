@@ -480,7 +480,7 @@ export default function FriendsPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
-          className="compact-actions-module-header friends-actions-module-header"
+          className="friends-actions-module-header"
           title="友情链接"
           description="管理友链展示、排序与状态。"
           icon={Link2}
