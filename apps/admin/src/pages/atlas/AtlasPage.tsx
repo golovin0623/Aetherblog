@@ -1,21 +1,27 @@
+// Atlas 概览 —— 知识图集工作台的落地页（Tab：概览）。
+//
+// ref: docs/pm/atlas-redesign.md §4 P0-5/P0-6
+// 设计目标：第一次回答「这是什么、从哪开始」。顶部是「读 → 标 → 联 → 问」引导条，
+// 然后才是健康度指标与最近内容。文案全部去术语化，不再裸露 Carrier/KP/provenance。
+
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
-  Compass,
   Database,
-  Download,
   GitBranch,
   Highlighter,
   Library,
+  Link2,
+  MessageSquareText,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
+  X,
 } from 'lucide-react';
-import { Modal, Select } from '@aetherblog/ui';
-import { toast } from 'sonner';
+import { Select } from '@aetherblog/ui';
 
 import type { AtlasGraphHealth, AtlasHealthResponse, AtlasKnowledgePoint } from '@aetherblog/types';
 
@@ -23,6 +29,8 @@ import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService, type AtlasSuggestion } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { AddReadingDialog } from './AddReadingDialog';
+import { kpStatusLabel, kpTypeLabel, provenanceLabel } from './atlasLabels';
 
 type AtlasScopeFilter = 'all' | 'mine';
 
@@ -37,36 +45,39 @@ type DashboardState =
     }
   | { kind: 'error'; message: string };
 
+const ONBOARDING_DISMISS_KEY = 'atlas.onboarding.dismissed.v1';
+
+const STEPS = [
+  { icon: BookOpen, title: '读', desc: '添加网页、PDF、笔记或一段文本作为读物' },
+  { icon: Highlighter, title: '标', desc: '在阅读器里选中关键句，提炼成知识点' },
+  { icon: Link2, title: '联', desc: '把知识点连成有类型的关系，长成图谱' },
+  { icon: MessageSquareText, title: '问', desc: '让灵境基于你的知识网作答与写作' },
+];
+
 const QUICK_LINKS = [
   {
-    title: '搜索',
-    description: '跨 KP、标注和载体定位内容',
-    href: '/atlas/search',
-    icon: Search,
+    title: '读物',
+    description: '添加并管理读物，进入阅读器标注',
+    href: '/atlas/readings',
+    icon: BookOpen,
   },
   {
     title: '知识点',
-    description: '搜索、筛选和进入 KP 详情',
+    description: '搜索、筛选并进入知识点详情',
     href: '/atlas/kps',
     icon: Library,
   },
   {
     title: '图谱',
-    description: '按类型过滤并检查节点关系',
+    description: '按类型过滤并检查知识点之间的关系',
     href: '/atlas/graph',
     icon: GitBranch,
   },
   {
     title: 'AI 建议',
-    description: '处理待确认的 KP / relation 候选',
+    description: '处理待确认的知识点 / 关系候选',
     href: '/atlas/suggestions',
     icon: Sparkles,
-  },
-  {
-    title: '阅读器',
-    description: '从智能笔记进入 Reader 并创建标注',
-    href: '/notes',
-    icon: Highlighter,
   },
 ];
 
@@ -75,105 +86,30 @@ const SCOPE_OPTIONS = [
   { value: 'mine', label: '仅我的' },
 ];
 
-const initialWebClipForm = {
-  sourceUrl: '',
-  title: '',
-  contentMarkdown: '',
-  author: '',
-  language: '',
-};
-
 export default function AtlasPage() {
   const navigate = useNavigate();
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [scope, setScope] = useState<AtlasScopeFilter>('all');
   const [kpSearch, setKpSearch] = useState('');
-  const [webClipOpen, setWebClipOpen] = useState(false);
-  const [webClipForm, setWebClipForm] = useState(initialWebClipForm);
-  const [savingWebClip, setSavingWebClip] = useState(false);
-  const [fetchingWebClip, setFetchingWebClip] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem(ONBOARDING_DISMISS_KEY) !== '1';
+  });
+
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    try {
+      window.localStorage.setItem(ONBOARDING_DISMISS_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+  };
 
   const handleKPSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = kpSearch.trim();
     navigate(query ? `/atlas/search?q=${encodeURIComponent(query)}` : '/atlas/search');
-  };
-
-  const handleCreateWebClip = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const sourceUrl = webClipForm.sourceUrl.trim();
-    const contentMarkdown = webClipForm.contentMarkdown.trim();
-    if (!sourceUrl) {
-      toast.error('请填写 Web URL');
-      return;
-    }
-    try {
-      const parsed = new URL(sourceUrl);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        toast.error('Web URL 仅支持 http(s)');
-        return;
-      }
-    } catch {
-      toast.error('请填写完整的 http(s) URL');
-      return;
-    }
-    if (!contentMarkdown) {
-      toast.error('请填写网页正文快照');
-      return;
-    }
-    setSavingWebClip(true);
-    try {
-      const res = await atlasService.ensureWebCarrier({
-        sourceUrl,
-        title: webClipForm.title.trim() || undefined,
-        contentMarkdown,
-        author: webClipForm.author.trim() || undefined,
-        language: webClipForm.language.trim() || undefined,
-      });
-      setWebClipForm(initialWebClipForm);
-      setWebClipOpen(false);
-      toast.success('Web 快照已保存');
-      navigate(`/atlas/reader/web/${res.data.id}`);
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, '保存 Web 快照失败'));
-    } finally {
-      setSavingWebClip(false);
-    }
-  };
-
-  const handleFetchWebClip = async () => {
-    const sourceUrl = webClipForm.sourceUrl.trim();
-    if (!sourceUrl) {
-      toast.error('请填写 Web URL');
-      return;
-    }
-    try {
-      const parsed = new URL(sourceUrl);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        toast.error('Web URL 仅支持 http(s)');
-        return;
-      }
-    } catch {
-      toast.error('请填写完整的 http(s) URL');
-      return;
-    }
-    setFetchingWebClip(true);
-    try {
-      const res = await atlasService.fetchWebClip({ sourceUrl });
-      setWebClipForm((form) => ({
-        ...form,
-        sourceUrl: res.data.sourceUrl || form.sourceUrl,
-        title: res.data.title || form.title,
-        contentMarkdown: res.data.contentMarkdown || form.contentMarkdown,
-        author: res.data.author ?? form.author,
-        language: res.data.language ?? form.language,
-      }));
-      toast.success('网页正文已抓取');
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, '抓取网页正文失败'));
-    } finally {
-      setFetchingWebClip(false);
-    }
   };
 
   useEffect(() => {
@@ -196,7 +132,7 @@ export default function AtlasPage() {
         });
       } catch (err) {
         if (cancelled) return;
-        setState({ kind: 'error', message: extractApiErrorMessage(err, 'Atlas 工作台加载失败') });
+        setState({ kind: 'error', message: extractApiErrorMessage(err, '知识图集工作台加载失败') });
       }
     })();
     return () => {
@@ -205,12 +141,12 @@ export default function AtlasPage() {
   }, [scope]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <AdminModuleHeader
-        title="Aether Atlas"
-        description="可溯源知识图集工作台 · Carrier / Annotation / KnowledgePoint / Typed Relation"
-        icon={Compass}
-        currentLabel="Dashboard"
+        title="知识图集"
+        description="把读到的内容连成一张可追溯、可被 AI 调用的知识网"
+        icon={BookOpen}
+        showCurrentLabel={false}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-36">
@@ -219,27 +155,94 @@ export default function AtlasPage() {
                 onValueChange={(next) => setScope(next as AtlasScopeFilter)}
                 options={SCOPE_OPTIONS}
                 size="sm"
-                ariaLabel="Atlas 数据范围"
+                ariaLabel="数据范围"
               />
             </div>
             <Link
-              to="/atlas/kps"
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]"
+              to="/aetherhub"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[var(--bg-substrate)]"
             >
-              <Library className="h-3.5 w-3.5" />
-              管理知识点
+              <MessageSquareText className="h-3.5 w-3.5" />
+              问灵境
             </Link>
             <button
               type="button"
-              onClick={() => setWebClipOpen(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)]"
+              onClick={() => setAddOpen(true)}
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)]"
             >
               <Plus className="h-3.5 w-3.5" />
-              Web 快照
+              添加读物
             </button>
           </div>
         }
       />
+
+      {showOnboarding && (
+        <section className="relative overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_6%,var(--bg-leaf))] p-4">
+          <button
+            type="button"
+            onClick={dismissOnboarding}
+            aria-label="收起引导"
+            className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--ink-muted)] hover:bg-[var(--bg-substrate)] hover:text-[var(--ink-primary)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 pr-8">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--ink-primary)]">把读到的，变成你的知识网</h2>
+              <p className="mt-1 text-xs text-[var(--ink-secondary)]">四步闭环：读 → 标 → 联 → 问，从一篇读物开始。</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              立即开始
+            </button>
+          </div>
+          <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {STEPS.map((step, index) => {
+              const Icon = step.icon;
+              const isFirst = index === 0;
+              const isAsk = index === STEPS.length - 1;
+              const activeCard =
+                'h-full w-full rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[var(--bg-leaf)] p-3 text-left transition-colors hover:border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)]';
+              const body = (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--ink-primary)]">
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      0{index + 1}
+                    </span>
+                    <span className="text-sm font-semibold text-[var(--ink-primary)]">{step.title}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-[var(--ink-secondary)]">{step.desc}</p>
+                </>
+              );
+              return (
+                <li key={step.title}>
+                  {isFirst ? (
+                    <button type="button" onClick={() => setAddOpen(true)} className={activeCard}>
+                      {body}
+                    </button>
+                  ) : isAsk ? (
+                    <Link to="/aetherhub" className={cn(activeCard, 'block')}>
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="h-full rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-3">
+                      {body}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       {state.kind === 'loading' ? (
         <DashboardSkeleton />
@@ -259,7 +262,7 @@ export default function AtlasPage() {
                 type="search"
                 value={kpSearch}
                 onChange={(event) => setKpSearch(event.target.value)}
-                placeholder="搜索 KP、标注或来源"
+                placeholder="搜索知识点、标注或来源"
                 className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] pl-9 pr-3 text-sm text-[var(--ink-primary)] outline-none transition-colors placeholder:text-[var(--ink-muted)] focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
               />
             </label>
@@ -273,17 +276,17 @@ export default function AtlasPage() {
           </form>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricTile icon={Database} label="Active KP" value={String(state.graphHealth.activeKpCount)} />
-            <MetricTile icon={GitBranch} label="Relations" value={String(state.graphHealth.relationCount)} />
+            <MetricTile icon={Database} label="活跃知识点" value={String(state.graphHealth.activeKpCount)} />
+            <MetricTile icon={GitBranch} label="关系" value={String(state.graphHealth.relationCount)} />
             <MetricTile
               icon={ShieldCheck}
-              label="Relation density"
+              label="平均连接数"
               value={state.graphHealth.relationDensity.toFixed(2)}
               tone={state.graphHealth.relationDensity >= 2 ? 'good' : 'warn'}
             />
             <MetricTile
               icon={Sparkles}
-              label="Pending suggestions"
+              label="待处理建议"
               value={String(state.suggestions.length)}
               tone={state.suggestions.length > 0 ? 'warn' : 'neutral'}
             />
@@ -295,11 +298,8 @@ export default function AtlasPage() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-semibold text-[var(--ink-primary)]">工作区入口</h2>
-                    <p className="text-xs text-[var(--ink-secondary)]">从真实子流程进入，不再保留旧版占位操作。</p>
+                    <p className="text-xs text-[var(--ink-secondary)]">从读物开始，到图谱与 AI 建议。</p>
                   </div>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-                    module={state.health.module} · phase={state.health.phase}
-                  </span>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {QUICK_LINKS.map((item) => {
@@ -332,7 +332,12 @@ export default function AtlasPage() {
                   </Link>
                 </div>
                 {state.kps.length === 0 ? (
-                  <EmptyLine icon={BookOpen} text="还没有知识点。先从智能笔记进入阅读器创建标注，再提炼 KP。" />
+                  <EmptyLine
+                    icon={BookOpen}
+                    text="还没有知识点。先添加一篇读物，在阅读器里选中关键句即可提炼。"
+                    actionLabel="添加读物"
+                    onAction={() => setAddOpen(true)}
+                  />
                 ) : (
                   <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
                     {state.kps.slice(0, 6).map((kp) => (
@@ -343,9 +348,9 @@ export default function AtlasPage() {
                               {kp.title}
                             </span>
                             <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-muted)]">
-                              <Chip>{kp.type}</Chip>
-                              <Chip>{kp.status}</Chip>
-                              <Chip>{kp.provenance}</Chip>
+                              <Chip>{kpTypeLabel(kp.type)}</Chip>
+                              <Chip>{kpStatusLabel(kp.status)}</Chip>
+                              <Chip>{provenanceLabel(kp.provenance)}</Chip>
                             </span>
                           </span>
                           <ArrowRight className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
@@ -362,27 +367,27 @@ export default function AtlasPage() {
                 <h2 className="text-sm font-semibold text-[var(--ink-primary)]">图谱健康</h2>
                 <dl className="mt-3 space-y-3 text-xs">
                   <HealthRow
-                    label="孤立 KP"
+                    label="孤立知识点"
                     value={`${state.graphHealth.orphanKpCount} (${formatPercent(state.graphHealth.orphanKpRatio)})`}
                     warn={state.graphHealth.orphanKpCount > 0}
                   />
                   <HealthRow
-                    label="KP evidence"
+                    label="知识点证据覆盖"
                     value={formatPercent(state.graphHealth.kpEvidenceCoverage)}
                     warn={state.graphHealth.missingEvidenceKpCount > 0}
                   />
                   <HealthRow
-                    label="Relation evidence"
+                    label="关系证据覆盖"
                     value={formatPercent(state.graphHealth.relationEvidenceCoverage)}
                     warn={state.graphHealth.missingEvidenceRelationCount > 0}
                   />
-                  <HealthRow label="AI 生成 KP" value={state.graphHealth.aiKpCount} />
+                  <HealthRow label="AI 生成知识点" value={state.graphHealth.aiKpCount} />
                   <HealthRow label="待处理建议" value={state.suggestions.length} warn={state.suggestions.length > 0} />
                 </dl>
                 <div className="mt-4 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] pt-3">
-                  <h3 className="text-xs font-semibold text-[var(--ink-primary)]">Hub 节点</h3>
+                  <h3 className="text-xs font-semibold text-[var(--ink-primary)]">枢纽节点</h3>
                   {state.graphHealth.topHubs.length === 0 ? (
-                    <p className="mt-2 text-xs text-[var(--ink-secondary)]">暂无 hub 节点</p>
+                    <p className="mt-2 text-xs text-[var(--ink-secondary)]">暂无枢纽节点</p>
                   ) : (
                     <ul className="mt-2 space-y-2">
                       {state.graphHealth.topHubs.map((hub) => (
@@ -411,19 +416,19 @@ export default function AtlasPage() {
                   </Link>
                 </div>
                 {state.suggestions.length === 0 ? (
-                  <EmptyLine icon={Sparkles} text="当前没有 pending 建议。" />
+                  <EmptyLine icon={Sparkles} text="当前没有待处理的 AI 建议。在阅读器里点「生成建议」即可产出候选。" />
                 ) : (
                   <ul className="space-y-2">
                     {state.suggestions.slice(0, 4).map((item) => (
                       <li key={item.id} className="rounded-lg bg-[var(--bg-substrate)] p-3 text-xs">
                         <div className="flex items-center justify-between gap-2">
-                          <Chip>{item.kind}</Chip>
+                          <Chip>{item.kind === 'kp' ? '知识点' : '关系'}</Chip>
                           <span className="font-mono text-[10px] text-[var(--ink-muted)]">#{item.id}</span>
                         </div>
                         <p className="mt-2 line-clamp-2 text-[var(--ink-primary)]">
                           {item.kind === 'kp'
                             ? item.proposedTitle ?? '(无标题建议)'
-                            : `KP #${item.fromKpId} -> KP #${item.toKpId}`}
+                            : `知识点 #${item.fromKpId} → 知识点 #${item.toKpId}`}
                         </p>
                       </li>
                     ))}
@@ -435,96 +440,7 @@ export default function AtlasPage() {
         </>
       )}
 
-      <Modal
-        isOpen={webClipOpen}
-        onClose={() => {
-          if (!savingWebClip && !fetchingWebClip) setWebClipOpen(false);
-        }}
-        title="保存 Web 快照"
-        size="lg"
-      >
-        <form className="space-y-4" onSubmit={(event) => void handleCreateWebClip(event)}>
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_128px]">
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-[var(--ink-secondary)]">URL</span>
-              <input
-                type="url"
-                value={webClipForm.sourceUrl}
-                onChange={(event) => setWebClipForm((form) => ({ ...form, sourceUrl: event.target.value }))}
-                placeholder="https://example.com/article"
-                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={savingWebClip || fetchingWebClip || !webClipForm.sourceUrl.trim()}
-              onClick={() => void handleFetchWebClip()}
-              className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_28%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {fetchingWebClip ? '抓取中' : '抓取正文'}
-            </button>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-[var(--ink-secondary)]">标题</span>
-              <input
-                value={webClipForm.title}
-                onChange={(event) => setWebClipForm((form) => ({ ...form, title: event.target.value }))}
-                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-[var(--ink-secondary)]">语言</span>
-              <input
-                value={webClipForm.language}
-                onChange={(event) => setWebClipForm((form) => ({ ...form, language: event.target.value }))}
-                placeholder="zh-CN"
-                className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-              />
-            </label>
-          </div>
-
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-[var(--ink-secondary)]">作者</span>
-            <input
-              value={webClipForm.author}
-              onChange={(event) => setWebClipForm((form) => ({ ...form, author: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 text-sm text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-            />
-          </label>
-
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-[var(--ink-secondary)]">Markdown 正文</span>
-            <textarea
-              value={webClipForm.contentMarkdown}
-              onChange={(event) => setWebClipForm((form) => ({ ...form, contentMarkdown: event.target.value }))}
-              rows={10}
-              className="w-full resize-none rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 text-sm leading-6 text-[var(--ink-primary)] outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
-            />
-          </label>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={savingWebClip || fetchingWebClip}
-              onClick={() => setWebClipOpen(false)}
-              className="inline-flex h-9 items-center rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-3 text-xs text-[var(--ink-secondary)] hover:bg-[var(--bg-substrate)] disabled:opacity-60"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={savingWebClip || fetchingWebClip}
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-3 text-xs font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] disabled:opacity-60"
-            >
-              <Highlighter className="h-3.5 w-3.5" />
-              {savingWebClip ? '保存中...' : '保存并阅读'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <AddReadingDialog open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   );
 }
@@ -559,7 +475,7 @@ function MetricTile({
   return (
     <article className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">{label}</span>
+        <span className="text-[11px] font-medium text-[var(--ink-secondary)]">{label}</span>
         <Icon className="h-4 w-4 text-[var(--ink-muted)]" />
       </div>
       <p
@@ -589,11 +505,31 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function EmptyLine({ icon: Icon, text }: { icon: typeof BookOpen; text: string }) {
+function EmptyLine({
+  icon: Icon,
+  text,
+  actionLabel,
+  onAction,
+}: {
+  icon: typeof BookOpen;
+  text: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <div className="rounded-lg border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] p-4 text-center text-xs text-[var(--ink-secondary)]">
       <Icon className="mx-auto mb-2 h-4 w-4 text-[var(--ink-muted)]" />
       {text}
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] px-3 text-xs font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

@@ -29,7 +29,7 @@ import {
   ShieldCheck,
   Library,
   Compass,
-  GitBranch,
+  Highlighter,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -45,7 +45,12 @@ import { SidebarSearchPalette } from './SidebarSearchPalette';
 import { getMediaUrl } from '@/services/mediaService';
 import { authService } from '@/services/authService';
 
-// 分组结构 —— Control Room 风格导航(OVERVIEW / CONTENT / INTELLIGENCE / SYSTEM)
+// 分组结构 —— Control Room 风格导航(OVERVIEW / CONTENT / INTELLIGENCE / PLATFORM / SYSTEM)
+//
+// ref: docs/pm/atlas-redesign.md §3.2 信息架构 Before/After
+// INTELLIGENCE 从 14 项扁平菜单收敛为 6 项「知识工作」：知识图集 5 个并列子项折叠为
+// 单一入口（内部用 Tab，见 pages/atlas/AtlasLayout.tsx）；AI 平台配置（模型中心/全局价格/
+// 搜索配置）下沉到独立 PLATFORM 组；数据分析归 OVERVIEW。
 const navSections: Array<{
   label: string;
   items: Array<{ path: string; icon: typeof LayoutDashboard; label: string }>;
@@ -54,6 +59,7 @@ const navSections: Array<{
     label: 'OVERVIEW',
     items: [
       { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
+      { path: '/analytics', icon: Activity, label: '数据分析' },
     ],
   },
   {
@@ -70,20 +76,20 @@ const navSections: Array<{
   {
     label: 'INTELLIGENCE',
     items: [
-      { path: '/aetherhub', icon: LayoutDashboard, label: '灵境' },
+      { path: '/aetherhub', icon: Sparkles, label: '灵境' },
       { path: '/notes', icon: BookOpen, label: '智能笔记' },
       { path: '/atlas', icon: Compass, label: '知识图集' },
-      { path: '/atlas/search', icon: Search, label: '图集搜索' },
-      { path: '/atlas/kps', icon: Library, label: '图集知识点' },
-      { path: '/atlas/graph', icon: GitBranch, label: '图谱视图' },
-      { path: '/atlas/suggestions', icon: Sparkles, label: '图集建议' },
       { path: '/intelligence/knowledge', icon: Library, label: '知识库' },
       { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
-      { path: '/ai-tools', icon: Sparkles, label: '写作助手' },
-      { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },
-      { path: '/analytics', icon: Activity, label: '数据分析' },
-      { path: '/search-config', icon: Search, label: '搜索配置' },
+      { path: '/ai-tools', icon: Highlighter, label: '写作助手' },
+    ],
+  },
+  {
+    label: 'PLATFORM',
+    items: [
       { path: '/ai-config', icon: Bot, label: '模型中心' },
+      { path: '/ai-config/pricing', icon: Coins, label: '全局价格' },
+      { path: '/search-config', icon: Search, label: '搜索配置' },
     ],
   },
   {

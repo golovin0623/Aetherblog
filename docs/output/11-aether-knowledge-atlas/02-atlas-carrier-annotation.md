@@ -14,7 +14,7 @@ Carrier 是 Atlas 的输入材料抽象,Annotation 是材料上的可迁移标�
 | --- | --- |
 | `apps/server-go/internal/server/server.go:264-297` | 装配 Atlas repo/service/handler,挂载 `/v1/admin/atlas` |
 | `apps/server-go/internal/knowledge/handler/atlas_handler.go:26-53` | `/atlas/health` 和子 handler 挂载 |
-| `apps/server-go/internal/knowledge/handler/carrier_handler.go:30-44` | `POST /carriers/markdown` 与 `GET /carriers/:id` |
+| `apps/server-go/internal/knowledge/handler/carrier_handler.go` | carrier 路由挂载：`POST /carriers/{markdown,pdf,post,web,...}`、`GET /carriers`（list，支撑「读物」入口，按 owner/scope/type/limit 列出最近载体，`CarrierRepo.List`）、`GET /carriers/:id`、`GET /carriers/:id/text-layer` |
 | `apps/server-go/internal/knowledge/handler/annotation_handler.go:37-44` | annotation CRUD 与 carrier 下标注列表 |
 | `apps/server-go/internal/knowledge/service/markdown_carrier.go:55-131` | note -> markdown carrier 的懒创建、hash 检测、标注迁移、版本推进 |
 | `apps/server-go/internal/knowledge/service/anchoring.go:43-68` | carrier 内容变化后更新 annotation anchor_state/score |

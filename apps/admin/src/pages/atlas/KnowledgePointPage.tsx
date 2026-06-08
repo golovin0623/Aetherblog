@@ -20,6 +20,7 @@ import {
   FilePenLine,
   GitBranch,
   Highlighter,
+  MessageSquareText,
   Plus,
   RotateCcw,
   Sparkles,
@@ -45,6 +46,8 @@ import { ATLAS_RELATION_TYPES } from '@aetherblog/types';
 import { atlasService } from '@/services/atlasService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { carrierReaderHref } from './carrierReaderHref';
+import { kpStatusLabel, kpTypeLabel, provenanceLabel } from './atlasLabels';
 
 interface EvidenceRow {
   annotationId: number;
@@ -513,21 +516,29 @@ export default function KnowledgePointPage() {
             onClick={() => navigate('/atlas')}
             className="mb-2 inline-flex items-center gap-2 text-xs text-[var(--ink-secondary)]"
           >
-            <ArrowLeft className="h-3 w-3" /> 返回 Atlas
+            <ArrowLeft className="h-3 w-3" /> 返回知识图集
           </button>
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)]">
-            <Brain className="h-3 w-3" /> 知识点 · uuid {kp.uuid.slice(0, 8)}…
+            <Brain className="h-3 w-3" /> 知识点 · #{kp.id}
           </div>
           <h1 className="mt-1 text-2xl font-semibold text-[var(--ink-primary)]">{kp.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--ink-secondary)]">
-            <Pill>{kp.type}</Pill>
-            <Pill>{kp.status}</Pill>
-            <Pill className="font-mono">conf {kp.confidence.toFixed(2)}</Pill>
-            <Pill>{kp.provenance}</Pill>
+            <Pill>{kpTypeLabel(kp.type)}</Pill>
+            <Pill>{kpStatusLabel(kp.status)}</Pill>
+            <Pill className="font-mono">可信度 {kp.confidence.toFixed(2)}</Pill>
+            <Pill>{provenanceLabel(kp.provenance)}</Pill>
             {kp.archived && <Pill className="bg-[color-mix(in_oklch,var(--signal-warn)_18%,transparent)]">已归档</Pill>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/aetherhub')}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] px-3 text-xs text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+            title="带着这个知识点去灵境提问"
+          >
+            <MessageSquareText className="h-3.5 w-3.5" /> 问灵境
+          </button>
           <button
             type="button"
             onClick={openEditModal}
@@ -567,7 +578,7 @@ export default function KnowledgePointPage() {
           <span className="text-xs font-normal text-[var(--ink-muted)]">{evidence.length}</span>
         </header>
         {evidence.length === 0 ? (
-          <p className="text-xs text-[var(--ink-secondary)]">尚无证据标注。可在 Reader 里选中文本并通过 P2-02 "提炼 KP" 关联。</p>
+          <p className="text-xs text-[var(--ink-secondary)]">尚无出处证据。在阅读器里选中文本，用「提炼知识点」即可把高亮关联到这里。</p>
         ) : (
           <ul className="space-y-2">
             {evidence.map((e) => {
@@ -939,7 +950,9 @@ function readerHrefForAnnotation(annotation: AtlasAnnotation, carrier: AtlasCarr
     const query = pdfAnnotationSearch(annotation);
     return `/atlas/reader/pdf/${carrier.id}${query ? `?${query}` : ''}`;
   }
-  return null;
+  // 其余可读类型（web / blog_post / video / audio / image）回退到通用映射——
+  // 它们不需要 annotation 级别的页码/矩形参数。修掉「证据回链只对 note/pdf 生效」的死链。
+  return carrierReaderHref(carrier);
 }
 
 function pdfAnnotationSearch(annotation: AtlasAnnotation): string {

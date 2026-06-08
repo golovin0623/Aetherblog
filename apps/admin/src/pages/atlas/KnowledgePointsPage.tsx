@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Library, RefreshCw, Search } from 'lucide-react';
+import { ArrowRight, BookOpen, Library, Plus, RefreshCw, Search } from 'lucide-react';
 import { Select } from '@aetherblog/ui';
 import type {
   AtlasKnowledgePoint,
@@ -13,6 +13,7 @@ import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { kpStatusLabel, kpTypeLabel, provenanceLabel } from './atlasLabels';
 
 type TypeFilter = AtlasKnowledgePointType | 'all';
 type StatusFilter = AtlasKnowledgePointStatus | 'all';
@@ -22,22 +23,22 @@ type AtlasScopeFilter = 'all' | 'mine';
 
 const TYPE_OPTIONS = [
   { value: 'all', label: '全部类型' },
-  { value: 'claim', label: 'Claim' },
-  { value: 'concept', label: 'Concept' },
-  { value: 'question', label: 'Question' },
-  { value: 'definition', label: 'Definition' },
-  { value: 'method', label: 'Method' },
-  { value: 'example', label: 'Example' },
-  { value: 'person', label: 'Person' },
-  { value: 'source', label: 'Source' },
+  { value: 'claim', label: '主张' },
+  { value: 'concept', label: '概念' },
+  { value: 'question', label: '问题' },
+  { value: 'definition', label: '定义' },
+  { value: 'method', label: '方法' },
+  { value: 'example', label: '示例' },
+  { value: 'person', label: '人物' },
+  { value: 'source', label: '来源' },
 ];
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '全部状态' },
-  { value: 'seed', label: 'Seed' },
-  { value: 'growing', label: 'Growing' },
-  { value: 'evergreen', label: 'Evergreen' },
-  { value: 'archived', label: 'Archived' },
+  { value: 'seed', label: '萌芽' },
+  { value: 'growing', label: '成长' },
+  { value: 'evergreen', label: '常青' },
+  { value: 'archived', label: '归档' },
 ];
 
 const SCOPE_OPTIONS = [
@@ -47,15 +48,15 @@ const SCOPE_OPTIONS = [
 
 const PROVENANCE_OPTIONS = [
   { value: 'all', label: '全部来源' },
-  { value: 'user', label: 'User' },
-  { value: 'ai_suggested', label: 'AI suggested' },
-  { value: 'imported', label: 'Imported' },
+  { value: 'user', label: '手动' },
+  { value: 'ai_suggested', label: 'AI 生成' },
+  { value: 'imported', label: '导入' },
 ];
 
 const EVIDENCE_OPTIONS = [
   { value: 'all', label: '全部证据' },
-  { value: 'with', label: '有 evidence' },
-  { value: 'without', label: '缺 evidence' },
+  { value: 'with', label: '有证据' },
+  { value: 'without', label: '缺证据' },
 ];
 
 export default function KnowledgePointsPage() {
@@ -106,13 +107,20 @@ export default function KnowledgePointsPage() {
     return { active, ai };
   }, [items]);
 
+  const hasFilter =
+    keyword.trim() !== '' ||
+    type !== 'all' ||
+    status !== 'all' ||
+    provenance !== 'all' ||
+    evidence !== 'all';
+
   return (
     <div className="space-y-4">
       <AdminModuleHeader
-        title="Knowledge Points"
-        description={`知识点管理 · ${items.length} 条结果 · ${summary.active} active · ${summary.ai} AI suggested`}
+        title="知识点"
+        description={`${items.length} 条结果 · ${summary.active} 活跃 · ${summary.ai} 由 AI 生成`}
         icon={Library}
-        currentLabel="KP List"
+        showCurrentLabel={false}
         actions={
           <button
             type="button"
@@ -180,9 +188,28 @@ export default function KnowledgePointsPage() {
       ) : loading ? (
         <KPSkeleton />
       ) : items.length === 0 ? (
-        <section className="rounded-xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-leaf)] p-10 text-center text-sm text-[var(--ink-secondary)]">
-          没有匹配的知识点。
-        </section>
+        hasFilter ? (
+          <section className="rounded-xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-leaf)] p-10 text-center text-sm text-[var(--ink-secondary)]">
+            没有匹配的知识点，换个筛选条件试试。
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[var(--bg-leaf)] p-8 text-center">
+            <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--ink-primary)]">
+              <BookOpen className="h-5 w-5" />
+            </span>
+            <h2 className="mt-4 text-base font-semibold text-[var(--ink-primary)]">还没有知识点</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[var(--ink-secondary)]">
+              知识点来自读物里的高亮。先添加一篇读物，在阅读器里选中关键句即可提炼为知识点。
+            </p>
+            <Link
+              to="/atlas/readings"
+              className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-4 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)]"
+            >
+              <Plus className="h-4 w-4" />
+              添加读物
+            </Link>
+          </section>
+        )
       ) : (
         <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
           {items.map((item) => (
@@ -200,12 +227,12 @@ export default function KnowledgePointsPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-muted)]">
-                  <Chip>{item.type}</Chip>
-                  <Chip>{item.status}</Chip>
+                  <Chip>{kpTypeLabel(item.type)}</Chip>
+                  <Chip>{kpStatusLabel(item.status)}</Chip>
                   <Chip className={cn(item.provenance === 'ai_suggested' && 'text-[var(--signal-warn)]')}>
-                    {item.provenance}
+                    {provenanceLabel(item.provenance)}
                   </Chip>
-                  <span className="font-mono">conf {item.confidence?.toFixed(2) ?? '0.00'}</span>
+                  <span className="font-mono">可信度 {item.confidence?.toFixed(2) ?? '0.00'}</span>
                 </div>
                 <ArrowRight className="hidden h-4 w-4 text-[var(--ink-muted)] md:block" />
               </Link>
