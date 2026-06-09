@@ -10,7 +10,7 @@ import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import { useFontPreview } from '@/contexts/FontPreviewContext';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
-import { Toggle } from '@aetherblog/ui';
+import { Toggle, Skeleton } from '@aetherblog/ui';
 import {
   isNeutralPrimaryColor,
   PRESET_DARK_PRIMARY,
@@ -45,6 +45,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     fields: [
       { key: 'site_name', label: '站点名称', type: 'text', placeholder: 'AetherBlog' },
       { key: 'site_logo', label: '站点Logo', type: 'image-upload', description: '上传站点Logo图片，将替换导航栏中的默认字母图标。建议使用正方形透明背景的PNG图片' },
+      { key: 'site_favicon', label: '站点图标 Favicon', type: 'image-upload', description: '浏览器标签页与 PWA 图标。留空则自动回退使用站点Logo。建议正方形 PNG/ICO' },
       { key: 'site_description', label: '站点描述', type: 'textarea', description: '用于 SEO 和首页展示' },
       { key: 'site_url', label: '站点地址', type: 'url', placeholder: 'https://example.com' },
       { key: 'site_keywords', label: '关键词', type: 'text', description: '逗号分隔，如: tech, blog, react' },
@@ -57,10 +58,10 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '博主信息',
     icon: User,
     fields: [
-      { key: 'author_name', label: '博主名称', type: 'text', placeholder: 'Admin' },
-      { key: 'author_bio', label: '博主简介', type: 'textarea' },
-      { key: 'author_avatar', label: '头像URL', type: 'url' },
-      { key: 'author_email', label: '联系邮箱', type: 'text' },
+      // 博主名称 / 头像 / 简介由「个人资料」(右上角头像菜单)统一维护——站点信息接口会以
+      // 登录账号档案覆盖这三项，放在这里编辑不会生效，故移除以消除假配置。此处只保留
+      // 真正由 site_settings 驱动的联系邮箱与社交链接。
+      { key: 'author_email', label: '联系邮箱', type: 'text', description: '博主名称、头像、简介请在右上角「个人资料」中修改' },
       { key: 'social_links', label: '社交链接', type: 'social-links', description: '添加您的社交媒体账号' },
     ]
   },
@@ -102,7 +103,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
       { key: 'theme_visual_color_preview', label: '视觉色阶预览', type: 'visual-color-preview', description: '展示当前设置实际用于图表和仪表盘的光源，避免黑色品牌色被静默映射' },
       { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统主题自动切换（如 iPhone 暗黑模式）' },
       { key: 'font_family', label: '全局字体', type: 'font-picker', description: '选择博客全局显示字体，支持预览体验' },
-      { key: 'show_banner', label: '显示欢迎页', type: 'boolean', description: '控制首页欢迎页（含「浏览文章」和「关于我」按钮），关闭后直接进入文章列表' },
+      // 首页欢迎页开关统一收敛到「欢迎页设置 → 启用欢迎页」(welcome_enabled)，移除此处重复的 show_banner。
       { key: 'post_page_size', label: '每页文章数', type: 'number', placeholder: '9', description: '文章列表页面的分页数量。默认 9，配合 3 列网格无尾行单卡' },
       { key: 'custom_css', label: '自定义 CSS', type: 'textarea', description: '注入博客前台的自定义样式，可用于替换背景图、调整间距等个性化定制。留空则使用默认样式' },
     ]
@@ -129,12 +130,12 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '高级设置',
     icon: Database,
     fields: [
-      { key: 'enable_registrations', label: '允许用户注册', type: 'boolean' },
-      { key: 'upload_max_size', label: '最大上传 (MB)', type: 'number', placeholder: '10' },
+      // 已移除的失效/重复项：
+      //  · enable_registrations —— 系统无公开自助注册端点(/register 仅管理员)，开关无处生效。
+      //  · storage_type —— 已由「存储管理」tab + storage_providers 表取代。
+      //  · ai_enabled / ai_provider —— 已由「AI 配置」页 + 后端 config.AI 取代。
+      { key: 'upload_max_size', label: '最大上传 (MB)', type: 'number', placeholder: '10', description: '单文件上传大小上限（MB），对图库与文章配图均生效。绝对硬上限 100MB；留空或填 0 视为 100MB。' },
       { key: 'editor_image_smart_compression_enabled', label: '编辑器图片智能压缩', type: 'boolean', description: '开启后，文章编辑器上传超过 5MB 的图片会自动压缩，并在活动记录中展示压缩效果。' },
-      { key: 'storage_type', label: '存储类型', type: 'text', description: 'LOCAL, MINIO, COS' },
-      { key: 'ai_enabled', label: '启用AI功能', type: 'boolean' },
-      { key: 'ai_provider', label: 'AI服务商', type: 'text' },
     ]
   },
   migration: {
@@ -151,12 +152,12 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
 
 const SETTING_GROUP_DESCRIPTIONS: Record<string, string> = {
   general: '站点标识、Logo、地址、备案与首页基础信息。',
-  author: '博主资料、头像、邮箱与社交链接展示。',
+  author: '联系邮箱与社交链接（名称 / 头像 / 简介请在「个人资料」维护）。',
   welcome: '首页欢迎页文案、行动按钮与入口开关。',
   appearance: '主题色、字体、暗黑模式、文章分页与自定义样式。',
   seo: '搜索引擎抓取、站点地图与统计代码配置。',
   comment: '评论入口和审核策略。',
-  advanced: '注册、上传、编辑器压缩、存储类型与 AI 开关。',
+  advanced: '上传大小限制与编辑器图片智能压缩。',
   migration: '导入历史博客数据并跟踪迁移进度。',
   storage: '管理本地、S3 兼容与云对象存储提供商。',
 };
@@ -653,6 +654,89 @@ function AnimatedSelectField({ value, options, onChange, disabled }: AnimatedSel
   );
 }
 
+const SETTINGS_PANEL_BORDER = 'border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]';
+
+/** 左侧导航骨架 —— 复用真实导航的结构类，保证加载态与最终布局零位移。 */
+function SettingsNavSkeleton() {
+  return (
+    <aside className={cn('settings-nav-panel access-surface rounded-xl', SETTINGS_PANEL_BORDER)} aria-hidden="true">
+      <div className="settings-nav-heading">
+        <Skeleton className="h-3.5 w-16" />
+        <Skeleton className="h-3 w-12" />
+      </div>
+      <div className="settings-nav-list">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="settings-nav-button" style={{ pointerEvents: 'none' }}>
+            <span className="settings-nav-icon">
+              <Skeleton variant="rectangular" className="h-4 w-4" />
+            </span>
+            <span className="settings-nav-copy">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="mt-1.5 h-2.5 w-32" />
+            </span>
+            <Skeleton className="settings-nav-count h-3 w-8" />
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+/** 字段列表骨架 —— 复用 settings-field-row 让标签/控件间距与真实表单一致。 */
+function SettingsFieldListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="settings-field-list" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="settings-field-row">
+          <div className="settings-field-copy">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="mt-2 h-3 w-44" />
+          </div>
+          <div className="settings-field-control">
+            <Skeleton variant="rectangular" className="h-10 w-full max-w-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 整页骨架 —— 替代禁用的全屏 spinner（设计系统 §3.6），结构与已加载页面对齐。 */
+function SettingsPageSkeleton() {
+  return (
+    <div className="admin-grid-page settings-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
+        <div className={cn('access-surface rounded-xl p-5', SETTINGS_PANEL_BORDER)}>
+          <div className="flex items-center gap-3">
+            <Skeleton variant="rectangular" className="h-10 w-10" />
+            <div className="flex-1">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="mt-2 h-3 w-72" />
+            </div>
+          </div>
+        </div>
+        <div className="settings-layout">
+          <SettingsNavSkeleton />
+          <section className={cn('settings-detail-panel access-surface rounded-xl', SETTINGS_PANEL_BORDER)}>
+            <div className="settings-detail-inner">
+              <div className="settings-detail-header">
+                <div className="settings-detail-title-row">
+                  <Skeleton variant="rectangular" className="h-9 w-9" />
+                  <div>
+                    <Skeleton className="h-5 w-28" />
+                    <Skeleton className="mt-2 h-3 w-56" />
+                  </div>
+                </div>
+              </div>
+              <SettingsFieldListSkeleton rows={6} />
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const settingsNavRef = useRef<HTMLElement | null>(null);
@@ -851,15 +935,7 @@ export default function SettingsPage() {
   ) : undefined;
 
   if (isLoading) {
-    return (
-      <div className="admin-grid-page settings-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
-        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
-          <div className="access-surface flex min-h-[360px] items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-            <Loader2 className="h-8 w-8 animate-spin text-[var(--aurora-1)]" />
-          </div>
-        </div>
-      </div>
-    );
+    return <SettingsPageSkeleton />;
   }
 
   return (
@@ -922,19 +998,11 @@ export default function SettingsPage() {
             <div className="settings-detail-inner">
               {isSpecialTab ? (
                 activeTab === 'migration' ? (
-                  <Suspense fallback={
-                    <div className="settings-panel-loading">
-                      <Loader2 className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
-                    </div>
-                  }>
+                  <Suspense fallback={<SettingsFieldListSkeleton rows={5} />}>
                     <MigrationPage />
                   </Suspense>
                 ) : (
-                  <Suspense fallback={
-                    <div className="settings-panel-loading">
-                      <Loader2 className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
-                    </div>
-                  }>
+                  <Suspense fallback={<SettingsFieldListSkeleton rows={5} />}>
                     <StorageProviderSettings />
                   </Suspense>
                 )

@@ -22,17 +22,17 @@ var allowedSettingKeys = map[string]bool{
 	"footer_text": true, "footer_signature": true,
 	"icp_number":      true,
 	"welcome_enabled": true, "welcome_title": true, "welcome_subtitle": true,
-	// author
+	"welcome_description":      true,
+	"welcome_primary_btn_text": true, "welcome_primary_btn_link": true,
+	"welcome_secondary_btn_text": true, "welcome_secondary_btn_link": true,
+	// author（名称/头像/简介由「个人资料」用户档案维护并在 /site/info 注入覆盖；
+	// 站点设置侧仅邮箱与社交链接 JSON 可写。已移除从未有 UI、前台零消费的遗留键
+	// author_github / author_twitter。）
 	"author_name": true, "author_avatar": true, "author_bio": true,
-	"author_github": true, "author_twitter": true, "author_email": true,
-	"social_links": true,
+	"author_email": true, "social_links": true,
 	// comment
 	"comment_enabled": true, "comment_audit": true,
-	// storage
-	"storage_type": true,
-	// ai
-	"ai_enabled": true, "ai_provider": true,
-	// appearance
+	// appearance（show_banner 已从 UI 收敛到 welcome_enabled，但仍作 legacy 兜底读取，保留可写）
 	"theme_primary_color": true, "enable_dark_mode": true,
 	"show_banner": true, "post_page_size": true, "custom_css": true,
 	"font_family": true, "theme_primary_color_light": true, "theme_primary_color_dark": true,
@@ -40,11 +40,9 @@ var allowedSettingKeys = map[string]bool{
 	// seo
 	"seo_robots": true, "enable_sitemap": true,
 	"baidu_analytics_id": true, "google_analytics_id": true,
-	// social
-	"social_github": true, "social_twitter": true,
-	"social_linkedin": true, "social_weibo": true,
-	// advanced
-	"enable_registrations": true, "upload_max_size": true,
+	// advanced（已移除后端不消费/已被取代的 enable_registrations、storage_type、
+	// ai_enabled、ai_provider，及遗留孤儿键 social_github/twitter/linkedin/weibo）
+	"upload_max_size":                        true,
 	"editor_image_smart_compression_enabled": true,
 }
 

@@ -17,6 +17,7 @@ export interface SiteSettings {
   icp?: string;
   startYear?: string;
   comment_enabled?: boolean;
+  comment_audit?: boolean;
   // 站点Logo
   site_logo?: string;
   site_favicon?: string;
@@ -86,6 +87,48 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   authorName: 'Admin'
 };
 
+// 后端 /site/info 以 snake_case 键(site_name / site_description / site_keywords /
+// site_url ...)返回站点配置，但 layout / manifest / 各页 generateMetadata 历史上读取的是
+// camelCase(siteTitle / siteDescription / siteKeywords / siteUrl)。两套命名不一致导致
+// 站点名称、描述、关键词、站点地址对「浏览器标题 / OG / meta / PWA manifest / canonical
+// base」全部失效，永远回落到硬编码默认值——且 siteUrl 回落到 localhost，污染线上
+// canonical 与社交分享卡。这里补一层别名归一：camelCase 缺失时用对应 snake_case 回填，
+// 两套读法同时生效，且不覆盖后端已注入的 authorName 等 camelCase 字段。
+function isAbsoluteHttpUrl(value: unknown): boolean {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const u = new URL(value.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSiteSettings(raw: Record<string, unknown>): SiteSettings {
+  const merged: Record<string, unknown> = { ...raw };
+  const alias = (camel: string, snake: string) => {
+    const cur = merged[camel];
+    const src = merged[snake];
+    if ((cur === undefined || cur === null || cur === '') && src != null && src !== '') {
+      merged[camel] = src;
+    }
+  };
+  alias('siteTitle', 'site_name');
+  alias('siteDescription', 'site_description');
+  alias('siteKeywords', 'site_keywords');
+  alias('siteSubtitle', 'footer_signature');
+  // siteUrl 仅在 site_url 是合法绝对 http(s) URL 时才别名 —— layout.tsx 会 new URL(siteUrl)，
+  // 后台保存走按钮而非原生表单校验，漏写协议的 "example.com" 等非法值会让 metadata 生成抛错、
+  // 整页崩。非法值不别名，交由下游回落到默认 URL（见 layout / sitemap / robots 的 fallback）。
+  if (
+    (merged.siteUrl === undefined || merged.siteUrl === null || merged.siteUrl === '') &&
+    isAbsoluteHttpUrl(merged.site_url)
+  ) {
+    merged.siteUrl = (merged.site_url as string).trim();
+  }
+  return merged as SiteSettings;
+}
+
 // React.cache 确保同一次渲染中 generateMetadata() 和 RootLayout 共享结果
 export const getSiteSettings = cache(async function getSiteSettings(): Promise<SiteSettings> {
   try {
@@ -98,7 +141,7 @@ export const getSiteSettings = cache(async function getSiteSettings(): Promise<S
     if (!res.ok) throw new Error('Failed to fetch settings');
 
     const json = await res.json();
-    return json.data || {};
+    return normalizeSiteSettings(json.data || {});
   } catch (error) {
     logger.warn('Failed to fetch site settings, using defaults:', error);
     return DEFAULT_SITE_SETTINGS;
