@@ -36,7 +36,9 @@ const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage')
 const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
+const AtlasLayout = lazy(() => import('./pages/atlas/AtlasLayout'));
 const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
+const AtlasReadingsPage = lazy(() => import('./pages/atlas/ReadingsPage'));
 const AtlasKnowledgePointsPage = lazy(() => import('./pages/atlas/KnowledgePointsPage'));
 const AtlasMarkdownReaderPage = lazy(() => import('./pages/atlas/MarkdownReaderPage'));
 const AtlasPDFReaderPage = lazy(() => import('./pages/atlas/PDFReaderPage'));
@@ -133,8 +135,17 @@ function App() {
               <Route path="search-config" element={<SearchConfigPage />} />
               <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
               <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
-              <Route path="atlas" element={<AtlasPage />} />
-              <Route path="atlas/kps" element={<AtlasKnowledgePointsPage />} />
+              {/* 知识图集工作台：单一入口 + 内部 Tab（概览/读物/知识点/图谱/建议/搜索）。
+                  ref: docs/pm/atlas-redesign.md §3.2 —— 收敛原本 5 个并列侧边栏项。 */}
+              <Route path="atlas" element={<AtlasLayout />}>
+                <Route index element={<AtlasPage />} />
+                <Route path="readings" element={<AtlasReadingsPage />} />
+                <Route path="kps" element={<AtlasKnowledgePointsPage />} />
+                <Route path="graph" element={<AtlasGraphPage />} />
+                <Route path="suggestions" element={<AtlasSuggestionsPage />} />
+                <Route path="search" element={<AtlasSearchPage />} />
+              </Route>
+              {/* 沉浸式深页不挂 Tab 壳：Reader 与 KP 详情。 */}
               <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
               <Route path="atlas/reader/pdf/:carrierId" element={<AtlasPDFReaderPage />} />
               <Route path="atlas/reader/web/:carrierId" element={<AtlasWebReaderPage />} />
@@ -142,9 +153,6 @@ function App() {
               <Route path="atlas/reader/transcript/:carrierId" element={<AtlasTranscriptReaderPage />} />
               <Route path="atlas/reader/image/:carrierId" element={<AtlasImageReaderPage />} />
               <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
-              <Route path="atlas/search" element={<AtlasSearchPage />} />
-              <Route path="atlas/graph" element={<AtlasGraphPage />} />
-              <Route path="atlas/suggestions" element={<AtlasSuggestionsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />

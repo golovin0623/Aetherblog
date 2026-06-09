@@ -35,6 +35,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **📄 文档影响：** 已新增 `docs/model-center-alignment-report.md`（完整升级报告）、更新本 `CHANGELOG.md`；能力/抓取属 AI 模块演进，建议后续在 `docs/AI_MODULE_PLAN_V2.md` 追记；未改 API 路由 / DB schema（新能力字段存 `capabilities` JSONB），无需 migrations。
 
+### Changed — 知识图集（Atlas）产品力重构：散落能力聚合为单一闭环 (2026-06-09, branch codex/atlas-intelligence-redesign)
+
+**背景：** 用户反馈「图集功能有了却用不起来、各自零散无法聚合成核心能力」。诊断（见 `docs/pm/atlas-redesign.md`）：后端能力完整，但被「数据模型优先」地拆成 5 个并列侧边栏入口 + 6 个无入口 Reader，散落在 14 项 INTELLIGENCE 菜单里；价值起点（Reader/读物）在 Atlas 内**没有任何入口**，只能从笔记/媒体/写作模块反向摸进去；空状态承诺「直接创建」却无按钮；大量 schema 黑话（Carrier/Provenance/Phase 3/红线 C3-1）直接泄漏给用户。
+
+**Changed — 信息架构收敛为「一个能力、一个闭环：读 → 标 → 联 → 问」：**
+- `apps/admin/src/pages/atlas/AtlasLayout.tsx`（新）— 知识图集工作台外壳，顶部 Tab（概览 / 读物 / 知识点 / 图谱 / 建议 / 搜索）把原本 5 个并列入口收敛为单一入口 + 内部分页。
+- `apps/admin/src/App.tsx` — Atlas 6 个 Tab 页嵌套到 `AtlasLayout` 之下；Reader / KP 详情作为沉浸式深页保持同级、不挂 Tab 壳。
+- `apps/admin/src/components/layout/Sidebar.tsx` — INTELLIGENCE 从 14 项降到 6 项知识工作项；AI 平台配置（模型中心 / 全局价格 / 搜索配置）下沉到新 `PLATFORM` 组；数据分析归 `OVERVIEW`。
+
+**Added — 读物入口（修复激活漏斗最致命断点）+ 闭环可达：**
+- 后端 `GET /v1/admin/atlas/carriers`（list）— `CarrierRepo.List` + `CarrierHandler.List`，按 owner/scope/type/limit 列出最近载体；`atlasService.listCarriers`。
+- `apps/admin/src/pages/atlas/ReadingsPage.tsx`（新）+ `AddReadingDialog.tsx`（新）— 「读物」Tab 列出已有载体并提供零依赖冷启动（网页快照 / 粘贴文本 → 直接进 Reader 标注）。
+- `AtlasPage.tsx` — 顶部新增「读 → 标 → 联 → 问」可关闭 onboarding 引导条（首步触发添加读物、末步跳灵境）；新增 `问灵境` 入口（Atlas→灵境此前无任何链接）；`KnowledgePointPage.tsx` 详情页同样新增 `问灵境`。
+
+**Fixed — 空状态改真 CTA、去术语化、死链修复（P1）：**
+- 空状态从「谎言」改真实下一步：`KnowledgePointsPage` / `AtlasGraphPage` / `SuggestionsPage` 空态均给出「添加读物 / 导入 / 去生成建议」按钮。
+- `atlasLabels.ts`（新）统一 schema 枚举→用户语言；清除 `P2-02` / `Phase 3 后期` / `红线 C3-1` / `provenance` / `relation density` 等黑话。
+- AI 建议收件箱新增**批量采纳**（知识点先于关系、串行避免事务竞争），把「逐条点几十次」降为一次操作。
+- 证据回链由仅 note/pdf 扩展到 web/blog/transcript/image（回退 `carrierReaderHref`）；搜索结果中「标注」由纯文本死路改为可跳转对应 Reader。
+
+**验证：** `pnpm --filter @aetherblog/admin typecheck` 0 error · `build` 通过 · `go build ./... && go vet` + knowledge handler 单测通过 · `design-system:check` 0 error · `./start.sh --gateway` 全链路健康；`GET /atlas/carriers` 鉴权后 200，返回 39 条载体，scope/type/limit 过滤正确。
+
+**📄 文档影响：** 已更新 `CHANGELOG.md`、`docs/pm/atlas-redesign.md`（实施记录）、`docs/output/11-aether-knowledge-atlas/02-atlas-carrier-annotation.md`（新增 `GET /carriers`）、`05-frontend-admin-surfaces.md`（新 IA + ReadingsPage/AddReadingDialog/listCarriers）。未改 DB schema / migrations。剩余 P1/P2（「建议全部关系」一次性 pass、KB↔Atlas 桥、Notes→KB 前向交接、多模态 OCR/STT）记录在 `docs/pm/atlas-redesign.md` §4 待办。
+
 ### Fixed — 日志查看器脏字符 + 双模式（优化 / 原始）对齐 (2026-06-02, branch claude/log-formatting-colors-GnUyi)
 
 **背景：** admin 仪表盘日志查看器出现「脏字符」（`[90m` `[32mINF[0m` 等 ANSI 色码渲染成方块），既不美观也无色彩。根因：本地 `start.sh` 把服务的彩色 stdout 重定向进了内部 writer 已经在写「干净 JSON」的同一个 `*.log` 文件 —— 双写 + ANSI 污染（Docker 下 stdout 走 `docker logs`，文件本就干净，故仅本地复现）。参考 CLI Proxy API 的日志观感，全面对齐「优化模式」与「原始模式」两套展示。

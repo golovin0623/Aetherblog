@@ -77,7 +77,7 @@ function hasActiveMediaSync(items?: MediaItem[]): boolean {
 
 const mediaPanelClass = cn(
   'media-neutral-surface access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
-  'p-3 shadow-sm sm:p-3.5 lg:p-4'
+  'p-3 shadow-sm sm:p-4'
 );
 
 const mediaShellClass = cn(
@@ -265,7 +265,7 @@ export default function MediaPage() {
     folderId: currentFolderId, // @ref Phase 1: 传递当前文件夹ID
   };
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['media', 'list', params],
     queryFn: async () => {
       const res = await mediaService.getList(params);
@@ -275,7 +275,7 @@ export default function MediaPage() {
   });
 
   // @ref 回收站: 获取回收站文件数量
-  const { data: trashCountData, refetch: refetchTrashCount } = useQuery({
+  const { data: trashCountData } = useQuery({
     queryKey: ['media', 'trash', 'count'],
     queryFn: async () => {
       const res = await mediaService.getTrashCount();
@@ -283,8 +283,7 @@ export default function MediaPage() {
     },
   });
   const trashCount = trashCountData || 0;
-  const [manualRefreshing, setManualRefreshing] = useState(false);
-  const listRefreshing = (isFetching && !isLoading) || manualRefreshing;
+  const listRefreshing = isFetching && !isLoading;
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => mediaService.delete(id),
@@ -322,20 +321,6 @@ export default function MediaPage() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
-
-  const handleRefresh = useCallback(async () => {
-    if (manualRefreshing) return;
-    setManualRefreshing(true);
-    try {
-      await Promise.all([
-        refetch(),
-        refetchTrashCount(),
-        new Promise((resolve) => window.setTimeout(resolve, 260)),
-      ]);
-    } finally {
-      setManualRefreshing(false);
-    }
-  }, [manualRefreshing, refetch, refetchTrashCount]);
 
   const handleSearchChange = useCallback((nextValue: string) => {
     setSearchQuery(nextValue);
@@ -642,12 +627,12 @@ export default function MediaPage() {
 
   return (
     <div
-      className="media-library-page admin-grid-page min-h-full overflow-visible p-4 text-[var(--ink-primary)] md:h-full md:overflow-hidden md:p-6"
+      className="media-library-page admin-grid-page box-border min-h-full overflow-visible p-4 text-[var(--ink-primary)] md:h-full md:overflow-hidden md:p-6"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col gap-3 sm:gap-4 md:h-full">
+      <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 md:h-full lg:px-8">
         <AdminModuleHeader
           className="media-balanced-actions-module-header"
           title="媒体库"
@@ -657,19 +642,6 @@ export default function MediaPage() {
           activeSummary={`当前匹配 ${totalMedia} 个文件 · 已选 ${selectedIds.size} · 回收站 ${trashCount}${activeUploadCount > 0 ? ` · 上传中 ${activeUploadCount}` : ''}`}
           actions={
             <>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={manualRefreshing}
-                className="admin-module-action-button activity-refresh-button media-header-action media-header-refresh-action"
-                data-refreshing={listRefreshing}
-                title={listRefreshing ? '正在刷新' : '刷新媒体库'}
-                aria-label="刷新媒体库"
-                aria-busy={listRefreshing}
-              >
-                <RefreshCw className={cn('h-4 w-4', listRefreshing && 'animate-spin')} />
-                <span className="sr-only">{listRefreshing ? '刷新中' : '刷新'}</span>
-              </button>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -690,7 +662,7 @@ export default function MediaPage() {
           }
         />
 
-        <div className={cn(mediaPanelClass, 'flex flex-col gap-2.5 sm:gap-3')}>
+        <div className={cn(mediaPanelClass, 'flex flex-col gap-3 sm:gap-4')}>
           <div className="order-2 grid grid-cols-1 gap-2.5 xl:order-1 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
             <div className="relative min-w-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />

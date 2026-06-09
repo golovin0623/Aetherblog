@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
@@ -118,69 +119,95 @@ func NewAnalyticsRepo(db *sqlx.DB) *AnalyticsRepo { return &AnalyticsRepo{db: db
 func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error) {
 	today := time.Now().Format("2006-01-02")
 
-	var d DashboardData
+	var (
+		postStats struct {
+			PostCount  int64 `db:"post_count"`
+			ViewTotal  int64 `db:"view_total"`
+			TotalWords int64 `db:"total_words"`
+		}
+		mediaStats struct {
+			MediaCount int64 `db:"media_count"`
+			MediaSize  int64 `db:"media_size"`
+		}
+		commentCount   int64
+		todayVisits    int64
+		categoryCount  int64
+		tagCount       int64
+		uniqueVisitors int64
+	)
 
-	// 统计已发布且未删除的文章数
-	if err := r.db.GetContext(ctx, &d.PostCount,
-		`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'`); err != nil {
-		return nil, err
-	}
+	g, queryCtx := errgroup.WithContext(ctx)
+
+	// posts 表的全局统计可在一次扫描内完成，避免同表多次并发查询挤占连接池。
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &postStats,
+			`SELECT
+			    COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS post_count,
+			    COALESCE(SUM(view_count), 0) AS view_total,
+			    COALESCE(SUM(word_count), 0) AS total_words
+			 FROM posts
+			 WHERE deleted = false`)
+	})
 
 	// 统计已审核通过的评论数
-	if err := r.db.GetContext(ctx, &d.CommentCount,
-		`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'`); err != nil {
-		return nil, err
-	}
-
-	// 统计所有未删除文章的浏览量总和
-	if err := r.db.GetContext(ctx, &d.ViewTotal,
-		`SELECT COALESCE(SUM(view_count), 0) FROM posts WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &commentCount,
+			`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'`)
+	})
 
 	// 统计今日非机器人访客数（按创建日期过滤）
-	if err := r.db.GetContext(ctx, &d.TodayVisits,
-		`SELECT COUNT(*) FROM visit_records WHERE is_bot = false AND DATE(created_at) = $1`, today); err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &todayVisits,
+			`SELECT COUNT(*) FROM visit_records
+			 WHERE is_bot = false
+			   AND created_at >= $1::date
+			   AND created_at < $1::date + INTERVAL '1 day'`, today)
+	})
 
-	// 统计未删除媒体文件数
-	if err := r.db.GetContext(ctx, &d.MediaCount,
-		`SELECT COUNT(*) FROM media_files WHERE deleted = false`); err != nil {
-		return nil, err
-	}
-
-	// 统计未删除媒体文件的存储总大小
-	if err := r.db.GetContext(ctx, &d.MediaSize,
-		`SELECT COALESCE(SUM(file_size), 0) FROM media_files WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	// media_files 表的数量和容量统计共享同一过滤条件，合并为一次查询。
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &mediaStats,
+			`SELECT
+			    COUNT(*) AS media_count,
+			    COALESCE(SUM(file_size), 0) AS media_size
+			 FROM media_files
+			 WHERE deleted = false`)
+	})
 
 	// 统计分类总数
-	if err := r.db.GetContext(ctx, &d.CategoryCount,
-		`SELECT COUNT(*) FROM categories`); err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &categoryCount,
+			`SELECT COUNT(*) FROM categories`)
+	})
 
 	// 统计标签总数
-	if err := r.db.GetContext(ctx, &d.TagCount,
-		`SELECT COUNT(*) FROM tags`); err != nil {
-		return nil, err
-	}
-
-	// 统计所有未删除文章的总字数
-	if err := r.db.GetContext(ctx, &d.TotalWords,
-		`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false`); err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &tagCount,
+			`SELECT COUNT(*) FROM tags`)
+	})
 
 	// 统计历史累计独立访客数（排除机器人，基于 visitor_hash 去重）
-	if err := r.db.GetContext(ctx, &d.UniqueVisitors,
-		`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false`); err != nil {
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &uniqueVisitors,
+			`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false`)
+	})
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	return &d, nil
+	return &DashboardData{
+		PostCount:      postStats.PostCount,
+		CommentCount:   commentCount,
+		ViewTotal:      postStats.ViewTotal,
+		TodayVisits:    todayVisits,
+		MediaCount:     mediaStats.MediaCount,
+		MediaSize:      mediaStats.MediaSize,
+		CategoryCount:  categoryCount,
+		TagCount:       tagCount,
+		TotalWords:     postStats.TotalWords,
+		UniqueVisitors: uniqueVisitors,
+	}, nil
 }
 
 // GetTopPosts 从 posts 表返回浏览量最高的前 N 篇已发布文章，按 view_count 降序排列。
@@ -217,7 +244,10 @@ func (r *AnalyticsRepo) GetTodayVisitCount(ctx context.Context) (int64, error) {
 	today := time.Now().Format("2006-01-02")
 	var n int64
 	err := r.db.GetContext(ctx, &n,
-		`SELECT COUNT(*) FROM visit_records WHERE is_bot = false AND DATE(created_at) = $1`, today)
+		`SELECT COUNT(*) FROM visit_records
+		 WHERE is_bot = false
+		   AND created_at >= $1::date
+		   AND created_at < $1::date + INTERVAL '1 day'`, today)
 	return n, err
 }
 
@@ -266,84 +296,106 @@ type TrendsData struct {
 // GetTrends 分别从 posts、comments、visit_records 表查询当月与上月的对比数据，
 // 使用 date_trunc('month', NOW()) 精确划定月份边界。
 func (r *AnalyticsRepo) GetTrends(ctx context.Context) (*TrendsData, error) {
-	var d TrendsData
+	var (
+		postStats struct {
+			PostsThisMonth int64 `db:"posts_this_month"`
+			PostsLastMonth int64 `db:"posts_last_month"`
+			WordsThisMonth int64 `db:"words_this_month"`
+			WordsLastMonth int64 `db:"words_last_month"`
+		}
+		commentStats struct {
+			CommentsThisMonth int64 `db:"comments_this_month"`
+			CommentsLastMonth int64 `db:"comments_last_month"`
+		}
+		visitStats struct {
+			ViewsThisMonth    int64 `db:"views_this_month"`
+			ViewsLastMonth    int64 `db:"views_last_month"`
+			VisitorsThisMonth int64 `db:"visitors_this_month"`
+			VisitorsLastMonth int64 `db:"visitors_last_month"`
+		}
+	)
 
-	// 本月新发布文章数
-	if err := r.db.GetContext(ctx, &d.PostsThisMonth,
-		`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-		 AND published_at >= date_trunc('month', NOW())`); err != nil {
+	g, queryCtx := errgroup.WithContext(ctx)
+
+	// posts 表趋势指标共享状态和时间过滤，使用条件聚合减少往返。
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &postStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW())
+			    ) AS posts_this_month,
+			    COUNT(*) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND published_at < date_trunc('month', NOW())
+			    ) AS posts_last_month,
+			    COALESCE(SUM(word_count) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW())
+			    ), 0) AS words_this_month,
+			    COALESCE(SUM(word_count) FILTER (
+			      WHERE published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND published_at < date_trunc('month', NOW())
+			    ), 0) AS words_last_month
+			 FROM posts
+			 WHERE deleted = false
+			   AND status = 'PUBLISHED'
+			   AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
+	})
+
+	// comments 表趋势指标共享审核状态和时间过滤。
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &commentStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS comments_this_month,
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS comments_last_month
+			 FROM comments
+			 WHERE status = 'APPROVED'
+			   AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
+	})
+
+	// visit_records 表趋势指标共享机器人过滤和时间范围。
+	g.Go(func() error {
+		return r.db.GetContext(queryCtx, &visitStats,
+			`SELECT
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS views_this_month,
+			    COUNT(*) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS views_last_month,
+			    COUNT(DISTINCT visitor_hash) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW())
+			    ) AS visitors_this_month,
+			    COUNT(DISTINCT visitor_hash) FILTER (
+			      WHERE created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
+			        AND created_at < date_trunc('month', NOW())
+			    ) AS visitors_last_month
+			 FROM visit_records
+			 WHERE is_bot = false
+			   AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')`)
+	})
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	// 上月新发布文章数（上月月初 ≤ published_at < 本月月初）
-	if err := r.db.GetContext(ctx, &d.PostsLastMonth,
-		`SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-		 AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-		 AND published_at < date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 本月已审核评论数
-	if err := r.db.GetContext(ctx, &d.CommentsThisMonth,
-		`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'
-		 AND created_at >= date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 上月已审核评论数
-	if err := r.db.GetContext(ctx, &d.CommentsLastMonth,
-		`SELECT COUNT(*) FROM comments WHERE status = 'APPROVED'
-		 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-		 AND created_at < date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 本月访问量（来自 visit_records，排除机器人）
-	if err := r.db.GetContext(ctx, &d.ViewsThisMonth,
-		`SELECT COUNT(*) FROM visit_records WHERE is_bot = false
-		 AND created_at >= date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 上月访问量
-	if err := r.db.GetContext(ctx, &d.ViewsLastMonth,
-		`SELECT COUNT(*) FROM visit_records WHERE is_bot = false
-		 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-		 AND created_at < date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 本月独立访客数（基于 visitor_hash 去重）
-	if err := r.db.GetContext(ctx, &d.VisitorsThisMonth,
-		`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false
-		 AND created_at >= date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 上月独立访客数
-	if err := r.db.GetContext(ctx, &d.VisitorsLastMonth,
-		`SELECT COUNT(DISTINCT visitor_hash) FROM visit_records WHERE is_bot = false
-		 AND created_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-		 AND created_at < date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 本月发布文章总字数
-	if err := r.db.GetContext(ctx, &d.WordsThisMonth,
-		`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-		 AND published_at >= date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	// 上月发布文章总字数
-	if err := r.db.GetContext(ctx, &d.WordsLastMonth,
-		`SELECT COALESCE(SUM(word_count), 0) FROM posts WHERE deleted = false AND status = 'PUBLISHED'
-		 AND published_at >= date_trunc('month', NOW() - INTERVAL '1 month')
-		 AND published_at < date_trunc('month', NOW())`); err != nil {
-		return nil, err
-	}
-
-	return &d, nil
+	return &TrendsData{
+		PostsThisMonth:    postStats.PostsThisMonth,
+		PostsLastMonth:    postStats.PostsLastMonth,
+		CommentsThisMonth: commentStats.CommentsThisMonth,
+		CommentsLastMonth: commentStats.CommentsLastMonth,
+		ViewsThisMonth:    visitStats.ViewsThisMonth,
+		ViewsLastMonth:    visitStats.ViewsLastMonth,
+		VisitorsThisMonth: visitStats.VisitorsThisMonth,
+		VisitorsLastMonth: visitStats.VisitorsLastMonth,
+		WordsThisMonth:    postStats.WordsThisMonth,
+		WordsLastMonth:    postStats.WordsLastMonth,
+	}, nil
 }
 
 // DeviceStat 持有设备类型分布数据，用于访问来源统计图表展示。

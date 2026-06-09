@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { atlasService } from '@/services/atlasService';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { carrierReaderHref } from './carrierReaderHref';
+import { anchorStateLabel, kpStatusLabel, kpTypeLabel, provenanceLabel } from './atlasLabels';
 
 type AtlasScopeFilter = 'all' | 'mine';
 
@@ -32,6 +33,9 @@ export default function AtlasSearchPage() {
   const [scope, setScope] = useState<AtlasScopeFilter>(urlScope);
   const [semantic, setSemantic] = useState(urlSemantic);
   const [state, setState] = useState<SearchState>(urlQuery ? { kind: 'loading' } : { kind: 'idle' });
+  // 「标注」命中但其载体未独立命中搜索时，carrier 不在结果桶里 —— 按 carrierId 兜底拉取，
+  // 让标注结果的「跳 Reader」对全部命中生效（codex review P2）。
+  const [resolvedCarriers, setResolvedCarriers] = useState<Map<number, AtlasCarrier>>(() => new Map());
 
   const runSearch = useCallback(async (nextQuery: string, nextScope: AtlasScopeFilter, nextSemantic: boolean) => {
     const q = nextQuery.trim();
@@ -75,13 +79,57 @@ export default function AtlasSearchPage() {
     };
   }, [state]);
 
+  // 用搜索结果里的 carrier 反查，让「标注」结果也能跳进对应阅读器——
+  // 原本 annotation 结果是纯文本死路（无任何链接）。
+  const carrierById = useMemo(() => {
+    if (state.kind !== 'ok') return new Map<number, AtlasCarrier>();
+    // 兜底拉取的载体打底，搜索命中桶里的载体覆盖在上（保证 null 切片不炸）。
+    const map = new Map<number, AtlasCarrier>(resolvedCarriers);
+    (state.data.carriers ?? []).forEach((carrier) => map.set(carrier.id, carrier));
+    return map;
+  }, [state, resolvedCarriers]);
+
+  // 对「命中标注但其载体未命中」的情况按 carrierId 兜底拉取载体，补齐 Reader 回链。
+  useEffect(() => {
+    if (state.kind !== 'ok') {
+      setResolvedCarriers((prev) => (prev.size ? new Map() : prev));
+      return;
+    }
+    const inBucket = new Set((state.data.carriers ?? []).map((carrier) => carrier.id));
+    const missing = Array.from(
+      new Set(
+        (state.data.annotations ?? [])
+          .map((annotation) => annotation.carrierId)
+          .filter((id): id is number => typeof id === 'number' && id > 0 && !inBucket.has(id))
+      )
+    );
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const results = await Promise.allSettled(missing.map((id) => atlasService.getCarrier(id)));
+      if (cancelled) return;
+      setResolvedCarriers((prev) => {
+        const next = new Map(prev);
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value?.data) {
+            next.set(result.value.data.id, result.value.data);
+          }
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
+
   return (
     <div className="space-y-4">
       <AdminModuleHeader
-        title="Atlas Search"
-        description={`跨 KP / Annotation / Carrier 检索 · ${counts.total} 条结果`}
+        title="搜索"
+        description={`跨知识点 / 标注 / 读物检索 · ${counts.total} 条结果`}
         icon={Search}
-        currentLabel="Search"
+        showCurrentLabel={false}
         actions={
           <button
             type="button"
@@ -153,7 +201,7 @@ export default function AtlasSearchPage() {
             </section>
           ) : null}
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <ResultPanel title="Knowledge Points" count={counts.kp} icon={BookOpen}>
+            <ResultPanel title="知识点" count={counts.kp} icon={BookOpen}>
               {state.data.knowledgePoints.length === 0 ? (
                 <EmptyResult />
               ) : (
@@ -166,19 +214,19 @@ export default function AtlasSearchPage() {
             </ResultPanel>
 
             <div className="space-y-4">
-              <ResultPanel title="Annotations" count={counts.annotation} icon={Highlighter}>
+              <ResultPanel title="标注" count={counts.annotation} icon={Highlighter}>
                 {state.data.annotations.length === 0 ? (
                   <EmptyResult />
                 ) : (
                   <ul className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
                     {state.data.annotations.map((item) => (
-                      <AnnotationResult key={item.id} item={item} />
+                      <AnnotationResult key={item.id} item={item} carrier={carrierById.get(item.carrierId) ?? null} />
                     ))}
                   </ul>
                 )}
               </ResultPanel>
 
-              <ResultPanel title="Carriers" count={counts.carrier} icon={FileText}>
+              <ResultPanel title="读物" count={counts.carrier} icon={FileText}>
                 {state.data.carriers.length === 0 ? (
                   <EmptyResult />
                 ) : (
@@ -213,10 +261,10 @@ function KnowledgePointResult({ item }: { item: AtlasSearchKnowledgePoint }) {
             <span className="mt-1 block line-clamp-2 text-xs text-[var(--ink-secondary)]">{item.bodyMarkdown}</span>
           ) : null}
           <span className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-[var(--ink-muted)]">
-            <Chip>{item.type}</Chip>
-            <Chip>{item.status}</Chip>
+            <Chip>{kpTypeLabel(item.type)}</Chip>
+            <Chip>{kpStatusLabel(item.status)}</Chip>
             <Chip className={cn(item.provenance === 'ai_suggested' && 'text-[var(--signal-warn)]')}>
-              {item.provenance}
+              {provenanceLabel(item.provenance)}
             </Chip>
             {item.searchSource ? <Chip className="text-[var(--aurora-1)]">{searchSourceLabel(item.searchSource)}</Chip> : null}
             {score !== null ? <Chip>{score}%</Chip> : null}
@@ -234,20 +282,33 @@ function searchSourceLabel(source: string) {
   return 'keyword';
 }
 
-function AnnotationResult({ item }: { item: AtlasAnnotation }) {
-  return (
-    <li className="px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="line-clamp-2 text-sm text-[var(--ink-primary)]">{item.bodyText || '(无正文标注)'}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-[var(--ink-muted)]">
-            <Chip>{item.bodyType}</Chip>
-            <Chip>{item.anchorState}</Chip>
-            <span className="font-mono">Carrier #{item.carrierId}</span>
-          </div>
+function AnnotationResult({ item, carrier }: { item: AtlasAnnotation; carrier: AtlasCarrier | null }) {
+  const href = carrier ? carrierReaderHref(carrier) : null;
+  const inner = (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="line-clamp-2 text-sm text-[var(--ink-primary)]">{item.bodyText || '(无正文标注)'}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-muted)]">
+          <Chip>{anchorStateLabel(item.anchorState)}</Chip>
+          <span className="min-w-0 truncate">{carrier?.title || `读物 #${item.carrierId}`}</span>
         </div>
-        <span className="font-mono text-[10px] text-[var(--ink-muted)]">#{item.id}</span>
       </div>
+      {href ? (
+        <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
+      ) : (
+        <span className="font-mono text-[10px] text-[var(--ink-muted)]">#{item.id}</span>
+      )}
+    </div>
+  );
+  return (
+    <li>
+      {href ? (
+        <Link to={href} className="block px-4 py-3 transition-colors hover:bg-[var(--bg-substrate)]">
+          {inner}
+        </Link>
+      ) : (
+        <div className="px-4 py-3">{inner}</div>
+      )}
     </li>
   );
 }
@@ -302,7 +363,7 @@ function ResultPanel({
           {title}
         </h2>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-          {count} result{count === 1 ? '' : 's'}
+          {count} 条
         </span>
       </div>
       {children}

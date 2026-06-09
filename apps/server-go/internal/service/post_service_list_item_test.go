@@ -95,3 +95,26 @@ func TestBuildPostContentPreviewTrimsLeadingTitleSeparator(t *testing.T) {
 		t.Fatalf("preview = %q, want %q", got, "正文开头")
 	}
 }
+
+func TestStripMarkdownForPostPreviewStripsAdmonitionMarkers(t *testing.T) {
+	content := "::: info\n提示内容\n:::\n后续正文"
+
+	got := stripMarkdownForPostPreview(content)
+
+	if strings.Contains(got, ":::") {
+		t.Fatalf("expected admonition markers stripped, got %q", got)
+	}
+	if want := "提示内容 后续正文"; got != want {
+		t.Fatalf("preview = %q, want %q", got, want)
+	}
+}
+
+func TestStripMarkdownForPostPreviewKeepsComparisonOperators(t *testing.T) {
+	content := "当 x < y 且 z > 0 时成立"
+
+	got := stripMarkdownForPostPreview(content)
+
+	if got != content {
+		t.Fatalf("preview = %q, want %q (comparison operators must not be stripped as HTML tags)", got, content)
+	}
+}

@@ -156,6 +156,15 @@ export const atlasService = {
 
   getCarrier: (id: number): Promise<R<AtlasCarrier>> => api.get(`${base}/carriers/${id}`),
 
+  // 列出当前可见范围内最近的载体（读物列表）。支撑 Atlas「读物」入口，
+  // 在此之前前端没有任何列出已有 Carrier 的方式。
+  listCarriers: (
+    params?: {
+      type?: AtlasCarrier['type'];
+      limit?: number;
+    } & AtlasScopedParams
+  ): Promise<R<AtlasCarrier[]>> => api.get(`${base}/carriers`, { params }),
+
   getCarrierTextLayer: (carrierId: number): Promise<R<AtlasCarrierTextLayer>> =>
     api.get(`${base}/carriers/${carrierId}/text-layer`),
 

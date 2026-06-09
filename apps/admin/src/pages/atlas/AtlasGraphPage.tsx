@@ -19,6 +19,7 @@ import type {
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  BookOpen,
   CalendarDays,
   Compass,
   Download,
@@ -638,9 +639,10 @@ export default function AtlasGraphPage() {
   return (
     <div className="space-y-4">
       <AdminModuleHeader
-        title="Aether Graph"
-        description={`图谱视图 · ${nodes.length} 节点 · ${edges.length} 关系${hidden ? ` · ${hidden} 个 hub 节点已折叠` : ''}`}
+        title="图谱"
+        description={`${nodes.length} 节点 · ${edges.length} 关系${hidden ? ` · ${hidden} 个枢纽节点已折叠` : ''}`}
         icon={Compass}
+        showCurrentLabel={false}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -855,8 +857,33 @@ export default function AtlasGraphPage() {
           {error}
         </div>
       ) : nodes.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[var(--bg-leaf)] p-10 text-center text-sm text-[var(--ink-secondary)]">
-          暂无知识点。请在 Reader 里抽离一些 KP 或直接创建。
+        <div className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[var(--bg-leaf)] p-8 text-center">
+          <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--ink-primary)]">
+            <Network className="h-5 w-5" />
+          </span>
+          <h2 className="mt-4 text-base font-semibold text-[var(--ink-primary)]">图谱还是空的</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[var(--ink-secondary)]">
+            图谱由知识点和它们之间的关系长成。先添加一篇读物提炼知识点，或直接导入已有的笔记 / 文献库。
+          </p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/atlas/readings')}
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] px-4 text-sm font-semibold text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)]"
+            >
+              <BookOpen className="h-4 w-4" />
+              添加读物
+            </button>
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              disabled={importingGraph}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-4 text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-substrate)] hover:text-[var(--ink-primary)] disabled:opacity-60"
+            >
+              <Upload className="h-4 w-4" />
+              {importingGraph ? '导入中…' : '导入文件'}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">

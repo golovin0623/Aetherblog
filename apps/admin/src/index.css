@@ -316,10 +316,6 @@
   transform: rotate(18deg) scale(1.08);
 }
 
-.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-icon-action:hover svg {
-  transform: rotate(90deg) scale(1.06);
-}
-
 .compact-actions-module-header .admin-module-action-button {
   width: 1.85rem;
   min-height: 1.85rem;
@@ -536,6 +532,30 @@
   gap: 0.45rem;
 }
 
+@media (min-width: 1024px) {
+  .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-header-inner {
+    min-height: 8.125rem;
+    padding-right: 19rem;
+  }
+
+  .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-side {
+    position: absolute;
+    top: 50%;
+    right: 1.25rem;
+    z-index: 2;
+    width: auto;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    transform: translateY(-50%);
+  }
+
+  .taxonomy-module-header .admin-module-tabs {
+    flex: 0 0 clamp(9.5rem, 14vw, 11.5rem);
+    align-self: center;
+    max-width: none;
+  }
+}
+
 .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-action-button {
   width: 1.85rem;
   min-height: 1.85rem;
@@ -571,16 +591,35 @@
     color 180ms ease;
 }
 
+.taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-create-action {
+  width: auto;
+  min-width: 4.6875rem;
+  height: 2rem;
+  min-height: 2rem;
+  gap: 0.5rem;
+  border-color: color-mix(in oklch, var(--ink-primary) 10%, transparent);
+  background: var(--ink-primary);
+  background-image: none;
+  padding: 0 0.75rem;
+  color: var(--bg-void);
+  font-size: 0.78rem;
+  line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 14px 28px -22px color-mix(in oklch, var(--ink-primary) 70%, black);
+}
+
+.taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-create-action svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-action-button:hover svg {
   filter: drop-shadow(0 10px 14px color-mix(in oklch, var(--aurora-1) 26%, transparent));
 }
 
 .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .activity-refresh-button:hover svg {
   transform: rotate(135deg) scale(1.08);
-}
-
-.taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-icon-action:hover svg {
-  transform: rotate(90deg) scale(1.12);
 }
 
 @keyframes activity-refresh-sweep {
@@ -925,17 +964,6 @@
     font-size: 0.8125rem;
   }
 
-  .admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-header-inner {
-    padding-right: 5.75rem;
-  }
-
-  .admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-side {
-    position: absolute;
-    top: 0.7rem;
-    right: 0.75rem;
-    z-index: 2;
-  }
-
   .admin-module-header[data-has-tabs='false'] .admin-module-actions {
     flex-wrap: nowrap;
     justify-content: flex-end;
@@ -952,6 +980,24 @@
   .admin-module-header[data-has-tabs='false'] .admin-module-action-button svg {
     width: 1rem;
     height: 1rem;
+  }
+
+  .admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-header-inner {
+    padding-right: 0.875rem;
+  }
+
+  .admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-side {
+    position: static;
+    top: auto;
+    right: auto;
+    z-index: auto;
+    width: 100%;
+  }
+
+  .admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
   }
 
   .admin-module-tabs {
@@ -5964,13 +6010,18 @@ html[data-theme-transition] .codex-ambient-blob {
 
 /* Complex module headers: preserve action semantics while making each page's header feel intentional. */
 .posts-primary-actions-module-header .admin-module-actions,
-.media-balanced-actions-module-header .admin-module-actions {
+.media-balanced-actions-module-header .admin-module-actions,
+.friends-actions-module-header .admin-module-actions {
   align-items: center;
   gap: 0.45rem;
 }
 
 .posts-primary-actions-module-header .posts-header-action,
-.media-balanced-actions-module-header .media-header-action {
+.media-balanced-actions-module-header .media-header-action,
+.friends-actions-module-header .friends-header-action {
+  width: auto;
+  min-width: 0;
+  height: 2rem;
   min-height: 2rem;
   border-radius: 999px;
   padding: 0 0.75rem;
@@ -5988,7 +6039,9 @@ html[data-theme-transition] .codex-ambient-blob {
 }
 
 .posts-primary-actions-module-header .posts-header-action-create,
-.media-balanced-actions-module-header .media-header-upload-action {
+.media-balanced-actions-module-header .media-header-upload-action,
+.friends-actions-module-header .friends-header-create-action,
+.taxonomy-module-header .taxonomy-header-create-action {
   border-color: color-mix(in oklch, var(--ink-primary) 10%, transparent);
   background: var(--ink-primary);
   color: var(--bg-void);
@@ -5998,14 +6051,16 @@ html[data-theme-transition] .codex-ambient-blob {
 }
 
 .posts-primary-actions-module-header .posts-header-action svg,
-.media-balanced-actions-module-header .media-header-action svg {
+.media-balanced-actions-module-header .media-header-action svg,
+.friends-actions-module-header .friends-header-action svg {
   transition:
     transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
     color 180ms ease;
 }
 
 .posts-primary-actions-module-header .posts-header-action:hover svg,
-.media-balanced-actions-module-header .media-header-action:hover svg {
+.media-balanced-actions-module-header .media-header-action:hover svg,
+.friends-actions-module-header .friends-header-action:hover svg {
   transform: translateY(-1px) scale(1.06);
 }
 
@@ -6104,6 +6159,7 @@ html[data-theme-transition] .codex-ambient-blob {
 
   .posts-primary-actions-module-header .admin-module-actions,
   .media-balanced-actions-module-header .admin-module-actions,
+  .friends-actions-module-header .admin-module-actions,
   .settings-stateful-actions-module-header .admin-module-actions {
     width: 100%;
     flex-wrap: nowrap;
@@ -6118,7 +6174,8 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .posts-primary-actions-module-header .posts-header-action,
-  .media-balanced-actions-module-header .media-header-action {
+  .media-balanced-actions-module-header .media-header-action,
+  .friends-actions-module-header .friends-header-action {
     width: auto;
     min-height: 2rem;
     gap: 0.35rem;
@@ -6155,12 +6212,15 @@ html[data-theme-transition] .codex-ambient-blob {
     justify-content: flex-start;
   }
 
-  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-actions {
-    justify-content: flex-end;
+  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-actions,
+  .friends-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .admin-module-actions {
+    justify-content: flex-start;
   }
 
   .posts-primary-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .posts-header-action,
-  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-upload-action {
+  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-upload-action,
+  .friends-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .friends-header-create-action,
+  .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-create-action {
     width: auto;
     min-width: 0;
     height: 2rem;
@@ -6171,7 +6231,9 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .posts-primary-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .posts-header-action svg,
-  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-action svg {
+  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-action svg,
+  .friends-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .friends-header-action svg,
+  .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-create-action svg {
     width: 1rem;
     height: 1rem;
   }
@@ -6187,7 +6249,9 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .posts-primary-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .posts-header-action-create,
-  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-upload-action {
+  .media-balanced-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .media-header-upload-action,
+  .friends-actions-module-header.admin-module-header[data-has-tabs='false'][data-has-actions='true'] .friends-header-create-action,
+  .taxonomy-module-header.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .taxonomy-header-create-action {
     border-color: color-mix(in oklch, var(--ink-primary) 10%, transparent);
     background: var(--ink-primary);
     background-image: none;
@@ -6235,6 +6299,8 @@ html[data-theme-transition] .codex-ambient-blob {
 
 .posts-primary-actions-module-header.admin-module-header .posts-header-action-create,
 .media-balanced-actions-module-header.admin-module-header .media-header-upload-action,
+.friends-actions-module-header.admin-module-header .friends-header-create-action,
+.taxonomy-module-header.admin-module-header .taxonomy-header-create-action,
 .settings-stateful-actions-module-header.admin-module-header .settings-action-button-primary {
   border-color: color-mix(in oklch, var(--ink-primary) 10%, transparent);
   background: var(--ink-primary);
