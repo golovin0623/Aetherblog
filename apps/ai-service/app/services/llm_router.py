@@ -40,8 +40,11 @@ logger = logging.getLogger("ai-service")
 # 设计选择: 用 denylist 而非 allowlist —— DB 中 model_type 历史值还包含
 # 'text' / 'all' / NULL 这些被视作 chat-capable 的 legacy 值, allowlist
 # 会把它们一并误剔。新增非 chat 模型类型时, 只需扩这一处。
+# 非对话模型类型 —— 这些类型不能走 acompletion 对话路由，须从 agent/model-picker
+# 过滤。必须与 model_capabilities.NON_CHAT_TYPES 保持一致（推断会产出 text2music /
+# realtime 等非对话类型），一致性由 test_model_capabilities 守护，避免两处漂移。
 NON_CHAT_MODEL_TYPES: frozenset[str] = frozenset(
-    {"embedding", "audio", "image", "tts", "stt", "text2video", "video"}
+    {"embedding", "audio", "image", "tts", "stt", "realtime", "text2video", "text2music", "video"}
 )
 
 # 当 DB 路由配置与 task type 的 ``default_max_tokens`` 均缺失（仅依赖

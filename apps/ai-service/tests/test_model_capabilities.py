@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from app.services.llm_router import NON_CHAT_MODEL_TYPES
 from app.services.model_capabilities import (
     CANONICAL_ABILITIES,
+    NON_CHAT_TYPES,
     infer_capabilities,
     infer_model_type,
     normalize_abilities,
 )
+
+
+def test_non_chat_type_sets_are_in_sync():
+    """llm_router 的对话路由 denylist 必须与能力推断的非对话类型集合一致。
+
+    否则推断出的 text2music / realtime 等非对话模型会被当成可选对话模型，
+    错误地送进 acompletion。两处常量任一改动都应同步。
+    """
+    assert NON_CHAT_MODEL_TYPES == NON_CHAT_TYPES
 
 
 # ------------------------------------------------------------------
