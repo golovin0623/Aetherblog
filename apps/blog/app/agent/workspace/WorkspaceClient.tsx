@@ -822,6 +822,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     if (!el) return;
     const release = () => {
       if (!stickToBottomRef.current) return;
+      // 没有可上滑的空间(内容未溢出 / 已在顶部)就别脱离粘底 —— 否则短对话里
+      // 一次无效的上滑手势会让 ResizeObserver 停止跟随,新回答被卡在视野之外、
+      // 还误浮出"↓ 最新"。仅当确有向上滚动余量(scrollTop > 0)时才松手。
+      if (el.scrollTop <= 0) return;
       stickToBottomRef.current = false;
       setShowJumpToBottom(true);
     };
