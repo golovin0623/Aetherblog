@@ -98,6 +98,39 @@ func (r *CarrierRepo) Search(ctx context.Context, keyword string, ownerID *int64
 	return rows, err
 }
 
+// List 返回当前可见范围内最近更新的载体（读物列表）。
+//
+// ownerID=nil 表示管理员 scope，可见全部；非 nil 仅返回该 owner 的载体。
+// typeFilter 为空表示不限类型。结果按 updated_at 倒序，便于「最近在读」优先呈现。
+// 这是 Atlas「读物」入口的后端支撑——在此之前前端无法列出已有 Carrier，
+// 用户只能从笔记/媒体/写作模块反向进入 Reader（激活漏斗最致命断点）。
+func (r *CarrierRepo) List(ctx context.Context, ownerID *int64, typeFilter string, limit int) ([]model.Carrier, error) {
+	q := `SELECT * FROM atlas_carriers WHERE deleted=false`
+	args := []any{}
+	idx := 1
+	if ownerID != nil {
+		q += " AND owner_id=$" + strconv.Itoa(idx)
+		args = append(args, *ownerID)
+		idx++
+	}
+	if typeFilter != "" {
+		q += " AND type=$" + strconv.Itoa(idx)
+		args = append(args, typeFilter)
+		idx++
+	}
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 200 {
+		limit = 200
+	}
+	q += " ORDER BY updated_at DESC LIMIT $" + strconv.Itoa(idx)
+	args = append(args, limit)
+
+	rows := []model.Carrier{}
+	err := r.db.SelectContext(ctx, &rows, q, args...)
+	return rows, err
+}
+
 // Create 原子创建 Carrier + 第 1 版 CarrierVersion。
 //
 // 在事务中执行以确保 carrier 与 version_no=1 总是成对出现——任何后续锚定

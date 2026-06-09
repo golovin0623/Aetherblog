@@ -8,6 +8,7 @@
 //   POST /carriers/web/fetch      抓取网页并返回可编辑正文快照
 //   POST /carriers/media-transcript 创建/更新 video/audio transcript carrier
 //   POST /carriers/image          创建/更新 image description carrier
+//   GET  /carriers               列出当前可见范围内最近的 carrier（读物列表）
 //   GET  /carriers/:id            读 carrier 详情
 //   GET  /carriers/:id/text-layer  读 pdf/blog_post/web/video/audio/image carrier 当前文本层
 
@@ -51,6 +52,7 @@ func (h *CarrierHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.POST("/carriers/web/fetch", h.FetchWeb, write)
 	g.POST("/carriers/media-transcript", h.EnsureMediaTranscript, write)
 	g.POST("/carriers/image", h.EnsureImage, write)
+	g.GET("/carriers", h.List)
 	g.GET("/carriers/:id/text-layer", h.GetTextLayer)
 	g.GET("/carriers/:id", h.Get)
 }
@@ -330,6 +332,35 @@ func (h *CarrierHandler) EnsureImage(c echo.Context) error {
 }
 
 // Get 返回 carrier 详情。
+// List 列出当前可见范围内最近更新的载体，支撑 Atlas「读物」入口。
+// 路径: GET /atlas/carriers?scope=&authorId=&type=&limit=
+// 非 admin 强制按 owner 过滤；admin 默认全部、scope=mine 时仅自己。
+func (h *CarrierHandler) List(c echo.Context) error {
+	scope, err := currentAtlasScope(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	owner, err := scope.authorFilter(c)
+	if err != nil {
+		return writeAtlasError(c, err)
+	}
+	limit := 50
+	if v := c.QueryParam("limit"); v != "" {
+		if n, perr := strconv.Atoi(v); perr == nil && n > 0 {
+			limit = n
+		}
+	}
+	carriers, err := h.atlas.Carriers().List(c.Request().Context(), owner, c.QueryParam("type"), limit)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	out := make([]atlasdto.CarrierResponse, 0, len(carriers))
+	for i := range carriers {
+		out = append(out, toCarrierResponse(&carriers[i]))
+	}
+	return response.OK(c, out)
+}
+
 func (h *CarrierHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

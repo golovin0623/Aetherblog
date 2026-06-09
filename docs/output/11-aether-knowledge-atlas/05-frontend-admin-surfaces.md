@@ -22,7 +22,8 @@ Admin 前端为知识库与 Atlas 提供可操作入口:
 | --- | --- |
 | `apps/admin/src/App.tsx:37-43` | lazy 注册知识库和 Atlas 页面 |
 | `apps/admin/src/App.tsx:127-133` | 实际路由注册 |
-| `apps/admin/src/components/layout/Sidebar.tsx:69-80` | INTELLIGENCE 导航:灵境、智能笔记、知识图集、知识库、智能编排等 |
+| `apps/admin/src/components/layout/Sidebar.tsx` | INTELLIGENCE 导航（已收敛为 6 项知识工作）：灵境、智能笔记、知识图集（单一入口）、知识库、智能编排、写作助手；AI 平台配置下沉到 `PLATFORM` 组 |
+| `apps/admin/src/pages/atlas/AtlasLayout.tsx` | 知识图集工作台外壳：顶部 Tab（概览/读物/知识点/图谱/建议/搜索），收敛原本 5 个并列侧边栏入口 |
 | `apps/admin/src/services/knowledgeBaseService.ts:172-283` | KB admin service 与 Agent picker service |
 | `apps/admin/src/services/atlasService.ts:23-171` | Atlas REST 客户端 |
 | `apps/admin/src/pages/knowledge/KnowledgeBasePage.tsx:46-100` | 知识库列表页主体 |
@@ -44,9 +45,15 @@ Admin 前端为知识库与 Atlas 提供可操作入口:
 - active profile code
 - 索引状态:已索引 / 部分失败 / 空库 / 处理中
 
-### 3.2 Atlas 入口与子页
+### 3.2 Atlas 工作台与子页
 
-`AtlasPage` 当前仍有较强 Phase 0 文案,但 App 已经注册 reader/KP/graph/suggestions 子页。这是一个实际文档/代码漂移点:入口页的“只显示健康自检和路线图”不再代表全模块能力。
+（2026-06-09 重构，branch `codex/atlas-intelligence-redesign`，方案见 `docs/pm/atlas-redesign.md`）
+
+`AtlasLayout` 作为工作台外壳，顶部 Tab 收敛六个子页：概览（`AtlasPage`）/ 读物（`ReadingsPage`）/ 知识点（`KnowledgePointsPage`）/ 图谱（`AtlasGraphPage`）/ 建议（`SuggestionsPage`）/ 搜索（`AtlasSearchPage`）；Reader 与 KP 详情作为沉浸式深页不挂 Tab 壳。
+
+- **读物入口（`ReadingsPage` + `AddReadingDialog`）：** 修复「Reader 在 Atlas 内无入口」的激活断点。列出已有载体（`atlasService.listCarriers` → `GET /atlas/carriers`），并提供零依赖冷启动（网页快照 / 粘贴文本 → 直接进 Reader）。
+- **概览（`AtlasPage`）：** 旧 Phase 0 占位文案已移除；顶部「读 → 标 → 联 → 问」可关闭引导条，并新增 `问灵境` 闭合「问」一步（此前 Atlas→灵境无任何链接）。
+- **去术语化：** 所有 schema 枚举经 `apps/admin/src/pages/atlas/atlasLabels.ts` 翻译为用户语言，空状态均为真实 CTA；建议收件箱支持批量采纳。
 
 ### 3.3 服务层
 
@@ -61,11 +68,11 @@ Admin 前端为知识库与 Atlas 提供可操作入口:
 `atlasService` 覆盖:
 
 - health
-- carriers markdown ensure/get
+- carriers markdown/pdf/post/web/transcript/image ensure；`getCarrier`；**`listCarriers`（读物列表）**
 - annotations CRUD/list
 - knowledge points CRUD/evidence
 - typed relations CRUD/graph
-- suggestions list/get/create/accept/reject
+- suggestions list/get/create/accept/reject（前端支持批量采纳）
 
 ---
 
