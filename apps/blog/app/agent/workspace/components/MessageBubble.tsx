@@ -304,7 +304,7 @@ function MessageBubbleBase({
           只保留一枚角色圆点(assistant 极光 · user 中性墨)+ 静音时间戳,
           把视觉权重整体让回正文。 */}
       <div
-        className={`mb-1.5 flex items-center gap-1.5 text-[11px] tabular-nums text-[var(--ink-muted)] ${
+        className={`mb-1.5 flex items-center gap-1.5 text-[11px] tnum text-[var(--ink-muted)] ${
           isUser ? 'flex-row-reverse self-end' : 'self-start'
         }`}
       >

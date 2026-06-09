@@ -461,7 +461,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             ) : (
               <motion.div
                 ref={sendMenuRef}
-                whileTap={{ scale: 0.97 }}
+                whileTap={canSend ? { scale: 0.97 } : undefined}
                 transition={spring.precise}
                 className={[
                   'relative flex h-11 shrink-0 items-center rounded-full border transition-[background-color,border-color,box-shadow] duration-quick ease-aether md:h-8',

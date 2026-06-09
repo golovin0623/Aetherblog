@@ -792,16 +792,24 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const stickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
-  // 滚动监听：按到底距离更新粘底判定。阈值给足 hysteresis(64px),避免临界处
-  // 因一帧增量在"粘底 / 脱离"间反复横跳。
+  // 滚动监听:双阈值迟滞(hysteresis)判定粘底,避免临界处因一帧增量在
+  // "粘底 / 脱离"间反复横跳 —— 关键是给手势 release() 留出生效窗口:
+  //   · 仅在极贴底(<16px)时才重新自动粘底;
+  //   · 仅在彻底离底(>=64px)时才自动脱离;
+  //   · 16–64px 的微调滚动不主动改粘底状态。
+  // 旧的单阈值(distance < 64 直接赋值)会把刚被 release() 的小幅上滑(如 30px)
+  // 又判回粘底,使手势脱离在小幅滚动时失效、用户被后续 token 拽回底部。
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = distance < 64;
-      stickToBottomRef.current = atBottom;
-      setShowJumpToBottom(!atBottom);
+      if (distance < 16) {
+        stickToBottomRef.current = true;
+      } else if (distance >= 64) {
+        stickToBottomRef.current = false;
+      }
+      setShowJumpToBottom(distance >= 64);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -818,7 +826,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       setShowJumpToBottom(true);
     };
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < -1) release(); // 向上滚
+      if (e.deltaY < 0) release(); // 向上滚(含触控板亚像素 -0.x 的慢速滚动)
     };
     let touchY = 0;
     const onTouchStart = (e: TouchEvent) => {
