@@ -297,6 +297,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   );
 
   const handleCreate = useCallback(() => {
+    // 新建（=切换会话）前先把进行中的流按"停止"语义收尾 —— 与 handleSelect
+    // 同款纪律。侧栏"新对话"按钮和 ⌘⇧O 快捷键都走这里；不收尾的话 activeId
+    // 切走后原 assistant 消息永远停在 pending:true 被持久化成幻影，且在新
+    // 会话里按"停止"时 finalize 闭包的 activeId 已指向新会话，patch 错对象。
+    if (streamingMsgIdRef.current) {
+      finalizeStreamingMessage('已中断');
+    }
     // 防重复创建：如果列表里已经有空会话（messages.length === 0），直接切到
     // 该会话而不再 push 一条 —— 否则用户连续多次点"+ 新建"会堆出多条空记录。
     // 切过去的同时把当前 override 应用到该会话存档（与下面新建路径同款）。
@@ -340,7 +347,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     setSessions((list) => [sess, ...list]);
     setActiveId(sess.id);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, [sessions, sessionModelOverride]);
+  }, [sessions, sessionModelOverride, finalizeStreamingMessage]);
 
   const handleSelect = useCallback(
     (id: string) => {
