@@ -1,5 +1,5 @@
 // 拖拽排序弹窗组件
-// ref: §5.1 - AI Service 架构 (参考 LobeChat 图2)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';

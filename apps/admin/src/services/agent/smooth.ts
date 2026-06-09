@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 /**
  * useSmoothStream —— 把模型 SSE 的"突发式 delta"平滑成"匀速吐字"
  *
- * 设计参考 LobeHub 的 smooth-streaming：
+ * 平滑流式渲染设计：
  *   1. 真正的 token 流速度是抖的（有时 80 tok/s 一爆，有时停顿 500ms）；
  *   2. 直接渲染会让 UI 一卡一卡，阅读节奏被打散；
  *   3. 改用一个内部缓冲 + 节流释放：每帧按目标 chars/s 速率把 buffer 里的字符

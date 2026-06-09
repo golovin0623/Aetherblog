@@ -17,7 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Toggle } from '@aetherblog/ui';
+import { Toggle, spring } from '@aetherblog/ui';
 import type { AiModel } from '@/services/aiProviderService';
 import { useToggleModel } from '../hooks/useModels';
 import {
@@ -54,6 +54,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
   const releaseAt = extra.released_at ? String(extra.released_at) : null;
   const description = typeof extra.description === 'string' ? extra.description : null;
   const legacy = extra.legacy as boolean | undefined;
+  const isNew = isRecentRelease(releaseAt);
 
   const priceTags = formatPricing(pricing, model);
 
@@ -117,6 +118,17 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
             >
               {model.display_name || model.model_id}
             </span>
+            {isNew && (
+              <motion.span
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={spring.bouncy}
+                className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/20"
+                title={releaseAt ? `发布于 ${releaseAt}` : '近期发布'}
+              >
+                NEW
+              </motion.span>
+            )}
             {source && (
               <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
                 {source === 'remote' ? '远程' : source === 'custom' ? '自定义' : '内置'}
@@ -254,6 +266,15 @@ function CapabilityBadge({
       {title}
     </div>
   );
+}
+
+// 判断模型是否「近期发布」（默认 45 天内）—— 用于 NEW 徽章
+function isRecentRelease(releaseAt: string | null, withinDays = 45): boolean {
+  if (!releaseAt) return false;
+  const ts = Date.parse(releaseAt);
+  if (Number.isNaN(ts)) return false;
+  const ageDays = (Date.now() - ts) / 86_400_000;
+  return ageDays >= 0 && ageDays <= withinDays;
 }
 
 // 格式化上下文窗口

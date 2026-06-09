@@ -85,10 +85,15 @@ export type ModelAbility = {
   structuredOutput?: boolean;
 };
 
+// 可被「屏蔽」的标准采样参数 —— 某些推理模型不接受这些参数，调用时需省略
+export type SamplingParam = 'temperature' | 'top_p' | 'frequency_penalty' | 'presence_penalty';
+
 export type ModelSettings = {
   extendParams?: string[];
   searchImpl?: 'tool' | 'params' | 'internal';
   searchProvider?: string;
+  // 调用该模型时需省略的采样参数（如 o 系列推理模型不支持自定义 temperature）
+  disabledParams?: SamplingParam[];
 };
 
 export type ModelConfig = {
@@ -104,6 +109,12 @@ export type ModelPricing = {
   audioOutput?: number;
   cachedInput?: number;
   cachedAudioInput?: number;
+  // 缓存写入价（首次写入 KV 缓存的单价，区别于命中缓存的读取价 cachedInput）
+  writeCacheInput?: number;
+  // 多模态分项单价（每 1M / 每张，按 units 细分时使用）
+  imageInput?: number;
+  imageOutput?: number;
+  videoInput?: number;
   units?: unknown[];
 };
 
@@ -159,7 +170,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
     "baseUrl": "https://api.openai.com/v1",
     "docUrl": "https://platform.openai.com/docs/models",
     "description": "OpenAI 是全球领先的人工智能研究机构，其开发的模型如GPT系列推动了自然语言处理的前沿。OpenAI 致力于通过创新和高效的AI解决方案改变多个行业。他们的产品具有显著的性能和经济性，广泛用于研究、商业和创新应用。",
-    "apiKeyUrl": "https://platform.openai.com/api-keys?utm_source=lobehub",
+    "apiKeyUrl": "https://platform.openai.com/api-keys",
     "modelsUrl": "https://platform.openai.com/docs/models",
     "url": "https://openai.com",
     "checkModel": "gpt-5-nano",
@@ -171,7 +182,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
     "capabilities": {
       "source": "builtin",
       "description": "OpenAI 是全球领先的人工智能研究机构，其开发的模型如GPT系列推动了自然语言处理的前沿。OpenAI 致力于通过创新和高效的AI解决方案改变多个行业。他们的产品具有显著的性能和经济性，广泛用于研究、商业和创新应用。",
-      "apiKeyUrl": "https://platform.openai.com/api-keys?utm_source=lobehub",
+      "apiKeyUrl": "https://platform.openai.com/api-keys",
       "modelsUrl": "https://platform.openai.com/docs/models",
       "url": "https://openai.com",
       "settings": {
@@ -624,7 +635,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
     "description": "AiHubMix 通过统一的 API 接口提供对多种 AI 模型的访问。",
     "apiKeyUrl": "https://lobe.li/9mZhb4T",
     "modelsUrl": "https://docs.aihubmix.com/cn/api/Model-List",
-    "url": "https://aihubmix.com?utm_source=lobehub",
+    "url": "https://aihubmix.com",
     "checkModel": "gpt-4.1-nano",
     "settings": {
       "sdkType": "router",
@@ -635,7 +646,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
       "description": "AiHubMix 通过统一的 API 接口提供对多种 AI 模型的访问。",
       "apiKeyUrl": "https://lobe.li/9mZhb4T",
       "modelsUrl": "https://docs.aihubmix.com/cn/api/Model-List",
-      "url": "https://aihubmix.com?utm_source=lobehub",
+      "url": "https://aihubmix.com",
       "settings": {
         "sdkType": "router",
         "showModelFetcher": true
@@ -904,7 +915,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
     "docUrl": "https://ppinfra.com/llm-api?utm_source=github_lobe-chat&utm_medium=github_readme&utm_campaign=link",
     "description": "PPIO 派欧云提供稳定、高性价比的开源模型 API 服务，支持 DeepSeek 全系列、Llama、Qwen 等行业领先大模型。",
     "modelsUrl": "https://ppinfra.com/llm-api?utm_source=github_lobe-chat&utm_medium=github_readme&utm_campaign=link",
-    "url": "https://ppinfra.com/user/register?invited_by=RQIMOC&utm_source=github_lobechat",
+    "url": "https://ppinfra.com/user/register",
     "checkModel": "deepseek/deepseek-r1-distill-qwen-32b",
     "settings": {
       "disableBrowserRequest": true,
@@ -915,7 +926,7 @@ export const PRESET_PROVIDERS: PresetProvider[] = [
       "source": "builtin",
       "description": "PPIO 派欧云提供稳定、高性价比的开源模型 API 服务，支持 DeepSeek 全系列、Llama、Qwen 等行业领先大模型。",
       "modelsUrl": "https://ppinfra.com/llm-api?utm_source=github_lobe-chat&utm_medium=github_readme&utm_campaign=link",
-      "url": "https://ppinfra.com/user/register?invited_by=RQIMOC&utm_source=github_lobechat",
+      "url": "https://ppinfra.com/user/register",
       "settings": {
         "disableBrowserRequest": true,
         "sdkType": "openai",

@@ -1,15 +1,16 @@
 // 模型配置弹窗组件
-// ref: §5.1 - AI Service 架构 (参考 LobeChat 图5)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, AlertTriangle, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
-import { Toggle } from '@aetherblog/ui';
+import { X, Loader2, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Sparkles } from 'lucide-react';
+import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
-import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing } from '../types';
+import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing, type SamplingParam } from '../types';
+import { groupParamControls, SAMPLING_PARAMS } from '../utils/modelParams';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
 import {
   useSyncModelFromGlobal,
@@ -34,25 +35,6 @@ interface ModelConfigDialogProps {
   showDeployName?: boolean;
   onClose: () => void;
 }
-
-const EXTEND_PARAMS_OPTIONS = [
-  'disableContextCaching',
-  'enableReasoning',
-  'reasoningBudgetToken',
-  'reasoningEffort',
-  'gpt5ReasoningEffort',
-  'gpt5_1ReasoningEffort',
-  'gpt5_2ReasoningEffort',
-  'gpt5_2ProReasoningEffort',
-  'textVerbosity',
-  'thinking',
-  'thinkingBudget',
-  'thinkingLevel',
-  'thinkingLevel2',
-  'urlContext',
-  'imageAspectRatio',
-  'imageResolution',
-];
 
 const SEARCH_IMPL_OPTIONS: Array<{ label: string; value: ModelSettings['searchImpl'] }> = [
   { label: '工具调用', value: 'tool' },
@@ -131,6 +113,7 @@ export default function ModelConfigDialog({
       extendParams: [] as string[],
       searchImpl: undefined as ModelSettings['searchImpl'],
       searchProvider: '',
+      disabledParams: [] as SamplingParam[],
     },
     config: {
       deploymentName: '',
@@ -219,6 +202,7 @@ export default function ModelConfigDialog({
         extendParams: settings.extendParams || [],
         searchImpl: settings.searchImpl,
         searchProvider: settings.searchProvider || '',
+        disabledParams: settings.disabledParams || [],
       },
       config: {
         deploymentName: config.deploymentName || '',
@@ -289,6 +273,7 @@ export default function ModelConfigDialog({
         extendParams: form.settings.extendParams.length ? form.settings.extendParams : undefined,
         searchImpl: form.settings.searchImpl,
         searchProvider: form.settings.searchProvider || undefined,
+        disabledParams: form.settings.disabledParams?.length ? form.settings.disabledParams : undefined,
       },
       config: {
         deploymentName: showDeployName && form.config.deploymentName ? form.config.deploymentName : undefined,
@@ -349,20 +334,47 @@ export default function ModelConfigDialog({
 
   const isPending = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
-  const extendParamSet = useMemo(() => new Set(form.settings.extendParams), [form.settings.extendParams]);
+  // 按分组聚合扩展参数控件，并依据已选能力标注「推荐」
+  const paramSections = useMemo(
+    () => groupParamControls(form.settings.extendParams, form.abilities),
+    [form.settings.extendParams, form.abilities]
+  );
+
+  const toggleExtendParam = (id: string) => {
+    setForm((prev) => {
+      const next = new Set(prev.settings.extendParams);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...prev, settings: { ...prev.settings, extendParams: Array.from(next) } };
+    });
+  };
+
+  const toggleDisabledParam = (id: SamplingParam) => {
+    setForm((prev) => {
+      const current = prev.settings.disabledParams || [];
+      const disabledParams = current.includes(id)
+        ? current.filter((p) => p !== id)
+        : [...current, id];
+      return { ...prev, settings: { ...prev.settings, disabledParams } };
+    });
+  };
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      variants={variants.fade}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={transition.quick}
       className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+        variants={variants.scaleIn}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
         className="w-full sm:max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
       >
@@ -702,37 +714,86 @@ export default function ModelConfigDialog({
             />
           </div>
 
-          {/* 扩展参数 */}
+          {/* 参数与推理 */}
           <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">扩展参数</div>
-            <div className="grid grid-cols-2 gap-2">
-              {EXTEND_PARAMS_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => {
-                    setForm((prev) => {
-                      const next = new Set(prev.settings.extendParams);
-                      if (next.has(option)) {
-                        next.delete(option);
-                      } else {
-                        next.add(option);
-                      }
-                      return {
-                        ...prev,
-                        settings: { ...prev.settings, extendParams: Array.from(next) },
-                      };
-                    });
-                  }}
-                  className={`px-3 py-2 rounded-lg border text-xs text-left transition-all ${
-                    extendParamSet.has(option)
-                      ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
-                      : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">参数与推理</div>
+              {form.settings.extendParams.length > 0 && (
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  已启用 {form.settings.extendParams.length} 项
+                </span>
+              )}
+            </div>
+
+            {paramSections.map((section) => (
+              <div key={section.group.key} className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-medium text-[var(--text-secondary)]">{section.group.label}</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">{section.group.hint}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {section.controls.map((control) => {
+                    const active = control.selected;
+                    return (
+                      <motion.button
+                        key={control.id}
+                        type="button"
+                        whileTap={{ scale: 0.97 }}
+                        transition={spring.precise}
+                        onClick={() => toggleExtendParam(control.id)}
+                        className={`px-3 py-2 rounded-lg border text-left transition-colors ${
+                          active
+                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
+                            : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium">{control.label}</span>
+                          {control.recommended && !active && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded-full bg-accent/10 text-accent">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              推荐
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-[10px] mt-0.5 ${active ? 'opacity-70' : 'text-[var(--text-muted)]'}`}>
+                          {control.desc}
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* 屏蔽采样参数（disabledParams） */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs font-medium text-[var(--text-secondary)]">屏蔽采样参数</span>
+                <span className="text-[10px] text-[var(--text-muted)]">勾选后调用时省略，常用于推理模型</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {SAMPLING_PARAMS.map((p) => {
+                  const active = form.settings.disabledParams?.includes(p.id) ?? false;
+                  return (
+                    <motion.button
+                      key={p.id}
+                      type="button"
+                      whileTap={{ scale: 0.95 }}
+                      transition={spring.precise}
+                      onClick={() => toggleDisabledParam(p.id)}
+                      title={p.desc}
+                      className={`px-2.5 py-1 rounded-lg border text-xs transition-colors ${
+                        active
+                          ? 'border-status-warning/50 bg-status-warning/10 text-status-warning line-through'
+                          : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
+                      }`}
+                    >
+                      {p.label}
+                    </motion.button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -1006,6 +1067,7 @@ export default function ModelConfigDialog({
               onClick={onClose}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              transition={spring.precise}
               className="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               取消
@@ -1015,6 +1077,7 @@ export default function ModelConfigDialog({
               disabled={isPending || (mode === 'create' && !form.model_id)}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
+              transition={spring.precise}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
             >
               {isPending && <Loader2 className="w-4 h-4 animate-spin" />}

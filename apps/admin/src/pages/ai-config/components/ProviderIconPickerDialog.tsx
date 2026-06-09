@@ -8,7 +8,7 @@ import {
   type BrandIconGroup,
   getBrandIconPreviewUrl,
   resolveBrandIconId,
-} from '../utils/lobeIcons';
+} from '../utils/brandIcons';
 
 interface ProviderIconPickerDialogProps {
   value?: string | null;

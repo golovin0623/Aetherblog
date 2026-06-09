@@ -1,5 +1,5 @@
 // 供应商详情面板组件
-// ref: §5.1 - AI Service 架构 (LobeChat 风格)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';

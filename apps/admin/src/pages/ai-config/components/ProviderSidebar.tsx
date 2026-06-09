@@ -1,5 +1,5 @@
 // 左侧供应商侧边栏组件
-// ref: §5.1 - AI Service 架构 (LobeChat 风格)
+// ref: §5.1 - AI Service 架构 · 模型中心
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
