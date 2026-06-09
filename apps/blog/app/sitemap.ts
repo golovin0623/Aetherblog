@@ -32,10 +32,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // 分页抓取全部已发布文章，避免大站只收录前 N 篇导致 sitemap 不完整。
-  const PAGE_SIZE = 200;
-  const MAX_PAGES = 50; // 安全上限（最多 1 万篇），防御异常分页造成的无限循环
+  // PAGE_SIZE 取 100：后端 pagination 把 pageSize 硬上限锁在 100，请求再大也只返 100，
+  // 因此终止条件不能用"实返 < 请求"(会在第 1 页就误判末页)，改用「空页」或「已达 total」判定。
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 100; // 安全上限（最多 1 万篇），防御异常分页造成的无限循环
   const posts: Array<{ slug?: string; publishedAt?: string }> = [];
   try {
+    let total = Number.POSITIVE_INFINITY;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=${page}&pageSize=${PAGE_SIZE}`, {
         next: { revalidate: 3600 },
@@ -44,8 +47,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (!res.ok) break;
       const json = await res.json();
       const list: Array<{ slug?: string; publishedAt?: string }> = json.data?.list || [];
+      if (typeof json.data?.total === 'number') total = json.data.total;
+      if (list.length === 0) break; // 空页：已取完
       posts.push(...list);
-      if (list.length < PAGE_SIZE) break; // 已到最后一页
+      if (posts.length >= total) break; // 已收集全部已发布文章
     }
   } catch (error) {
     // 拉取失败降级为已取到的部分 + 静态路由，不阻断 sitemap 生成
