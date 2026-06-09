@@ -41,10 +41,12 @@ func (s *CommentService) boolSetting(ctx context.Context, key string, fallback b
 		log.Warn().Err(err).Str("key", key).Msg("comment: read site setting failed, using fallback")
 		return fallback
 	}
-	if v == "" {
+	// 大小写/空白不敏感：兼容 DB 里存的 "True" / "TRUE" / " true " 等写法
+	lv := strings.ToLower(strings.TrimSpace(v))
+	if lv == "" {
 		return fallback
 	}
-	return v == "true" || v == "1" || v == "yes"
+	return lv == "true" || lv == "1" || lv == "yes"
 }
 
 // --- 管理端接口 ---

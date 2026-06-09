@@ -24,9 +24,10 @@ export default async function HomePage() {
     getSiteSettings()
   ]);
 
-  // show_banner 控制欢迎页显示，关闭则直接展示文章列表
-  const showBanner = settings.show_banner !== 'false' && settings.show_banner !== false
-    && settings.welcome_enabled !== 'false' && settings.welcome_enabled !== false;
+  // 欢迎页显示由「欢迎页设置 → 启用欢迎页」(welcome_enabled) 单一控制，关闭则直接展示文章列表。
+  // 旧 show_banner 已从后台 UI 收敛掉，不再参与判定——否则其残留的 false 值在 UI 移除后无处可改，
+  // 会把欢迎页永久关死（详见 PR 评审「Keep the legacy banner switch reachable」）。
+  const showBanner = settings.welcome_enabled !== 'false' && settings.welcome_enabled !== false;
 
   return (
     <div className="min-h-screen">

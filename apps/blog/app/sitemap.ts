@@ -31,29 +31,40 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [staticRoutes[0]];
   }
 
-  let posts: Array<{ slug?: string; publishedAt?: string }> = [];
+  // 分页抓取全部已发布文章，避免大站只收录前 N 篇导致 sitemap 不完整。
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 50; // 安全上限（最多 1 万篇），防御异常分页造成的无限循环
+  const posts: Array<{ slug?: string; publishedAt?: string }> = [];
   try {
-    const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=1&pageSize=1000`, {
-      next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.ok) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=${page}&pageSize=${PAGE_SIZE}`, {
+        next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) break;
       const json = await res.json();
-      posts = json.data?.list || [];
+      const list: Array<{ slug?: string; publishedAt?: string }> = json.data?.list || [];
+      posts.push(...list);
+      if (list.length < PAGE_SIZE) break; // 已到最后一页
     }
   } catch (error) {
-    // 拉取失败降级为仅静态路由，不阻断 sitemap 生成
-    logger.warn('sitemap: failed to load posts, falling back to static routes', error);
+    // 拉取失败降级为已取到的部分 + 静态路由，不阻断 sitemap 生成
+    logger.warn('sitemap: failed to load posts, falling back to loaded routes', error);
   }
 
   const postRoutes: MetadataRoute.Sitemap = posts
     .filter((p): p is { slug: string; publishedAt?: string } => Boolean(p.slug))
-    .map((p) => ({
-      url: `${base}/posts/${p.slug}`,
-      lastModified: p.publishedAt ? new Date(p.publishedAt) : undefined,
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    }));
+    .map((p) => {
+      // 防御无效 publishedAt：非法日期不写 lastModified，避免 sitemap 出现 Invalid Date
+      const parsed = p.publishedAt ? new Date(p.publishedAt) : null;
+      const lastModified = parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined;
+      return {
+        url: `${base}/posts/${p.slug}`,
+        ...(lastModified ? { lastModified } : {}),
+        changeFrequency: 'weekly' as const,
+        priority: 0.7,
+      };
+    });
 
   return [...staticRoutes, ...postRoutes];
 }

@@ -64,12 +64,14 @@ func (h *MediaHandler) maxUploadBytes(ctx context.Context) int64 {
 	if err != nil || v == "" {
 		return maxUploadHardCeilingBytes
 	}
-	mb, err := strconv.ParseInt(v, 10, 64)
+	// 用 ParseFloat 容忍小数(前端为 number 输入框，管理员可能填 1.5 MB)；
+	// ParseInt 会对 "1.5" 报错而静默回落到 100MB，反而让限制失效。
+	mb, err := strconv.ParseFloat(v, 64)
 	if err != nil || mb <= 0 {
 		return maxUploadHardCeilingBytes
 	}
-	limit := mb * 1024 * 1024
-	if limit > maxUploadHardCeilingBytes {
+	limit := int64(mb * 1024 * 1024)
+	if limit <= 0 || limit > maxUploadHardCeilingBytes {
 		return maxUploadHardCeilingBytes
 	}
 	return limit
