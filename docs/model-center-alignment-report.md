@@ -152,7 +152,34 @@
 ## 后续建议（未尽事项）
 
 - **凭证多字段表单**：AWS（accessKey/secret/region）、Azure（apiVersion/deploymentName）、Cloudflare（accountId）等结构化凭证目前经 `extra_config` JSON 承载，可后续做成类型化 UI。
-- **定价同步入抓取**：部分聚合型供应商在 `/models` 响应中返回单价，可在抓取阶段解析并归一（注意 per-token↔per-1M 单位换算）。
+- ~~**定价同步入抓取**~~（已实现）：聚合站 `pricing.{prompt,completion}`（USD/Token）已在抓取阶段解析并换算为每百万 Token，连同 `context_length` 一并回填。
 - **能力推断词典外置**：`infer_capabilities` 的命名正则可逐步沉淀为可配置词典，降低新模型上架的维护成本。
 - **设计系统 token 迁移**：`ai-config` 模块整体仍用 legacy token（`--text-*`/`--bg-primary`，info 级、sunset 2026-07-17），属独立的迁移工作项，宜单独成 PR 推进。
 - **文档同步**：按 `CLAUDE.md §6.1`，新增供应商抓取与能力推断建议补记 `docs/AI_MODULE_PLAN_V2.md` 与 `CHANGELOG.md`。
+
+---
+
+## 提交后 · PR #768 评审与硬化
+
+PR 提交后经两个自动评审机器人（Gemini Code Assist + ChatGPT Codex）三轮复审，**8 项反馈全部采纳**：
+
+### Gemini Code Assist（5 条）
+- **Google 抓取空值守卫**：`(credential.api_key or "").strip()`，防 `None` 触发 `AttributeError`。
+- **`video` 能力补全**：`infer_capabilities` 对 `video` 类型也赋 `video` 能力（与 `text2video` 对齐）。
+- **`disabledParams` 可选性守卫 ×3**：`ModelConfigDialog` 三处访问加 `?.` / `|| []`，防 `undefined` 运行时崩溃。
+
+### Codex（3 个 P2）
+- **Gemini 端点版本**：内置 Google 预设 baseUrl 无版本段，抓取会打到 `/models` 而非 list-models 端点 `/v1beta/models`。新增 `_ensure_gemini_version()` 自动补 `/v1beta`（已带版本则保留）。
+- **`disabledParams` 服务端强制**（最实质）：此前 `disabledParams` 仅持久化在模型 capabilities 并回传前端，**请求路径未读取**，导致「调用时省略 temperature」对可配置模型失效（仅靠硬编码 GPT/o 前缀）。新增 `resolve_disabled_sampling_params()`，在 `_completion_kwargs` / `_agent_completion_kwargs` 及 AI 任务 chat/stream 主+fallback 路径按模型配置真正剔除被屏蔽的采样参数。
+- **`text2music` / `realtime` 路由 denylist**：推断会把 suno/lyria/musicgen 判为 `text2music`、realtime 模型判为 `realtime`，但 `llm_router.NON_CHAT_MODEL_TYPES` 缺这两类，会被当成可选对话模型误送 `acompletion`。补齐使其与 `model_capabilities.NON_CHAT_TYPES` 一致，并加**一致性测试**守护未来漂移。
+
+### CI 根因诊断与修复
+新提交一度「静默不触发 CI」。逐层排查（非账户配额、非工作流禁用）定位真根因：**PR base 落后 `main` 15 个提交、`CHANGELOG.md` 与 main 冲突 → GitHub 无法计算 `refs/pull/768/merge` → `pull_request` CI 不触发，且 `mergeable: CONFLICTING`**。合并 `origin/main`（代码零冲突，仅 CHANGELOG 保留双方条目）后恢复可合并并重新触发 CI。
+
+### 最终状态（已核验）
+- PR #768：`mergeable: MERGEABLE` · `mergeState: CLEAN` · head `2ca57ce7`。
+- CI：`success`（`ai-test` / `frontend-quality` / `gitleaks` / `config-validate` / `detect-changes` / `forbidden-defaults-guard` 全过）。
+- 测试：后端 pytest **366** 全过（新增 disabledParams 强制 8 例 + 非对话类型一致性 1 例）；前端 vitest 22 全过；typecheck / eslint / build / `design-system:check`(0 error) 全绿。
+
+### 工程纪律记录
+全程在隔离 git worktree 操作，规避了「多并发会话共享同一检出、分支被随时切换」的危险（期间共享检出被其它会话多次切走）；一次误提交到他人分支后，用隔离 worktree cherry-pick 回正 + `--force-with-lease` 还原他人分支，**全程未扰动他人未提交 WIP**。
