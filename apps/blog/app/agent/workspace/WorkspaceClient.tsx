@@ -409,13 +409,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // 不再清空 draft —— 否则会破坏"用户编辑中按钮无意触发清空 textarea"的体感。
   //
   // baseMessages：调用方显式指定的历史基线。重试路径必须传 —— 它先 setSessions
-  // 截断再调 sendText，而本闭包里的 activeSession 仍是截断前的旧快照；不传的话
-  // history 会把"刚被截掉的旧 assistant 回复 + user 消息"重复发给模型，模型
-  // 看到自己上一轮的答案，重试结果必然串台。
+  // 截断再同步调 sendText，此刻无论闭包还是 sessionsRef 都还是截断前的旧快照
+  // （ref 在 effect 里同步，要等下一次 commit）；不传的话 history 会把"刚被
+  // 截掉的旧 assistant 回复 + user 消息"重复发给模型，重试结果必然串台。
+  //
+  // 会话经 sessionsRef 按 activeId 查而非闭包 activeSession —— 流式期间
+  // sessions 每帧都变，依赖 activeSession 会让本回调（连同下游 handleSend /
+  // handleRetry）每帧重建，把 MessageBubble 的 memo 击穿成全量重渲。
   const sendText = useCallback(async (text: string, baseMessages?: AgentMessage[]) => {
     if (!text || busy || state.status !== 'authed') return;
 
-    let session = activeSession;
+    let session = sessionsRef.current.find((s) => s.id === activeId) ?? null;
     if (!session) {
       const now = Date.now();
       // 新会话继承用户在 EmptyState 选过的模型 override —— 这一步配合
@@ -699,7 +703,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       streamAccRef.current = null;
     }
     setBusy(false);
-  }, [busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
+  }, [busy, state, activeId, pendingArticles, pendingTags, sessionModelOverride]);
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
@@ -743,7 +747,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     (message: AgentMessage) => {
       if (busy) return;
       if (message.role !== 'assistant') return;
-      const sess = sessions.find((s) => s.id === activeId);
+      // 经 sessionsRef 查会话：直接依赖 sessions 会让本回调在流式期间每帧
+      // 重建（onRetry 引用变化击穿所有 MessageBubble 的 memo）。点击时 ref
+      // 必然已同步（effect 在上一次 commit 后跑完）。
+      const sess = sessionsRef.current.find((s) => s.id === activeId);
       if (!sess) return;
       const idx = sess.messages.findIndex((m) => m.id === message.id);
       if (idx <= 0) return;
@@ -758,7 +765,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       );
       void sendText(prior.content, base);
     },
-    [busy, sessions, activeId, sendText],
+    [busy, activeId, sendText],
   );
 
   const handleSuggestion = useCallback((text: string) => {
