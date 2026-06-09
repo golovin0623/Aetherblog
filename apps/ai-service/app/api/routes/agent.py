@@ -46,7 +46,12 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.schemas.common import ApiResponse
-from app.services.llm_router import NON_CHAT_MODEL_TYPES, LlmRouter, _completion_kwargs
+from app.services.llm_router import (
+    NON_CHAT_MODEL_TYPES,
+    LlmRouter,
+    _completion_kwargs,
+    resolve_disabled_sampling_params,
+)
 from app.services.metrics import MetricsStore
 from app.services.usage_logger import UsageLogger, estimate_tokens
 
@@ -387,6 +392,7 @@ def _agent_completion_kwargs(
     temperature: float | None,
     max_tokens: int | None,
     model_params: dict[str, Any] | None = None,
+    disabled_params: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     override_temperature = _coerce_float_param(
         model_params,
@@ -424,13 +430,14 @@ def _agent_completion_kwargs(
         model=model,
         temperature=override_temperature if override_temperature is not None else temperature,
         max_tokens=override_max_tokens if override_max_tokens is not None else max_tokens,
+        disabled_params=disabled_params,
     )
     if not _model_omits_sampling(model):
-        if override_top_p is not None:
+        if override_top_p is not None and "top_p" not in disabled_params:
             kwargs["top_p"] = override_top_p
-        if override_presence_penalty is not None:
+        if override_presence_penalty is not None and "presence_penalty" not in disabled_params:
             kwargs["presence_penalty"] = override_presence_penalty
-        if override_frequency_penalty is not None:
+        if override_frequency_penalty is not None and "frequency_penalty" not in disabled_params:
             kwargs["frequency_penalty"] = override_frequency_penalty
     if override_reasoning_effort:
         kwargs["reasoning_effort"] = override_reasoning_effort
@@ -952,6 +959,7 @@ async def _resolve_for_agent(
             # Agent 不复用 qa/summary 的 prompt template，自己注入 system prompt。
             prompt_template=None,
             override=False,
+            disabled_params=resolve_disabled_sampling_params(routing.model.capabilities),
         )
 
     # 最后兜底：ai_task_routing 表整张空也别让聊天框无法用。
@@ -991,6 +999,7 @@ async def _resolve_for_agent(
             max_tokens=None,
             prompt_template=None,
             override=False,
+            disabled_params=resolve_disabled_sampling_params(m.capabilities),
         )
 
     raise HTTPException(
@@ -1357,6 +1366,7 @@ async def agent_chat(
                 temperature=resolved.temperature,
                 max_tokens=resolved.max_tokens,
                 model_params=payload.modelParams,
+                disabled_params=resolved.disabled_params,
             )
             try:
                 stream = await acompletion(

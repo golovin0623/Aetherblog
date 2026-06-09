@@ -156,20 +156,55 @@ def _model_locks_temperature(model: str | None) -> bool:
     return any(bare.startswith(p) for p in _TEMPERATURE_LOCKED_MODEL_PREFIXES)
 
 
+# 标准采样参数（与前端 SamplingParam 对齐）—— 模型可在配置中声明「调用时省略」
+SAMPLING_PARAMS: frozenset[str] = frozenset(
+    {"temperature", "top_p", "frequency_penalty", "presence_penalty"}
+)
+
+
+def resolve_disabled_sampling_params(capabilities: Any) -> tuple[str, ...]:
+    """从模型 ``capabilities.settings.disabledParams`` 解析需在调用时省略的采样参数。
+
+    仅保留标准采样参数白名单内的项（避免误传任意键），返回稳定顺序的元组。
+    管理端在模型配置弹窗勾选的 disabledParams 经由此函数在请求路径上真正生效。
+    """
+    if not isinstance(capabilities, dict):
+        return ()
+    settings = capabilities.get("settings")
+    if not isinstance(settings, dict):
+        return ()
+    raw = settings.get("disabledParams")
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item in SAMPLING_PARAMS and item not in out:
+            out.append(item)
+    return tuple(out)
+
+
 def _completion_kwargs(
     *,
     model: str,
     temperature: float | None,
     max_tokens: int | None,
+    disabled_params: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """构造 ``acompletion`` 的可选 kwargs，按模型家族剔除不兼容参数。
 
     单一职责：所有 ``acompletion(...)`` 调用前都从这里拿参数字典，避免把
     model-specific 兼容判断散落在各 call site。``aembedding`` 不传 temperature，
     与本函数无关，需要类似裁剪时另开。
+
+    ``disabled_params``：模型在管理端配置中显式声明「调用时省略」的采样参数
+    （如推理模型屏蔽 ``temperature``）。在家族级温度锁之外额外剔除，使该配置生效。
     """
     kwargs: dict[str, Any] = {}
-    if temperature is not None and not _model_locks_temperature(model):
+    if (
+        temperature is not None
+        and "temperature" not in disabled_params
+        and not _model_locks_temperature(model)
+    ):
         kwargs["temperature"] = temperature
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
@@ -337,6 +372,8 @@ class LlmRouter:
         max_tokens: int | None
         prompt_template: str | None
         override: bool
+        # 模型声明的「调用时省略」采样参数（默认空 → 不影响既有构造点）
+        disabled_params: tuple[str, ...] = ()
 
     async def _get_routing(self, task_type: str, user_id: int | None = None) -> "RoutingConfig | None":
         """如可用则从 model router 获取路由配置。"""
@@ -503,6 +540,7 @@ class LlmRouter:
             max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias or ""),
             prompt_template=override_prompt_template,
             override=True,
+            disabled_params=resolve_disabled_sampling_params(model.capabilities),
         )
 
     async def _resolve_route(
@@ -546,6 +584,7 @@ class LlmRouter:
                 max_tokens=routing.config.get("max_tokens"),
                 prompt_template=routing.prompt_template,
                 override=False,
+                disabled_params=resolve_disabled_sampling_params(routing.model.capabilities),
             )
 
         provider_code, model_id = _normalize_model_parts(self.resolve_model(model_alias))
@@ -929,6 +968,7 @@ class LlmRouter:
                     model=resolved.model,
                     temperature=resolved.temperature,
                     max_tokens=budgeted_max_tokens,
+                    disabled_params=resolved.disabled_params,
                 ),
             )
             content = response.choices[0].message.content
@@ -1003,6 +1043,9 @@ class LlmRouter:
                             model=fallback_model,
                             temperature=resolved.temperature,
                             max_tokens=fallback_max_tokens,
+                            disabled_params=resolve_disabled_sampling_params(
+                                fallback_routing.model.capabilities
+                            ),
                         ),
                     )
                     content = response.choices[0].message.content or ""
@@ -1134,6 +1177,7 @@ class LlmRouter:
                     model=resolved.model,
                     temperature=resolved.temperature,
                     max_tokens=resolved.max_tokens,
+                    disabled_params=resolved.disabled_params,
                 ),
             )
             async for part in stream:
@@ -1193,6 +1237,9 @@ class LlmRouter:
                     model=fallback_model,
                     temperature=resolved.temperature,
                     max_tokens=resolved.max_tokens,
+                    disabled_params=resolve_disabled_sampling_params(
+                        fallback_routing.model.capabilities
+                    ),
                 ),
             )
             async for part in fallback_stream:
