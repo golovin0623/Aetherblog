@@ -269,6 +269,12 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
       setContent('');
       setReplyTo(null);
 
+      // 审核关闭时评论即时 APPROVED：立刻重拉列表，让访客看到自己刚发布的评论与更新后的计数，
+      // 否则"提交成功"但列表/计数不变会让"免审核"模式显得像坏了（PR 评审反馈）。
+      if (!requiresAudit) {
+        loadComments();
+      }
+
       // 延迟关闭表单以显示成功消息
       setTimeout(() => {
         setSuccess('');
