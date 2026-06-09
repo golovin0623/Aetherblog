@@ -119,6 +119,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
+  // 当前 streaming 消息的服务端累加快照（含尚未画到屏幕的 buffer 尾巴）。
+  // 用户按"停止"/切会话时，finalize 用它兜底 content —— 否则消息定格在最后
+  // 一个已绘制帧，把服务端已送达但还在追帧的几百字符悄悄丢掉。
+  const streamAccRef = useRef<{ msgId: string; content: string; think: string } | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   // 稳定的内容容器(空态/对话态都包在它里),供 ResizeObserver 锚定跟随。
@@ -128,6 +132,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bubble');
   const [streamAnimation, setStreamAnimation] = useState<StreamAnimationMode>('smooth');
   const [fontSize, setFontSize] = useState<number>(14.5);
+  // sendText 的 rAF tick 实时读这个 ref —— 用户流式中切"过渡动画"档位立即生效，
+  // 又不必把 streamAnimation 放进 sendText 依赖（避免重建进行中的闭包）。
+  const streamAnimationRef = useRef<StreamAnimationMode>(streamAnimation);
+  useEffect(() => {
+    streamAnimationRef.current = streamAnimation;
+  }, [streamAnimation]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const dm = window.localStorage.getItem('aetherblog.agent.displayMode');
@@ -168,11 +178,42 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     setActiveId(list.length > 0 ? list[0].id : null);
   }, [userId]);
 
-  // ---- 持久化 ----
+  // ---- 持久化（防抖） ----
+  // 流式期间 sessions 每帧都在变（rAF 推进 displayed），直接在 effect 里
+  // saveSessions 等于 ~60 次/秒全量 JSON.stringify + 写盘 —— 长会话下这是
+  // 主线程卡顿的大头。改为 600ms 尾随防抖；页面隐藏 / 卸载 / 组件销毁时
+  // 立即 flush，保证不丢最后一段。
+  const sessionsRef = useRef<AgentSession[]>(sessions);
+  const persistTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+    if (userId == null) return;
+    if (persistTimerRef.current != null) return; // 已有待写任务，尾随合并
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = null;
+      saveSessions(userId, sessionsRef.current);
+    }, 600);
+  }, [sessions, userId]);
   useEffect(() => {
     if (userId == null) return;
-    saveSessions(userId, sessions);
-  }, [sessions, userId]);
+    const flush = () => {
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      saveSessions(userId, sessionsRef.current);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flush();
+    };
+  }, [userId]);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -201,6 +242,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       if (streamingMsgIdRef.current && activeId) {
         const targetId = streamingMsgIdRef.current;
         const sessId = activeId;
+        // 服务端累加快照兜底 —— 把还没追帧画出来的 buffer 尾巴一并落库，
+        // 中断不丢已生成内容（对齐 ChatGPT「停止仍保留全部已出字」行为）。
+        const snap = streamAccRef.current?.msgId === targetId ? streamAccRef.current : null;
         setSessions((list) =>
           list.map((s) =>
             s.id === sessId
@@ -210,6 +254,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                     m.id === targetId
                       ? {
                           ...m,
+                          content: snap && snap.content.length > m.content.length ? snap.content : m.content,
+                          think: snap && snap.think.length > (m.think?.length ?? 0) ? snap.think : m.think,
                           pending: false,
                           error: m.error || reason,
                           finishedAt: Date.now(),
@@ -222,6 +268,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         );
       }
       streamingMsgIdRef.current = null;
+      streamAccRef.current = null;
       setBusy(false);
     },
     [activeId],
@@ -292,14 +339,25 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     );
   }, []);
 
-  const handleDelete = useCallback((id: string) => {
-    setSessions((list) => {
-      const next = list.filter((s) => s.id !== id);
-      // 如果删的是当前活跃会话，自动切到剩余第一个
-      setActiveId((curr) => (curr === id ? (next[0]?.id ?? null) : curr));
-      return next;
-    });
-  }, []);
+  const handleDelete = useCallback(
+    (id: string) => {
+      // 删的是正在 streaming 的活跃会话 → 先按"停止"语义收尾，释放
+      // AbortController / busy，避免幽灵流继续往已删除的会话里写 patch。
+      if (id === activeId && streamingMsgIdRef.current) {
+        finalizeStreamingMessage('已中断');
+      }
+      setSessions((list) => list.filter((s) => s.id !== id));
+      // 如果删的是当前活跃会话，自动切到剩余第一个。setActiveId 不能嵌在
+      // setSessions updater 里调用 —— updater 必须保持纯函数（StrictMode
+      // 会双调用，副作用跟着跑两遍）。
+      setActiveId((curr) => {
+        if (curr !== id) return curr;
+        const next = sessionsRef.current.filter((s) => s.id !== id);
+        return next[0]?.id ?? null;
+      });
+    },
+    [activeId, finalizeStreamingMessage],
+  );
 
   const handleModeChange = useCallback(
     (mode: AgentMode) => {
@@ -349,7 +407,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // handleSend / handleRetry / handleResubmitEdited 都能复用同一份 streaming 逻辑。
   // handleSend 之外的调用方（重试 / 编辑后重发）已自行 setDraft('')，所以这里
   // 不再清空 draft —— 否则会破坏"用户编辑中按钮无意触发清空 textarea"的体感。
-  const sendText = useCallback(async (text: string) => {
+  //
+  // baseMessages：调用方显式指定的历史基线。重试路径必须传 —— 它先 setSessions
+  // 截断再调 sendText，而本闭包里的 activeSession 仍是截断前的旧快照；不传的话
+  // history 会把"刚被截掉的旧 assistant 回复 + user 消息"重复发给模型，模型
+  // 看到自己上一轮的答案，重试结果必然串台。
+  const sendText = useCallback(async (text: string, baseMessages?: AgentMessage[]) => {
     if (!text || busy || state.status !== 'authed') return;
 
     let session = activeSession;
@@ -391,6 +454,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     };
     const targetMessageId = assistantMsg.id; // 闭包内 pin 住，rAF 不读 ref（避免被新对话串台）
     streamingMsgIdRef.current = targetMessageId;
+    streamAccRef.current = { msgId: targetMessageId, content: '', think: '' };
 
     setSessions((list) =>
       list.map((s) =>
@@ -409,12 +473,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const history = [...session.messages, userMsg].map((m) => ({
+    const history = [...(baseMessages ?? session.messages), userMsg].map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
     // === 流式累加 + rAF 平滑显示 ===
+    // 这是吐字平滑的唯一管线 —— MessageBubble 直接渲染 message.content，不再
+    // 二次节流。历史版本在这里追帧之外，bubble 内又叠了一层 useSmoothStream
+    // （固定 45 chars/s），两个 typewriter 互相竞争：实际可见速率被钉死在
+    // 45 chars/s，长回答 lag 滚雪球，流结束瞬间整段瞬移 —— 这正是"卡顿 +
+    // 内容跳变"的根因。单管线后速率自适应、终态平滑收尾。
     let acc = '';                                // server 累加
     let displayed = '';                          // UI 实际显示
     let thinkAcc = '';
@@ -423,6 +492,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     let finalPatch: Partial<AgentMessage> | null = null;
     let pendingMisc: Partial<AgentMessage> = {}; // think / sources / firstTokenAt 待写
     let rafId = 0;
+    let lastPaintAt = 0;                         // 长文降帧用的上次提交时间
 
     // stride —— 当 lag 越大越激进追赶；流结束后再加速一档让收尾感更利落。
     const computeStride = (lag: number, finishing: boolean): number => {
@@ -434,15 +504,37 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       return 2;
     };
 
+    // 长内容降帧：每帧 setState 都会让 StreamMarkdown 全量重 parse（remark 是
+    // O(文档长度)），60fps × 长文档 = 主线程被 parse 吃满。按长度把提交频率
+    // 降到 ~30/20fps —— 阅读节奏无感知，CPU 直接砍半以上。
+    const minPaintInterval = (len: number): number => {
+      if (len > 6000) return 48; // ~20fps
+      if (len > 2500) return 32; // ~30fps
+      return 0;                  // 短文档全帧率
+    };
+
     const tick = () => {
       rafId = 0;
 
-      // 推进 displayed
+      // 降帧窗口内先跳过本帧（继续排队），stride 的 lag 自适应会自动补上进度
+      const nowTs = performance.now();
+      const interval = minPaintInterval(acc.length);
+      if (interval > 0 && nowTs - lastPaintAt < interval && displayed.length < acc.length) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      lastPaintAt = nowTs;
+
+      // 推进 displayed —— '无动画'档直接对齐，其余按 stride 匀速追赶
       if (displayed.length < acc.length) {
-        const lag = acc.length - displayed.length;
-        const stride = computeStride(lag, streamDone);
-        const nextLen = Math.min(displayed.length + stride, acc.length);
-        displayed = acc.slice(0, nextLen);
+        if (streamAnimationRef.current === 'none') {
+          displayed = acc;
+        } else {
+          const lag = acc.length - displayed.length;
+          const stride = computeStride(lag, streamDone);
+          const nextLen = Math.min(displayed.length + stride, acc.length);
+          displayed = acc.slice(0, nextLen);
+        }
       }
 
       // 组装本帧 patch
@@ -531,6 +623,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       {
         onDelta: (chunk) => {
           acc += chunk;
+          if (streamAccRef.current?.msgId === targetMessageId) {
+            streamAccRef.current.content = acc;
+          }
           if (firstTokenAt == null) {
             firstTokenAt = Date.now();
             pendingMisc.firstTokenAt = firstTokenAt;
@@ -539,6 +634,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         },
         onThink: (chunk) => {
           thinkAcc += chunk;
+          if (streamAccRef.current?.msgId === targetMessageId) {
+            streamAccRef.current.think = thinkAcc;
+          }
           pendingMisc.think = thinkAcc;
           schedule();
         },
@@ -549,6 +647,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         onDone: () => {
           streamDone = true;
           finalPatch = { pending: false, finishedAt: Date.now() };
+          // 空回复兜底：流正常结束但一个正文 token 都没有 —— 不能留一张空白
+          // 气泡让用户干瞪眼，标记成可重试的错误态（retry 按钮随之出现）。
+          if (!acc.trim()) {
+            finalPatch.error = '模型未返回内容，请重试';
+          }
           schedule();
         },
         onError: (msg) => {
@@ -592,6 +695,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     if (streamingMsgIdRef.current === targetMessageId) {
       streamingMsgIdRef.current = null;
     }
+    if (streamAccRef.current?.msgId === targetMessageId) {
+      streamAccRef.current = null;
+    }
     setBusy(false);
   }, [busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
 
@@ -630,8 +736,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
   // assistant 消息「重试」：找到该消息上一条 user msg，把 assistant（含自身）
   // 之后所有消息截断，立刻用 user 内容重新发起 streaming。错误态 / 完成态都
-  // 走这一条路径。注意必须先把 streaming setSessions 落库再 sendText —— 否则
-  // sendText 内 history 还会带上"被截"的旧 assistant 错误消息。
+  // 走这一条路径。截断后的基线必须显式传给 sendText（baseMessages）——
+  // sendText 闭包里的 activeSession 仍是截断前的旧快照，靠它组 history 会把
+  // 被截掉的旧回复重复发给模型。
   const handleRetryAssistantMessage = useCallback(
     (message: AgentMessage) => {
       if (busy) return;
@@ -643,14 +750,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       const prior = sess.messages[idx - 1];
       if (prior.role !== 'user') return;
       // 截断到上一条 user 之前（不含 user 本身）—— sendText 会重新把它 push 回去
+      const base = sess.messages.slice(0, idx - 1);
       setSessions((list) =>
         list.map((s) =>
-          s.id === sess.id
-            ? { ...s, messages: s.messages.slice(0, idx - 1), updatedAt: Date.now() }
-            : s,
+          s.id === sess.id ? { ...s, messages: base, updatedAt: Date.now() } : s,
         ),
       );
-      void sendText(prior.content);
+      void sendText(prior.content, base);
     },
     [busy, sessions, activeId, sendText],
   );
@@ -763,6 +869,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       closeClearConfirm();
       return;
     }
+    // 清的是正在 streaming 的会话 → 先收尾，否则 abort 不会发生，幽灵流
+    // 继续往已清空的消息列表里找 target patch（找不到但 busy 一直挂着）。
+    if (clearTargetSessionId === activeId && streamingMsgIdRef.current) {
+      finalizeStreamingMessage('已中断');
+    }
     setSessions((list) =>
       list.map((s) =>
         s.id === clearTargetSessionId ? { ...s, messages: [], updatedAt: Date.now() } : s,
@@ -773,7 +884,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       setPendingTags([]);
     }
     closeClearConfirm();
-  }, [activeId, clearTargetSessionId, closeClearConfirm]);
+  }, [activeId, clearTargetSessionId, closeClearConfirm, finalizeStreamingMessage]);
 
   // 切换会话时清空 pending 引用，避免引用串台到另一个会话
   useEffect(() => {
@@ -884,6 +995,19 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
   }, []);
+
+  // 快捷键：⌘/Ctrl + Shift + O 新建对话 —— 对齐 ChatGPT 的肌肉记忆，键盘党
+  // 不必摸鼠标去点侧栏。e.key 在 Shift 按下时是大写 'O'，两种都接。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
+        e.preventDefault();
+        handleCreate();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleCreate]);
 
   // ---- 加载/未登录态 → skeleton ----
   if (state.status !== 'authed') {
@@ -1406,14 +1530,17 @@ function AgentSegmentedControl({
 }) {
   const activeIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
 
+  // 颜色全部走 Codex token（ink / bg），:root.light 自动翻转 —— 不写 dark: 变体、
+  // 不发明新色（设计系统硬规则 §3.4 #1/#5）。滑块用 --bg-raised 实色卡 + 中性
+  // 阴影，两主题下都与 surface 体系一致。
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="relative flex items-center rounded-[14px] bg-black/[0.08] p-[3px] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] backdrop-blur-2xl dark:bg-white/[0.08] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]"
+      className="relative flex items-center rounded-[14px] bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-[3px] shadow-[inset_0_1px_2px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
     >
       <div
-        className="absolute bottom-[3px] top-[3px] rounded-[11px] transition-[transform] duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] motion-reduce:transition-none"
+        className="absolute bottom-[3px] top-[3px] rounded-[11px] bg-[var(--bg-raised)] shadow-[0_3px_8px_rgba(0,0,0,0.16),0_1px_1px_rgba(0,0,0,0.10),inset_0_0_0_0.5px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)] transition-[transform] duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] motion-reduce:transition-none"
         style={{
           left: 3,
           width: `calc((100% - 6px) / ${options.length})`,
@@ -1421,24 +1548,7 @@ function AgentSegmentedControl({
           willChange: 'transform',
         }}
         aria-hidden
-      >
-        <div
-          className="absolute inset-0 rounded-[11px] opacity-100 transition-opacity duration-200 dark:opacity-0"
-          style={{
-            background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
-            boxShadow:
-              '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
-          }}
-        />
-        <div
-          className="absolute inset-0 rounded-[11px] opacity-0 transition-opacity duration-200 dark:opacity-100"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 100%)',
-            boxShadow:
-              '0 3px 8px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.16), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
-          }}
-        />
-      </div>
+      />
 
       {options.map((opt) => {
         const active = opt.value === value;
@@ -1450,10 +1560,10 @@ function AgentSegmentedControl({
             aria-checked={active}
             title={opt.title}
             onClick={() => onChange(opt.value)}
-            className={`relative z-10 flex h-9 flex-1 items-center justify-center rounded-[11px] text-[12.5px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-leaf)] ${
+            className={`relative z-10 flex h-9 flex-1 items-center justify-center rounded-[11px] text-[12.5px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] focus-visible:ring-offset-[var(--bg-leaf)] ${
               active
-                ? 'text-black dark:text-white'
-                : 'text-black/55 hover:text-black/70 dark:text-white/55 dark:hover:text-white/70'
+                ? 'text-[var(--ink-primary)]'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
             }`}
           >
             {opt.label}

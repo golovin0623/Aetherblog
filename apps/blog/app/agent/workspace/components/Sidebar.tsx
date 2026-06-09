@@ -186,9 +186,11 @@ export default function Sidebar({
         {groups.length === 0 ? (
           <div className="px-4 pt-10 text-center space-y-2">
             <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--ink-muted)]/85">
-              No conversations yet
+              {filter.trim() ? 'No match' : 'No conversations yet'}
             </div>
-            <div className="text-[12px] text-[var(--ink-muted)]">点击「新对话」开始</div>
+            <div className="text-[12px] text-[var(--ink-muted)]">
+              {filter.trim() ? `没有标题匹配「${filter.trim()}」的对话` : '点击「新对话」开始'}
+            </div>
           </div>
         ) : (
           groups.map((g) => (
