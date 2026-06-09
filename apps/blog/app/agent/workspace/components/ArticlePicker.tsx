@@ -102,7 +102,7 @@ export default function ArticlePicker({
         {showInitialLoading && (
           <div className="absolute inset-x-3 top-4 space-y-3" aria-label="文章加载中">
             {[0, 1, 2].map((idx) => (
-              <div key={idx} className="h-20 rounded-xl bg-[var(--bg-raised)]/70 p-3 animate-pulse">
+              <div key={idx} className="h-20 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] p-3 animate-pulse">
                 <div className="h-3 w-2/3 rounded-full bg-[var(--ink-subtle)]/18" />
                 <div className="mt-3 h-2.5 w-full rounded-full bg-[var(--ink-subtle)]/12" />
                 <div className="mt-2 h-2.5 w-3/5 rounded-full bg-[var(--ink-subtle)]/12" />
@@ -140,7 +140,7 @@ export default function ArticlePicker({
                   className={`group/item h-24 w-full overflow-hidden text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
                     checked
                       ? 'cursor-default bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                      : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
+                      : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 opacity-80" />

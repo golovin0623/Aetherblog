@@ -7,10 +7,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ConfirmModal, spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
 import {
   ChevronDown,
+  CornerDownLeft,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
@@ -121,6 +121,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const streamingMsgIdRef = useRef<string | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  // 稳定的内容容器(空态/对话态都包在它里),供 ResizeObserver 锚定跟随。
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // ---- 渲染偏好（显示模式 / 流式吐字模式 / 字体大小），localStorage 持久化 ----
   const [displayMode, setDisplayMode] = useState<DisplayMode>('bubble');
@@ -779,30 +781,77 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     setPendingTags([]);
   }, [activeId]);
 
-  // 智能滚动 ——
-  //   · 用户在底部时，新消息 / 流式增量自动跟随；
-  //   · 用户向上滚阅读时停止跟随，浮出 "↓ 最新" 按钮；
-  //   · 点这个按钮平滑滚回底部并重新粘底。
+  // 智能滚动 —— 对齐 ChatGPT / Claude / Codex 的"流式跟随"心智模型：
+  //   · 用户在底部 → 新消息 / 流式增量自动跟随；
+  //   · 用户一旦主动上滑（滚轮 / 触摸）→ **立即、彻底**脱离跟随,不再被后续
+  //     增量拽回底部 —— 这正是"边输出边上滑查看会反复跳动"的根因:旧实现要等
+  //     scroll 事件越过距离阈值才松手,而流式每帧都在写 scrollTop,二者赛跑,
+  //     用户每滑一点就被下一个 token 拽回。改成"手势即松手"后,意图先于增量,
+  //     抖动消失；
+  //   · 回到底部附近 → 自动重新粘底；浮出的 "↓ 最新" 可一键平滑回底。
   const stickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const lastMessageContent = activeSession?.messages.at(-1)?.content ?? '';
-  const lastMessageCount = activeSession?.messages.length ?? 0;
 
-  // 监听 thread 滚动，决定是否仍 "粘底"
+  // 滚动监听:双阈值迟滞(hysteresis)判定粘底,避免临界处因一帧增量在
+  // "粘底 / 脱离"间反复横跳 —— 关键是给手势 release() 留出生效窗口:
+  //   · 仅在极贴底(<16px)时才重新自动粘底;
+  //   · 仅在彻底离底(>=64px)时才自动脱离;
+  //   · 16–64px 的微调滚动不主动改粘底状态。
+  // 旧的单阈值(distance < 64 直接赋值)会把刚被 release() 的小幅上滑(如 30px)
+  // 又判回粘底,使手势脱离在小幅滚动时失效、用户被后续 token 拽回底部。
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = distance < 48;
-      stickToBottomRef.current = atBottom;
-      setShowJumpToBottom(!atBottom);
+      if (distance < 16) {
+        stickToBottomRef.current = true;
+      } else if (distance >= 64) {
+        stickToBottomRef.current = false;
+      }
+      setShowJumpToBottom(distance >= 64);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, [activeId]);
 
-  // 切会话：无条件锁回底部
+  // 用户"想回看历史"的手势意图 → 立刻松手(早于 scroll 事件与增量的赛跑)。
+  // 这是消除流式中反复跳动的关键一招。
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const release = () => {
+      if (!stickToBottomRef.current) return;
+      // 没有可上滑的空间(内容未溢出 / 已在顶部)就别脱离粘底 —— 否则短对话里
+      // 一次无效的上滑手势会让 ResizeObserver 停止跟随,新回答被卡在视野之外、
+      // 还误浮出"↓ 最新"。仅当确有向上滚动余量(scrollTop > 0)时才松手。
+      if (el.scrollTop <= 0) return;
+      stickToBottomRef.current = false;
+      setShowJumpToBottom(true);
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) release(); // 向上滚(含触控板亚像素 -0.x 的慢速滚动)
+    };
+    let touchY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0]?.clientY ?? 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY ?? 0;
+      if (y - touchY > 4) release(); // 手指下移 = 内容上滚 = 回看
+      touchY = y;
+    };
+    el.addEventListener('wheel', onWheel, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [activeId]);
+
+  // 切会话：无条件锁回底部。
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
@@ -811,12 +860,22 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     el.scrollTop = el.scrollHeight;
   }, [activeId]);
 
-  // 内容变化时若仍粘底则跟随；否则保留用户视野
+  // 跟随内容高度变化 —— ResizeObserver 在「布局完成后」触发,且浏览器每帧最多
+  // 回调一次(自动去重)。这比"每个流式增量 setState 后手写 scrollTop"更稳、更省:
+  //   · 流式增量、Shiki 异步高亮改变代码块高度、StreamMarkdown→完整渲染切换、
+  //     思考面板展开 —— 这些「事后高度变化」都会触发它,粘底时精确重锚到真实底部,
+  //     根除上下滑动时的「定位卡顿 / 乱窜」;
+  //   · 仅在粘底时才写 scrollTop,用户上滑回看时高度变化绝不动其视野。
   useEffect(() => {
+    const content = contentRef.current;
     const el = threadRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [lastMessageCount, lastMessageContent]);
+    if (!content || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [activeId]);
 
   const handleJumpToBottom = useCallback(() => {
     const el = threadRef.current;
@@ -863,27 +922,31 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <button
+            <motion.button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
               aria-label="打开侧栏"
-              className="md:hidden inline-flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-90 transition-all"
+              whileTap={{ scale: 0.9 }}
+              transition={spring.precise}
+              className="md:hidden inline-flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
             >
               <Menu className="w-[18px] h-[18px]" />
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="button"
               onClick={() => setDesktopSidebarHidden((v) => !v)}
               aria-label={desktopSidebarHidden ? '展开侧栏' : '收起侧栏'}
               title={desktopSidebarHidden ? '展开侧栏' : '收起侧栏'}
-              className="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-90 transition-all"
+              whileTap={{ scale: 0.9 }}
+              transition={spring.precise}
+              className="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
             >
               {desktopSidebarHidden ? (
                 <PanelLeftOpen className="w-[18px] h-[18px]" />
               ) : (
                 <PanelLeftClose className="w-[18px] h-[18px]" />
               )}
-            </button>
+            </motion.button>
             <div className="flex min-w-0 items-center">
               <span
                 className="max-w-[58vw] truncate text-[14px] font-medium leading-none text-[var(--ink-primary)] sm:max-w-[24rem]"
@@ -894,22 +957,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 sm:gap-4">
-            {/* 顶栏只显示当前会话模式；完整选择收进渲染偏好面板，避免三段控件挤压右侧。 */}
-            <div className="hidden sm:inline-flex">
-              <ModeSwitch
-                value={activeSession?.mode || 'chat'}
-                onChange={handleModeChange}
-                variant="current"
-              />
-            </div>
-            {/* 顶栏右侧：主题切换 + 渲染偏好(含会话模式选择)。
-                "新对话"统一收回 Sidebar drawer 内,顶栏不再单独提供入口 ——
-                避免与 Sidebar 内的"新建会话"双入口造成认知重复。
-                移动端的"会话模式 / 模型选择"已分别迁移到本面板与 Composer 左下角。 */}
-            <div className="inline-flex items-center gap-2 sm:gap-3 sm:pl-4 sm:ml-1 sm:border-l sm:border-[var(--ink-subtle)]/15">
-              <ThemeToggle size="sm" />
-              <RenderingPreferencesButton
+          {/* 顶栏右侧 —— 仅保留主题 + 渲染偏好两枚等距图标按钮。
+              会话模式(Chat/Cowork/Code)整体收进渲染偏好面板：Chat 是唯一已上线
+              模式，常驻一枚"Chat"胶囊只是噪声；移除后顶栏回到 Codex 式的克制。 */}
+          <div className="flex items-center gap-0.5 sm:gap-1">
+            <ThemeToggle size="sm" />
+            <RenderingPreferencesButton
                 mode={activeSession?.mode || 'chat'}
                 onModeChange={handleModeChange}
                 displayMode={displayMode}
@@ -919,8 +972,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 fontSize={fontSize}
                 onSetFontSize={setFontSize}
               />
-            </div>
           </div>
+          {/* 底缘极光发丝线（§05 Header）—— 中心一缕极光，向两端渐隐为中性 hairline，
+              叠在 border-b 之上,给顶栏一个克制的"光源"签名而不喧宾夺主。 */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+            style={{
+              background:
+                'linear-gradient(90deg, transparent, color-mix(in oklch, var(--aurora-1) 28%, transparent) 50%, transparent)',
+            }}
+          />
         </header>
 
         {/* 对话流 */}
@@ -930,28 +992,33 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            {!activeSession || activeSession.messages.length === 0 ? (
-              <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
-            ) : (
-              <div className="px-3 sm:px-6 py-6 sm:py-8">
-                <div className="mx-auto w-full max-w-[820px] space-y-6 sm:space-y-7">
-                  {activeSession.messages.map((m) => (
-                    <MessageBubble
-                      key={m.id}
-                      message={m}
-                      busy={busy}
-                      displayMode={displayMode}
-                      streamAnimation={streamAnimation}
-                      fontSize={fontSize}
-                      onEdit={handleEditUserMessage}
-                      onRetry={handleRetryAssistantMessage}
-                    />
-                  ))}
-                  {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
-                  <div className="h-2" aria-hidden="true" />
+            {/* 稳定容器 —— 不随空态/对话态切换而换节点,ResizeObserver 始终能观察到它,
+                因此 Shiki 异步高亮、流式增量、思考面板展开等"事后高度变化"都能被捕获并
+                在粘底时精确重锚,消除卡顿 / 乱窜。min-h-full 保证空态仍能垂直居中。 */}
+            <div ref={contentRef} className="min-h-full">
+              {!activeSession || activeSession.messages.length === 0 ? (
+                <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
+              ) : (
+                <div className="px-3 sm:px-6 py-6 sm:py-8">
+                  <div className="mx-auto w-full max-w-[820px] space-y-6 sm:space-y-7">
+                    {activeSession.messages.map((m) => (
+                      <MessageBubble
+                        key={m.id}
+                        message={m}
+                        busy={busy}
+                        displayMode={displayMode}
+                        streamAnimation={streamAnimation}
+                        fontSize={fontSize}
+                        onEdit={handleEditUserMessage}
+                        onRetry={handleRetryAssistantMessage}
+                      />
+                    ))}
+                    {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
+                    <div className="h-2" aria-hidden="true" />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* 浮出的滚动到底部按钮 —— 仅在用户向上滚开时显示 */}
@@ -1059,7 +1126,7 @@ function EmptyState({
 }) {
   // 标题用 framer-motion 做 stagger 入场 —— 与 /design §S1_Manifesto 同款节奏
   const fade = {
-    initial: { opacity: 0, y: 14 },
+    initial: { opacity: 0, y: 12 },
     animate: { opacity: 1, y: 0 },
   };
   const ease = [0.16, 1, 0.3, 1] as const;
@@ -1068,60 +1135,58 @@ function EmptyState({
     <motion.div
       initial="initial"
       animate="animate"
-      variants={{ animate: { transition: { staggerChildren: 0.08 } } }}
-      className="h-full min-h-[60vh] flex flex-col items-center justify-center text-center max-w-2xl mx-auto px-4 py-10"
+      variants={{ animate: { transition: { staggerChildren: 0.07 } } }}
+      className="mx-auto flex h-full min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-12 text-center"
     >
-      {/* 中心 aurora 光晕（配合下面的 sparkle icon 形成签名时刻） */}
+      {/* 签名标记 —— 一枚克制的呼吸光点。不再是发光的紫色方块:边框走 ink hairline,
+          仅内部图标与一层低透明度光晕保留极光,让"光"成为点睛而非主色。 */}
       <motion.div
         variants={fade}
         transition={{ duration: 0.6, ease }}
-        className="relative w-14 h-14 mb-6"
+        className="relative mb-7 grid h-12 w-12 place-items-center"
       >
-        <div
-          className="absolute -inset-3 rounded-full blur-2xl"
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full opacity-55 blur-xl"
           style={{
             background:
-              'radial-gradient(closest-side, color-mix(in oklch, var(--aurora-1) 35%, transparent), transparent)',
+              'radial-gradient(closest-side, color-mix(in oklch, var(--aurora-1) 24%, transparent), transparent)',
             animation: 'breath-soft 4.8s ease-in-out infinite',
           }}
-          aria-hidden="true"
         />
-        <div className="relative w-14 h-14 rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)] flex items-center justify-center border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]">
-          <Sparkles className="w-6 h-6" />
-        </div>
+        <span className="relative grid h-12 w-12 place-items-center rounded-2xl border border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] text-[var(--aurora-1)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+          <Sparkles className="h-5 w-5" strokeWidth={1.6} />
+        </span>
       </motion.div>
 
       <motion.p
         variants={fade}
         transition={{ duration: 0.6, ease }}
-        className="font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--aurora-1)]/85 mb-4"
+        className="mb-4 font-mono text-[10px] uppercase tracking-[0.34em] text-[var(--ink-muted)]"
       >
-        {siteTitle.toUpperCase()} · 灵境
+        灵境 · {siteTitle}
       </motion.p>
 
       <motion.h2
         variants={fade}
         transition={{ duration: 0.7, ease }}
-        className="font-display text-[clamp(1.6rem,4.5vw,2.6rem)] leading-[1.08] text-[var(--ink-primary)] tracking-[-0.02em]"
-        style={{
-          textWrap: 'balance' as unknown as 'inherit',
-          animation: 'breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite',
-        }}
+        className="font-display text-[clamp(1.7rem,4.6vw,2.7rem)] leading-[1.1] tracking-[-0.02em] text-[var(--ink-primary)]"
+        style={{ textWrap: 'balance' as unknown as 'inherit' }}
       >
-        要在 <span className="aurora-text">{siteTitle}</span> 中构建什么？
+        要在 {siteTitle} 中构建什么？
       </motion.h2>
 
       <motion.p
         variants={fade}
         transition={{ duration: 0.6, ease, delay: 0.05 }}
-        className="mt-3 font-editorial italic text-[var(--ink-secondary)] text-base sm:text-lg max-w-md"
+        className="mt-3.5 max-w-md font-editorial text-[15px] italic leading-relaxed text-[var(--ink-secondary)] sm:text-base"
       >
-        @ 引用文章 · # 圈定标签 · / 调用命令
+        随手发问，或以 @ 引用文章 · # 圈定标签 · / 调用命令。
       </motion.p>
 
       <motion.ul
-        variants={{ animate: { transition: { staggerChildren: 0.05, delayChildren: 0.15 } } }}
-        className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left w-full"
+        variants={{ animate: { transition: { staggerChildren: 0.05, delayChildren: 0.18 } } }}
+        className="mt-9 grid w-full grid-cols-1 gap-2 text-left sm:grid-cols-2"
       >
         {PROMPT_SUGGESTIONS.map((p) => (
           <motion.li key={p} variants={fade} transition={{ duration: 0.5, ease }}>
@@ -1129,14 +1194,14 @@ function EmptyState({
               type="button"
               onClick={() => onPick(p)}
               data-interactive
-              className="group/sug w-full surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-4 py-3 text-[13px] text-[var(--ink-secondary)] hover:border-[var(--aurora-1)]/45 hover:text-[var(--ink-primary)] active:scale-[0.985] transition-all text-left flex items-center justify-between gap-2"
+              className="group/sug surface-leaf flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--ink-subtle)]/14 px-4 py-3.5 text-left text-[13px] leading-snug text-[var(--ink-secondary)] transition-[transform,color] duration-quick ease-aether hover:-translate-y-px hover:text-[var(--ink-primary)] active:translate-y-0 active:scale-[0.99]"
             >
               <span>{p}</span>
               <span
                 aria-hidden="true"
-                className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] opacity-0 group-hover/sug:opacity-100 group-hover/sug:translate-x-0 -translate-x-1 transition-all"
+                className="grid h-6 w-6 shrink-0 -translate-x-1 place-items-center rounded-lg text-[var(--ink-muted)] opacity-0 transition-all duration-quick ease-aether group-hover/sug:translate-x-0 group-hover/sug:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] group-hover/sug:text-[var(--aurora-1)] group-hover/sug:opacity-100"
               >
-                ↵
+                <CornerDownLeft className="h-3.5 w-3.5" />
               </span>
             </button>
           </motion.li>

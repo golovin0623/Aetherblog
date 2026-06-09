@@ -112,7 +112,7 @@ function MessageBubbleBase({
     'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]';
   const messageActions = hasActions ? (
     <div
-      className={`mt-1.5 flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)]/65 p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto ${
+      className={`mt-1.5 flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)] p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto ${
         isUser ? 'ml-auto' : 'mr-auto'
       }`}
       aria-label="消息操作"
@@ -293,30 +293,29 @@ function MessageBubbleBase({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      className={`group/msg relative mx-auto flex w-full max-w-[820px] flex-col ${
+      className={`group/msg relative mx-auto flex w-full min-w-0 max-w-[820px] flex-col ${
         isUser ? 'items-end' : 'items-start'
       }`}
       aria-label={isUser ? '用户消息' : 'Agent 回复'}
     >
       {/* 元信息 + 状态行。头像放在 header，不再作为正文横向 gutter，
           这样思考块 / 回答卡 / 输入框共享同一条居中 rail。 */}
+      {/* identity —— Codex 式克制:去掉 8×8 头像 + YOU/AGENT 大写标签,
+          只保留一枚角色圆点(assistant 极光 · user 中性墨)+ 静音时间戳,
+          把视觉权重整体让回正文。 */}
       <div
-        className={`mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] ${
+        className={`mb-1.5 flex items-center gap-1.5 text-[11px] tnum text-[var(--ink-muted)] ${
           isUser ? 'flex-row-reverse self-end' : 'self-start'
         }`}
       >
         <span
-          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[12px] ${
-            isUser
-              ? 'bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-primary)]'
-              : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
-          }`}
           aria-hidden="true"
-        >
-          {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-        </span>
-        <span>{isUser ? 'YOU' : 'AGENT'}</span>
-        <span aria-hidden="true">·</span>
+          className={
+            isUser
+              ? 'h-1.5 w-1.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_28%,transparent)]'
+              : 'h-1.5 w-1.5 rounded-full bg-[var(--aurora-1)] shadow-[0_0_6px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
+          }
+        />
         <span suppressHydrationWarning>
           {new Date(message.createdAt).toLocaleTimeString('zh-CN', {
             hour: '2-digit',
@@ -337,16 +336,16 @@ function MessageBubbleBase({
       )}
 
       {/* 主体气泡 */}
-      <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
-          className={`agent-message-font rounded-2xl px-4 py-3 leading-relaxed text-[14.5px] break-words transition-[border-color,box-shadow,transform] duration-300 ${
+          className={`agent-message-font min-w-0 break-words rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed transition-[border-color,box-shadow,transform] duration-quick ease-aether ${
             isUser
-              ? 'max-w-[85%] whitespace-pre-wrap bg-[linear-gradient(155deg,color-mix(in_oklch,var(--aurora-1)_14%,transparent),color-mix(in_oklch,var(--aurora-1)_6%,transparent))] text-[var(--ink-primary)] border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] shadow-[0_10px_28px_-18px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
+              ? 'max-w-[85%] whitespace-pre-wrap border border-[var(--ink-subtle)]/14 bg-[var(--bg-raised)] text-[var(--ink-primary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent),0_8px_22px_-20px_rgba(0,0,0,0.5)]'
               : message.error
-              ? 'w-full max-w-full whitespace-pre-wrap bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] text-[var(--ink-primary)]'
+              ? 'w-full max-w-full whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_7%,transparent)] text-[var(--ink-primary)]'
               : isStreaming
-              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)] shadow-[0_14px_32px_-22px_color-mix(in_oklch,var(--aurora-1)_55%,transparent)]'
-              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/15 text-[var(--ink-primary)] shadow-[0_12px_30px_-24px_rgba(0,0,0,0.42)] hover:border-[color-mix(in_oklch,var(--aurora-1)_24%,var(--ink-subtle))] hover:shadow-[0_16px_38px_-24px_color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
+              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] text-[var(--ink-primary)]'
+              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/12 text-[var(--ink-primary)] shadow-[0_10px_30px_-26px_rgba(0,0,0,0.5)]'
           }`}
           style={messageFontStyle}
         >
@@ -546,7 +545,7 @@ function ThinkingPanel({
       ? 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] shadow-[0_12px_28px_-24px_rgba(0,0,0,0.35)]'
       : message.error
       ? 'bg-[color-mix(in_oklch,var(--signal-warn)_6%,transparent)] border-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)]'
-      : 'bg-[var(--bg-raised)]/48 border-[var(--ink-subtle)]/14 hover:border-[var(--aurora-1)]/30'
+      : 'bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] border-[var(--ink-subtle)]/14 hover:border-[var(--aurora-1)]/30'
   } ${expandable ? 'cursor-pointer' : 'cursor-default'}`;
 
   const inner = (
@@ -643,7 +642,7 @@ function ThinkingPanel({
               className={`agent-thumb-scroll agent-thinking-scroll mt-2 max-h-[min(340px,42vh)] overflow-y-auto p-3.5 rounded-xl border ${
                 isStreaming
                   ? 'bg-[color-mix(in_oklch,var(--aurora-1)_5%,var(--bg-raised))] border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
-                  : 'bg-[var(--bg-raised)]/55 border-[var(--ink-subtle)]/15'
+                  : 'bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] border-[var(--ink-subtle)]/15'
               }`}
             >
               {isStreaming ? (

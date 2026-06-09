@@ -73,7 +73,7 @@ export default function SlashCommandPicker({ open, onClose, anchorRef, onPick }:
             key={cmd.command}
             type="button"
             onClick={() => onPick(cmd)}
-            className="w-full text-left px-3 py-2 flex items-start gap-2.5 transition-colors text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]"
+            className="w-full text-left px-3 py-2 flex items-start gap-2.5 transition-colors text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]"
           >
             <SlashSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 opacity-80" />
             <div className="min-w-0 flex-1">

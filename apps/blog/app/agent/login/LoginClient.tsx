@@ -174,22 +174,22 @@ export default function LoginClient({ siteTitle, next }: Props) {
             </div>
           )}
 
+          {/* 登录主行动 —— 走 §05 primary（ink-primary 实底 + bg-void 字），
+              替掉旧的"紫色渐变 + 流光 shimmer"营销按钮，让进入灵境的最后一步
+              与控制台内的克制气质一致；按压用苹果式轻微下沉 + 回弹。 */}
           <button
             type="submit"
             disabled={submitting || !username || !password}
-            className="hero-primary-btn group inline-flex w-full items-center justify-center gap-2.5 px-7 py-3 rounded-xl text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+            className="group inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink-primary)] px-7 py-3 font-medium text-[var(--bg-void)] shadow-[0_12px_32px_-14px_color-mix(in_oklch,var(--ink-primary)_55%,transparent)] transition-[transform,filter,box-shadow,opacity] duration-quick ease-aether hover:-translate-y-px hover:brightness-110 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:brightness-100"
           >
-            <span className="hero-btn-shimmer" aria-hidden="true" />
-            <span className="relative z-10 inline-flex items-center gap-2">
-              {submitting ? (
-                <span className="grid h-4 w-4 place-items-center" aria-hidden="true">
-                  <span className="h-2 w-2 rounded-full bg-current animate-pulse" />
-                </span>
-              ) : (
-                <KeyRound className="w-4 h-4" />
-              )}
-              {submitting ? '登录中…' : '登录'}
-            </span>
+            {submitting ? (
+              <span className="grid h-4 w-4 place-items-center" aria-hidden="true">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
+              </span>
+            ) : (
+              <KeyRound className="h-4 w-4" />
+            )}
+            {submitting ? '登录中…' : '登录'}
           </button>
         </motion.form>
 
