@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
-  MessageSquare,
   Search,
   LogOut,
   ChevronDown,
@@ -195,9 +194,11 @@ export default function Sidebar({
         ) : (
           groups.map((g) => (
             <section key={g.label} className="mb-3">
-              <div className="px-4 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]/85 flex items-center gap-1.5">
-                <ChevronDown className="w-3 h-3" />
-                {g.label}
+              {/* 分组眉标 —— 纯标签 + 条数。此前左侧挂了一枚 ChevronDown 但
+                  并没有折叠行为：有图标无交互是"假可供性"，删。 */}
+              <div className="flex items-center justify-between px-4 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]/85">
+                <span>{g.label}</span>
+                <span className="tnum opacity-70">{g.sessions.length}</span>
               </div>
               <ul className="space-y-0.5 px-2">
                 {g.sessions.map((s) => {
@@ -216,16 +217,16 @@ export default function Sidebar({
                         } ${menuOpen && !isActive ? 'bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]' : ''}`}
                         onClick={() => !isEditing && !menuOpen && wrappedSelect(s.id)}
                       >
-                        {/* 激活态:中性底 + 左缘 2px 极光线(§05 Nav 规范),不再整块紫色底色 */}
+                        {/* 激活态:中性底 + 左缘 2px 极光线(§05 Nav 规范),不再整块紫色底色。
+                            行内不再放 MessageSquare 图标 —— 每行重复同一枚图标是纯
+                            噪声(ChatGPT/Codex 的会话列表均为纯文字)，左缘极光线已足够
+                            表达激活态。 */}
                         {isActive && (
                           <span
                             aria-hidden="true"
                             className="absolute bottom-1.5 left-0 top-1.5 w-[2px] rounded-full bg-[var(--aurora-1)] shadow-[0_0_8px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]"
                           />
                         )}
-                        <MessageSquare
-                          className={`h-3.5 w-3.5 flex-shrink-0 ${isActive ? 'text-[var(--aurora-1)]' : 'opacity-70'}`}
-                        />
                         {isEditing ? (
                           <input
                             autoFocus

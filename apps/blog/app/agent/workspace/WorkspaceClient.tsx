@@ -8,6 +8,10 @@ import { ConfirmModal, spring, duration as motionDuration, ease as motionEase } 
 import {
   ChevronDown,
   CornerDownLeft,
+  Feather,
+  FileText,
+  Languages,
+  Lightbulb,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -47,12 +51,30 @@ interface Props {
   siteTitle: string;
 }
 
-const PROMPT_SUGGESTIONS = [
-  '总结这篇文章的核心观点',
-  '帮我把这段写得更短',
-  '为这个标题生成 5 个备选',
-  '把这段话翻译成英文',
+// 空态建议卡 —— icon + 分类眉标 + 文案，四张卡分别用 aurora-1..4 点色
+// （只取既有 token 组合，不发明新色）。点击把文案填入 composer。
+const PROMPT_SUGGESTIONS: ReadonlyArray<{
+  icon: typeof FileText;
+  category: string;
+  text: string;
+  aurora: 1 | 2 | 3 | 4;
+}> = [
+  { icon: FileText, category: 'Summarize', text: '总结这篇文章的核心观点', aurora: 1 },
+  { icon: Feather, category: 'Refine', text: '帮我把这段写得更短', aurora: 2 },
+  { icon: Lightbulb, category: 'Ideate', text: '为这个标题生成 5 个备选', aurora: 3 },
+  { icon: Languages, category: 'Translate', text: '把这段话翻译成英文', aurora: 4 },
 ];
+
+// 时段问候 —— EmptyState 仅在客户端鉴权完成后渲染（之前一直是 skeleton），
+// 不经过 SSR/hydration，按本地时间取值安全。
+function timeGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return '早上好';
+  if (h >= 11 && h < 14) return '中午好';
+  if (h >= 14 && h < 18) return '下午好';
+  if (h >= 18 && h < 23) return '晚上好';
+  return '夜深了';
+}
 
 // 转义正则元字符,确保用文章/标签名做 RegExp 子模式时安全。
 function escapeRegExp(s: string): string {
@@ -1078,13 +1100,30 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 <PanelLeftClose className="w-[18px] h-[18px]" />
               )}
             </motion.button>
-            <div className="flex min-w-0 items-center">
+            <div className="flex min-w-0 items-center gap-2">
               <span
-                className="max-w-[58vw] truncate text-[14px] font-medium leading-none text-[var(--ink-primary)] sm:max-w-[24rem]"
+                className="max-w-[48vw] truncate text-[14px] font-medium leading-none text-[var(--ink-primary)] sm:max-w-[24rem]"
                 title={activeSession?.title || ''}
               >
                 {activeSession?.title || '尚未选择会话'}
               </span>
+              {/* 生成态徽标 —— 用户上滑回看历史时，顶栏仍能感知"流还在跑"。
+                  AnimatePresence 让它出入场都柔和，不抖动标题。 */}
+              <AnimatePresence>
+                {busy && (
+                  <motion.span
+                    key="streaming-badge"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] px-2 font-mono text-[9.5px] uppercase tracking-[0.18em] text-[var(--aurora-1)]"
+                  >
+                    <span className="agent-thinking-live-dot" aria-hidden="true" />
+                    生成中
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -1128,7 +1167,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 在粘底时精确重锚,消除卡顿 / 乱窜。min-h-full 保证空态仍能垂直居中。 */}
             <div ref={contentRef} className="min-h-full">
               {!activeSession || activeSession.messages.length === 0 ? (
-                <EmptyState siteTitle={siteTitle} onPick={handleSuggestion} />
+                <EmptyState
+                  siteTitle={siteTitle}
+                  nickname={state.user.nickname || state.user.username}
+                  onPick={handleSuggestion}
+                />
               ) : (
                 <div className="px-3 sm:px-6 py-6 sm:py-8">
                   <div className="mx-auto w-full max-w-[820px] space-y-6 sm:space-y-7">
@@ -1250,9 +1293,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
 function EmptyState({
   siteTitle,
+  nickname,
   onPick,
 }: {
   siteTitle: string;
+  /** 已登录用户昵称 —— 时段问候人格化（"晚上好，{name}"）。 */
+  nickname: string;
   onPick: (text: string) => void;
 }) {
   // 标题用 framer-motion 做 stagger 入场 —— 与 /design §S1_Manifesto 同款节奏
@@ -1304,7 +1350,7 @@ function EmptyState({
         className="font-display text-[clamp(1.7rem,4.6vw,2.7rem)] leading-[1.1] tracking-[-0.02em] text-[var(--ink-primary)]"
         style={{ textWrap: 'balance' as unknown as 'inherit' }}
       >
-        要在 {siteTitle} 中构建什么？
+        {timeGreeting()}，{nickname}
       </motion.h2>
 
       <motion.p
@@ -1317,26 +1363,49 @@ function EmptyState({
 
       <motion.ul
         variants={{ animate: { transition: { staggerChildren: 0.05, delayChildren: 0.18 } } }}
-        className="mt-9 grid w-full grid-cols-1 gap-2 text-left sm:grid-cols-2"
+        className="mt-9 grid w-full grid-cols-1 gap-2.5 text-left sm:grid-cols-2"
       >
-        {PROMPT_SUGGESTIONS.map((p) => (
-          <motion.li key={p} variants={fade} transition={{ duration: 0.5, ease }}>
-            <button
-              type="button"
-              onClick={() => onPick(p)}
-              data-interactive
-              className="group/sug surface-leaf flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--ink-subtle)]/14 px-4 py-3.5 text-left text-[13px] leading-snug text-[var(--ink-secondary)] transition-[transform,color] duration-quick ease-aether hover:-translate-y-px hover:text-[var(--ink-primary)] active:translate-y-0 active:scale-[0.99]"
-            >
-              <span>{p}</span>
-              <span
-                aria-hidden="true"
-                className="grid h-6 w-6 shrink-0 -translate-x-1 place-items-center rounded-lg text-[var(--ink-muted)] opacity-0 transition-all duration-quick ease-aether group-hover/sug:translate-x-0 group-hover/sug:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] group-hover/sug:text-[var(--aurora-1)] group-hover/sug:opacity-100"
+        {PROMPT_SUGGESTIONS.map((p) => {
+          const Icon = p.icon;
+          const auroraVar = `var(--aurora-${p.aurora})`;
+          return (
+            <motion.li key={p.text} variants={fade} transition={{ duration: 0.5, ease }}>
+              <button
+                type="button"
+                onClick={() => onPick(p.text)}
+                data-interactive
+                className="group/sug surface-leaf flex w-full items-center gap-3 rounded-2xl border border-[var(--ink-subtle)]/14 px-4 py-3.5 text-left transition-[transform,color,border-color] duration-quick ease-aether hover:-translate-y-px active:translate-y-0 active:scale-[0.99]"
               >
-                <CornerDownLeft className="h-3.5 w-3.5" />
-              </span>
-            </button>
-          </motion.li>
-        ))}
+                <span
+                  aria-hidden="true"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-transform duration-quick ease-aether group-hover/sug:scale-105"
+                  style={{
+                    color: auroraVar,
+                    background: `color-mix(in oklch, ${auroraVar} 11%, transparent)`,
+                    boxShadow: `0 1px 0 inset color-mix(in oklch, ${auroraVar} 16%, transparent)`,
+                  }}
+                >
+                  <Icon className="h-4 w-4" strokeWidth={1.8} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.26em] text-[var(--ink-muted)]">
+                    {p.category}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[13px] leading-snug text-[var(--ink-secondary)] transition-colors duration-quick ease-aether group-hover/sug:text-[var(--ink-primary)]">
+                    {p.text}
+                  </span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="grid h-6 w-6 shrink-0 -translate-x-1 place-items-center rounded-lg text-[var(--ink-muted)] opacity-0 transition-all duration-quick ease-aether group-hover/sug:translate-x-0 group-hover/sug:opacity-100"
+                  style={{ color: auroraVar }}
+                >
+                  <CornerDownLeft className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            </motion.li>
+          );
+        })}
       </motion.ul>
     </motion.div>
   );

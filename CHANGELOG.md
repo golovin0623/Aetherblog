@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Composer：textarea `resize-y` → `resize-none`（手动拖拽与 autosize 互相覆盖）；**Esc 停止生成**（无弹层抢语义时）；**⌘/Ctrl+Shift+O 新建对话**。
 - 侧栏搜索无结果时展示「没有标题匹配」空态，不再误导「点击新对话开始」。
 
+**Changed — UI 视觉升级（第二轮）：**
+- **空态首屏人格化**：标题改为时段问候 + 用户昵称（"晚上好，{name}"，ChatGPT 同款心智）；建议项升级为「icon + 分类眉标 + 文案」卡片，四张卡分别以 `--aurora-1..4` 点色（仅组合既有 token）。
+- **顶栏生成态徽标**：流式中标题旁出现呼吸光点「生成中」胶囊 —— 用户上滑回看历史时也能感知流在跑。
+- **侧栏去噪**：删除每行重复的 MessageSquare 图标（纯噪声，激活态由左缘极光线表达）；删除分组眉标上"有图标无折叠行为"的假可供性 ChevronDown，改为「分组名 + 条数」。
+- 第二轮 review（gemini）采纳：`sendText`/`handleRetry` 经 `sessionsRef` 取会话，流式期间回调引用稳定，`MessageBubble` memo 不再被每帧击穿。
+
 **验证：** `tsc --noEmit` / `next build` / `pnpm design-system:check`（0 error，warning 339→338）全绿。
 
 **📄 文档影响：** 已更新本 `CHANGELOG.md`；无新增 API / DB schema / 共享组件，其余文档无需更新。
