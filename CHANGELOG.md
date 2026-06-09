@@ -25,7 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Changed — 合规去明面化：** 剥离预设 URL 抄录的引流追踪参数（`utm_source=…`/`invited_by=…`）；清除源码「LobeChat 风格/参考」等注释（8 处）；`lobeIcons.ts`→中性适配层 `brandIcons.ts`，第三方品牌图标依赖收敛单点。
 
-**测试：** 后端 pytest 全过（新模块 100%/86%，并修复 4 个环境相关历史失败用例）；前端新建首套 vitest 22 个全过；typecheck / eslint / 构建 / `design-system:check`(0 error) 全绿。
+**Fixed — 自动评审（Gemini + Codex）硬化：**
+- Google(Gemini) 抓取：默认 baseUrl 无版本段时自动补 `/v1beta`（list-models 端点），并对 `api_key` 加空值守卫。
+- `model_capabilities`：`video` 类型也赋 `video` 能力（与 `text2video` 对齐）。
+- `ModelConfigDialog`：`disabledParams` 可选性运行时守卫（`?.`/`|| []`）。
+- **`disabledParams` 服务端强制**：新增 `resolve_disabled_sampling_params()`，在 `_completion_kwargs`/`_agent_completion_kwargs` 及 AI 任务 chat/stream 路径按模型配置真正剔除被屏蔽的采样参数（此前仅持久化、未在请求路径生效）。
+
+**测试：** 后端 pytest 全过（含 disabledParams 强制 8 例、能力 100% 覆盖，并修复 4 个环境相关历史失败用例）；前端新建首套 vitest 22 个全过；typecheck / eslint / 构建 / `design-system:check`(0 error) 全绿。
 
 **📄 文档影响：** 已新增 `docs/model-center-alignment-report.md`（完整升级报告）、更新本 `CHANGELOG.md`；能力/抓取属 AI 模块演进，建议后续在 `docs/AI_MODULE_PLAN_V2.md` 追记；未改 API 路由 / DB schema（新能力字段存 `capabilities` JSONB），无需 migrations。
 
