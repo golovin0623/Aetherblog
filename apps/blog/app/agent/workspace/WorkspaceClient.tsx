@@ -51,6 +51,13 @@ interface Props {
   siteTitle: string;
 }
 
+type SendOptions = {
+  articles?: AgentArticle[];
+  tags?: AgentTag[];
+  session?: AgentSession | null;
+  baseMessages?: AgentMessage[];
+};
+
 // 空态建议卡 —— icon + 分类眉标 + 文案，四张卡分别用 aurora-1..4 点色
 // （只取既有 token 组合，不发明新色）。点击把文案填入 composer。
 const PROMPT_SUGGESTIONS: ReadonlyArray<{
@@ -122,8 +129,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // 桌面端 sidebar collapse —— 与移动端 drawer 互不影响
   const [desktopSidebarHidden, setDesktopSidebarHidden] = useState(false);
-  // 当前 draft 引用的文章 / 标签 —— 仅当 draft 仍在编辑时存活；提交后转移到
-  // chat 请求并清空。换会话或显式移除时也清空。
+  // 当前会话显式引用的文章 / 标签。发送后继续保留，供追问和重试复用；
+  // 手动移除、清空会话或切换会话时再同步到对应会话上下文。
   const [pendingArticles, setPendingArticles] = useState<AgentArticle[]>([]);
   const [pendingTags, setPendingTags] = useState<AgentTag[]>([]);
   // sessionModelOverride 三态：
@@ -420,18 +427,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   );
 
   // ---- 发送消息 ----
-  // 流式更新的两个层次：
-  //
-  //  1) 服务端 → "目标"内容（acc）：每个 SSE delta 立刻追加到 acc。
-  //  2) "目标"内容 → "屏幕"内容（displayed）：rAF 每帧推进 N chars 朝 acc 追赶。
-  //
-  // 这一层平滑（display catch-up）是核心：服务端的 chunk 大小经常忽大忽小
-  // （thinking 段 2 chars/chunk，正文 30~120 chars/chunk）。如果直接 setState
-  // 把 acc 当 content 写回，文本会"卡顿地涌出"——和 ChatGPT/Claude/Codex 看到
-  // 的"匀速打字机"感差距很大。
-  //
-  // stride 计算 (computeStride) 在 lag 大时加速，lag 小时变慢，做到既能赶上
-  // 模型的真实速率，又能保持稳定的视觉节奏。
+  // 流式更新由 WorkspaceClient 这一层统一推进：服务端 SSE chunk 先累加到
+  // raw acc/thinkAcc，再通过 rAF 追帧写入 message.content。MessageBubble 直接
+  // 渲染屏幕态，避免双重 typewriter 互相拖慢；think 段单独作为副面板流式展示。
   // 拆分 send 流程的实际执行体：把"text 作为字符串入参"暴露出来，让
   // handleSend / handleRetry / handleResubmitEdited 都能复用同一份 streaming 逻辑。
   // handleSend 之外的调用方（重试 / 编辑后重发）已自行 setDraft('')，所以这里
@@ -445,10 +443,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // 会话经 sessionsRef 按 activeId 查而非闭包 activeSession —— 流式期间
   // sessions 每帧都变，依赖 activeSession 会让本回调（连同下游 handleSend /
   // handleRetry）每帧重建，把 MessageBubble 的 memo 击穿成全量重渲。
-  const sendText = useCallback(async (text: string, baseMessages?: AgentMessage[]) => {
+  const sendText = useCallback(async (text: string, options?: SendOptions) => {
     if (!text || busy || state.status !== 'authed') return;
 
-    let session = sessionsRef.current.find((s) => s.id === activeId) ?? null;
+    const requestArticles = options?.articles ?? pendingArticles;
+    const requestTags = options?.tags ?? pendingTags;
+    let session = options?.session ?? sessionsRef.current.find((s) => s.id === activeId) ?? null;
     if (!session) {
       const now = Date.now();
       // 新会话继承用户在 EmptyState 选过的模型 override —— 这一步配合
@@ -464,6 +464,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         messages: [],
         modelId: sessionModelOverride ? sessionModelOverride.modelId : null,
         providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
+        contextArticles: requestArticles,
+        contextTags: requestTags,
       };
       setSessions((list) => [session as AgentSession, ...list]);
       setActiveId(session.id);
@@ -476,6 +478,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       role: 'user',
       content: text,
       createdAt: startTs,
+      contextArticles: requestArticles.length ? requestArticles : undefined,
+      contextTags: requestTags.length ? requestTags : undefined,
     };
     const assistantMsg: AgentMessage = {
       id: newMessageId(),
@@ -495,6 +499,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           ? {
               ...s,
               title: s.messages.length === 0 ? deriveSessionTitle(text) : s.title,
+              contextArticles: requestArticles,
+              contextTags: requestTags,
               updatedAt: Date.now(),
               messages: [...s.messages, userMsg, assistantMsg],
             }
@@ -506,7 +512,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const history = [...(baseMessages ?? session.messages), userMsg].map((m) => ({
+    const history = [...(options?.baseMessages ?? session.messages), userMsg].map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -592,7 +598,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 ),
               }
             : s,
-        ),
+          ),
       );
 
       // 决定下一步
@@ -625,12 +631,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       rafId = requestAnimationFrame(tick);
     };
 
-    // 把当前 draft 关联的引用一并送给后端。复制本地后立即清空 pending 区，
-    // 避免下一条消息再次"携带"上一次的引用。
-    const articleIds = pendingArticles.map((a) => a.id);
-    const tagSlugs = pendingTags.map((t) => t.slug);
-    setPendingArticles([]);
-    setPendingTags([]);
+    // 会话级引用上下文会持续保留：用户选中文章后，后续追问与重试默认仍带上
+    // 同一批素材；只有手动移除 chip 或切换会话才改变上下文。
+    const articleIds = requestArticles.map((a) => a.id);
+    const tagSlugs = requestTags.map((t) => t.slug);
 
     // 防御：始终落到已上线 mode（cowork/code 占位 prompt 在后端虽存在，但
     // 它们只是 placeholder，不该误传出去让用户以为 Cowork 已经在跑了）。
@@ -688,13 +692,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           schedule();
         },
         onError: (msg) => {
-          // error 立即 flush 给用户看，不再等显示追平
-          streamDone = true;
+          // error 立即 flush 给用户看，不再等下一帧合并。
           if (rafId) {
             cancelAnimationFrame(rafId);
             rafId = 0;
           }
-          displayed = acc;
           setSessions((list) =>
             list.map((s) =>
               s.id === sessId
@@ -722,9 +724,6 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       controller.signal,
     );
 
-    // 注意：不在这里 cancel rAF —— stream 已结束但 displayed 可能还在追赶，
-    // 让 tick 自然把剩余 chars 喷出来后自己结束（最多 ~300ms）。busy 状态可以
-    // 立即解除，让用户感到响应已"完成"，bubble 仍在视觉上完成最后的打字尾巴。
     if (streamingMsgIdRef.current === targetMessageId) {
       streamingMsgIdRef.current = null;
     }
@@ -761,10 +760,14 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           return { ...s, messages: s.messages.slice(0, idx), updatedAt: Date.now() };
         }),
       );
+      const nextArticles = message.contextArticles ?? activeSession?.contextArticles ?? [];
+      const nextTags = message.contextTags ?? activeSession?.contextTags ?? [];
+      setPendingArticles(nextArticles);
+      setPendingTags(nextTags);
       setDraft(message.content);
       requestAnimationFrame(() => composerRef.current?.focus());
     },
-    [busy, activeId],
+    [busy, activeId, activeSession?.contextArticles, activeSession?.contextTags],
   );
 
   // assistant 消息「重试」：找到该消息上一条 user msg，把 assistant（含自身）
@@ -785,14 +788,32 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       if (idx <= 0) return;
       const prior = sess.messages[idx - 1];
       if (prior.role !== 'user') return;
-      // 截断到上一条 user 之前（不含 user 本身）—— sendText 会重新把它 push 回去
+      const retryArticles = prior.contextArticles ?? sess.contextArticles ?? [];
+      const retryTags = prior.contextTags ?? sess.contextTags ?? [];
+      // 截断到上一条 user 之前（不含 user 本身）—— sendText 会重新把它 push 回去。
       const base = sess.messages.slice(0, idx - 1);
+      const retrySession: AgentSession = {
+        ...sess,
+        contextArticles: retryArticles,
+        contextTags: retryTags,
+        messages: base,
+        updatedAt: Date.now(),
+      };
+      setPendingArticles(retryArticles);
+      setPendingTags(retryTags);
       setSessions((list) =>
         list.map((s) =>
-          s.id === sess.id ? { ...s, messages: base, updatedAt: Date.now() } : s,
+          s.id === sess.id
+            ? retrySession
+            : s,
         ),
       );
-      void sendText(prior.content, base);
+      void sendText(prior.content, {
+        articles: retryArticles,
+        tags: retryTags,
+        session: retrySession,
+        baseMessages: base,
+      });
     },
     [busy, activeId, sendText],
   );
@@ -802,54 +823,66 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     requestAnimationFrame(() => composerRef.current?.focus());
   }, []);
 
+  const persistActiveContext = useCallback(
+    (articles: AgentArticle[], tags: AgentTag[]) => {
+      if (!activeId) return;
+      setSessions((list) =>
+        list.map((s) =>
+          s.id === activeId
+            ? { ...s, contextArticles: articles, contextTags: tags, updatedAt: Date.now() }
+            : s,
+        ),
+      );
+    },
+    [activeId],
+  );
+
   // ---- @ / # / / picker handlers ----
   // 引用 token 与 textarea 文本解耦 —— ChatGPT / Codex 风格:已选项以独立胶囊
   // 在 composer 上方呈现,textarea 内只放纯用户输入。这样移除胶囊不会留下脏文本,
-  // 也避免胶囊与文本"双份"显示导致歧义。handleSend 只读 pendingArticles/Tags
-  // 数组(行 497-498),textarea 内容对 payload 无影响。
+  // 也避免胶囊与文本"双份"显示导致歧义。这些 chip 是会话级显式上下文:
+  // 发送、重试、追问都会复用，直到用户手动移除。
   const handlePickArticle = useCallback((article: AgentArticle) => {
-    setPendingArticles((curr) => {
-      if (curr.some((a) => a.id === article.id)) {
-        return curr.filter((a) => a.id !== article.id);
-      }
-      return [...curr, article];
-    });
-  }, []);
+    const next = pendingArticles.some((a) => a.id === article.id)
+      ? pendingArticles.filter((a) => a.id !== article.id)
+      : [...pendingArticles, article];
+    setPendingArticles(next);
+    persistActiveContext(next, pendingTags);
+  }, [pendingArticles, pendingTags, persistActiveContext]);
 
   const handlePickTag = useCallback((tag: AgentTag) => {
-    setPendingTags((curr) => {
-      if (curr.some((t) => t.slug === tag.slug)) {
-        return curr.filter((t) => t.slug !== tag.slug);
-      }
-      return [...curr, tag];
-    });
-  }, []);
+    const next = pendingTags.some((t) => t.slug === tag.slug)
+      ? pendingTags.filter((t) => t.slug !== tag.slug)
+      : [...pendingTags, tag];
+    setPendingTags(next);
+    persistActiveContext(pendingArticles, next);
+  }, [pendingArticles, pendingTags, persistActiveContext]);
 
   // remove handler 同时清理 draft 中可能残留的旧 "@title" / "#tag" 文本 ——
   // 兼容此前版本 insert 到 textarea 的会话草稿。
   const handleRemoveArticle = useCallback(
     (id: number) => {
-      setPendingArticles((curr) => {
-        const target = curr.find((a) => a.id === id);
-        if (target) {
-          setDraft((d) => stripMentionToken(d, '@', target.title));
-        }
-        return curr.filter((a) => a.id !== id);
-      });
+      const target = pendingArticles.find((a) => a.id === id);
+      if (target) {
+        setDraft((d) => stripMentionToken(d, '@', target.title));
+      }
+      const next = pendingArticles.filter((a) => a.id !== id);
+      setPendingArticles(next);
+      persistActiveContext(next, pendingTags);
     },
-    [],
+    [pendingArticles, pendingTags, persistActiveContext],
   );
   const handleRemoveTag = useCallback(
     (slug: string) => {
-      setPendingTags((curr) => {
-        const target = curr.find((t) => t.slug === slug);
-        if (target) {
-          setDraft((d) => stripMentionToken(d, '#', target.name));
-        }
-        return curr.filter((t) => t.slug !== slug);
-      });
+      const target = pendingTags.find((t) => t.slug === slug);
+      if (target) {
+        setDraft((d) => stripMentionToken(d, '#', target.name));
+      }
+      const next = pendingTags.filter((t) => t.slug !== slug);
+      setPendingTags(next);
+      persistActiveContext(pendingArticles, next);
     },
-    [],
+    [pendingArticles, pendingTags, persistActiveContext],
   );
 
   // ---- 斜杠命令 ----
@@ -883,7 +916,20 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             // 同时把它对应的 user 提取出来回到 draft
             if (msgs.length > 0 && msgs[msgs.length - 1].role === 'user') {
               const u = msgs.pop();
-              if (u) setDraft(u.content);
+              if (u) {
+                const nextArticles = u.contextArticles ?? s.contextArticles ?? [];
+                const nextTags = u.contextTags ?? s.contextTags ?? [];
+                setPendingArticles(nextArticles);
+                setPendingTags(nextTags);
+                setDraft(u.content);
+                return {
+                  ...s,
+                  contextArticles: nextArticles,
+                  contextTags: nextTags,
+                  messages: msgs,
+                  updatedAt: Date.now(),
+                };
+              }
             }
             return { ...s, messages: msgs, updatedAt: Date.now() };
           }),
@@ -912,7 +958,15 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     }
     setSessions((list) =>
       list.map((s) =>
-        s.id === clearTargetSessionId ? { ...s, messages: [], updatedAt: Date.now() } : s,
+        s.id === clearTargetSessionId
+          ? {
+              ...s,
+              messages: [],
+              contextArticles: [],
+              contextTags: [],
+              updatedAt: Date.now(),
+            }
+          : s,
       ),
     );
     if (activeId === clearTargetSessionId) {
@@ -922,11 +976,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     closeClearConfirm();
   }, [activeId, clearTargetSessionId, closeClearConfirm, finalizeStreamingMessage]);
 
-  // 切换会话时清空 pending 引用，避免引用串台到另一个会话
+  // 切换会话时恢复该会话自己的显式上下文，避免引用串台或刷新后丢失。
   useEffect(() => {
-    setPendingArticles([]);
-    setPendingTags([]);
-  }, [activeId]);
+    setPendingArticles(activeSession?.contextArticles ?? []);
+    setPendingTags(activeSession?.contextTags ?? []);
+  }, [activeSession?.id, activeSession?.contextArticles, activeSession?.contextTags]);
 
   // 智能滚动 —— 对齐 ChatGPT / Claude / Codex 的"流式跟随"心智模型：
   //   · 用户在底部 → 新消息 / 流式增量自动跟随；

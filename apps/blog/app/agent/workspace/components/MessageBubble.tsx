@@ -103,6 +103,7 @@ function MessageBubbleBase({
   const showTypingDots = !isUser && message.pending && !message.content && !message.error;
   // 流式中且已有正文 —— bubble 边沿走呼吸 aurora，让"正在生成"的状态可视化
   const isStreaming = !isUser && message.pending && !!message.content;
+  const showMessageBody = isUser || !!message.error || !!message.content || (!showThinkingPanel && showTypingDots);
 
   // LobeHub 风格操作条：不占用 YOU/AGENT 标题行，默认隐藏，hover/focus 时浮现。
   const hasActions = !!message.content || canEditUser || canRetryAssistant;
@@ -230,58 +231,60 @@ function MessageBubbleBase({
           </div>
         )}
 
-        {/* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */}
-        <div className="mx-auto w-full max-w-[680px]">
-          <div
-            className="agent-message-font agent-engraved-text break-words"
-            style={messageFontStyle}
-          >
-            {isUser ? (
-              <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
-            ) : message.error ? (
-              // 与气泡模式同款：部分内容保留 Markdown 渲染，错误信息作 footer。
-              <div>
-                {message.content && (
-                  <div className="agent-md agent-engraved-md">
-                    <MarkdownRenderer content={finalContent} />
-                  </div>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                    ERROR · {message.error}
-                  </span>
-                  {canRetryAssistant && (
-                    <button
-                      type="button"
-                      onClick={() => onRetry?.(message)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                      aria-label="重新生成回复"
-                    >
-                      <RefreshCcw className="w-3 h-3" /> 重试
-                    </button>
+        {showMessageBody && (
+          /* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */
+          <div className="mx-auto w-full max-w-[680px]">
+            <div
+              className="agent-message-font agent-engraved-text break-words"
+              style={messageFontStyle}
+            >
+              {isUser ? (
+                <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+              ) : message.error ? (
+                // 与气泡模式同款：部分内容保留 Markdown 渲染，错误信息作 footer。
+                <div>
+                  {message.content && (
+                    <div className="agent-md agent-engraved-md">
+                      <MarkdownRenderer content={finalContent} />
+                    </div>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                      ERROR · {message.error}
+                    </span>
+                    {canRetryAssistant && (
+                      <button
+                        type="button"
+                        onClick={() => onRetry?.(message)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                        aria-label="重新生成回复"
+                      >
+                        <RefreshCcw className="w-3 h-3" /> 重试
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : showTypingDots ? (
-              <TypingDots />
-            ) : message.pending ? (
-              <div
-                className={`agent-engraved-streaming agent-stream-fade${
-                  streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
-                }`}
-              >
-                <StreamMarkdown content={renderableContent} />
-                <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
-              </div>
-            ) : (
-              <div className="agent-md agent-engraved-md">
-                <MarkdownRenderer content={finalContent} />
-              </div>
-            )}
-          </div>
+              ) : showTypingDots ? (
+                <TypingDots />
+              ) : message.pending ? (
+                <div
+                  className={`agent-engraved-streaming agent-stream-fade${
+                    streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
+                  }`}
+                >
+                  <StreamMarkdown content={renderableContent} />
+                  <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
+                </div>
+              ) : (
+                <div className="agent-md agent-engraved-md">
+                  <MarkdownRenderer content={finalContent} />
+                </div>
+              )}
+            </div>
 
-          {messageActions}
-        </div>
+            {messageActions}
+          </div>
+        )}
 
         {sourcesList && <div className="mx-auto w-full max-w-[680px]">{sourcesList}</div>}
       </motion.article>
@@ -336,77 +339,81 @@ function MessageBubbleBase({
         </div>
       )}
 
-      {/* 主体气泡 */}
-      <div className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
-        <div
-          className={`agent-message-font min-w-0 break-words rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed transition-[border-color,box-shadow,transform] duration-quick ease-aether ${
-            isUser
-              ? 'max-w-[85%] whitespace-pre-wrap border border-[var(--ink-subtle)]/14 bg-[var(--bg-raised)] text-[var(--ink-primary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent),0_8px_22px_-20px_rgba(0,0,0,0.5)]'
-              : message.error && !message.content
-              ? 'w-full max-w-full whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_7%,transparent)] text-[var(--ink-primary)]'
-              : message.error
-              ? 'surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--ink-primary)]'
-              : isStreaming
-              ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] text-[var(--ink-primary)]'
-              : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/12 text-[var(--ink-primary)] shadow-[0_10px_30px_-26px_rgba(0,0,0,0.5)]'
-          }`}
-          style={messageFontStyle}
-        >
-          {isUser ? (
-            message.content
-          ) : message.error ? (
-            // 错误 / 中断态 —— 已收到的部分内容仍走 Markdown 完整渲染（中断
-            // 不该把排好版的回复打回纯文本原文），错误信息收敛成卡内 footer。
-            <>
-              {message.content && (
-                <div className="agent-md">
+      {showMessageBody && (
+        <>
+          {/* 主体气泡 */}
+          <div className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`agent-message-font min-w-0 break-words rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed transition-[border-color,box-shadow,transform] duration-quick ease-aether ${
+                isUser
+                  ? 'max-w-[85%] whitespace-pre-wrap border border-[var(--ink-subtle)]/14 bg-[var(--bg-raised)] text-[var(--ink-primary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent),0_8px_22px_-20px_rgba(0,0,0,0.5)]'
+                  : message.error && !message.content
+                  ? 'w-full max-w-full whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_7%,transparent)] text-[var(--ink-primary)]'
+                  : message.error
+                  ? 'surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--ink-primary)]'
+                  : isStreaming
+                  ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] text-[var(--ink-primary)]'
+                  : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/12 text-[var(--ink-primary)] shadow-[0_10px_30px_-26px_rgba(0,0,0,0.5)]'
+              }`}
+              style={messageFontStyle}
+            >
+              {isUser ? (
+                message.content
+              ) : message.error ? (
+                // 错误 / 中断态 —— 已收到的部分内容仍走 Markdown 完整渲染（中断
+                // 不该把排好版的回复打回纯文本原文），错误信息收敛成卡内 footer。
+                <>
+                  {message.content && (
+                    <div className="agent-md">
+                      <MarkdownRenderer content={finalContent} />
+                    </div>
+                  )}
+                  <div
+                    className={`flex flex-wrap items-center gap-3 ${
+                      message.content
+                        ? 'mt-3 border-t border-[var(--ink-subtle)]/12 pt-2.5'
+                        : ''
+                    }`}
+                  >
+                    <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                      ERROR · {message.error}
+                    </span>
+                    {canRetryAssistant && (
+                      <button
+                        type="button"
+                        onClick={() => onRetry?.(message)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                        aria-label="重新生成回复"
+                      >
+                        <RefreshCcw className="w-3 h-3" /> 重试
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : showTypingDots ? (
+                <TypingDots />
+              ) : message.pending ? (
+                // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer）
+                <div
+                  className={`agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
+                >
+                  <StreamMarkdown content={renderableContent} />
+                  <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
+                </div>
+              ) : (
+                // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色
+                <div
+                  className="agent-md"
+                >
                   <MarkdownRenderer content={finalContent} />
                 </div>
               )}
-              <div
-                className={`flex flex-wrap items-center gap-3 ${
-                  message.content
-                    ? 'mt-3 border-t border-[var(--ink-subtle)]/12 pt-2.5'
-                    : ''
-                }`}
-              >
-                <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                  ERROR · {message.error}
-                </span>
-                {canRetryAssistant && (
-                  <button
-                    type="button"
-                    onClick={() => onRetry?.(message)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                    aria-label="重新生成回复"
-                  >
-                    <RefreshCcw className="w-3 h-3" /> 重试
-                  </button>
-                )}
-              </div>
-            </>
-          ) : showTypingDots ? (
-            <TypingDots />
-          ) : message.pending ? (
-            // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer）
-            <div
-              className={`agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
-            >
-              <StreamMarkdown content={renderableContent} />
-              <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
             </div>
-          ) : (
-            // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色
-            <div
-              className="agent-md"
-            >
-              <MarkdownRenderer content={finalContent} />
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {messageActions}
+          {messageActions}
+        </>
+      )}
 
       {/* sources */}
       {!isUser && message.sources && message.sources.length > 0 && (

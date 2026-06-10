@@ -91,6 +91,22 @@ export interface ComposerHandle {
 const MIN_HEIGHT = 48;
 const DEFAULT_MAX = 220;
 const EXPANDED_MAX = 480;
+const MOBILE_QUERY = '(max-width: 768px)';
+
+function useComposerMobileMode(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia(MOBILE_QUERY);
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  return isMobile;
+}
 
 const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   {
@@ -124,6 +140,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const sendMenuRef = useRef<HTMLDivElement>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
+  const isMobile = useComposerMobileMode();
 
   useImperativeHandle(ref, () => ({
     focus: () => taRef.current?.focus(),
@@ -183,6 +200,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     if (busy) setSendMenuOpen(false);
   }, [busy]);
 
+  useEffect(() => {
+    if (isMobile) setSendMenuOpen(false);
+  }, [isMobile]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Esc 停止生成（ChatGPT 同款心智）—— 仅在没有弹层抢 Esc 语义时生效，
     // 否则用户想关 picker 却把回答停了。
@@ -192,6 +213,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       return;
     }
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (isMobile) return;
     const shouldSubmit =
       sendShortcut === 'enter'
         ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
@@ -458,7 +480,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 aria-label="停止生成"
                 whileTap={{ scale: 0.96 }}
                 transition={spring.precise}
-                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] md:h-8 md:px-3"
+                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-transparent bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--signal-danger)_26%,transparent)_inset] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] md:h-8 md:px-3"
               >
                 <span
                   aria-hidden="true"
@@ -471,22 +493,24 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             ) : (
               <motion.div
                 ref={sendMenuRef}
+                // 仅可发送时才给按压反馈;禁用态保持 inert(苹果级触感原则,
+                // gemini review #770)。
                 whileTap={canSend ? { scale: 0.97 } : undefined}
                 transition={spring.precise}
                 className={[
                   'relative flex h-11 shrink-0 items-center rounded-full border transition-[background-color,border-color,box-shadow] duration-quick ease-aether md:h-8',
                   canSend
                     ? 'border-transparent bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_20px_-10px_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]'
-                    : 'border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] text-[var(--ink-muted)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
+                    : 'border-transparent bg-[var(--bg-leaf)] text-[var(--ink-muted)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--ink-subtle)_22%,transparent)_inset,0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
                 ].join(' ')}
               >
                 <button
                   type="submit"
                   disabled={!canSend}
                   aria-label="发送"
-                  title={`发送（${activeShortcut.label}）`}
+                  title={isMobile ? '发送' : `发送（${activeShortcut.label}）`}
                   className={[
-                    'relative inline-flex h-11 w-11 items-center justify-center rounded-l-full bg-transparent transition-colors duration-quick ease-aether md:h-8 md:w-8',
+                    'relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-colors duration-quick ease-aether md:h-8 md:w-8 md:rounded-l-full md:rounded-r-none',
                     canSend
                       ? 'hover:bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)]'
                       : 'cursor-not-allowed opacity-58',
@@ -496,7 +520,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 </button>
                 <span
                   aria-hidden="true"
-                  className={`h-6 w-px md:h-5 ${
+                  className={`hidden h-6 w-px md:block md:h-5 ${
                     canSend
                       ? 'bg-[color-mix(in_oklch,var(--bg-void)_28%,transparent)]'
                       : 'bg-[var(--ink-subtle)]/18'
@@ -509,13 +533,13 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                   aria-haspopup="menu"
                   aria-expanded={sendMenuOpen}
                   title="选择发送方式"
-                  className="inline-flex h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] md:h-8 md:w-8"
+                  className="hidden h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] md:inline-flex md:h-8 md:w-8"
                 >
                   <ChevronDown className={`h-4 w-4 transition-transform md:h-3.5 md:w-3.5 ${sendMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 <AnimatePresence>
-                  {sendMenuOpen && (
+                  {sendMenuOpen && !isMobile && (
                     <motion.div
                       role="menu"
                       aria-label="发送触发方式"
