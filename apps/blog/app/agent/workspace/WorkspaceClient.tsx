@@ -478,8 +478,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       role: 'user',
       content: text,
       createdAt: startTs,
-      contextArticles: requestArticles.length ? requestArticles : undefined,
-      contextTags: requestTags.length ? requestTags : undefined,
+      contextArticles: requestArticles,
+      contextTags: requestTags,
     };
     const assistantMsg: AgentMessage = {
       id: newMessageId(),
