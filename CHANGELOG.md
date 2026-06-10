@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 灵境（Agent Workspace）流式体验与状态机修复 (2026-06-09, branch claude/agent-ui-redesign-n4g2oo)
+
+**背景：** 用户反馈灵境对话存在卡顿、长回答结尾"瞬移"、重试后内容错乱、中断后排版退化为纯文本等问题。本轮对 `apps/blog/app/agent/workspace` 做了流式管线与会话状态机的系统性修复 + 产品级打磨。
+
+**Fixed — 流式管线（卡顿根因）：**
+- **双重平滑管线冲突**：`WorkspaceClient` 的 rAF 追帧器与 `MessageBubble` 内 `useSmoothStream`（固定 45 chars/s）互相竞争，可见速率被钉死、lag 滚雪球、流结束整段瞬移。统一为父级单管线，气泡直渲 `message.content`；思考段保留独立平滑并升级为 **lag 自适应追帧**（每帧至少追掉 lag/15，指数收敛不瞬移）。
+- **长文降帧**：流式提交频率按内容长度自适应降到 ~30/20fps（>2500/>6000 字符），砍掉 StreamMarkdown 全量重 parse 的主线程占用；`message` 气泡移除逐帧 `layout` 测量。
+- **localStorage 每帧全量序列化**：流式期间 ~60 次/秒 `JSON.stringify` 写盘 → 600ms 尾随防抖 + `pagehide`/`visibilitychange`/卸载时 flush。
+- **「过渡动画」档位实时生效**：吐字模式（无/淡入/平滑）经 ref 透传进行中的流，切档即时响应。
+
+**Fixed — 会话状态机（内容错乱根因）：**
+- **重试发送陈旧历史**：重试截断后经闭包内旧 `activeSession` 组装 history，把刚删掉的旧回复重复发给模型 → `sendText` 新增 `baseMessages` 显式基线。
+- **中断丢失缓冲尾巴**：停止/切会话时消息定格在最后一个已绘制帧，服务端已送达但未追帧的字符被丢弃 → finalize 以服务端累加快照兜底 content/think。
+- **中断/出错回复排版退化**：错误态把整段已生成内容打回 `whitespace-pre-wrap` 纯文本 → 部分内容仍走 Markdown 完整渲染，错误信息收敛为卡内 footer（无内容时才整卡 danger 着色）。
+- 清空/删除正在 streaming 的会话现在先按"停止"语义收尾（abort + busy 释放），不再留幽灵流；`handleDelete` 的 `setActiveId` 移出 `setSessions` updater（StrictMode 纯函数纪律）。
+- **空回复兜底**：流正常结束但零正文 token 时标记可重试错误，不再留空白气泡。
+
+**Changed — 产品打磨与设计系统合规：**
+- `AgentSegmentedControl` 移除硬编码 `#fff` 渐变与 `dark:` 变体，全量迁移 Codex token（硬规则 §3.4 #1/#5）。
+- Composer：textarea `resize-y` → `resize-none`（手动拖拽与 autosize 互相覆盖）；**Esc 停止生成**（无弹层抢语义时）；**⌘/Ctrl+Shift+O 新建对话**。
+- 侧栏搜索无结果时展示「没有标题匹配」空态，不再误导「点击新对话开始」。
+
+**Changed — UI 视觉升级（第二轮）：**
+- **空态首屏人格化**：标题改为时段问候 + 用户昵称（"晚上好，{name}"，ChatGPT 同款心智）；建议项升级为「icon + 分类眉标 + 文案」卡片，四张卡分别以 `--aurora-1..4` 点色（仅组合既有 token）。
+- **顶栏生成态徽标**：流式中标题旁出现呼吸光点「生成中」胶囊 —— 用户上滑回看历史时也能感知流在跑。
+- **侧栏去噪**：删除每行重复的 MessageSquare 图标（纯噪声，激活态由左缘极光线表达）；删除分组眉标上"有图标无折叠行为"的假可供性 ChevronDown，改为「分组名 + 条数」。
+- 第二轮 review（gemini）采纳：`sendText`/`handleRetry` 经 `sessionsRef` 取会话，流式期间回调引用稳定，`MessageBubble` memo 不再被每帧击穿。
+
+**验证：** `tsc --noEmit` / `next build` / `pnpm design-system:check`（0 error，warning 339→338）全绿。
+
+**📄 文档影响：** 已更新本 `CHANGELOG.md`；无新增 API / DB schema / 共享组件，其余文档无需更新。
+
 ### Added — 模型中心能力对齐升级 (2026-06-09, branch feat/model-center-alignment)
 
 **背景：** 模型中心（`apps/admin/src/pages/ai-config` + `apps/ai-service`）对标主流模型/供应商配置中心，存在能力词表三层不一致、参数控件不可读、远程拉取缺能力/定价、加载态用文字等缺口。本轮自研补齐并融入，不在源码明面引入对标项目标识。

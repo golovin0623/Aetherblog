@@ -184,6 +184,13 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }, [busy]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Esc 停止生成（ChatGPT 同款心智）—— 仅在没有弹层抢 Esc 语义时生效，
+    // 否则用户想关 picker 却把回答停了。
+    if (e.key === 'Escape' && busy && picker === null && !sendMenuOpen) {
+      e.preventDefault();
+      onAbort?.();
+      return;
+    }
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     const shouldSubmit =
       sendShortcut === 'enter'
@@ -389,7 +396,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           rows={1}
           aria-label="消息输入框"
           placeholder={placeholder ?? '提问、创建或开始任务。@ 引用文章 · / 调用命令'}
-          className="agent-composer-textarea w-full resize-y bg-transparent px-1 outline-none text-[14.5px] leading-[1.6] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/62"
+          // resize-none：高度由 value 驱动的 autosize 接管（上方 useEffect），
+          // 手动拖拽柄与 autosize 每次输入互相覆盖，体验是"拖了又弹回"。
+          // 需要更大空间走右下 Maximize 展开按钮。
+          className="agent-composer-textarea w-full resize-none bg-transparent px-1 outline-none text-[14.5px] leading-[1.6] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/62"
           style={{ minHeight: `${MIN_HEIGHT}px` }}
           autoComplete="off"
           spellCheck={false}

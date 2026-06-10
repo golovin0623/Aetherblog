@@ -56,18 +56,16 @@ function MessageBubbleBase({
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
 
-  // 流式吐字节流 —— 模型 SSE 大颗粒抖动 → UI 看到匀速 typewriter。
-  // 仅 assistant pending 时启用；user 消息和 finished assistant 直接 raw。
-  const smoothedContent = useSmoothStream(
-    message.content,
-    !isUser && !!message.pending,
-    streamAnimation,
-  );
+  // 正文吐字平滑由 WorkspaceClient 的 rAF 管线统一负责 —— 流式期间
+  // message.content 已是按"过渡动画"档位匀速推进的屏幕态，这里直接渲染。
+  // 历史版本在此之上又叠了一层 useSmoothStream（固定 45 chars/s），两个
+  // typewriter 互相竞争：可见速率被钉死、lag 滚雪球、流结束整段瞬移。
+  // 思考段（ThinkingPanel）没有父级管线，仍用 useSmoothStream 自平滑。
 
   // CJK 友好预处理 —— 修正 `**xx：**汉字` 等 CommonMark 闭合盲点。
   const renderableContent = useMemo(
-    () => normalizeCjkInlineMarkdown(smoothedContent),
-    [smoothedContent],
+    () => normalizeCjkInlineMarkdown(message.content),
+    [message.content],
   );
 
   const finalContent = useMemo(
@@ -183,7 +181,6 @@ function MessageBubbleBase({
   if (displayMode === 'engraved') {
     return (
       <motion.article
-        layout="position"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
@@ -239,26 +236,31 @@ function MessageBubbleBase({
             className="agent-message-font agent-engraved-text break-words"
             style={messageFontStyle}
           >
-            {isUser || message.error ? (
-              <div className="whitespace-pre-wrap leading-relaxed">
-                {message.content}
-                {message.error && (
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                      ERROR · {message.error}
-                    </span>
-                    {canRetryAssistant && (
-                      <button
-                        type="button"
-                        onClick={() => onRetry?.(message)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                        aria-label="重新生成回复"
-                      >
-                        <RefreshCcw className="w-3 h-3" /> 重试
-                      </button>
-                    )}
+            {isUser ? (
+              <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+            ) : message.error ? (
+              // 与气泡模式同款：部分内容保留 Markdown 渲染，错误信息作 footer。
+              <div>
+                {message.content && (
+                  <div className="agent-md agent-engraved-md">
+                    <MarkdownRenderer content={finalContent} />
                   </div>
                 )}
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                    ERROR · {message.error}
+                  </span>
+                  {canRetryAssistant && (
+                    <button
+                      type="button"
+                      onClick={() => onRetry?.(message)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                      aria-label="重新生成回复"
+                    >
+                      <RefreshCcw className="w-3 h-3" /> 重试
+                    </button>
+                  )}
+                </div>
               </div>
             ) : showTypingDots ? (
               <TypingDots />
@@ -289,7 +291,6 @@ function MessageBubbleBase({
   // ============== 气泡模式（bubble，默认）==============
   return (
     <motion.article
-      layout="position"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
@@ -341,34 +342,48 @@ function MessageBubbleBase({
           className={`agent-message-font min-w-0 break-words rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed transition-[border-color,box-shadow,transform] duration-quick ease-aether ${
             isUser
               ? 'max-w-[85%] whitespace-pre-wrap border border-[var(--ink-subtle)]/14 bg-[var(--bg-raised)] text-[var(--ink-primary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent),0_8px_22px_-20px_rgba(0,0,0,0.5)]'
-              : message.error
+              : message.error && !message.content
               ? 'w-full max-w-full whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_7%,transparent)] text-[var(--ink-primary)]'
+              : message.error
+              ? 'surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--ink-primary)]'
               : isStreaming
               ? 'agent-bubble-pending surface-leaf w-full max-w-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] text-[var(--ink-primary)]'
               : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/12 text-[var(--ink-primary)] shadow-[0_10px_30px_-26px_rgba(0,0,0,0.5)]'
           }`}
           style={messageFontStyle}
         >
-          {isUser || message.error ? (
+          {isUser ? (
+            message.content
+          ) : message.error ? (
+            // 错误 / 中断态 —— 已收到的部分内容仍走 Markdown 完整渲染（中断
+            // 不该把排好版的回复打回纯文本原文），错误信息收敛成卡内 footer。
             <>
-              {message.content}
-              {message.error && (
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                    ERROR · {message.error}
-                  </span>
-                  {canRetryAssistant && (
-                    <button
-                      type="button"
-                      onClick={() => onRetry?.(message)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
-                      aria-label="重新生成回复"
-                    >
-                      <RefreshCcw className="w-3 h-3" /> 重试
-                    </button>
-                  )}
+              {message.content && (
+                <div className="agent-md">
+                  <MarkdownRenderer content={finalContent} />
                 </div>
               )}
+              <div
+                className={`flex flex-wrap items-center gap-3 ${
+                  message.content
+                    ? 'mt-3 border-t border-[var(--ink-subtle)]/12 pt-2.5'
+                    : ''
+                }`}
+              >
+                <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                  ERROR · {message.error}
+                </span>
+                {canRetryAssistant && (
+                  <button
+                    type="button"
+                    onClick={() => onRetry?.(message)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                    aria-label="重新生成回复"
+                  >
+                    <RefreshCcw className="w-3 h-3" /> 重试
+                  </button>
+                )}
+              </div>
             </>
           ) : showTypingDots ? (
             <TypingDots />
