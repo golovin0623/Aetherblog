@@ -91,7 +91,9 @@ export interface ComposerHandle {
 const MIN_HEIGHT = 48;
 const DEFAULT_MAX = 220;
 const EXPANDED_MAX = 480;
-const MOBILE_QUERY = '(max-width: 768px)';
+// 与 Tailwind `md:`（min-width: 768px）互补：768px 必须判为桌面，
+// 否则恰好 768px 时 chevron 可见但菜单被 isMobile 拦截、Enter 也不发送。
+const MOBILE_QUERY = '(max-width: 767.98px)';
 
 function useComposerMobileMode(): boolean {
   const [isMobile, setIsMobile] = useState(false);
