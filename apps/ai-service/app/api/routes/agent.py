@@ -551,8 +551,15 @@ def _coerce_content_events(value: Any) -> list[dict[str, str]]:
         text = _coerce_delta_text(value)
         if not text:
             return []
+        is_think = value.get("thought") is True or block_type in {
+            "thinking",
+            "thought",
+            "reasoning",
+            "reasoning_content",
+            "reasoning_text",
+        }
         return [{
-            "type": "think" if value.get("thought") is True else "delta",
+            "type": "think" if is_think else "delta",
             "content": text,
         }]
     model_dump = getattr(value, "model_dump", None)

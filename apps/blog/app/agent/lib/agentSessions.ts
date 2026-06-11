@@ -1,5 +1,7 @@
 'use client';
 
+import type { AgentArticle, AgentTag } from './agentResources';
+
 /**
  * Agent 会话本地存储层
  *
@@ -16,6 +18,10 @@ export interface AgentMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** 本轮 user 消息显式绑定的文章上下文。重试/编辑时用它恢复请求上下文。 */
+  contextArticles?: AgentArticle[];
+  /** 本轮 user 消息显式绑定的标签上下文。重试/编辑时用它恢复请求上下文。 */
+  contextTags?: AgentTag[];
   /** 模型流式返回的"思考过程"段，可折叠展示。 */
   think?: string;
   /** RAG 引用源 —— 由后端 SSE `sources` 事件填充。 */
@@ -41,6 +47,9 @@ export interface AgentSession {
   /** 用户在 ModelPicker 选中的模型；null 表示由后端按任务路由自动决定。 */
   modelId?: string | null;
   providerCode?: string | null;
+  /** 会话级显式引用上下文。发送后继续保留，直到用户手动移除或切换会话。 */
+  contextArticles?: AgentArticle[];
+  contextTags?: AgentTag[];
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];

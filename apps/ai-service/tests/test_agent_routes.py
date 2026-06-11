@@ -306,6 +306,23 @@ async def test_agent_stream_splits_gemini_thought_content_parts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_stream_classifies_named_thinking_content_parts() -> None:
+    stream = _aiter([
+        _stream_part(SimpleNamespace(content=[
+            {"type": "thinking", "thinking": "先读取引用文章"},
+            {"type": "text", "text": "最终回答"},
+        ])),
+    ])
+
+    events = [event async for event in agent_module._stream_litellm_agent_events(stream)]
+
+    assert events == [
+        {"type": "think", "content": "先读取引用文章"},
+        {"type": "delta", "content": "最终回答"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_build_atlas_context_uses_last_user_message_for_semantic_recall(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
