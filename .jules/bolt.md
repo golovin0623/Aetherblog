@@ -1,0 +1,3 @@
+## 2025-06-12 - Hook Overhead Anti-pattern
+**Learning:** In React components (e.g., `ArticleCard`), wrapping trivial string operations and basic conditional object creation in `useMemo` can actually degrade performance. The overhead of invoking the `useMemo` hook and allocating memory for its dependency array/closure exceeds the savings from avoiding garbage collection of simple string manipulations.
+**Action:** When acting as 'Bolt', do not use `useMemo` for trivial operations (like simple regex replacements, `Array.slice`, or boolean fallbacks). Instead, combine these operations into a single existing `useMemo` if applicable, or remove the memoization entirely to reduce hook overhead and avoid micro-optimization anti-patterns.

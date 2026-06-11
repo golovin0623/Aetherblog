@@ -41,16 +41,20 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   const visibleTags = tags.slice(0, maxVisibleTags);
   const remainingTagCount = tags.length - maxVisibleTags;
 
-  const previewSource = useMemo(() => {
-    const manualSummary = summary?.trim();
-    if (manualSummary) return { text: manualSummary, automatic: false };
-    const automaticPreview = contentPreview?.trim();
-    if (automaticPreview) return { text: automaticPreview, automatic: true };
-    return null;
-  }, [contentPreview, summary]);
-
+  // ⚡ Bolt: Removed useMemo for previewSource as trivial string operations have lower overhead than hook invocation, avoiding micro-optimization anti-patterns. Combined into displaySummary.
   const displaySummary = useMemo(() => {
+    const manualSummary = summary?.trim();
+    const automaticPreview = contentPreview?.trim();
+
+    let previewSource = null;
+    if (manualSummary) {
+      previewSource = { text: manualSummary, automatic: false };
+    } else if (automaticPreview) {
+      previewSource = { text: automaticPreview, automatic: true };
+    }
+
     if (!previewSource) return null;
+
     const processed = previewSource.text
       .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
       .replace(/^:::\s*$/gm, '')
@@ -64,7 +68,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
       text: processed.slice(0, 140) + (processed.length > 140 ? '…' : ''),
       automatic: previewSource.automatic,
     };
-  }, [previewSource]);
+  }, [contentPreview, summary]);
 
   return (
     <Link
