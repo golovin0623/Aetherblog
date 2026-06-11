@@ -14,7 +14,7 @@ import { extractSocialLinks } from '../lib/socialLinks';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 import { useSiteSettings } from './SiteSettingsProvider';
-import AvatarImage from './AvatarImage';
+import { CachedAvatarImage } from './CachedAvatarImage';
 
 // 导航页面类型
 type NavPage = 'posts' | 'timeline' | 'agent' | 'friends' | 'about' | 'design' | null;
@@ -230,13 +230,11 @@ const MobileMenu = memo(function MobileMenu() {
               <div className="flex flex-col items-center text-center">
                 <div className="relative w-14 h-14 mb-2">
                   <div className="relative w-full h-full rounded-full overflow-hidden bg-[var(--bg-secondary)] shadow-[0_8px_20px_-8px_rgba(15,23,42,0.28),0_3px_8px_-3px_rgba(15,23,42,0.14)] dark:shadow-[0_10px_24px_-10px_rgba(0,0,0,0.6),0_3px_10px_-3px_rgba(0,0,0,0.4)]">
-                    <AvatarImage
+                    <CachedAvatarImage
                       src={authorAvatar}
                       alt=""
-                      sizes="56px"
-                      className="object-cover"
-                      unoptimized={authorAvatar.startsWith('/api/uploads') || authorAvatar.startsWith('/uploads')}
-                      ariaHidden
+                      className="h-full w-full object-cover"
+                      aria-hidden
                     />
                   </div>
                 </div>

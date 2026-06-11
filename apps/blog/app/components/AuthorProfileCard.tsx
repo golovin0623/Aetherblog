@@ -9,7 +9,7 @@ import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 import { useSiteSettings } from './SiteSettingsProvider';
-import AvatarImage from './AvatarImage';
+import { CachedAvatarImage } from './CachedAvatarImage';
 
 // SECURITY (VULN-098): 限制 `social_links` JSON 解析的大小，避免恶意超大串在
 // 受害者浏览器里递归解析消耗内存；外加成员数上限防御 DoS。
@@ -250,15 +250,12 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
           <div className="relative w-full h-full rounded-full overflow-hidden outline-none focus:outline-none shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6),0_4px_14px_-4px_rgba(0,0,0,0.4)] bg-[var(--bg-secondary)] transition-all duration-300">
-            <AvatarImage
+            <CachedAvatarImage
               src={avatar}
-              alt={name}
-              sizes="96px"
-              className="object-cover outline-none select-none"
-              priority
+              alt=""
+              className="h-full w-full object-cover outline-none select-none"
               draggable={false}
-              ariaHidden
-              unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
+              aria-hidden
             />
           </div>
         </div>
