@@ -702,7 +702,7 @@ export default function MusicPage() {
                   >
                     <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
                     <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">
-                      {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media.fileSize)}
+                      {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media?.fileSize ?? 0)}
                     </p>
                   </button>
                   <div className="flex items-center gap-2">
@@ -878,7 +878,7 @@ export default function MusicPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media.originalName}</p>
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
           </div>
           <button type="button" onClick={onClose} className={iconButtonClass()}>
             <X className="h-4 w-4" />
@@ -1160,7 +1160,7 @@ export default function MusicPage() {
                     <span className="tnum text-xs font-semibold text-[var(--ink-muted)]">{index + 1}</span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
-                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media.originalName}</p>
+                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')}>

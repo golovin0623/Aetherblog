@@ -154,7 +154,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
         >
           <span className="block h-full rounded-full bg-[#ff4d4f] transition-[width] duration-200" style={{ width: `${isCurrentTrack ? percent : 0}%` }} />
         </button>
-        <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-[var(--text-muted)]">
+        <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--text-muted)]">
           <span>{isCurrentTrack ? formatMusicClock(progress) : '0:00'}</span>
           <span>{formatMusicClock(activeDuration)}</span>
         </div>

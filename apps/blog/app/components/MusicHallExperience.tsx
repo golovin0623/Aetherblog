@@ -167,7 +167,7 @@ export default function MusicHallExperience() {
               >
                 <span className="block h-full rounded-full bg-[#ff4d4f]" style={{ width: `${percent}%` }} />
               </button>
-              <div className="mt-2 flex items-center justify-between text-xs tabular-nums text-white/45">
+              <div className="mt-2 flex items-center justify-between text-xs tnum text-white/45">
                 <span>{formatMusicClock(progress)}</span>
                 <span>{formatMusicClock(duration || activeTrack?.durationSeconds || 0)}</span>
               </div>
@@ -270,7 +270,7 @@ export default function MusicHallExperience() {
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-black text-white/88">{track.title}</span>
-                        <span className="mt-1 block truncate text-xs text-white/46">{track.artist || '未知艺术家'} · {track.media.originalName}</span>
+                        <span className="mt-1 block truncate text-xs text-white/46">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</span>
                       </span>
                       {active && isPlaying ? (
                         <span className="flex h-7 items-end gap-0.5" aria-hidden="true">

@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 
 function resolveAudioUrl(track: MusicTrack | undefined): string {
   if (!track) return '';
-  const raw = track.media.publicUrl || track.media.fileUrl || '';
+  const raw = track.media?.publicUrl || track.media?.fileUrl || '';
   if (!raw) return '';
   if (raw.startsWith('uploads/')) return `/${raw}`;
   return raw;

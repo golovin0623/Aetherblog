@@ -42,7 +42,7 @@ export interface LyricLine {
 
 export function resolveMusicAudioSrc(track: MusicTrack | undefined): string {
   if (!track) return '';
-  const raw = track.media.publicUrl || track.media.fileUrl || '';
+  const raw = track.media?.publicUrl || track.media?.fileUrl || '';
   if (!raw) return '';
   if (raw.startsWith('uploads/')) return `/${raw}`;
   const safe = sanitizeUrl(raw, '');
@@ -173,6 +173,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const currentTrack = tracks[currentIndex];
   const audioSrc = resolveMusicAudioSrc(currentTrack);
   const canRender = Boolean(player?.enabled && tracks.length > 0);
+  const carouselEnabled = Boolean(
+    player?.carouselEnabled ||
+      player?.playlist?.carouselEnabled ||
+      player?.playbackMode === 'CAROUSEL'
+  );
+  const carouselIntervalMs = Math.max(3, player?.carouselIntervalSeconds || 8) * 1000;
   const lyrics = useMemo(() => parseMusicLyric(currentTrack?.lyric), [currentTrack?.lyric]);
   const lyricIndex = useMemo(() => activeLyricIndex(lyrics, progress), [lyrics, progress]);
   const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
@@ -202,15 +208,21 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [player?.randomEnabled, player?.playlist?.randomEnabled, player?.playbackMode]);
 
   useEffect(() => {
-    if (currentIndex >= tracks.length) {
+    if (tracks.length > 0 && currentIndex >= tracks.length) {
       setCurrentIndex(0);
     }
-    if (tracks.length === 0) {
+    if (!canRender) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
       setIsPlaying(false);
       setProgress(0);
       setDuration(0);
     }
-  }, [currentIndex, tracks.length]);
+  }, [canRender, currentIndex, tracks.length]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -307,6 +319,18 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   const nextTrack = useCallback(() => advanceTrack(true), [advanceTrack]);
 
+  useEffect(() => {
+    if (!canRender || !carouselEnabled || tracks.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setCurrentIndex((index) =>
+        shuffle ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
+      );
+    }, carouselIntervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [canRender, carouselEnabled, carouselIntervalMs, shuffle, tracks.length]);
+
   const seekToPercent = useCallback((nextPercent: number) => {
     const audio = audioRef.current;
     if (!audio || duration <= 0) return;
@@ -341,6 +365,13 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     });
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
     navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+
+    return () => {
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('previoustrack', null);
+      navigator.mediaSession.setActionHandler('nexttrack', null);
+    };
   }, [currentTrack, nextTrack, player?.playlist?.name, previousTrack]);
 
   const value = useMemo<MusicPlayerContextValue>(() => ({
@@ -607,7 +638,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 >
                   <span className="block h-full rounded-full bg-[#ff4d4f]" style={{ width: `${percent}%` }} />
                 </button>
-                <div className="flex items-center justify-between text-xs tabular-nums text-white/48">
+                <div className="flex items-center justify-between text-xs tnum text-white/48">
                   <span>{formatMusicClock(progress)}</span>
                   <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
                 </div>
@@ -692,7 +723,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                           : 'border-white/8 bg-black/12 hover:bg-white/8'
                       )}
                     >
-                      <span className="text-xs tabular-nums text-white/40">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="text-xs tnum text-white/40">{String(index + 1).padStart(2, '0')}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-bold text-white/86">{track.title}</span>
                         <span className="mt-0.5 block truncate text-xs text-white/42">{track.artist || '未知艺术家'}</span>
