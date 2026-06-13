@@ -178,6 +178,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       player?.playlist?.carouselEnabled ||
       player?.playbackMode === 'CAROUSEL'
   );
+  const shouldRotateCarousel = carouselEnabled && (!isPlaying || player?.playbackMode === 'CAROUSEL');
   const carouselIntervalMs = Math.max(3, player?.carouselIntervalSeconds || 8) * 1000;
   const lyrics = useMemo(() => parseMusicLyric(currentTrack?.lyric), [currentTrack?.lyric]);
   const lyricIndex = useMemo(() => activeLyricIndex(lyrics, progress), [lyrics, progress]);
@@ -320,7 +321,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const nextTrack = useCallback(() => advanceTrack(true), [advanceTrack]);
 
   useEffect(() => {
-    if (!canRender || !carouselEnabled || tracks.length <= 1) return;
+    if (!canRender || !shouldRotateCarousel || tracks.length <= 1) return;
 
     const timer = window.setInterval(() => {
       setCurrentIndex((index) =>
@@ -329,7 +330,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }, carouselIntervalMs);
 
     return () => window.clearInterval(timer);
-  }, [canRender, carouselEnabled, carouselIntervalMs, shuffle, tracks.length]);
+  }, [canRender, carouselIntervalMs, shouldRotateCarousel, shuffle, tracks.length]);
 
   const seekToPercent = useCallback((nextPercent: number) => {
     const audio = audioRef.current;
