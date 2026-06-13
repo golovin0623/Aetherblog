@@ -563,8 +563,9 @@ func formatTimePtr(t *time.Time) string {
 }
 
 // filterBodyKBIDs 在转发到 ai-service 前，按当前用户权限过滤 chat 请求 body 里的 kbIds。
-// 如果客户端没有显式传 kbIds（或传 null / []），自动注入当前用户可用的 KB，
+// 如果客户端没有显式传 kbIds，自动注入当前用户可用的 KB，
 // 让 Agent 默认具备“读可见知识库”的能力，而不是必须先经过 KB picker。
+// 显式 null / [] 表示用户选择不使用任何知识库，不做自动注入。
 //
 // 返回值约定：
 //   - (newBody, nil)：body 已被过滤或自动注入 kbIds
@@ -579,15 +580,18 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 		return nil, fmt.Errorf("parse chat body: %w", err)
 	}
 	kbField, exists := raw["kbIds"]
-	uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
-	if err != nil {
-		return nil, fmt.Errorf("build user context: %w", err)
-	}
 
-	// kbIds 可能是 missing / null / [] / [ids...]。missing/null/[] 统一走自动
-	// 可用 KB 注入；显式非空数组才进入权限过滤。
-	if !exists || string(kbField) == "null" || string(kbField) == "[]" {
+	// kbIds 可能是 missing / null / [] / [ids...]。只有 missing 走自动
+	// 可用 KB 注入；显式 null / [] 表示不使用任何知识库。
+	if !exists {
+		uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
+		if err != nil {
+			return nil, fmt.Errorf("build user context: %w", err)
+		}
 		return h.rewriteBodyWithAutoKBIDs(ctx, raw, uc, userID)
+	}
+	if strings.TrimSpace(string(kbField)) == "null" {
+		return nil, nil
 	}
 
 	var ids []int64
@@ -595,7 +599,12 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 		return nil, fmt.Errorf("parse kbIds: %w", err)
 	}
 	if len(ids) == 0 {
-		return h.rewriteBodyWithAutoKBIDs(ctx, raw, uc, userID)
+		return nil, nil
+	}
+
+	uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
+	if err != nil {
+		return nil, fmt.Errorf("build user context: %w", err)
 	}
 
 	allowed := h.kbSvc.FilterAuthorizedKBIDs(ctx, ids, uc)

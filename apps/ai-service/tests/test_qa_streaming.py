@@ -28,9 +28,15 @@ class FakeVectorStore:
     def __init__(self, results):
         self.results = results
         self.calls = 0
+        self.active_profile = object()
+        self.last_profile = None
 
-    async def semantic_search(self, q, limit):  # noqa: ARG002 — 与真实签名对齐
+    async def get_active_profile(self):
+        return self.active_profile
+
+    async def semantic_search(self, q, limit, profile=None):  # noqa: ARG002 — 与真实签名对齐
         self.calls += 1
+        self.last_profile = profile
         return self.results
 
 
@@ -38,8 +44,12 @@ class FailingVectorStore:
     def __init__(self, error: Exception) -> None:
         self.error = error
         self.calls = 0
+        self.active_profile = object()
 
-    async def semantic_search(self, q, limit):  # noqa: ARG002
+    async def get_active_profile(self):
+        return self.active_profile
+
+    async def semantic_search(self, q, limit, profile=None):  # noqa: ARG002
         self.calls += 1
         raise self.error
 
@@ -91,9 +101,10 @@ def test_qa_emits_result_event_with_sources_before_done():
         },
     ]
     chunks = ["RAG", " 把检索", "结果"]
+    vector_store = FakeVectorStore(sources_results)
 
     async def mock_get_vector_store():
-        return FakeVectorStore(sources_results)
+        return vector_store
 
     async def mock_get_llm_router():
         return FakeLlmRouter(chunks)
@@ -141,6 +152,7 @@ def test_qa_emits_result_event_with_sources_before_done():
     # 向后兼容: sources 自定义事件载荷与 result.data.sources 一致
     sources_event = events[sources_idx]
     assert sources_event["sources"] == expected_sources
+    assert vector_store.last_profile is vector_store.active_profile
 
 
 def test_qa_falls_back_to_public_blog_overview_when_semantic_has_no_hits():

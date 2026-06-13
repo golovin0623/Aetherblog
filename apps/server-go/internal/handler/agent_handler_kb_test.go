@@ -91,6 +91,46 @@ func TestAgentHandlerFilterBodyKBIDsAutoInjectsUsableKnowledgeBases(t *testing.T
 	}
 }
 
+func TestAgentHandlerFilterBodyKBIDsKeepsExplicitNullSelection(t *testing.T) {
+	fakeKB := &fakeAgentKBService{
+		pickerRows: []dto.AgentKnowledgeBaseVO{
+			{ID: 1, Kind: model.KBKindSystemPosts, Name: "博客文章"},
+		},
+	}
+	h := &AgentHandler{kbSvc: fakeKB}
+
+	body, err := h.filterBodyKBIDs(t.Context(), []byte(`{"messages":[],"kbIds":null}`), 7, "user")
+	if err != nil {
+		t.Fatalf("filterBodyKBIDs returned error: %v", err)
+	}
+	if body != nil {
+		t.Fatalf("filterBodyKBIDs returned %s, want nil body for explicit null kbIds", string(body))
+	}
+	if fakeKB.buildCalls != 0 || fakeKB.pickerCalls != 0 || fakeKB.filterCalls != 0 {
+		t.Fatalf("calls = build:%d picker:%d filter:%d, want 0/0/0", fakeKB.buildCalls, fakeKB.pickerCalls, fakeKB.filterCalls)
+	}
+}
+
+func TestAgentHandlerFilterBodyKBIDsKeepsExplicitEmptySelection(t *testing.T) {
+	fakeKB := &fakeAgentKBService{
+		pickerRows: []dto.AgentKnowledgeBaseVO{
+			{ID: 1, Kind: model.KBKindSystemPosts, Name: "博客文章"},
+		},
+	}
+	h := &AgentHandler{kbSvc: fakeKB}
+
+	body, err := h.filterBodyKBIDs(t.Context(), []byte(`{"messages":[],"kbIds":[]}`), 7, "user")
+	if err != nil {
+		t.Fatalf("filterBodyKBIDs returned error: %v", err)
+	}
+	if body != nil {
+		t.Fatalf("filterBodyKBIDs returned %s, want nil body for explicit empty kbIds", string(body))
+	}
+	if fakeKB.buildCalls != 0 || fakeKB.pickerCalls != 0 || fakeKB.filterCalls != 0 {
+		t.Fatalf("calls = build:%d picker:%d filter:%d, want 0/0/0", fakeKB.buildCalls, fakeKB.pickerCalls, fakeKB.filterCalls)
+	}
+}
+
 func TestAgentHandlerFilterBodyKBIDsFiltersExplicitIDsWithoutAutoPicker(t *testing.T) {
 	fakeKB := &fakeAgentKBService{filtered: []int64{2}}
 	h := &AgentHandler{kbSvc: fakeKB}

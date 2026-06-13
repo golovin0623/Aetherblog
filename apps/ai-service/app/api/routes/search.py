@@ -661,7 +661,8 @@ async def qa_search(
     # 第 1 步：语义检索得到上下文。公开 QA 不能因为 embedding/profile 抖动
     # 直接退化成"没有内容"，必须继续走公开文章关键词/概览回退。
     try:
-        context_results = await vector_store.semantic_search(q, limit=_QA_SEMANTIC_LIMIT)
+        profile = await vector_store.get_active_profile()
+        context_results = await vector_store.semantic_search(q, limit=_QA_SEMANTIC_LIMIT, profile=profile)
     except Exception as exc:  # noqa: BLE001 - public QA has a read-only fallback path
         logger.warning("search.qa_semantic_failed", extra={"data": {"error": str(exc)[:240]}})
         context_results = []
