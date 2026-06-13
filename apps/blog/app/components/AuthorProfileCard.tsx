@@ -10,6 +10,7 @@ import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 import { useSiteSettings } from './SiteSettingsProvider';
 import { CachedAvatarImage } from './CachedAvatarImage';
+import { ProfileMusicPlayer } from './ProfileMusicPlayer';
 
 // SECURITY (VULN-098): 限制 `social_links` JSON 解析的大小，避免恶意超大串在
 // 受害者浏览器里递归解析消耗内存；外加成员数上限防御 DoS。
@@ -289,6 +290,8 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
             </Link>
           </div>
         </div>
+
+        <ProfileMusicPlayer />
 
         <SocialLinksCarousel socialLinks={socialLinks} />
       </div>

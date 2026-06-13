@@ -3,6 +3,7 @@ import { ArrowRight, Sparkles, LayoutGrid, ChevronDown } from 'lucide-react';
 import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 import HeroParallaxContent from './components/HeroParallaxContent';
+import { ProfileMusicPlayer } from './components/ProfileMusicPlayer';
 import SiteFooter from './components/SiteFooter';
 import StackedParallax from './components/StackedParallax';
 
@@ -133,6 +134,8 @@ export default async function HomePage() {
       {/* 最新文章区域 */}
       {posts.length > 0 && (
         <section id="latest-posts" className="max-w-7xl mx-auto px-4 pt-12 pb-28 md:pb-20 scroll-mt-32">
+          <ProfileMusicPlayer surface="home" className="mx-auto max-w-3xl" />
+
           {/* 带有装饰元素的区域标题 */}
           <div className="relative mb-12">
             {/* 背景光晕 */}
