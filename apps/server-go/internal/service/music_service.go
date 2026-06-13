@@ -439,19 +439,24 @@ func (s *MusicService) PublicPlayer(ctx context.Context) (*dto.MusicPlayerVO, er
 		return out, nil
 	}
 
-	tracks, _, err := s.repo.ListTracks(ctx, repository.MusicTrackFilter{
-		PlaylistID: playlistID,
-		PageNum:    1,
-		PageSize:   100,
-		PublicOnly: true,
-	})
-	if err != nil {
-		return nil, err
-	}
 	out.Playlist = playlist
-	out.Tracks = make([]dto.MusicTrackVO, 0, len(tracks))
-	for _, row := range tracks {
-		out.Tracks = append(out.Tracks, s.trackRowToVO(row))
+	out.Tracks = []dto.MusicTrackVO{}
+	for pageNum := 1; ; pageNum++ {
+		rows, total, err := s.repo.ListTracks(ctx, repository.MusicTrackFilter{
+			PlaylistID: playlistID,
+			PageNum:    pageNum,
+			PageSize:   100,
+			PublicOnly: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out.Tracks = append(out.Tracks, s.trackRowToVO(row))
+		}
+		if len(rows) == 0 || int64(len(out.Tracks)) >= total {
+			break
+		}
 	}
 	return out, nil
 }

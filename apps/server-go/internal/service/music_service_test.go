@@ -56,6 +56,10 @@ func musicPlaylistRowsWithTrackCount(trackCount int64) *sqlmock.Rows {
 }
 
 func musicTrackRows() *sqlmock.Rows {
+	return musicTrackRowsWithID(11, 99, "夜航")
+}
+
+func musicTrackRowsWithID(trackID, mediaID int64, title string) *sqlmock.Rows {
 	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	mime := "audio/mpeg"
 	folderID := int64(7)
@@ -65,7 +69,7 @@ func musicTrackRows() *sqlmock.Rows {
 		"play_count", "created_at", "updated_at", "media_original_name", "media_file_url",
 		"media_file_size", "media_mime_type", "media_file_type", "media_folder_id", "media_deleted",
 	}).AddRow(
-		int64(11), int64(99), "夜航", "Aether", "", nil, nil, nil, "MEDIA_LIBRARY",
+		trackID, mediaID, title, "Aether", "", nil, nil, nil, "MEDIA_LIBRARY",
 		"ACTIVE", 0, false, int64(0), now, now, "night-flight.mp3", "/api/uploads/music/night-flight.mp3",
 		int64(4_096), mime, "AUDIO", folderID, false,
 	)
@@ -138,6 +142,40 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	}
 	if got := player.Tracks[0].Media.PublicURL; got != "/api/v1/public/media/99" {
 		t.Fatalf("track public URL = %q, want stable media endpoint", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMusicServicePublicPlayerLoadsFullPlaylistQueue(t *testing.T) {
+	svc, mock, cleanup := newMusicServiceMock(t)
+	defer cleanup()
+	expectMusicSettings(mock, true)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(DISTINCT p.id)`)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
+		WithArgs(1, 0).
+		WillReturnRows(musicPlaylistRowsWithTrackCount(2))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT `)).
+		WithArgs(int64(42), 100, 0).
+		WillReturnRows(musicTrackRowsWithID(11, 99, "第一首"))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT `)).
+		WithArgs(int64(42), 100, 100).
+		WillReturnRows(musicTrackRowsWithID(12, 100, "第二首"))
+
+	player, err := svc.PublicPlayer(context.Background())
+	if err != nil {
+		t.Fatalf("PublicPlayer: %v", err)
+	}
+	if len(player.Tracks) != 2 {
+		t.Fatalf("tracks len = %d, want 2", len(player.Tracks))
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
