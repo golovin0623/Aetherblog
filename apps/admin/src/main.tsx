@@ -6,6 +6,7 @@ import App from './App';
 import AdminFaviconSync from './components/AdminFaviconSync';
 import AdminFontProvider from './components/AdminFontProvider';
 import AdminThemeColorProvider from './components/AdminThemeColorProvider';
+import { AdminMusicPlayerProvider } from './components/music/AdminMusicPlayerProvider';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -24,7 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <AdminFaviconSync />
         <AdminThemeColorProvider>
           <AdminFontProvider>
-            <App />
+            <AdminMusicPlayerProvider>
+              <App />
+            </AdminMusicPlayerProvider>
           </AdminFontProvider>
         </AdminThemeColorProvider>
       </QueryClientProvider>

@@ -47,13 +47,14 @@ export default function BlogHeader() {
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
-  type NavPage = 'posts' | 'timeline' | 'agent' | 'friends' | 'about' | 'design' | null;
+  type NavPage = 'posts' | 'timeline' | 'agent' | 'music' | 'friends' | 'about' | 'design' | null;
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
     if (pathname === '/timeline') return 'timeline';
     if (pathname === '/posts') return 'posts';
     if (pathname.startsWith('/agent')) return 'agent';
+    if (pathname === '/music') return 'music';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
     if (pathname === '/design') return 'design';
@@ -76,6 +77,8 @@ export default function BlogHeader() {
       sessionStorage.setItem('blogNavSource', 'posts');
     } else if (pathname.startsWith('/agent')) {
       setActivePage('agent');
+    } else if (pathname === '/music') {
+      setActivePage('music');
     } else if (pathname === '/friends') {
       setActivePage('friends');
     } else if (pathname === '/about') {
@@ -113,6 +116,7 @@ export default function BlogHeader() {
       posts: '/posts',
       timeline: '/timeline',
       agent: '/agent',
+      music: '/music',
       friends: '/friends',
       about: '/about',
       design: '/design',
@@ -455,6 +459,25 @@ export default function BlogHeader() {
                 <span className="inline-flex items-center">灵境</span>
                 {activePage === 'agent' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
+                )}
+              </Link>
+              <Link
+                href="/music"
+                aria-current={activePage === 'music' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('music');
+                  }
+                }}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[#ff4d4f] cursor-pointer ${activePage === 'music'
+                    ? 'text-[#ff4d4f]'
+                    : 'text-[var(--ink-secondary)]'
+                  }`}
+              >
+                音乐
+                {activePage === 'music' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#ff4d4f] rounded-full" />
                 )}
               </Link>
               <Link
