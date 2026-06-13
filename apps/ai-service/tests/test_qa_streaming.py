@@ -13,11 +13,13 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import (
     get_llm_router,
+    get_pg_pool,
     get_vector_store,
     require_admin_or_internal,
 )
 from app.core.jwt import UserClaims
 from app.main import app
+from tests.support import FakeConn, FakePool
 
 client = TestClient(app)
 
@@ -30,6 +32,16 @@ class FakeVectorStore:
     async def semantic_search(self, q, limit):  # noqa: ARG002 — 与真实签名对齐
         self.calls += 1
         return self.results
+
+
+class FailingVectorStore:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.calls = 0
+
+    async def semantic_search(self, q, limit):  # noqa: ARG002
+        self.calls += 1
+        raise self.error
 
 
 class FakeLlmRouter:
@@ -59,6 +71,14 @@ def _parse_sse_payloads(body: bytes) -> list[dict]:
     return events
 
 
+async def _mock_admin():
+    return UserClaims(user_id="1", role="admin", scopes=None)
+
+
+async def _mock_empty_pool():
+    return FakePool(FakeConn())
+
+
 def test_qa_emits_result_event_with_sources_before_done():
     sources_results = [
         {
@@ -72,18 +92,16 @@ def test_qa_emits_result_event_with_sources_before_done():
     ]
     chunks = ["RAG", " 把检索", "结果"]
 
-    async def mock_require_admin_or_internal():
-        return UserClaims(user_id="1", role="admin", scopes=None)
-
     async def mock_get_vector_store():
         return FakeVectorStore(sources_results)
 
     async def mock_get_llm_router():
         return FakeLlmRouter(chunks)
 
-    app.dependency_overrides[require_admin_or_internal] = mock_require_admin_or_internal
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
     app.dependency_overrides[get_vector_store] = mock_get_vector_store
     app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = _mock_empty_pool
 
     try:
         response = client.get("/api/v1/search/qa", params={"q": "什么是 RAG"})
@@ -125,6 +143,149 @@ def test_qa_emits_result_event_with_sources_before_done():
     assert sources_event["sources"] == expected_sources
 
 
+def test_qa_falls_back_to_public_blog_overview_when_semantic_has_no_hits():
+    """空语义结果不能让 QA 直接回答“没找到”，应注入公开内容概览。"""
+
+    def fetch(sql: str, _args):
+        if "p.title ILIKE" in sql:
+            return []
+        if "FROM categories c" in sql:
+            return [
+                {"name": "系统架构", "post_count": 4},
+                {"name": "AI 工程", "post_count": 3},
+            ]
+        if "FROM tags t" in sql:
+            return [
+                {"name": "RAG", "post_count": 2},
+                {"name": "PostgreSQL", "post_count": 2},
+            ]
+        return [
+            {
+                "id": 9,
+                "title": "知识库召回实践",
+                "slug": "kb-rag-practice",
+                "summary": "介绍博客内的 RAG、知识库和搜索实践。",
+                "excerpt": "AetherBlog 使用公开文章、标签和搜索索引构建问答上下文。",
+                "category": "AI 工程",
+            }
+        ]
+
+    llm = FakeLlmRouter(["这个博客主要覆盖 AI 工程和系统架构。"])
+    pool = FakePool(FakeConn(fetch=fetch))
+
+    async def mock_get_vector_store():
+        return FakeVectorStore([])
+
+    async def mock_get_llm_router():
+        return llm
+
+    async def mock_get_pool():
+        return pool
+
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
+    app.dependency_overrides[get_vector_store] = mock_get_vector_store
+    app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = mock_get_pool
+
+    try:
+        response = client.get("/api/v1/search/qa", params={"q": "博客里面有什么领域的知识"})
+    finally:
+        app.dependency_overrides = {}
+
+    assert response.status_code == 200
+    context = llm.last_call["prompt_variables"]["context"]
+    assert "公开文章概览回退" in context
+    assert "系统架构" in context
+    assert "AI 工程" in context
+    assert "知识库召回实践" in context
+
+    events = _parse_sse_payloads(response.content)
+    sources = next(e["sources"] for e in events if e.get("type") == "sources")
+    assert sources == [{"title": "知识库召回实践", "slug": "kb-rag-practice"}]
+
+
+def test_qa_falls_back_to_keyword_context_when_semantic_search_fails():
+    """embedding/profile 故障时仍应使用公开关键词上下文，而不是中断问答。"""
+
+    def fetch(sql: str, _args):
+        if "p.title ILIKE" in sql:
+            return [
+                {
+                    "id": 11,
+                    "title": "PostgreSQL 向量检索",
+                    "slug": "postgres-vector-search",
+                    "summary": "pgvector 与全文检索混合搜索。",
+                    "excerpt": "当语义检索暂不可用时，关键词检索仍可作为公开问答上下文。",
+                    "category": "数据库",
+                }
+            ]
+        return []
+
+    llm = FakeLlmRouter(["可以参考 PostgreSQL 向量检索。"])
+
+    async def mock_get_vector_store():
+        return FailingVectorStore(RuntimeError("embedding timeout"))
+
+    async def mock_get_llm_router():
+        return llm
+
+    async def mock_get_pool():
+        return FakePool(FakeConn(fetch=fetch))
+
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
+    app.dependency_overrides[get_vector_store] = mock_get_vector_store
+    app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = mock_get_pool
+
+    try:
+        response = client.get("/api/v1/search/qa", params={"q": "PostgreSQL 向量"})
+    finally:
+        app.dependency_overrides = {}
+
+    assert response.status_code == 200
+    context = llm.last_call["prompt_variables"]["context"]
+    assert "关键词回退命中的公开文章" in context
+    assert "PostgreSQL 向量检索" in context
+
+
+def test_qa_emits_auth_hint_when_no_public_context_available():
+    """公开上下文完全为空时，应提示登录授权读取登录态内容，不再空跑 LLM。"""
+
+    llm = FakeLlmRouter(["should not be used"])
+
+    async def mock_get_vector_store():
+        return FakeVectorStore([])
+
+    async def mock_get_llm_router():
+        return llm
+
+    async def mock_get_pool():
+        return FakePool(FakeConn())
+
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
+    app.dependency_overrides[get_vector_store] = mock_get_vector_store
+    app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = mock_get_pool
+
+    try:
+        response = client.get("/api/v1/search/qa", params={"q": "内部共享文章有什么"})
+    finally:
+        app.dependency_overrides = {}
+
+    assert response.status_code == 200
+    assert llm.last_call is None
+
+    events = _parse_sse_payloads(response.content)
+    types = [e.get("type") for e in events]
+    assert types == ["delta", "auth_hint", "sources", "result", "done"]
+
+    assert "登录" in events[0]["content"]
+    assert events[1]["loginUrl"] == "/agent/login?next=/agent/workspace"
+    assert events[1]["workspaceUrl"] == "/agent/workspace"
+    assert events[2]["sources"] == []
+    assert events[3]["data"]["authHint"]["label"] == "登录授权"
+
+
 def test_qa_emits_error_event_on_llm_failure():
     """LLM 异常时必须发 error 事件并附带 code/message, 不能裸抛或留空。"""
 
@@ -136,18 +297,21 @@ def test_qa_emits_error_event_on_llm_failure():
             yield "first chunk"
             raise RuntimeError("upstream timeout")
 
-    async def mock_require_admin_or_internal():
-        return UserClaims(user_id="1", role="admin", scopes=None)
-
     async def mock_get_vector_store():
-        return FakeVectorStore([])
+        return FakeVectorStore([
+            {
+                "post": {"title": "故障测试文章", "slug": "failure-case"},
+                "highlight": "有上下文时才应进入 LLM 流式生成分支。",
+            }
+        ])
 
     async def mock_get_llm_router():
         return BoomLlmRouter()
 
-    app.dependency_overrides[require_admin_or_internal] = mock_require_admin_or_internal
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
     app.dependency_overrides[get_vector_store] = mock_get_vector_store
     app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = _mock_empty_pool
 
     try:
         response = client.get("/api/v1/search/qa", params={"q": "无关紧要"})
@@ -176,18 +340,16 @@ def test_qa_emits_config_error_when_routing_missing():
 
     vector_store = FakeVectorStore([])
 
-    async def mock_require_admin_or_internal():
-        return UserClaims(user_id="1", role="admin", scopes=None)
-
     async def mock_get_vector_store():
         return vector_store
 
     async def mock_get_llm_router():
         return MissingRoutingLlmRouter()
 
-    app.dependency_overrides[require_admin_or_internal] = mock_require_admin_or_internal
+    app.dependency_overrides[require_admin_or_internal] = _mock_admin
     app.dependency_overrides[get_vector_store] = mock_get_vector_store
     app.dependency_overrides[get_llm_router] = mock_get_llm_router
+    app.dependency_overrides[get_pg_pool] = _mock_empty_pool
 
     try:
         response = client.get("/api/v1/search/qa", params={"q": "系统架构师需要什么能力"})

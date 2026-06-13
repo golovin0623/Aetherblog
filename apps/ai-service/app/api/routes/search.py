@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
@@ -30,6 +31,24 @@ router = APIRouter(tags=["search"])
 settings = get_settings()
 
 
+_QA_SEMANTIC_LIMIT = 3
+_QA_FALLBACK_POST_LIMIT = 6
+_QA_FALLBACK_TAXONOMY_LIMIT = 10
+_QA_EXCERPT_MAX_CHARS = 700
+_QA_CONTEXT_MAX_CHARS = 12000
+_QA_LOGIN_AUTH_URL = "/agent/login?next=/agent/workspace"
+_QA_AUTH_FALLBACK_ANSWER = (
+    "公开内容里暂时没有找到可回答的文章。登录并进入 Agent 工作台后，"
+    "可以授权 AI 读取你账号可见的共享文章和知识库，再继续提问。"
+)
+_QA_AUTH_HINT = {
+    "message": "登录后可在 Agent 工作台授权读取你可见的文章和知识库。",
+    "loginUrl": _QA_LOGIN_AUTH_URL,
+    "workspaceUrl": "/agent/workspace",
+    "label": "登录授权",
+}
+
+
 def _enforce_content_limit(content: str) -> None:
     size = len(content)
     if size > settings.max_input_chars:
@@ -37,6 +56,216 @@ def _enforce_content_limit(content: str) -> None:
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"Content too large: {size} chars exceeds {settings.max_input_chars} limit",
         )
+
+
+def _escape_like(value: str) -> str:
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+def _trim_text(value: Any, max_chars: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
+
+
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    try:
+        return row[key]
+    except (KeyError, TypeError):
+        if isinstance(row, dict):
+            return row.get(key, default)
+        return getattr(row, key, default)
+
+
+async def _fetch_public_qa_keyword_rows(pool, query: str, limit: int = _QA_FALLBACK_POST_LIMIT) -> list[Any]:
+    pattern = f"%{_escape_like(query.strip())}%"
+    async with pool.acquire() as conn:
+        return list(await conn.fetch(
+            """
+            SELECT
+                p.id,
+                p.title,
+                p.slug,
+                p.summary,
+                LEFT(COALESCE(p.content_markdown, ''), $2) AS excerpt,
+                c.name AS category
+            FROM posts p
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.is_hidden = FALSE
+              AND p.password IS NULL
+              AND (
+                p.title ILIKE $1 ESCAPE '\\'
+                OR COALESCE(p.summary, '') ILIKE $1 ESCAPE '\\'
+                OR COALESCE(p.content_markdown, '') ILIKE $1 ESCAPE '\\'
+                OR COALESCE(c.name, '') ILIKE $1 ESCAPE '\\'
+                OR EXISTS (
+                    SELECT 1
+                    FROM post_tags pt
+                    JOIN tags t ON t.id = pt.tag_id
+                    WHERE pt.post_id = p.id
+                      AND (t.name ILIKE $1 ESCAPE '\\' OR t.slug ILIKE $1 ESCAPE '\\')
+                )
+              )
+            ORDER BY p.published_at DESC NULLS LAST, p.id DESC
+            LIMIT $3
+            """,
+            pattern,
+            _QA_EXCERPT_MAX_CHARS,
+            limit,
+        ))
+
+
+async def _fetch_public_qa_overview(pool, limit: int = _QA_FALLBACK_POST_LIMIT) -> tuple[list[Any], list[Any], list[Any]]:
+    async with pool.acquire() as conn:
+        recent_posts = list(await conn.fetch(
+            """
+            SELECT
+                p.id,
+                p.title,
+                p.slug,
+                p.summary,
+                LEFT(COALESCE(p.content_markdown, ''), $1) AS excerpt,
+                c.name AS category
+            FROM posts p
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.is_hidden = FALSE
+              AND p.password IS NULL
+            ORDER BY p.published_at DESC NULLS LAST, p.id DESC
+            LIMIT $2
+            """,
+            _QA_EXCERPT_MAX_CHARS,
+            limit,
+        ))
+        categories = list(await conn.fetch(
+            """
+            SELECT c.name, COUNT(*)::int AS post_count
+            FROM categories c
+            JOIN posts p ON p.category_id = c.id
+            WHERE p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.is_hidden = FALSE
+              AND p.password IS NULL
+            GROUP BY c.id, c.name
+            ORDER BY post_count DESC, c.name ASC
+            LIMIT $1
+            """,
+            _QA_FALLBACK_TAXONOMY_LIMIT,
+        ))
+        tags = list(await conn.fetch(
+            """
+            SELECT t.name, COUNT(*)::int AS post_count
+            FROM tags t
+            JOIN post_tags pt ON pt.tag_id = t.id
+            JOIN posts p ON p.id = pt.post_id
+            WHERE p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.is_hidden = FALSE
+              AND p.password IS NULL
+            GROUP BY t.id, t.name
+            ORDER BY post_count DESC, t.name ASC
+            LIMIT $1
+            """,
+            _QA_FALLBACK_TAXONOMY_LIMIT,
+        ))
+    return recent_posts, categories, tags
+
+
+def _render_public_qa_rows(title: str, rows: list[Any]) -> tuple[list[str], list[dict[str, str]]]:
+    parts = [title]
+    sources: list[dict[str, str]] = []
+    for row in rows:
+        post_title = str(_row_get(row, "title", "") or "").strip()
+        slug = str(_row_get(row, "slug", "") or "").strip()
+        summary = _trim_text(_row_get(row, "summary"), 220)
+        excerpt = _trim_text(_row_get(row, "excerpt"), _QA_EXCERPT_MAX_CHARS)
+        category = str(_row_get(row, "category", "") or "").strip()
+        if not post_title:
+            continue
+        header = f"## {post_title}"
+        if slug:
+            header += f"\nURL: /posts/{slug}"
+            sources.append({"title": post_title, "slug": slug})
+        if category:
+            header += f"\nCategory: {category}"
+        body_parts = [header]
+        if summary:
+            body_parts.append(f"Summary: {summary}")
+        if excerpt:
+            body_parts.append(excerpt)
+        parts.append("\n".join(body_parts))
+    return parts, sources
+
+
+def _render_taxonomy_section(title: str, rows: list[Any]) -> list[str]:
+    items: list[str] = []
+    for row in rows:
+        name = str(_row_get(row, "name", "") or "").strip()
+        if not name:
+            continue
+        count = _row_get(row, "post_count", 0)
+        items.append(f"- {name} ({count} 篇)")
+    if not items:
+        return []
+    return [title, *items]
+
+
+async def _build_public_qa_fallback_context(pool, query: str) -> tuple[str | None, list[dict[str, str]]]:
+    """Build public-only fallback context for the blog search QA panel.
+
+    This endpoint is public, so fallback data must stay within public,
+    published, non-hidden, non-password posts.
+    """
+    query = query.strip()
+    if not query:
+        return None, []
+
+    try:
+        keyword_rows = await _fetch_public_qa_keyword_rows(pool, query)
+        if keyword_rows:
+            parts, sources = _render_public_qa_rows("## 关键词回退命中的公开文章", keyword_rows)
+            prefix = (
+                "# 公开文章检索回退\n"
+                "语义检索没有返回可用片段，以下内容来自公开、未隐藏、无密码文章。"
+                "若它们只能部分回答问题，请说明依据范围。"
+            )
+            context = prefix + "\n\n" + "\n\n".join(parts)
+            return _trim_text(context, _QA_CONTEXT_MAX_CHARS), sources
+
+        recent_posts, categories, tags = await _fetch_public_qa_overview(pool)
+    except Exception as exc:  # noqa: BLE001 - fallback failure must not break QA streaming
+        logger.warning("search.qa_fallback_failed", extra={"data": {"error": str(exc)[:240]}})
+        return None, []
+
+    if not recent_posts and not categories and not tags:
+        return None, []
+
+    parts: list[str] = [
+        "# 公开文章概览回退",
+        (
+            "语义检索与关键词检索未找到精确片段。以下是博客当前公开、未隐藏、无密码内容的概览。"
+            "用户询问博客覆盖领域时，请基于分类、标签和近期文章回答；不要声称博客没有内容。"
+        ),
+    ]
+    taxonomy = _render_taxonomy_section("## 高频分类", categories)
+    if taxonomy:
+        parts.extend(taxonomy)
+    tag_section = _render_taxonomy_section("## 高频标签", tags)
+    if tag_section:
+        parts.extend(tag_section)
+    post_parts, sources = _render_public_qa_rows("## 最近公开文章", recent_posts)
+    parts.extend(post_parts)
+    context = "\n\n".join(parts)
+    return _trim_text(context, _QA_CONTEXT_MAX_CHARS), sources
 
 
 async def _log_usage(
@@ -404,6 +633,7 @@ async def qa_search(
     user=Depends(require_admin_or_internal),
     vector_store=Depends(get_vector_store),
     llm_router=Depends(get_llm_router),
+    pool=Depends(get_pg_pool),
 ):
     """RAG 问答端点 —— 先做检索拿到上下文，再通过 LLM 流式生成回答。
     由 Go 后端代理调用，需要管理员或内部服务 token。"""
@@ -428,8 +658,13 @@ async def qa_search(
             media_type="text/event-stream",
         )
 
-    # 第 1 步：语义检索得到上下文
-    context_results = await vector_store.semantic_search(q, limit=3)
+    # 第 1 步：语义检索得到上下文。公开 QA 不能因为 embedding/profile 抖动
+    # 直接退化成"没有内容"，必须继续走公开文章关键词/概览回退。
+    try:
+        context_results = await vector_store.semantic_search(q, limit=_QA_SEMANTIC_LIMIT)
+    except Exception as exc:  # noqa: BLE001 - public QA has a read-only fallback path
+        logger.warning("search.qa_semantic_failed", extra={"data": {"error": str(exc)[:240]}})
+        context_results = []
 
     # 第 2 步：拼装 RAG 所需的 context
     context_parts = []
@@ -443,11 +678,39 @@ async def qa_search(
         sources.append({"title": title, "slug": slug})
 
     context_text = "\n\n---\n\n".join(context_parts) if context_parts else ""
+    if not context_text:
+        fallback_context, fallback_sources = await _build_public_qa_fallback_context(pool, q)
+        if fallback_context:
+            context_text = fallback_context
+            sources = fallback_sources
 
     # 第 3 步：使用 qa task type 流式生成 LLM 回答
     async def generate():
         accumulated_answer = ""
         try:
+            if not context_text:
+                accumulated_answer = _QA_AUTH_FALLBACK_ANSWER
+                data = _json.dumps({"type": "delta", "content": accumulated_answer}, ensure_ascii=False)
+                yield f"data: {data}\n\n"
+                hint_data = _json.dumps({"type": "auth_hint", **_QA_AUTH_HINT}, ensure_ascii=False)
+                yield f"data: {hint_data}\n\n"
+                sources_data = _json.dumps({"type": "sources", "sources": []}, ensure_ascii=False)
+                yield f"data: {sources_data}\n\n"
+                result_data = _json.dumps(
+                    {
+                        "type": "result",
+                        "data": {
+                            "answer": accumulated_answer,
+                            "sources": [],
+                            "authHint": _QA_AUTH_HINT,
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+                yield f"data: {result_data}\n\n"
+                yield 'data: {"type": "done"}\n\n'
+                return
+
             async for chunk in llm_router.stream_chat(
                 prompt_variables={"context": context_text, "query": q},
                 model_alias="qa",
