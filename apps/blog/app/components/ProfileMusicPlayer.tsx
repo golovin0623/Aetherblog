@@ -169,7 +169,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
         <button
           type="button"
           onClick={togglePlayback}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
           aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
         >
           {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
@@ -200,7 +200,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
             aria-valuenow={Math.round(percent)}
           />
         </div>
-        <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-[var(--text-muted)]">
+        <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--text-muted)]">
           <span>{formatClock(progress)}</span>
           <span>{formatClock(duration || currentTrack.durationSeconds || 0)}</span>
         </div>
@@ -211,7 +211,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
           type="button"
           onClick={() => setShuffle((value) => !value)}
           className={cn(
-            'flex h-11 w-11 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]',
+            'flex h-11 w-11 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
             shuffleActive
               ? 'border-primary/40 bg-primary/10 text-primary'
               : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -226,7 +226,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
           <button
             type="button"
             onClick={previousTrack}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
             aria-label="上一首"
           >
             <SkipBack className="h-4 w-4" />
@@ -234,7 +234,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
           <button
             type="button"
             onClick={() => advanceTrack(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
             aria-label="下一首"
           >
             <SkipForward className="h-4 w-4" />

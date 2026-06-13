@@ -481,11 +481,7 @@ func (r *MusicRepo) ReplacePlaylistTracks(ctx context.Context, playlistID int64,
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
 	if _, err = tx.ExecContext(ctx, `DELETE FROM music_playlist_tracks WHERE playlist_id=$1`, playlistID); err != nil {
 		return err
