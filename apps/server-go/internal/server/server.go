@@ -417,6 +417,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	handler.NewUploadAccessHandler(mediaSvc, s.Config.Upload.Path).Mount(api.Group("/uploads"))
 	syncHandler.MountMediaRoutes(admin.Group("/media")) // POST /admin/media/:id/sync
 	handler.NewFolderHandler(folderSvc).Mount(admin.Group("/media/folders"))
+	musicSvc := service.NewMusicService(repository.NewMusicRepo(s.DB), mediaSvc)
+	musicHandler := handler.NewMusicHandler(musicSvc)
+	musicHandler.MountAdmin(admin.Group("/music"))
+	musicHandler.MountPublic(public.Group("/music"))
 	handler.NewStorageProviderHandler(storageProviderSvc).Mount(admin.Group("/storage/providers"))
 	syncHandler.Mount(admin.Group("/storage/sync"))
 

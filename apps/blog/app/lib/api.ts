@@ -28,6 +28,7 @@ export const API_ENDPOINTS = {
   // 站点设置
   settings: `${API_BASE_URL}/api/v1/public/site/info`,
   stats: `${API_BASE_URL}/api/v1/public/site/stats`,
+  musicPlayer: `${API_BASE_URL}/api/v1/public/music/player`,
 
   // 评论
   comments: (postId: number) => `${API_BASE_URL}/api/v1/public/comments/post/${postId}`,

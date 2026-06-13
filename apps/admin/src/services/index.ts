@@ -4,6 +4,7 @@ export { noteService } from './noteService';
 export { authService } from './authService';
 export { accessService } from './accessService';
 export { mediaService } from './mediaService';
+export { musicService } from './musicService';
 export { aiService } from './aiService';
 export { commentService } from './commentService';
 export { categoryService } from './categoryService';

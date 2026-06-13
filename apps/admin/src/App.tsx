@@ -17,6 +17,7 @@ const CreatePostPage = lazy(() => import('./pages/posts/CreatePostPage'));
 const NotesPage = lazy(() => import('./pages/NotesPage'));
 const CreateNotePage = lazy(() => import('./pages/notes/CreateNotePage'));
 const MediaPage = lazy(() => import('./pages/MediaPage'));
+const MusicPage = lazy(() => import('./pages/MusicPage'));
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'));
 const CommentsPage = lazy(() => import('./pages/CommentsPage'));
 const FriendsPage = lazy(() => import('./pages/FriendsPage'));
@@ -121,6 +122,7 @@ function App() {
               <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
               <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
               <Route path="media" element={<MediaPage />} />
+              <Route path="music" element={<MusicPage />} />
               <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
               <Route path="storage/explorer" element={<CloudExplorerPage />} />
               <Route path="categories" element={<CategoriesPage />} />

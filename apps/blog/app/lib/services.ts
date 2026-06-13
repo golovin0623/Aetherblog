@@ -74,6 +74,57 @@ export interface CreateCommentRequest {
   parentId?: number;
 }
 
+export type MusicPlaybackMode = 'SEQUENTIAL' | 'SHUFFLE' | 'LOOP' | 'CAROUSEL';
+
+export interface MusicMedia {
+  id: number;
+  originalName: string;
+  fileUrl: string;
+  publicUrl?: string;
+  fileSize: number;
+  mimeType?: string;
+  fileType: string;
+  deleted: boolean;
+}
+
+export interface MusicTrack {
+  id: number;
+  mediaFileId: number;
+  title: string;
+  artist: string;
+  album: string;
+  durationSeconds?: number;
+  coverUrl?: string;
+  status: 'ACTIVE' | 'HIDDEN';
+  sortOrder: number;
+  isFeatured: boolean;
+  playCount: number;
+  media: MusicMedia;
+}
+
+export interface MusicPlaylist {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  displayOnHome: boolean;
+  displayOnProfile: boolean;
+  carouselEnabled: boolean;
+  randomEnabled: boolean;
+  trackCount: number;
+}
+
+export interface MusicPlayer {
+  enabled: boolean;
+  showOnHomePage: boolean;
+  showOnProfileCard: boolean;
+  playbackMode: MusicPlaybackMode;
+  carouselEnabled: boolean;
+  randomEnabled: boolean;
+  playlist?: MusicPlaylist;
+  tracks: MusicTrack[];
+}
+
 /**
  * 获取站点全量配置
  * 重新验证：60 秒
@@ -85,6 +136,16 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteKeywords: 'tech, blog, ai',
   siteUrl: 'http://localhost:3000',
   authorName: 'Admin'
+};
+
+const DEFAULT_MUSIC_PLAYER: MusicPlayer = {
+  enabled: false,
+  showOnHomePage: false,
+  showOnProfileCard: false,
+  playbackMode: 'SEQUENTIAL',
+  carouselEnabled: false,
+  randomEnabled: false,
+  tracks: [],
 };
 
 // 后端 /site/info 以 snake_case 键(site_name / site_description / site_keywords /
@@ -188,6 +249,32 @@ export async function getFriendLinks(): Promise<FriendLink[]> {
   } catch (error) {
     logger.warn('Failed to fetch friend links:', error);
     return [];
+  }
+}
+
+/**
+ * 获取公开音乐播放器配置与曲目队列
+ * 重新验证：60 秒
+ */
+export async function getMusicPlayer(): Promise<MusicPlayer> {
+  try {
+    const res = await fetch(API_ENDPOINTS.musicPlayer, {
+      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch music player');
+
+    const json = await res.json();
+    const data = json.data || {};
+    return {
+      ...DEFAULT_MUSIC_PLAYER,
+      ...data,
+      tracks: Array.isArray(data.tracks) ? data.tracks : [],
+    };
+  } catch (error) {
+    logger.warn('Failed to fetch music player:', error);
+    return DEFAULT_MUSIC_PLAYER;
   }
 }
 

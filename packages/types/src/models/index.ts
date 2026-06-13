@@ -3,6 +3,7 @@ export * from './note';
 export * from './user';
 export * from './comment';
 export * from './media';
+export * from './music';
 export * from './friendLink';
 export * from './access';
 export * from './atlas';
