@@ -96,14 +96,15 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
   }, [currentIndex, tracks.length]);
 
   useEffect(() => {
-    if (!canRender || !carouselActive || tracks.length <= 1) return undefined;
+    const carouselCanInterruptPlayback = player?.playbackMode === 'CAROUSEL';
+    if (!canRender || !carouselActive || tracks.length <= 1 || (isPlaying && !carouselCanInterruptPlayback)) return undefined;
     const timer = window.setInterval(() => {
       setCurrentIndex((index) =>
         shuffleActive ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
       );
     }, carouselIntervalSeconds * 1000);
     return () => window.clearInterval(timer);
-  }, [canRender, carouselActive, carouselIntervalSeconds, shuffleActive, tracks.length]);
+  }, [canRender, carouselActive, carouselIntervalSeconds, isPlaying, player?.playbackMode, shuffleActive, tracks.length]);
 
   useEffect(() => {
     const audio = audioRef.current;
