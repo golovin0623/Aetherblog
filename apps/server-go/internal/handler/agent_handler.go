@@ -35,6 +35,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/config"
+	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/ctxutil"
@@ -54,6 +55,12 @@ type agentAtlasPermissionChecker interface {
 	UserHasPermission(ctx context.Context, userID int64, legacyRole string, permissionCode string) (bool, error)
 }
 
+type agentKBService interface {
+	BuildUserContext(ctx context.Context, userID int64, legacyRole string) (*service.KBUserContext, error)
+	FilterAuthorizedKBIDs(ctx context.Context, ids []int64, uc *service.KBUserContext) []int64
+	ListForPicker(ctx context.Context, uc *service.KBUserContext, keyword string) ([]dto.AgentKnowledgeBaseVO, error)
+}
+
 // AgentHandler 处理 /api/v1/agent/* 端点。
 type AgentHandler struct {
 	client        *service.AIClient
@@ -63,7 +70,7 @@ type AgentHandler struct {
 	activitySvc   activityRecorder
 	// kbSvc 用于在转发 chat body 之前过滤 kbIds（SECURITY：防客户端拼装未授权 KB id）。
 	// nil 时跳过过滤（兼容旧 wire；正式部署必须注入）。
-	kbSvc     *service.KBService
+	kbSvc     agentKBService
 	atlasPerm agentAtlasPermissionChecker
 }
 
@@ -556,11 +563,14 @@ func formatTimePtr(t *time.Time) string {
 }
 
 // filterBodyKBIDs 在转发到 ai-service 前，按当前用户权限过滤 chat 请求 body 里的 kbIds。
+// 如果客户端没有显式传 kbIds，自动注入当前用户可用的 KB，
+// 让 Agent 默认具备“读可见知识库”的能力，而不是必须先经过 KB picker。
+// 显式 null / [] 表示用户选择不使用任何知识库，不做自动注入。
 //
 // 返回值约定：
-//   - (newBody, nil)：body 含 kbIds 且已被过滤（含过滤后为空数组的情形 → 显式 null）
-//   - (nil, nil)：body 不含 kbIds，或解析无意义字段（无需重写）
-//   - (nil, err)：JSON 解析失败 / 编码失败；调用方应回退到原 body 并 warn 日志
+//   - (newBody, nil)：body 已被过滤或自动注入 kbIds
+//   - (nil, nil)：无可注入/无需重写
+//   - (nil, err)：JSON/权限解析/编码失败；调用方应拒绝请求，避免绕过过滤
 //
 // 实现要点：使用 map[string]json.RawMessage 解析能保留未知字段顺序与精度（avoid
 // 反序列化丢失 float / 长 number），仅替换 kbIds 字段后重新编码。
@@ -569,14 +579,24 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("parse chat body: %w", err)
 	}
-	kbField, exists := raw["kbIds"]
-	if !exists {
-		return nil, nil // 客户端未传 kbIds，原样转发
+	if raw == nil {
+		return nil, fmt.Errorf("parse chat body: expected JSON object")
 	}
-	// kbIds 可能是 null / [] / [ids...]；null 与空数组直接保留不动
-	if string(kbField) == "null" || string(kbField) == "[]" {
+	kbField, exists := raw["kbIds"]
+
+	// kbIds 可能是 missing / null / [] / [ids...]。只有 missing 走自动
+	// 可用 KB 注入；显式 null / [] 表示不使用任何知识库。
+	if !exists {
+		uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
+		if err != nil {
+			return nil, fmt.Errorf("build user context: %w", err)
+		}
+		return h.rewriteBodyWithAutoKBIDs(ctx, raw, uc, userID)
+	}
+	if strings.TrimSpace(string(kbField)) == "null" {
 		return nil, nil
 	}
+
 	var ids []int64
 	if err := json.Unmarshal(kbField, &ids); err != nil {
 		return nil, fmt.Errorf("parse kbIds: %w", err)
@@ -584,10 +604,12 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 	if len(ids) == 0 {
 		return nil, nil
 	}
+
 	uc, err := h.kbSvc.BuildUserContext(ctx, userID, legacyRole)
 	if err != nil {
 		return nil, fmt.Errorf("build user context: %w", err)
 	}
+
 	allowed := h.kbSvc.FilterAuthorizedKBIDs(ctx, ids, uc)
 	if len(allowed) == len(ids) {
 		// 全部授权，不重写
@@ -613,6 +635,62 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 		Int64("user_id", userID).
 		Msg("agent: kbIds filtered by permission")
 	return rewrote, nil
+}
+
+func (h *AgentHandler) rewriteBodyWithAutoKBIDs(
+	ctx context.Context,
+	raw map[string]json.RawMessage,
+	uc *service.KBUserContext,
+	userID int64,
+) ([]byte, error) {
+	autoIDs, err := h.agentAutoKBIDs(ctx, uc)
+	if err != nil {
+		return nil, err
+	}
+	if len(autoIDs) == 0 {
+		return nil, nil
+	}
+	buf, mErr := json.Marshal(autoIDs)
+	if mErr != nil {
+		return nil, fmt.Errorf("marshal auto kbIds: %w", mErr)
+	}
+	raw["kbIds"] = json.RawMessage(buf)
+	rewrote, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode body: %w", err)
+	}
+	log.Info().
+		Int("auto_kb_count", len(autoIDs)).
+		Int64("user_id", userID).
+		Msg("agent: auto kbIds injected")
+	return rewrote, nil
+}
+
+func (h *AgentHandler) agentAutoKBIDs(ctx context.Context, uc *service.KBUserContext) ([]int64, error) {
+	rows, err := h.kbSvc.ListForPicker(ctx, uc, "")
+	if err != nil {
+		return nil, fmt.Errorf("list agent kb picker: %w", err)
+	}
+	ids := make([]int64, 0, 10)
+	seen := map[int64]bool{}
+	for _, kb := range rows {
+		if kb.ID <= 0 || seen[kb.ID] || !agentKBUsable(kb) {
+			continue
+		}
+		seen[kb.ID] = true
+		ids = append(ids, kb.ID)
+		if len(ids) >= 10 {
+			break
+		}
+	}
+	return ids, nil
+}
+
+func agentKBUsable(kb dto.AgentKnowledgeBaseVO) bool {
+	if kb.Kind == model.KBKindSystemPosts {
+		return true
+	}
+	return kb.ActiveProfile != nil && kb.ChunkCount > 0
 }
 
 func (h *AgentHandler) filterBodyAtlasScope(ctx context.Context, body []byte, userID int64, legacyRole string) ([]byte, error) {

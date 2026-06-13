@@ -17,6 +17,8 @@ import {
   MessageCircle,
   BookOpen,
   AlertCircle,
+  LogIn,
+  ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logger } from '../lib/logger';
@@ -36,6 +38,14 @@ interface SearchResult {
 interface AiAnswer {
   answer: string;
   sources?: { title: string; slug: string }[];
+  authHint?: AuthHint;
+}
+
+interface AuthHint {
+  message: string;
+  loginUrl: string;
+  workspaceUrl?: string;
+  label?: string;
 }
 
 interface SearchFeatures {
@@ -95,6 +105,22 @@ function modeStatusLabel(mode: ActualSearchMode, features: SearchFeatures): stri
   if (mode === 'hybrid') return '综合检索';
   if (mode === 'disabled') return '检索未启用';
   return features.keywordEnabled ? '关键词检索' : '检索待确认';
+}
+
+function parseAuthHint(payload: unknown): AuthHint | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  const message = typeof record.message === 'string' ? record.message : '';
+  const loginUrl = typeof record.loginUrl === 'string' ? record.loginUrl : '';
+  if (!message || !loginUrl || !loginUrl.startsWith('/') || loginUrl.startsWith('//')) {
+    return undefined;
+  }
+  const safeWorkspaceUrl = typeof record.workspaceUrl === 'string'
+    && record.workspaceUrl.startsWith('/')
+    && !record.workspaceUrl.startsWith('//');
+  const workspaceUrl = safeWorkspaceUrl ? record.workspaceUrl as string : undefined;
+  const label = typeof record.label === 'string' ? record.label : undefined;
+  return { message, loginUrl, workspaceUrl, label };
 }
 
 const SearchResultItem = React.memo(({
@@ -404,6 +430,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
             setAiAnswer(prev => ({
               answer: accumulatedAnswer,
               sources: prev?.sources,
+              authHint: prev?.authHint,
             }));
             setIsAiLoading(false);
             break;
@@ -411,8 +438,32 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
             setAiAnswer(prev => ({
               answer: prev?.answer ?? accumulatedAnswer,
               sources: Array.isArray(payload.sources) ? payload.sources : undefined,
+              authHint: prev?.authHint,
             }));
             break;
+          case 'auth_hint': {
+            const authHint = parseAuthHint(payload);
+            if (authHint) {
+              setAiAnswer(prev => ({
+                answer: prev?.answer ?? accumulatedAnswer,
+                sources: prev?.sources,
+                authHint,
+              }));
+            }
+            break;
+          }
+          case 'result': {
+            const data = payload.data as Record<string, unknown> | undefined;
+            const authHint = parseAuthHint(data?.authHint);
+            if (authHint) {
+              setAiAnswer(prev => ({
+                answer: prev?.answer ?? accumulatedAnswer,
+                sources: prev?.sources,
+                authHint,
+              }));
+            }
+            break;
+          }
           case 'done':
             es.close();
             eventSourceRef.current = null;
@@ -873,12 +924,36 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                       </div>
                     )}
 
-                    {!aiError && aiAnswer?.answer && (
+                    {!aiError && (aiAnswer?.answer || aiAnswer?.authHint) && (
                       <>
-                        <p className="ai-stream whitespace-pre-wrap text-sm leading-7 text-[var(--text-secondary)]">
-                          {aiAnswer.answer}
-                          {isAiLoading && <span className="ink-cursor" aria-hidden="true" />}
-                        </p>
+                        {aiAnswer.answer && (
+                          <p className="ai-stream whitespace-pre-wrap text-sm leading-7 text-[var(--text-secondary)]">
+                            {aiAnswer.answer}
+                            {isAiLoading && <span className="ink-cursor" aria-hidden="true" />}
+                          </p>
+                        )}
+                        {aiAnswer.authHint && (
+                          <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
+                            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
+                              <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+                              <span>登录态授权</span>
+                            </div>
+                            <p className="text-sm leading-6 text-[var(--text-muted)]">
+                              {aiAnswer.authHint.message}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                router.push(aiAnswer.authHint?.loginUrl ?? '/agent/login?next=/agent/workspace');
+                                onClose();
+                              }}
+                              className="mt-3 inline-flex min-h-10 max-w-full items-center gap-2 rounded-full bg-primary px-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                            >
+                              <LogIn className="h-4 w-4 flex-shrink-0" />
+                              <span className="truncate">{aiAnswer.authHint.label || '登录授权'}</span>
+                            </button>
+                          </div>
+                        )}
                         {aiAnswer.sources && aiAnswer.sources.length > 0 && (
                           <div className="mt-4 border-t border-[var(--border-subtle)] pt-3">
                             <div className="mb-2 text-xs font-medium text-[var(--text-muted)]">引用文章</div>
