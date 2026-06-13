@@ -410,11 +410,26 @@ func (r *MusicRepo) FindPlaylistByID(ctx context.Context, id int64) (*MusicPlayl
 }
 
 func (r *MusicRepo) FirstPublicPlaylist(ctx context.Context) (*MusicPlaylistRow, error) {
-	rows, _, err := r.ListPlaylists(ctx, MusicPlaylistFilter{PublicOnly: true, PageNum: 1, PageSize: 1})
-	if err != nil || len(rows) == 0 {
+	var row MusicPlaylistRow
+	err := r.db.GetContext(ctx, &row, `
+		SELECT p.id, p.name, p.slug, p.description, p.cover_media_file_id, p.visibility, p.status,
+		       p.display_on_home, p.display_on_profile, p.carousel_enabled, p.random_enabled,
+		       p.sort_order, p.created_at, p.updated_at, COUNT(DISTINCT t.id) AS track_count
+		FROM music_playlists p
+		JOIN music_playlist_tracks pt ON pt.playlist_id=p.id
+		JOIN music_tracks t ON t.id=pt.track_id AND t.status='ACTIVE'
+		JOIN media_files mf ON mf.id=t.media_file_id AND mf.deleted=false
+		WHERE p.status='ACTIVE' AND p.visibility='PUBLIC'
+		GROUP BY p.id
+		ORDER BY p.sort_order ASC, p.created_at DESC
+		LIMIT 1`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return &rows[0], nil
+	return &row, nil
 }
 
 func (r *MusicRepo) CreatePlaylist(ctx context.Context, p model.MusicPlaylist) (int64, error) {

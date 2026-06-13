@@ -115,10 +115,7 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	svc, mock, cleanup := newMusicServiceMock(t)
 	defer cleanup()
 	expectMusicSettings(mock, true)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(DISTINCT p.id)`)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
-		WithArgs(1, 0).
 		WillReturnRows(musicPlaylistRows())
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
 		WithArgs(int64(42)).
@@ -152,10 +149,7 @@ func TestMusicServicePublicPlayerLoadsFullPlaylistQueue(t *testing.T) {
 	svc, mock, cleanup := newMusicServiceMock(t)
 	defer cleanup()
 	expectMusicSettings(mock, true)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(DISTINCT p.id)`)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
-		WithArgs(1, 0).
 		WillReturnRows(musicPlaylistRowsWithTrackCount(2))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
 		WithArgs(int64(42)).
@@ -186,10 +180,7 @@ func TestMusicServicePublicPlayerWithoutPublicPlaylistReturnsEmptyQueue(t *testi
 	svc, mock, cleanup := newMusicServiceMock(t)
 	defer cleanup()
 	expectMusicSettings(mock, true)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(DISTINCT p.id)`)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
-		WithArgs(1, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "name", "slug", "description", "cover_media_file_id", "visibility", "status",
 			"display_on_home", "display_on_profile", "carousel_enabled", "random_enabled",

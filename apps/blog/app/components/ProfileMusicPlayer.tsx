@@ -120,7 +120,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
   const advanceTrack = useCallback(
     (manual: boolean) => {
       if (tracks.length === 0) return;
-      const shouldWrap = manual || player?.playbackMode === 'LOOP' || carouselActive;
+      const shouldWrap = manual || player?.playbackMode === 'LOOP' || player?.playbackMode === 'CAROUSEL';
 
       if (!manual && !shuffleActive && currentIndex >= tracks.length - 1 && !shouldWrap) {
         const audio = audioRef.current;
@@ -138,7 +138,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
       );
       setIsPlaying(true);
     },
-    [carouselActive, currentIndex, player?.playbackMode, shuffleActive, tracks.length]
+    [currentIndex, player?.playbackMode, shuffleActive, tracks.length]
   );
 
   const previousTrack = () => {
