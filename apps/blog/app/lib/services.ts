@@ -120,6 +120,7 @@ export interface MusicPlayer {
   showOnProfileCard: boolean;
   playbackMode: MusicPlaybackMode;
   carouselEnabled: boolean;
+  carouselIntervalSeconds: number;
   randomEnabled: boolean;
   playlist?: MusicPlaylist;
   tracks: MusicTrack[];
@@ -144,6 +145,7 @@ const DEFAULT_MUSIC_PLAYER: MusicPlayer = {
   showOnProfileCard: false,
   playbackMode: 'SEQUENTIAL',
   carouselEnabled: false,
+  carouselIntervalSeconds: 8,
   randomEnabled: false,
   tracks: [],
 };

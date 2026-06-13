@@ -65,6 +65,10 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
   const playlistVisible = surface === 'home'
     ? player?.playlist?.displayOnHome !== false
     : player?.playlist?.displayOnProfile !== false;
+  const carouselActive = Boolean(
+    player?.carouselEnabled || player?.playlist?.carouselEnabled || player?.playbackMode === 'CAROUSEL'
+  );
+  const carouselIntervalSeconds = Math.min(60, Math.max(3, player?.carouselIntervalSeconds ?? 8));
   const canRender = Boolean(
     player?.enabled &&
       tracks.length > 0 &&
@@ -78,14 +82,28 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
   }, [isPlaying]);
 
   useEffect(() => {
-    setShuffle(Boolean(player?.randomEnabled || player?.playbackMode === 'SHUFFLE'));
-  }, [player?.randomEnabled, player?.playbackMode]);
+    setShuffle(Boolean(
+      player?.randomEnabled ||
+        player?.playlist?.randomEnabled ||
+        player?.playbackMode === 'SHUFFLE'
+    ));
+  }, [player?.randomEnabled, player?.playlist?.randomEnabled, player?.playbackMode]);
 
   useEffect(() => {
     if (currentIndex >= tracks.length) {
       setCurrentIndex(0);
     }
   }, [currentIndex, tracks.length]);
+
+  useEffect(() => {
+    if (!canRender || !carouselActive || tracks.length <= 1) return undefined;
+    const timer = window.setInterval(() => {
+      setCurrentIndex((index) =>
+        shuffleActive ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
+      );
+    }, carouselIntervalSeconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [canRender, carouselActive, carouselIntervalSeconds, shuffleActive, tracks.length]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -102,7 +120,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
   const advanceTrack = useCallback(
     (manual: boolean) => {
       if (tracks.length === 0) return;
-      const shouldWrap = manual || player?.playbackMode === 'LOOP' || player?.carouselEnabled;
+      const shouldWrap = manual || player?.playbackMode === 'LOOP' || carouselActive;
 
       if (!manual && !shuffleActive && currentIndex >= tracks.length - 1 && !shouldWrap) {
         const audio = audioRef.current;
@@ -120,7 +138,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
       );
       setIsPlaying(true);
     },
-    [currentIndex, player?.carouselEnabled, player?.playbackMode, shuffleActive, tracks.length]
+    [carouselActive, currentIndex, player?.playbackMode, shuffleActive, tracks.length]
   );
 
   const previousTrack = () => {

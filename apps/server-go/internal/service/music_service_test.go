@@ -130,6 +130,9 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	if player.Playlist == nil || player.Playlist.ID != 42 {
 		t.Fatalf("playlist = %#v, want id 42", player.Playlist)
 	}
+	if player.CarouselIntervalSeconds != 8 {
+		t.Fatalf("carousel interval = %d, want 8", player.CarouselIntervalSeconds)
+	}
 	if len(player.Tracks) != 1 {
 		t.Fatalf("tracks len = %d, want 1", len(player.Tracks))
 	}

@@ -401,13 +401,14 @@ func (s *MusicService) PublicPlayer(ctx context.Context) (*dto.MusicPlayerVO, er
 		return nil, err
 	}
 	out := &dto.MusicPlayerVO{
-		Enabled:           settings.Enabled,
-		ShowOnHomePage:    settings.ShowOnHomePage,
-		ShowOnProfileCard: settings.ShowOnProfileCard,
-		PlaybackMode:      settings.PlaybackMode,
-		CarouselEnabled:   settings.CarouselEnabled,
-		RandomEnabled:     settings.RandomEnabled,
-		Tracks:            []dto.MusicTrackVO{},
+		Enabled:                 settings.Enabled,
+		ShowOnHomePage:          settings.ShowOnHomePage,
+		ShowOnProfileCard:       settings.ShowOnProfileCard,
+		PlaybackMode:            settings.PlaybackMode,
+		CarouselEnabled:         settings.CarouselEnabled,
+		CarouselIntervalSeconds: settings.CarouselIntervalSeconds,
+		RandomEnabled:           settings.RandomEnabled,
+		Tracks:                  []dto.MusicTrackVO{},
 	}
 	if !settings.Enabled {
 		return out, nil

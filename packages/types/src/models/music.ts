@@ -88,6 +88,7 @@ export interface MusicPlayer {
   showOnProfileCard: boolean;
   playbackMode: MusicPlaybackMode;
   carouselEnabled: boolean;
+  carouselIntervalSeconds: number;
   randomEnabled: boolean;
   playlist?: MusicPlaylist;
   tracks: MusicTrack[];

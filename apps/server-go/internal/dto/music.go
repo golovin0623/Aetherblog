@@ -83,14 +83,15 @@ type MusicAudioCandidateVO struct {
 }
 
 type MusicPlayerVO struct {
-	Enabled           bool             `json:"enabled"`
-	ShowOnHomePage    bool             `json:"showOnHomePage"`
-	ShowOnProfileCard bool             `json:"showOnProfileCard"`
-	PlaybackMode      string           `json:"playbackMode"`
-	CarouselEnabled   bool             `json:"carouselEnabled"`
-	RandomEnabled     bool             `json:"randomEnabled"`
-	Playlist          *MusicPlaylistVO `json:"playlist,omitempty"`
-	Tracks            []MusicTrackVO   `json:"tracks"`
+	Enabled                 bool             `json:"enabled"`
+	ShowOnHomePage          bool             `json:"showOnHomePage"`
+	ShowOnProfileCard       bool             `json:"showOnProfileCard"`
+	PlaybackMode            string           `json:"playbackMode"`
+	CarouselEnabled         bool             `json:"carouselEnabled"`
+	CarouselIntervalSeconds int              `json:"carouselIntervalSeconds"`
+	RandomEnabled           bool             `json:"randomEnabled"`
+	Playlist                *MusicPlaylistVO `json:"playlist,omitempty"`
+	Tracks                  []MusicTrackVO   `json:"tracks"`
 }
 
 type MusicTrackRequest struct {
