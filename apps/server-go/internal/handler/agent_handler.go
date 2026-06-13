@@ -579,6 +579,9 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("parse chat body: %w", err)
 	}
+	if raw == nil {
+		return nil, fmt.Errorf("parse chat body: expected JSON object")
+	}
 	kbField, exists := raw["kbIds"]
 
 	// kbIds 可能是 missing / null / [] / [ids...]。只有 missing 走自动

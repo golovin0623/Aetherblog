@@ -171,3 +171,23 @@ func TestAgentHandlerFilterBodyKBIDsRejectsInvalidKBIDs(t *testing.T) {
 		t.Fatalf("error = %v, want parse kbIds", err)
 	}
 }
+
+func TestAgentHandlerFilterBodyKBIDsRejectsNullChatBody(t *testing.T) {
+	fakeKB := &fakeAgentKBService{
+		pickerRows: []dto.AgentKnowledgeBaseVO{
+			{ID: 1, Kind: model.KBKindSystemPosts, Name: "博客文章"},
+		},
+	}
+	h := &AgentHandler{kbSvc: fakeKB}
+
+	_, err := h.filterBodyKBIDs(t.Context(), []byte(`null`), 7, "user")
+	if err == nil {
+		t.Fatal("filterBodyKBIDs returned nil error for null chat body")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "expected JSON object") {
+		t.Fatalf("error = %v, want expected JSON object", err)
+	}
+	if fakeKB.buildCalls != 0 || fakeKB.pickerCalls != 0 || fakeKB.filterCalls != 0 {
+		t.Fatalf("calls = build:%d picker:%d filter:%d, want 0/0/0", fakeKB.buildCalls, fakeKB.pickerCalls, fakeKB.filterCalls)
+	}
+}
