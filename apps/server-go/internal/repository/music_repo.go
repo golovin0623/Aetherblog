@@ -476,21 +476,24 @@ func (r *MusicRepo) RemoveTrackFromPlaylist(ctx context.Context, playlistID, tra
 	return err
 }
 
-func (r *MusicRepo) ReplacePlaylistTracks(ctx context.Context, playlistID int64, tracks []model.MusicPlaylistTrack) error {
+func (r *MusicRepo) UpdatePlaylistTrackOrders(ctx context.Context, playlistID int64, tracks []model.MusicPlaylistTrack) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.ExecContext(ctx, `DELETE FROM music_playlist_tracks WHERE playlist_id=$1`, playlistID); err != nil {
-		return err
-	}
 	for _, track := range tracks {
-		if _, err = tx.ExecContext(ctx, `
-			INSERT INTO music_playlist_tracks (playlist_id, track_id, sort_order)
-			VALUES ($1,$2,$3)`, playlistID, track.TrackID, track.SortOrder); err != nil {
-			return err
+		res, execErr := tx.ExecContext(ctx, `
+			UPDATE music_playlist_tracks
+			SET sort_order=$3
+			WHERE playlist_id=$1 AND track_id=$2`, playlistID, track.TrackID, track.SortOrder)
+		if execErr != nil {
+			return execErr
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return sql.ErrNoRows
 		}
 	}
 	return tx.Commit()

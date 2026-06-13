@@ -392,7 +392,7 @@ func (s *MusicService) ReorderPlaylist(ctx context.Context, playlistID int64, re
 			SortOrder:  sortOrder,
 		})
 	}
-	return s.repo.ReplacePlaylistTracks(ctx, playlistID, tracks)
+	return s.repo.UpdatePlaylistTrackOrders(ctx, playlistID, tracks)
 }
 
 func (s *MusicService) PublicPlayer(ctx context.Context) (*dto.MusicPlayerVO, error) {

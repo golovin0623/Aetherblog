@@ -41,12 +41,16 @@ func expectMusicSettings(mock sqlmock.Sqlmock, enabled bool) {
 }
 
 func musicPlaylistRows() *sqlmock.Rows {
+	return musicPlaylistRowsWithTrackCount(1)
+}
+
+func musicPlaylistRowsWithTrackCount(trackCount int64) *sqlmock.Rows {
 	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	return sqlmock.NewRows([]string{
 		"id", "name", "slug", "description", "cover_media_file_id", "visibility", "status",
 		"display_on_home", "display_on_profile", "carousel_enabled", "random_enabled",
 		"sort_order", "created_at", "updated_at", "track_count",
-	}).AddRow(int64(42), "晚间电台", "evening-radio", nil, nil, "PUBLIC", "ACTIVE", true, true, true, false, 0, now, now, int64(1))
+	}).AddRow(int64(42), "晚间电台", "evening-radio", nil, nil, "PUBLIC", "ACTIVE", true, true, true, false, 0, now, now, trackCount)
 }
 
 func musicTrackRows() *sqlmock.Rows {
@@ -129,6 +133,36 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	}
 	if got := player.Tracks[0].Media.PublicURL; got != "/api/v1/public/media/99" {
 		t.Fatalf("track public URL = %q, want stable media endpoint", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMusicServiceReorderPlaylistPatchesOnlyProvidedTracks(t *testing.T) {
+	svc, mock, cleanup := newMusicServiceMock(t)
+	defer cleanup()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
+		WithArgs(int64(42)).
+		WillReturnRows(musicPlaylistRowsWithTrackCount(101))
+	mock.ExpectBegin()
+	for i := 0; i < 100; i++ {
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE music_playlist_tracks`)).
+			WithArgs(int64(42), int64(i+1), i).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectCommit()
+
+	req := dto.MusicPlaylistReorderRequest{Tracks: make([]dto.MusicPlaylistTrackOrder, 0, 100)}
+	for i := 0; i < 100; i++ {
+		req.Tracks = append(req.Tracks, dto.MusicPlaylistTrackOrder{
+			TrackID:   int64(i + 1),
+			SortOrder: i,
+		})
+	}
+
+	if err := svc.ReorderPlaylist(context.Background(), 42, req); err != nil {
+		t.Fatalf("ReorderPlaylist: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

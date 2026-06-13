@@ -61,10 +61,15 @@ export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMu
 
   const currentTrack = tracks[currentIndex];
   const audioSrc = resolveAudioSrc(currentTrack);
+  const surfaceEnabled = surface === 'home' ? player?.showOnHomePage : player?.showOnProfileCard;
+  const playlistVisible = surface === 'home'
+    ? player?.playlist?.displayOnHome !== false
+    : player?.playlist?.displayOnProfile !== false;
   const canRender = Boolean(
     player?.enabled &&
       tracks.length > 0 &&
-      (surface === 'home' ? player.showOnHomePage : player.showOnProfileCard)
+      surfaceEnabled &&
+      playlistVisible
   );
   const shuffleActive = shuffle;
 
