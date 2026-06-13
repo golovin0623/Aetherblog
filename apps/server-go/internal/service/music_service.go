@@ -433,6 +433,10 @@ func (s *MusicService) PublicPlayer(ctx context.Context) (*dto.MusicPlayerVO, er
 			playlistID = &p.ID
 		}
 	}
+	if playlistID == nil {
+		out.Tracks = []dto.MusicTrackVO{}
+		return out, nil
+	}
 
 	tracks, _, err := s.repo.ListTracks(ctx, repository.MusicTrackFilter{
 		PlaylistID: playlistID,
@@ -567,11 +571,16 @@ func normalizeOptionalText(v *string) *string {
 	return &trimmed
 }
 
+const musicTrackTitleMaxRunes = 160
+
 func titleFromFilename(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 	base = strings.TrimSpace(strings.ReplaceAll(base, "_", " "))
 	if base == "" {
 		return "未命名音频"
+	}
+	if runes := []rune(base); len(runes) > musicTrackTitleMaxRunes {
+		return string(runes[:musicTrackTitleMaxRunes])
 	}
 	return base
 }

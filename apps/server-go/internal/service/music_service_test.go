@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
@@ -139,6 +141,35 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	}
 }
 
+func TestMusicServicePublicPlayerWithoutPublicPlaylistReturnsEmptyQueue(t *testing.T) {
+	svc, mock, cleanup := newMusicServiceMock(t)
+	defer cleanup()
+	expectMusicSettings(mock, true)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(DISTINCT p.id)`)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
+		WithArgs(1, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "name", "slug", "description", "cover_media_file_id", "visibility", "status",
+			"display_on_home", "display_on_profile", "carousel_enabled", "random_enabled",
+			"sort_order", "created_at", "updated_at", "track_count",
+		}))
+
+	player, err := svc.PublicPlayer(context.Background())
+	if err != nil {
+		t.Fatalf("PublicPlayer: %v", err)
+	}
+	if player.Playlist != nil {
+		t.Fatalf("playlist = %#v, want nil", player.Playlist)
+	}
+	if len(player.Tracks) != 0 {
+		t.Fatalf("tracks len = %d, want 0", len(player.Tracks))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestMusicServiceReorderPlaylistPatchesOnlyProvidedTracks(t *testing.T) {
 	svc, mock, cleanup := newMusicServiceMock(t)
 	defer cleanup()
@@ -166,5 +197,12 @@ func TestMusicServiceReorderPlaylistPatchesOnlyProvidedTracks(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestTitleFromFilenameBoundsFallbackTitle(t *testing.T) {
+	got := titleFromFilename(strings.Repeat("长", 220) + ".mp3")
+	if utf8.RuneCountInString(got) != musicTrackTitleMaxRunes {
+		t.Fatalf("title rune length = %d, want %d", utf8.RuneCountInString(got), musicTrackTitleMaxRunes)
 	}
 }
