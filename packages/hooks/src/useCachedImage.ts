@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type CachedImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -149,7 +149,8 @@ export function useCachedImage(
   src: string | null | undefined,
   options: UseCachedImageOptions = {},
 ) {
-  const normalizedSrc = useMemo(() => (src ?? '').trim(), [src]);
+  // ⚡ Bolt: Removed useMemo because trimming a string is trivial and hook overhead exceeds GC savings.
+  const normalizedSrc = (src ?? '').trim();
   const enabled = options.enabled ?? true;
   const preload = options.preload ?? true;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

@@ -1,0 +1,3 @@
+## 2024-06-14 - 移除多余的 useMemo 消除 Hook 开销
+**Learning:** In React, wrapping trivial primitive operations (like string `.trim()` or simple boolean fallbacks) in `useMemo` is a performance anti-pattern. The overhead of React allocating hook memory, managing the dependency array, and checking for equality is higher than simply re-evaluating the fast string operation directly on every render.
+**Action:** Before applying `useMemo`, strictly evaluate if the operation is actually computationally expensive (e.g., complex array transformations, heavy regex processing). For O(1) string/primitive operations, remove the memoization to save garbage collection and hook overhead.

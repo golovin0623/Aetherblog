@@ -26,7 +26,8 @@ function isSafeAvatarSrc(raw: string | undefined): string | undefined {
 export function Avatar({ src, alt, fallback, size = 'md', className }: AvatarProps) {
   const [hasError, setHasError] = React.useState(false);
 
-  const safeSrc = React.useMemo(() => isSafeAvatarSrc(src), [src]);
+  // ⚡ Bolt: Removed useMemo because basic string validation is trivial and hook overhead exceeds GC savings.
+  const safeSrc = isSafeAvatarSrc(src);
 
   const sizeClasses = {
     sm: 'w-8 h-8 text-xs',
