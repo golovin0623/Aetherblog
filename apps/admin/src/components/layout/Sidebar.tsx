@@ -68,7 +68,7 @@ const navSections: Array<{
     items: [
       { path: '/posts', icon: FileText, label: '文章管理' },
       { path: '/media', icon: Image, label: '媒体库' },
-      { path: '/music', icon: Music2, label: '音乐播放' },
+      { path: '/music', icon: Music2, label: '音乐大厅' },
       { path: '/storage/explorer', icon: Cloud, label: '云端浏览' },
       { path: '/categories', icon: FolderTree, label: '分类标签' },
       { path: '/comments', icon: MessageSquare, label: '评论管理' },

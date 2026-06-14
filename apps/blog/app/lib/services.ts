@@ -94,7 +94,9 @@ export interface MusicTrack {
   artist: string;
   album: string;
   durationSeconds?: number;
+  coverMediaFileId?: number;
   coverUrl?: string;
+  lyric?: string;
   status: 'ACTIVE' | 'HIDDEN';
   sortOrder: number;
   isFeatured: boolean;

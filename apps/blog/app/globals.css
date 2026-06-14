@@ -18,6 +18,46 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes music-vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes music-eq-pulse {
+  0%, 100% {
+    height: 0.35rem;
+    opacity: 0.45;
+  }
+  50% {
+    height: 1.35rem;
+    opacity: 1;
+  }
+}
+
+.music-vinyl-spin {
+  animation: music-vinyl-spin 18s linear infinite;
+}
+
+.music-eq-bar {
+  display: inline-block;
+  width: 0.18rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  background: #ff4d4f;
+  animation: music-eq-pulse 820ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-vinyl-spin,
+  .music-eq-bar {
+    animation: none;
+  }
+}
+
 /* 注：代码语法高亮现在由 MarkdownRenderer 中的 Shiki 处理 */
 
 /* ========================================

@@ -4,6 +4,7 @@ import {
   Disc3,
   FolderPlus,
   Headphones,
+  LibraryBig,
   ListMusic,
   Loader2,
   Music2,
@@ -39,6 +40,7 @@ import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layou
 import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useAdminMusicPlayer } from '@/components/music/AdminMusicPlayerProvider';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
 import { mediaService } from '@/services/mediaService';
@@ -52,14 +54,15 @@ type PlaylistDraft = MusicPlaylistRequest & { sortOrder: number };
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
+const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
 
 const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
   {
     key: 'library',
-    label: '曲库运营',
+    label: '音乐大厅',
     shortLabel: '曲库',
     description: '上传、扫描、试听与维护独立歌曲库。',
-    icon: Music2,
+    icon: LibraryBig,
   },
   {
     key: 'playlists',
@@ -132,11 +135,6 @@ function flattenFolders(nodes: FolderTreeNode[] | undefined, depth = 0): SelectO
   ]);
 }
 
-function resolveAudioUrl(track: MusicTrack | undefined): string {
-  if (!track) return '';
-  return track.media.publicUrl || track.media.fileUrl || '';
-}
-
 function defaultSettings(settings?: MusicSettings): MusicSettings {
   return {
     enabled: settings?.enabled ?? false,
@@ -154,8 +152,15 @@ function defaultSettings(settings?: MusicSettings): MusicSettings {
 
 export default function MusicPage() {
   const queryClient = useQueryClient();
-  const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    queue,
+    currentTrack,
+    currentIndex,
+    isPlaying,
+    percent,
+    playTracks,
+  } = useAdminMusicPlayer();
   const [activeTab, setActiveTab] = useState<MusicTab>('library');
   const [trackPage, setTrackPage] = useState(1);
   const [trackPageSize, setTrackPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -165,7 +170,7 @@ export default function MusicPage() {
   const [scanPageSize, setScanPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [includeMapped, setIncludeMapped] = useState(false);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
-  const [newFolderName, setNewFolderName] = useState('Music');
+  const [newFolderName, setNewFolderName] = useState(MUSIC_HALL_FOLDER_NAME);
   const [uploadingLabel, setUploadingLabel] = useState('');
   const [editingTrack, setEditingTrack] = useState<MusicTrack | null>(null);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
@@ -190,9 +195,6 @@ export default function MusicPage() {
   });
   const [trackToAdd, setTrackToAdd] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
-  const [queue, setQueue] = useState<MusicTrack[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
 
   const settingsQuery = useQuery({
     queryKey: ['music-settings'],
@@ -269,8 +271,6 @@ export default function MusicPage() {
   });
   const selectedCandidateSet = useMemo(() => new Set(selectedCandidateIds), [selectedCandidateIds]);
 
-  const currentTrack = queue[currentIndex];
-
   const invalidateMusic = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['music-summary'] });
     queryClient.invalidateQueries({ queryKey: ['music-settings'] });
@@ -331,7 +331,7 @@ export default function MusicPage() {
   });
 
   const createFolderMutation = useMutation({
-    mutationFn: () => folderService.create({ name: newFolderName.trim() || 'Music' }),
+    mutationFn: () => folderService.create({ name: newFolderName.trim() || MUSIC_HALL_FOLDER_NAME }),
     onSuccess: async (res) => {
       const folderId = res.data.id;
       toast.success(`已创建媒体目录：${res.data.name}`);
@@ -439,15 +439,6 @@ export default function MusicPage() {
     setSelectedCandidateIds([]);
   }, [settings.mediaFolderId, scanKeyword, includeMapped, scanPage, scanPageSize]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
-    audio.src = resolveAudioUrl(currentTrack);
-    if (isPlaying) {
-      audio.play().catch(() => setIsPlaying(false));
-    }
-  }, [currentTrack, isPlaying]);
-
   const saveSettingsPatch = (patch: Partial<MusicSettings>) => {
     settingsMutation.mutate({
       ...settings,
@@ -477,7 +468,7 @@ export default function MusicPage() {
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!settings.mediaFolderId) {
-      toast.error('请先指定音乐媒体目录，或创建一个目录后再上传');
+      toast.error('请先指定音乐大厅媒体目录，或创建一个目录后再上传');
       return;
     }
     for (const file of Array.from(files)) {
@@ -500,57 +491,72 @@ export default function MusicPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const playTracks = (nextQueue: MusicTrack[], index: number) => {
-    if (nextQueue.length === 0) return;
-    setQueue(nextQueue);
-    setCurrentIndex(index);
-    setIsPlaying(true);
-  };
-
   const playSingle = (track: MusicTrack) => {
     const source = tracks.length > 0 ? tracks : [track];
     const index = Math.max(0, source.findIndex((item) => item.id === track.id));
     playTracks(source, index);
   };
 
-  const nextTrack = useCallback(() => {
-    if (queue.length === 0) return;
-    setCurrentIndex((index) => {
-      if (settings.randomEnabled || settings.playbackMode === 'SHUFFLE') {
-        return Math.floor(Math.random() * queue.length);
-      }
-      return (index + 1) % queue.length;
-    });
-    setIsPlaying(true);
-  }, [queue.length, settings.playbackMode, settings.randomEnabled]);
+  const renderHallStage = () => {
+    const stageTrack = currentTrack ?? tracks[0];
+    const stageProgressPercent = currentTrack && stageTrack && currentTrack.id === stageTrack.id ? percent : 0;
+    return (
+      <div className="access-surface overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--bg-leaf)_92%,#ff4d4f_8%),var(--bg-leaf)_50%,color-mix(in_oklch,var(--bg-leaf)_88%,var(--ink-primary)_12%))] shadow-[0_22px_70px_-52px_rgba(0,0,0,0.52)]">
+        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-5">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,#ff4d4f_28%,transparent)] bg-[color-mix(in_oklch,#ff4d4f_9%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[#d93d3f]">
+              <Disc3 className={cn('h-3.5 w-3.5', isPlaying && 'animate-spin [animation-duration:3s]')} />
+              Music Hall Control
+            </div>
+            <h2 className="mt-4 text-2xl font-black tracking-normal text-[var(--ink-primary)] sm:text-4xl">音乐大厅中控台</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--ink-secondary)]">
+              媒体库负责存储，音乐大厅负责策展、排序、公开展示、歌词封面和播放策略。上传入口会写入指定媒体目录，歌单排序与媒体库目录保持解耦。
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StageMetric label="曲库" value={summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0} />
+              <StageMetric label="展示中" value={summaryQuery.data?.activeTrackCount ?? 0} />
+              <StageMetric label="歌单" value={summaryQuery.data?.playlistCount ?? playlists.length} />
+              <StageMetric label="可扫音频" value={summaryQuery.data?.availableAudioCount ?? 0} />
+            </div>
+          </div>
 
-  const previousTrack = () => {
-    if (queue.length === 0) return;
-    setCurrentIndex((index) => (index - 1 + queue.length) % queue.length);
-    setIsPlaying(true);
-  };
-
-  const togglePlayback = async () => {
-    const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-      return;
-    }
-    try {
-      await audio.play();
-      setIsPlaying(true);
-    } catch {
-      setIsPlaying(false);
-    }
-  };
-
-  const closePlayer = () => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-    setQueue([]);
-    setCurrentIndex(0);
+          <div className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[rgba(20,17,17,0.88)] p-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ffb4a9]">Now Auditioning</p>
+                <h3 className="mt-2 truncate text-xl font-black tracking-normal">{stageTrack?.title || '等待选择歌曲'}</h3>
+                <p className="mt-1 truncate text-sm text-white/55">{stageTrack?.artist || '从曲库或歌单点击试听'}</p>
+              </div>
+              <span className={cn(
+                'shrink-0 rounded-full px-2.5 py-1 text-xs font-bold',
+                settings.enabled ? 'bg-emerald-400/14 text-emerald-200' : 'bg-white/8 text-white/45'
+              )}>
+                {settings.enabled ? '公开已启用' : '未公开'}
+              </span>
+            </div>
+            <div className="mt-5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => tracks.length > 0 && playTracks(tracks, Math.max(0, stageTrack ? tracks.findIndex((track) => track.id === stageTrack.id) : 0))}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff4d4f] text-white shadow-[0_16px_34px_-18px_rgba(255,77,79,0.95)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={tracks.length === 0}
+                aria-label="试听音乐大厅歌曲"
+              >
+                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-[#ff4d4f] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+                </div>
+                <p className="mt-2 truncate text-xs text-white/45">
+                  {settings.mediaFolderId ? `媒体目录 #${settings.mediaFolderId}` : `未指定 ${MUSIC_HALL_FOLDER_NAME} 媒体目录`}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderDirectoryGuard = () => (
@@ -560,9 +566,9 @@ export default function MusicPage() {
           <FolderPlus className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-[var(--ink-primary)]">需要先指定媒体库音频目录</p>
+          <p className="text-sm font-bold text-[var(--ink-primary)]">需要先指定音乐大厅媒体目录</p>
           <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-            音乐管理只保存映射关系，音频文件仍放在媒体库。请选择已有目录，或创建一个专用目录后再上传/扫描。
+            音乐大厅只保存播放管理映射，音频文件仍放在媒体库。请选择已有目录，或创建一个专用目录后再上传/扫描。
           </p>
         </div>
       </div>
@@ -573,14 +579,14 @@ export default function MusicPage() {
           options={folderOptions}
           placeholder="选择已有媒体目录"
           prefix={<Disc3 />}
-          ariaLabel="音乐媒体目录"
+          ariaLabel="音乐大厅媒体目录"
         />
         <input
           value={newFolderName}
           onChange={(event) => setNewFolderName(event.target.value)}
           className={inputClass()}
-          placeholder="新目录名称"
-          aria-label="新音乐目录名称"
+          placeholder={MUSIC_HALL_FOLDER_NAME}
+          aria-label="新音乐大厅目录名称"
         />
         <button
           type="button"
@@ -616,22 +622,33 @@ export default function MusicPage() {
               />
             </div>
             <input
+              id="music-hall-audio-upload"
               ref={fileInputRef}
               type="file"
               multiple
               accept="audio/*"
-              className="hidden"
+              className="sr-only"
+              disabled={!settings.mediaFolderId || Boolean(uploadingLabel)}
               onChange={(event) => handleFiles(event.target.files)}
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={textButtonClass('primary')}
-              disabled={!settings.mediaFolderId || Boolean(uploadingLabel)}
+            <label
+              htmlFor="music-hall-audio-upload"
+              role="button"
+              tabIndex={!settings.mediaFolderId || Boolean(uploadingLabel) ? -1 : 0}
+              aria-disabled={!settings.mediaFolderId || Boolean(uploadingLabel)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }}
+              className={cn(
+                textButtonClass('primary'),
+                (!settings.mediaFolderId || Boolean(uploadingLabel)) && 'pointer-events-none opacity-50'
+              )}
             >
               {uploadingLabel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {uploadingLabel ? '上传中' : '上传音频'}
-            </button>
+            </label>
             <button
               type="button"
               onClick={() => scanQuery.refetch()}
@@ -685,7 +702,7 @@ export default function MusicPage() {
                   >
                     <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
                     <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">
-                      {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media.fileSize)}
+                      {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media?.fileSize ?? 0)}
                     </p>
                   </button>
                   <div className="flex items-center gap-2">
@@ -730,7 +747,7 @@ export default function MusicPage() {
           <AdminSectionHeader
             icon={<Wand2 className="h-4 w-4" />}
             title="媒体库音频扫描"
-            description={settings.mediaFolderId ? '扫描指定目录下尚未纳入曲库的音频文件' : '指定目录后可扫描'}
+            description={settings.mediaFolderId ? '扫描音乐大厅目录下尚未纳入曲库的音频文件' : '指定目录后可扫描'}
             aside={
               <div className="flex flex-wrap justify-end gap-2">
                 <button
@@ -770,7 +787,7 @@ export default function MusicPage() {
           </div>
           <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
             {!settings.mediaFolderId ? (
-              <div className="p-6 text-sm text-[var(--ink-muted)]">请先指定音乐媒体目录。</div>
+              <div className="p-6 text-sm text-[var(--ink-muted)]">请先指定音乐大厅媒体目录。</div>
             ) : scanQuery.isLoading ? (
               <div className="p-6 text-sm text-[var(--ink-muted)]">正在扫描媒体目录...</div>
             ) : (scanQuery.data?.list ?? []).length === 0 ? (
@@ -861,7 +878,7 @@ export default function MusicPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media.originalName}</p>
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
           </div>
           <button type="button" onClick={onClose} className={iconButtonClass()}>
             <X className="h-4 w-4" />
@@ -879,6 +896,39 @@ export default function MusicPage() {
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">专辑</span>
             <input value={draft.album} onChange={(e) => setDraft({ ...draft, album: e.target.value })} className={inputClass()} />
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+              {draft.coverUrl ? (
+                <img src={draft.coverUrl} alt={`${draft.title} 封面`} className="h-full w-full object-cover" />
+              ) : (
+                <Disc3 className="h-8 w-8 text-[var(--ink-muted)]" />
+              )}
+            </div>
+            <label className="block min-w-0">
+              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">封面媒体 ID</span>
+              <input
+                type="number"
+                min={1}
+                value={draft.coverMediaFileId ?? ''}
+                onChange={(e) => setDraft({
+                  ...draft,
+                  coverMediaFileId: e.target.value ? Number(e.target.value) : undefined,
+                })}
+                className={inputClass()}
+                placeholder="选择媒体库图片 ID"
+              />
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">封面仍存储在媒体库，这里只保存歌曲到封面文件的映射。</p>
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</span>
+            <textarea
+              value={draft.lyric || ''}
+              onChange={(e) => setDraft({ ...draft, lyric: e.target.value })}
+              className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
+              placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
@@ -923,6 +973,8 @@ export default function MusicPage() {
               title: draft.title,
               artist: draft.artist,
               album: draft.album,
+              coverMediaFileId: draft.coverMediaFileId,
+              lyric: draft.lyric,
               status: draft.status,
               sortOrder: draft.sortOrder,
               isFeatured: draft.isFeatured,
@@ -1108,7 +1160,7 @@ export default function MusicPage() {
                     <span className="tnum text-xs font-semibold text-[var(--ink-muted)]">{index + 1}</span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
-                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media.originalName}</p>
+                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')}>
@@ -1195,9 +1247,9 @@ export default function MusicPage() {
               value={settings.mediaFolderId ? String(settings.mediaFolderId) : ''}
               onValueChange={(value) => saveSettingsPatch({ mediaFolderId: value ? Number(value) : undefined })}
               options={folderOptions}
-              placeholder="音乐媒体目录"
+              placeholder="音乐大厅媒体目录"
               prefix={<Disc3 />}
-              ariaLabel="音乐媒体目录"
+              ariaLabel="音乐大厅媒体目录"
             />
             <input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} className={inputClass()} />
             <button type="button" onClick={() => createFolderMutation.mutate()} className={textButtonClass('primary')} disabled={createFolderMutation.isPending}>
@@ -1239,6 +1291,15 @@ export default function MusicPage() {
     );
   }
 
+  function StageMetric({ label, value }: { label: string; value: number }) {
+    return (
+      <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] p-3">
+        <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p>
+        <p className="tnum mt-1 text-xl font-black text-[var(--ink-primary)]">{value}</p>
+      </div>
+    );
+  }
+
   function TogglePill({ checked, label, onClick }: { checked: boolean; label: string; onClick: () => void }) {
     return (
       <button
@@ -1258,7 +1319,7 @@ export default function MusicPage() {
   }
 
   const totalTracks = summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0;
-  const activeTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? '曲库运营';
+  const activeTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? '音乐大厅';
   const pendingDeleteTitle =
     pendingDelete?.kind === 'playlist'
       ? '删除歌单'
@@ -1276,7 +1337,7 @@ export default function MusicPage() {
     <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
-          title="音乐播放"
+          title="音乐大厅"
           description="以媒体库音频为存储层，独立管理歌曲、歌单、展示入口与播放策略。"
           tabs={tabs}
           activeKey={activeTab}
@@ -1309,44 +1370,12 @@ export default function MusicPage() {
           }
         />
 
+        {renderHallStage()}
+
         {activeTab === 'library' && renderLibrary()}
         {activeTab === 'playlists' && renderPlaylists()}
         {activeTab === 'display' && renderDisplay()}
       </div>
-
-      <audio ref={audioRef} preload="metadata" onEnded={nextTrack} />
-
-      {currentTrack && (
-        <div className="fixed bottom-4 right-4 z-50 w-[min(420px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-overlay)] p-3 shadow-2xl backdrop-blur-xl">
-          <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3">
-            <button
-              type="button"
-              onClick={togglePlayback}
-              className={iconButtonClass(true, 'primary')}
-              aria-label={isPlaying ? '暂停后台播放' : '继续后台播放'}
-            >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </button>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-[var(--ink-primary)]">{currentTrack.title}</p>
-              <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">
-                {currentTrack.artist || '未知艺术家'} · 后台播放队列 {currentIndex + 1}/{queue.length}
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={previousTrack} className={iconButtonClass()} aria-label="上一首">
-                <SkipBack className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={nextTrack} className={iconButtonClass()} aria-label="下一首">
-                <SkipForward className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={closePlayer} className={iconButtonClass()} aria-label="关闭播放器">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <ConfirmDialog
         isOpen={Boolean(pendingDelete)}

@@ -1,39 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Disc3, Pause, Play, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
-import { getMusicPlayer, type MusicTrack } from '../lib/services';
-import { sanitizeUrl } from '../lib/sanitizeUrl';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Disc3, ListMusic, Pause, Play, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import {
+  formatMusicClock,
+  resolveMusicCoverSrc,
+  useMusicPlayer,
+} from './MusicPlayerProvider';
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
-}
-
-function resolveAudioSrc(track: MusicTrack | undefined): string {
-  if (!track) return '';
-  const raw = track.media.publicUrl || track.media.fileUrl || '';
-  if (!raw) return '';
-  if (raw.startsWith('uploads/')) return `/${raw}`;
-  const safe = sanitizeUrl(raw, '');
-  return safe === '#' ? '' : safe;
-}
-
-function formatClock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
-  const whole = Math.floor(seconds);
-  const minutes = Math.floor(whole / 60);
-  const rest = whole % 60;
-  return `${minutes}:${String(rest).padStart(2, '0')}`;
-}
-
-function pickRandomIndex(length: number, currentIndex: number): number {
-  if (length <= 1) return 0;
-  let next = currentIndex;
-  while (next === currentIndex) {
-    next = Math.floor(Math.random() * length);
-  }
-  return next;
 }
 
 interface ProfileMusicPlayerProps {
@@ -42,232 +19,163 @@ interface ProfileMusicPlayerProps {
 }
 
 export function ProfileMusicPlayer({ surface = 'profile', className }: ProfileMusicPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const playingRef = useRef(false);
-  const { data: player } = useQuery({
-    queryKey: ['musicPlayer'],
-    queryFn: getMusicPlayer,
-    staleTime: 60 * 1000,
-  });
-  const tracks = useMemo(
-    () => (player?.tracks ?? []).filter((track) => Boolean(resolveAudioSrc(track))),
-    [player?.tracks]
-  );
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [shuffle, setShuffle] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const {
+    player,
+    tracks,
+    currentTrack,
+    currentIndex,
+    isPlaying,
+    shuffle,
+    progress,
+    duration,
+    percent,
+    canUseSurface,
+    playIndex,
+    togglePlayback,
+    nextTrack,
+    previousTrack,
+    setShuffle,
+    setExpanded,
+  } = useMusicPlayer();
 
-  const currentTrack = tracks[currentIndex];
-  const audioSrc = resolveAudioSrc(currentTrack);
-  const surfaceEnabled = surface === 'home' ? player?.showOnHomePage : player?.showOnProfileCard;
-  const playlistVisible = surface === 'home'
-    ? player?.playlist?.displayOnHome !== false
-    : player?.playlist?.displayOnProfile !== false;
-  const carouselActive = Boolean(
-    player?.carouselEnabled || player?.playlist?.carouselEnabled || player?.playbackMode === 'CAROUSEL'
-  );
-  const carouselIntervalSeconds = Math.min(60, Math.max(3, player?.carouselIntervalSeconds ?? 8));
-  const canRender = Boolean(
-    player?.enabled &&
-      tracks.length > 0 &&
-      surfaceEnabled &&
-      playlistVisible
-  );
-  const shuffleActive = shuffle;
+  if (!canUseSurface(surface)) return null;
 
-  useEffect(() => {
-    playingRef.current = isPlaying;
-  }, [isPlaying]);
+  const displayTrack = currentTrack ?? tracks[0];
+  if (!displayTrack) return null;
 
-  useEffect(() => {
-    setShuffle(Boolean(
-      player?.randomEnabled ||
-        player?.playlist?.randomEnabled ||
-        player?.playbackMode === 'SHUFFLE'
-    ));
-  }, [player?.randomEnabled, player?.playlist?.randomEnabled, player?.playbackMode]);
+  const cover = resolveMusicCoverSrc(displayTrack);
+  const isCurrentTrack = currentTrack?.id === displayTrack.id;
+  const isHome = surface === 'home';
+  const playlistName = player?.playlist?.name || '音乐大厅';
+  const activeDuration = duration || displayTrack.durationSeconds || 0;
 
-  useEffect(() => {
-    if (currentIndex >= tracks.length) {
-      setCurrentIndex(0);
-    }
-  }, [currentIndex, tracks.length]);
-
-  useEffect(() => {
-    const carouselCanInterruptPlayback = player?.playbackMode === 'CAROUSEL';
-    if (!canRender || !carouselActive || tracks.length <= 1 || (isPlaying && !carouselCanInterruptPlayback)) return undefined;
-    const timer = window.setInterval(() => {
-      setCurrentIndex((index) =>
-        shuffleActive ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
-      );
-    }, carouselIntervalSeconds * 1000);
-    return () => window.clearInterval(timer);
-  }, [canRender, carouselActive, carouselIntervalSeconds, isPlaying, player?.playbackMode, shuffleActive, tracks.length]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !audioSrc) return;
-    audio.src = audioSrc;
-    audio.load();
-    setProgress(0);
-    setDuration(currentTrack?.durationSeconds ?? 0);
-    if (playingRef.current) {
-      audio.play().catch(() => setIsPlaying(false));
-    }
-  }, [audioSrc, currentTrack?.durationSeconds]);
-
-  const advanceTrack = useCallback(
-    (manual: boolean) => {
-      if (tracks.length === 0) return;
-      const shouldWrap = manual || player?.playbackMode === 'LOOP' || player?.playbackMode === 'CAROUSEL';
-
-      if (!manual && !shuffleActive && currentIndex >= tracks.length - 1 && !shouldWrap) {
-        const audio = audioRef.current;
-        if (audio) {
-          audio.pause();
-          audio.currentTime = 0;
-        }
-        setProgress(0);
-        setIsPlaying(false);
-        return;
-      }
-
-      setCurrentIndex((index) =>
-        shuffleActive ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
-      );
-      setIsPlaying(true);
-    },
-    [currentIndex, player?.playbackMode, shuffleActive, tracks.length]
-  );
-
-  const previousTrack = () => {
-    if (tracks.length === 0) return;
-    setCurrentIndex((index) => (index - 1 + tracks.length) % tracks.length);
-    setIsPlaying(true);
-  };
-
-  const togglePlayback = async () => {
-    const audio = audioRef.current;
-    if (!audio || !audioSrc) return;
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
+  const handleMainAction = async () => {
+    if (!isCurrentTrack) {
+      playIndex(0);
       return;
     }
-    try {
-      if (!audio.src) {
-        audio.src = audioSrc;
-      }
-      await audio.play();
-      setIsPlaying(true);
-    } catch {
-      setIsPlaying(false);
-    }
+    await togglePlayback();
   };
-
-  if (!canRender || !currentTrack) return null;
-
-  const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
-  const playlistName = player?.playlist?.name || '音乐';
-  const isHome = surface === 'home';
 
   return (
     <div
       className={cn(
-        'w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30 text-left',
-        isHome ? 'mb-8 p-4 shadow-[0_18px_46px_-38px_rgba(15,23,42,0.45)] backdrop-blur-sm' : 'mb-3 p-3',
+        'group/music-entry relative w-full overflow-hidden rounded-2xl border text-left',
+        'border-[var(--border-subtle)] bg-[linear-gradient(135deg,var(--bg-card),color-mix(in_oklch,var(--bg-secondary)_78%,#ff4d4f_8%))]',
+        'shadow-[0_18px_46px_-38px_rgba(15,23,42,0.45)]',
+        isHome ? 'mb-8 p-4 md:p-5' : 'mb-3 p-3',
         className
       )}
     >
-      <audio
-        ref={audioRef}
-        preload="metadata"
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || currentTrack.durationSeconds || 0)}
-        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime || 0)}
-        onEnded={() => advanceTrack(false)}
-      />
-
-      <div className={cn('flex items-center gap-3', isHome && 'md:gap-4')}>
+      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,#ff4d4f,transparent)] opacity-60" />
+      <div className={cn('grid items-center gap-3', isHome ? 'grid-cols-[64px_minmax(0,1fr)_auto]' : 'grid-cols-[52px_minmax(0,1fr)_auto]')}>
         <button
           type="button"
-          onClick={togglePlayback}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--color-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
-          aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
+          onClick={handleMainAction}
+          className={cn(
+            'relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#191313] text-white shadow-md transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]',
+            isHome ? 'h-16 w-16' : 'h-[3.25rem] w-[3.25rem]'
+          )}
+          aria-label={isCurrentTrack && isPlaying ? '暂停音乐' : '播放音乐'}
         >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
+          {cover ? (
+            <Image
+              src={cover}
+              alt={displayTrack.title}
+              fill
+              sizes={isHome ? '4rem' : '3.25rem'}
+              className={cn('object-cover opacity-72', isCurrentTrack && isPlaying && 'music-vinyl-spin')}
+              unoptimized
+            />
+          ) : (
+            <Disc3 className={cn('absolute h-8 w-8 text-white/36', isCurrentTrack && isPlaying && 'animate-spin [animation-duration:3s]')} />
+          )}
+          <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[#ff4d4f] shadow-lg">
+            {isCurrentTrack && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
+          </span>
         </button>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-            <Volume2 className="h-3.5 w-3.5 shrink-0" />
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#ff4d4f]" />
             <span className="truncate">{playlistName}</span>
           </div>
-          <p className={cn('mt-1 truncate font-bold text-[var(--text-primary)]', isHome ? 'text-base md:text-lg' : 'text-sm')} title={currentTrack.title}>
-            {currentTrack.title}
+          <p className={cn('mt-1 truncate font-black tracking-normal text-[var(--text-primary)]', isHome ? 'text-base md:text-lg' : 'text-sm')} title={displayTrack.title}>
+            {displayTrack.title}
           </p>
-          <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]" title={currentTrack.artist || currentTrack.album || currentTrack.media.originalName}>
-            {currentTrack.artist || '未知艺术家'} · {currentIndex + 1}/{tracks.length}
+          <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]" title={displayTrack.artist || displayTrack.album || displayTrack.media.originalName}>
+            {displayTrack.artist || '未知艺术家'} · {(currentTrack ? currentIndex : 0) + 1}/{tracks.length}
           </p>
         </div>
-      </div>
 
-      <div className="mt-3">
-        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-card)]">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-200"
-            style={{ width: `${percent}%` }}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(percent)}
-          />
-        </div>
-        <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--text-muted)]">
-          <span>{formatClock(progress)}</span>
-          <span>{formatClock(duration || currentTrack.durationSeconds || 0)}</span>
-        </div>
-      </div>
-
-      <div className="mt-2 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setShuffle((value) => !value)}
-          className={cn(
-            'flex h-11 w-11 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]',
-            shuffleActive
-              ? 'border-primary/40 bg-primary/10 text-primary'
-              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          )}
-          aria-pressed={shuffleActive}
-          aria-label="随机播放"
-        >
-          <Shuffle className="h-4 w-4" />
-        </button>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShuffle((value) => !value)}
+            className={cn(
+              'hidden h-10 w-10 items-center justify-center rounded-xl border transition-colors sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]',
+              shuffle
+                ? 'border-[#ff4d4f]/35 bg-[#ff4d4f]/10 text-[#ff4d4f]'
+                : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            )}
+            aria-pressed={shuffle}
+            aria-label="随机播放"
+          >
+            <Shuffle className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={previousTrack}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
+            className="hidden h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
             aria-label="上一首"
           >
             <SkipBack className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={() => advanceTrack(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]"
+            onClick={nextTrack}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
             aria-label="下一首"
           >
             <SkipForward className="h-4 w-4" />
           </button>
         </div>
+      </div>
 
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)]">
-          <Disc3 className={cn('h-4 w-4', isPlaying && 'animate-spin [animation-duration:3s]')} />
-        </span>
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={(event) => {
+            if (!isCurrentTrack) playIndex(0);
+            setExpanded(true);
+          }}
+          className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
+          aria-label="打开音乐大厅调整播放进度"
+        >
+          <span className="block h-full rounded-full bg-[#ff4d4f] transition-[width] duration-200" style={{ width: `${isCurrentTrack ? percent : 0}%` }} />
+        </button>
+        <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--text-muted)]">
+          <span>{isCurrentTrack ? formatMusicClock(progress) : '0:00'}</span>
+          <span>{formatMusicClock(activeDuration)}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="inline-flex h-9 items-center gap-2 rounded-full border border-[#ff4d4f]/20 bg-[#ff4d4f]/8 px-3 text-xs font-bold text-[#d93d3f] transition-colors hover:bg-[#ff4d4f]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
+        >
+          <Disc3 className={cn('h-3.5 w-3.5', isCurrentTrack && isPlaying && 'animate-spin [animation-duration:3s]')} />
+          打开播放页
+        </button>
+        <Link
+          href="/music"
+          className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-xs font-bold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
+        >
+          <ListMusic className="h-3.5 w-3.5" />
+          音乐大厅
+        </Link>
       </div>
     </div>
   );
