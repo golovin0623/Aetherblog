@@ -57,6 +57,10 @@ export default function MusicHallExperience() {
   const cover = resolveMusicCoverSrc(activeTrack);
   const playlistName = player?.playlist?.name || '音乐大厅';
   const canPlay = Boolean(player?.enabled && tracks.length > 0 && activeTrack);
+  const playbackLabel =
+    ({ SEQUENTIAL: '顺序播放', SHUFFLE: '随机播放', LOOP: '单曲循环', CAROUSEL: '轮播展示' } as Record<string, string>)[
+      player?.playbackMode || 'SEQUENTIAL'
+    ] || '顺序播放';
 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
   const activeLyricRef = useRef<HTMLParagraphElement>(null);
@@ -79,58 +83,72 @@ export default function MusicHallExperience() {
         <section className="surface-luminous grid min-h-[520px] grid-cols-1 overflow-hidden rounded-[2rem] lg:grid-cols-[minmax(0,1fr)_460px]">
           <div className="flex flex-col justify-between p-6 sm:p-8 lg:p-10">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--aurora-1)]">
+              <div data-eyebrow className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--aurora-1)]">
                 <Sparkles className="h-3.5 w-3.5" />
                 Aether Music Hall
               </div>
-              <h1 className="mt-6 max-w-3xl text-h1 font-black tracking-normal sm:text-display">
+              <h1 className="mt-4 max-w-3xl text-4xl font-black tracking-normal sm:mt-6 sm:text-display">
                 音乐大厅
               </h1>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--ink-secondary)] sm:text-lg">
+              <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-7 text-[var(--ink-secondary)] sm:mt-5 sm:line-clamp-none sm:text-lg sm:leading-8">
                 从媒体库映射而来的私有歌单陈列室。首页入口、个人卡片、后台播放与当前页面共享同一个播放核心，切换页面也不会打断正在播放的音乐。
               </p>
             </div>
 
-            <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {/* 移动端:紧凑状态药丸 —— 取代占位很大的指标方块,中文短标签不再截断 SEQUENTIAL */}
+            <div className="mt-6 flex flex-wrap gap-2 sm:hidden">
+              <HeroPill label="队列" value={`${tracks.length} 首`} accent />
+              <HeroPill label="策略" value={playbackLabel} />
+              <HeroPill label="随机" value={shuffle ? '开' : '关'} on={shuffle} />
+              <HeroPill label="轮播" value={player?.carouselEnabled ? '开' : '关'} on={Boolean(player?.carouselEnabled)} />
+            </div>
+            {/* 桌面端:保留原指标方块,行为不变 */}
+            <div className="mt-8 hidden gap-3 sm:grid sm:grid-cols-4">
               <Metric label="播放队列" value={`${tracks.length}`} />
               <Metric label="播放策略" value={player?.playbackMode || 'SEQUENTIAL'} />
               <Metric label="随机" value={shuffle ? 'ON' : 'OFF'} />
               <Metric label="轮播" value={player?.carouselEnabled ? 'ON' : 'OFF'} />
             </div>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+            {/* 移动端:全宽主 CTA + 等宽次级三联;桌面端(sm:contents)化回原 flex-wrap,行为不变 */}
+            <div className="mt-7 flex flex-col gap-2.5 sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
               <button
                 type="button"
                 onClick={() => playAll({ expand: true })}
                 disabled={!canPlay}
-                className="inline-flex h-12 items-center gap-2 rounded-full bg-[var(--aurora-1)] px-5 text-sm font-black text-[var(--bg-void)] shadow-[0_18px_44px_-22px_color-mix(in_oklch,var(--aurora-1)_90%,transparent)] transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[var(--aurora-1)] px-5 text-sm font-black text-[var(--bg-void)] shadow-[0_18px_44px_-22px_color-mix(in_oklch,var(--aurora-1)_90%,transparent)] transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 <Play className="h-4 w-4" />
                 播放全部
               </button>
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                disabled={!canPlay}
-                className="inline-flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-5 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Disc3 className="h-4 w-4" />
-                沉浸模式
-              </button>
-              <MusicSkinSwitcher />
-              <Link
-                href="/posts"
-                className="inline-flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-5 text-sm font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
-              >
-                <Home className="h-4 w-4" />
-                返回文章
-              </Link>
+              <div className="grid grid-cols-3 gap-2 sm:contents">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  disabled={!canPlay}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-5"
+                >
+                  <Disc3 className="h-4 w-4" />
+                  <span className="sm:hidden">沉浸</span>
+                  <span className="hidden sm:inline">沉浸模式</span>
+                </button>
+                <MusicSkinSwitcher className="w-full sm:w-auto" />
+                <Link
+                  href="/posts"
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-3 text-sm font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] sm:w-auto sm:px-5"
+                >
+                  <Home className="h-4 w-4" />
+                  <span className="sm:hidden">返回</span>
+                  <span className="hidden sm:inline">返回文章</span>
+                </Link>
+              </div>
             </div>
           </div>
 
-          <div className="relative flex min-h-[420px] items-center justify-center overflow-hidden border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-substrate))] p-8 lg:border-l lg:border-t-0">
+          {/* 移动端把签名黑胶提到文案之上(order-first),作为视觉主角并压缩高度;桌面端(lg)仍在右侧 */}
+          <div className="relative order-first flex min-h-[260px] items-center justify-center overflow-hidden border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-substrate))] p-6 sm:min-h-[340px] sm:p-8 lg:order-none lg:min-h-[420px] lg:border-b-0 lg:border-l">
             <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_22%,transparent),transparent_62%)]" />
-            <div className={cn('relative h-72 w-72 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[radial-gradient(circle,color-mix(in_oklch,black_84%,var(--aurora-1))_0_28%,color-mix(in_oklch,black_92%,var(--aurora-1))_29%_100%)] shadow-[0_28px_90px_-36px_color-mix(in_oklch,black_60%,transparent)]', isPlaying && 'music-vinyl-spin')}>
+            <div className={cn('relative h-44 w-44 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[radial-gradient(circle,color-mix(in_oklch,black_84%,var(--aurora-1))_0_28%,color-mix(in_oklch,black_92%,var(--aurora-1))_29%_100%)] shadow-[0_28px_90px_-36px_color-mix(in_oklch,black_60%,transparent)] sm:h-60 sm:w-60 lg:h-72 lg:w-72', isPlaying && 'music-vinyl-spin')}>
               <div className="absolute inset-[16%] rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,black_35%,transparent)]" />
               <div className="absolute inset-[29%] overflow-hidden rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[var(--bg-leaf)]">
                 {cover ? (
@@ -194,7 +212,7 @@ export default function MusicHallExperience() {
                 <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="下一首">
                   <SkipForward className="h-5 w-5" />
                 </button>
-                <label className="flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-4 text-[var(--ink-secondary)]">
+                <label className="hidden h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-4 text-[var(--ink-secondary)] sm:flex">
                   <Volume2 className="h-4 w-4" />
                   <input
                     type="range"
@@ -213,7 +231,7 @@ export default function MusicHallExperience() {
             <div className="surface-leaf p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Live Lyrics</p>
+                  <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Live Lyrics</p>
                   <h2 className="mt-1 text-xl font-black">歌词与封面动效</h2>
                 </div>
                 <Disc3 className={cn('h-5 w-5 text-[var(--ink-muted)]', isPlaying && 'animate-spin [animation-duration:3s]')} />
@@ -243,7 +261,7 @@ export default function MusicHallExperience() {
             <div className="surface-leaf p-5 sm:p-6 lg:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Playlist</p>
+                  <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Playlist</p>
                   <h2 className="mt-1 text-xl font-black">歌单队列</h2>
                 </div>
                 <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-1 text-xs text-[var(--ink-secondary)]">{tracks.length} 首</span>
@@ -309,5 +327,22 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">{label}</p>
       <p className="mt-2 truncate text-lg font-black text-[var(--ink-primary)]">{value}</p>
     </div>
+  );
+}
+
+/** 移动端状态药丸 —— accent/on 时走 aurora 高亮,弱化方块的"仪表盘感" */
+function HeroPill({ label, value, accent, on }: { label: string; value: string; accent?: boolean; on?: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold',
+        accent || on
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_32%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
+          : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-secondary)]'
+      )}
+    >
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{label}</span>
+      {value}
+    </span>
   );
 }

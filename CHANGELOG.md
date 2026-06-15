@@ -45,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **前台 `ProfileMusicPlayer` 空对象崩溃**:`displayTrack.media?.originalName` 容错。
 - **可达性 / 键盘**:抽出共享 `SeekBar`(role=slider + ←/→/Home/End + aria-value*),三处进度条复用;沉浸层补 `role="dialog"` / `aria-modal` / Esc 关闭 / 滚动锁 / 焦点落到关闭键;歌词跟随自动滚动(大厅页 + 沉浸层);图标按钮补 `aria-label`;`TogglePill` 改 `role="switch"`;纳入/发布按钮按行 loading;`sanitizeMusicSeed` 收紧(拦 `oklch(var(...))` 注入);`prefers-reduced-motion` 覆盖音乐域 `animate-spin`。
 
+**Fixed — 移动端适配 (2026-06-15):** 前台音乐表面在窄屏(≤640)下的可用性重做,PC(`sm:` 及以上)行为保持不变。
+- **皮肤切换器移出屏幕(按钮不可用)**:触发器位于 `.surface-luminous`(`overflow:hidden` + `backdrop-filter`)内,原 `absolute right-0 w-[320px]` 弹层在 375px 下被裁剪并整片移出左侧(left≈-159)。改为经 **Portal 渲染到 `document.body`**:移动端是带遮罩的底部抽屉(全宽、安全区内、97% 不透明),桌面端按触发器位置锚定右对齐下拉(行为同前)。
+- **dock 压住沉浸层(交互漏洞)**:dock(z-70)盖在沉浸层(z-65)之上;现 `expanded` 时不渲染 dock。
+- **沉浸层窄屏控件溢出**:移动端隐藏音量条(用系统音量)、`歌单页` 收为图标按钮 —— 传输键不再换行/被挤。
+- **dock 进度条移动端太短**:窄屏改为卡片顶部全宽进度条(`size=md`),桌面端仍走中列内联条。
+- 大厅 now-playing 卡的音量条同样移动端隐藏,避免换行。
+
+**Changed — 移动端 hero 视觉重做(设计感)(2026-06-15):** 把"桌面布局塞进手机"的 hero 改为移动端原生视觉编排,PC(`lg`)逐项不变。
+- 签名黑胶 `order-first` 提到文案之上作视觉主角并压缩尺寸(`h-44 → sm:h-60 → lg:h-72`);标题缩到 `text-4xl`、描述 `line-clamp-2`。
+- 占位很大、还会把 `SEQUENTIAL` 截成 `SEQUENT...` 的 2×2 指标方块,移动端换成紧凑**状态药丸**(中文短标签 `顺序播放` 等,`队列/轮播` 命中走 aurora 高亮);桌面端保留原方块。
+- 操作区移动端改为**全宽主 CTA `播放全部` + 等宽三联(沉浸/皮肤/返回)**;桌面端经 `sm:contents` 化回原 `flex-wrap` 行,完全不变。
+- 皮肤切换器移动端底部抽屉加 iOS 抓手。
+
+**Fixed — 音乐域排印(字体丑根因)(2026-06-15):** 音乐组件此前所有标题/标签都**继承裸 Inter**(违反设计系统禁忌 #1「不得用 Inter 作 Hero 标题」),中文标题以 Inter 900 渲染显得笨重廉价。新增作用域规则(`apps/blog/app/globals.css`):`[data-music-skin] :is(h1,h2,h3)` 统一走 `--font-display`(西文 Playfair / 中文宋体衬线),西文小标签标 `data-eyebrow` 走 `--font-mono`。覆盖大厅 / now-playing / 歌词 / 歌单 / 沉浸层 / 皮肤抽屉所有标题与 `AETHER MUSIC HALL`·`LIVE LYRICS`·`QUEUE` 等标签;移动端与桌面端同步精致化(中文标题按 `:lang(zh)` 收紧字距)。
+
 ### Fixed — 灵境（Agent Workspace）流式体验与状态机修复 (2026-06-09, branch claude/agent-ui-redesign-n4g2oo)
 
 **背景：** 用户反馈灵境对话存在卡顿、长回答结尾"瞬移"、重试后内容错乱、中断后排版退化为纯文本等问题。本轮对 `apps/blog/app/agent/workspace` 做了流式管线与会话状态机的系统性修复 + 产品级打磨。
