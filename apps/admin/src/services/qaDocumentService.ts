@@ -148,6 +148,10 @@ export const qaDocumentService = {
   mergePatch: (id: string, pid: string): Promise<R<QaDiff>> =>
     apiClient.post<R<QaDiff>>(`${BASE}/${id}/patches/${pid}/merge`),
 
+  /** GET /:id/diffs — list all merge diffs (newest first), for detail-page refresh */
+  getDiffs: (id: string): Promise<R<QaDiff[]>> =>
+    apiClient.get<R<QaDiff[]>>(`${BASE}/${id}/diffs`),
+
   /** GET /:id/diffs/:did */
   getDiff: (id: string, did: string): Promise<R<QaDiff>> =>
     apiClient.get<R<QaDiff>>(`${BASE}/${id}/diffs/${did}`),

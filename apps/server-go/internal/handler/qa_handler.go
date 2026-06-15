@@ -49,6 +49,7 @@ func (h *QAHandler) MountAdmin(g *echo.Group) {
 	g.GET("/:id/patches", h.ListPatches)
 	g.GET("/:id/patches/:pid", h.GetPatch)
 	g.POST("/:id/patches/:pid/merge", h.MergePatch)
+	g.GET("/:id/diffs", h.ListDiffs)
 	g.GET("/:id/diffs/:did", h.GetDiff)
 	g.POST("/:id/approve", h.Approve)
 	g.POST("/:id/publish", h.Publish)
@@ -352,6 +353,23 @@ func (h *QAHandler) MergePatch(c echo.Context) error {
 	}
 	h.logActivity(c, "qa.merge", id)
 	return response.OK(c, toDiffVO(diff))
+}
+
+// ListDiffs 返回文档的 Diff 列表（详情页刷新后恢复历史 Diff 链接）。
+func (h *QAHandler) ListDiffs(c echo.Context) error {
+	id, err := qaID(c, "id")
+	if err != nil {
+		return err
+	}
+	rows, err := h.svc.ListDiffs(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	out := make([]qaDiffVO, 0, len(rows))
+	for i := range rows {
+		out = append(out, toDiffVO(&rows[i]))
+	}
+	return response.OK(c, out)
 }
 
 // GetDiff 返回 Diff。

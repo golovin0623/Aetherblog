@@ -55,26 +55,20 @@ export default function QaDocumentDetailPage() {
     if (!id) return;
     try {
       setError(null);
-      const [docRes, jobRes, patchRes] = await Promise.all([
+      const [docRes, jobRes, patchRes, diffRes] = await Promise.all([
         qaDocumentService.getById(id),
         qaDocumentService.getJobs(id),
         qaDocumentService.getPatches(id),
+        qaDocumentService.getDiffs(id),
       ]);
       if (docRes.code === 200 && docRes.data) {
         setDoc(docRes.data);
       }
       if (jobRes.code === 200 && jobRes.data) setJobs(jobRes.data);
       if (patchRes.code === 200 && patchRes.data) setPatches(patchRes.data);
-
-      // fetch diffs only if merged
-      if (docRes.data?.status === 'DIFF_READY' || docRes.data?.status === 'APPROVED') {
-        // Try to get diffs from merged patches
-        const mergedPatch = patchRes.data?.find((p) => p.status === 'MERGED');
-        if (mergedPatch) {
-          // Diff ID assumed to be same as patch id or linked; request first diff if available
-          // This is a best-effort; the list page or server diff lookup is needed in full impl.
-        }
-      }
+      // Always load persisted diffs so reopened/refreshed DIFF_READY/APPROVED docs
+      // keep the link to /qa/:id/diff/:diffId (not only same-session merges).
+      if (diffRes.code === 200 && diffRes.data) setDiffs(diffRes.data);
     } catch (err) {
       logger.error('Detail fetch error:', err);
       setError(err instanceof Error ? err.message : '加载失败');

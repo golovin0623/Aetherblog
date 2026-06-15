@@ -246,9 +246,11 @@ export default function QaProofreadPage() {
   const pageNodes = allNodes.filter((n) => selectedNode ? n.pageNo === selectedNode.pageNo : n.pageNo === pageNo);
 
   const handlePatchText = async (node: CanonicalNode, text: string) => {
-    if (!id || !node.id) return;
+    // Canonical tree nodes are keyed by stableKey (no numeric id); the backend
+    // PATCH /blocks/:blockKey route resolves the block by stableKey.
+    if (!id || !node.stableKey) return;
     try {
-      await qaDocumentService.patchBlock(id, node.id, text);
+      await qaDocumentService.patchBlock(id, node.stableKey, text);
       await fetchData();
     } catch (err) {
       logger.error('Patch block error:', err);

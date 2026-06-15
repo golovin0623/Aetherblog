@@ -23,8 +23,9 @@ type UpdateQAAnnotationRequest struct {
 }
 
 // EditQABlockRequest 人工编辑某 block 文本。
+// stableKey 可省略 —— 路由 `/blocks/:blockKey` 的路径参数会作为兜底（见 handler）。
 type EditQABlockRequest struct {
-	StableKey string `json:"stableKey" validate:"required"`
+	StableKey string `json:"stableKey"`
 	Text      string `json:"text"`
 }
 

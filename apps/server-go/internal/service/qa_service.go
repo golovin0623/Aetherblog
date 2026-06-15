@@ -393,16 +393,39 @@ func (s *QAService) GetDiff(ctx context.Context, docID, id int64) (*model.QADocu
 // ---------------- 审批 / 发布 ----------------
 
 // Approve 审批候选版本（DIFF_READY→APPROVED）。
+// 安全闸门：若最近一次合并仍带未解决冲突、且该冲突版本就是当前版本（未被后续人工
+// 修订版本覆盖），拒绝审批 —— 避免把部分应用/冲突的合并直接审批发布。
 func (s *QAService) Approve(ctx context.Context, docID, versionID int64, actor *int64) error {
 	doc, err := s.repo.GetDocument(ctx, docID)
 	if err != nil || doc == nil {
 		return ErrNotFound
+	}
+	if diff, _ := s.repo.GetLatestDiff(ctx, docID); diff != nil && diff.HasConflict {
+		if diff.ToVersion != nil && *diff.ToVersion == s.currentVersionID(ctx, doc) {
+			return fmt.Errorf("%w: 当前合并存在未解决冲突，请先在校对页处理冲突后再审批", ErrInvalidTransition)
+		}
 	}
 	if err := s.transition(ctx, doc, qatree.StatusApproved, actor); err != nil {
 		return err
 	}
 	s.audit(ctx, docID, actor, "approve", nil, ptr(qatree.StatusApproved), map[string]any{"versionId": versionID})
 	return nil
+}
+
+// ListDiffs 返回文档的 Diff 列表（供详情页刷新后恢复历史 Diff，最新在前）。
+func (s *QAService) ListDiffs(ctx context.Context, docID int64) ([]model.QADocumentDiff, error) {
+	return s.repo.ListDiffs(ctx, docID)
+}
+
+// currentVersionID 返回当前版本号对应的版本行 id（无则 0）。
+func (s *QAService) currentVersionID(ctx context.Context, doc *model.QADocument) int64 {
+	if doc.CurrentVersion <= 0 {
+		return 0
+	}
+	if v, _ := s.repo.GetVersionByNo(ctx, doc.ID, doc.CurrentVersion); v != nil {
+		return v.ID
+	}
+	return 0
 }
 
 // Publish 发布当前已审批版本入库，写 qa_questions（APPROVED→PUBLISHED）。
@@ -467,15 +490,18 @@ func (s *QAService) Reprocess(ctx context.Context, docID int64, stage string, ac
 	if err != nil || doc == nil {
 		return ErrNotFound
 	}
-	start := qatree.ReprocessStartStage(stage)
-	// FAILED 或中间态都允许重入 PREPROCESSING。
+	// 始终从 PREPROCESS 全量重跑：SEGMENT/OCR/STRUCTURE/QUALITY_CHECK 都依赖前序
+	// 阶段在 job payload 里串联的 pages/blocks/ocr 产物，无法脱离前序独立重入
+	// （单独入队中途阶段会因缺少 payload 失败、或状态机迁移非法卡死）。stage 入参
+	// 仅作审计记录的"用户意图"，实际执行恒为完整流水线。
+	_ = stage
 	if err := s.repo.UpdateStatus(ctx, docID, qatree.StatusPreprocessing, nil); err != nil {
 		return err
 	}
 	doc.Status = qatree.StatusPreprocessing
-	s.audit(ctx, docID, actor, "reprocess", nil, ptr(qatree.StatusPreprocessing), map[string]any{"stage": start})
+	s.audit(ctx, docID, actor, "reprocess", nil, ptr(qatree.StatusPreprocessing), map[string]any{"requestedStage": stage, "actualStage": qatree.StagePreprocess})
 	run := fmt.Sprintf("%d", time.Now().UnixNano())
-	return s.enqueue(ctx, docID, start, run, qaJobPayload{Run: run})
+	return s.enqueue(ctx, docID, qatree.StagePreprocess, run, qaJobPayload{Run: run})
 }
 
 // ---------------- 内部辅助 ----------------

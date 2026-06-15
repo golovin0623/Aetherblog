@@ -454,6 +454,25 @@ func (r *QARepo) GetDiff(ctx context.Context, documentID, id int64) (*model.QADo
 	return &d, err
 }
 
+// ListDiffs 返回文档的 Diff 列表（最新在前）。
+func (r *QARepo) ListDiffs(ctx context.Context, documentID int64) ([]model.QADocumentDiff, error) {
+	var rows []model.QADocumentDiff
+	err := r.db.SelectContext(ctx, &rows,
+		`SELECT * FROM qa_document_diffs WHERE document_id=$1 ORDER BY id DESC`, documentID)
+	return rows, err
+}
+
+// GetLatestDiff 返回文档最近一次合并产生的 Diff（无则返回 nil）。
+func (r *QARepo) GetLatestDiff(ctx context.Context, documentID int64) (*model.QADocumentDiff, error) {
+	var d model.QADocumentDiff
+	err := r.db.GetContext(ctx, &d,
+		`SELECT * FROM qa_document_diffs WHERE document_id=$1 ORDER BY id DESC LIMIT 1`, documentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &d, err
+}
+
 // ---------------- qa_questions（发布入库，事务）----------------
 
 // PublishQuestions 在单事务内删除旧的同版本题目并批量写入，返回写入条数。
