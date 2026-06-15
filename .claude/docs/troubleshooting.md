@@ -171,6 +171,20 @@ pnpm design-system:report   # 生成 Markdown 报告
 
 ---
 
+## 9.1 Admin 列表页一打开就 `ErrorBoundary` 白屏（Go nil slice → `null`）
+
+**现象：** 进入某个后台列表页（如「试卷拆题」`/qa`）瞬间触发全局 `ErrorBoundary`「页面加载失败」，桌面端控制台报 `Cannot read properties of null (reading 'some'/'map')`。**只在该列表为空时复现**（无数据 / 过滤无命中）。
+
+**根因：** Go 的空 `[]T` 是 `nil`，`json.Marshal` 编码成 `null`。handler 直接 `response.OK(c, map{"list": docs})` 且未做 nil 守卫时，前端 `setDocs(res.data.list)` 拿到 `null`，下一次渲染 `docs.some(...)` / `docs.map(...)` 即崩。
+
+**修复（双层）：**
+- 后端 handler 返回前收敛：`if docs == nil { docs = []model.X{} }`（参照 `qa_handler.go` 的 `Tree` / `List`）。
+- 前端兜底：`setDocs(res.data.list ?? [])`。
+
+**自查：** 新增「返回数组的 list 接口」时，后端务必 nil-guard，前端 setState 务必 `?? []`。
+
+---
+
 ## 10. 通用诊断命令清单
 
 ```bash

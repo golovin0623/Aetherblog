@@ -136,7 +136,9 @@ export default function QaDocumentsPage() {
         keyword: keyword || undefined,
       });
       if (res.code === 200 && res.data) {
-        setDocs(res.data.list);
+        // 后端空列表可能返回 list: null（Go nil slice），直接 setDocs(null) 会让
+        // 后续 docs.some/map 崩溃整页 —— 兜底成空数组。
+        setDocs(res.data.list ?? []);
         setPagination(res.data);
       } else {
         setError(res.message || '获取列表失败');
