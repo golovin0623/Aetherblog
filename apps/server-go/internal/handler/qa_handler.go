@@ -110,6 +110,11 @@ func (h *QAHandler) List(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	// nil slice 会被 JSON 编码成 null，前端 setDocs(null) 后 docs.some/map 直接崩溃
+	// （试卷拆题空列表一打开即白屏）。与 Tree handler 一致，统一收敛为空数组。
+	if docs == nil {
+		docs = []model.QADocument{}
+	}
 	return response.OK(c, map[string]any{
 		"list": docs, "total": total, "pageNum": pageNum, "pageSize": pageSize, "pages": pages,
 	})
