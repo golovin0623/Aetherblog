@@ -149,7 +149,10 @@ func (h *QAHandler) Reprocess(c echo.Context) error {
 		return err
 	}
 	var req dto.ReprocessQARequest
-	_ = bindAndValidate(c, &req)
+	if err := bindAndValidate(c, &req); err != nil {
+		// 绑定/校验失败必须先返回，避免非法请求仍然重置文档并重启流水线。
+		return err
+	}
 	if err := h.svc.Reprocess(c.Request().Context(), id, req.Stage, ptrUser(c)); err != nil {
 		return qaError(c, err)
 	}

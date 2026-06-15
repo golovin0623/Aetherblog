@@ -23,6 +23,13 @@ type QAWorker struct {
 	cancel       atomic.Pointer[context.CancelFunc]
 }
 
+// jobLease 是 RUNNING 任务的租约时长。超过此时长仍 RUNNING 视为进程崩溃遗留，
+// 由 reclaim 回收。须远大于单任务超时（3min），避免误伤健康实例正在执行的任务。
+const jobLease = 10 * time.Minute
+
+// reclaimInterval 是 reclaim 扫描周期。
+const reclaimInterval = time.Minute
+
 // NewQAWorker 创建 QAWorker。
 func NewQAWorker(svc *QAService) *QAWorker {
 	return &QAWorker{svc: svc, pollInterval: 2 * time.Second}
@@ -50,14 +57,32 @@ func (w *QAWorker) Stop() {
 func (w *QAWorker) loop(ctx context.Context) {
 	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
+	w.reclaimStale(ctx) // 启动即回收一次崩溃遗留的 RUNNING 任务
+	lastReclaim := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info().Msg("qa worker stopped")
 			return
 		case <-ticker.C:
+			if time.Since(lastReclaim) >= reclaimInterval {
+				w.reclaimStale(ctx)
+				lastReclaim = time.Now()
+			}
 			w.drain(ctx)
 		}
+	}
+}
+
+// reclaimStale 回收租约过期（崩溃遗留）的 RUNNING 任务，使其可被重新领取或终态化。
+func (w *QAWorker) reclaimStale(ctx context.Context) {
+	n, err := w.svc.repo.ReclaimStaleJobs(ctx, time.Now().Add(-jobLease))
+	if err != nil {
+		log.Warn().Err(err).Msg("qa worker: reclaim stale jobs failed")
+		return
+	}
+	if n > 0 {
+		log.Info().Int64("reclaimed", n).Msg("qa worker: reclaimed stale RUNNING jobs")
 	}
 }
 

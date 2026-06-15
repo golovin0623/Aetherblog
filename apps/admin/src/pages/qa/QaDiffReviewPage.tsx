@@ -126,7 +126,7 @@ export default function QaDiffReviewPage() {
     setActionLoading(action);
     try {
       if (action === 'approve') {
-        await qaDocumentService.approve(id, `${doc.currentVersion}`);
+        await qaDocumentService.approve(id, doc.currentVersion);
       } else {
         await qaDocumentService.publish(id);
       }

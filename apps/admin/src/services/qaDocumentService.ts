@@ -156,8 +156,10 @@ export const qaDocumentService = {
   getDiff: (id: string, did: string): Promise<R<QaDiff>> =>
     apiClient.get<R<QaDiff>>(`${BASE}/${id}/diffs/${did}`),
 
-  /** POST /:id/approve — approve candidate version → APPROVED */
-  approve: (id: string, versionId: string): Promise<R<void>> =>
+  /** POST /:id/approve — approve candidate version → APPROVED.
+   *  versionId must be a number: the Go DTO is int64 and Echo's JSON binder rejects
+   *  a string-encoded `{"versionId":"1"}` with 400. */
+  approve: (id: string, versionId: number): Promise<R<void>> =>
     apiClient.post<R<void>>(`${BASE}/${id}/approve`, { versionId }),
 
   /** POST /:id/publish — publish → write qa_questions → PUBLISHED */

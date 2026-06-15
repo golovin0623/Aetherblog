@@ -98,8 +98,8 @@ export default function QaDocumentDetailPage() {
       } else if (action === 'agentFix') {
         await qaDocumentService.triggerAgentFix(id);
       } else if (action === 'approve') {
-        // approve latest version
-        await qaDocumentService.approve(id, `${doc.currentVersion}`);
+        // approve latest version (numeric versionId — see service)
+        await qaDocumentService.approve(id, doc.currentVersion);
       } else if (action === 'publish') {
         await qaDocumentService.publish(id);
       }
