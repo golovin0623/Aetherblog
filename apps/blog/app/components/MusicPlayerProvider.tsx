@@ -806,8 +806,14 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
   return (
     <>
+      {/* 沉浸层打开时隐藏 dock —— dock(z-70)原本盖在沉浸层(z-65)之上,移动端尤其会压住沉浸层控件 */}
+      {!expanded && (
       <div data-music-skin={skin} className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
         <div className="surface-raised pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden rounded-[1.35rem] text-[var(--ink-primary)]">
+          {/* 移动端:全宽进度条置于卡片顶部(更易点按);桌面端走中列内联进度条 */}
+          <div className="px-2.5 pt-2.5 sm:hidden">
+            <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="md" />
+          </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-2.5 sm:gap-4 sm:p-3">
             <button
               type="button"
@@ -834,7 +840,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
                 {currentTrack.artist || '未知艺术家'}{activeLine ? ` · ${activeLine}` : ''}
               </p>
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-2" />
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-2 hidden sm:block" />
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -870,6 +876,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           </div>
         </div>
       </div>
+      )}
 
       {expanded && (
         <div
@@ -890,10 +897,11 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <Link
                     href="/music"
                     onClick={() => setExpanded(false)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-4 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+                    className="inline-flex h-11 w-11 items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] sm:w-auto sm:px-4"
+                    aria-label="前往歌单页"
                   >
                     <ListMusic className="h-4 w-4" />
-                    歌单页
+                    <span className="hidden sm:inline">歌单页</span>
                   </Link>
                   <button
                     ref={closeButtonRef}
@@ -935,7 +943,8 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="下一首">
                     <SkipForward className="h-5 w-5" />
                   </button>
-                  <label className="flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-4 text-[var(--ink-secondary)]">
+                  {/* 音量条移动端隐藏 —— 手机用系统音量,避免控件换行挤压传输按钮 */}
+                  <label className="hidden h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-4 text-[var(--ink-secondary)] sm:flex">
                     <Volume2 className="h-4 w-4" />
                     <input
                       type="range"
