@@ -56,6 +56,13 @@ const AtlasSearchPage = lazy(() => import('./pages/atlas/AtlasSearchPage'));
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
 const AiWritingWorkspacePage = lazy(() => import('./pages/posts/AiWritingWorkspacePage').then(module => ({ default: module.AiWritingWorkspacePage })));
 
+// 试卷拆题 QA Document Workflow
+// ref: docs/features/qa-document-workflow.md §7
+const QaDocumentsPage = lazy(() => import('./pages/qa/QaDocumentsPage'));
+const QaDocumentDetailPage = lazy(() => import('./pages/qa/QaDocumentDetailPage'));
+const QaProofreadPage = lazy(() => import('./pages/qa/QaProofreadPage'));
+const QaDiffReviewPage = lazy(() => import('./pages/qa/QaDiffReviewPage'));
+
 /**
  * @ref 媒体库深度优化方案 - Phase 5: 权限管理路由 Wrapper
  */
@@ -160,6 +167,11 @@ function App() {
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="access" element={<AccessControlPage />} />
               <Route path="security" element={<SystemSecurityPage />} />
+              {/* 试卷拆题 QA Document Workflow — ref: docs/features/qa-document-workflow.md §7 */}
+              <Route path="qa" element={<QaDocumentsPage />} />
+              <Route path="qa/:id" element={<QaDocumentDetailPage />} />
+              <Route path="qa/:id/proofread" element={<QaProofreadPage />} />
+              <Route path="qa/:id/diff/:diffId" element={<QaDiffReviewPage />} />
             </Route>
           </Routes>
         </Suspense>

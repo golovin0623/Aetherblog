@@ -31,6 +31,7 @@ import {
   Compass,
   Highlighter,
   Music2,
+  ScanText,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -84,6 +85,8 @@ const navSections: Array<{
       { path: '/intelligence/knowledge', icon: Library, label: '知识库' },
       { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
       { path: '/ai-tools', icon: Highlighter, label: '写作助手' },
+      // 试卷智能拆题 — ref: docs/features/qa-document-workflow.md
+      { path: '/qa', icon: ScanText, label: '试卷拆题' },
     ],
   },
   {

@@ -532,7 +532,25 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 | `storage_providers` | 云存储提供商配置 |
 | `permissions` | 文件夹 ACL 权限记录 |
 | `shared_items` | 分享链接（含令牌 / 过期时间） |
-| `activity_events` | 操作活动事件流（`event_category` ∈ {post, comment, user, system, friend, media, ai, security}；媒体智能压缩写入 `media.smart_compression`，AI 写入事件含 `ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*` / `ai.provider_proxy_write`） |
+| `activity_events` | 操作活动事件流（`event_category` ∈ {post, comment, user, system, friend, media, ai, security, qa}；媒体智能压缩写入 `media.smart_compression`，AI 写入事件含 `ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*` / `ai.provider_proxy_write`） |
+
+### 试卷智能拆题闭环（migration 000081）
+
+完整契约见 `docs/features/qa-document-workflow.md`。原始图片/PDF 只读落 `media_files`；校对/修复/合并/Diff 全部基于 **Canonical Document Tree**（不直接改原文件）；Agent 只产 **Patch Proposal**，审批前不写正式题库。9 张新表：
+
+| 表名 | 说明 |
+|------|------|
+| `qa_documents` | 文档主记录 + 14 态状态机（UPLOADED…PUBLISHED/FAILED）+ 拆分粒度 + 当前版本号 |
+| `qa_document_jobs` | 异步流水线任务（stage/status + `idempotency_key` 唯一 + attempt/max + payload/log/error），由进程内 `QAWorker` 轮询驱动 |
+| `qa_document_versions` | Canonical Tree 整树快照（`tree_json` jsonb + source ∈ OCR/STRUCTURE/AGENT/MERGE/MANUAL） |
+| `qa_doc_blocks` | 树节点镜像（自引用 `parent_id` + `stable_key` + `bbox`/text/confidence/source_crop） |
+| `qa_annotations` | 人工校对标注（8 类 annotation_type） |
+| `qa_patches` | Agent Patch Proposal（`operations` jsonb，命中 stable_key + field_path） |
+| `qa_document_diffs` | 合并 Patch 后的字符/字段/结构级 Diff（含冲突） |
+| `qa_questions` | 审批发布后的正式题库（带 `source_block_ids` 溯源 + `version_no`） |
+| `qa_audit_logs` | 状态迁移 / 人工动作审计 |
+
+REST：`/v1/admin/qa-documents/*`（22 端点，见 `.claude/docs/api-handlers.md`）。AI 服务：`/api/v1/ai/qa/*`（6 个内部端点，可插拔 `OcrProvider`，默认确定性 mock；`AETHERBLOG_QA_PIPELINE_MODE=http` 时后端经 `X-Internal-Service` 调用之，默认 `mock` 走内置确定性流水线）。
 
 ---
 

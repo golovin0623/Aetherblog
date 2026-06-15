@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 试卷智能拆题 / 校对 / 修复 / 审批入库闭环（QA Document Workflow）(2026-06-15, branch claude/document-qa-workflow-y4adbu)
+
+**背景：** 新增图片/PDF 试卷的「上传 → 识别 → 拆题 → 校对 → 标注 → 后台 Agent 修复 → 合并 Diff → 审批 → 入库」闭环能力。原始文件只读落 `media_files`，所有校对/修复/合并/Diff 都基于 **Canonical Document Tree**（版本快照 + block 节点）而非直接改原文件；Agent 只产出 **Patch Proposal**，审批前**绝不**写正式题库。完整契约见 `docs/features/qa-document-workflow.md`。
+
+**Added — 数据层：** migration `000081_qa_document_workflow`（9 张表：`qa_documents` 状态机 + `qa_document_jobs` 异步任务 + `qa_document_versions` 版本快照 + `qa_doc_blocks` Canonical Tree 节点 + `qa_annotations` 校对标注 + `qa_patches` Patch Proposal + `qa_document_diffs` 合并 Diff + `qa_questions` 发布题库(带溯源) + `qa_audit_logs` 审计）。
+
+**Added — 后端：** 纯领域包 `internal/pkg/qatree`（Canonical Tree / Patch 应用 / 字符·字段·结构级 Diff / 14 态状态机 / 粒度映射，全单测覆盖）；`QAService` 编排 + 进程内异步 `QAWorker`（轮询 `qa_document_jobs`，PREPROCESS→SEGMENT→OCR→STRUCTURE→QUALITY_CHECK 串行推进，每阶段幂等/可重试/留痕）；可插拔流水线引擎 `QAPipeline`（默认确定性内置 mock，`AETHERBLOG_QA_PIPELINE_MODE=http` 切到 ai-service）；22 个 admin REST 端点 `/v1/admin/qa-documents/*`（authMW + RequireRole(admin) + 写路径 60/min 限流）。
+
+**Added — AI 服务：** 可插拔 `OcrProvider`（默认确定性 `MockOcrProvider`，无新增第三方依赖）+ 6 个内部端点 `/api/v1/ai/qa/{preprocess,segment,ocr,structure,quality-check,agent-fix}`（X-Internal-Service 鉴权）。
+
+**Added — Admin 前端：** 「试卷拆题」菜单 + 4 个页面（列表/上传含粒度选择、详情/流水线时间线、校对页[左原图 bbox 高亮·右结构化文本·标注 8 类]、Diff 审批页[字符级 diff·冲突区·审批发布]）。
+
+**Tests：** qatree 12 例 + service 流水线 3 例（Go，无需 DB）+ ai-service 24 例（mock 确定性 / 树形状 / 端点 schema）。
+
 ### Added — 音乐大厅作用域皮肤系统 / 接入「一个光源·四色派生」+ 明暗主题 (2026-06-14, branch claude/dreamy-shamir-fe0f2f)
 
 **背景：** 音乐大厅(前台 `/music`、全站持久 dock + 沉浸层、首页/Profile 卡片、后台中控台 + 后台浮层 mini-player)此前把配色写死为暗红(`#ff4d4f` / `bg-[#141111]` / `rgba(255,77,79,…)`),既不跟随明暗主题(亮主题下仍是暗红,突兀割裂),也不符合设计系统「一个光源,四色派生」。

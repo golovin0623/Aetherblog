@@ -94,6 +94,16 @@ KB 写路径速率桶：`rate:kb:write` 60/min/user；写操作落 `activity_eve
 | --- | --- | --- |
 | `migration_handler` | `/v1/admin/migrations/vanblog/*` | `POST /analyze`（dry-run）、`POST /import/stream`（NDJSON/SSE）、`POST /import?mode=dry-run\|execute`（兼容） —— 详见 `backend-runtime.md` §5 |
 
+### 试卷智能拆题（QA Document Workflow）
+
+> 完整契约：`docs/features/qa-document-workflow.md`。原始文件只读；校对/修复/合并/Diff 基于 Canonical Document Tree；Agent 只产 Patch，审批前不写题库。流水线引擎可插拔（`AETHERBLOG_QA_PIPELINE_MODE=mock`(默认)`|http`）。
+
+| Handler 文件 | 路由前缀 | 关键端点 |
+| --- | --- | --- |
+| `qa_handler` | `/v1/admin/qa-documents/*` | 22 路由：`POST`(上传图片/PDF→建档+入队流水线)、`GET`(列表)、`GET/DELETE /:id`、`POST /:id/reprocess`、`GET /:id/jobs`、`GET /:id/tree`、`PATCH /:id/blocks/:key`、annotations CRUD、`POST /:id/agent-fix`(产 Patch Proposal)、`GET /:id/patches[/:pid]`、`POST /:id/patches/:pid/merge`(合并+Diff)、`GET /:id/diffs/:did`、`POST /:id/approve`、`POST /:id/publish`(写 qa_questions)、`GET /:id/questions`、`GET /:id/audit` |
+
+> AI 服务侧：`/api/v1/ai/qa/{preprocess,segment,ocr,structure,quality-check,agent-fix}`（X-Internal-Service 鉴权，可插拔 `OcrProvider`，默认 `MockOcrProvider`）。
+
 ---
 
 ## 2. 前端 Service 层（22 个文件）
