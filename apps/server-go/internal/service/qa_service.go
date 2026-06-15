@@ -207,11 +207,27 @@ func (s *QAService) GetTree(ctx context.Context, docID int64, versionNo int) ([]
 
 // ---------------- 校对 / 标注 ----------------
 
+// qaEditableStatus 是允许人工编辑 block 的状态集合。处理中（UPLOADED..STRUCTURED /
+// AGENT_RUNNING）、已发布（PUBLISHED）、失败（FAILED）都不可编辑。
+var qaEditableStatus = map[string]bool{
+	qatree.StatusReviewReady:   true,
+	qatree.StatusAnnotated:     true,
+	qatree.StatusPatchProposed: true,
+	qatree.StatusMerged:        true,
+	qatree.StatusDiffReady:     true,
+	qatree.StatusApproved:      true,
+}
+
 // EditBlock 人工编辑某 block 文本，落为 MANUAL 新版本。
+// 仅在校对/评审相关状态可编辑；若文档已 APPROVED，编辑会产生未经审批的新版本，
+// 因此回退到 REVIEW_READY 强制重新审批（避免 Publish 把未审版本写入题库）。
 func (s *QAService) EditBlock(ctx context.Context, docID int64, stableKey, text string, actor *int64) (*model.QADocumentVersion, error) {
 	doc, err := s.repo.GetDocument(ctx, docID)
 	if err != nil || doc == nil {
 		return nil, ErrNotFound
+	}
+	if !qaEditableStatus[doc.Status] {
+		return nil, fmt.Errorf("%w: 当前状态 %s 不允许编辑 block", ErrInvalidTransition, doc.Status)
 	}
 	roots, _, err := s.GetTree(ctx, docID, 0)
 	if err != nil {
@@ -223,11 +239,16 @@ func (s *QAService) EditBlock(ctx context.Context, docID int64, stableKey, text 
 		return nil, fmt.Errorf("%w: block %s", ErrNotFound, stableKey)
 	}
 	node.Text = text
+	wasApproved := doc.Status == qatree.StatusApproved
 	ver, err := s.commitVersion(ctx, doc, roots, qatree.VersionSourceManual, ptr("人工编辑 "+stableKey), actor)
 	if err != nil {
 		return nil, err
 	}
-	s.audit(ctx, docID, actor, "edit_block", nil, nil, map[string]any{"stableKey": stableKey})
+	if wasApproved {
+		// 新的 MANUAL 版本尚未审批 —— 退回评审态，必须重新审批才能发布。
+		_ = s.transition(ctx, doc, qatree.StatusReviewReady, actor)
+	}
+	s.audit(ctx, docID, actor, "edit_block", nil, nil, map[string]any{"stableKey": stableKey, "reopened": wasApproved})
 	return ver, nil
 }
 
@@ -399,6 +420,11 @@ func (s *QAService) Approve(ctx context.Context, docID, versionID int64, actor *
 	doc, err := s.repo.GetDocument(ctx, docID)
 	if err != nil || doc == nil {
 		return ErrNotFound
+	}
+	// 防陈旧审批：若评审者打开页面后又有人产生了更新版本，提交的 versionId 与当前版本
+	// 不一致时拒绝 —— 避免误把"评审者没看过的版本"审批通过。versionId 为评审时的版本号。
+	if versionID > 0 && doc.CurrentVersion > 0 && versionID != int64(doc.CurrentVersion) {
+		return fmt.Errorf("%w: 待审批版本(v%d)已更新到 v%d，请刷新后重新审阅", ErrInvalidTransition, versionID, doc.CurrentVersion)
 	}
 	if diff, _ := s.repo.GetLatestDiff(ctx, docID); diff != nil && diff.HasConflict {
 		if diff.ToVersion != nil && *diff.ToVersion == s.currentVersionID(ctx, doc) {

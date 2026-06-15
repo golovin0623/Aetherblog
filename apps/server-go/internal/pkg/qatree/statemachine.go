@@ -52,8 +52,9 @@ var transitions = map[string]map[string]bool{
 	StatusPatchProposed: set2(StatusMerged, StatusReviewReady, StatusAnnotated, StatusFailed),
 	StatusMerged:        set2(StatusDiffReady, StatusFailed),
 	StatusDiffReady:     set2(StatusApproved, StatusReviewReady, StatusFailed),
-	StatusApproved:      set2(StatusPublished, StatusFailed),
-	StatusPublished:     {},
+	// APPROVED 可被重新打开评审（如审批后又在校对页改了 block，必须重新审批）。
+	StatusApproved:  set2(StatusPublished, StatusReviewReady, StatusFailed),
+	StatusPublished: {},
 	// FAILED 允许 reprocess 重入自动流水线的任意阶段。
 	StatusFailed: set2(StatusPreprocessing, StatusSegmented, StatusOCRDone, StatusStructured, StatusReviewReady),
 }

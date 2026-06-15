@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -74,16 +75,27 @@ func (w *QAWorker) loop(ctx context.Context) {
 	}
 }
 
-// reclaimStale 回收租约过期（崩溃遗留）的 RUNNING 任务，使其可被重新领取或终态化。
+// reclaimStale 回收租约过期（崩溃遗留）的 RUNNING 任务：未超重试上限的重回队列重试，
+// 已耗尽重试的把文档同步置 FAILED（否则文档会卡在 PREPROCESSING/AGENT_RUNNING 等进行中态）。
 func (w *QAWorker) reclaimStale(ctx context.Context) {
-	n, err := w.svc.repo.ReclaimStaleJobs(ctx, time.Now().Add(-jobLease))
+	reclaimed, err := w.svc.repo.ReclaimStaleJobs(ctx, time.Now().Add(-jobLease))
 	if err != nil {
 		log.Warn().Err(err).Msg("qa worker: reclaim stale jobs failed")
 		return
 	}
-	if n > 0 {
-		log.Info().Int64("reclaimed", n).Msg("qa worker: reclaimed stale RUNNING jobs")
+	if len(reclaimed) == 0 {
+		return
 	}
+	requeued, failed := 0, 0
+	for _, j := range reclaimed {
+		if j.Exhausted {
+			failed++
+			w.svc.fail(ctx, j.DocumentID, j.Stage, errors.New("worker 崩溃且任务已达最大重试次数"))
+		} else {
+			requeued++
+		}
+	}
+	log.Info().Int("requeued", requeued).Int("failed", failed).Msg("qa worker: reclaimed stale RUNNING jobs")
 }
 
 // drain 连续领取并执行 PENDING 任务，直到队列空或 ctx 取消。

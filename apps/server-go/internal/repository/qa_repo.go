@@ -235,12 +235,22 @@ func (r *QARepo) ListJobs(ctx context.Context, documentID int64) ([]model.QADocu
 	return rows, err
 }
 
+// ReclaimedJob 是一条被回收的 RUNNING 任务的精简结果。Exhausted=true 表示已达重试
+// 上限被置为 FAILED（其文档需由 worker 同步标记 FAILED，否则会卡在进行中态）。
+type ReclaimedJob struct {
+	DocumentID int64  `db:"document_id"`
+	Stage      string `db:"stage"`
+	Exhausted  bool   `db:"exhausted"`
+}
+
 // ReclaimStaleJobs 回收"卡死"的 RUNNING 任务：进程在 claim 之后崩溃/重启会把 job
 // 永久留在 RUNNING（新 worker 只领 PENDING），文档因此卡在进行中态。用 started_at
 // 早于 staleBefore 的租约过期判据回收：未超重试上限的重回 PENDING、已超的置 FAILED。
 // 用 started_at 过期阈值（远大于单任务超时）避免误伤其它实例正在执行的健康任务。
-func (r *QARepo) ReclaimStaleJobs(ctx context.Context, staleBefore time.Time) (int64, error) {
-	res, err := r.db.ExecContext(ctx, `
+// 返回被回收的任务列表，供 worker 对 Exhausted 的任务同步把文档置 FAILED。
+func (r *QARepo) ReclaimStaleJobs(ctx context.Context, staleBefore time.Time) ([]ReclaimedJob, error) {
+	var rows []ReclaimedJob
+	err := r.db.SelectContext(ctx, &rows, `
 		UPDATE qa_document_jobs
 		SET status = CASE WHEN attempt_count >= max_attempts THEN 'FAILED' ELSE 'PENDING' END,
 			error = COALESCE(NULLIF(error, ''), '') ||
@@ -248,11 +258,9 @@ func (r *QARepo) ReclaimStaleJobs(ctx context.Context, staleBefore time.Time) (i
 				'[reclaimed stale RUNNING]',
 			finished_at = CASE WHEN attempt_count >= max_attempts THEN CURRENT_TIMESTAMP ELSE finished_at END,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE status = 'RUNNING' AND started_at IS NOT NULL AND started_at < $1`, staleBefore)
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
+		WHERE status = 'RUNNING' AND started_at IS NOT NULL AND started_at < $1
+		RETURNING document_id, stage, (attempt_count >= max_attempts) AS exhausted`, staleBefore)
+	return rows, err
 }
 
 // ---------------- qa_document_versions + qa_doc_blocks ----------------

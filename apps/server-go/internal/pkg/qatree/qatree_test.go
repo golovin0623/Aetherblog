@@ -186,6 +186,9 @@ func TestStateMachine(t *testing.T) {
 	if CanTransition(StatusPublished, StatusApproved) {
 		t.Error("PUBLISHED 是终态, 不可回退")
 	}
+	if !CanTransition(StatusApproved, StatusReviewReady) {
+		t.Error("APPROVED 应可重新打开评审（审批后编辑需重审）")
+	}
 	if !CanTransition(StatusFailed, StatusPreprocessing) {
 		t.Error("FAILED 应可 reprocess 重入")
 	}
