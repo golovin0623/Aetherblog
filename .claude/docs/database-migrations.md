@@ -249,6 +249,24 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 ---
 
+### 000081 · `qa_document_workflow`
+
+试卷智能拆题闭环（契约 `docs/features/qa-document-workflow.md`）。取空号 000081（当前最大 000080 +1，**不顺移**已合并迁移）。新建 9 张表，全部 `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等：
+
+- `qa_documents`（文档主记录 + 14 态状态机 `status` CHECK + `split_granularity` + `current_version`，软删 `deleted`）
+- `qa_document_jobs`（异步流水线任务，`stage`/`status` CHECK + `idempotency_key` 唯一约束保证不重复入队 + attempt/max + payload/log/error）
+- `qa_document_versions`（Canonical Tree 整树快照 `tree_json` jsonb + `source`，`(document_id, version_no)` 唯一）
+- `qa_doc_blocks`（树节点镜像，自引用 `parent_id` + `stable_key` + `bbox` jsonb，`(version_id, stable_key)` 唯一）
+- `qa_annotations`（校对标注，8 类 `annotation_type` CHECK）
+- `qa_patches`（Agent Patch Proposal，`operations` jsonb，`base_version` FK）
+- `qa_document_diffs`（合并 Diff，`diff` jsonb + `has_conflict`）
+- `qa_questions`（审批发布后的正式题库，带 `source_block_ids` 溯源 + `version_no`）
+- `qa_audit_logs`（状态迁移/人工动作审计）
+
+down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增表，重放幂等；若失败 fail-closed 中止部署即可，不会误伤存量数据）。
+
+---
+
 ## 部署期 migration 自愈机制
 
 `ops/webhook/deploy.sh` 的预部署 migration 步骤包含 **"dirty self-heal table"**：
