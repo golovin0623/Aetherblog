@@ -144,9 +144,12 @@ export default function TeamChatClient() {
 
   const loadMore = useCallback(async () => {
     if (!activeId || messages.length === 0) return;
+    const convId = activeId;
     const oldest = messages[0];
     try {
-      const older = await chatApi.getHistory(activeId, oldest.id);
+      const older = await chatApi.getHistory(convId, oldest.id);
+      // 防竞态：加载更多返回前已切走 → 不把 A 的旧消息插进 B，也不改错 hasMore。
+      if (activeIdRef.current !== convId) return;
       setMessages((prev) => [...older, ...prev]);
       setHasMore(older.length >= 30);
     } catch {
