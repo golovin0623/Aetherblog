@@ -14,6 +14,7 @@ from app.api.routes import (
     profiles,
     providers,
     prompts,
+    qa,
     search,
     tasks,
     workflows,
@@ -35,3 +36,4 @@ router.include_router(workflows.router)
 router.include_router(knowledge_bases.router)
 router.include_router(atlas.router)
 router.include_router(notes.router)
+router.include_router(qa.router)
