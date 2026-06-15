@@ -112,7 +112,10 @@ func (r *ChatAgentRepo) CanSeatAgent(ctx context.Context, convID, agentID int64)
 		            SELECT 1 FROM chat_conversation_members m
 		            WHERE m.conversation_id = c.id
 		              AND NOT (
-		                  (a.scope = 'PRIVATE' AND a.created_by = m.user_id)
+		                  -- created_by IS NOT NULL 守卫：创建者被删除后 created_by 置 NULL，
+		                  -- 否则该等值比较求值为 UNKNOWN，在 NOT(...) 下不被计为未授权成员，
+		                  -- 导致孤儿 PRIVATE Agent 可被任意 DIRECT/GROUP 入座。
+		                  (a.scope = 'PRIVATE' AND a.created_by IS NOT NULL AND a.created_by = m.user_id)
 		                  OR a.scope = 'GLOBAL'
 		                  OR (a.scope = 'TEAM' AND EXISTS(
 		                      SELECT 1 FROM team_members tm
