@@ -83,7 +83,7 @@ export default function MusicHallExperience() {
         <section className="surface-luminous grid min-h-[520px] grid-cols-1 overflow-hidden rounded-[2rem] lg:grid-cols-[minmax(0,1fr)_460px]">
           <div className="flex flex-col justify-between p-6 sm:p-8 lg:p-10">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--aurora-1)]">
+              <div data-eyebrow className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--aurora-1)]">
                 <Sparkles className="h-3.5 w-3.5" />
                 Aether Music Hall
               </div>
@@ -231,7 +231,7 @@ export default function MusicHallExperience() {
             <div className="surface-leaf p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Live Lyrics</p>
+                  <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Live Lyrics</p>
                   <h2 className="mt-1 text-xl font-black">歌词与封面动效</h2>
                 </div>
                 <Disc3 className={cn('h-5 w-5 text-[var(--ink-muted)]', isPlaying && 'animate-spin [animation-duration:3s]')} />
@@ -261,7 +261,7 @@ export default function MusicHallExperience() {
             <div className="surface-leaf p-5 sm:p-6 lg:col-span-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Playlist</p>
+                  <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Playlist</p>
                   <h2 className="mt-1 text-xl font-black">歌单队列</h2>
                 </div>
                 <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-1 text-xs text-[var(--ink-secondary)]">{tracks.length} 首</span>

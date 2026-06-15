@@ -62,6 +62,23 @@
   }
 }
 
+/* ========================================
+   音乐域排印 —— 修正音乐组件全继承裸 Inter(违反设计系统禁忌 #1:
+   不得用 Inter 作 Hero 标题)。标题统一走 display 衬线(西文 Playfair /
+   中文宋体),西文小标签([data-eyebrow])走 Geist Mono。作用域限定在
+   [data-music-skin],不影响站点其它部分。中文 hero 标题按 :lang(zh) 收紧字距。
+   ======================================== */
+[data-music-skin] :is(h1, h2, h3) {
+  font-family: var(--font-display);
+}
+[data-music-skin] :is(h1, h2, h3):lang(zh-Hans),
+[data-music-skin] :is(h1, h2, h3):lang(zh) {
+  letter-spacing: -0.01em;
+}
+[data-music-skin] [data-eyebrow] {
+  font-family: var(--font-mono);
+}
+
 /* 注：代码语法高亮现在由 MarkdownRenderer 中的 Shiki 处理 */
 
 /* ========================================

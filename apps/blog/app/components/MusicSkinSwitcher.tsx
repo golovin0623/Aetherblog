@@ -121,7 +121,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
         {/* 移动端抽屉抓手 */}
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_22%,transparent)] sm:hidden" aria-hidden="true" />
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Music Skin</p>
+          <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Music Skin</p>
           {hasSkinOverride && (
             <button
               type="button"

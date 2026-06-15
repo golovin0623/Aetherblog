@@ -890,7 +890,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
             <section className="surface-luminous flex min-h-[560px] flex-col justify-between rounded-[2rem] p-5 sm:p-8">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--aurora-1)]">Aether Music Hall</p>
+                  <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--aurora-1)]">Aether Music Hall</p>
                   <h2 className="mt-2 text-2xl font-black tracking-normal sm:text-4xl">音乐大厅</h2>
                 </div>
                 <div className="flex items-center gap-2">
@@ -965,7 +965,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <section className="surface-leaf min-h-[300px] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Lyrics</p>
+                    <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Lyrics</p>
                     <h3 className="mt-1 text-lg font-black">歌词现场</h3>
                   </div>
                   <Music2 className="h-5 w-5 text-[var(--ink-muted)]" />
@@ -995,7 +995,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <section className="surface-leaf min-h-[300px] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Queue</p>
+                    <p data-eyebrow className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Queue</p>
                     <h3 className="mt-1 text-lg font-black">播放队列</h3>
                   </div>
                   <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-1 text-xs text-[var(--ink-secondary)]">{tracks.length} 首</span>

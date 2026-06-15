@@ -58,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 操作区移动端改为**全宽主 CTA `播放全部` + 等宽三联(沉浸/皮肤/返回)**;桌面端经 `sm:contents` 化回原 `flex-wrap` 行,完全不变。
 - 皮肤切换器移动端底部抽屉加 iOS 抓手。
 
+**Fixed — 音乐域排印(字体丑根因)(2026-06-15):** 音乐组件此前所有标题/标签都**继承裸 Inter**(违反设计系统禁忌 #1「不得用 Inter 作 Hero 标题」),中文标题以 Inter 900 渲染显得笨重廉价。新增作用域规则(`apps/blog/app/globals.css`):`[data-music-skin] :is(h1,h2,h3)` 统一走 `--font-display`(西文 Playfair / 中文宋体衬线),西文小标签标 `data-eyebrow` 走 `--font-mono`。覆盖大厅 / now-playing / 歌词 / 歌单 / 沉浸层 / 皮肤抽屉所有标题与 `AETHER MUSIC HALL`·`LIVE LYRICS`·`QUEUE` 等标签;移动端与桌面端同步精致化(中文标题按 `:lang(zh)` 收紧字距)。
+
 ### Fixed — 灵境（Agent Workspace）流式体验与状态机修复 (2026-06-09, branch claude/agent-ui-redesign-n4g2oo)
 
 **背景：** 用户反馈灵境对话存在卡顿、长回答结尾"瞬移"、重试后内容错乱、中断后排版退化为纯文本等问题。本轮对 `apps/blog/app/agent/workspace` 做了流式管线与会话状态机的系统性修复 + 产品级打磨。
