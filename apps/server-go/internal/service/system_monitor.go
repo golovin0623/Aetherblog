@@ -271,8 +271,8 @@ func (s *SystemMonitorService) collectDisk() DiskMetrics {
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return DiskMetrics{Path: path}
 	}
-	total := stat.Blocks * uint64(stat.Bsize)
-	free := stat.Bavail * uint64(stat.Bsize)
+	total := uint64(stat.Blocks) * uint64(stat.Bsize)
+	free := uint64(stat.Bavail) * uint64(stat.Bsize)
 	used := total - free
 	var pct float64
 	if total > 0 {
