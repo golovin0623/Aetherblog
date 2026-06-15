@@ -1,6 +1,9 @@
 package qatree
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func sampleTree() []*Node {
 	return []*Node{
@@ -153,6 +156,20 @@ func TestDiffStructureLevel(t *testing.T) {
 	}
 	if !removed {
 		t.Error("未捕获 removed 变更")
+	}
+}
+
+func TestCharDiffLengthGuard(t *testing.T) {
+	a := strings.Repeat("甲", charDiffMaxRunes+1)
+	b := strings.Repeat("乙", charDiffMaxRunes+1)
+	ops := charDiff(a, b)
+	// 超长输入应降级为整体删/增（2 段），不构建 O(N*M) LCS 表。
+	if len(ops) != 2 || ops[0].Op != "-" || ops[1].Op != "+" {
+		t.Fatalf("超长文本应降级为整体替换, 得到 %+v", ops)
+	}
+	// 短输入仍走精细字符级 diff。
+	if got := charDiff("导树", "导数"); len(got) < 2 {
+		t.Errorf("短文本应走字符级 diff, 得到 %+v", got)
 	}
 }
 

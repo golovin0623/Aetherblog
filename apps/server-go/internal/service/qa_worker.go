@@ -234,10 +234,15 @@ func (w *QAWorker) stageQualityCheck(ctx context.Context, job *model.QADocumentJ
 			continue // 信息类问题（如低置信度）不落为待办标注，仅记日志
 		}
 		note := iss.Message
-		_, _ = w.svc.repo.CreateAnnotation(ctx, &model.QAAnnotation{
+		// 记录写入失败但不让阶段失败：QC 重跑会重复建标注（CreateAnnotation 非幂等），
+		// 因此 best-effort 落标注 + 记日志，避免「重试→重复标注」。
+		if _, err := w.svc.repo.CreateAnnotation(ctx, &model.QAAnnotation{
 			DocumentID: doc.ID, VersionID: verID, StableKey: iss.StableKey,
 			AnnotationType: at, Note: &note, Status: "OPEN",
-		})
+		}); err != nil {
+			log.Error().Err(err).Int64("doc", doc.ID).Str("key", iss.StableKey).
+				Msg("qa worker: create quality-check annotation failed")
+		}
 	}
 	w.advance(ctx, doc, qatree.StatusReviewReady)
 	w.svc.audit(ctx, doc.ID, nil, "quality_check", nil, ptr(qatree.StatusReviewReady), map[string]any{"issues": len(issues)})

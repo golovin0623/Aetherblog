@@ -91,11 +91,27 @@ func Diff(from, to []*Node, fromVer, toVer int) DiffResult {
 	return res
 }
 
+// charDiffMaxRunes 是字符级 diff 的长度上限。LCS 表是 O(N*M) 时空复杂度，
+// 超长文本（整页 OCR / 大表格）会爆内存，超过则降级为整体替换。
+const charDiffMaxRunes = 2000
+
 // charDiff 计算 a→b 的字符级 diff（基于 LCS 的最小编辑序列），按 rune 处理中文。
+// 任一侧超过 charDiffMaxRunes 时跳过 LCS，直接返回整体删/增（保护内存/CPU）。
 func charDiff(a, b string) []CharOp {
 	ar := []rune(a)
 	br := []rune(b)
 	n, m := len(ar), len(br)
+
+	if n > charDiffMaxRunes || m > charDiffMaxRunes {
+		ops := make([]CharOp, 0, 2)
+		if a != "" {
+			ops = append(ops, CharOp{T: a, Op: "-"})
+		}
+		if b != "" {
+			ops = append(ops, CharOp{T: b, Op: "+"})
+		}
+		return ops
+	}
 
 	// LCS 长度表。
 	lcs := make([][]int, n+1)

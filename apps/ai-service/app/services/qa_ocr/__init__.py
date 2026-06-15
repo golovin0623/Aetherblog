@@ -349,9 +349,10 @@ class MockOcrProvider:
         if blocks:
             crop_url = blocks[0].get("sourceCropUrl", "")
             parts = crop_url.split("/")
-            # /api/uploads/qa/<docId>/crops/...
-            if len(parts) >= 6 and parts[3] == "api" and parts[4] == "uploads" and parts[5] == "qa":
-                doc_id = parts[6] if len(parts) > 6 else "doc"
+            # 绝对路径 /api/uploads/qa/<docId>/crops/... → split 后 parts[0]="",
+            # parts[1]="api", parts[2]="uploads", parts[3]="qa", parts[4]=<docId>。
+            if len(parts) >= 5 and parts[1] == "api" and parts[2] == "uploads" and parts[3] == "qa":
+                doc_id = parts[4]
 
         tree: list[dict] = []
         for page_no in page_nos:
