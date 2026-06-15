@@ -41,13 +41,18 @@ func (s *ChatService) ListConversations(ctx context.Context, userID int64) ([]dt
 	if err != nil {
 		return nil, err
 	}
+	// 批量拉取全部会话成员，避免逐会话查询造成的 N+1。
+	ids := make([]int64, len(rows))
+	for i := range rows {
+		ids[i] = rows[i].ID
+	}
+	memberMap, err := s.repo.ListMembersForConversations(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]dto.ChatConversationVO, 0, len(rows))
 	for i := range rows {
-		vo, err := s.buildConversationVO(ctx, &rows[i], userID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, vo)
+		out = append(out, s.buildConversationVO(&rows[i], userID, memberRowsToVO(memberMap[rows[i].ID])))
 	}
 	return out, nil
 }
@@ -255,7 +260,8 @@ func (s *ChatService) UpdateSettings(ctx context.Context, userID int64, req dto.
 // --- 内部辅助 ---
 
 func (s *ChatService) assertMember(ctx context.Context, convID, userID int64) error {
-	ok, _, err := s.repo.IsMember(ctx, convID, userID)
+	// 对 TEAM 会话实时回查团队成员资格 —— 被移出团队的用户即刻失去群聊访问权。
+	ok, err := s.repo.IsAuthorizedMember(ctx, convID, userID)
 	if err != nil {
 		return err
 	}
@@ -270,6 +276,11 @@ func (s *ChatService) members(ctx context.Context, convID int64) ([]dto.ChatMemb
 	if err != nil {
 		return nil, err
 	}
+	return memberRowsToVO(rows), nil
+}
+
+// memberRowsToVO 把成员行投影转换为对外 VO 列表。
+func memberRowsToVO(rows []repository.ChatMemberRow) []dto.ChatMemberVO {
 	out := make([]dto.ChatMemberVO, 0, len(rows))
 	for _, m := range rows {
 		out = append(out, dto.ChatMemberVO{
@@ -281,7 +292,7 @@ func (s *ChatService) members(ctx context.Context, convID int64) ([]dto.ChatMemb
 			Muted:      m.Muted,
 		})
 	}
-	return out, nil
+	return out
 }
 
 func (s *ChatService) broadcast(ctx context.Context, convID int64, ev realtime.Event) {
@@ -322,22 +333,21 @@ func (s *ChatService) loadConversationVO(ctx context.Context, convID, userID int
 	if conv == nil {
 		return nil, ErrChatConvNotFound
 	}
-	row := &repository.ChatConversationListRow{ChatConversation: *conv}
-	vo, err := s.buildConversationVO(ctx, row, userID)
+	members, err := s.members(ctx, convID)
 	if err != nil {
 		return nil, err
 	}
+	row := &repository.ChatConversationListRow{ChatConversation: *conv}
+	vo := s.buildConversationVO(row, userID, members)
 	return &vo, nil
 }
 
-// buildConversationVO 把会话行装配成对外 VO，并解析展示标题：
+// buildConversationVO 把会话行 + 已加载的成员装配成对外 VO，并解析展示标题：
 //   - DIRECT：取对端用户的昵称 / 用户名
 //   - TEAM / GROUP：取会话标题（缺省留空，前端兜底显示团队名）
-func (s *ChatService) buildConversationVO(ctx context.Context, row *repository.ChatConversationListRow, userID int64) (dto.ChatConversationVO, error) {
-	members, err := s.members(ctx, row.ID)
-	if err != nil {
-		return dto.ChatConversationVO{}, err
-	}
+//
+// 成员由调用方传入（列表场景批量加载，单条场景单独加载），本函数不再触发查询。
+func (s *ChatService) buildConversationVO(row *repository.ChatConversationListRow, userID int64, members []dto.ChatMemberVO) dto.ChatConversationVO {
 	title := ""
 	if row.Title != nil {
 		title = *row.Title
@@ -377,7 +387,7 @@ func (s *ChatService) buildConversationVO(ctx context.Context, row *repository.C
 		}
 		vo.LastMessage = lm
 	}
-	return vo, nil
+	return vo
 }
 
 func messageRowToVO(row *repository.ChatMessageRow) dto.ChatMessageVO {

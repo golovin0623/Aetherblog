@@ -501,7 +501,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 写路径(发送/已读/上传)每用户 120/min；读路径与 WS 不计桶。typing 走 WS 不经此限流。
 	chatWriteLimit := onlyMutating(middleware.RateLimitByUser(s.Redis, "rate:chat:write", 120, time.Minute))
 	chatGroup := api.Group("/v1/chat", authMW, pwdRotated, chatWriteLimit)
-	handler.NewChatHandler(chatSvc, mediaSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup)
+	handler.NewChatHandler(chatSvc, mediaSvc, settingSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup)
 
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"

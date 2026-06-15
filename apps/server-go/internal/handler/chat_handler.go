@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -21,13 +22,35 @@ import (
 type ChatHandler struct {
 	svc           *service.ChatService
 	media         *service.MediaService
+	settingSvc    *service.SiteSettingService // 读取 upload_max_size，对聊天附件施加与媒体库一致的大小上限
 	hub           *realtime.Hub
 	wsOriginAllow []string // WebSocket 握手允许的 Origin host 模式（防 CSWSH）
 }
 
 // NewChatHandler 创建 ChatHandler。
-func NewChatHandler(svc *service.ChatService, media *service.MediaService, hub *realtime.Hub, wsOriginAllow []string) *ChatHandler {
-	return &ChatHandler{svc: svc, media: media, hub: hub, wsOriginAllow: wsOriginAllow}
+func NewChatHandler(svc *service.ChatService, media *service.MediaService, settingSvc *service.SiteSettingService, hub *realtime.Hub, wsOriginAllow []string) *ChatHandler {
+	return &ChatHandler{svc: svc, media: media, settingSvc: settingSvc, hub: hub, wsOriginAllow: wsOriginAllow}
+}
+
+// maxUploadBytes 返回聊天附件单文件上限（字节），与媒体库 upload_max_size 同源；
+// settingSvc 未注入或读取失败时回落到 100MB 硬上限。
+func (h *ChatHandler) maxUploadBytes(ctx context.Context) int64 {
+	if h.settingSvc == nil {
+		return maxUploadHardCeilingBytes
+	}
+	v, err := h.settingSvc.GetValue(ctx, "upload_max_size")
+	if err != nil || v == "" {
+		return maxUploadHardCeilingBytes
+	}
+	mb, err := strconv.ParseFloat(v, 64)
+	if err != nil || mb <= 0 {
+		return maxUploadHardCeilingBytes
+	}
+	limit := int64(mb * 1024 * 1024)
+	if limit <= 0 || limit > maxUploadHardCeilingBytes {
+		return maxUploadHardCeilingBytes
+	}
+	return limit
 }
 
 // Mount 注册 /v1/chat 路由。整组已挂 authMW + pwdRotated，
@@ -226,6 +249,9 @@ func (h *ChatHandler) UploadAttachment(c echo.Context) error {
 	fh, err := c.FormFile("file")
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "缺少上传文件")
+	}
+	if maxBytes := h.maxUploadBytes(c.Request().Context()); fh.Size > maxBytes {
+		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxBytes/(1024*1024)))
 	}
 	uploader := lu.UserID
 	vo, err := h.media.Upload(c.Request().Context(), fh, &uploader, nil)

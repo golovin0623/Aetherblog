@@ -115,6 +115,10 @@ export default function MessageThread({
 }
 
 function renderBody(m: ChatMessage) {
+  // 附件类消息缺 URL 时给出友好占位，避免渲染失效图片 / 死链。
+  if (m.messageType !== 'TEXT' && m.messageType !== 'SYSTEM' && !m.attachmentUrl) {
+    return <span className="italic text-[var(--ink-muted)]">附件链接失效</span>;
+  }
   switch (m.messageType) {
     case 'IMAGE':
       return (

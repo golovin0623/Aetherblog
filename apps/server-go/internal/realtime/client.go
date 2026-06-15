@@ -15,6 +15,9 @@ const (
 	readLimit = 32 * 1024
 	// writeTimeout 是单次写超时。
 	writeTimeout = 10 * time.Second
+	// readTimeout 是单次读超时。客户端每 25s 发一次 ping，35s 内无任何帧即判定静默死连接，
+	// 主动关闭以回收 goroutine（防御未发 Close 帧的异常断连导致的连接/协程泄漏）。
+	readTimeout = 35 * time.Second
 )
 
 // Client 表示一条已认证的 WebSocket 连接。
@@ -52,9 +55,13 @@ func (c *Client) Serve(ctx context.Context) {
 }
 
 // readPump 循环读取入站帧并交给 onMessage 回调。
+// 每次读取带 readTimeout —— 心跳（25s）正常时不会触发；静默断连超过 35s 即报错返回，
+// 触发上层清理，避免连接与 goroutine 永久泄漏。
 func (c *Client) readPump(ctx context.Context) {
 	for {
-		typ, data, err := c.conn.Read(ctx)
+		readCtx, cancel := context.WithTimeout(ctx, readTimeout)
+		typ, data, err := c.conn.Read(readCtx)
+		cancel()
 		if err != nil {
 			return
 		}
@@ -82,6 +89,8 @@ func (c *Client) writePump(ctx context.Context) {
 			cancel()
 			if err != nil {
 				log.Debug().Err(err).Int64("user", c.userID).Msg("chat ws write failed")
+				// 显式关闭连接，强制 readPump 退出，避免半死连接迟迟不释放。
+				c.conn.Close(websocket.StatusAbnormalClosure, "write failed")
 				return
 			}
 		}

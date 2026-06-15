@@ -66,7 +66,7 @@ export default function Composer({ disabled, onSend, onUpload, onTyping }: Props
         type="button"
         disabled={disabled}
         onClick={() => fileRef.current?.click()}
-        className="shrink-0 rounded-full px-3 py-2 text-[var(--ink-secondary)] transition hover:bg-[var(--bg-leaf)] disabled:opacity-40"
+        className="shrink-0 rounded-full px-3 py-2 text-[var(--ink-secondary)] transition hover:bg-[var(--bg-leaf)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] disabled:opacity-40"
         aria-label="上传附件"
         title="上传图片 / 文件 / 语音"
       >
@@ -88,13 +88,13 @@ export default function Composer({ disabled, onSend, onUpload, onTyping }: Props
             submit();
           }
         }}
-        className="max-h-40 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-[var(--ink-subtle)] bg-[var(--bg-substrate)] px-4 py-2 text-[var(--ink-primary)] outline-none focus:border-[var(--aurora-1)] disabled:opacity-50"
+        className="max-h-40 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-[var(--ink-subtle)] bg-[var(--bg-substrate)] px-4 py-2 text-[var(--ink-primary)] outline-none focus:border-[var(--aurora-1)] focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] disabled:opacity-50"
       />
       <button
         type="button"
         disabled={disabled || !text.trim()}
         onClick={submit}
-        className="shrink-0 rounded-2xl bg-[var(--aurora-1)] px-4 py-2 font-medium text-[var(--bg-void)] transition hover:opacity-90 disabled:opacity-40"
+        className="shrink-0 rounded-2xl bg-[var(--aurora-1)] px-4 py-2 font-medium text-[var(--bg-void)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] disabled:opacity-40"
       >
         发送
       </button>

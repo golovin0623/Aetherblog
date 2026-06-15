@@ -72,6 +72,32 @@ func (r *ChatRepo) IsMember(ctx context.Context, convID, userID int64) (bool, st
 	return true, role, nil
 }
 
+// IsAuthorizedMember 判断用户是否有权访问会话 —— 在「是会话成员」的基础上，
+// 对 TEAM 会话**额外**校验其仍是该团队的活跃成员。
+//
+// SECURITY: chat_conversation_members 由 EnsureTeamConversation 同步写入，但团队成员
+// 被移除 / 禁用时不会回收这条聊天成员记录（access_repo.RemoveTeamMember 只删 team_members）。
+// 因此 TEAM 会话的鉴权必须实时回查 team_members，否则被踢出团队的用户仍能读写团队群聊。
+// 单条 SQL 完成判定，避免在发送 / 读取热路径上多发查询。
+func (r *ChatRepo) IsAuthorizedMember(ctx context.Context, convID, userID int64) (bool, error) {
+	var ok bool
+	err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM chat_conversation_members m
+			JOIN chat_conversations c ON c.id = m.conversation_id
+			WHERE m.conversation_id = $1 AND m.user_id = $2
+			  AND (
+			      c.kind <> 'TEAM'
+			      OR EXISTS(
+			          SELECT 1 FROM team_members tm
+			          WHERE tm.team_id = c.team_id AND tm.user_id = $2 AND tm.status = 'ACTIVE'
+			      )
+			  )
+		)`, convID, userID)
+	return ok, err
+}
+
 // MemberUserIDs 返回会话内全部成员的 user_id —— 用于实时广播目标集合。
 func (r *ChatRepo) MemberUserIDs(ctx context.Context, convID int64) ([]int64, error) {
 	var ids []int64
@@ -90,6 +116,33 @@ func (r *ChatRepo) ListMembers(ctx context.Context, convID int64) ([]ChatMemberR
 		WHERE m.conversation_id = $1
 		ORDER BY m.joined_at`, convID)
 	return rows, err
+}
+
+// ListMembersForConversations 批量拉取多个会话的成员（含用户展示信息），
+// 按 conversation_id 分组返回 —— 用于会话列表避免 N+1 查询。
+func (r *ChatRepo) ListMembersForConversations(ctx context.Context, convIDs []int64) (map[int64][]ChatMemberRow, error) {
+	out := make(map[int64][]ChatMemberRow)
+	if len(convIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		ConversationID int64 `db:"conversation_id"`
+		ChatMemberRow
+	}
+	var rows []row
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT m.conversation_id, m.user_id, u.username, u.nickname, u.avatar, m.member_role, m.muted
+		FROM chat_conversation_members m
+		JOIN users u ON u.id = m.user_id
+		WHERE m.conversation_id = ANY($1)
+		ORDER BY m.joined_at`, pq.Array(convIDs))
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ConversationID] = append(out[r.ConversationID], r.ChatMemberRow)
+	}
+	return out, nil
 }
 
 // ListConversationsForUser 返回用户参与的全部会话，附带未读数与最后一条消息摘要，
