@@ -206,9 +206,9 @@ func (s *ChatAgentService) SeatAgent(ctx context.Context, actor ChatActor, convI
 		vo := agentToVO(a, s.canManage(a, actor))
 		return &vo, nil
 	}
-	// SECURITY: 要求会话**全体成员**都有权使用该 Agent，防止 TEAM / PRIVATE 范围
-	// Agent 被带入含无权成员的会话从而越权泄漏（详见 repo 注释）。
-	allowed, err := s.repo.AllConversationMembersCanUseAgent(ctx, convID, agentID)
+	// SECURITY: 要求该 Agent 能安全纳入会话——TEAM 会话只接受 GLOBAL 或本团队 Agent
+	// （覆盖未来加入的团队成员），DIRECT/GROUP 要求当前全体成员都有权使用（详见 repo 注释）。
+	allowed, err := s.repo.CanSeatAgent(ctx, convID, agentID)
 	if err != nil {
 		return nil, err
 	}
