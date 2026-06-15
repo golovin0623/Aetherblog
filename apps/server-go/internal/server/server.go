@@ -518,6 +518,24 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 过滤客户端塞进来的 kbIds（防止未授权 KB 注入）。
 	agentHandler.SetKBService(kbSvc)
 
+	// --- QA 试卷智能拆题 / 校对 / 修复 / 审批入库闭环 ---
+	// 契约：docs/features/qa-document-workflow.md。原始文件只读落 media_files；
+	// 校对/修复/合并/Diff 基于 Canonical Document Tree；Agent 只产 Patch，审批前不写题库。
+	// 流水线引擎可插拔：AETHERBLOG_QA_PIPELINE_MODE=mock(默认,确定性内置)|http(调 ai-service /api/v1/ai/qa/*)。
+	qaRepo := repository.NewQARepo(s.DB)
+	qaPipelineMode := os.Getenv("AETHERBLOG_QA_PIPELINE_MODE")
+	if qaPipelineMode == "" {
+		qaPipelineMode = "mock"
+	}
+	qaPipeline := service.NewQAPipeline(qaPipelineMode, aiClient, internalToken)
+	qaSvc := service.NewQAService(qaRepo, qaPipeline, qaMediaReader{media: mediaSvc})
+	// 进程内异步 Worker：轮询 qa_document_jobs，随 bgCtx 在 Shutdown 时退出。
+	service.NewQAWorker(qaSvc).Start(bgCtx)
+	log.Info().Str("pipeline_mode", qaPipelineMode).Msg("qa document workflow initialized")
+	// 写路径每用户 60/min（读不计桶，与 KB 同策略）。
+	qaWriteLimit := onlyMutating(middleware.RateLimitByUser(s.Redis, "rate:qa:write", 60, time.Minute))
+	handler.NewQAHandler(qaSvc, mediaSvc, activitySvc).MountAdmin(admin.Group("/qa-documents", qaWriteLimit))
+
 	// --- 搜索管理 ---
 	searchAdmin := admin.Group("/search")
 	searchAdmin.GET("/config", searchHandler.GetConfig)
