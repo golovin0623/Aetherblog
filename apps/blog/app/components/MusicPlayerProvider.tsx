@@ -30,9 +30,95 @@ import {
 } from 'lucide-react';
 import { getMusicPlayer, type MusicPlayer, type MusicTrack } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
+import {
+  DEFAULT_MUSIC_SKIN_PRESET,
+  isMusicSkinPresetId,
+  type MusicHallSkinMode,
+} from '@aetherblog/utils';
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
+}
+
+// ============================================================
+// 音乐皮肤解析 —— 后台默认 + 前台访客本地覆盖(localStorage)
+// 预设走纯 CSS([data-music-skin="<id>"]);自定义注入作用域 <style>。
+// ============================================================
+const MUSIC_SKIN_STORAGE_KEY = 'aetherblog-music-skin';
+
+type StoredMusicSkin =
+  | { mode: 'preset'; preset: string }
+  | { mode: 'custom'; light: string; dark: string };
+
+interface ResolvedMusicSkin {
+  /** data-music-skin 属性值('custom' 或合法预设 id) */
+  value: string;
+  mode: MusicHallSkinMode;
+  preset: string;
+  /** 自定义亮主题种子(mode=custom 时有效) */
+  light: string;
+  /** 自定义暗主题种子(mode=custom 时有效) */
+  dark: string;
+}
+
+/**
+ * 只放行 hex 或「纯字面量」oklch() —— 杜绝 CSS 注入。
+ * 负字符类额外禁掉内层括号,从而拦下 `oklch(var(--x))` / 任何嵌套函数,
+ * 避免作用域种子被用来引用域外变量或夹带表达式。
+ */
+export function sanitizeMusicSeed(raw: string | undefined | null): string {
+  const v = (raw || '').trim();
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) return v;
+  if (/^oklch\([^;{}<>()]*\)$/i.test(v)) return v;
+  return '';
+}
+
+function normalizeMusicSkin(
+  mode: string | undefined | null,
+  preset: string | undefined | null,
+  light: string | undefined | null,
+  dark: string | undefined | null,
+): ResolvedMusicSkin {
+  if (mode === 'custom') {
+    const l = sanitizeMusicSeed(light);
+    const d = sanitizeMusicSeed(dark) || l;
+    if (l) return { value: 'custom', mode: 'custom', preset: DEFAULT_MUSIC_SKIN_PRESET, light: l, dark: d };
+  }
+  const p = isMusicSkinPresetId(preset) ? preset : DEFAULT_MUSIC_SKIN_PRESET;
+  return { value: p, mode: 'preset', preset: p, light: '', dark: '' };
+}
+
+function readStoredMusicSkin(): StoredMusicSkin | null {
+  try {
+    const raw = localStorage.getItem(MUSIC_SKIN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.mode === 'preset' && typeof parsed.preset === 'string') {
+      return { mode: 'preset', preset: parsed.preset };
+    }
+    if (parsed?.mode === 'custom' && typeof parsed.light === 'string') {
+      return { mode: 'custom', light: parsed.light, dark: typeof parsed.dark === 'string' ? parsed.dark : parsed.light };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writeStoredMusicSkin(value: StoredMusicSkin) {
+  try {
+    localStorage.setItem(MUSIC_SKIN_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearStoredMusicSkin() {
+  try {
+    localStorage.removeItem(MUSIC_SKIN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export interface LyricLine {
@@ -59,6 +145,74 @@ export function formatMusicClock(seconds: number): string {
   const minutes = Math.floor(whole / 60);
   const rest = whole % 60;
   return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
+/**
+ * 共享进度条 —— 指针点击 + 键盘(←/→ ±5%、Home/End)均可拖动,
+ * 带 role="slider" 与 aria-value*。三处播放面(大厅 / dock / 沉浸层)统一复用,
+ * 杜绝各自手写一遍 onClick 取 clientX 又漏键盘可达性。
+ */
+export function SeekBar({
+  percent,
+  progress,
+  duration,
+  onSeek,
+  size = 'md',
+  className,
+  label = '调整播放进度',
+}: {
+  percent: number;
+  progress: number;
+  duration: number;
+  onSeek: (percent: number) => void;
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+  label?: string;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const heightClass = size === 'lg' ? 'h-2.5' : size === 'sm' ? 'h-1.5' : 'h-2';
+  const seekFromClientX = (clientX: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    onSeek(((clientX - rect.left) / rect.width) * 100);
+  };
+  return (
+    <div
+      ref={trackRef}
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      aria-valuetext={`${formatMusicClock(progress)} / ${formatMusicClock(duration)}`}
+      onClick={(event) => seekFromClientX(event.clientX)}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          onSeek(Math.min(100, percent + 5));
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+          event.preventDefault();
+          onSeek(Math.max(0, percent - 5));
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          onSeek(0);
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          onSeek(100);
+        }
+      }}
+      className={cn(
+        'block w-full cursor-pointer overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+        heightClass,
+        className
+      )}
+    >
+      <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+    </div>
+  );
 }
 
 function pickRandomIndex(length: number, currentIndex: number): number {
@@ -138,6 +292,16 @@ interface MusicPlayerContextValue {
   setShuffle: (value: boolean | ((prev: boolean) => boolean)) => void;
   setExpanded: (value: boolean) => void;
   setVolume: (value: number) => void;
+  /** 当前生效的皮肤值,用于 data-music-skin */
+  skin: string;
+  skinMode: MusicHallSkinMode;
+  skinCustomLight: string;
+  skinCustomDark: string;
+  /** 访客是否在本地覆盖了后台默认皮肤 */
+  hasSkinOverride: boolean;
+  selectPresetSkin: (id: string) => void;
+  selectCustomSkin: (light: string, dark: string) => void;
+  resetSkin: () => void;
 }
 
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
@@ -153,6 +317,7 @@ export function useMusicPlayer() {
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playingRef = useRef(false);
+  const currentIndexRef = useRef(0);
   const { data: player } = useQuery({
     queryKey: ['musicPlayer'],
     queryFn: getMusicPlayer,
@@ -201,6 +366,10 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [isPlaying]);
 
   useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
     setShuffle(Boolean(
       player?.randomEnabled ||
         player?.playlist?.randomEnabled ||
@@ -247,34 +416,41 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const advanceTrack = useCallback(
     (manual: boolean) => {
       if (tracks.length === 0) return;
+      // 从 ref 读实时下标,避免 onEnded 闭包里拿到旧的 currentIndex(连播会卡在同一首)
+      const index = currentIndexRef.current;
       const shouldWrap = manual || player?.playbackMode === 'LOOP' || player?.playbackMode === 'CAROUSEL';
-      if (!manual && !shuffle && currentIndex >= tracks.length - 1 && !shouldWrap) {
+      if (!manual && !shuffle && index >= tracks.length - 1 && !shouldWrap) {
         const audio = audioRef.current;
         if (audio) {
           audio.pause();
           audio.currentTime = 0;
         }
+        playingRef.current = false;
         setProgress(0);
         setIsPlaying(false);
         return;
       }
-      setCurrentIndex((index) =>
-        shuffle ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length
-      );
+      // 先把意图写进 ref,src 切换 effect 立即据此自动续播,不依赖 effect 执行顺序
+      playingRef.current = true;
+      setCurrentIndex(shuffle ? pickRandomIndex(tracks.length, index) : (index + 1) % tracks.length);
       setIsPlaying(true);
     },
-    [currentIndex, player?.playbackMode, shuffle, tracks.length]
+    [player?.playbackMode, shuffle, tracks.length]
   );
 
   const playIndex = useCallback(
     (index: number, options?: { expand?: boolean }) => {
       if (tracks.length === 0) return;
       const safeIndex = Math.max(0, Math.min(index, tracks.length - 1));
+      playingRef.current = true;
       setCurrentIndex(safeIndex);
       setIsPlaying(true);
       if (options?.expand) setExpanded(true);
       if (safeIndex === currentIndex) {
-        audioRef.current?.play().catch(() => setIsPlaying(false));
+        audioRef.current?.play().catch(() => {
+          playingRef.current = false;
+          setIsPlaying(false);
+        });
       }
     },
     [currentIndex, tracks.length]
@@ -314,6 +490,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   const previousTrack = useCallback(() => {
     if (tracks.length === 0) return;
+    playingRef.current = true;
     setCurrentIndex((index) => (index - 1 + tracks.length) % tracks.length);
     setIsPlaying(true);
   }, [tracks.length]);
@@ -351,11 +528,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       title: currentTrack.title,
       artist: currentTrack.artist || '未知艺术家',
       album: currentTrack.album || player?.playlist?.name || '音乐大厅',
-      artwork: cover
-        ? [
-            { src: cover, sizes: '512x512', type: 'image/png' },
-          ]
-        : [],
+      // 不写死 type:封面可能是 jpg/webp,留空让浏览器按响应头判断
+      artwork: cover ? [{ src: cover, sizes: '512x512' }] : [],
     });
     navigator.mediaSession.setActionHandler('play', () => {
       audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
@@ -374,6 +548,72 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       navigator.mediaSession.setActionHandler('nexttrack', null);
     };
   }, [currentTrack, nextTrack, player?.playlist?.name, previousTrack]);
+
+  // ---- 音乐皮肤:后台默认 ←被→ 前台访客本地覆盖 ----
+  const [skinOverride, setSkinOverride] = useState<StoredMusicSkin | null>(null);
+
+  // 客户端水合本地覆盖(SSR 首帧用后台默认,避免 hydration mismatch)
+  useEffect(() => {
+    setSkinOverride(readStoredMusicSkin());
+  }, []);
+
+  const backendSkin = useMemo(
+    () => normalizeMusicSkin(player?.skinMode, player?.skinPreset, player?.skinColorLight, player?.skinColorDark),
+    [player?.skinMode, player?.skinPreset, player?.skinColorLight, player?.skinColorDark]
+  );
+
+  const resolvedSkin = useMemo(
+    () => (skinOverride
+      ? normalizeMusicSkin(
+          skinOverride.mode,
+          skinOverride.mode === 'preset' ? skinOverride.preset : undefined,
+          skinOverride.mode === 'custom' ? skinOverride.light : undefined,
+          skinOverride.mode === 'custom' ? skinOverride.dark : undefined,
+        )
+      : backendSkin),
+    [skinOverride, backendSkin]
+  );
+
+  // 自定义模式注入作用域 <style>(预设模式纯 CSS,不注入);镜像 SiteSettingsProvider 范式
+  useEffect(() => {
+    const STYLE_ID = 'aetherblog-music-skin';
+    const remove = () => document.getElementById(STYLE_ID)?.remove();
+    if (resolvedSkin.mode !== 'custom' || !resolvedSkin.light) {
+      remove();
+      return;
+    }
+    let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+    if (!el) {
+      el = document.createElement('style');
+      el.id = STYLE_ID;
+      document.head.appendChild(el);
+    }
+    const light = resolvedSkin.light;
+    const dark = resolvedSkin.dark || light;
+    el.textContent =
+      `[data-music-skin="custom"]{--music-seed:${light};}\n` +
+      `:root.dark [data-music-skin="custom"]{--music-seed:${dark};}`;
+    return remove;
+  }, [resolvedSkin.mode, resolvedSkin.light, resolvedSkin.dark]);
+
+  const selectPresetSkin = useCallback((id: string) => {
+    const next: StoredMusicSkin = { mode: 'preset', preset: isMusicSkinPresetId(id) ? id : DEFAULT_MUSIC_SKIN_PRESET };
+    setSkinOverride(next);
+    writeStoredMusicSkin(next);
+  }, []);
+
+  const selectCustomSkin = useCallback((light: string, dark: string) => {
+    const l = sanitizeMusicSeed(light);
+    if (!l) return;
+    const next: StoredMusicSkin = { mode: 'custom', light: l, dark: sanitizeMusicSeed(dark) || l };
+    setSkinOverride(next);
+    writeStoredMusicSkin(next);
+  }, []);
+
+  const resetSkin = useCallback(() => {
+    setSkinOverride(null);
+    clearStoredMusicSkin();
+  }, []);
 
   const value = useMemo<MusicPlayerContextValue>(() => ({
     player,
@@ -401,6 +641,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setShuffle,
     setExpanded,
     setVolume,
+    skin: resolvedSkin.value,
+    skinMode: resolvedSkin.mode,
+    skinCustomLight: resolvedSkin.light,
+    skinCustomDark: resolvedSkin.dark,
+    hasSkinOverride: skinOverride != null,
+    selectPresetSkin,
+    selectCustomSkin,
+    resetSkin,
   }), [
     canRender,
     canUseSurface,
@@ -425,6 +673,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     tracks,
     volume,
     setVolume,
+    resolvedSkin,
+    skinOverride,
+    selectPresetSkin,
+    selectCustomSkin,
+    resetSkin,
   ]);
 
   return (
@@ -457,13 +710,13 @@ function CoverDisc({
   return (
     <div
       className={cn(
-        'relative shrink-0 rounded-full border border-white/15 bg-[radial-gradient(circle_at_50%_50%,#111_0_18%,#2a2222_19%_28%,#121212_29%_100%)] shadow-[0_20px_60px_-34px_rgba(0,0,0,0.85)]',
+        'relative shrink-0 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[radial-gradient(circle_at_50%_50%,color-mix(in_oklch,black_82%,var(--aurora-1))_0_18%,color-mix(in_oklch,black_90%,var(--aurora-1))_19%_28%,color-mix(in_oklch,black_88%,var(--aurora-1))_29%_100%)] shadow-[0_20px_60px_-34px_color-mix(in_oklch,black_55%,transparent)]',
         sizeClass,
         playing && 'music-vinyl-spin'
       )}
     >
-      <div className="absolute inset-[12%] rounded-full border border-white/10 bg-black/35" />
-      <div className="absolute inset-[25%] overflow-hidden rounded-full border border-white/20 bg-[var(--bg-card)]">
+      <div className="absolute inset-[12%] rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,black_45%,transparent)]" />
+      <div className="absolute inset-[25%] overflow-hidden rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[var(--bg-leaf)]">
         {cover ? (
           <Image
             src={cover}
@@ -474,12 +727,12 @@ function CoverDisc({
             unoptimized
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#f8f0e8,#1f1b1b)] text-white">
+          <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklch,var(--aurora-1)_30%,var(--bg-raised)),var(--bg-void))] text-[var(--ink-secondary)]">
             <Disc3 className={cn(size === 'lg' ? 'h-14 w-14' : 'h-6 w-6')} />
           </div>
         )}
       </div>
-      <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/25 bg-[#f6efe6]" />
+      <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,white_82%,var(--aurora-1))]" />
     </div>
   );
 }
@@ -501,6 +754,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     lyrics,
     activeLyricIndex,
     canRender,
+    skin,
     togglePlayback,
     nextTrack,
     previousTrack,
@@ -510,51 +764,77 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     setVolume,
   } = value;
 
+  const lyricsBoxRef = useRef<HTMLDivElement>(null);
+  const activeLyricRef = useRef<HTMLParagraphElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // 沉浸层:Esc 关闭 + 打开时锁滚动 + 焦点落到关闭键(对话框语义)
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      window.clearTimeout(focusTimer);
+    };
+  }, [expanded, setExpanded]);
+
+  // 歌词自动滚动:当前行始终居中可见(reduced-motion 由浏览器接管)
+  useEffect(() => {
+    if (!expanded) return;
+    const line = activeLyricRef.current;
+    const box = lyricsBoxRef.current;
+    if (!line || !box) return;
+    box.scrollTo({
+      top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
+      behavior: 'smooth',
+    });
+  }, [expanded, activeLyricIndex]);
+
   if (!canRender || !currentTrack || pathname.startsWith('/agent/workspace')) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden rounded-[1.35rem] border border-white/12 bg-[#161111]/90 text-white shadow-[0_24px_90px_-36px_rgba(0,0,0,0.92)] backdrop-blur-2xl">
+      <div data-music-skin={skin} className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
+        <div className="surface-raised pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden rounded-[1.35rem] text-[var(--ink-primary)]">
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-2.5 sm:gap-4 sm:p-3">
             <button
               type="button"
               onClick={() => setExpanded(true)}
-              className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
+              className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
               aria-label="打开音乐大厅播放器"
             >
               <CoverDisc track={currentTrack} playing={isPlaying} size="sm" />
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ff4d4f] text-white shadow-lg">
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]">
                 <Maximize2 className="h-3 w-3" />
               </span>
             </button>
 
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="inline-flex h-5 items-center rounded-full bg-white/8 px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ffb4a9]">
+                <span className="inline-flex h-5 items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--aurora-1)]">
                   {playlistName}
                 </span>
-                <span className="truncate text-[11px] text-white/45">
+                <span className="truncate text-[11px] text-[var(--ink-muted)]">
                   {currentIndex + 1}/{tracks.length}
                 </span>
               </div>
-              <p className="mt-1 truncate text-sm font-bold text-white sm:text-base">{currentTrack.title}</p>
-              <p className="mt-0.5 truncate text-xs text-white/55">
+              <p className="mt-1 truncate text-sm font-bold text-[var(--ink-primary)] sm:text-base">{currentTrack.title}</p>
+              <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
                 {currentTrack.artist || '未知艺术家'}{activeLine ? ` · ${activeLine}` : ''}
               </p>
-              <button
-                type="button"
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
-                }}
-                className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
-                aria-label="调整播放进度"
-              >
-                <span className="block h-full rounded-full bg-[#ff4d4f]" style={{ width: `${percent}%` }} />
-              </button>
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-2" />
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -563,25 +843,27 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 onClick={() => setShuffle((value) => !value)}
                 className={cn(
                   'hidden h-10 w-10 items-center justify-center rounded-full border transition-colors sm:flex',
-                  shuffle ? 'border-[#ff4d4f]/60 bg-[#ff4d4f]/16 text-[#ffb4a9]' : 'border-white/10 text-white/55 hover:text-white'
+                  shuffle
+                    ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]'
+                    : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
                 )}
                 aria-label="随机播放"
                 aria-pressed={shuffle}
               >
                 <Shuffle className="h-4 w-4" />
               </button>
-              <button type="button" onClick={previousTrack} className="hidden h-10 w-10 items-center justify-center rounded-full border border-white/10 text-white/65 transition-colors hover:text-white sm:flex" aria-label="上一首">
+              <button type="button" onClick={previousTrack} className="hidden h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] sm:flex" aria-label="上一首">
                 <SkipBack className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={togglePlayback}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff4d4f] text-white shadow-[0_10px_30px_-12px_rgba(255,77,79,0.9)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffb4a9]"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                 aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
               >
                 {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
               </button>
-              <button type="button" onClick={nextTrack} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-white/65 transition-colors hover:text-white" aria-label="下一首">
+              <button type="button" onClick={nextTrack} className="flex h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]" aria-label="下一首">
                 <SkipForward className="h-4 w-4" />
               </button>
             </div>
@@ -590,27 +872,34 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
       </div>
 
       {expanded && (
-        <div className="fixed inset-0 z-[65] overflow-y-auto bg-[#120f0f]/96 px-4 py-[max(4.5rem,env(safe-area-inset-top))] text-white backdrop-blur-2xl">
+        <div
+          data-music-skin={skin}
+          role="dialog"
+          aria-modal="true"
+          aria-label="音乐大厅播放器"
+          className="fixed inset-0 z-[65] overflow-y-auto bg-[color-mix(in_oklch,var(--bg-void)_92%,transparent)] px-4 py-[max(4.5rem,env(safe-area-inset-top))] text-[var(--ink-primary)] [backdrop-filter:blur(28px)_saturate(140%)]"
+        >
           <div className="mx-auto grid min-h-[calc(100dvh-8rem)] w-full max-w-6xl grid-cols-1 gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.72fr)]">
-            <section className="flex min-h-[560px] flex-col justify-between rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,77,79,0.20),rgba(255,255,255,0.06)_38%,rgba(0,0,0,0.28))] p-5 shadow-[0_30px_120px_-54px_rgba(0,0,0,0.95)] sm:p-8">
+            <section className="surface-luminous flex min-h-[560px] flex-col justify-between rounded-[2rem] p-5 sm:p-8">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#ffb4a9]">Aether Music Hall</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--aurora-1)]">Aether Music Hall</p>
                   <h2 className="mt-2 text-2xl font-black tracking-normal sm:text-4xl">音乐大厅</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
                     href="/music"
                     onClick={() => setExpanded(false)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/8 px-4 text-sm font-bold text-white/85 transition-colors hover:bg-white/12"
+                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-4 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
                   >
                     <ListMusic className="h-4 w-4" />
                     歌单页
                   </Link>
                   <button
+                    ref={closeButtonRef}
                     type="button"
                     onClick={() => setExpanded(false)}
-                    className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white/75 transition-colors hover:bg-white/12 hover:text-white"
+                    className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                     aria-label="收起播放器"
                   >
                     <ChevronDown className="h-5 w-5" />
@@ -624,39 +913,29 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm font-bold text-white/45">{playlistName}</p>
-                  <h3 className="mt-1 text-3xl font-black tracking-normal sm:text-5xl">{currentTrack.title}</h3>
-                  <p className="mt-2 text-base text-white/62">{currentTrack.artist || '未知艺术家'} · {currentTrack.album || '未分专辑'}</p>
+                  <p className="text-sm font-bold text-[var(--ink-muted)]">{playlistName}</p>
+                  <h3 className="mt-1 text-3xl font-black tracking-normal sm:text-h1">{currentTrack.title}</h3>
+                  <p className="mt-2 text-base text-[var(--ink-secondary)]">{currentTrack.artist || '未知艺术家'} · {currentTrack.album || '未分专辑'}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
-                  }}
-                  className="block h-2.5 w-full overflow-hidden rounded-full bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4d4f]"
-                  aria-label="调整播放进度"
-                >
-                  <span className="block h-full rounded-full bg-[#ff4d4f]" style={{ width: `${percent}%` }} />
-                </button>
-                <div className="flex items-center justify-between text-xs tnum text-white/48">
+                <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="lg" />
+                <div className="flex items-center justify-between text-xs tnum text-[var(--ink-muted)]">
                   <span>{formatMusicClock(progress)}</span>
                   <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button type="button" onClick={() => setShuffle((value) => !value)} className={cn('flex h-12 w-12 items-center justify-center rounded-full border transition-colors', shuffle ? 'border-[#ff4d4f]/60 bg-[#ff4d4f]/18 text-[#ffb4a9]' : 'border-white/10 bg-white/6 text-white/62 hover:text-white')} aria-label="随机播放" aria-pressed={shuffle}>
+                  <button type="button" onClick={() => setShuffle((value) => !value)} className={cn('flex h-12 w-12 items-center justify-center rounded-full border transition-colors', shuffle ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]' : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]')} aria-label="随机播放" aria-pressed={shuffle}>
                     <Shuffle className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={previousTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 hover:text-white" aria-label="上一首">
+                  <button type="button" onClick={previousTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="上一首">
                     <SkipBack className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={togglePlayback} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#ff4d4f] text-white shadow-[0_20px_44px_-20px_rgba(255,77,79,0.95)] transition-transform hover:scale-105" aria-label={isPlaying ? '暂停音乐' : '播放音乐'}>
+                  <button type="button" onClick={togglePlayback} className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_20px_44px_-20px_color-mix(in_oklch,var(--aurora-1)_85%,transparent)] transition-transform hover:scale-105" aria-label={isPlaying ? '暂停音乐' : '播放音乐'}>
                     {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 translate-x-0.5" />}
                   </button>
-                  <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70 hover:text-white" aria-label="下一首">
+                  <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="下一首">
                     <SkipForward className="h-5 w-5" />
                   </button>
-                  <label className="flex h-12 items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 text-white/64">
+                  <label className="flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] px-4 text-[var(--ink-secondary)]">
                     <Volume2 className="h-4 w-4" />
                     <input
                       type="range"
@@ -665,7 +944,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                       step={0.01}
                       value={volume}
                       onChange={(event) => setVolume(Number(event.target.value))}
-                      className="w-24 accent-[#ff4d4f]"
+                      className="w-24 accent-[var(--aurora-1)]"
                       aria-label="音量"
                     />
                   </label>
@@ -674,27 +953,28 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
             </section>
 
             <aside className="grid gap-4 lg:grid-rows-[minmax(0,1fr)_minmax(0,0.9fr)]">
-              <section className="min-h-[300px] rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5">
+              <section className="surface-leaf min-h-[300px] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ffb4a9]">Lyrics</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Lyrics</p>
                     <h3 className="mt-1 text-lg font-black">歌词现场</h3>
                   </div>
-                  <Music2 className="h-5 w-5 text-white/40" />
+                  <Music2 className="h-5 w-5 text-[var(--ink-muted)]" />
                 </div>
-                <div className="mt-5 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                <div ref={lyricsBoxRef} className="mt-5 max-h-[360px] space-y-3 overflow-y-auto pr-1 scroll-smooth">
                   {lyrics.length === 0 ? (
-                    <p className="rounded-2xl border border-white/10 bg-black/16 p-4 text-sm leading-6 text-white/55">
+                    <p className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] p-4 text-sm leading-6 text-[var(--ink-secondary)]">
                       当前歌曲还没有歌词。可以在后台音乐大厅的歌曲信息里维护歌词，前台会自动滚动高亮。
                     </p>
                   ) : lyrics.map((line, index) => (
                     <p
                       key={`${line.time ?? 'plain'}-${index}`}
+                      ref={index === activeLyricIndex ? activeLyricRef : undefined}
                       className={cn(
                         'rounded-2xl px-4 py-2 text-sm leading-7 transition-all',
                         index === activeLyricIndex
-                          ? 'bg-[#ff4d4f]/18 text-lg font-black text-white shadow-[inset_3px_0_0_#ff4d4f]'
-                          : 'text-white/45'
+                          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-lg font-black text-[var(--ink-primary)] shadow-[inset_3px_0_0_var(--aurora-1)]'
+                          : 'text-[var(--ink-muted)]'
                       )}
                     >
                       {line.text}
@@ -703,13 +983,13 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 </div>
               </section>
 
-              <section className="min-h-[300px] rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5">
+              <section className="surface-leaf min-h-[300px] p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ffb4a9]">Queue</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Queue</p>
                     <h3 className="mt-1 text-lg font-black">播放队列</h3>
                   </div>
-                  <span className="rounded-full bg-white/8 px-3 py-1 text-xs text-white/54">{tracks.length} 首</span>
+                  <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-1 text-xs text-[var(--ink-secondary)]">{tracks.length} 首</span>
                 </div>
                 <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
                   {tracks.map((track, index) => (
@@ -720,14 +1000,14 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                       className={cn(
                         'grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-colors',
                         currentTrack.id === track.id
-                          ? 'border-[#ff4d4f]/36 bg-[#ff4d4f]/14'
-                          : 'border-white/8 bg-black/12 hover:bg-white/8'
+                          ? 'border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]'
+                          : 'border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
                       )}
                     >
-                      <span className="text-xs tnum text-white/40">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="text-xs tnum text-[var(--ink-muted)]">{String(index + 1).padStart(2, '0')}</span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold text-white/86">{track.title}</span>
-                        <span className="mt-0.5 block truncate text-xs text-white/42">{track.artist || '未知艺术家'}</span>
+                        <span className="block truncate text-sm font-bold text-[var(--ink-primary)]">{track.title}</span>
+                        <span className="mt-0.5 block truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'}</span>
                       </span>
                       {currentTrack.id === track.id && isPlaying ? (
                         <span className="flex h-7 items-end gap-0.5" aria-hidden="true">
@@ -736,7 +1016,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                           <span className="music-eq-bar [animation-delay:260ms]" />
                         </span>
                       ) : (
-                        <Play className="h-4 w-4 text-white/38" />
+                        <Play className="h-4 w-4 text-[var(--ink-muted)]" />
                       )}
                     </button>
                   ))}
@@ -748,7 +1028,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white/70 backdrop-blur-xl transition-colors hover:text-white"
+            className="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_80%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] [backdrop-filter:blur(16px)]"
             aria-label="关闭音乐大厅播放器"
           >
             <X className="h-5 w-5" />

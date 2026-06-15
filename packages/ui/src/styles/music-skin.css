@@ -1,0 +1,67 @@
+/* =============================================================
+ * AetherBlog · Music Hall Skin —— 作用域「一个光源,四色派生」
+ * -------------------------------------------------------------
+ * 镜像 tokens.css 的 aurora 派生(§ Aurora 主色派生 / oklch 相对色),
+ * 唯一区别:把全站光源 --aurora-source 换成音乐大厅专属种子 --music-seed,
+ * 并把所有声明收进 [data-music-skin] 作用域。
+ *
+ * 因为 .surface-* / ::selection / --focus-ring / 辉光描边都消费 --aurora-1,
+ * 在作用域内覆盖 --aurora-1..4 后,域内玻璃面 / 辉光 / 描边会自动重新着色,
+ * 且随 :root.light / :root.dark 翻转 —— 对作用域外零影响。
+ *
+ *   预设   = 纯 CSS,只换 --music-seed(见下方 [data-music-skin="…"])
+ *   自定义 = JS 注入 [data-music-skin="custom"] 的 --music-seed(亮/暗各一)
+ *
+ * 种子可为 hex 或 oklch();oklch(from …) 对两者都成立。
+ * 预设种子需与 packages/utils/src/musicSkins.ts 的 MUSIC_SKIN_PRESETS 保持一致。
+ * ============================================================= */
+
+/* ---------- 作用域光源 + 保底值(亮 / 默认) ---------- */
+[data-music-skin] {
+  --music-seed: #DC3D44;               /* crimson · light 默认 */
+  --aurora-source: var(--music-seed);  /* 作用域内改写光源(--aurora-field 等沿用) */
+
+  /* 保底值 —— 不支持 oklch 相对色的旧浏览器(退化为单色,不撞色) */
+  --aurora-1: var(--music-seed);
+  --aurora-2: var(--music-seed);
+  --aurora-3: var(--music-seed);
+  --aurora-4: var(--music-seed);
+}
+
+/* ---------- 作用域光源(暗) ---------- */
+:root.dark [data-music-skin] {
+  --music-seed: #FF6B6E;               /* crimson · dark 默认(更亮) */
+}
+
+/* ---------- 预设皮肤(纯 CSS,仅换种子) ---------- */
+[data-music-skin="crimson"] { --music-seed: #DC3D44; }
+[data-music-skin="indigo"]  { --music-seed: #6366F1; }
+[data-music-skin="emerald"] { --music-seed: #0E9F6E; }
+[data-music-skin="amber"]   { --music-seed: #D97706; }
+[data-music-skin="magenta"] { --music-seed: #C026A3; }
+
+:root.dark [data-music-skin="crimson"] { --music-seed: #FF6B6E; }
+:root.dark [data-music-skin="indigo"]  { --music-seed: #818CF8; }
+:root.dark [data-music-skin="emerald"] { --music-seed: #34D399; }
+:root.dark [data-music-skin="amber"]   { --music-seed: #FBBF24; }
+:root.dark [data-music-skin="magenta"] { --music-seed: #E879F9; }
+
+/* =============================================================
+ * 四色派生 —— 镜像 tokens.css §Aurora 主色派生
+ * aurora-1 = 种子本色(锚点);+18°/+36°/+60° 同色系邻近推远,
+ * chroma 随 hue 推远逐步降低,避免高饱和撞眼。
+ * ============================================================= */
+@supports (color: oklch(from red l c h)) {
+  [data-music-skin] {
+    --aurora-1: oklch(from var(--music-seed) l c h);
+    --aurora-2: oklch(from var(--music-seed) calc(l + 0.02) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--music-seed) calc(l + 0.05) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--music-seed) calc(l + 0.08) calc(c * 0.68) calc(h + 60));
+  }
+  :root.dark [data-music-skin] {
+    --aurora-1: oklch(from var(--music-seed) calc(l + 0.08) c h);
+    --aurora-2: oklch(from var(--music-seed) calc(l + 0.10) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--music-seed) calc(l + 0.12) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--music-seed) calc(l + 0.10) calc(c * 0.68) calc(h + 60));
+  }
+}

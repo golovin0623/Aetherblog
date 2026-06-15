@@ -124,6 +124,11 @@ export interface MusicPlayer {
   carouselEnabled: boolean;
   carouselIntervalSeconds: number;
   randomEnabled: boolean;
+  /** 站点默认音乐皮肤(后台配置,前台访客可本地覆盖) */
+  skinMode?: 'preset' | 'custom';
+  skinPreset?: string;
+  skinColorLight?: string;
+  skinColorDark?: string;
   playlist?: MusicPlaylist;
   tracks: MusicTrack[];
 }
@@ -149,6 +154,8 @@ const DEFAULT_MUSIC_PLAYER: MusicPlayer = {
   carouselEnabled: false,
   carouselIntervalSeconds: 8,
   randomEnabled: false,
+  skinMode: 'preset',
+  skinPreset: 'crimson',
   tracks: [],
 };
 

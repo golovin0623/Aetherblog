@@ -3,6 +3,7 @@
 @import '../../../packages/ui/src/styles/tokens.css';
 @import '../../../packages/ui/src/styles/surfaces.css';
 @import '../../../packages/ui/src/styles/typography.css';
+@import '../../../packages/ui/src/styles/music-skin.css';
 
 @tailwind base;
 @tailwind components;
@@ -298,6 +299,14 @@
   gap: 0;
   padding: 0;
   border-radius: 999px;
+}
+
+/* 紧凑模式(tabs+actions / compact-actions)下动作按钮是 2.5rem 纯图标圆钮 ——
+   隐藏内嵌文字标签,避免中文在窄圆钮内被逐字竖排折断(如「播放当前页」→「播放/当前/页」)。
+   语义标签仍由按钮的 aria-label / title 提供,无障碍不受影响。 */
+.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-action-button > span,
+.compact-actions-module-header .admin-module-action-button > span {
+  display: none;
 }
 
 .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-action-button svg {

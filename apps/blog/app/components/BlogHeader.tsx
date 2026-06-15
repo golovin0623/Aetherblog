@@ -470,14 +470,14 @@ export default function BlogHeader() {
                     handleNavClick('music');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-[#ff4d4f] cursor-pointer ${activePage === 'music'
-                    ? 'text-[#ff4d4f]'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'music'
+                    ? 'text-[var(--aurora-1)]'
                     : 'text-[var(--ink-secondary)]'
                   }`}
               >
                 音乐
                 {activePage === 'music' && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#ff4d4f] rounded-full" />
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>
               <Link

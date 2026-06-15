@@ -237,6 +237,18 @@ API 路径 `/v1/admin/providers/global-pricing/*` 由 Go ai_handler 透明代理
 
 ---
 
+### 000080 · `music_hall_skin`
+
+为音乐大厅接入「作用域皮肤系统」补齐站点默认配置（前台访客可本地覆盖,见 `packages/ui/src/styles/music-skin.css`）。对单行 `music_settings`（id=1）追加 4 列：
+
+- `skin_mode VARCHAR(20) NOT NULL DEFAULT 'preset'`（`preset` | `custom`）
+- `skin_preset VARCHAR(40) NOT NULL DEFAULT 'crimson'`（预设 id,见 `MUSIC_SKIN_PRESETS`）
+- `skin_color_light VARCHAR(32)` / `skin_color_dark VARCHAR(32)`（自定义模式的亮/暗光源种子,可空）
+
+全部 `ADD COLUMN IF NOT EXISTS`,幂等、单事务安全;NOT NULL 列带 DEFAULT,存量行自动回填,升级后视觉零变化。down 用 `DROP COLUMN IF EXISTS`。公开接口 `GET /v1/public/music/player` 与后台 `GET/PUT /v1/admin/music/settings` 的 payload 同步新增这 4 个字段（`MusicPlayerVO` / `MusicSettingsVO` / `MusicSettingsRequest`）。
+
+---
+
 ## 部署期 migration 自愈机制
 
 `ops/webhook/deploy.sh` 的预部署 migration 步骤包含 **"dirty self-heal table"**：

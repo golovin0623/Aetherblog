@@ -7,6 +7,7 @@
 @import '../../../packages/ui/src/styles/tokens.css';
 @import '../../../packages/ui/src/styles/surfaces.css';
 @import '../../../packages/ui/src/styles/typography.css';
+@import '../../../packages/ui/src/styles/music-skin.css';
 
 :root {
   --font-inter: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -47,13 +48,16 @@
   width: 0.18rem;
   height: 0.8rem;
   border-radius: 999px;
-  background: #ff4d4f;
+  background: var(--aurora-1);
   animation: music-eq-pulse 820ms ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .music-vinyl-spin,
-  .music-eq-bar {
+  .music-eq-bar,
+  /* 音乐域内的黑胶图标自旋(Tailwind animate-spin)也跟随关停;
+     作用域限定避免误伤全站 loading 图标 */
+  [data-music-skin] .animate-spin {
     animation: none;
   }
 }

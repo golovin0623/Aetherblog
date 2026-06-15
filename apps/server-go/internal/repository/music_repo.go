@@ -138,9 +138,10 @@ func (r *MusicRepo) UpdateSettings(ctx context.Context, s model.MusicSettings) (
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO music_settings (
 			id, enabled, show_on_home_page, show_on_profile_card, featured_playlist_id,
-			media_folder_id, playback_mode, carousel_enabled, carousel_interval_seconds, random_enabled, updated_at
+			media_folder_id, playback_mode, carousel_enabled, carousel_interval_seconds, random_enabled,
+			skin_mode, skin_preset, skin_color_light, skin_color_dark, updated_at
 		)
-		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
+		VALUES (1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,CURRENT_TIMESTAMP)
 		ON CONFLICT (id) DO UPDATE SET
 			enabled=EXCLUDED.enabled,
 			show_on_home_page=EXCLUDED.show_on_home_page,
@@ -151,9 +152,14 @@ func (r *MusicRepo) UpdateSettings(ctx context.Context, s model.MusicSettings) (
 			carousel_enabled=EXCLUDED.carousel_enabled,
 			carousel_interval_seconds=EXCLUDED.carousel_interval_seconds,
 			random_enabled=EXCLUDED.random_enabled,
+			skin_mode=EXCLUDED.skin_mode,
+			skin_preset=EXCLUDED.skin_preset,
+			skin_color_light=EXCLUDED.skin_color_light,
+			skin_color_dark=EXCLUDED.skin_color_dark,
 			updated_at=CURRENT_TIMESTAMP`,
 		s.Enabled, s.ShowOnHomePage, s.ShowOnProfileCard, s.FeaturedPlaylistID, s.MediaFolderID,
 		s.PlaybackMode, s.CarouselEnabled, s.CarouselIntervalSeconds, s.RandomEnabled,
+		s.SkinMode, s.SkinPreset, s.SkinColorLight, s.SkinColorDark,
 	)
 	if err != nil {
 		return nil, err
