@@ -246,6 +246,15 @@ func (s *ChatAgentService) PostAgentMessage(ctx context.Context, actor ChatActor
 	if !active {
 		return nil, ErrAgentForbidden
 	}
+	// SECURITY: 复查发起者当前仍有权使用该 Agent —— 被移出团队的成员虽仍是
+	// DIRECT/GROUP 会话成员，但不应再以团队 Agent 身份发言。
+	canUse, err := s.repo.CanUserUseAgent(ctx, agentID, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if !canUse {
+		return nil, ErrAgentForbidden
+	}
 	return s.chat.AgentMessage(ctx, convID, agentID, content, clientMsgID)
 }
 

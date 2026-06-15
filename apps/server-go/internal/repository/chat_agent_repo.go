@@ -88,20 +88,52 @@ func (r *ChatAgentRepo) ListAgentsForUser(ctx context.Context, userID int64) ([]
 	return agents, err
 }
 
-// AllConversationMembersCanUseAgent 判断会话中**每一位成员**是否都有权使用该 Agent。
+// CanUserUseAgent 判断单个用户当前是否有权使用该 Agent（与 ListAgentsForUser 同口径：
+// GLOBAL / 创建者本人 / 所属团队活跃成员）。发言前用它复查发起者的实时权限——
+// 否则被移出团队的成员（仍是 DIRECT/GROUP 会话成员）仍能以团队 Agent 身份发言。
+func (r *ChatAgentRepo) CanUserUseAgent(ctx context.Context, agentID, userID int64) (bool, error) {
+	var ok bool
+	err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS(
+			SELECT 1 FROM chat_agents a
+			WHERE a.id = $1 AND (
+			    a.created_by = $2
+			    OR (a.status = 'ACTIVE' AND (
+			        a.scope = 'GLOBAL'
+			        OR (a.scope = 'TEAM' AND EXISTS(
+			            SELECT 1 FROM team_members tm
+			            WHERE tm.team_id = a.team_id AND tm.user_id = $2 AND tm.status = 'ACTIVE'
+			        ))
+			    ))
+			)
+		)`, agentID, userID)
+	return ok, err
+}
+
+// AllConversationMembersCanUseAgent 判断会话中**每一位有效成员**是否都有权使用该 Agent。
 //
 // SECURITY: 入座 / 列出 / 发言端点仅校验「会话成员」，因此把 Agent 纳入会话等于
 // 让全体成员可用它。若只校验入座发起者的可见性，TEAM 范围 Agent 会被带入含团队外
 // 成员的私聊从而泄漏；PRIVATE Agent 会泄漏给会话其他成员。故入座前要求全体成员都满足
 // 与 ListAgentsForUser 同口径的可见性（GLOBAL / 创建者本人 / 所属团队活跃成员）。
+//
+// 「有效成员」口径与 Phase 1 一致：TEAM 会话的 chat_conversation_members 会保留已退出团队
+// 的陈旧行（读路径用 team_members 过滤），这里同样排除这些陈旧行——否则团队 Agent 连
+// 团队自己的群聊都会因一条陈旧成员行而被拒绝入座。
 func (r *ChatAgentRepo) AllConversationMembersCanUseAgent(ctx context.Context, convID, agentID int64) (bool, error) {
 	var allAllowed bool
 	err := r.db.GetContext(ctx, &allAllowed, `
 		SELECT NOT EXISTS(
 			SELECT 1
 			FROM chat_conversation_members m
+			JOIN chat_conversations c ON c.id = m.conversation_id
 			CROSS JOIN chat_agents a
 			WHERE m.conversation_id = $1 AND a.id = $2
+			  -- 只考察有效成员：TEAM 会话排除已退出 / 禁用团队的陈旧成员行
+			  AND (c.kind <> 'TEAM' OR EXISTS(
+			      SELECT 1 FROM team_members ctm
+			      WHERE ctm.team_id = c.team_id AND ctm.user_id = m.user_id AND ctm.status = 'ACTIVE'
+			  ))
 			  AND NOT (
 			      a.created_by = m.user_id
 			      OR (a.status = 'ACTIVE' AND (
