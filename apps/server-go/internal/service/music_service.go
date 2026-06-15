@@ -48,6 +48,14 @@ func (s *MusicService) UpdateSettings(ctx context.Context, req dto.MusicSettings
 	if interval == 0 {
 		interval = 8
 	}
+	skinMode := strings.TrimSpace(req.SkinMode)
+	if skinMode != "custom" {
+		skinMode = "preset"
+	}
+	skinPreset := strings.TrimSpace(req.SkinPreset)
+	if skinPreset == "" {
+		skinPreset = "crimson"
+	}
 	settings := model.MusicSettings{
 		Enabled:                 req.Enabled,
 		ShowOnHomePage:          req.ShowOnHomePage,
@@ -58,6 +66,10 @@ func (s *MusicService) UpdateSettings(ctx context.Context, req dto.MusicSettings
 		CarouselEnabled:         req.CarouselEnabled,
 		CarouselIntervalSeconds: interval,
 		RandomEnabled:           req.RandomEnabled,
+		SkinMode:                skinMode,
+		SkinPreset:              skinPreset,
+		SkinColorLight:          trimOptColor(req.SkinColorLight),
+		SkinColorDark:           trimOptColor(req.SkinColorDark),
 	}
 	updated, err := s.repo.UpdateSettings(ctx, settings)
 	if err != nil {
@@ -408,6 +420,10 @@ func (s *MusicService) PublicPlayer(ctx context.Context) (*dto.MusicPlayerVO, er
 		CarouselEnabled:         settings.CarouselEnabled,
 		CarouselIntervalSeconds: settings.CarouselIntervalSeconds,
 		RandomEnabled:           settings.RandomEnabled,
+		SkinMode:                settings.SkinMode,
+		SkinPreset:              settings.SkinPreset,
+		SkinColorLight:          settings.SkinColorLight,
+		SkinColorDark:           settings.SkinColorDark,
 		Tracks:                  []dto.MusicTrackVO{},
 	}
 	if !settings.Enabled {
@@ -472,6 +488,10 @@ func (s *MusicService) toSettingsVO(ctx context.Context, settings *model.MusicSe
 		CarouselEnabled:         settings.CarouselEnabled,
 		CarouselIntervalSeconds: settings.CarouselIntervalSeconds,
 		RandomEnabled:           settings.RandomEnabled,
+		SkinMode:                settings.SkinMode,
+		SkinPreset:              settings.SkinPreset,
+		SkinColorLight:          settings.SkinColorLight,
+		SkinColorDark:           settings.SkinColorDark,
 	}
 	if settings.FeaturedPlaylistID != nil {
 		if playlist, err := s.GetPlaylist(ctx, *settings.FeaturedPlaylistID, false); err == nil {
@@ -479,6 +499,18 @@ func (s *MusicService) toSettingsVO(ctx context.Context, settings *model.MusicSe
 		}
 	}
 	return vo, nil
+}
+
+// trimOptColor 去除自定义皮肤色值首尾空白;空串归一为 nil,避免空字符串落库。
+func trimOptColor(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	v := strings.TrimSpace(*p)
+	if v == "" {
+		return nil
+	}
+	return &v
 }
 
 func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrackVO {

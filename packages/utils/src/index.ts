@@ -4,4 +4,5 @@ export * from './helpers';
 export * from './storage';
 export * from './url';
 export * from './color';
+export * from './musicSkins';
 export * from './siteAssets';

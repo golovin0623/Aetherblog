@@ -2,6 +2,7 @@ export type MusicTrackStatus = 'ACTIVE' | 'HIDDEN';
 export type MusicTrackSource = 'MEDIA_LIBRARY' | 'UPLOAD' | 'MANUAL';
 export type MusicPlaylistVisibility = 'PRIVATE' | 'PUBLIC';
 export type MusicPlaybackMode = 'SEQUENTIAL' | 'SHUFFLE' | 'LOOP' | 'CAROUSEL';
+export type MusicHallSkinMode = 'preset' | 'custom';
 
 export interface MusicMedia {
   id: number;
@@ -65,6 +66,14 @@ export interface MusicSettings {
   carouselEnabled: boolean;
   carouselIntervalSeconds: number;
   randomEnabled: boolean;
+  /** 音乐大厅皮肤模式:preset(预设)| custom(自定义取色) */
+  skinMode?: MusicHallSkinMode;
+  /** 预设皮肤 id(skinMode=preset 时生效),见 MUSIC_SKIN_PRESETS */
+  skinPreset?: string;
+  /** 自定义亮主题光源种子(skinMode=custom 时生效) */
+  skinColorLight?: string;
+  /** 自定义暗主题光源种子(skinMode=custom 时生效) */
+  skinColorDark?: string;
   featuredPlaylist?: MusicPlaylist;
 }
 
@@ -90,6 +99,14 @@ export interface MusicPlayer {
   carouselEnabled: boolean;
   carouselIntervalSeconds: number;
   randomEnabled: boolean;
+  /** 站点默认音乐皮肤模式 */
+  skinMode?: MusicHallSkinMode;
+  /** 站点默认预设皮肤 id */
+  skinPreset?: string;
+  /** 站点默认自定义亮主题种子 */
+  skinColorLight?: string;
+  /** 站点默认自定义暗主题种子 */
+  skinColorDark?: string;
   playlist?: MusicPlaylist;
   tracks: MusicTrack[];
 }
@@ -104,6 +121,10 @@ export interface MusicSettingsRequest {
   carouselEnabled: boolean;
   carouselIntervalSeconds: number;
   randomEnabled: boolean;
+  skinMode?: MusicHallSkinMode;
+  skinPreset?: string;
+  skinColorLight?: string;
+  skinColorDark?: string;
 }
 
 export interface MusicImportMediaRequest {

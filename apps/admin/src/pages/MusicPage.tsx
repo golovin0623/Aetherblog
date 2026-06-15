@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Check,
   Disc3,
+  ExternalLink,
   FolderPlus,
   Headphones,
   LibraryBig,
   ListMusic,
+  ListPlus,
   Loader2,
   Music2,
+  Palette,
   Pause,
   Play,
   Plus,
+  Radio,
   RefreshCw,
   RotateCw,
   Search,
@@ -25,6 +30,7 @@ import {
   X,
 } from 'lucide-react';
 import { Select, type SelectOption } from '@aetherblog/ui';
+import { MUSIC_SKIN_PRESETS, resolveMusicSkinValue } from '@aetherblog/utils';
 import { toast } from 'sonner';
 import type {
   FolderTreeNode,
@@ -146,8 +152,248 @@ function defaultSettings(settings?: MusicSettings): MusicSettings {
     carouselEnabled: settings?.carouselEnabled ?? true,
     carouselIntervalSeconds: settings?.carouselIntervalSeconds ?? 8,
     randomEnabled: settings?.randomEnabled ?? false,
+    skinMode: settings?.skinMode ?? 'preset',
+    skinPreset: settings?.skinPreset ?? 'crimson',
+    skinColorLight: settings?.skinColorLight,
+    skinColorDark: settings?.skinColorDark,
     featuredPlaylist: settings?.featuredPlaylist,
   };
+}
+
+// 把皮肤配置解析为 data-music-skin 作用域属性;自定义模式按当前后台主题内联种子,
+// 供中控台预览随站点默认皮肤即时着色(预设走纯 CSS,自定义需内联 --music-seed)。
+function musicSkinScopeProps(
+  settings: MusicSettings,
+  isDark: boolean,
+): { 'data-music-skin': string; style?: CSSProperties } {
+  const value = resolveMusicSkinValue(settings.skinMode, settings.skinPreset);
+  if (value === 'custom') {
+    const seed = (isDark ? settings.skinColorDark : settings.skinColorLight) || settings.skinColorLight || settings.skinColorDark;
+    if (seed) return { 'data-music-skin': 'custom', style: { ['--music-seed']: seed } as CSSProperties };
+  }
+  return { 'data-music-skin': value };
+}
+
+// ============================================================
+// 纯展示子组件 —— 必须定义在模块作用域。
+// 早前它们嵌在 MusicPage 函数体内,导致每次播放进度 tick(progress 变化触发
+// MusicPage 重渲染)都会得到一个「新的」组件标识 → TrackEditor 整棵卸载重挂,
+// 内部 draft / addPlaylistId 草稿状态在播放时被反复清空。提到模块作用域后组件
+// 标识稳定,编辑态不再被打断。
+// ============================================================
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
+      <p className="text-xs text-[var(--ink-muted)]">{label}</p>
+      <p className="tnum mt-1 text-2xl font-bold text-[var(--ink-primary)]">{value}</p>
+    </div>
+  );
+}
+
+function StageMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] p-3">
+      <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p>
+      <p className="tnum mt-1 text-xl font-black text-[var(--ink-primary)]">{value}</p>
+    </div>
+  );
+}
+
+function TogglePill({ checked, label, onClick }: { checked: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={cn(
+        'inline-flex h-10 items-center justify-between gap-3 rounded-lg border px-3 text-sm font-semibold transition-all duration-200',
+        checked
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--ink-primary)]'
+          : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-muted)]'
+      )}
+    >
+      <span>{label}</span>
+      <span className={cn('h-2.5 w-2.5 rounded-full', checked ? 'bg-[var(--aurora-1)]' : 'bg-[var(--ink-muted)]/30')} />
+    </button>
+  );
+}
+
+function TrackEditor({
+  track,
+  onClose,
+  onSave,
+  saving,
+  playlistOptions,
+  playlistCount,
+  onAddToPlaylist,
+  addingToPlaylist,
+  onRequestDeleteWithMedia,
+  onPreview,
+}: {
+  track: MusicTrack;
+  onClose: () => void;
+  onSave: (track: MusicTrack, data: MusicTrackRequest) => void;
+  saving: boolean;
+  playlistOptions: SelectOption[];
+  playlistCount: number;
+  onAddToPlaylist: (playlistId: number, trackId: number) => void;
+  addingToPlaylist: boolean;
+  onRequestDeleteWithMedia: (track: MusicTrack) => void;
+  onPreview: (track: MusicTrack) => void;
+}) {
+  const [draft, setDraft] = useState<MusicTrack>(track);
+  const [addPlaylistId, setAddPlaylistId] = useState('');
+  useEffect(() => {
+    setDraft(track);
+    setAddPlaylistId('');
+  }, [track]);
+  return (
+    <div className={cn(panelClass, 'sticky top-4 space-y-4')}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
+        </div>
+        <button type="button" onClick={onClose} className={iconButtonClass()} aria-label="关闭歌曲信息">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="space-y-3">
+        <label className="block">
+          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">标题</span>
+          <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className={inputClass()} />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">艺术家</span>
+          <input value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })} className={inputClass()} />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">专辑</span>
+          <input value={draft.album} onChange={(e) => setDraft({ ...draft, album: e.target.value })} className={inputClass()} />
+        </label>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
+            {draft.coverUrl ? (
+              <img src={draft.coverUrl} alt={`${draft.title} 封面`} className="h-full w-full object-cover" />
+            ) : (
+              <Disc3 className="h-8 w-8 text-[var(--ink-muted)]" />
+            )}
+          </div>
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">封面媒体 ID</span>
+            <input
+              type="number"
+              min={1}
+              value={draft.coverMediaFileId ?? ''}
+              onChange={(e) => setDraft({
+                ...draft,
+                coverMediaFileId: e.target.value ? Number(e.target.value) : undefined,
+              })}
+              className={inputClass()}
+              placeholder="选择媒体库图片 ID"
+            />
+            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">封面仍存储在媒体库，这里只保存歌曲到封面文件的映射。</p>
+          </label>
+        </div>
+        <label className="block">
+          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</span>
+          <textarea
+            value={draft.lyric || ''}
+            onChange={(e) => setDraft({ ...draft, lyric: e.target.value })}
+            className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
+            placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
+            <input
+              type="number"
+              value={draft.sortOrder}
+              onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })}
+              className={inputClass()}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">状态</span>
+            <Select
+              value={draft.status}
+              onValueChange={(value) => setDraft({ ...draft, status: value as MusicTrack['status'] })}
+              options={[
+                { value: 'ACTIVE', label: '展示' },
+                { value: 'HIDDEN', label: '隐藏' },
+              ]}
+              ariaLabel="歌曲状态"
+            />
+          </label>
+        </div>
+        <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+            <ListPlus className="h-3.5 w-3.5" />
+            加入歌单
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <Select
+              value={addPlaylistId}
+              onValueChange={setAddPlaylistId}
+              options={playlistOptions}
+              placeholder={playlistCount > 0 ? '选择歌单' : '先在「歌单编排」创建歌单'}
+              prefix={<ListMusic />}
+              ariaLabel="选择要加入的歌单"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!addPlaylistId) return;
+                onAddToPlaylist(Number(addPlaylistId), track.id);
+              }}
+              className={textButtonClass('primary')}
+              disabled={!addPlaylistId || addingToPlaylist}
+            >
+              {addingToPlaylist ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              加入
+            </button>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">把这首歌加入歌单后,到「歌单编排」可调整顺序;把歌单设为公开即对外展示。</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => onRequestDeleteWithMedia(track)}
+          className={textButtonClass('danger')}
+        >
+          <Trash2 className="h-4 w-4" />
+          连媒体删除
+        </button>
+        <button type="button" onClick={() => onPreview(track)} className={textButtonClass()}>
+          <Play className="h-4 w-4" />
+          试听
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave(track, {
+            title: draft.title,
+            artist: draft.artist,
+            album: draft.album,
+            coverMediaFileId: draft.coverMediaFileId,
+            lyric: draft.lyric,
+            status: draft.status,
+            sortOrder: draft.sortOrder,
+            isFeatured: draft.isFeatured,
+          })}
+          className={textButtonClass('primary')}
+          disabled={saving}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+          保存
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function MusicPage() {
@@ -158,10 +404,35 @@ export default function MusicPage() {
     currentTrack,
     currentIndex,
     isPlaying,
+    progress,
+    duration,
     percent,
     playTracks,
+    togglePlayback,
+    nextTrack,
+    previousTrack,
+    seekToPercent,
+    setDockSuppressed,
   } = useAdminMusicPlayer();
+
+  // 音乐管理页本身已有「NOW AUDITIONING」内嵌播放卡 + 行内试听控件,
+  // 抑制全局浮层,避免与右侧「歌曲信息」编辑面板重合、与上方卡片重复。
+  // 离开本页时浮层恢复(继续后台试听的全局指示)。
+  useEffect(() => {
+    setDockSuppressed(true);
+    return () => setDockSuppressed(false);
+  }, [setDockSuppressed]);
   const [activeTab, setActiveTab] = useState<MusicTab>('library');
+  // 后台明暗主题 —— 自定义皮肤预览按当前主题取对应光源种子
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const update = () => setIsDark(el.classList.contains('dark'));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
   const [trackPage, setTrackPage] = useState(1);
   const [trackPageSize, setTrackPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [trackKeyword, setTrackKeyword] = useState('');
@@ -227,6 +498,20 @@ export default function MusicPage() {
   });
 
   const settings = defaultSettings(settingsQuery.data);
+  // 自定义皮肤取色草稿 —— 从后台已存值回填,点击「应用」才落库(避免拖动取色器时狂发请求)
+  const [skinDraftLight, setSkinDraftLight] = useState('#DC3D44');
+  const [skinDraftDark, setSkinDraftDark] = useState('#FF6B6E');
+  // 只在首次拿到后台存值时回填一次草稿。之后后台因其它设置保存而 refetch 时不再覆盖,
+  // 避免把正在拖动的取色器重置(load-window 抖动)。
+  const skinDraftSeededRef = useRef(false);
+  useEffect(() => {
+    if (skinDraftSeededRef.current) return;
+    if (settings.skinColorLight || settings.skinColorDark) {
+      if (settings.skinColorLight) setSkinDraftLight(settings.skinColorLight);
+      if (settings.skinColorDark) setSkinDraftDark(settings.skinColorDark);
+      skinDraftSeededRef.current = true;
+    }
+  }, [settings.skinColorLight, settings.skinColorDark]);
   const tracks = tracksQuery.data?.list ?? [];
   const playlists = playlistsQuery.data?.list ?? [];
   const selectedPlaylist = playlists.find((item) => item.id === selectedPlaylistId);
@@ -413,6 +698,38 @@ export default function MusicPage() {
     onError: (error) => toast.error(extractApiErrorMessage(error, '调整排序失败')),
   });
 
+  // 一键发布:把「编排歌单」与「对外发布」串成一步。
+  // 关键修复:发布前先确保歌单本体 PUBLIC/ACTIVE(否则公开 API 会静默隐藏私有/下架歌单),
+  // 再设为展示位并启用公开播放器;两步都成功后才提示(原实现 toast 抢在 mutation 之前)。
+  const publishPlaylistMutation = useMutation({
+    mutationFn: async ({ playlistId }: { playlistId: number }) => {
+      const target = playlists.find((item) => item.id === playlistId);
+      if (target && (target.visibility !== 'PUBLIC' || target.status !== 'ACTIVE')) {
+        // 带全字段回传 —— Go 端 UpdatePlaylist 把缺省字段映射为 nil/0,
+        // 漏传 coverMediaFileId / sortOrder 会清掉封面并把排序重置为 0。
+        await musicService.updatePlaylist(playlistId, {
+          name: target.name,
+          description: target.description,
+          coverMediaFileId: target.coverMediaFileId,
+          visibility: 'PUBLIC',
+          status: 'ACTIVE',
+          displayOnHome: target.displayOnHome,
+          displayOnProfile: target.displayOnProfile,
+          carouselEnabled: target.carouselEnabled,
+          randomEnabled: target.randomEnabled,
+          sortOrder: target.sortOrder,
+        });
+      }
+      await musicService.updateSettings({ ...settings, featuredPlaylistId: playlistId, enabled: true });
+    },
+    onSuccess: (_data, { playlistId }) => {
+      const name = playlists.find((item) => item.id === playlistId)?.name;
+      toast.success(`已公开展示「${name || '该歌单'}」 · 公开播放器已启用`);
+      invalidateMusic();
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '发布歌单失败')),
+  });
+
   useEffect(() => {
     if (!selectedPlaylistId && playlists.length > 0) {
       setSelectedPlaylistId(playlists[0].id);
@@ -445,6 +762,15 @@ export default function MusicPage() {
       ...patch,
       playbackMode: (patch.playbackMode || settings.playbackMode) as MusicPlaybackMode,
     });
+  };
+
+  const publishPlaylist = (playlistId: number) => {
+    if (publishPlaylistMutation.isPending) return;
+    publishPlaylistMutation.mutate({ playlistId });
+  };
+  const unpublishPlayer = () => {
+    saveSettingsPatch({ enabled: false });
+    toast.success('已停止对外公开');
   };
 
   const toggleCandidate = (id: number) => {
@@ -499,12 +825,35 @@ export default function MusicPage() {
 
   const renderHallStage = () => {
     const stageTrack = currentTrack ?? tracks[0];
-    const stageProgressPercent = currentTrack && stageTrack && currentTrack.id === stageTrack.id ? percent : 0;
+    const featuredName = settings.featuredPlaylistId
+      ? playlists.find((p) => p.id === settings.featuredPlaylistId)?.name
+      : undefined;
+    const surfaceList = [settings.showOnHomePage && '首页', settings.showOnProfileCard && '个人卡片'].filter(Boolean).join(' · ');
+    const stageIsCurrent = Boolean(currentTrack && stageTrack && currentTrack.id === stageTrack.id);
+    const stagePlaying = stageIsCurrent && isPlaying;
+    const stageProgressPercent = stageIsCurrent ? percent : 0;
+    const stageCover = stageTrack?.coverUrl || '';
+    const stageQueueIndex = stageIsCurrent ? currentIndex : 0;
+    const handleStageMain = () => {
+      if (!stageTrack) return;
+      if (stageIsCurrent) {
+        void togglePlayback();
+        return;
+      }
+      if (tracks.length > 0) {
+        playTracks(tracks, Math.max(0, tracks.findIndex((t) => t.id === stageTrack.id)));
+      }
+    };
+    const fmtClock = (s: number) => {
+      if (!Number.isFinite(s) || s <= 0) return '0:00';
+      const w = Math.floor(s);
+      return `${Math.floor(w / 60)}:${String(w % 60).padStart(2, '0')}`;
+    };
     return (
-      <div className="access-surface overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--bg-leaf)_92%,#ff4d4f_8%),var(--bg-leaf)_50%,color-mix(in_oklch,var(--bg-leaf)_88%,var(--ink-primary)_12%))] shadow-[0_22px_70px_-52px_rgba(0,0,0,0.52)]">
+      <div {...musicSkinScopeProps(settings, isDark)} className="access-surface overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--bg-leaf)_90%,var(--aurora-1)_10%),var(--bg-leaf)_50%,color-mix(in_oklch,var(--bg-leaf)_88%,var(--ink-primary)_12%))] shadow-[0_22px_70px_-52px_color-mix(in_oklch,black_50%,transparent)]">
         <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-5">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,#ff4d4f_28%,transparent)] bg-[color-mix(in_oklch,#ff4d4f_9%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[#d93d3f]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[var(--aurora-1)]">
               <Disc3 className={cn('h-3.5 w-3.5', isPlaying && 'animate-spin [animation-duration:3s]')} />
               Music Hall Control
             </div>
@@ -512,6 +861,38 @@ export default function MusicPage() {
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--ink-secondary)]">
               媒体库负责存储，音乐大厅负责策展、排序、公开展示、歌词封面和播放策略。上传入口会写入指定媒体目录，歌单排序与媒体库目录保持解耦。
             </p>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                <span className="flex items-center gap-2 font-bold">
+                  <span className={cn('h-2 w-2 rounded-full', settings.enabled ? 'bg-[var(--signal-success)]' : 'bg-[color-mix(in_oklch,var(--ink-primary)_30%,transparent)]')} />
+                  {settings.enabled ? <span className="text-[var(--signal-success)]">已对外公开</span> : <span className="text-[var(--ink-muted)]">未公开</span>}
+                </span>
+                <span className="text-[var(--ink-secondary)]">公开歌单<span className="ml-1.5 font-semibold text-[var(--ink-primary)]">{featuredName || '未设置'}</span></span>
+                <span className="text-[var(--ink-muted)]">展示位 {surfaceList || '无'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => (settings.enabled ? unpublishPlayer() : saveSettingsPatch({ enabled: true }))}
+                  className={textButtonClass(settings.enabled ? 'default' : 'primary')}
+                >
+                  <Radio className="h-4 w-4" />
+                  {settings.enabled ? '停止公开' : '启用公开'}
+                </button>
+                <a href="/music" target="_blank" rel="noreferrer" className={textButtonClass()}>
+                  <ExternalLink className="h-4 w-4" />
+                  预览公开页
+                </a>
+              </div>
+            </div>
+            {settings.enabled && !settings.featuredPlaylistId && (
+              <p className="mt-2 flex items-center gap-2 text-xs text-[var(--signal-warn)]">
+                <Radio className="h-3.5 w-3.5 shrink-0" />
+                已启用公开播放器,但还没有选择公开歌单 —— 到「歌单编排」点某个歌单的「设为公开」即可对外展示。
+              </p>
+            )}
+
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
               <StageMetric label="曲库" value={summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0} />
               <StageMetric label="展示中" value={summaryQuery.data?.activeTrackCount ?? 0} />
@@ -520,38 +901,95 @@ export default function MusicPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[rgba(20,17,17,0.88)] p-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ffb4a9]">Now Auditioning</p>
-                <h3 className="mt-2 truncate text-xl font-black tracking-normal">{stageTrack?.title || '等待选择歌曲'}</h3>
-                <p className="mt-1 truncate text-sm text-white/55">{stageTrack?.artist || '从曲库或歌单点击试听'}</p>
-              </div>
-              <span className={cn(
-                'shrink-0 rounded-full px-2.5 py-1 text-xs font-bold',
-                settings.enabled ? 'bg-emerald-400/14 text-emerald-200' : 'bg-white/8 text-white/45'
-              )}>
-                {settings.enabled ? '公开已启用' : '未公开'}
+          <div className="flex flex-col rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[linear-gradient(160deg,color-mix(in_oklch,var(--aurora-1)_22%,var(--bg-raised)),color-mix(in_oklch,var(--aurora-1)_8%,var(--bg-raised)))] p-4 text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,white_14%,transparent),0_20px_60px_-44px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">
+                <span className="relative flex h-2 w-2">
+                  {stagePlaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--aurora-1)] opacity-60" />}
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--aurora-1)]" />
+                </span>
+                Now Auditioning
+              </p>
+              <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-2.5 py-1 text-xs font-bold text-[var(--ink-muted)]">
+                后台试听 · 不影响公开
               </span>
             </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => tracks.length > 0 && playTracks(tracks, Math.max(0, stageTrack ? tracks.findIndex((track) => track.id === stageTrack.id) : 0))}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff4d4f] text-white shadow-[0_16px_34px_-18px_rgba(255,77,79,0.95)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={tracks.length === 0}
-                aria-label="试听音乐大厅歌曲"
-              >
-                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
-              </button>
+
+            <div className="mt-4 flex items-center gap-4">
+              <div className={cn(
+                'relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]',
+                stagePlaying && 'shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+              )}>
+                {stageCover ? (
+                  <img src={stageCover} alt={stageTrack?.title || ''} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklch,var(--aurora-1)_32%,var(--bg-raised)),var(--bg-void))]">
+                    <Disc3 className={cn('h-8 w-8 text-[var(--ink-secondary)]', stagePlaying && 'animate-spin [animation-duration:6s]')} />
+                  </div>
+                )}
+              </div>
               <div className="min-w-0 flex-1">
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-[#ff4d4f] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
-                </div>
-                <p className="mt-2 truncate text-xs text-white/45">
-                  {settings.mediaFolderId ? `媒体目录 #${settings.mediaFolderId}` : `未指定 ${MUSIC_HALL_FOLDER_NAME} 媒体目录`}
+                <h3 className="truncate text-lg font-black tracking-normal" title={stageTrack?.title}>{stageTrack?.title || '等待选择歌曲'}</h3>
+                <p className="mt-1 truncate text-sm text-[var(--ink-secondary)]">{stageTrack?.artist || '从曲库或歌单点击试听'}</p>
+                <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
+                  {stageTrack ? (stageTrack.album || '未分专辑') : (settings.mediaFolderId ? `媒体目录 #${settings.mediaFolderId}` : '未指定媒体目录')}
+                  {tracks.length > 0 && ` · 队列 ${stageQueueIndex + 1}/${tracks.length}`}
                 </p>
               </div>
+            </div>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={(event) => {
+                  if (!stageIsCurrent) {
+                    handleStageMain();
+                    return;
+                  }
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  if (rect.width > 0) {
+                    seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (!stageIsCurrent) return;
+                  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    seekToPercent(Math.min(100, stageProgressPercent + 5));
+                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    seekToPercent(Math.max(0, stageProgressPercent - 5));
+                  }
+                }}
+                disabled={!stageTrack}
+                className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed"
+                aria-label={stageIsCurrent ? '调整试听进度' : '开始试听'}
+              >
+                <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+              </button>
+              <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
+                <span>{fmtClock(stageIsCurrent ? progress : 0)}</span>
+                <span>{fmtClock(stageIsCurrent ? duration : (stageTrack?.durationSeconds || 0))}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-center gap-4">
+              <button type="button" onClick={previousTrack} disabled={tracks.length === 0} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-40" aria-label="上一首" title="上一首">
+                <SkipBack className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleStageMain}
+                disabled={!stageTrack}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_16px_34px_-18px_color-mix(in_oklch,var(--aurora-1)_85%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={stagePlaying ? '暂停试听' : '播放试听'}
+                title={stagePlaying ? '暂停' : '播放'}
+              >
+                {stagePlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
+              </button>
+              <button type="button" onClick={nextTrack} disabled={tracks.length === 0} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-40" aria-label="下一首" title="下一首">
+                <SkipForward className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </div>
@@ -602,11 +1040,10 @@ export default function MusicPage() {
   );
 
   const renderLibrary = () => (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="space-y-4">
-        {!settings.mediaFolderId && renderDirectoryGuard()}
+    <div className="space-y-4">
+      {!settings.mediaFolderId && renderDirectoryGuard()}
 
-        <div className={cn(panelClass, 'space-y-3')}>
+      <div className={cn(panelClass, 'space-y-3')}>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
@@ -666,6 +1103,7 @@ export default function MusicPage() {
           )}
         </div>
 
+        <div className={cn('grid grid-cols-1 gap-4', editingTrack && 'xl:grid-cols-[minmax(0,1fr)_360px]')}>
         <div className={shellClass}>
           <AdminSectionHeader
             icon={<Music2 className="h-4 w-4" />}
@@ -677,7 +1115,9 @@ export default function MusicPage() {
             {tracksQuery.isLoading ? (
               <div className="p-6 text-sm text-[var(--ink-muted)]">正在加载歌曲库...</div>
             ) : tracks.length === 0 ? (
-              <div className="p-6 text-sm text-[var(--ink-muted)]">暂无歌曲。请上传音频，或从媒体库扫描后纳入曲库。</div>
+              <div className="p-6 text-sm leading-6 text-[var(--ink-muted)]">
+                曲库还是空的。<span className="text-[var(--ink-secondary)]">上传音频</span>或在下方「媒体库音频扫描」纳入曲库;入库后点歌曲「加入歌单」,再到「歌单编排」把歌单「设为公开」即可对外展示。
+              </div>
             ) : (
               tracks.map((track) => (
                 <div
@@ -741,6 +1181,22 @@ export default function MusicPage() {
             itemLabel="首"
             loading={tracksQuery.isFetching}
           />
+        </div>
+
+        {editingTrack && (
+          <TrackEditor
+            track={editingTrack}
+            onClose={() => setEditingTrack(null)}
+            onSave={(track, data) => updateTrackMutation.mutate({ id: track.id, data })}
+            saving={updateTrackMutation.isPending}
+            playlistOptions={playlistOptions}
+            playlistCount={playlists.length}
+            onAddToPlaylist={(playlistId, trackId) => playlistTrackMutation.mutate({ playlistId, trackId })}
+            addingToPlaylist={playlistTrackMutation.isPending}
+            onRequestDeleteWithMedia={(track) => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
+            onPreview={playSingle}
+          />
+        )}
         </div>
 
         <div className={shellClass}>
@@ -817,8 +1273,13 @@ export default function MusicPage() {
                     onClick={() => importMutation.mutate({ mediaFileId: item.id })}
                     className={textButtonClass(item.mappedTrackId ? 'default' : 'primary')}
                     disabled={Boolean(item.mappedTrackId) || importMutation.isPending}
+                    aria-label={`将 ${item.originalName} 纳入曲库`}
                   >
-                    <Plus className="h-4 w-4" />
+                    {importMutation.isPending && importMutation.variables?.mediaFileId === item.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
                     纳入
                   </button>
                 </div>
@@ -840,155 +1301,8 @@ export default function MusicPage() {
             loading={scanQuery.isFetching}
           />
         </div>
-      </div>
-
-      <div className="space-y-4">
-        <TrackEditor
-          track={editingTrack}
-          onClose={() => setEditingTrack(null)}
-          onSave={(track, data) => updateTrackMutation.mutate({ id: track.id, data })}
-          saving={updateTrackMutation.isPending}
-        />
-      </div>
     </div>
   );
-
-  function TrackEditor({
-    track,
-    onClose,
-    onSave,
-    saving,
-  }: {
-    track: MusicTrack | null;
-    onClose: () => void;
-    onSave: (track: MusicTrack, data: MusicTrackRequest) => void;
-    saving: boolean;
-  }) {
-    const [draft, setDraft] = useState<MusicTrack | null>(track);
-    useEffect(() => setDraft(track), [track]);
-    if (!track || !draft) {
-      return (
-        <div className={cn(panelClass, 'text-sm text-[var(--ink-muted)]')}>
-          选择一首歌曲后可编辑标题、艺术家、专辑、排序与展示状态。
-        </div>
-      );
-    }
-    return (
-      <div className={cn(panelClass, 'sticky top-4 space-y-4')}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
-            <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
-          </div>
-          <button type="button" onClick={onClose} className={iconButtonClass()}>
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">标题</span>
-            <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className={inputClass()} />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">艺术家</span>
-            <input value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })} className={inputClass()} />
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">专辑</span>
-            <input value={draft.album} onChange={(e) => setDraft({ ...draft, album: e.target.value })} className={inputClass()} />
-          </label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
-              {draft.coverUrl ? (
-                <img src={draft.coverUrl} alt={`${draft.title} 封面`} className="h-full w-full object-cover" />
-              ) : (
-                <Disc3 className="h-8 w-8 text-[var(--ink-muted)]" />
-              )}
-            </div>
-            <label className="block min-w-0">
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">封面媒体 ID</span>
-              <input
-                type="number"
-                min={1}
-                value={draft.coverMediaFileId ?? ''}
-                onChange={(e) => setDraft({
-                  ...draft,
-                  coverMediaFileId: e.target.value ? Number(e.target.value) : undefined,
-                })}
-                className={inputClass()}
-                placeholder="选择媒体库图片 ID"
-              />
-              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">封面仍存储在媒体库，这里只保存歌曲到封面文件的映射。</p>
-            </label>
-          </div>
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</span>
-            <textarea
-              value={draft.lyric || ''}
-              onChange={(e) => setDraft({ ...draft, lyric: e.target.value })}
-              className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
-              placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
-              <input
-                type="number"
-                value={draft.sortOrder}
-                onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })}
-                className={inputClass()}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">状态</span>
-              <Select
-                value={draft.status}
-                onValueChange={(value) => setDraft({ ...draft, status: value as MusicTrack['status'] })}
-                options={[
-                  { value: 'ACTIVE', label: '展示' },
-                  { value: 'HIDDEN', label: '隐藏' },
-                ]}
-                ariaLabel="歌曲状态"
-              />
-            </label>
-          </div>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
-            className={textButtonClass('danger')}
-          >
-            <Trash2 className="h-4 w-4" />
-            连媒体删除
-          </button>
-          <button type="button" onClick={() => playSingle(track)} className={textButtonClass()}>
-            <Play className="h-4 w-4" />
-            试听
-          </button>
-          <button
-            type="button"
-            onClick={() => onSave(track, {
-              title: draft.title,
-              artist: draft.artist,
-              album: draft.album,
-              coverMediaFileId: draft.coverMediaFileId,
-              lyric: draft.lyric,
-              status: draft.status,
-              sortOrder: draft.sortOrder,
-              isFeatured: draft.isFeatured,
-            })}
-            className={textButtonClass('primary')}
-            disabled={saving}
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-            保存
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   function renderPlaylists() {
     const detail = playlistDetailQuery.data;
@@ -1027,30 +1341,69 @@ export default function MusicPage() {
               {playlists.length === 0 ? (
                 <div className="p-4 text-sm text-[var(--ink-muted)]">暂无歌单。</div>
               ) : playlists.map((playlist) => (
-                <button
+                <div
                   key={playlist.id}
-                  type="button"
-                  onClick={() => setSelectedPlaylistId(playlist.id)}
                   className={cn(
-                    'flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
+                    'flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
                     selectedPlaylistId === playlist.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
                   )}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[var(--ink-primary)]">{playlist.name}</span>
-                    <span className="mt-1 block text-xs text-[var(--ink-muted)]">{playlist.trackCount} 首 · {playlist.visibility === 'PUBLIC' ? '公开' : '私有'}</span>
-                  </span>
+                  {/* 左侧选择区改回原生 <button> —— 不再用 role=button 容器套子按钮(ARIA 禁止嵌套交互控件);原生按钮自带 Enter/Space 键盘支持 */}
                   <button
                     type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPendingDelete({ kind: 'playlist', playlist });
-                    }}
-                    className={iconButtonClass(false, 'danger')}
+                    onClick={() => setSelectedPlaylistId(playlist.id)}
+                    aria-pressed={selectedPlaylistId === playlist.id}
+                    className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-[var(--ink-primary)]">{playlist.name}</span>
+                      {settings.featuredPlaylistId === playlist.id && (
+                        <span className={cn(
+                          'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                          settings.enabled
+                            ? 'bg-[color-mix(in_oklch,var(--signal-success)_16%,transparent)] text-[var(--signal-success)]'
+                            : 'bg-[color-mix(in_oklch,var(--signal-warn)_16%,transparent)] text-[var(--signal-warn)]'
+                        )}>
+                          <Radio className="h-3 w-3" />
+                          {settings.enabled ? '公开中' : '已选·未启用'}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--ink-muted)]">{playlist.trackCount} 首</span>
                   </button>
-                </button>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {settings.featuredPlaylistId !== playlist.id && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          publishPlaylist(playlist.id);
+                        }}
+                        className={iconButtonClass(false, 'primary')}
+                        title="设为公开展示并启用公开播放器"
+                        aria-label={`将「${playlist.name}」设为公开展示`}
+                        disabled={publishPlaylistMutation.isPending}
+                      >
+                        {publishPlaylistMutation.isPending && publishPlaylistMutation.variables?.playlistId === playlist.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Radio className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPendingDelete({ kind: 'playlist', playlist });
+                      }}
+                      className={iconButtonClass(false, 'danger')}
+                      aria-label={`删除歌单「${playlist.name}」`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </span>
+                </div>
               ))}
             </div>
           </div>
@@ -1094,7 +1447,13 @@ export default function MusicPage() {
                     />
                   </label>
                 </div>
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto]">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <TogglePill checked={playlistDraft.displayOnHome} label="首页" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnHome: !draft.displayOnHome }))} />
+                  <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
+                  <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => setPlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
+                  <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => setPlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <Select
                     value={playlistDraft.visibility || 'PUBLIC'}
                     onValueChange={(value) => setPlaylistDraft((draft) => ({ ...draft, visibility: value as MusicPlaylist['visibility'] }))}
@@ -1113,12 +1472,6 @@ export default function MusicPage() {
                     ]}
                     ariaLabel="歌单状态"
                   />
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    <TogglePill checked={playlistDraft.displayOnHome} label="首页" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnHome: !draft.displayOnHome }))} />
-                    <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
-                    <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => setPlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
-                    <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => setPlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
-                  </div>
                   <button
                     type="button"
                     onClick={saveSelectedPlaylist}
@@ -1136,7 +1489,7 @@ export default function MusicPage() {
                   value={trackToAdd}
                   onValueChange={setTrackToAdd}
                   options={trackOptions}
-                  placeholder="从当前曲库页选择歌曲"
+                  placeholder="从曲库选择歌曲加入"
                   prefix={<Music2 />}
                   ariaLabel="选择歌曲加入歌单"
                 />
@@ -1163,19 +1516,21 @@ export default function MusicPage() {
                       <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')}>
+                      <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')} aria-label={`从「${track.title}」开始播放歌单`} title="试听">
                         <Play className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={() => moveTrack(index, -1)} className={iconButtonClass()} disabled={index === 0}>
+                      <button type="button" onClick={() => moveTrack(index, -1)} className={iconButtonClass()} disabled={index === 0} aria-label={`将「${track.title}」上移`} title="上移">
                         <SkipBack className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={() => moveTrack(index, 1)} className={iconButtonClass()} disabled={index === detailTracks.length - 1}>
+                      <button type="button" onClick={() => moveTrack(index, 1)} className={iconButtonClass()} disabled={index === detailTracks.length - 1} aria-label={`将「${track.title}」下移`} title="下移">
                         <SkipForward className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
                         className={iconButtonClass(false, 'danger')}
+                        aria-label={`从歌单移除「${track.title}」`}
+                        title="从歌单移除"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1242,6 +1597,74 @@ export default function MusicPage() {
               />
             </label>
           </div>
+          <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-4">
+            <div className="flex items-center gap-2">
+              <Palette className="h-4 w-4 text-[var(--aurora-1)]" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">音乐皮肤(站点默认)</span>
+            </div>
+            <p className="mt-1.5 text-xs leading-5 text-[var(--ink-muted)]">
+              一个光源、四色派生,随明暗主题自动翻转。访客可在前台本地临时切换,不影响此处默认。
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {MUSIC_SKIN_PRESETS.map((preset) => {
+                const active = settings.skinMode === 'preset' && settings.skinPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => saveSettingsPatch({ skinMode: 'preset', skinPreset: preset.id })}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors',
+                      active
+                        ? 'border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)]'
+                        : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                    )}
+                    aria-pressed={active}
+                  >
+                    <span className="h-3.5 w-3.5 rounded-full" style={{ background: isDark ? preset.seedDark : preset.seedLight }} />
+                    {preset.label}
+                    {active && <Check className="h-3.5 w-3.5 text-[var(--aurora-1)]" />}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="text-xs text-[var(--ink-muted)]">自定义</span>
+              <label className="flex items-center gap-1.5 text-xs text-[var(--ink-muted)]">
+                <input
+                  type="color"
+                  value={skinDraftLight}
+                  onChange={(event) => setSkinDraftLight(event.target.value)}
+                  className="h-7 w-9 cursor-pointer rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent"
+                  aria-label="亮主题光源"
+                />
+                亮
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-[var(--ink-muted)]">
+                <input
+                  type="color"
+                  value={skinDraftDark}
+                  onChange={(event) => setSkinDraftDark(event.target.value)}
+                  className="h-7 w-9 cursor-pointer rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent"
+                  aria-label="暗主题光源"
+                />
+                暗
+              </label>
+              <button
+                type="button"
+                onClick={() => saveSettingsPatch({ skinMode: 'custom', skinColorLight: skinDraftLight, skinColorDark: skinDraftDark })}
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-black transition-transform hover:scale-[1.02]',
+                  settings.skinMode === 'custom'
+                    ? 'bg-[var(--aurora-1)] text-[var(--bg-void)]'
+                    : 'border border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
+                )}
+              >
+                {settings.skinMode === 'custom' ? '自定义已应用' : '应用自定义'}
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
             <Select
               value={settings.mediaFolderId ? String(settings.mediaFolderId) : ''}
@@ -1282,42 +1705,6 @@ export default function MusicPage() {
     );
   }
 
-  function Metric({ label, value }: { label: string; value: number }) {
-    return (
-      <div className="rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
-        <p className="text-xs text-[var(--ink-muted)]">{label}</p>
-        <p className="tnum mt-1 text-2xl font-bold text-[var(--ink-primary)]">{value}</p>
-      </div>
-    );
-  }
-
-  function StageMetric({ label, value }: { label: string; value: number }) {
-    return (
-      <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] p-3">
-        <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p>
-        <p className="tnum mt-1 text-xl font-black text-[var(--ink-primary)]">{value}</p>
-      </div>
-    );
-  }
-
-  function TogglePill({ checked, label, onClick }: { checked: boolean; label: string; onClick: () => void }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-          'inline-flex h-10 items-center justify-between gap-3 rounded-lg border px-3 text-sm font-semibold transition-all duration-200',
-          checked
-            ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--ink-primary)]'
-            : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-muted)]'
-        )}
-      >
-        <span>{label}</span>
-        <span className={cn('h-2.5 w-2.5 rounded-full', checked ? 'bg-[var(--aurora-1)]' : 'bg-[var(--ink-muted)]/30')} />
-      </button>
-    );
-  }
-
   const totalTracks = summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0;
   const activeTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? '音乐大厅';
   const pendingDeleteTitle =
@@ -1352,6 +1739,7 @@ export default function MusicPage() {
                 className="admin-module-action-button"
                 disabled={tracks.length === 0}
                 aria-label="播放当前曲库页"
+                title="播放当前曲库页"
               >
                 <Play className="h-4 w-4" />
                 <span className="hidden sm:inline">播放当前页</span>
@@ -1362,6 +1750,7 @@ export default function MusicPage() {
                 onClick={() => saveSettingsPatch({ enabled: !settings.enabled })}
                 className="admin-module-action-button"
                 aria-label={settings.enabled ? '停用公开播放器' : '启用公开播放器'}
+                title={settings.enabled ? '公开播放器:已启用(点击停用)' : '公开播放器:未启用(点击启用)'}
               >
                 <Volume2 className="h-4 w-4" />
                 <span>{settings.enabled ? '已启用' : '启用'}</span>

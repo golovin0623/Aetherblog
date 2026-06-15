@@ -55,6 +55,10 @@ type MusicSettings struct {
 	CarouselEnabled         bool       `db:"carousel_enabled"`
 	CarouselIntervalSeconds int        `db:"carousel_interval_seconds"`
 	RandomEnabled           bool       `db:"random_enabled"`
+	SkinMode                string     `db:"skin_mode"`
+	SkinPreset              string     `db:"skin_preset"`
+	SkinColorLight          *string    `db:"skin_color_light"`
+	SkinColorDark           *string    `db:"skin_color_dark"`
 	CreatedAt               *time.Time `db:"created_at"`
 	UpdatedAt               *time.Time `db:"updated_at"`
 }

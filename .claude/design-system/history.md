@@ -44,3 +44,12 @@ Round 3 之后存在「仅在 `/design` 上呈现」的风险，Round 4 分四�
   - `scripts/codemod-tokens.mjs` —— 零依赖 Node 20 扫描器/修复器/报告器。`check` 在 error 级违规上 exit 1；`fix` 应用替换映射；`report` 产出 Markdown。
   - `pnpm design-system:check|fix|report` npm 脚本。当前基线：**0 error · 449 warning · 2173 info**。
 - **CSS anchor-positioning for `.marginalia`**（`typography.css` 在 `@supports (anchor-name: …)` 内）：在 h1 上加 `.article-anchor`、aside 上加 `.marginalia--anchored`，让 marginalia 在 Chrome 125+/Safari 26+ 上精确跟踪 h1 X-height 基线。`@position-try --fallback-top-left` 处理锚点滚出视野的场景。旧浏览器静默回退到 `hidden xl:block absolute -left-52 top-0`，零视觉回退。
+
+---
+
+## Round 6 · 作用域皮肤范式 / 音乐大厅接入派生（2026-06-14）
+
+- **`music-skin.css`（新增 `packages/ui/src/styles/`）—— 作用域内「一个光源,四色派生」**：把 `tokens.css` 的 `oklch(from var(--aurora-source) …)` 派生公式原样搬进 `[data-music-skin]` 作用域,光源种子换为 `--music-seed`。域内重定义 `--aurora-1..4`,因 `.surface-*` / `::selection` / `--focus-ring` / 辉光描边均消费 `--aurora-1`,作用域内表面自动重新着色,并随 `:root.light/.dark` 翻转,**对作用域外零影响**。预设 = 纯 CSS 换种子(`[data-music-skin="crimson|indigo|emerald|amber|magenta"]`);自定义 = JS 注入 `[data-music-skin="custom"]` 的双种子(亮/暗),镜像 `SiteSettingsProvider` 注入范式。
+- **可复用机制**：这是站点首个「局部主题/皮肤」范式 —— 在不污染全站 `--aurora-source` 的前提下,给某个子树一套独立的派生光源。后续其他模块若需独立色彩身份(而非全站统一),复用 `[data-skin-scope]` 思路即可。
+- **预设常量单一来源**：`packages/utils/src/musicSkins.ts` 的 `MUSIC_SKIN_PRESETS` 与 `music-skin.css` 的预设选择器一一对应,前台切换器(`MusicSkinSwitcher`)与后台 picker(`MusicPage`)共用,杜绝两处硬编码漂移。
+- **音乐大厅去硬编码**：前台 Hall 页 / 全站 dock + 沉浸层 / Profile 卡 / 后台中控台 + 浮层 mini-player 全量从内联 `#ff4d4f`/`rgba(255,77,79)`/暗红死底迁到 Codex token,Hero 改用 `.surface-luminous` 签名卡。`design-system:check` 维持 0 error。

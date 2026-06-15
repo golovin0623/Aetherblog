@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 音乐大厅作用域皮肤系统 / 接入「一个光源·四色派生」+ 明暗主题 (2026-06-14, branch claude/dreamy-shamir-fe0f2f)
+
+**背景：** 音乐大厅(前台 `/music`、全站持久 dock + 沉浸层、首页/Profile 卡片、后台中控台 + 后台浮层 mini-player)此前把配色写死为暗红(`#ff4d4f` / `bg-[#141111]` / `rgba(255,77,79,…)`),既不跟随明暗主题(亮主题下仍是暗红,突兀割裂),也不符合设计系统「一个光源,四色派生」。
+
+**Added — 作用域皮肤引擎：**
+- 新增 `packages/ui/src/styles/music-skin.css`：把 `tokens.css` 的 oklch 四色派生搬进 `[data-music-skin]` 作用域,光源种子换为 `--music-seed`。域内 `--aurora-1..4` 重新派生 → `.surface-*` / 选区 / focus-ring / 辉光自动重新着色,且随 `:root.light/.dark` 翻转,**对作用域外零影响**。
+- 新增 `packages/utils/src/musicSkins.ts`：`MUSIC_SKIN_PRESETS`(绯红/靛蓝/翡翠/琥珀/品红)+ `resolveMusicSkinValue` 等,前台切换器与后台 picker 共用。
+- 默认皮肤保留绯红(`crimson`),改为派生 + 明暗翻转。
+
+**Added — 前台访客切换 + 后台默认：**
+- 新增 `apps/blog/app/components/MusicSkinSwitcher.tsx`(预设色板 + 自定义亮/暗取色 + 恢复后台默认);`MusicPlayerProvider` 扩展皮肤状态,生效优先级 localStorage `aetherblog-music-skin` 覆盖 → 后端默认 → crimson。
+- 后端新增 migration `000080_music_hall_skin`(`music_settings` 加 skin_mode/skin_preset/skin_color_light/skin_color_dark),公开 player 接口 + 后台设置接口透传;`MusicPage` 展示 Tab 增「音乐皮肤」picker。
+
+**Changed — 去硬编码 / 设计系统对齐：** `MusicHallExperience` / `MusicPlayerProvider`(dock + 沉浸层 + CoverDisc)/ `ProfileMusicPlayer` / `globals.css`(`.music-eq-bar`)/ admin `MusicPage` + `AdminMusicPlayerProvider` + `BlogHeader`(导航「音乐」激活态)全部从内联 hex/rgba 迁到 Codex token(`--aurora-*` / `--ink-*` / `--bg-*` / `.surface-*`),字号收编到语义阶梯。`pnpm design-system:check` 保持 0 error(warning 由 343 降至 338)。
+
+**Fixed — 播放器健壮性 / 评审加固 (2026-06-15)：** 多 agent 代码评审后对音乐模块做了一轮正确性与可达性收口。
+- **连播 / 续播竞态**:前台 `MusicPlayerProvider` 与后台 `AdminMusicPlayerProvider` 改用 `currentIndexRef` / `loadedUrlRef` 读实时下标,并在 `advanceTrack` / `playIndex` / `nextTrack` / `previousTrack` 同步置 `playingRef`,消除 `onEnded` 闭包拿旧 index 卡同一首、以及切歌抢播旧 src 的竞态。
+- **后台编辑态被打断(阻塞级)**:`TrackEditor` 及 `Metric` / `StageMetric` / `TogglePill` 从 `MusicPage` 函数体内提到模块作用域 —— 此前每次播放进度 tick 都会让它们重挂、清空「歌曲信息」草稿。
+- **一键发布静默失效(阻塞级)**:`publishPlaylist` 改为专用 mutation,发布前先确保歌单本体 `PUBLIC`/`ACTIVE`(否则公开接口静默隐藏),两步成功后才提示(原 toast 抢在请求前)。
+- **前台 `ProfileMusicPlayer` 空对象崩溃**:`displayTrack.media?.originalName` 容错。
+- **可达性 / 键盘**:抽出共享 `SeekBar`(role=slider + ←/→/Home/End + aria-value*),三处进度条复用;沉浸层补 `role="dialog"` / `aria-modal` / Esc 关闭 / 滚动锁 / 焦点落到关闭键;歌词跟随自动滚动(大厅页 + 沉浸层);图标按钮补 `aria-label`;`TogglePill` 改 `role="switch"`;纳入/发布按钮按行 loading;`sanitizeMusicSeed` 收紧(拦 `oklch(var(...))` 注入);`prefers-reduced-motion` 覆盖音乐域 `animate-spin`。
+
 ### Fixed — 灵境（Agent Workspace）流式体验与状态机修复 (2026-06-09, branch claude/agent-ui-redesign-n4g2oo)
 
 **背景：** 用户反馈灵境对话存在卡顿、长回答结尾"瞬移"、重试后内容错乱、中断后排版退化为纯文本等问题。本轮对 `apps/blog/app/agent/workspace` 做了流式管线与会话状态机的系统性修复 + 产品级打磨。

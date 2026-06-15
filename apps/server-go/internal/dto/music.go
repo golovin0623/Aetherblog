@@ -64,6 +64,10 @@ type MusicSettingsVO struct {
 	CarouselEnabled         bool             `json:"carouselEnabled"`
 	CarouselIntervalSeconds int              `json:"carouselIntervalSeconds"`
 	RandomEnabled           bool             `json:"randomEnabled"`
+	SkinMode                string           `json:"skinMode"`
+	SkinPreset              string           `json:"skinPreset"`
+	SkinColorLight          *string          `json:"skinColorLight,omitempty"`
+	SkinColorDark           *string          `json:"skinColorDark,omitempty"`
 	FeaturedPlaylist        *MusicPlaylistVO `json:"featuredPlaylist,omitempty"`
 }
 
@@ -90,6 +94,10 @@ type MusicPlayerVO struct {
 	CarouselEnabled         bool             `json:"carouselEnabled"`
 	CarouselIntervalSeconds int              `json:"carouselIntervalSeconds"`
 	RandomEnabled           bool             `json:"randomEnabled"`
+	SkinMode                string           `json:"skinMode"`
+	SkinPreset              string           `json:"skinPreset"`
+	SkinColorLight          *string          `json:"skinColorLight,omitempty"`
+	SkinColorDark           *string          `json:"skinColorDark,omitempty"`
 	Playlist                *MusicPlaylistVO `json:"playlist,omitempty"`
 	Tracks                  []MusicTrackVO   `json:"tracks"`
 }
@@ -162,4 +170,8 @@ type MusicSettingsRequest struct {
 	CarouselEnabled         bool   `json:"carouselEnabled"`
 	CarouselIntervalSeconds int    `json:"carouselIntervalSeconds" validate:"omitempty,min=3,max=60"`
 	RandomEnabled           bool   `json:"randomEnabled"`
+	SkinMode                string `json:"skinMode" validate:"omitempty,oneof=preset custom"`
+	SkinPreset              string `json:"skinPreset" validate:"omitempty,max=40"`
+	SkinColorLight          *string `json:"skinColorLight" validate:"omitempty,max=32"`
+	SkinColorDark           *string `json:"skinColorDark" validate:"omitempty,max=32"`
 }
