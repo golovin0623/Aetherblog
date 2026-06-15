@@ -193,13 +193,27 @@ func (r *ChatAgentRepo) IsSeatActive(ctx context.Context, convID, agentID int64)
 	return ok, err
 }
 
-// ListConversationAgents 返回会话中活跃入座的 Agent 列表。
-func (r *ChatAgentRepo) ListConversationAgents(ctx context.Context, convID int64) ([]model.ChatAgent, error) {
+// ListConversationAgentsForUser 返回会话中活跃入座、且对指定用户**当前仍可见**的 Agent。
+//
+// SECURITY: 列出端点仅校验会话成员，但被移出团队的成员仍是 DIRECT/GROUP 会话成员，
+// 不应再读到团队 Agent 的详情（含 system_prompt）。故按调用者的实时可见性过滤
+// （口径与 CanUserUseAgent / ListAgentsForUser 一致）。
+func (r *ChatAgentRepo) ListConversationAgentsForUser(ctx context.Context, convID, userID int64) ([]model.ChatAgent, error) {
 	var agents []model.ChatAgent
 	err := r.db.SelectContext(ctx, &agents, `
 		SELECT a.* FROM chat_conversation_agents ca
 		JOIN chat_agents a ON a.id = ca.agent_id
 		WHERE ca.conversation_id = $1 AND ca.status = 'ACTIVE'
-		ORDER BY ca.joined_at`, convID)
+		  AND (
+		      a.created_by = $2
+		      OR (a.status = 'ACTIVE' AND (
+		          a.scope = 'GLOBAL'
+		          OR (a.scope = 'TEAM' AND EXISTS(
+		              SELECT 1 FROM team_members tm
+		              WHERE tm.team_id = a.team_id AND tm.user_id = $2 AND tm.status = 'ACTIVE'
+		          ))
+		      ))
+		  )
+		ORDER BY ca.joined_at`, convID, userID)
 	return agents, err
 }

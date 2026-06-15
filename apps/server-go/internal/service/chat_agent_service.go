@@ -172,7 +172,8 @@ func (s *ChatAgentService) ListConversationAgents(ctx context.Context, actor Cha
 	if err := s.chat.assertMember(ctx, convID, actor.UserID); err != nil {
 		return nil, err
 	}
-	agents, err := s.repo.ListConversationAgents(ctx, convID)
+	// 按调用者的实时可见性过滤，避免被移出团队的成员仍读到团队 Agent 详情。
+	agents, err := s.repo.ListConversationAgentsForUser(ctx, convID, actor.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +269,14 @@ func (s *ChatAgentService) PostAgentMessage(ctx context.Context, actor ChatActor
 	if !canUse {
 		return nil, ErrAgentForbidden
 	}
-	return s.chat.AgentMessage(ctx, convID, agentID, content, clientMsgID)
+	vo, err := s.chat.AgentMessage(ctx, convID, agentID, content, clientMsgID)
+	if err != nil {
+		return nil, err
+	}
+	// 操作者刚以 Agent 身份发出此消息（sender_id 为 NULL），推进其已读位点，
+	// 避免会话列表把自己发的这条消息算作未读（未读判定按 sender_id 区分，NULL 不等于任何用户）。
+	_ = s.chatRepo.MarkRead(ctx, convID, actor.UserID, vo.ID)
+	return vo, nil
 }
 
 func (s *ChatAgentService) canManage(a *model.ChatAgent, actor ChatActor) bool {
