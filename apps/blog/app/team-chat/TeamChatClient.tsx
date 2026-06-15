@@ -121,10 +121,13 @@ export default function TeamChatClient() {
 
   // --- 选择会话 ---
   const selectConversation = useCallback(async (conv: ChatConversation) => {
+    activeIdRef.current = conv.id;
     setActiveId(conv.id);
     setMessages([]);
     try {
       const history = await chatApi.getHistory(conv.id);
+      // 防竞态：用户在历史返回前切到了别的会话 → 丢弃这份陈旧响应，不覆盖当前会话。
+      if (activeIdRef.current !== conv.id) return;
       setMessages(history);
       setHasMore(history.length >= 30);
       const last = history[history.length - 1];

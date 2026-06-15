@@ -299,7 +299,7 @@ func (s *ChatService) broadcast(ctx context.Context, convID int64, ev realtime.E
 	if s.hub == nil {
 		return
 	}
-	ids, err := s.repo.MemberUserIDs(ctx, convID)
+	ids, err := s.repo.ActiveMemberUserIDs(ctx, convID)
 	if err != nil {
 		return
 	}
@@ -310,7 +310,7 @@ func (s *ChatService) broadcastExcept(ctx context.Context, convID, exclude int64
 	if s.hub == nil {
 		return
 	}
-	ids, err := s.repo.MemberUserIDs(ctx, convID)
+	ids, err := s.repo.ActiveMemberUserIDs(ctx, convID)
 	if err != nil {
 		return
 	}

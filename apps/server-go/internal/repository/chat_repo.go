@@ -98,11 +98,24 @@ func (r *ChatRepo) IsAuthorizedMember(ctx context.Context, convID, userID int64)
 	return ok, err
 }
 
-// MemberUserIDs 返回会话内全部成员的 user_id —— 用于实时广播目标集合。
-func (r *ChatRepo) MemberUserIDs(ctx context.Context, convID int64) ([]int64, error) {
+// ActiveMemberUserIDs 返回会话内**有权接收**的成员 user_id —— 用于实时广播目标集合。
+//
+// SECURITY: 与 IsAuthorizedMember 对称，对 TEAM 会话剔除已被移出 / 禁用团队的陈旧成员，
+// 否则被踢出团队但仍持有 WS 连接的用户会继续收到 message/typing/read 扇出（REST 鉴权挡不住推送）。
+func (r *ChatRepo) ActiveMemberUserIDs(ctx context.Context, convID int64) ([]int64, error) {
 	var ids []int64
-	err := r.db.SelectContext(ctx, &ids,
-		`SELECT user_id FROM chat_conversation_members WHERE conversation_id=$1`, convID)
+	err := r.db.SelectContext(ctx, &ids, `
+		SELECT m.user_id
+		FROM chat_conversation_members m
+		JOIN chat_conversations c ON c.id = m.conversation_id
+		WHERE m.conversation_id = $1
+		  AND (
+		      c.kind <> 'TEAM'
+		      OR EXISTS(
+		          SELECT 1 FROM team_members tm
+		          WHERE tm.team_id = c.team_id AND tm.user_id = m.user_id AND tm.status = 'ACTIVE'
+		      )
+		  )`, convID)
 	return ids, err
 }
 
@@ -174,6 +187,13 @@ func (r *ChatRepo) ListConversationsForUser(ctx context.Context, userID int64) (
 		      AND msg.id > COALESCE(m.last_read_message_id, 0)
 		      AND msg.sender_id IS DISTINCT FROM $1
 		) uc ON true
+		-- SECURITY: 对 TEAM 会话过滤掉已被移出 / 禁用团队的陈旧成员，
+		-- 否则被踢出团队的用户仍能在列表里看到群聊及其最后消息预览。
+		WHERE c.kind <> 'TEAM'
+		   OR EXISTS(
+		       SELECT 1 FROM team_members tm
+		       WHERE tm.team_id = c.team_id AND tm.user_id = $1 AND tm.status = 'ACTIVE'
+		   )
 		ORDER BY COALESCE(c.last_message_at, c.created_at) DESC`, userID)
 	return rows, err
 }
@@ -378,11 +398,18 @@ func (r *ChatRepo) TouchConversation(ctx context.Context, convID int64, ts time.
 }
 
 // MarkRead 推进成员已读位点（只前进，不回退）。
+//
+// 仅当 messageID 确为本会话内的真实消息时才推进 —— 否则客户端可塞入任意大 id
+// 永久压制未读数（unread = msg.id > last_read_message_id）并发出虚假已读回执。
 func (r *ChatRepo) MarkRead(ctx context.Context, convID, userID, messageID int64) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE chat_conversation_members
 		SET last_read_message_id = GREATEST(COALESCE(last_read_message_id, 0), $3)
-		WHERE conversation_id = $1 AND user_id = $2`, convID, userID, messageID)
+		WHERE conversation_id = $1 AND user_id = $2
+		  AND EXISTS(
+		      SELECT 1 FROM chat_messages msg
+		      WHERE msg.id = $3 AND msg.conversation_id = $1
+		  )`, convID, userID, messageID)
 	return err
 }
 
