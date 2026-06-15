@@ -170,15 +170,19 @@ export default function TeamChatClient() {
         createdAt: new Date().toISOString(),
         pending: true,
       };
+      const convId = activeId;
       setMessages((prev) => [...prev, optimistic]);
       try {
-        const saved = await chatApi.sendMessage(activeId, {
+        const saved = await chatApi.sendMessage(convId, {
           messageType: 'TEXT',
           content: text,
           clientMsgId,
         });
+        // 防竞态：发送返回前已切到别的会话 → 不要把 A 的消息并进 B。
+        if (activeIdRef.current !== convId) return;
         setMessages((prev) => mergeMessage(prev, saved));
       } catch {
+        if (activeIdRef.current !== convId) return;
         setMessages((prev) =>
           prev.map((m) => (m.clientMsgId === clientMsgId ? { ...m, pending: false, content: `${text} (发送失败)` } : m)),
         );
@@ -190,11 +194,12 @@ export default function TeamChatClient() {
   const uploadAndSend = useCallback(
     async (file: File) => {
       if (!activeId) return;
+      const convId = activeId;
       try {
         const att = await chatApi.uploadAttachment(file);
         const type =
           att.fileType === 'IMAGE' ? 'IMAGE' : att.fileType === 'AUDIO' ? 'VOICE' : 'FILE';
-        const saved = await chatApi.sendMessage(activeId, {
+        const saved = await chatApi.sendMessage(convId, {
           messageType: type,
           attachmentUrl: att.url,
           attachmentName: att.name,
@@ -203,6 +208,8 @@ export default function TeamChatClient() {
           attachmentMeta: att.width ? { width: att.width, height: att.height } : undefined,
           clientMsgId: crypto.randomUUID(),
         });
+        // 防竞态：上传 + 发送返回前已切走 → 不并进当前会话。
+        if (activeIdRef.current !== convId) return;
         setMessages((prev) => mergeMessage(prev, saved));
       } catch {
         /* ignore */

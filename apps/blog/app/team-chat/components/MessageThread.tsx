@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { sanitizeUrl } from '@/app/lib/sanitizeUrl';
 import type { ChatMessage, ChatSettings } from '../lib/types';
 
 interface Props {
@@ -115,33 +116,29 @@ export default function MessageThread({
 }
 
 function renderBody(m: ChatMessage) {
-  // 附件类消息缺 URL 时给出友好占位，避免渲染失效图片 / 死链。
-  if (m.messageType !== 'TEXT' && m.messageType !== 'SYSTEM' && !m.attachmentUrl) {
+  if (m.messageType === 'TEXT' || m.messageType === 'SYSTEM') {
+    return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
+  }
+  // 附件类消息：清洗 URL，仅放行 http(s) 与同源相对路径，拦截 javascript:/data: 等危险协议。
+  // 缺失或不安全的 URL 给出友好占位，避免渲染失效图片 / 死链 / XSS 链接。
+  const safeUrl = sanitizeUrl(m.attachmentUrl ?? '', '');
+  if (!safeUrl) {
     return <span className="italic text-[var(--ink-muted)]">附件链接失效</span>;
   }
   switch (m.messageType) {
     case 'IMAGE':
       return (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={m.attachmentUrl}
-          alt={m.attachmentName || 'image'}
-          className="max-h-64 max-w-full rounded-lg"
-        />
+        <img src={safeUrl} alt={m.attachmentName || 'image'} className="max-h-64 max-w-full rounded-lg" />
       );
     case 'FILE':
       return (
-        <a
-          href={m.attachmentUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 underline"
-        >
+        <a href={safeUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline">
           📎 {m.attachmentName || '文件'}
         </a>
       );
     case 'VOICE':
-      return <audio controls src={m.attachmentUrl} className="max-w-full" />;
+      return <audio controls src={safeUrl} className="max-w-full" />;
     default:
       return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
   }

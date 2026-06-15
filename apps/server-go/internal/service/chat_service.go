@@ -130,7 +130,9 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID int64, req
 		if strings.TrimSpace(req.Content) == "" {
 			return nil, ErrChatBadMessage
 		}
-	} else if strings.TrimSpace(req.AttachmentURL) == "" {
+	} else if !isSafeAttachmentURL(strings.TrimSpace(req.AttachmentURL)) {
+		// 附件类消息必须带安全的 URL —— 仅允许同源相对路径或 http(s)，
+		// 拦截 javascript: / data: 等会在接收端渲染成可点击链接的危险协议（XSS 防御）。
 		return nil, ErrChatBadMessage
 	}
 
@@ -425,6 +427,22 @@ func settingsToVO(s *model.ChatUserSettings) *dto.ChatSettingsVO {
 		AccentColor: s.AccentColor,
 		Preferences: jsonToMeta(s.Preferences),
 	}
+}
+
+// isSafeAttachmentURL 仅放行同源相对路径（"/..."，排除协议相对 "//"）与 http(s) 绝对地址，
+// 拦截 javascript: / data: / vbscript: 等危险协议。与前端 sanitizeUrl 形成双层防御。
+func isSafeAttachmentURL(u string) bool {
+	if u == "" {
+		return false
+	}
+	if strings.HasPrefix(u, "//") {
+		return false
+	}
+	if strings.HasPrefix(u, "/") {
+		return true
+	}
+	lo := strings.ToLower(u)
+	return strings.HasPrefix(lo, "http://") || strings.HasPrefix(lo, "https://")
 }
 
 func derefStr(p *string, fallback string) string {
