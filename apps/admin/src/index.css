@@ -6700,13 +6700,48 @@ html[data-theme-transition] .codex-ambient-blob {
     padding: 0.62rem;
   }
 
+  /* 移动端 tab 横向滚动:面板的装饰光晕(::before)只覆盖左上角并向右下淡出,
+     叠在半透明 tab 背景下会让靠右/靠下的 tab 看起来"蒙了一层灰"。横向排布时
+     改用均匀的淡色顶光,避免逐个 tab 的亮度不一致。 */
+  .settings-page .settings-nav-panel::before {
+    background: linear-gradient(180deg,
+      color-mix(in oklch, var(--bg-raised) 22%, transparent),
+      transparent 70%);
+    opacity: 0.5;
+  }
+
+  /* 选中态在移动端不再依赖 JS 测量的滑块(及 :has() 支持),tab 自带实心高亮即可。 */
+  .settings-page .settings-nav-slider {
+    display: none;
+  }
+
+  /* 不透明实心衬底:替换半透明渐变,杜绝与面板光晕叠加产生的不均匀灰膜,
+     让每个 tab 都是干净一致的可点击卡片。 */
   .settings-page .settings-nav-button {
     min-height: 3.05rem;
+    background: var(--bg-leaf);
+    border-color: color-mix(in oklch, var(--ink-primary) 12%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.4),
+      0 1px 2px rgb(from var(--ink-primary) r g b / 0.05);
+  }
+
+  .settings-page .settings-nav-button:hover {
+    background: color-mix(in oklch, var(--aurora-1) 6%, var(--bg-leaf));
+    border-color: color-mix(in oklch, var(--aurora-1) 22%, transparent);
   }
 
   .settings-page .settings-nav-button:hover,
   .settings-page .settings-nav-button[data-active='true'] {
     transform: none;
+  }
+
+  .settings-page .settings-nav-button[data-active='true'] {
+    background: color-mix(in oklch, var(--aurora-1) 12%, var(--bg-leaf));
+    border-color: color-mix(in oklch, var(--aurora-1) 32%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.5),
+      0 8px 20px -14px color-mix(in oklch, var(--aurora-1) 64%, black);
   }
 }
 
