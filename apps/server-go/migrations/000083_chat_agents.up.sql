@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS chat_agents (
 
     CONSTRAINT chk_chat_agent_scope CHECK (scope IN ('PRIVATE', 'TEAM', 'GLOBAL')),
     CONSTRAINT chk_chat_agent_status CHECK (status IN ('ACTIVE', 'DISABLED')),
-    CONSTRAINT chk_chat_agent_team CHECK (scope <> 'TEAM' OR team_id IS NOT NULL),
+    -- TEAM 必须绑定 team_id；PRIVATE / GLOBAL 必须不绑定，保证数据一致。
+    CONSTRAINT chk_chat_agent_team CHECK (
+        (scope = 'TEAM' AND team_id IS NOT NULL)
+        OR (scope <> 'TEAM' AND team_id IS NULL)
+    ),
     CONSTRAINT chk_chat_agent_name_nonempty CHECK (btrim(name) <> '')
 );
 

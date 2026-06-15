@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatApi } from '../lib/chatApi';
 import type { ChatAgent } from '../lib/types';
 
@@ -16,6 +16,26 @@ export default function AgentBar({ conversationId }: Props) {
   const [seated, setSeated] = useState<ChatAgent[]>([]);
   const [available, setAvailable] = useState<ChatAgent[]>([]);
   const [picking, setPicking] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  // 点击选择器外部 / 按 Esc 关闭。
+  useEffect(() => {
+    if (!picking) return;
+    const onPointer = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPicking(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPicking(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [picking]);
 
   const refresh = useCallback(async () => {
     try {
@@ -103,40 +123,42 @@ export default function AgentBar({ conversationId }: Props) {
           </button>
         </span>
       ))}
-      <button
-        type="button"
-        onClick={openPicker}
-        className="rounded-full border border-[var(--ink-subtle)] px-2 py-1 text-xs text-[var(--ink-secondary)] transition hover:bg-[var(--bg-leaf)]"
-      >
-        ＋ 纳入智能体
-      </button>
+      <div className="relative" ref={pickerRef}>
+        <button
+          type="button"
+          onClick={openPicker}
+          className="rounded-full border border-[var(--ink-subtle)] px-2 py-1 text-xs text-[var(--ink-secondary)] transition hover:bg-[var(--bg-leaf)]"
+        >
+          ＋ 纳入智能体
+        </button>
 
-      {picking && (
-        <div className="absolute z-10 mt-2 max-h-64 w-64 overflow-y-auto rounded-xl border border-[var(--ink-subtle)] bg-[var(--bg-raised)] p-2 shadow-lg" style={{ top: '100%' }}>
-          <div className="mb-1 flex items-center justify-between px-1">
-            <span className="text-xs text-[var(--ink-muted)]">选择智能体</span>
-            <button type="button" onClick={() => setPicking(false)} className="text-[var(--ink-muted)]">
-              ×
-            </button>
-          </div>
-          {available.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-[var(--ink-muted)]">没有可纳入的智能体</p>
-          ) : (
-            available.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => seat(a.id)}
-                className="block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm text-[var(--ink-primary)] transition hover:bg-[var(--bg-leaf)]"
-                title={a.description || a.name}
-              >
-                🤖 {a.name}
-                <span className="ml-1 text-[10px] text-[var(--ink-muted)]">{a.scope}</span>
+        {picking && (
+          <div className="absolute left-0 top-full z-10 mt-2 max-h-64 w-64 overflow-y-auto rounded-xl border border-[var(--ink-subtle)] bg-[var(--bg-raised)] p-2 shadow-lg">
+            <div className="mb-1 flex items-center justify-between px-1">
+              <span className="text-xs text-[var(--ink-muted)]">选择智能体</span>
+              <button type="button" onClick={() => setPicking(false)} className="text-[var(--ink-muted)]">
+                ×
               </button>
-            ))
-          )}
-        </div>
-      )}
+            </div>
+            {available.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-[var(--ink-muted)]">没有可纳入的智能体</p>
+            ) : (
+              available.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => seat(a.id)}
+                  className="block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm text-[var(--ink-primary)] transition hover:bg-[var(--bg-leaf)]"
+                  title={a.description || a.name}
+                >
+                  🤖 {a.name}
+                  <span className="ml-1 text-[10px] text-[var(--ink-muted)]">{a.scope}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

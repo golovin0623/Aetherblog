@@ -181,6 +181,18 @@ func (r *ChatAgentRepo) IsConversationAgentActive(ctx context.Context, convID, a
 	return ok, err
 }
 
+// IsSeatActive 只检查入座行本身是否活跃（不复查 Agent 全局 status）——
+// 供 Seat/Unseat 的幂等判断使用（避免重复入座 / 重复系统消息；且能清理已禁用 Agent 的残留座位）。
+func (r *ChatAgentRepo) IsSeatActive(ctx context.Context, convID, agentID int64) (bool, error) {
+	var ok bool
+	err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS(
+			SELECT 1 FROM chat_conversation_agents
+			WHERE conversation_id=$1 AND agent_id=$2 AND status='ACTIVE'
+		)`, convID, agentID)
+	return ok, err
+}
+
 // ListConversationAgents 返回会话中活跃入座的 Agent 列表。
 func (r *ChatAgentRepo) ListConversationAgents(ctx context.Context, convID int64) ([]model.ChatAgent, error) {
 	var agents []model.ChatAgent

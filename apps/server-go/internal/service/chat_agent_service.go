@@ -198,6 +198,13 @@ func (s *ChatAgentService) SeatAgent(ctx context.Context, actor ChatActor, convI
 	if a.Status != model.ChatAgentActive {
 		return nil, ErrAgentForbidden
 	}
+	// 已活跃入座则幂等返回，避免重复入座与重复「已加入会话」系统消息。
+	if seated, err := s.repo.IsSeatActive(ctx, convID, agentID); err != nil {
+		return nil, err
+	} else if seated {
+		vo := agentToVO(a, s.canManage(a, actor))
+		return &vo, nil
+	}
 	// SECURITY: 要求会话**全体成员**都有权使用该 Agent，防止 TEAM / PRIVATE 范围
 	// Agent 被带入含无权成员的会话从而越权泄漏（详见 repo 注释）。
 	allowed, err := s.repo.AllConversationMembersCanUseAgent(ctx, convID, agentID)
@@ -226,6 +233,12 @@ func (s *ChatAgentService) UnseatAgent(ctx context.Context, actor ChatActor, con
 	}
 	if a == nil {
 		return ErrAgentNotFound
+	}
+	// 座位已非活跃则幂等返回，避免重复「已离开会话」系统消息。
+	if seated, err := s.repo.IsSeatActive(ctx, convID, agentID); err != nil {
+		return err
+	} else if !seated {
+		return nil
 	}
 	if err := s.repo.RemoveConversationAgent(ctx, convID, agentID); err != nil {
 		return err

@@ -358,7 +358,8 @@ func (r *ChatRepo) GetMessageRow(ctx context.Context, id int64) (*ChatMessageRow
 	var row ChatMessageRow
 	err := r.db.GetContext(ctx, &row, `
 		SELECT msg.*,
-		       COALESCE(ag.name, u.nickname, u.username) AS sender_name,
+		       COALESCE(ag.name, u.nickname, u.username,
+		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
 		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
 		FROM chat_messages msg
 		LEFT JOIN users u ON u.id = msg.sender_id
@@ -378,7 +379,8 @@ func (r *ChatRepo) ListMessages(ctx context.Context, convID int64, beforeID *int
 	var rows []ChatMessageRow
 	err := r.db.SelectContext(ctx, &rows, `
 		SELECT msg.*,
-		       COALESCE(ag.name, u.nickname, u.username) AS sender_name,
+		       COALESCE(ag.name, u.nickname, u.username,
+		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
 		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
 		FROM chat_messages msg
 		LEFT JOIN users u ON u.id = msg.sender_id
