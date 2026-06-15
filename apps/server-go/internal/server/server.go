@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
+	"github.com/golovin0623/aetherblog-server/internal/realtime"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
@@ -483,6 +486,23 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	)
 	agentWorkflowHandler.MountRuntime(agentGroup)
 
+	// --- 团队聊天 / 私聊（实时消息，migration 000082） ---
+	// 端到端：WebSocket(/v1/chat/ws) 承载消息推送 / 打字提示 / 已读回执 / 在线状态；
+	// REST 提供会话列表、历史(游标分页)、发送兜底、附件上传、皮肤偏好。
+	// 建立在 teams + team_members（migration 000051）之上；附件复用 media 存储体系；
+	// schema 预留 sender_type='AGENT' / member_role='AGENT'，为后续 Agent 智能对话与工作流落座。
+	// 跨实例扇出走 Redis Pub/Sub（chat:fanout），Redis 不可用时退化为单实例本机投递。
+	chatHub := realtime.NewHub(s.Redis)
+	chatHub.Run(bgCtx)
+	chatRepo := repository.NewChatRepo(s.DB)
+	chatSvc := service.NewChatService(chatRepo, userRepo)
+	chatSvc.AttachHub(chatHub)
+	// WebSocket 复用 authMW(同源握手携带 ab_access_token Cookie)。
+	// 写路径(发送/已读/上传)每用户 120/min；读路径与 WS 不计桶。typing 走 WS 不经此限流。
+	chatWriteLimit := onlyMutating(middleware.RateLimitByUser(s.Redis, "rate:chat:write", 120, time.Minute))
+	chatGroup := api.Group("/v1/chat", authMW, pwdRotated, chatWriteLimit)
+	handler.NewChatHandler(chatSvc, mediaSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup)
+
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))
@@ -621,6 +641,31 @@ func (s *Server) Start() error {
 
 	log.Info().Msg("server stopped")
 	return nil
+}
+
+// chatWSOriginPatterns 把 CORS allowed_origins 转换为 coder/websocket 的 OriginPatterns
+// （匹配 Origin 头的 host[:port]）——防止跨站 WebSocket 劫持(CSWSH)，因为 WS 鉴权依赖 Cookie。
+// 含 "*" 时透传通配；否则剥掉 scheme 只留 host[:port]。空列表回落到本地网关 host。
+func chatWSOriginPatterns(origins []string) []string {
+	if len(origins) == 0 {
+		return []string{"localhost:7899", "localhost:3000", "localhost:5173"}
+	}
+	out := make([]string, 0, len(origins))
+	for _, o := range origins {
+		o = strings.TrimSpace(o)
+		if o == "" {
+			continue
+		}
+		if o == "*" {
+			return []string{"*"}
+		}
+		if u, err := url.Parse(o); err == nil && u.Host != "" {
+			out = append(out, u.Host)
+		} else {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // onlyMutating 把一个限流中间件包装成只对非 GET / HEAD / OPTIONS 请求生效的版本。

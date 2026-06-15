@@ -1,0 +1,299 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
+	"strings"
+
+	"github.com/coder/websocket"
+	"github.com/labstack/echo/v4"
+
+	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
+	"github.com/golovin0623/aetherblog-server/internal/realtime"
+	"github.com/golovin0623/aetherblog-server/internal/service"
+)
+
+// ChatHandler 处理团队聊天 REST 接口与 WebSocket 实时通道。
+type ChatHandler struct {
+	svc           *service.ChatService
+	media         *service.MediaService
+	hub           *realtime.Hub
+	wsOriginAllow []string // WebSocket 握手允许的 Origin host 模式（防 CSWSH）
+}
+
+// NewChatHandler 创建 ChatHandler。
+func NewChatHandler(svc *service.ChatService, media *service.MediaService, hub *realtime.Hub, wsOriginAllow []string) *ChatHandler {
+	return &ChatHandler{svc: svc, media: media, hub: hub, wsOriginAllow: wsOriginAllow}
+}
+
+// Mount 注册 /v1/chat 路由。整组已挂 authMW + pwdRotated，
+// WebSocket 复用同一鉴权（浏览器同源握手会自动携带 ab_access_token Cookie）。
+func (h *ChatHandler) Mount(g *echo.Group) {
+	g.GET("/ws", h.WS)
+	g.GET("/conversations", h.ListConversations)
+	g.POST("/conversations/direct", h.OpenDirect)
+	g.POST("/conversations/team/:teamId", h.OpenTeam)
+	g.GET("/conversations/:id/messages", h.History)
+	g.POST("/conversations/:id/messages", h.SendMessage)
+	g.POST("/conversations/:id/read", h.MarkRead)
+	g.GET("/conversations/:id/members", h.Members)
+	g.POST("/attachments", h.UploadAttachment)
+	g.GET("/settings", h.GetSettings)
+	g.PUT("/settings", h.UpdateSettings)
+}
+
+// WS 升级为 WebSocket 长连接，承载消息推送 / 打字提示 / 已读回执 / 在线状态。
+func (h *ChatHandler) WS(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	conn, err := websocket.Accept(c.Response().Writer, c.Request(), &websocket.AcceptOptions{
+		OriginPatterns: h.wsOriginAllow,
+	})
+	if err != nil {
+		// Accept 失败时已写入握手响应，直接返回。
+		return nil
+	}
+
+	userID := lu.UserID
+	// 上线广播（用独立 ctx，请求 ctx 在连接关闭后会被取消）。
+	h.svc.BroadcastPresence(context.Background(), userID, true)
+
+	client := h.hub.NewClient(conn, userID, func(ictx context.Context, raw []byte) {
+		h.handleInbound(ictx, userID, raw)
+	})
+	client.Serve(c.Request().Context())
+
+	// 仅当本实例已无该用户的其他连接时才广播下线，减少多标签页误判。
+	if !h.hub.LocalOnline(userID) {
+		h.svc.BroadcastPresence(context.Background(), userID, false)
+	}
+	return nil
+}
+
+// wsInbound 是客户端通过 WebSocket 发来的信令。
+type wsInbound struct {
+	Type           string `json:"type"` // typing | read | ping
+	ConversationID int64  `json:"conversationId"`
+	Typing         bool   `json:"typing"`
+	MessageID      int64  `json:"messageId"`
+}
+
+func (h *ChatHandler) handleInbound(ctx context.Context, userID int64, raw []byte) {
+	var in wsInbound
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return
+	}
+	switch in.Type {
+	case "typing":
+		if in.ConversationID > 0 {
+			h.svc.HandleTyping(ctx, userID, in.ConversationID, in.Typing)
+		}
+	case "read":
+		if in.ConversationID > 0 && in.MessageID > 0 {
+			_ = h.svc.MarkRead(ctx, userID, in.ConversationID, in.MessageID)
+		}
+	case "ping":
+		// 心跳，无需处理（连接活性由底层维持）。
+	}
+}
+
+// ListConversations 返回当前用户的会话列表。
+func (h *ChatHandler) ListConversations(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	list, err := h.svc.ListConversations(c.Request().Context(), lu.UserID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, list)
+}
+
+// OpenDirect 打开 / 创建与目标用户的私聊。
+func (h *ChatHandler) OpenDirect(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	var req dto.OpenDirectRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	vo, err := h.svc.OpenDirect(c.Request().Context(), lu.UserID, req.UserID)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// OpenTeam 查找 / 创建团队群聊会话。
+func (h *ChatHandler) OpenTeam(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	teamID, err := strconv.ParseInt(c.Param("teamId"), 10, 64)
+	if err != nil || teamID <= 0 {
+		return response.FailWith(c, response.BadRequest, "团队 ID 非法")
+	}
+	vo, err := h.svc.EnsureTeamConversation(c.Request().Context(), lu.UserID, teamID)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// History 倒序拉取会话历史（游标分页）。
+func (h *ChatHandler) History(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, err := parseChatID(c)
+	if err != nil {
+		return err
+	}
+	limit := parseIntDefault(c.QueryParam("limit"), 30)
+	var before *int64
+	if v := c.QueryParam("before"); v != "" {
+		if id, e := strconv.ParseInt(v, 10, 64); e == nil && id > 0 {
+			before = &id
+		}
+	}
+	list, err := h.svc.GetHistory(c.Request().Context(), lu.UserID, convID, before, limit)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, list)
+}
+
+// SendMessage 发送消息（REST 兜底通道；落库后由实时层向成员扇出）。
+func (h *ChatHandler) SendMessage(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, err := parseChatID(c)
+	if err != nil {
+		return err
+	}
+	var req dto.SendMessageRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	vo, err := h.svc.SendMessage(c.Request().Context(), lu.UserID, convID, req)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// MarkRead 标记已读位点。
+func (h *ChatHandler) MarkRead(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, err := parseChatID(c)
+	if err != nil {
+		return err
+	}
+	var req dto.MarkReadRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	if err := h.svc.MarkRead(c.Request().Context(), lu.UserID, convID, req.MessageID); err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OKEmpty(c)
+}
+
+// Members 返回会话成员列表。
+func (h *ChatHandler) Members(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, err := parseChatID(c)
+	if err != nil {
+		return err
+	}
+	list, err := h.svc.GetMembers(c.Request().Context(), lu.UserID, convID)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, list)
+}
+
+// UploadAttachment 上传聊天附件（图片 / 文件 / 语音），复用媒体库存储，返回可访问 URL 与元数据。
+func (h *ChatHandler) UploadAttachment(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "缺少上传文件")
+	}
+	uploader := lu.UserID
+	vo, err := h.media.Upload(c.Request().Context(), fh, &uploader, nil)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	url := vo.CdnURL
+	if url == "" {
+		url = vo.FileURL
+	}
+	out := map[string]any{
+		"url":      url,
+		"name":     vo.OriginalName,
+		"size":     vo.FileSize,
+		"mime":     vo.MimeType,
+		"fileType": vo.FileType,
+	}
+	if vo.Width != nil {
+		out["width"] = *vo.Width
+	}
+	if vo.Height != nil {
+		out["height"] = *vo.Height
+	}
+	return response.OK(c, out)
+}
+
+// GetSettings 返回用户聊天皮肤偏好。
+func (h *ChatHandler) GetSettings(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	vo, err := h.svc.GetSettings(c.Request().Context(), lu.UserID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// UpdateSettings 更新用户聊天皮肤偏好。
+func (h *ChatHandler) UpdateSettings(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	var req dto.UpdateChatSettingsRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	vo, err := h.svc.UpdateSettings(c.Request().Context(), lu.UserID, req)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// chatError 把 service 哨兵错误映射到合适的 HTTP 业务码。
+func (h *ChatHandler) chatError(c echo.Context, err error) error {
+	switch {
+	case errors.Is(err, service.ErrChatNotMember):
+		return response.FailWith(c, response.Forbidden, err.Error())
+	case errors.Is(err, service.ErrChatConvNotFound):
+		return response.FailWith(c, response.NotFound, err.Error())
+	case errors.Is(err, service.ErrChatBadTarget), errors.Is(err, service.ErrChatBadMessage):
+		return response.FailWith(c, response.BadRequest, err.Error())
+	default:
+		return response.Error(c, err)
+	}
+}
+
+func parseChatID(c echo.Context) (int64, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, response.FailWith(c, response.BadRequest, "会话 ID 非法")
+	}
+	return id, nil
+}
