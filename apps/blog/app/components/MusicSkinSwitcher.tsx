@@ -118,6 +118,8 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
         role="dialog"
         aria-label="音乐皮肤"
       >
+        {/* 移动端抽屉抓手 */}
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_22%,transparent)] sm:hidden" aria-hidden="true" />
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">Music Skin</p>
           {hasSkinOverride && (
@@ -214,15 +216,15 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-5 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] sm:w-auto sm:px-5"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="music-skin-popover"
       >
-        <Palette className="h-4 w-4" />
-        皮肤
+        <Palette className="h-4 w-4 shrink-0" />
+        <span className="whitespace-nowrap">皮肤</span>
         <span
-          className="h-3 w-3 rounded-full ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
+          className="hidden h-3 w-3 shrink-0 rounded-full ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] sm:inline-block"
           style={{ background: 'var(--aurora-1)' }}
           aria-hidden="true"
         />

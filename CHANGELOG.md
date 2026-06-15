@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **dock 进度条移动端太短**:窄屏改为卡片顶部全宽进度条(`size=md`),桌面端仍走中列内联条。
 - 大厅 now-playing 卡的音量条同样移动端隐藏,避免换行。
 
+**Changed — 移动端 hero 视觉重做(设计感)(2026-06-15):** 把"桌面布局塞进手机"的 hero 改为移动端原生视觉编排,PC(`lg`)逐项不变。
+- 签名黑胶 `order-first` 提到文案之上作视觉主角并压缩尺寸(`h-44 → sm:h-60 → lg:h-72`);标题缩到 `text-4xl`、描述 `line-clamp-2`。
+- 占位很大、还会把 `SEQUENTIAL` 截成 `SEQUENT...` 的 2×2 指标方块,移动端换成紧凑**状态药丸**(中文短标签 `顺序播放` 等,`队列/轮播` 命中走 aurora 高亮);桌面端保留原方块。
+- 操作区移动端改为**全宽主 CTA `播放全部` + 等宽三联(沉浸/皮肤/返回)**;桌面端经 `sm:contents` 化回原 `flex-wrap` 行,完全不变。
+- 皮肤切换器移动端底部抽屉加 iOS 抓手。
+
 ### Fixed — 灵境（Agent Workspace）流式体验与状态机修复 (2026-06-09, branch claude/agent-ui-redesign-n4g2oo)
 
 **背景：** 用户反馈灵境对话存在卡顿、长回答结尾"瞬移"、重试后内容错乱、中断后排版退化为纯文本等问题。本轮对 `apps/blog/app/agent/workspace` 做了流式管线与会话状态机的系统性修复 + 产品级打磨。
