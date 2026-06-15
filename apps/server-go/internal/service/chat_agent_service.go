@@ -198,11 +198,13 @@ func (s *ChatAgentService) SeatAgent(ctx context.Context, actor ChatActor, convI
 	if a.Status != model.ChatAgentActive {
 		return nil, ErrAgentForbidden
 	}
-	visible, err := s.repo.IsAgentVisibleTo(ctx, agentID, actor.UserID)
+	// SECURITY: 要求会话**全体成员**都有权使用该 Agent，防止 TEAM / PRIVATE 范围
+	// Agent 被带入含无权成员的会话从而越权泄漏（详见 repo 注释）。
+	allowed, err := s.repo.AllConversationMembersCanUseAgent(ctx, convID, agentID)
 	if err != nil {
 		return nil, err
 	}
-	if !visible {
+	if !allowed {
 		return nil, ErrAgentForbidden
 	}
 	if err := s.repo.AddConversationAgent(ctx, convID, agentID, actor.UserID); err != nil {

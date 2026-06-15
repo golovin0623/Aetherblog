@@ -88,24 +88,32 @@ func (r *ChatAgentRepo) ListAgentsForUser(ctx context.Context, userID int64) ([]
 	return agents, err
 }
 
-// IsAgentVisibleTo 判断 Agent 对某用户是否可见 / 可用（与 ListAgentsForUser 同口径）。
-func (r *ChatAgentRepo) IsAgentVisibleTo(ctx context.Context, agentID, userID int64) (bool, error) {
-	var ok bool
-	err := r.db.GetContext(ctx, &ok, `
-		SELECT EXISTS(
-			SELECT 1 FROM chat_agents a
-			WHERE a.id = $1 AND (
-			    a.created_by = $2
-			    OR (a.status = 'ACTIVE' AND (
-			        a.scope = 'GLOBAL'
-			        OR (a.scope = 'TEAM' AND EXISTS(
-			            SELECT 1 FROM team_members tm
-			            WHERE tm.team_id = a.team_id AND tm.user_id = $2 AND tm.status = 'ACTIVE'
-			        ))
-			    ))
-			)
-		)`, agentID, userID)
-	return ok, err
+// AllConversationMembersCanUseAgent 判断会话中**每一位成员**是否都有权使用该 Agent。
+//
+// SECURITY: 入座 / 列出 / 发言端点仅校验「会话成员」，因此把 Agent 纳入会话等于
+// 让全体成员可用它。若只校验入座发起者的可见性，TEAM 范围 Agent 会被带入含团队外
+// 成员的私聊从而泄漏；PRIVATE Agent 会泄漏给会话其他成员。故入座前要求全体成员都满足
+// 与 ListAgentsForUser 同口径的可见性（GLOBAL / 创建者本人 / 所属团队活跃成员）。
+func (r *ChatAgentRepo) AllConversationMembersCanUseAgent(ctx context.Context, convID, agentID int64) (bool, error) {
+	var allAllowed bool
+	err := r.db.GetContext(ctx, &allAllowed, `
+		SELECT NOT EXISTS(
+			SELECT 1
+			FROM chat_conversation_members m
+			CROSS JOIN chat_agents a
+			WHERE m.conversation_id = $1 AND a.id = $2
+			  AND NOT (
+			      a.created_by = m.user_id
+			      OR (a.status = 'ACTIVE' AND (
+			          a.scope = 'GLOBAL'
+			          OR (a.scope = 'TEAM' AND EXISTS(
+			              SELECT 1 FROM team_members tm
+			              WHERE tm.team_id = a.team_id AND tm.user_id = m.user_id AND tm.status = 'ACTIVE'
+			          ))
+			      ))
+			  )
+		)`, convID, agentID)
+	return allAllowed, err
 }
 
 // AddConversationAgent 把 Agent 入座到会话（已存在则重新激活）。
@@ -126,13 +134,17 @@ func (r *ChatAgentRepo) RemoveConversationAgent(ctx context.Context, convID, age
 	return err
 }
 
-// IsConversationAgentActive 判断 Agent 是否在会话中处于活跃入座状态。
+// IsConversationAgentActive 判断 Agent 是否在会话中处于「可发言」状态：
+// 既要求入座关系活跃，也要求 Agent 本身未被禁用（status='ACTIVE'）——
+// 否则已入座的 Agent 被 UpdateAgent 改为 DISABLED 后仍能继续发言（绕过吊销）。
 func (r *ChatAgentRepo) IsConversationAgentActive(ctx context.Context, convID, agentID int64) (bool, error) {
 	var ok bool
 	err := r.db.GetContext(ctx, &ok, `
 		SELECT EXISTS(
-			SELECT 1 FROM chat_conversation_agents
-			WHERE conversation_id=$1 AND agent_id=$2 AND status='ACTIVE'
+			SELECT 1 FROM chat_conversation_agents ca
+			JOIN chat_agents a ON a.id = ca.agent_id
+			WHERE ca.conversation_id=$1 AND ca.agent_id=$2
+			  AND ca.status='ACTIVE' AND a.status='ACTIVE'
 		)`, convID, agentID)
 	return ok, err
 }
