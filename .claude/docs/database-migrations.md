@@ -267,6 +267,19 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 
 ---
 
+### 000082 · `team_chat`
+
+团队聊天 / 私聊（Phase 1 MVP）。取空号 000082（当前最大 000081 +1，**不顺移**已合并迁移）。建立在 `teams` / `team_members`（000051）之上，新建 4 张表，全部 `CREATE TABLE IF NOT EXISTS` + `CREATE [UNIQUE] INDEX IF NOT EXISTS`，单事务安全、可重放幂等：
+
+- `chat_conversations`（会话，`kind` CHECK [TEAM/DIRECT/GROUP] + `team_id` FK + `dm_key`；部分唯一索引：TEAM 每团队一条 `uq_chat_conv_team`、DIRECT 每对用户一条 `uq_chat_conv_dm`）
+- `chat_conversation_members`（成员，`member_role` CHECK 含 **`AGENT` 预留** + `last_read_message_id` 已读位点，PK `(conversation_id, user_id)`）
+- `chat_messages`（消息，`sender_type` CHECK [USER/**AGENT**/**SYSTEM** 预留] + `message_type` CHECK [TEXT/IMAGE/FILE/VOICE/SYSTEM] + 附件字段 + `attachment_meta` jsonb + `reply_to_id` 自引用 + `client_msg_id` 幂等；`(conversation_id, client_msg_id)` 部分唯一索引去重重发）
+- `chat_user_settings`（用户聊天皮肤偏好：`theme_skin` / `bubble_style` / `font_family` / `accent_color` / `preferences` jsonb）
+
+down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增表，重放幂等；失败 fail-closed 中止部署）。
+
+---
+
 ## 部署期 migration 自愈机制
 
 `ops/webhook/deploy.sh` 的预部署 migration 步骤包含 **"dirty self-heal table"**：

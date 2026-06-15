@@ -200,3 +200,9 @@ location ~ ^/(ai|chat|stream) {
     proxy_read_timeout 600s;
 }
 ```
+
+> ⚠️ **新增 WS 路径必须显式纳入 upgrade location。** golang backend 的团队聊天 WS 在
+> `/api/v1/chat/ws`，**不**匹配通用 `^/api/(ws|websocket|socket)`，会落到兜底 `location /api`
+> （设了 `Connection ""`）导致握手无法升级。实际配置已把该路径并入 upgrade 正则：
+> `location ~ ^/api/(ws|websocket|socket|v1/chat/ws)`（见 `nginx/nginx.conf` 与 `nginx/nginx.dev.conf`）。
+> 规则：**每加一条 WS 端点，先确认它能命中带 `Connection $connection_upgrade` 的 location。**

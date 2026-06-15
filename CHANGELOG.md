@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 团队聊天 / 私聊（Team Chat · 实时消息 Phase 1 MVP）(2026-06-15, branch claude/team-chat-messaging-gms0he)
+
+**背景：** 在现有用户认证（JWT/Cookie）与团队体系（`teams` / `team_members`，migration 000051）之上，新增实时聊天能力 —— 团队群聊与两人私聊、文本/图片/文件/语音消息、微信式「正在输入」提示、已读回执与在线状态、自定义皮肤（气泡形状 / 主题色 / 字体）。**为后续「Agents 智能对话 / Agents 团队工作流」预留落座空间**：会话成员角色含 `AGENT`、消息发送方类型含 `AGENT` / `SYSTEM`。
+
+**Added — 数据层：** migration `000082_team_chat`（4 张表：`chat_conversations` 会话[TEAM/DIRECT/GROUP，团队唯一 + 私聊 dm_key 唯一] + `chat_conversation_members` 成员[角色含 AGENT 预留、已读位点] + `chat_messages` 消息[sender_type/message_type 约束、附件字段、client_msg_id 幂等] + `chat_user_settings` 皮肤偏好）。全表 `IF NOT EXISTS` 幂等，遵循迁移不可变红线。
+
+**Added — 后端：** `realtime` 包（WebSocket Hub + Redis Pub/Sub `chat:fanout` 跨实例扇出，Redis 不可用时退化单实例；`coder/websocket`）；`ChatService` 编排会话/消息/偏好 + 成员鉴权 + typing/read/presence 实时广播；`ChatRepo`（会话列表带未读数与最后消息 LATERAL 投影、私聊 find-or-create、团队会话成员同步）；`ChatHandler` —— `/v1/chat/*`：`GET /ws`（WebSocket，复用同源 Cookie 鉴权）、会话列表、私聊/团队开会话、历史游标分页、发送兜底、已读、成员、附件上传（复用 media 存储）、皮肤偏好读写。挂 authMW + pwdRotated，写路径 120/min/user 限流；WS Origin 白名单防 CSWSH。
+
+**Added — Blog 前端：** `/team-chat` 模块（`app/team-chat/`）—— `useChatSocket`（自动重连 + 心跳 + 上行 typing/read）、`chatApi` REST 客户端、`ConversationList`（未读红点 + 在线点）、`MessageThread`（气泡皮肤 / 附件 / 打字提示）、`Composer`（回车发送 + 附件 + 微信式 typing 信号）。复用 `useAgentAuth` 门禁。
+
+**Tests：** `realtime` Hub 投递 / 注册 / 多连接扇出 3 例 + `ChatRepo` dm_key 规范化 1 例（Go，无需 DB）；blog 前端 `tsc --noEmit` 0 error；`design-system:check` 保持 0 error。
+
 ### Added — 试卷智能拆题 / 校对 / 修复 / 审批入库闭环（QA Document Workflow）(2026-06-15, branch claude/document-qa-workflow-y4adbu)
 
 **背景：** 新增图片/PDF 试卷的「上传 → 识别 → 拆题 → 校对 → 标注 → 后台 Agent 修复 → 合并 Diff → 审批 → 入库」闭环能力。原始文件只读落 `media_files`，所有校对/修复/合并/Diff 都基于 **Canonical Document Tree**（版本快照 + block 节点）而非直接改原文件；Agent 只产出 **Patch Proposal**，审批前**绝不**写正式题库。完整契约见 `docs/features/qa-document-workflow.md`。
