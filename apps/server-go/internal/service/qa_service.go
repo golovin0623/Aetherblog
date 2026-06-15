@@ -516,6 +516,13 @@ func (s *QAService) Reprocess(ctx context.Context, docID int64, stage string, ac
 	if err != nil || doc == nil {
 		return ErrNotFound
 	}
+	// 守卫：已发布 / 已审批 / Agent 运行中不可重跑。PUBLISHED 重跑会留下孤儿
+	// qa_questions 且把文档拉回进行中态；APPROVED 会丢弃已审批版本；AGENT_RUNNING
+	// 有在飞任务会与新 run 竞争。其余状态（含 FAILED / 处理中 / 评审态）允许整链重跑。
+	switch doc.Status {
+	case qatree.StatusPublished, qatree.StatusApproved, qatree.StatusAgentRunning:
+		return fmt.Errorf("%w: 当前状态 %s 不允许重跑流水线", ErrInvalidTransition, doc.Status)
+	}
 	// 始终从 PREPROCESS 全量重跑：SEGMENT/OCR/STRUCTURE/QUALITY_CHECK 都依赖前序
 	// 阶段在 job payload 里串联的 pages/blocks/ocr 产物，无法脱离前序独立重入
 	// （单独入队中途阶段会因缺少 payload 失败、或状态机迁移非法卡死）。stage 入参

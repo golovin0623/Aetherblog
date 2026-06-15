@@ -287,6 +287,12 @@ func (m *MockPipeline) AgentFix(_ context.Context, roots []*qatree.Node, annotat
 
 func mockTextFor(blockType, ref string) string {
 	switch blockType {
+	case qatree.BlockPage:
+		// COARSE 粒度下 PAGE 是叶子，会被当作 RAW 题目，须有非空文本。
+		return "页面 " + ref + " 的整页文本（mock）"
+	case qatree.BlockBlock:
+		// STANDARD 粒度下 BLOCK 是叶子，同理须有非空文本。
+		return "版面块 " + ref + " 的文本（mock）"
 	case qatree.BlockStem:
 		return "下列说法正确的是（" + ref + "）"
 	case qatree.BlockOption:

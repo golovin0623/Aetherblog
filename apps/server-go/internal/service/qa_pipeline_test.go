@@ -8,6 +8,31 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/qatree"
 )
 
+// TestPublishNonEmptyStemsAcrossGranularities 确保各粒度（含 COARSE/STANDARD 的
+// PAGE/BLOCK 叶子回退路径）发布出的题目题干都非空，避免空题干写入题库。
+func TestPublishNonEmptyStemsAcrossGranularities(t *testing.T) {
+	p := &MockPipeline{}
+	ctx := context.Background()
+	for _, gran := range []string{
+		qatree.GranularityCoarse, qatree.GranularityStandard,
+		qatree.GranularityFine, qatree.GranularityUltraFine,
+	} {
+		pages, _, _ := p.Preprocess(ctx, 1, "/api/uploads/qa/1/crops/x.png", "PDF", 0)
+		blocks, _ := p.Segment(ctx, pages, gran)
+		ocr, _ := p.OCR(ctx, blocks)
+		roots, _ := p.Structure(ctx, blocks, ocr, gran)
+		questions := treeToQuestions(roots, 1, nil)
+		if len(questions) == 0 {
+			t.Errorf("粒度 %s 未解析出题目", gran)
+		}
+		for i, q := range questions {
+			if q.Stem == "" {
+				t.Errorf("粒度 %s 第 %d 题题干为空", gran, i)
+			}
+		}
+	}
+}
+
 // TestMockPipelineEndToEnd 在不依赖数据库的前提下，串起整条流水线 + 修复闭环逻辑：
 // 预处理→拆分→OCR→结构化→质检→Agent 修复→应用 Patch→Diff→发布转换。
 func TestMockPipelineEndToEnd(t *testing.T) {
