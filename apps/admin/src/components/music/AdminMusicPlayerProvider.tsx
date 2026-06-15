@@ -196,7 +196,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const seekToClientX = useCallback((clientX: number, rect: DOMRect) => {
     const audio = audioRef.current;
-    if (!audio || duration <= 0) return;
+    if (!audio || duration <= 0 || rect.width <= 0) return;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     const next = ratio * duration;
     audio.currentTime = next;
@@ -406,7 +406,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                   <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${percent}%` }} />
                 </div>
                 {expanded && (
-                  <div className="mt-1 flex items-center justify-between text-[10px] tabular-nums text-[var(--ink-muted)]">
+                  <div className="mt-1 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
                     <span>{formatClock(progress)}</span>
                     <span>{formatClock(duration || currentTrack.durationSeconds || 0)}</span>
                   </div>

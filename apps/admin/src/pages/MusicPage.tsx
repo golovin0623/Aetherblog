@@ -705,15 +705,19 @@ export default function MusicPage() {
     mutationFn: async ({ playlistId }: { playlistId: number }) => {
       const target = playlists.find((item) => item.id === playlistId);
       if (target && (target.visibility !== 'PUBLIC' || target.status !== 'ACTIVE')) {
+        // 带全字段回传 —— Go 端 UpdatePlaylist 把缺省字段映射为 nil/0,
+        // 漏传 coverMediaFileId / sortOrder 会清掉封面并把排序重置为 0。
         await musicService.updatePlaylist(playlistId, {
           name: target.name,
           description: target.description,
+          coverMediaFileId: target.coverMediaFileId,
           visibility: 'PUBLIC',
           status: 'ACTIVE',
           displayOnHome: target.displayOnHome,
           displayOnProfile: target.displayOnProfile,
           carouselEnabled: target.carouselEnabled,
           randomEnabled: target.randomEnabled,
+          sortOrder: target.sortOrder,
         });
       }
       await musicService.updateSettings({ ...settings, featuredPlaylistId: playlistId, enabled: true });
@@ -943,7 +947,9 @@ export default function MusicPage() {
                     return;
                   }
                   const rect = event.currentTarget.getBoundingClientRect();
-                  seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
+                  if (rect.width > 0) {
+                    seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
+                  }
                 }}
                 onKeyDown={(event) => {
                   if (!stageIsCurrent) return;
@@ -961,7 +967,7 @@ export default function MusicPage() {
               >
                 <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
               </button>
-              <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-[var(--ink-muted)]">
+              <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
                 <span>{fmtClock(stageIsCurrent ? progress : 0)}</span>
                 <span>{fmtClock(stageIsCurrent ? duration : (stageTrack?.durationSeconds || 0))}</span>
               </div>
@@ -1337,21 +1343,18 @@ export default function MusicPage() {
               ) : playlists.map((playlist) => (
                 <div
                   key={playlist.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedPlaylistId(playlist.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedPlaylistId(playlist.id);
-                    }
-                  }}
                   className={cn(
-                    'flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
+                    'flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
                     selectedPlaylistId === playlist.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
                   )}
                 >
-                  <span className="min-w-0 flex-1">
+                  {/* 左侧选择区改回原生 <button> —— 不再用 role=button 容器套子按钮(ARIA 禁止嵌套交互控件);原生按钮自带 Enter/Space 键盘支持 */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlaylistId(playlist.id)}
+                    aria-pressed={selectedPlaylistId === playlist.id}
+                    className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  >
                     <span className="flex items-center gap-2">
                       <span className="truncate text-sm font-semibold text-[var(--ink-primary)]">{playlist.name}</span>
                       {settings.featuredPlaylistId === playlist.id && (
@@ -1367,7 +1370,7 @@ export default function MusicPage() {
                       )}
                     </span>
                     <span className="mt-1 block text-xs text-[var(--ink-muted)]">{playlist.trackCount} 首</span>
-                  </span>
+                  </button>
                   <span className="flex shrink-0 items-center gap-1">
                     {settings.featuredPlaylistId !== playlist.id && (
                       <button
