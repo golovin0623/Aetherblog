@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 团队聊天 · Agent 纳入与管理（Team Chat Phase 2）(2026-06-15, branch claude/team-chat-agents-gms0he)
+
+**背景：** 在 Phase 1 预留的 `sender_type='AGENT'` / `member_role='AGENT'` 基础上，落地「智能体（Agent）纳入聊天与管理」：定义 Agent（名称/头像/人设/绑定模型/可见范围）、把 Agent 入座到会话、消息归属到 Agent。本阶段聚焦**纳入与管理 + 身份归属**（可人工操作 Agent 人设发言，完整可测）；**Agent 自动生成回复（调用 LLM / 工作流）为 Phase 3**，`provider_code`/`model_id`/`system_prompt` 字段已预留绑定位。
+
+**Added — 数据层：** migration `000083_chat_agents`（取空号 000083，不顺移）：`chat_agents`（Agent 定义，scope=PRIVATE/TEAM/GLOBAL + status + 创建者 + Phase 3 模型绑定字段）+ `chat_conversation_agents`（Agent 入座会话关系，软离席）+ `chat_messages.agent_id`（消息归属，`ON DELETE SET NULL` 保留历史）。全部 `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 幂等。
+
+**Added — 后端：** `ChatAgentRepo` + `ChatAgentService`（Agent CRUD 按 scope 鉴权：GLOBAL 需管理员、TEAM 需团队成员、PRIVATE 任意登录用户；编辑/删除限创建者或管理员；入座/发言须为会话成员且 Agent 可见/活跃入座）；`ChatService` 抽出 `emitMessage` 复用，新增 `SystemMessage`（入座/离席系统提示）与 `AgentMessage`（以 Agent 身份发言）；消息查询 LEFT JOIN `chat_agents` 解析 Agent 名称/头像。`ChatAgentHandler` 在 `/v1/chat` 下新增 8 个端点（agents CRUD、conversations/:id/agents 列出/纳入/移除、agents/:agentId/messages 代言）。
+
+**Added — Blog 前端：** `chatApi` Agent 方法 + `AgentBar`（会话内展示已纳入 Agent、纳入/移除、以 Agent 身份发言）+ MessageThread 的 `AI` 身份徽标。
+
+**Tests：** `ChatAgentService` 管理权限 + 随机 slug 后缀单测（Go，无需 DB）；前端 `tsc` 0 error；`design-system:check` 0 error。
+
 ### Added — 团队聊天 / 私聊（Team Chat · 实时消息 Phase 1 MVP）(2026-06-15, branch claude/team-chat-messaging-gms0he)
 
 **背景：** 在现有用户认证（JWT/Cookie）与团队体系（`teams` / `team_members`，migration 000051）之上，新增实时聊天能力 —— 团队群聊与两人私聊、文本/图片/文件/语音消息、微信式「正在输入」提示、已读回执与在线状态、自定义皮肤（气泡形状 / 主题色 / 字体）。**为后续「Agents 智能对话 / Agents 团队工作流」预留落座空间**：会话成员角色含 `AGENT`、消息发送方类型含 `AGENT` / `SYSTEM`。

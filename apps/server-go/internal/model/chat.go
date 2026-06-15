@@ -33,6 +33,19 @@ const (
 	ChatMsgSystem = "SYSTEM"
 )
 
+// Agent 可见范围。
+const (
+	ChatAgentScopePrivate = "PRIVATE" // 仅创建者可见 / 使用
+	ChatAgentScopeTeam    = "TEAM"    // 所属团队的活跃成员可见
+	ChatAgentScopeGlobal  = "GLOBAL"  // 全站可见（创建需管理员）
+)
+
+// Agent 状态。
+const (
+	ChatAgentActive   = "ACTIVE"
+	ChatAgentDisabled = "DISABLED"
+)
+
 // ChatConversation 对应 chat_conversations 表，表示一条聊天线。
 type ChatConversation struct {
 	ID            int64      `db:"id"`
@@ -71,9 +84,37 @@ type ChatMessage struct {
 	AttachmentMeta *string    `db:"attachment_meta"` // 原始 JSON 文本，service 层按需解析。
 	ReplyToID      *int64     `db:"reply_to_id"`
 	ClientMsgID    *string    `db:"client_msg_id"`
+	AgentID        *int64     `db:"agent_id"` // sender_type='AGENT' 时归属的 Agent
 	EditedAt       *time.Time `db:"edited_at"`
 	DeletedAt      *time.Time `db:"deleted_at"`
 	CreatedAt      time.Time  `db:"created_at"`
+}
+
+// ChatAgent 对应 chat_agents 表，表示一个可被纳入聊天的智能体。
+type ChatAgent struct {
+	ID           int64     `db:"id"`
+	Name         string    `db:"name"`
+	Slug         string    `db:"slug"`
+	Avatar       *string   `db:"avatar"`
+	Description  *string   `db:"description"`
+	ProviderCode *string   `db:"provider_code"`
+	ModelID      *string   `db:"model_id"`
+	SystemPrompt *string   `db:"system_prompt"`
+	Scope        string    `db:"scope"`
+	TeamID       *int64    `db:"team_id"`
+	Status       string    `db:"status"`
+	CreatedBy    *int64    `db:"created_by"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
+}
+
+// ChatConversationAgent 对应 chat_conversation_agents 表，表示 Agent 在会话中的入座关系。
+type ChatConversationAgent struct {
+	ConversationID int64     `db:"conversation_id"`
+	AgentID        int64     `db:"agent_id"`
+	AddedBy        *int64    `db:"added_by"`
+	Status         string    `db:"status"`
+	JoinedAt       time.Time `db:"joined_at"`
 }
 
 // ChatUserSettings 对应 chat_user_settings 表，持久化用户聊天皮肤偏好。

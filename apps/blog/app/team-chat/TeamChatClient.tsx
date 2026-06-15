@@ -9,6 +9,7 @@ import type { ChatConversation, ChatEvent, ChatMessage, ChatSettings } from './l
 import ConversationList from './components/ConversationList';
 import MessageThread from './components/MessageThread';
 import Composer from './components/Composer';
+import AgentBar from './components/AgentBar';
 
 const DEFAULT_SETTINGS: ChatSettings = { themeSkin: 'aurora', bubbleStyle: 'rounded' };
 
@@ -297,6 +298,7 @@ export default function TeamChatClient() {
             <header className="border-b border-[var(--ink-subtle)] px-4 py-3">
               <span className="font-medium text-[var(--ink-primary)]">{activeConv.title}</span>
             </header>
+            <AgentBar conversationId={activeConv.id} />
             <MessageThread
               messages={messages}
               currentUserId={currentUserId}

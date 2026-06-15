@@ -280,6 +280,18 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 
 ---
 
+### 000083 · `chat_agents`
+
+团队聊天 Agent 纳入与管理（Phase 2）。取空号 000083（当前最大 000082 +1，**不顺移**）。建立在 000082 chat 表族 + 000051 teams 之上：
+
+- `chat_agents`（Agent 定义；`scope` CHECK [PRIVATE/TEAM/GLOBAL]、`status` CHECK [ACTIVE/DISABLED]、`team_id` 仅 scope=TEAM 必填、Phase 3 预留 `provider_code`/`model_id`/`system_prompt`）
+- `chat_conversation_agents`（Agent 入座会话，PK `(conversation_id, agent_id)`，`status` 软离席）
+- `chat_messages.agent_id`（`ADD COLUMN IF NOT EXISTS`，`ON DELETE SET NULL` —— 删除 Agent 不丢历史消息内容）
+
+全部 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`，单事务安全、可重放幂等。down 先 `DROP COLUMN IF EXISTS agent_id` 再逆序 `DROP TABLE`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
+
+---
+
 ## 部署期 migration 自愈机制
 
 `ops/webhook/deploy.sh` 的预部署 migration 步骤包含 **"dirty self-heal table"**：
