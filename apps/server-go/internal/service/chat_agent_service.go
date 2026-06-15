@@ -199,21 +199,23 @@ func (s *ChatAgentService) SeatAgent(ctx context.Context, actor ChatActor, convI
 	if a.Status != model.ChatAgentActive {
 		return nil, ErrAgentForbidden
 	}
-	// 已活跃入座则幂等返回，避免重复入座与重复「已加入会话」系统消息。
-	if seated, err := s.repo.IsSeatActive(ctx, convID, agentID); err != nil {
-		return nil, err
-	} else if seated {
-		vo := agentToVO(a, s.canManage(a, actor))
-		return &vo, nil
-	}
-	// SECURITY: 要求该 Agent 能安全纳入会话——TEAM 会话只接受 GLOBAL 或本团队 Agent
-	// （覆盖未来加入的团队成员），DIRECT/GROUP 要求当前全体成员都有权使用（详见 repo 注释）。
+	// SECURITY: 先做可纳入校验，再处理幂等返回——否则已失去权限者(如被移出团队的成员)
+	// 可对已入座的 agentId 调用本接口，经幂等分支拿到 Agent 详情(含 systemPrompt)。
+	// TEAM 会话只接受 GLOBAL 或本团队 Agent（覆盖未来加入的团队成员），
+	// DIRECT/GROUP 要求当前全体成员都有权使用（详见 repo 注释）。
 	allowed, err := s.repo.CanSeatAgent(ctx, convID, agentID)
 	if err != nil {
 		return nil, err
 	}
 	if !allowed {
 		return nil, ErrAgentForbidden
+	}
+	// 已活跃入座则幂等返回，避免重复入座与重复「已加入会话」系统消息。
+	if seated, err := s.repo.IsSeatActive(ctx, convID, agentID); err != nil {
+		return nil, err
+	} else if seated {
+		vo := agentToVO(a, s.canManage(a, actor))
+		return &vo, nil
 	}
 	if err := s.repo.AddConversationAgent(ctx, convID, agentID, actor.UserID); err != nil {
 		return nil, err
@@ -260,13 +262,14 @@ func (s *ChatAgentService) PostAgentMessage(ctx context.Context, actor ChatActor
 	if !active {
 		return nil, ErrAgentForbidden
 	}
-	// SECURITY: 复查发起者当前仍有权使用该 Agent —— 被移出团队的成员虽仍是
-	// DIRECT/GROUP 会话成员，但不应再以团队 Agent 身份发言。
-	canUse, err := s.repo.CanUserUseAgent(ctx, agentID, actor.UserID)
+	// SECURITY: 发言前重新做会话级可纳入校验（而非仅校验发起者）——
+	// DIRECT/GROUP 会话里若某成员已失去团队资格，则该 TEAM Agent 不应再向其推送/被其读到，
+	// 故整体不再允许以该 Agent 发言；TEAM 会话则要求 Agent 仍属本团队 / GLOBAL。
+	allowed, err := s.repo.CanSeatAgent(ctx, convID, agentID)
 	if err != nil {
 		return nil, err
 	}
-	if !canUse {
+	if !allowed {
 		return nil, ErrAgentForbidden
 	}
 	vo, err := s.chat.AgentMessage(ctx, convID, agentID, content, clientMsgID)

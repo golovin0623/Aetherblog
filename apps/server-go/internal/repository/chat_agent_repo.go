@@ -88,28 +88,6 @@ func (r *ChatAgentRepo) ListAgentsForUser(ctx context.Context, userID int64) ([]
 	return agents, err
 }
 
-// CanUserUseAgent 判断单个用户当前是否有权使用该 Agent（与 ListAgentsForUser 同口径：
-// GLOBAL / 创建者本人 / 所属团队活跃成员）。发言前用它复查发起者的实时权限——
-// 否则被移出团队的成员（仍是 DIRECT/GROUP 会话成员）仍能以团队 Agent 身份发言。
-func (r *ChatAgentRepo) CanUserUseAgent(ctx context.Context, agentID, userID int64) (bool, error) {
-	var ok bool
-	err := r.db.GetContext(ctx, &ok, `
-		SELECT EXISTS(
-			SELECT 1 FROM chat_agents a
-			WHERE a.id = $1 AND a.status = 'ACTIVE' AND (
-			    -- 创建者捷径仅适用于 PRIVATE；TEAM 的「使用权」必须当前仍是活跃团队成员，
-			    -- 否则被移出团队的创建者仍能以团队 Agent 身份发言。
-			    (a.scope = 'PRIVATE' AND a.created_by = $2)
-			    OR a.scope = 'GLOBAL'
-			    OR (a.scope = 'TEAM' AND EXISTS(
-			        SELECT 1 FROM team_members tm
-			        WHERE tm.team_id = a.team_id AND tm.user_id = $2 AND tm.status = 'ACTIVE'
-			    ))
-			)
-		)`, agentID, userID)
-	return ok, err
-}
-
 // CanSeatAgent 判断 Agent 能否安全地纳入会话——不仅看当前成员，还要覆盖会话「未来可能
 // 加入的读者」，避免历史 / 未来消息泄漏给无权成员。
 //
@@ -119,7 +97,7 @@ func (r *ChatAgentRepo) CanUserUseAgent(ctx context.Context, agentID, userID int
 //     GLOBAL，或「team_id 与会话所属团队一致」的 TEAM Agent —— 这样当前及未来的团队
 //     成员都必然有权使用，杜绝跨团队 / PRIVATE Agent 被后来成员读到。
 //   - DIRECT / GROUP 会话: 成员固定，要求**当前每一位成员**都能使用该 Agent
-//     （口径同 CanUserUseAgent：PRIVATE→创建者 / GLOBAL / TEAM→活跃团队成员）。
+//     （PRIVATE→创建者 / GLOBAL / TEAM→活跃团队成员）。
 func (r *ChatAgentRepo) CanSeatAgent(ctx context.Context, convID, agentID int64) (bool, error) {
 	var ok bool
 	err := r.db.GetContext(ctx, &ok, `
@@ -201,7 +179,7 @@ func (r *ChatAgentRepo) IsSeatActive(ctx context.Context, convID, agentID int64)
 //
 // SECURITY: 列出端点仅校验会话成员，但被移出团队的成员仍是 DIRECT/GROUP 会话成员，
 // 不应再读到团队 Agent 的详情（含 system_prompt）。故按调用者的实时可见性过滤
-// （口径与 CanUserUseAgent / ListAgentsForUser 一致）。
+// （PRIVATE→创建者 / GLOBAL / TEAM→活跃团队成员）。
 func (r *ChatAgentRepo) ListConversationAgentsForUser(ctx context.Context, convID, userID int64) ([]model.ChatAgent, error) {
 	var agents []model.ChatAgent
 	err := r.db.SelectContext(ctx, &agents, `
