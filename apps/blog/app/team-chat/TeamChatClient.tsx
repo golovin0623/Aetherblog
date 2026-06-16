@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { ChevronLeft, Hash, MessageSquarePlus, MessagesSquare, Search } from 'lucide-react';
+import { Avatar, spring } from '@aetherblog/ui';
 import { useAgentAuth } from '../agent/lib/agentAuth';
 import { chatApi } from './lib/chatApi';
 import { useChatSocket } from './lib/useChatSocket';
@@ -10,6 +13,7 @@ import ConversationList from './components/ConversationList';
 import MessageThread from './components/MessageThread';
 import Composer from './components/Composer';
 import AgentBar from './components/AgentBar';
+import NewConversationModal from './components/NewConversationModal';
 
 const DEFAULT_SETTINGS: ChatSettings = { themeSkin: 'aurora', bubbleStyle: 'rounded' };
 
@@ -25,6 +29,11 @@ export default function TeamChatClient() {
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
   // conversationId -> (userId -> 过期时间戳)，到点自动清除「正在输入」。
   const [typingByConv, setTypingByConv] = useState<Map<number, Map<number, number>>>(new Map());
+
+  // UI 态：搜索过滤、移动端单栏视图、发起会话弹层。
+  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
+  const [newConvOpen, setNewConvOpen] = useState(false);
 
   const activeIdRef = useRef<number | null>(null);
   activeIdRef.current = activeId;
@@ -143,6 +152,15 @@ export default function TeamChatClient() {
     }
   }, []);
 
+  // 移动端：选中会话即切到消息视图。
+  const handleSelect = useCallback(
+    (conv: ChatConversation) => {
+      setMobileView('thread');
+      void selectConversation(conv);
+    },
+    [selectConversation],
+  );
+
   const loadMore = useCallback(async () => {
     if (!activeId || messages.length === 0) return;
     const convId = activeId;
@@ -222,36 +240,52 @@ export default function TeamChatClient() {
     [activeId],
   );
 
-  // --- 新会话（MVP：按 team / user 数字 ID 打开） ---
-  const startConversation = useCallback(async () => {
-    const raw = window.prompt('打开会话：输入 "u:用户ID" 私聊，或 "t:团队ID" 群聊');
-    if (!raw) return;
-    const [kind, idStr] = raw.split(':');
-    const id = Number(idStr);
-    if (!id) return;
-    try {
-      const conv =
-        kind === 't' ? await chatApi.openTeam(id) : await chatApi.openDirect(id);
+  // --- 发起会话（按 user / team 数字 ID 打开；抛错由弹层就地展示） ---
+  const createConversation = useCallback(
+    async (kind: 'u' | 't', id: number) => {
+      const conv = kind === 't' ? await chatApi.openTeam(id) : await chatApi.openDirect(id);
       await refreshConversations();
+      setMobileView('thread');
       await selectConversation(conv);
-    } catch (e) {
-      window.alert((e as Error).message);
-    }
-  }, [refreshConversations, selectConversation]);
+    },
+    [refreshConversations, selectConversation],
+  );
 
-  if (auth.status === 'loading') {
-    return <div className="p-10 text-center text-[var(--ink-muted)]">加载中…</div>;
-  }
-  if (auth.status === 'guest') {
-    return (
-      <div className="p-10 text-center">
-        <p className="mb-4 text-[var(--ink-secondary)]">请先登录后使用团队聊天。</p>
-        <Link href="/agent/login" className="text-[var(--aurora-1)] underline">
-          前往登录
-        </Link>
-      </div>
-    );
-  }
+  // 派生：搜索过滤后的会话、正在输入的会话集合、活动会话副标题。
+  const filteredConversations = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter((c) => {
+      const title = (c.title || '').toLowerCase();
+      const names = (c.members || [])
+        .map((m) => (m.nickname || m.username || '').toLowerCase())
+        .join(' ');
+      return title.includes(q) || names.includes(q);
+    });
+  }, [conversations, searchQuery]);
+
+  const typingConvIds = useMemo(() => {
+    const now = Date.now();
+    const s = new Set<number>();
+    for (const [conv, inner] of typingByConv) {
+      for (const [uid, exp] of inner) {
+        if (uid !== currentUserId && exp > now) {
+          s.add(conv);
+          break;
+        }
+      }
+    }
+    return s;
+  }, [typingByConv, currentUserId]);
+
+  const activePeer = useMemo(
+    () =>
+      activeConv?.kind === 'DIRECT'
+        ? activeConv.members?.find((m) => m.userId !== currentUserId)
+        : undefined,
+    [activeConv, currentUserId],
+  );
+  const peerOnline = activePeer ? onlineUserIds.has(activePeer.userId) : false;
 
   const typingNames = activeConv
     ? Array.from(typingByConv.get(activeConv.id)?.keys() || [])
@@ -262,42 +296,162 @@ export default function TeamChatClient() {
         })
     : [];
 
-  return (
-    <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-6xl overflow-hidden rounded-2xl border border-[var(--ink-subtle)] bg-[var(--bg-substrate)]">
-      {/* 侧栏 */}
-      <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--ink-subtle)]">
-        <header className="flex items-center justify-between px-4 py-3">
-          <span className="font-display text-lg text-[var(--ink-primary)]">团队聊天</span>
-          <span
-            className={`h-2 w-2 rounded-full ${connected ? 'bg-[var(--signal-success)]' : 'bg-[var(--ink-subtle)]'}`}
-            title={connected ? '实时已连接' : '连接中…'}
-          />
-        </header>
-        <button
-          type="button"
-          onClick={startConversation}
-          className="mx-4 mb-2 rounded-xl border border-[var(--ink-subtle)] py-2 text-sm text-[var(--ink-secondary)] transition hover:bg-[var(--bg-leaf)]"
+  // --- 加载骨架（零 spinner） ---
+  if (auth.status === 'loading') {
+    return (
+      <div className="mx-auto flex h-[calc(100dvh-7rem)] min-h-[460px] max-w-6xl overflow-hidden rounded-3xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)]">
+        <div className="hidden w-80 shrink-0 flex-col gap-2 border-r border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] p-4 md:flex">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="h-10 w-10 shrink-0 animate-pulse rounded-full" style={{ background: 'color-mix(in oklch, var(--ink-primary) 8%, transparent)' }} />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-2/3 animate-pulse rounded" style={{ background: 'color-mix(in oklch, var(--ink-primary) 8%, transparent)' }} />
+                <div className="h-2.5 w-1/2 animate-pulse rounded" style={{ background: 'color-mix(in oklch, var(--ink-primary) 6%, transparent)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-1 items-center justify-center text-[13px] text-[var(--ink-muted)]">加载会话…</div>
+      </div>
+    );
+  }
+
+  // --- 未登录引导 ---
+  if (auth.status === 'guest') {
+    return (
+      <div className="mx-auto flex h-[calc(100dvh-7rem)] min-h-[460px] max-w-6xl items-center justify-center rounded-3xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)]">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={spring.soft}
+          className="flex max-w-sm flex-col items-center px-6 text-center"
         >
-          ＋ 发起会话
-        </button>
-        <div className="flex-1 overflow-y-auto">
+          <span
+            className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl"
+            style={{ background: 'color-mix(in oklch, var(--aurora-1) 14%, transparent)', color: 'var(--aurora-1)' }}
+          >
+            <MessagesSquare size={28} />
+          </span>
+          <h2 className="font-display text-[26px] leading-tight text-[var(--ink-primary)]">对话空间</h2>
+          <p className="mt-2 text-[14px] leading-relaxed text-[var(--ink-secondary)]">
+            登录后即可与团队成员、私聊好友和智能体实时对话。
+          </p>
+          <Link
+            href="/agent/login"
+            className="mt-6 rounded-xl px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+            style={{ background: 'var(--aurora-1)', color: 'var(--bg-void)' }}
+          >
+            前往登录
+          </Link>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex h-[calc(100dvh-7rem)] min-h-[460px] max-w-6xl overflow-hidden rounded-3xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] shadow-[0_24px_64px_-32px_rgba(0,0,0,0.5)]">
+      {/* 侧栏 */}
+      <aside
+        className={`${mobileView === 'thread' ? 'hidden' : 'flex'} w-full flex-col bg-[var(--bg-leaf)] md:flex md:w-80 md:shrink-0 md:border-r md:border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]`}
+      >
+        <header className="flex items-center justify-between px-4 pb-2 pt-4">
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-[22px] leading-none text-[var(--ink-primary)]">对话</h1>
+            <span
+              className="flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
+              style={{
+                background: connected
+                  ? 'color-mix(in oklch, var(--signal-success) 14%, transparent)'
+                  : 'color-mix(in oklch, var(--ink-primary) 8%, transparent)',
+                color: connected ? 'var(--signal-success)' : 'var(--ink-muted)',
+              }}
+              title={connected ? '实时已连接' : '连接中…'}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${connected ? 'animate-pulse' : ''}`}
+                style={{ background: connected ? 'var(--signal-success)' : 'var(--ink-subtle)' }}
+              />
+              {connected ? '实时' : '连接中'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNewConvOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] hover:text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+            aria-label="发起会话"
+            title="发起会话"
+          >
+            <MessageSquarePlus size={19} />
+          </button>
+        </header>
+
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 transition-colors focus-within:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]">
+            <Search size={15} className="shrink-0 text-[var(--ink-muted)]" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索会话"
+              className="min-w-0 flex-1 bg-transparent text-[14px] text-[var(--ink-primary)] outline-none placeholder:text-[var(--ink-subtle)]"
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <ConversationList
-            conversations={conversations}
+            conversations={filteredConversations}
             activeId={activeId}
             onlineUserIds={onlineUserIds}
+            typingConvIds={typingConvIds}
             currentUserId={currentUserId}
-            onSelect={selectConversation}
+            onSelect={handleSelect}
           />
         </div>
       </aside>
 
       {/* 主区 */}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className={`${mobileView === 'list' ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col md:flex`}>
         {activeConv ? (
           <>
-            <header className="border-b border-[var(--ink-subtle)] px-4 py-3">
-              <span className="font-medium text-[var(--ink-primary)]">{activeConv.title}</span>
+            <header className="flex items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-2.5 md:px-4">
+              <button
+                type="button"
+                onClick={() => setMobileView('list')}
+                className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] md:hidden"
+                aria-label="返回会话列表"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              {activeConv.kind === 'DIRECT' ? (
+                <Avatar src={activePeer?.avatar} fallback={activePeer?.nickname || activePeer?.username || activeConv.title} size="sm" />
+              ) : (
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                  style={{ background: 'color-mix(in oklch, var(--aurora-1) 16%, transparent)', color: 'var(--aurora-1)' }}
+                >
+                  <Hash size={16} />
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="truncate font-medium text-[var(--ink-primary)]">
+                  {activeConv.title || (activeConv.kind === 'TEAM' ? '团队群聊' : '私聊')}
+                </div>
+                <div className="flex items-center gap-1.5 text-[12px] text-[var(--ink-muted)]">
+                  {activeConv.kind === 'DIRECT' ? (
+                    <>
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: peerOnline ? 'var(--signal-success)' : 'var(--ink-subtle)' }}
+                      />
+                      {peerOnline ? '在线' : '离线'}
+                    </>
+                  ) : (
+                    `${activeConv.members?.length ?? 0} 位成员`
+                  )}
+                </div>
+              </div>
             </header>
+
             <AgentBar conversationId={activeConv.id} />
             <MessageThread
               messages={messages}
@@ -314,11 +468,30 @@ export default function TeamChatClient() {
             />
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-[var(--ink-muted)]">
-            选择左侧会话，或点击「发起会话」开始聊天
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <span
+              className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+              style={{ background: 'color-mix(in oklch, var(--aurora-1) 12%, transparent)', color: 'var(--aurora-1)' }}
+            >
+              <MessagesSquare size={24} />
+            </span>
+            <p className="font-display text-[19px] text-[var(--ink-primary)]">开始一段对话</p>
+            <p className="mt-1.5 max-w-xs text-[13px] leading-relaxed text-[var(--ink-muted)]">
+              从左侧选择一个会话，或点击右上角发起新的私聊 / 群聊。
+            </p>
+            <button
+              type="button"
+              onClick={() => setNewConvOpen(true)}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] px-4 py-2 text-sm font-medium text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+            >
+              <MessageSquarePlus size={16} />
+              发起会话
+            </button>
           </div>
         )}
       </main>
+
+      <NewConversationModal open={newConvOpen} onClose={() => setNewConvOpen(false)} onCreate={createConversation} />
     </div>
   );
 }
