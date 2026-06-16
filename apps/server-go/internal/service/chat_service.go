@@ -153,6 +153,12 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID int64, req
 		m.AttachmentSize = &req.AttachmentSize
 	}
 
+	return s.emitMessage(ctx, m)
+}
+
+// emitMessage 落库一条消息，更新会话活跃时间并向成员实时扇出，返回组装好的 VO。
+// 由用户发言(SendMessage)、系统提示(SystemMessage)、Agent 发言(AgentMessage)共用。
+func (s *ChatService) emitMessage(ctx context.Context, m *model.ChatMessage) (*dto.ChatMessageVO, error) {
 	saved, created, err := s.repo.InsertMessage(ctx, m)
 	if err != nil {
 		return nil, err
@@ -166,10 +172,36 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID int64, req
 	vo := messageRowToVO(row)
 
 	if created {
-		_ = s.repo.TouchConversation(ctx, convID, saved.CreatedAt)
-		s.broadcast(ctx, convID, realtime.Event{Type: "message", ConversationID: convID, Payload: vo})
+		_ = s.repo.TouchConversation(ctx, saved.ConversationID, saved.CreatedAt)
+		s.broadcast(ctx, saved.ConversationID, realtime.Event{Type: "message", ConversationID: saved.ConversationID, Payload: vo})
 	}
 	return &vo, nil
+}
+
+// SystemMessage 在会话中写入一条系统提示（入群 / 离席 / Agent 纳入等），并向成员扇出。
+func (s *ChatService) SystemMessage(ctx context.Context, convID int64, text string) (*dto.ChatMessageVO, error) {
+	return s.emitMessage(ctx, &model.ChatMessage{
+		ConversationID: convID,
+		SenderType:     model.ChatSenderSystem,
+		MessageType:    model.ChatMsgSystem,
+		Content:        strPtr(text),
+	})
+}
+
+// AgentMessage 以指定 Agent 的身份在会话中发言（sender_type='AGENT' + agent_id）。
+// 调用方(ChatAgentService)负责鉴权：调用者是会话成员且该 Agent 已在会话中活跃入座。
+func (s *ChatService) AgentMessage(ctx context.Context, convID, agentID int64, content, clientMsgID string) (*dto.ChatMessageVO, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, ErrChatBadMessage
+	}
+	return s.emitMessage(ctx, &model.ChatMessage{
+		ConversationID: convID,
+		SenderType:     model.ChatSenderAgent,
+		AgentID:        &agentID,
+		MessageType:    model.ChatMsgText,
+		Content:        strPtr(content),
+		ClientMsgID:    strPtr(clientMsgID),
+	})
 }
 
 // MarkRead 推进已读位点并向其他成员广播已读回执。
@@ -414,6 +446,7 @@ func messageModelToVO(m *model.ChatMessage) dto.ChatMessageVO {
 		AttachmentMeta: jsonToMeta(m.AttachmentMeta),
 		ReplyToID:      m.ReplyToID,
 		ClientMsgID:    m.ClientMsgID,
+		AgentID:        m.AgentID,
 		EditedAt:       m.EditedAt,
 		CreatedAt:      m.CreatedAt,
 	}

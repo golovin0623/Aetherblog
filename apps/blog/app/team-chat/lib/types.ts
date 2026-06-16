@@ -62,6 +62,23 @@ export interface ChatEvent {
   payload?: unknown;
 }
 
+export interface ChatAgent {
+  id: number;
+  name: string;
+  slug: string;
+  avatar?: string;
+  description?: string;
+  providerCode?: string;
+  modelId?: string;
+  systemPrompt?: string;
+  scope: 'PRIVATE' | 'TEAM' | 'GLOBAL';
+  teamId?: number;
+  status: 'ACTIVE' | 'DISABLED';
+  createdBy?: number;
+  canManage: boolean;
+  createdAt: string;
+}
+
 export interface AttachmentResult {
   url: string;
   name: string;

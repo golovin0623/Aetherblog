@@ -83,7 +83,14 @@ export default function MessageThread({
             <div key={m.clientMsgId || m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex max-w-[75%] flex-col ${mine ? 'items-end' : 'items-start'}`}>
                 {!mine && (
-                  <span className="mb-0.5 text-xs text-[var(--ink-muted)]">{m.senderName}</span>
+                  <span className="mb-0.5 flex items-center gap-1 text-xs text-[var(--ink-muted)]">
+                    {m.senderName}
+                    {m.senderType === 'AGENT' && (
+                      <span className="rounded bg-[var(--aurora-2)] px-1 font-mono text-[9px] uppercase tracking-wider text-[var(--bg-void)]">
+                        AI
+                      </span>
+                    )}
+                  </span>
                 )}
                 <div
                   className={`px-3 py-2 text-[var(--ink-primary)] ${bubbleRadius(settings.bubbleStyle, mine)}`}

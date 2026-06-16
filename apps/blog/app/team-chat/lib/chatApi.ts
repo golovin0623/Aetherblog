@@ -2,6 +2,7 @@
 
 import type {
   AttachmentResult,
+  ChatAgent,
   ChatConversation,
   ChatMember,
   ChatMessage,
@@ -108,4 +109,43 @@ export const chatApi = {
       body: fd,
     }).then((r) => unwrap<AttachmentResult>(r));
   },
+
+  // --- Phase 2: Agent 纳入与管理 ---
+
+  listAgents: () => get<ChatAgent[]>('/agents'),
+
+  createAgent: (body: {
+    name: string;
+    avatar?: string;
+    description?: string;
+    scope?: 'PRIVATE' | 'TEAM' | 'GLOBAL';
+    teamId?: number;
+    providerCode?: string;
+    modelId?: string;
+    systemPrompt?: string;
+  }) => post<ChatAgent>('/agents', body),
+
+  deleteAgent: (agentId: number) =>
+    fetch(`/api/v1/chat/agents/${agentId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).then((r) => unwrap<void>(r)),
+
+  listConversationAgents: (conversationId: number) =>
+    get<ChatAgent[]>(`/conversations/${conversationId}/agents`),
+
+  seatAgent: (conversationId: number, agentId: number) =>
+    post<ChatAgent>(`/conversations/${conversationId}/agents`, { agentId }),
+
+  unseatAgent: (conversationId: number, agentId: number) =>
+    fetch(`/api/v1/chat/conversations/${conversationId}/agents/${agentId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).then((r) => unwrap<void>(r)),
+
+  postAgentMessage: (conversationId: number, agentId: number, content: string, clientMsgId?: string) =>
+    post<ChatMessage>(`/conversations/${conversationId}/agents/${agentId}/messages`, {
+      content,
+      clientMsgId,
+    }),
 };

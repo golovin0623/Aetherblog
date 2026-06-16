@@ -503,6 +503,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	chatGroup := api.Group("/v1/chat", authMW, pwdRotated, chatWriteLimit)
 	handler.NewChatHandler(chatSvc, mediaSvc, settingSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup)
 
+	// --- Agent 纳入与管理（Phase 2，migration 000083） ---
+	// Agent 定义 CRUD + 入座会话 + 以 Agent 身份发言（人工操作；Phase 3 的 AI 自动回复复用同一路径）。
+	// 复用 chatGroup 的鉴权与限流。
+	chatAgentRepo := repository.NewChatAgentRepo(s.DB)
+	chatAgentSvc := service.NewChatAgentService(chatAgentRepo, chatRepo, chatSvc)
+	handler.NewChatAgentHandler(chatAgentSvc).Mount(chatGroup)
+
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))

@@ -324,13 +324,13 @@ func (r *ChatRepo) InsertMessage(ctx context.Context, m *model.ChatMessage) (*mo
 		INSERT INTO chat_messages (
 			conversation_id, sender_id, sender_type, message_type, content,
 			attachment_url, attachment_name, attachment_mime, attachment_size, attachment_meta,
-			reply_to_id, client_msg_id, created_at
+			reply_to_id, client_msg_id, agent_id, created_at
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CURRENT_TIMESTAMP)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,CURRENT_TIMESTAMP)
 		RETURNING *`,
 		m.ConversationID, m.SenderID, m.SenderType, m.MessageType, m.Content,
 		m.AttachmentURL, m.AttachmentName, m.AttachmentMime, m.AttachmentSize, m.AttachmentMeta,
-		m.ReplyToID, m.ClientMsgID,
+		m.ReplyToID, m.ClientMsgID, m.AgentID,
 	).StructScan(&out)
 	if err != nil {
 		if isUniqueViolation(err) && m.ClientMsgID != nil {
@@ -358,10 +358,12 @@ func (r *ChatRepo) GetMessageRow(ctx context.Context, id int64) (*ChatMessageRow
 	var row ChatMessageRow
 	err := r.db.GetContext(ctx, &row, `
 		SELECT msg.*,
-		       COALESCE(u.nickname, u.username) AS sender_name,
-		       u.avatar AS sender_avatar
+		       COALESCE(ag.name, u.nickname, u.username,
+		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
+		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
 		FROM chat_messages msg
 		LEFT JOIN users u ON u.id = msg.sender_id
+		LEFT JOIN chat_agents ag ON ag.id = msg.agent_id
 		WHERE msg.id = $1`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -377,10 +379,12 @@ func (r *ChatRepo) ListMessages(ctx context.Context, convID int64, beforeID *int
 	var rows []ChatMessageRow
 	err := r.db.SelectContext(ctx, &rows, `
 		SELECT msg.*,
-		       COALESCE(u.nickname, u.username) AS sender_name,
-		       u.avatar AS sender_avatar
+		       COALESCE(ag.name, u.nickname, u.username,
+		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
+		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
 		FROM chat_messages msg
 		LEFT JOIN users u ON u.id = msg.sender_id
+		LEFT JOIN chat_agents ag ON ag.id = msg.agent_id
 		WHERE msg.conversation_id = $1
 		  AND msg.deleted_at IS NULL
 		  AND ($2::bigint IS NULL OR msg.id < $2)
