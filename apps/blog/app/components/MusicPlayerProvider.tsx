@@ -18,7 +18,6 @@ import {
   ChevronDown,
   Disc3,
   ListMusic,
-  Maximize2,
   Music2,
   Pause,
   Play,
@@ -768,6 +767,36 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   const activeLyricRef = useRef<HTMLParagraphElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
+  // 迷你浮标:默认只露一颗右下角的浮标(播放时带均衡器/脉冲环),
+  // 点击才展开紧凑控制面板 —— 把"前台显眼控制条"降级为"后台不打扰的浮标"。
+  const [miniOpen, setMiniOpen] = useState(false);
+  const miniPanelRef = useRef<HTMLDivElement>(null);
+  const miniOrbRef = useRef<HTMLButtonElement>(null);
+
+  // 迷你面板:Esc 关闭 + 点击浮标/面板以外区域关闭(浮标自身的 onClick 负责 toggle)
+  useEffect(() => {
+    if (!miniOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMiniOpen(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (miniPanelRef.current?.contains(target) || miniOrbRef.current?.contains(target)) return;
+      setMiniOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [miniOpen]);
+
+  // 进入沉浸大厅时强制收起迷你面板,避免两层播放面叠加
+  useEffect(() => {
+    if (expanded) setMiniOpen(false);
+  }, [expanded]);
+
   // 沉浸层:Esc 关闭 + 打开时锁滚动 + 焦点落到关闭键(对话框语义)
   useEffect(() => {
     if (!expanded) return;
@@ -803,79 +832,151 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   if (!canRender || !currentTrack || pathname.startsWith('/agent/workspace')) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
+  const cover = resolveMusicCoverSrc(currentTrack);
 
   return (
     <>
-      {/* 沉浸层打开时隐藏 dock —— dock(z-70)原本盖在沉浸层(z-65)之上,移动端尤其会压住沉浸层控件 */}
+      {/* 迷你浮标 —— 沉浸大厅未打开时常驻右下角:播放时带均衡器跳动 + 脉冲环,
+          静止时只是一颗带播放三角的小球。点击才展开紧凑控制面板,
+          取代旧的「全宽常驻控制条」,把音乐降级为后台不打扰的存在。 */}
       {!expanded && (
-      <div data-music-skin={skin} className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
-        <div className="surface-raised pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden rounded-[1.35rem] text-[var(--ink-primary)]">
-          {/* 移动端:全宽进度条置于卡片顶部(更易点按);桌面端走中列内联进度条 */}
-          <div className="px-2.5 pt-2.5 sm:hidden">
-            <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="md" />
-          </div>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-2.5 sm:gap-4 sm:p-3">
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-              aria-label="打开音乐大厅播放器"
+        <div
+          data-music-skin={skin}
+          className="pointer-events-none fixed bottom-0 left-0 z-[70] flex flex-col items-start gap-3 pb-[max(1.1rem,env(safe-area-inset-bottom))] pl-[max(1.1rem,env(safe-area-inset-left))]"
+        >
+          {miniOpen && (
+            <div
+              ref={miniPanelRef}
+              role="dialog"
+              aria-label="迷你播放器"
+              className="surface-overlay pointer-events-auto w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-[1.4rem] p-4 text-[var(--ink-primary)] animate-in fade-in slide-in-from-bottom-2 duration-200"
             >
-              <CoverDisc track={currentTrack} playing={isPlaying} size="sm" />
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]">
-                <Maximize2 className="h-3 w-3" />
-              </span>
-            </button>
-
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="inline-flex h-5 items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--aurora-1)]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex h-6 items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
                   {playlistName}
                 </span>
-                <span className="truncate text-[11px] text-[var(--ink-muted)]">
-                  {currentIndex + 1}/{tracks.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] tnum text-[var(--ink-muted)]">{currentIndex + 1}/{tracks.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => setMiniOpen(false)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    aria-label="收起迷你播放器"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <p className="mt-1 truncate text-sm font-bold text-[var(--ink-primary)] sm:text-base">{currentTrack.title}</p>
-              <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
-                {currentTrack.artist || '未知艺术家'}{activeLine ? ` · ${activeLine}` : ''}
-              </p>
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-2 hidden sm:block" />
-            </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => setShuffle((value) => !value)}
-                className={cn(
-                  'hidden h-10 w-10 items-center justify-center rounded-full border transition-colors sm:flex',
-                  shuffle
-                    ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]'
-                    : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
-                )}
-                aria-label="随机播放"
-                aria-pressed={shuffle}
-              >
-                <Shuffle className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={previousTrack} className="hidden h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] sm:flex" aria-label="上一首">
-                <SkipBack className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={togglePlayback}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
-              >
-                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
-              </button>
-              <button type="button" onClick={nextTrack} className="flex h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]" aria-label="下一首">
-                <SkipForward className="h-4 w-4" />
-              </button>
+              <div className="mt-3 flex items-center gap-3">
+                <CoverDisc track={currentTrack} playing={isPlaying} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-[var(--ink-primary)]" title={currentTrack.title}>{currentTrack.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">{currentTrack.artist || '未知艺术家'}</p>
+                  {activeLine ? <p className="mt-0.5 truncate text-[11px] text-[var(--ink-muted)]">{activeLine}</p> : null}
+                </div>
+              </div>
+
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-4" />
+              <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
+                <span>{formatMusicClock(progress)}</span>
+                <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
+              </div>
+
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShuffle((value) => !value)}
+                  className={cn(
+                    'flex h-9 w-9 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                    shuffle
+                      ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]'
+                      : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                  )}
+                  aria-label="随机播放"
+                  aria-pressed={shuffle}
+                >
+                  <Shuffle className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={previousTrack} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                  <SkipBack className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={togglePlayback}
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
+                >
+                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
+                </button>
+                <button type="button" onClick={nextTrack} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setMiniOpen(false); setExpanded(true); }}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-xs font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                >
+                  <Disc3 className="h-3.5 w-3.5" />
+                  音乐大厅
+                </button>
+                <Link
+                  href="/music"
+                  onClick={() => setMiniOpen(false)}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-xs font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                >
+                  <ListMusic className="h-3.5 w-3.5" />
+                  歌单页
+                </Link>
+              </div>
             </div>
-          </div>
+          )}
+
+          <button
+            ref={miniOrbRef}
+            type="button"
+            onClick={() => setMiniOpen((value) => !value)}
+            className="group pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)]"
+            aria-label={miniOpen ? '收起迷你播放器' : isPlaying ? `正在播放 ${currentTrack.title}，点击展开播放器` : '展开迷你播放器'}
+            aria-expanded={miniOpen}
+          >
+            {isPlaying && (
+              <span aria-hidden="true" className="music-orb-ring absolute inset-0 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]" />
+            )}
+            <span className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[var(--bg-raised)] shadow-[0_14px_40px_-16px_color-mix(in_oklch,black_70%,transparent)] transition-transform duration-200 group-hover:scale-105">
+              {cover ? (
+                <Image
+                  src={cover}
+                  alt=""
+                  fill
+                  sizes="3.5rem"
+                  className={cn('object-cover opacity-55', isPlaying && 'music-vinyl-spin')}
+                  unoptimized
+                />
+              ) : (
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,color-mix(in_oklch,var(--aurora-1)_38%,transparent),var(--bg-void))]" />
+              )}
+              <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,transparent,color-mix(in_oklch,black_70%,transparent))]" />
+              {isPlaying ? (
+                <span className="relative z-10 flex h-6 items-end gap-[3px]" aria-hidden="true">
+                  <span className="music-eq-bar" />
+                  <span className="music-eq-bar [animation-delay:140ms]" />
+                  <span className="music-eq-bar [animation-delay:260ms]" />
+                </span>
+              ) : (
+                <span className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_6px_16px_-6px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)]">
+                  <Play className="h-3.5 w-3.5 translate-x-px" />
+                </span>
+              )}
+            </span>
+            <span className="pointer-events-none absolute left-[calc(100%+0.6rem)] top-1/2 hidden max-w-[12rem] -translate-y-1/2 truncate whitespace-nowrap rounded-full surface-raised px-3 py-1.5 text-xs font-bold text-[var(--ink-primary)] opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 md:block">
+              {currentTrack.title}
+            </span>
+          </button>
         </div>
-      </div>
       )}
 
       {expanded && (
