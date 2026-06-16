@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -63,8 +64,8 @@ type LinkedTarget struct {
 // 使用 singleflight 防止缓存过期瞬间的并发击穿。
 type ContainerMonitorService struct {
 	client   *http.Client
-	endpoint string // 描述性字符串，例如 "unix:///var/run/docker.sock" 或 "http://docker-socket-proxy:2375"
-	baseURL  string // HTTP 请求 URL 前缀（unix 模式下固定为 "http://docker"）
+	endpoint string       // 描述性字符串，例如 "unix:///var/run/docker.sock" 或 "http://docker-socket-proxy:2375"
+	baseURL  string       // HTTP 请求 URL 前缀（unix 模式下固定为 "http://docker"）
 	socketOK func() error // 启动前快速探测 endpoint 是否可达；返回非 nil 即视为不可用
 
 	cacheMu    sync.RWMutex
@@ -277,7 +278,7 @@ func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 
 	// 仅保留 aetherblog 相关容器（按名称或 compose project 标签过滤）
 	var infos []ContainerInfo
-	var runningIndices []int // 需要获取 stats 的容器索引
+	var runningIndices []int    // 需要获取 stats 的容器索引
 	var runningFullIDs []string // 对应的完整容器 ID
 	for _, c := range containers {
 		name := ""
@@ -464,8 +465,17 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 	}
 
 	// 内存使用量及使用率
-	info.MemoryUsed = int64(stats.MemoryStats.Usage)
-	info.MemoryLimit = int64(stats.MemoryStats.Limit)
+	usage := stats.MemoryStats.Usage
+	if usage > math.MaxInt64 {
+		usage = math.MaxInt64
+	}
+	info.MemoryUsed = int64(usage)
+
+	limit := stats.MemoryStats.Limit
+	if limit > math.MaxInt64 {
+		limit = math.MaxInt64
+	}
+	info.MemoryLimit = int64(limit)
 	if stats.MemoryStats.Limit > 0 {
 		info.MemoryPercent = float64(stats.MemoryStats.Usage) / float64(stats.MemoryStats.Limit) * 100.0
 	}
