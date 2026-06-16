@@ -767,7 +767,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   const activeLyricRef = useRef<HTMLParagraphElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // 迷你浮标:默认只露一颗右下角的浮标(播放时带均衡器/脉冲环),
+  // 迷你浮标:默认只露一颗左下角的浮标(播放时带均衡器/脉冲环),
   // 点击才展开紧凑控制面板 —— 把"前台显眼控制条"降级为"后台不打扰的浮标"。
   const [miniOpen, setMiniOpen] = useState(false);
   const miniPanelRef = useRef<HTMLDivElement>(null);
@@ -786,9 +786,12 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('pointerdown', onPointerDown);
+    // 打开时把焦点移入面板(role=dialog),让键盘 Tab 顺序进入控件而非越过浮标(preventScroll 避免页面跳动)
+    const focusTimer = window.setTimeout(() => miniPanelRef.current?.focus({ preventScroll: true }), 0);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('pointerdown', onPointerDown);
+      window.clearTimeout(focusTimer);
     };
   }, [miniOpen]);
 
@@ -836,7 +839,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
   return (
     <>
-      {/* 迷你浮标 —— 沉浸大厅未打开时常驻右下角:播放时带均衡器跳动 + 脉冲环,
+      {/* 迷你浮标 —— 沉浸大厅未打开时常驻左下角:播放时带均衡器跳动 + 脉冲环,
           静止时只是一颗带播放三角的小球。点击才展开紧凑控制面板,
           取代旧的「全宽常驻控制条」,把音乐降级为后台不打扰的存在。 */}
       {!expanded && (
@@ -849,7 +852,8 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               ref={miniPanelRef}
               role="dialog"
               aria-label="迷你播放器"
-              className="surface-overlay pointer-events-auto w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-[1.4rem] p-4 text-[var(--ink-primary)] animate-in fade-in slide-in-from-bottom-2 duration-200"
+              tabIndex={-1}
+              className="surface-overlay pointer-events-auto w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-[1.4rem] p-4 text-[var(--ink-primary)] focus:outline-none animate-in fade-in slide-in-from-bottom-2 duration-200"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex h-6 items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
@@ -860,7 +864,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <button
                     type="button"
                     onClick={() => setMiniOpen(false)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']"
                     aria-label="收起迷你播放器"
                   >
                     <ChevronDown className="h-4 w-4" />
@@ -888,7 +892,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   type="button"
                   onClick={() => setShuffle((value) => !value)}
                   className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                    'flex h-11 w-11 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
                     shuffle
                       ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]'
                       : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
@@ -898,7 +902,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 >
                   <Shuffle className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={previousTrack} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                <button type="button" onClick={previousTrack} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
                   <SkipBack className="h-4 w-4" />
                 </button>
                 <button
@@ -909,7 +913,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 >
                   {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
                 </button>
-                <button type="button" onClick={nextTrack} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                <button type="button" onClick={nextTrack} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
                   <SkipForward className="h-4 w-4" />
                 </button>
               </div>
@@ -918,7 +922,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 <button
                   type="button"
                   onClick={() => { setMiniOpen(false); setExpanded(true); }}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-xs font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-xs font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                 >
                   <Disc3 className="h-3.5 w-3.5" />
                   音乐大厅
@@ -926,7 +930,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 <Link
                   href="/music"
                   onClick={() => setMiniOpen(false)}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-xs font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-xs font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                 >
                   <ListMusic className="h-3.5 w-3.5" />
                   歌单页
@@ -939,7 +943,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
             ref={miniOrbRef}
             type="button"
             onClick={() => setMiniOpen((value) => !value)}
-            className="group pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)]"
+            className="group pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
             aria-label={miniOpen ? '收起迷你播放器' : isPlaying ? `正在播放 ${currentTrack.title}，点击展开播放器` : '展开迷你播放器'}
             aria-expanded={miniOpen}
           >
