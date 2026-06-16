@@ -417,7 +417,14 @@ export default function TeamChatClient() {
             <header className="flex items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-3 py-2.5 md:px-4">
               <button
                 type="button"
-                onClick={() => setMobileView('list')}
+                onClick={() => {
+                  // 移动端返回列表：清空活动会话。否则 activeIdRef 仍指向该会话，
+                  // WebSocket message 处理器会把隐藏的会话当「当前」继续 markRead，
+                  // 误清未读 / 读回执（PR #789 评审 P2）。桌面端此按钮 md:hidden 不触发。
+                  activeIdRef.current = null;
+                  setActiveId(null);
+                  setMobileView('list');
+                }}
                 className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] md:hidden"
                 aria-label="返回会话列表"
               >
