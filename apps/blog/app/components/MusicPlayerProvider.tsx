@@ -853,8 +853,8 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     !currentTrack ||
     !engaged ||
     dismissed ||
-    pathname.startsWith('/agent/workspace') ||
-    pathname.startsWith('/team-chat')
+    pathname?.startsWith('/agent/workspace') ||
+    pathname?.startsWith('/team-chat')
   )
     return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';

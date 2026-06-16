@@ -36,6 +36,19 @@ function senderKey(m: ChatMessage): string {
 }
 
 /**
+ * 气泡圆角 —— 尊重用户保存的 bubbleStyle 偏好：
+ *  · square：四角小圆角，无尾角
+ *  · sharp：圆角 + 末条尖锐尾角
+ *  · rounded（默认）：iMessage 式圆角 + 末条柔和尾角
+ */
+function bubbleRadius(style: string | undefined, mine: boolean, lastInGroup: boolean): string {
+  if (style === 'square') return 'rounded-md';
+  if (!lastInGroup) return 'rounded-2xl';
+  if (style === 'sharp') return mine ? 'rounded-2xl rounded-br-sm' : 'rounded-2xl rounded-bl-sm';
+  return mine ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md';
+}
+
+/**
  * 消息流：iMessage 式分组（连续同发送者折叠头像、仅末条带气泡尾角与时间）、
  * 日期分隔、入场淡入、动效打字气泡，以及滚离底部时浮现的「回到最新」按钮。
  */
@@ -104,7 +117,11 @@ export default function MessageThread({
   }, [messages, currentUserId]);
 
   const scrollToEnd = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    endRef.current?.scrollIntoView({ behavior });
+    // 尊重 prefers-reduced-motion：开启时回退为即时滚动，避免眩晕。
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    endRef.current?.scrollIntoView({ behavior: prefersReduced ? 'auto' : behavior });
     setUnseen(0);
   }, []);
 
@@ -179,13 +196,7 @@ export default function MessageThread({
           }
 
           const { msg: m, mine, isAgent, firstInGroup, lastInGroup } = row;
-          const radius = mine
-            ? lastInGroup
-              ? 'rounded-2xl rounded-br-md'
-              : 'rounded-2xl'
-            : lastInGroup
-              ? 'rounded-2xl rounded-bl-md'
-              : 'rounded-2xl';
+          const radius = bubbleRadius(settings.bubbleStyle, mine, lastInGroup);
 
           return (
             <motion.div

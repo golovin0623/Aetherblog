@@ -7,6 +7,7 @@ import { ChevronLeft, Hash, MessageSquarePlus, MessagesSquare, Search } from 'lu
 import { Avatar, spring } from '@aetherblog/ui';
 import { useAgentAuth } from '../agent/lib/agentAuth';
 import { chatApi } from './lib/chatApi';
+import { newClientId } from './lib/ids';
 import { useChatSocket } from './lib/useChatSocket';
 import type { ChatConversation, ChatEvent, ChatMessage, ChatSettings } from './lib/types';
 import ConversationList from './components/ConversationList';
@@ -180,7 +181,7 @@ export default function TeamChatClient() {
   const sendText = useCallback(
     async (text: string) => {
       if (!activeId) return;
-      const clientMsgId = crypto.randomUUID();
+      const clientMsgId = newClientId();
       const optimistic: ChatMessage = {
         id: -Date.now(),
         conversationId: activeId,
@@ -228,7 +229,7 @@ export default function TeamChatClient() {
           attachmentMime: att.mime,
           attachmentSize: att.size,
           attachmentMeta: att.width ? { width: att.width, height: att.height } : undefined,
-          clientMsgId: crypto.randomUUID(),
+          clientMsgId: newClientId(),
         });
         // 防竞态：上传 + 发送返回前已切走 → 不并进当前会话。
         if (activeIdRef.current !== convId) return;
@@ -454,6 +455,7 @@ export default function TeamChatClient() {
 
             <AgentBar conversationId={activeConv.id} />
             <MessageThread
+              key={activeConv.id}
               messages={messages}
               currentUserId={currentUserId}
               typingNames={typingNames}

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Bot, Plus, Sparkles, X } from 'lucide-react';
 import { ConfirmModal, Modal, spring } from '@aetherblog/ui';
 import { chatApi } from '../lib/chatApi';
+import { newClientId } from '../lib/ids';
 import type { ChatAgent } from '../lib/types';
 
 interface Props {
@@ -81,12 +82,12 @@ export default function AgentBar({ conversationId }: Props) {
   }, [removeAgent, conversationId, refresh]);
 
   const sendAs = useCallback(async () => {
-    if (!speakAgent) return;
+    if (busy || !speakAgent) return;
     const text = speakText.trim();
     if (!text) return;
     setBusy(true);
     try {
-      await chatApi.postAgentMessage(conversationId, speakAgent.id, text, crypto.randomUUID());
+      await chatApi.postAgentMessage(conversationId, speakAgent.id, text, newClientId());
       setSpeakAgent(null);
       setSpeakText('');
     } catch (e) {
@@ -94,7 +95,7 @@ export default function AgentBar({ conversationId }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [speakAgent, speakText, conversationId]);
+  }, [busy, speakAgent, speakText, conversationId]);
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-2">

@@ -30,6 +30,7 @@ export default function NewConversationModal({ open, onClose, onCreate }: Props)
   const active = KINDS.find((x) => x.k === kind)!;
 
   const submit = async () => {
+    if (busy) return;
     const id = Number(value.trim());
     if (!id || id <= 0) {
       setError('请输入有效的数字 ID');

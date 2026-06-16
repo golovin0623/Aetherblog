@@ -1,5 +1,9 @@
 // 团队聊天时间格式化 —— 列表相对时间、消息气泡时间、日期分隔标签、分组间隔判定。
 // 集中在此处，供 ConversationList / MessageThread 复用，保证全站时间口径一致。
+//
+// 注意：`new Date(无效串)` 不抛异常而是返回 Invalid Date，其 getHours() 等返回 NaN，
+// 会绕过 try-catch 渲染出 "NaN:NaN" / "NaN月NaN日" 脏数据。所以每个解析点都显式
+// 用 isNaN(d.getTime()) 校验有效性。
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -18,6 +22,7 @@ function isSameDay(a: Date, b: Date): boolean {
 export function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   } catch {
     return '';
@@ -28,6 +33,7 @@ export function formatTime(iso: string): string {
 export function formatDayLabel(iso: string): string {
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
@@ -47,6 +53,7 @@ export function formatListTime(iso?: string): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
@@ -63,7 +70,10 @@ export function formatListTime(iso?: string): string {
 export function crossesDay(prevIso: string | undefined, iso: string): boolean {
   if (!prevIso) return true;
   try {
-    return !isSameDay(new Date(prevIso), new Date(iso));
+    const a = new Date(prevIso);
+    const b = new Date(iso);
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return false;
+    return !isSameDay(a, b);
   } catch {
     return false;
   }
@@ -72,7 +82,10 @@ export function crossesDay(prevIso: string | undefined, iso: string): boolean {
 /** 相邻同发送者的两条消息是否仍属同一视觉分组（间隔 < 5 分钟）。 */
 export function withinGroupGap(prevIso: string, iso: string): boolean {
   try {
-    return Math.abs(new Date(iso).getTime() - new Date(prevIso).getTime()) < 5 * 60 * 1000;
+    const a = new Date(prevIso).getTime();
+    const b = new Date(iso).getTime();
+    if (isNaN(a) || isNaN(b)) return false;
+    return Math.abs(b - a) < 5 * 60 * 1000;
   } catch {
     return false;
   }
