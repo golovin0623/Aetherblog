@@ -844,19 +844,19 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     });
   }, [expanded, activeLyricIndex]);
 
-  // 不渲染 dock 的情形：
-  //  · 功能未开启 / 无可播曲目（canRender / currentTrack）
+  // 整个播放器都不渲染：功能未开启 / 无可播曲目。
+  if (!canRender || !currentTrack) return null;
+
+  // dock（完整 bar / 最小化 pill）的显示门控：
   //  · 访客尚未开始播放，或已 ✕ 关闭（engaged / dismissed）—— 不打扰未听歌的人
   //  · 全屏「应用型」表面（Agent 工作台 / 对话空间）自带底部 composer，悬浮 dock 会盖住输入框
-  if (
-    !canRender ||
-    !currentTrack ||
+  // 注意：沉浸全屏 expanded 是用户显式打开的模态，**不受此门控约束** —— 否则未播放就点
+  // 「沉浸模式」时 expanded 副作用锁了 body 滚动却无 UI 渲染，页面会卡死（PR #789 评审 P2）。
+  const dockHidden =
     !engaged ||
     dismissed ||
     pathname?.startsWith('/agent/workspace') ||
-    pathname?.startsWith('/team-chat')
-  )
-    return null;
+    pathname?.startsWith('/team-chat');
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
 
@@ -864,7 +864,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     <>
       {/* 完整 bar ⇄ 最小化 pill 平滑切换；沉浸层打开时两者皆隐藏 */}
       <AnimatePresence>
-      {!expanded && !minimized && (
+      {!dockHidden && !expanded && !minimized && (
       <motion.div
         key="music-dock-bar"
         data-music-skin={skin}
@@ -964,7 +964,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
       )}
 
       {/* 最小化 pill —— 左下角浮标：点封面展开回完整 bar，内置播放/暂停与关闭 */}
-      {!expanded && minimized && (
+      {!dockHidden && !expanded && minimized && (
         <motion.div
           key="music-dock-mini"
           data-music-skin={skin}
