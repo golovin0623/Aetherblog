@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 对话空间 UI 重做 · 顶级聊天体验 + 导航入口接入 (2026-06-16, branch claude/amazing-allen-a8b180)
+
+**背景：** 团队聊天（`/team-chat`）此前虽功能完整，但 (1) 从未接入任何导航 —— `BlogHeader`（桌面）与 `MobileMenu`（移动）的链接清单里都没有它，页面成了「无入口孤岛」，只能手敲 URL 进入；(2) UI 粗糙且违反 Aether Codex 多条硬规则（`window.prompt`/`alert`/`confirm`、emoji 图标、裸字号、零动效、文字「加载中…」而非骨架屏）。本次对标顶级聊天软件（iMessage / Telegram / Linear）做整体重做，并补齐入口。
+
+**Added — 导航入口：** `BlogHeader` 桌面导航与 `MobileMenu` 移动菜单各新增「对话」项（`/team-chat`，`MessagesSquare` 图标，aurora 选中态），`NavPage` 类型与 activePage 同步逻辑同步扩展。
+
+**Changed — 对话空间 UI（`app/team-chat/`）：**
+- **响应式主从布局**：桌面双栏（会话栏 + 消息区）合于一张悬浮圆角面板；移动端单栏，选中会话滑入消息视图并带返回箭头。
+- **会话栏**：搜索过滤、在线状态环、aurora 未读徽标、滑动激活光带、「正在输入…」预览、骨架屏加载（零 spinner）。
+- **消息流**：iMessage 式发送者分组（折叠头像 + 末条气泡尾角）、日期分隔（今天/昨天）、入场淡入动效、动效打字气泡、精修附件卡片、滚离底部时浮现的「回到最新」浮钮。
+- **输入器**：圆角自增高输入条 + 回形针附件 + aurora 发送按钮（按压弹簧）。
+- **原生弹窗全部换成共享组件**：发起会话 / 纳入智能体 / 以 Agent 身份发言走共享 `Modal`，移除智能体走 `ConfirmModal` —— 不再使用 `window.prompt`/`alert`/`confirm`（符合 §3.5）。
+- 全程 token 配色 + `color-mix` aurora 着色、`@aetherblog/ui` 动效预设、lucide 图标、**零 `dark:` 变体**（token 随 `:root.light` 自动翻转）。新增 `lib/format.ts`（时间/分组/附件大小）与 `components/NewConversationModal.tsx`。
+
+**Changed — 全局迷你播放器（顺带修复「常驻关不掉」）：** `MusicPlayerProvider` 的底部 dock 此前只要后台开启播放器 + 歌单非空就**常驻每页**（不看是否在播放，且无关闭入口）。本次改为：(1) **仅在访客本次会话开始播放后才浮出**（新增 `engaged` 内存门控；刷新后 `isPlaying` 复位 → 默认不显示），不打扰未听歌的访客；(2) dock 新增 **✕ 关闭按钮**（`closeDock`：暂停并收起，下次播放再回来）；(3) 在 `/team-chat` 与 `/agent/workspace` 两个全屏「应用型」表面下不渲染（自带底部 composer，悬浮 dock 会盖住输入框）；(4) dock 现为 **完整 bar ⇄ 最小化 pill ⇄ 沉浸全屏** 三态 —— bar 新增「缩小」按钮收起为左下角浮标 pill（不暂停、继续播放，pill 内含封面/播放暂停/关闭，点封面展开回 bar），bar 封面仍可展开沉浸全屏。三态切换与沉浸层进出全部走 `framer-motion` + `AnimatePresence`（`spring.soft` 入场 bar、`spring.bouncy` 弹出 pill、`transition.flow` 淡入缩放沉浸层）。`engaged` / `dismissed` / `closeDock` 经 `MusicPlayerContextValue` 透传给 `PersistentMusicDock`，`minimized` 为 dock 本地 UI 态（关闭/隐藏后复位）。
+
+**Tests：** blog `tsc --noEmit` 0 error；`design-system:check` 0 error；preview 实测桌面明/暗、移动列表/会话、真实路由登录门禁，控制台零报错。
+
+**📄 文档影响：** [已更新 CHANGELOG.md]。`/team-chat` 仍属 Phase 1/2 已记录模块，本次为前端体验重做 + 入口接入，无新增 API / DB schema / packages/ui 组件，故 architecture.md / api-handlers.md 无需更新。
+
 ### Added — 团队聊天 · Agent 纳入与管理（Team Chat Phase 2）(2026-06-15, branch claude/team-chat-agents-gms0he)
 
 **背景：** 在 Phase 1 预留的 `sender_type='AGENT'` / `member_role='AGENT'` 基础上，落地「智能体（Agent）纳入聊天与管理」：定义 Agent（名称/头像/人设/绑定模型/可见范围）、把 Agent 入座到会话、消息归属到 Agent。本阶段聚焦**纳入与管理 + 身份归属**（可人工操作 Agent 人设发言，完整可测）；**Agent 自动生成回复（调用 LLM / 工作流）为 Phase 3**，`provider_code`/`model_id`/`system_prompt` 字段已预留绑定位。

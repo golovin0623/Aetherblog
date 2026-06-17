@@ -19,6 +19,7 @@ import {
   Disc3,
   ListMusic,
   Maximize2,
+  Minimize2,
   Music2,
   Pause,
   Play,
@@ -28,6 +29,8 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { spring, transition } from '@aetherblog/ui';
 import { getMusicPlayer, type MusicPlayer, type MusicTrack } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import {
@@ -281,6 +284,12 @@ interface MusicPlayerContextValue {
   lyrics: LyricLine[];
   activeLyricIndex: number;
   canRender: boolean;
+  /** 访客本次会话是否已开始过播放（dock 仅在此后浮出，不打扰未听歌的人） */
+  engaged: boolean;
+  /** 访客是否已 ✕ 关闭 dock（到下次播放前不再显示） */
+  dismissed: boolean;
+  /** 关闭 dock：暂停并隐藏，直到下次播放再回来 */
+  closeDock: () => void;
   canUseSurface: (surface: 'home' | 'profile') => boolean;
   playIndex: (index: number, options?: { expand?: boolean }) => void;
   playTrack: (trackId: number, options?: { expand?: boolean }) => void;
@@ -334,6 +343,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.86);
   const [expanded, setExpanded] = useState(false);
+  // dock 可见性门控：仅在访客「真正开始过播放」(engaged) 后浮出，未播放的访客不会被
+  // 常驻 dock 打扰；✕ 关闭 (dismissed) 收起到下次播放。两者皆为内存态：刷新后
+  // isPlaying 复位为 false → engaged 自然回到 false → 新页面默认不显示，符合预期。
+  const [engaged, setEngaged] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   const currentTrack = tracks[currentIndex];
   const audioSrc = resolveMusicAudioSrc(currentTrack);
@@ -364,6 +378,21 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     playingRef.current = isPlaying;
   }, [isPlaying]);
+
+  // 首次进入播放即「激活」dock；重新播放会撤销此前的 ✕ 关闭，让 dock 回来。
+  useEffect(() => {
+    if (isPlaying) {
+      setEngaged(true);
+      setDismissed(false);
+    }
+  }, [isPlaying]);
+
+  // 关闭 dock：暂停播放并标记 dismissed → 隐藏，直到下次播放（isPlaying→true）再浮出。
+  const closeDock = useCallback(() => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    setDismissed(true);
+  }, []);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -630,6 +659,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     lyrics,
     activeLyricIndex: lyricIndex,
     canRender,
+    engaged,
+    dismissed,
+    closeDock,
     canUseSurface,
     playIndex,
     playTrack,
@@ -651,6 +683,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     resetSkin,
   }), [
     canRender,
+    engaged,
+    dismissed,
+    closeDock,
     canUseSurface,
     currentIndex,
     currentTrack,
@@ -754,6 +789,9 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     lyrics,
     activeLyricIndex,
     canRender,
+    engaged,
+    dismissed,
+    closeDock,
     skin,
     togglePlayback,
     nextTrack,
@@ -767,6 +805,12 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
   const activeLyricRef = useRef<HTMLParagraphElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // dock 本地 UI 态：是否最小化为左下角浮标 pill。被 ✕ 关闭或隐藏后复位，
+  // 下次浮出从完整 bar 开始。
+  const [minimized, setMinimized] = useState(false);
+  useEffect(() => {
+    if (dismissed || !engaged) setMinimized(false);
+  }, [dismissed, engaged]);
 
   // 沉浸层:Esc 关闭 + 打开时锁滚动 + 焦点落到关闭键(对话框语义)
   useEffect(() => {
@@ -800,15 +844,36 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     });
   }, [expanded, activeLyricIndex]);
 
-  if (!canRender || !currentTrack || pathname.startsWith('/agent/workspace')) return null;
+  // 整个播放器都不渲染：功能未开启 / 无可播曲目。
+  if (!canRender || !currentTrack) return null;
+
+  // dock（完整 bar / 最小化 pill）的显示门控：
+  //  · 访客尚未开始播放，或已 ✕ 关闭（engaged / dismissed）—— 不打扰未听歌的人
+  //  · 全屏「应用型」表面（Agent 工作台 / 对话空间）自带底部 composer，悬浮 dock 会盖住输入框
+  // 注意：沉浸全屏 expanded 是用户显式打开的模态，**不受此门控约束** —— 否则未播放就点
+  // 「沉浸模式」时 expanded 副作用锁了 body 滚动却无 UI 渲染，页面会卡死（PR #789 评审 P2）。
+  const dockHidden =
+    !engaged ||
+    dismissed ||
+    pathname?.startsWith('/agent/workspace') ||
+    pathname?.startsWith('/team-chat');
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
 
   return (
     <>
-      {/* 沉浸层打开时隐藏 dock —— dock(z-70)原本盖在沉浸层(z-65)之上,移动端尤其会压住沉浸层控件 */}
-      {!expanded && (
-      <div data-music-skin={skin} className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]">
+      {/* 完整 bar ⇄ 最小化 pill 平滑切换；沉浸层打开时两者皆隐藏 */}
+      <AnimatePresence>
+      {!dockHidden && !expanded && !minimized && (
+      <motion.div
+        key="music-dock-bar"
+        data-music-skin={skin}
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 24 }}
+        transition={spring.soft}
+        className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))]"
+      >
         <div className="surface-raised pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden rounded-[1.35rem] text-[var(--ink-primary)]">
           {/* 移动端:全宽进度条置于卡片顶部(更易点按);桌面端走中列内联进度条 */}
           <div className="px-2.5 pt-2.5 sm:hidden">
@@ -872,18 +937,91 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <button type="button" onClick={nextTrack} className="flex h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]" aria-label="下一首">
                 <SkipForward className="h-4 w-4" />
               </button>
+              {/* 缩小：收起为左下角浮标 pill（不暂停，继续播放） */}
+              <button
+                type="button"
+                onClick={() => setMinimized(true)}
+                className="hidden h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] sm:flex"
+                aria-label="缩小播放器"
+                title="缩小"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </button>
+              {/* 关闭：暂停并收起 dock，直到下次播放再回来 */}
+              <button
+                type="button"
+                onClick={closeDock}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                aria-label="关闭播放器"
+                title="关闭播放器"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
       )}
 
+      {/* 最小化 pill —— 左下角浮标：点封面展开回完整 bar，内置播放/暂停与关闭 */}
+      {!dockHidden && !expanded && minimized && (
+        <motion.div
+          key="music-dock-mini"
+          data-music-skin={skin}
+          initial={{ opacity: 0, scale: 0.5, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.5, y: 16 }}
+          transition={spring.bouncy}
+          style={{ transformOrigin: 'left bottom' }}
+          className="fixed bottom-[max(0.85rem,env(safe-area-inset-bottom))] left-3 z-[70]"
+        >
+          <div className="surface-raised flex items-center gap-1 rounded-full p-1.5 pr-2.5 text-[var(--ink-primary)]">
+            <button
+              type="button"
+              onClick={() => setMinimized(false)}
+              className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+              aria-label="展开播放器"
+              title={currentTrack.title}
+            >
+              <CoverDisc track={currentTrack} playing={isPlaying} size="sm" />
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]">
+                <Maximize2 className="h-3 w-3" />
+              </span>
+            </button>
+            <span className="hidden max-w-[7.5rem] truncate px-1 text-sm font-bold sm:block">{currentTrack.title}</span>
+            <button
+              type="button"
+              onClick={togglePlayback}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_24px_-10px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+              aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
+            </button>
+            <button
+              type="button"
+              onClick={closeDock}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+              aria-label="关闭播放器"
+              title="关闭"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+      </AnimatePresence>
+
+      <AnimatePresence>
       {expanded && (
-        <div
+        <motion.div
           data-music-skin={skin}
           role="dialog"
           aria-modal="true"
           aria-label="音乐大厅播放器"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={transition.flow}
           className="fixed inset-0 z-[65] overflow-y-auto bg-[color-mix(in_oklch,var(--bg-void)_92%,transparent)] px-4 py-[max(4.5rem,env(safe-area-inset-top))] text-[var(--ink-primary)] [backdrop-filter:blur(28px)_saturate(140%)]"
         >
           <div className="mx-auto grid min-h-[calc(100dvh-8rem)] w-full max-w-6xl grid-cols-1 gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.72fr)]">
@@ -1042,8 +1180,9 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   );
 }

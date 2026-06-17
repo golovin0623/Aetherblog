@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, Settings2, Home, Clock, Sparkles, Link as LinkIcon, Info, Palette, Music2 } from 'lucide-react';
+import { Menu, Settings2, Home, Clock, Sparkles, MessagesSquare, Link as LinkIcon, Info, Palette, Music2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings } from '../lib/services';
@@ -17,12 +17,13 @@ import { useSiteSettings } from './SiteSettingsProvider';
 import { CachedAvatarImage } from './CachedAvatarImage';
 
 // 导航页面类型
-type NavPage = 'posts' | 'timeline' | 'agent' | 'music' | 'friends' | 'about' | 'design' | null;
+type NavPage = 'posts' | 'timeline' | 'agent' | 'chat' | 'music' | 'friends' | 'about' | 'design' | null;
 
 const NAV_LINKS = [
   { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
   { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
   { href: '/agent', label: '灵境', icon: Sparkles, key: 'agent' as NavPage },
+  { href: '/team-chat', label: '对话', icon: MessagesSquare, key: 'chat' as NavPage },
   { href: '/music', label: '音乐大厅', icon: Music2, key: 'music' as NavPage },
   { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
   { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
@@ -59,6 +60,7 @@ const MobileMenu = memo(function MobileMenu() {
     if (pathname === '/timeline') return 'timeline';
     if (pathname === '/posts') return 'posts';
     if (pathname.startsWith('/agent')) return 'agent';
+    if (pathname.startsWith('/team-chat')) return 'chat';
     if (pathname === '/music') return 'music';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
@@ -107,6 +109,8 @@ const MobileMenu = memo(function MobileMenu() {
       setActivePage('posts');
     } else if (pathname.startsWith('/agent')) {
       setActivePage('agent');
+    } else if (pathname.startsWith('/team-chat')) {
+      setActivePage('chat');
     } else if (pathname === '/music') {
       setActivePage('music');
     } else if (pathname === '/friends') {

@@ -47,13 +47,14 @@ export default function BlogHeader() {
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
-  type NavPage = 'posts' | 'timeline' | 'agent' | 'music' | 'friends' | 'about' | 'design' | null;
+  type NavPage = 'posts' | 'timeline' | 'agent' | 'chat' | 'music' | 'friends' | 'about' | 'design' | null;
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
     if (pathname === '/timeline') return 'timeline';
     if (pathname === '/posts') return 'posts';
     if (pathname.startsWith('/agent')) return 'agent';
+    if (pathname.startsWith('/team-chat')) return 'chat';
     if (pathname === '/music') return 'music';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
@@ -77,6 +78,8 @@ export default function BlogHeader() {
       sessionStorage.setItem('blogNavSource', 'posts');
     } else if (pathname.startsWith('/agent')) {
       setActivePage('agent');
+    } else if (pathname.startsWith('/team-chat')) {
+      setActivePage('chat');
     } else if (pathname === '/music') {
       setActivePage('music');
     } else if (pathname === '/friends') {
@@ -116,6 +119,7 @@ export default function BlogHeader() {
       posts: '/posts',
       timeline: '/timeline',
       agent: '/agent',
+      chat: '/team-chat',
       music: '/music',
       friends: '/friends',
       about: '/about',
@@ -458,6 +462,25 @@ export default function BlogHeader() {
               >
                 <span className="inline-flex items-center">灵境</span>
                 {activePage === 'agent' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
+                )}
+              </Link>
+              <Link
+                href="/team-chat"
+                aria-current={activePage === 'chat' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('chat');
+                  }
+                }}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'chat'
+                    ? 'text-[var(--aurora-1)]'
+                    : 'text-[var(--ink-secondary)]'
+                  }`}
+              >
+                对话
+                {activePage === 'chat' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>

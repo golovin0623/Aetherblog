@@ -8,7 +8,10 @@ export const metadata: Metadata = {
 
 export default function TeamChatPage() {
   return (
-    <div className="px-4 py-8">
+    <div
+      className="px-3 pb-4 sm:px-4"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
+    >
       <TeamChatClient />
     </div>
   );
