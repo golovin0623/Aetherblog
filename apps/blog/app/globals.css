@@ -52,12 +52,102 @@
   animation: music-eq-pulse 820ms ease-in-out infinite;
 }
 
+/* 迷你浮标的播放脉冲环 —— 仅播放时挂载,从浮标边缘向外扩散后淡出,
+   营造"音乐在后台流动"的呼吸感,而非占位很大的常驻控制条 */
+@keyframes music-orb-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.music-orb-ring {
+  animation: music-orb-ring 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .music-vinyl-spin,
   .music-eq-bar,
+  .music-orb-ring,
   /* 音乐域内的黑胶图标自旋(Tailwind animate-spin)也跟随关停;
      作用域限定避免误伤全站 loading 图标 */
   [data-music-skin] .animate-spin {
+    animation: none;
+  }
+}
+
+/* ========================================
+   AI 徽标 —— 首页 hero「AI 驱动」签名标识
+   暗色磨砂玻璃药丸 + 沿边缓慢旋转的极光光弧(conic + mask 只显 1px 描边环)
+   + 渐变火花微闪。区别于"扁平灰胶囊",传递"智能/在线"的高级质感。
+   仅用 aurora 设计 token;@property 让 conic 角度可平滑插值(Chrome 85+/Safari 16.4+)。
+   ======================================== */
+@property --ai-ring-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ai-ring-spin {
+  to {
+    --ai-ring-angle: 360deg;
+  }
+}
+
+@keyframes ai-spark-twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.84) rotate(15deg);
+  }
+}
+
+.ai-badge {
+  position: relative;
+  isolation: isolate;
+}
+
+/* 旋转极光描边环:整圈保底淡极光 + 一段亮弧绕行,mask 掉内部只留 1px 边 */
+.ai-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--ai-ring-angle),
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 0deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 60deg,
+    var(--aurora-1) 110deg,
+    var(--aurora-4) 155deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 215deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: ai-ring-spin 6s linear infinite;
+  pointer-events: none;
+}
+
+.ai-badge__spark {
+  animation: ai-spark-twinkle 3.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-badge::before,
+  .ai-badge__spark {
     animation: none;
   }
 }
