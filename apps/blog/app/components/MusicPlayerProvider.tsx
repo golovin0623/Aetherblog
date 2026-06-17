@@ -915,7 +915,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <button
                     type="button"
                     onClick={closeDock}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-muted)] transition-colors hover:border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']"
                     aria-label="关闭播放器"
                     title="关闭播放器"
                   >

@@ -60,7 +60,7 @@ export default async function HomePage() {
             {/* AI 徽标 —— 签名级标识:暗色磨砂玻璃药丸 + 沿边缓慢旋转的极光光弧(.ai-badge::before)
                 + 自绘渐变火花微闪(.ai-badge__spark)。不再是「扁平灰胶囊 + 通用 lucide 火花」,
                 而是用站点极光语言传达「智能/在线」的高级感;外辉与下方紫色 CTA、标题极光渐变同源。 */}
-            <div className="ai-badge mb-6 inline-flex items-center gap-2 rounded-full bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] px-4 py-1.5 [backdrop-filter:blur(12px)_saturate(150%)] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_50%,transparent),0_0_22px_-8px_color-mix(in_oklch,var(--aurora-1)_42%,transparent)]">
+            <div className="ai-badge mb-6 inline-flex items-center gap-2 rounded-full bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] px-4 py-1.5 backdrop-blur-[12px] backdrop-saturate-[150%] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_50%,transparent),0_0_22px_-8px_color-mix(in_oklch,var(--aurora-1)_42%,transparent)]">
               <span
                 className="ai-badge__spark flex h-4 w-4 shrink-0 [filter:drop-shadow(0_0_5px_color-mix(in_oklch,var(--aurora-1)_60%,transparent))]"
                 aria-hidden="true"
