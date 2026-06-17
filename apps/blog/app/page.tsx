@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Sparkles, LayoutGrid, ChevronDown } from 'lucide-react';
+import { ArrowRight, LayoutGrid, ChevronDown } from 'lucide-react';
 import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 import HeroParallaxContent from './components/HeroParallaxContent';
@@ -57,9 +57,31 @@ export default async function HomePage() {
         <HeroParallaxContent className="absolute inset-0 w-full h-full flex flex-col items-center justify-center">
           {/* 中心内容 */}
           <div className="relative z-10 max-w-4xl animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <div className="inline-flex items-center gap-2 px-4 py-2 mb-6 rounded-full bg-[var(--bg-card)] border border-[var(--border-default)] backdrop-blur-md">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="text-sm text-[var(--text-secondary)]">AI 驱动的智能博客</span>
+            {/* AI 徽标 —— 签名级标识:暗色磨砂玻璃药丸 + 沿边缓慢旋转的极光光弧(.ai-badge::before)
+                + 自绘渐变火花微闪(.ai-badge__spark)。不再是「扁平灰胶囊 + 通用 lucide 火花」,
+                而是用站点极光语言传达「智能/在线」的高级感;外辉与下方紫色 CTA、标题极光渐变同源。 */}
+            <div className="ai-badge mb-6 inline-flex items-center gap-2 rounded-full bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] px-4 py-1.5 backdrop-blur-[12px] backdrop-saturate-[150%] shadow-[0_10px_30px_-12px_color-mix(in_oklch,var(--aurora-1)_50%,transparent),0_0_22px_-8px_color-mix(in_oklch,var(--aurora-1)_42%,transparent)]">
+              <span
+                className="ai-badge__spark flex h-4 w-4 shrink-0 [filter:drop-shadow(0_0_5px_color-mix(in_oklch,var(--aurora-1)_60%,transparent))]"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+                  <defs>
+                    <linearGradient id="aiSparkGrad" x1="4" y1="3" x2="20" y2="21" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="var(--aurora-1)" />
+                      <stop offset="0.5" stopColor="var(--aurora-3)" />
+                      <stop offset="1" stopColor="var(--aurora-4)" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M12 1.8C12.42 7.78 16.22 11.58 22.2 12C16.22 12.42 12.42 16.22 12 22.2C11.58 16.22 7.78 12.42 1.8 12C7.78 11.58 11.58 7.78 12 1.8Z"
+                    fill="url(#aiSparkGrad)"
+                  />
+                </svg>
+              </span>
+              <span className="text-[13px] font-medium tracking-[0.04em] text-[color-mix(in_oklch,var(--ink-primary)_82%,var(--aurora-1))]">
+                AI 驱动的智能博客
+              </span>
             </div>
 
             <h1
