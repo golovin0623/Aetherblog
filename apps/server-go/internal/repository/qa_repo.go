@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/qatree"
 )
 
@@ -93,7 +94,8 @@ func (r *QARepo) ListDocuments(ctx context.Context, f QADocFilter) ([]model.QADo
 		clauses = append(clauses, "owner_id="+ph(*f.OwnerID))
 	}
 	if kw := strings.TrimSpace(f.Keyword); kw != "" {
-		clauses = append(clauses, "title ILIKE "+ph("%"+kw+"%"))
+		escapedKw := dbutil.EscapeLike(kw)
+		clauses = append(clauses, "title ILIKE "+ph("%"+escapedKw+"%")+" ESCAPE '\\'")
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 
