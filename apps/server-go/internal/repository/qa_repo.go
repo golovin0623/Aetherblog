@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/qatree"
 )
 
@@ -93,7 +94,10 @@ func (r *QARepo) ListDocuments(ctx context.Context, f QADocFilter) ([]model.QADo
 		clauses = append(clauses, "owner_id="+ph(*f.OwnerID))
 	}
 	if kw := strings.TrimSpace(f.Keyword); kw != "" {
-		clauses = append(clauses, "title ILIKE "+ph("%"+kw+"%"))
+		// 转义用户输入中的 LIKE 通配符（% _ \），避免通配符注入引发全表扫描 / DoS。
+		// 显式声明 ESCAPE '\'，保证转义字符与 dbutil.EscapeLike 使用的反斜杠一致（PG17 默认即 \）。
+		escapedKw := dbutil.EscapeLike(kw)
+		clauses = append(clauses, "title ILIKE "+ph("%"+escapedKw+"%")+" ESCAPE '\\'")
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 

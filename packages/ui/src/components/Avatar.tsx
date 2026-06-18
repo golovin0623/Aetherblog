@@ -26,7 +26,8 @@ function isSafeAvatarSrc(raw: string | undefined): string | undefined {
 export function Avatar({ src, alt, fallback, size = 'md', className }: AvatarProps) {
   const [hasError, setHasError] = React.useState(false);
 
-  const safeSrc = React.useMemo(() => isSafeAvatarSrc(src), [src]);
+  // 轻量字符串校验，useMemo 的 hook 开销大于直接计算，移除。
+  const safeSrc = isSafeAvatarSrc(src);
 
   const sizeClasses = {
     sm: 'w-8 h-8 text-xs',

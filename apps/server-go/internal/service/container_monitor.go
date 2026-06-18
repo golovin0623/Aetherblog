@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -332,12 +333,21 @@ func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 	}
 	wg.Wait()
 
-	// 汇总全局统计指标
+	// 汇总全局统计指标。单容器的 MemoryUsed/MemoryLimit 已被封顶到 math.MaxInt64，
+	// 但多个「未限制」容器累加仍会让 int64 总和溢出成负数，故此处使用饱和累加。
 	var totalMem, totalLimit int64
 	var totalCpu float64
 	for _, info := range infos {
-		totalMem += info.MemoryUsed
-		totalLimit += info.MemoryLimit
+		if totalMem > math.MaxInt64-info.MemoryUsed {
+			totalMem = math.MaxInt64
+		} else {
+			totalMem += info.MemoryUsed
+		}
+		if totalLimit > math.MaxInt64-info.MemoryLimit {
+			totalLimit = math.MaxInt64
+		} else {
+			totalLimit += info.MemoryLimit
+		}
 		totalCpu += info.CpuPercent
 	}
 
@@ -463,11 +473,23 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 		info.CpuPercent = pct
 	}
 
-	// 内存使用量及使用率
-	info.MemoryUsed = int64(stats.MemoryStats.Usage)
-	info.MemoryLimit = int64(stats.MemoryStats.Limit)
-	if stats.MemoryStats.Limit > 0 {
-		info.MemoryPercent = float64(stats.MemoryStats.Usage) / float64(stats.MemoryStats.Limit) * 100.0
+	// 内存使用量及使用率。Docker/cgroups 在「未限制」时会返回接近 math.MaxUint64 的值，
+	// 直接 int64() 会整数溢出成负数（CWE-190 / Gosec G115），故先封顶到 math.MaxInt64。
+	usage := stats.MemoryStats.Usage
+	if usage > math.MaxInt64 {
+		usage = math.MaxInt64
+	}
+	info.MemoryUsed = int64(usage)
+
+	limit := stats.MemoryStats.Limit
+	if limit > math.MaxInt64 {
+		limit = math.MaxInt64
+	}
+	info.MemoryLimit = int64(limit)
+
+	// 百分比必须基于截断后的 usage/limit 计算，避免与展示值不一致。
+	if limit > 0 {
+		info.MemoryPercent = float64(usage) / float64(limit) * 100.0
 	}
 }
 
