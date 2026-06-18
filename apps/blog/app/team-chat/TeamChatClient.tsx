@@ -338,7 +338,7 @@ export default function TeamChatClient() {
             登录后即可与团队成员、私聊好友和智能体实时对话。
           </p>
           <Link
-            href="/agent/login"
+            href="/agent/login?next=/team-chat"
             className="mt-6 rounded-xl px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
             style={{ background: 'var(--aurora-1)', color: 'var(--bg-void)' }}
           >
