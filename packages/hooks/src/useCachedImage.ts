@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type CachedImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -149,7 +149,8 @@ export function useCachedImage(
   src: string | null | undefined,
   options: UseCachedImageOptions = {},
 ) {
-  const normalizedSrc = useMemo(() => (src ?? '').trim(), [src]);
+  // trim 是 O(1) 操作，useMemo 的 hook 开销大于直接计算；字符串原值用于 effect 依赖时按值比较，移除无副作用。
+  const normalizedSrc = (src ?? '').trim();
   const enabled = options.enabled ?? true;
   const preload = options.preload ?? true;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

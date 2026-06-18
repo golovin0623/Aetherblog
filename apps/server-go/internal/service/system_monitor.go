@@ -271,8 +271,25 @@ func (s *SystemMonitorService) collectDisk() DiskMetrics {
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return DiskMetrics{Path: path}
 	}
-	total := stat.Blocks * uint64(stat.Bsize)
-	free := stat.Bavail * uint64(stat.Bsize)
+	// Blocks/Bavail/Bsize 的类型随架构而异（部分平台为有符号，超载/超配额时可能为负）。
+	// 先安全转 int64 并把负值归零，再上转 uint64 相乘避免溢出；最后保证 free ≤ total，防止无符号减法下溢。
+	blocks := int64(stat.Blocks)
+	if blocks < 0 {
+		blocks = 0
+	}
+	bavail := int64(stat.Bavail)
+	if bavail < 0 {
+		bavail = 0
+	}
+	bsize := int64(stat.Bsize)
+	if bsize < 0 {
+		bsize = 0
+	}
+	total := uint64(blocks) * uint64(bsize)
+	free := uint64(bavail) * uint64(bsize)
+	if free > total {
+		free = total
+	}
 	used := total - free
 	var pct float64
 	if total > 0 {

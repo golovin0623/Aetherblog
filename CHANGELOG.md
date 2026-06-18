@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — PR 评审合并：安全加固 + 微优化 (2026-06-18, branch claude/pr-review-consolidation-9ifwqy)
+
+合并并消化历史 PR #779 / #787 / #790 / #792 及其代码评审建议为单一变更集：
+
+- **SQL 通配符注入（#792，CRITICAL）：** `qa_repo.go` 的 `ListDocuments` 关键字搜索用 `dbutil.EscapeLike` 转义 `% _ \` 并显式 `ESCAPE '\'`，杜绝通配符注入触发的全表扫描 / DoS。
+- **整数溢出（#787 取代 #790，HIGH，CWE-190 / G115）：** `container_monitor.go` 将 Docker 内存 `Usage`/`Limit` 截断到 `math.MaxInt64` 后再转 `int64`，`MemoryPercent` 改用截断值计算；`system_monitor.go` 对 `Statfs` 的 `Blocks`/`Bavail` 统一上转 `uint64` 后相乘。**采纳评审反馈**：`fetchContainers` 全局汇总改用饱和累加，避免多个「未限制」容器的 `MaxInt64` 相加再次溢出为负。
+- **移除多余 useMemo（#779）：** `useCachedImage` 的 `.trim()` 与 `Avatar` 的轻量校验去掉 `useMemo` 包装，省去 hook 开销。
+- **未采纳：** #792 评审中「省略 `ESCAPE '\'`」的建议 —— PG17 默认 `standard_conforming_strings=on` 下显式声明更自文档化且与 `EscapeLike` 的反斜杠转义字符严格对齐，予以保留。
+
 ### Changed — 对话空间 UI 重做 · 顶级聊天体验 + 导航入口接入 (2026-06-16, branch claude/amazing-allen-a8b180)
 
 **背景：** 团队聊天（`/team-chat`）此前虽功能完整，但 (1) 从未接入任何导航 —— `BlogHeader`（桌面）与 `MobileMenu`（移动）的链接清单里都没有它，页面成了「无入口孤岛」，只能手敲 URL 进入；(2) UI 粗糙且违反 Aether Codex 多条硬规则（`window.prompt`/`alert`/`confirm`、emoji 图标、裸字号、零动效、文字「加载中…」而非骨架屏）。本次对标顶级聊天软件（iMessage / Telegram / Linear）做整体重做，并补齐入口。

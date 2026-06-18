@@ -26,7 +26,16 @@ function isSafeAvatarSrc(raw: string | undefined): string | undefined {
 export function Avatar({ src, alt, fallback, size = 'md', className }: AvatarProps) {
   const [hasError, setHasError] = React.useState(false);
 
-  const safeSrc = React.useMemo(() => isSafeAvatarSrc(src), [src]);
+  // 轻量字符串校验，useMemo 的 hook 开销大于直接计算，移除。
+  const safeSrc = isSafeAvatarSrc(src);
+
+  // 当 src 改变时在渲染阶段同步重置 hasError，避免旧图加载失败后新头像被永久卡在 fallback。
+  // 这是 React 官方推荐的「根据 prop 变化调整 state」模式，比 useEffect 少一次渲染周期。
+  const [prevSrc, setPrevSrc] = React.useState(src);
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setHasError(false);
+  }
 
   const sizeClasses = {
     sm: 'w-8 h-8 text-xs',
