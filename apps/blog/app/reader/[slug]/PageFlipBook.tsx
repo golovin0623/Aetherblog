@@ -44,7 +44,7 @@ function computeDims(): Dims {
 
   // 预留顶栏 / 底栏的垂直空间。
   const reservedV = 150;
-  let pageH = Math.min(vh - reservedV, 860);
+  let pageH = Math.max(Math.min(vh - reservedV, 860), 320);
   // 书页纵横比（宽:高）约 0.66。
   let pageW = Math.round(pageH * 0.66);
 
@@ -54,7 +54,6 @@ function computeDims(): Dims {
     pageW = Math.floor(maxBookW / cols);
     pageH = Math.round(pageW / 0.66);
   }
-  pageH = Math.max(pageH, 320);
 
   const padX = Math.round(pageW * 0.11);
   const padTop = Math.round(pageH * 0.085);
