@@ -57,6 +57,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
   // ----- 书架 -----
   const [books, setBooks] = useState<ReadingBookListItem[]>([]);
   const [shelfLoading, setShelfLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const loadShelf = useCallback(async () => {
     setShelfLoading(true);
@@ -73,6 +74,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
   useEffect(() => {
     if (isOpen) {
       setView('shelf');
+      setConfirmDeleteId(null);
       loadShelf();
     }
   }, [isOpen, loadShelf]);
@@ -83,6 +85,8 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
       setBooks((prev) => prev.filter((b) => b.id !== id));
     } catch (err) {
       logger.error('删除拟真阅读失败:', err);
+    } finally {
+      setConfirmDeleteId(null);
     }
   };
 
@@ -263,24 +267,45 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <a
-                      href={readerUrl(b.slug)}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="打开阅读"
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[var(--aurora-1)] transition hover:bg-[var(--aurora-1)]/10"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      <span className="hidden sm:inline">打开</span>
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(b.id)}
-                      title="删除"
-                      className="inline-flex items-center rounded-md p-1.5 text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {confirmDeleteId === b.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(b.id)}
+                          className="rounded-md px-2 py-1.5 text-xs font-medium text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
+                        >
+                          确认删除
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded-md px-2 py-1.5 text-xs text-[var(--ink-muted)] transition hover:bg-[var(--bg-raised)]"
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <a
+                          href={readerUrl(b.slug)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="打开阅读"
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[var(--aurora-1)] transition hover:bg-[var(--aurora-1)]/10"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span className="hidden sm:inline">打开</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(b.id)}
+                          title="删除"
+                          className="inline-flex items-center rounded-md p-1.5 text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -331,7 +356,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
           {sourceType === 'KB_FILE' && (
             <Select
               value={activeKbId ? String(activeKbId) : ''}
-              onValueChange={(v) => setActiveKbId(Number(v))}
+              onValueChange={(v) => setActiveKbId(v ? Number(v) : null)}
               options={kbOptions}
               placeholder="选择知识库"
               fullWidth

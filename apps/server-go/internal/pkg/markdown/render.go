@@ -9,6 +9,7 @@ package markdown
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -91,7 +92,9 @@ func Render(source string) (Result, error) {
 	clean := policy.SanitizeBytes(buf.Bytes())
 
 	toc := extractTOC(doc, src)
-	words := countWords(source)
+	// 先剥离代码块 / 内联代码 / 链接与图片 URL / HTML 标签，再统计字数，
+	// 避免把语法标记与 URL 计入正文，导致字数与阅读时长被显著高估。
+	words := countWords(stripForCount(source))
 	rt := words / 400 // 约 400 字/分钟（中英文混合的折中估算）
 	if rt < 1 {
 		rt = 1
@@ -143,6 +146,27 @@ func attrToString(v any) string {
 	default:
 		return ""
 	}
+}
+
+var (
+	reFenced     = regexp.MustCompile("(?s)```.*?```")
+	reInlineCode = regexp.MustCompile("`[^`]*`")
+	reImage      = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	reLink       = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	reHTMLTag    = regexp.MustCompile(`<[^>]+>`)
+	reURL        = regexp.MustCompile(`https?://\S+`)
+)
+
+// stripForCount 在字数统计前剥离不属于「可读正文」的部分：
+// 围栏代码块、内联代码、图片、HTML 标签、裸 URL；链接仅保留其显示文本。
+func stripForCount(s string) string {
+	s = reFenced.ReplaceAllString(s, " ")
+	s = reImage.ReplaceAllString(s, " ")
+	s = reLink.ReplaceAllString(s, "$1")
+	s = reInlineCode.ReplaceAllString(s, " ")
+	s = reHTMLTag.ReplaceAllString(s, " ")
+	s = reURL.ReplaceAllString(s, " ")
+	return s
 }
 
 // countWords 估算字数：每个 CJK 字符计 1，连续的拉丁/数字串计 1 个词。

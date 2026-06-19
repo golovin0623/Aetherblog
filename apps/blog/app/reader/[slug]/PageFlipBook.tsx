@@ -300,12 +300,14 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
             aria-label="上一页"
             onClick={goPrev}
             disabled={cursor <= 0 || animating}
+            tabIndex={-1}
             style={{ position: 'absolute', left: 0, top: 0, width: '38%', height: '100%', background: 'transparent', border: 'none', cursor: cursor > 0 ? 'w-resize' : 'default' }}
           />
           <button
             aria-label="下一页"
             onClick={goNext}
             disabled={cursor >= maxCursor || animating}
+            tabIndex={-1}
             style={{ position: 'absolute', right: 0, top: 0, width: '38%', height: '100%', background: 'transparent', border: 'none', cursor: cursor < maxCursor ? 'e-resize' : 'default' }}
           />
         </div>

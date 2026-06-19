@@ -95,6 +95,11 @@ func (s *ReadingBookService) Generate(ctx context.Context, req dto.GenerateReadi
 	if err != nil {
 		return nil, err
 	}
+	// userID 为 0（未登录 / 系统触发）时存 NULL，语义上不存在 ID 为 0 的用户。
+	var createdBy *int64
+	if userID > 0 {
+		createdBy = &userID
+	}
 	book := &model.ReadingBook{
 		Slug:        slug,
 		Title:       sc.title,
@@ -109,7 +114,7 @@ func (s *ReadingBookService) Generate(ctx context.Context, req dto.GenerateReadi
 		ReadingTime: rendered.ReadingTime,
 		Status:      model.ReadingStatusReady,
 		Theme:       theme,
-		CreatedBy:   &userID,
+		CreatedBy:   createdBy,
 		GeneratedAt: &now,
 	}
 	created, err := s.repo.Create(ctx, book)
@@ -167,8 +172,13 @@ func (s *ReadingBookService) resolveSource(ctx context.Context, sourceType strin
 			return nil, errors.New("知识库文件不存在")
 		}
 		// 若该文件来源于站内文章，直接取文章 Markdown（更完整）。
+		// 显式处理查询错误，避免临时故障被误判为「文章不存在」而错误退化到块重建。
 		if src.PostID != nil {
-			if post, _ := s.postRepo.FindByID(ctx, *src.PostID); post != nil && post.ContentMarkdown != nil {
+			post, perr := s.postRepo.FindByID(ctx, *src.PostID)
+			if perr != nil {
+				return nil, perr
+			}
+			if post != nil && post.ContentMarkdown != nil {
 				ref := "知识库 · " + src.KBName
 				return &sourceContent{
 					title:    post.Title,
