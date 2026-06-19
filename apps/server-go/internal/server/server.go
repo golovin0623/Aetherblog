@@ -274,7 +274,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// 把文章 / 笔记 / 知识库文件预渲染成成书 HTML 缓存，前台 3D 阅读器直接读取。
 	readingBookRepo := repository.NewReadingBookRepo(s.DB)
 	readingBookSvc := service.NewReadingBookService(readingBookRepo, postRepo, noteRepo)
-	readingBookHandler := handler.NewReadingBookHandler(readingBookSvc, activitySvc)
+	readingBookHandler := handler.NewReadingBookHandler(readingBookSvc, activitySvc, s.Config.Auth.Cookie)
 	readingBookHandler.MountAdmin(admin.Group("/reading-books"))
 
 	// --- Atlas（Aether Knowledge）子产品 ---

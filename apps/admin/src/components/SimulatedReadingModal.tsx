@@ -40,12 +40,19 @@ const THEME_OPTIONS: SelectOption[] = [
   { value: 'night', label: '夜读 Night' },
 ];
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 const BLOG_BASE_URL = (import.meta.env.VITE_BLOG_URL ?? '').trim().replace(/\/+$/, '');
 
 /** 拟真阅读器前台地址。网关同源时使用根路径；直连模式可用 VITE_BLOG_URL 指向博客前台。 */
 function readerUrl(slug: string): string {
   const path = `/reader/${encodeURIComponent(slug)}`;
   return BLOG_BASE_URL ? `${BLOG_BASE_URL}${path}` : path;
+}
+
+function readerLaunchUrl(slug: string): string {
+  const encodedSlug = encodeURIComponent(slug);
+  const redirect = encodeURIComponent(readerUrl(slug));
+  return `${API_BASE_URL}/v1/admin/reading-books/reader/${encodedSlug}?redirect=${redirect}`;
 }
 
 /**
@@ -293,7 +300,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
                     ) : (
                       <>
                         <a
-                          href={readerUrl(b.slug)}
+                          href={readerLaunchUrl(b.slug)}
                           target="_blank"
                           rel="noreferrer"
                           title="打开阅读"
