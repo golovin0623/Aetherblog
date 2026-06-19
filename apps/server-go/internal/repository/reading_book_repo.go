@@ -159,6 +159,11 @@ type KBFileSource struct {
 	KBName        string  `db:"kb_name"`
 }
 
+type kbChunkingConfig struct {
+	ChunkerKind        string `db:"chunker_kind"`
+	ChunkOverlapTokens int    `db:"chunk_overlap_tokens"`
+}
+
 // FindKBFileSource 拉取知识库文件的基础信息与归属库名。
 func (r *ReadingBookRepo) FindKBFileSource(ctx context.Context, fileID int64) (*KBFileSource, error) {
 	var s KBFileSource
@@ -191,6 +196,13 @@ func (r *ReadingBookRepo) ReconstructKBFileText(ctx context.Context, fileID int6
 	if pid == 0 {
 		return "", nil
 	}
+	var cfg kbChunkingConfig
+	if err := r.db.GetContext(ctx, &cfg, `
+		SELECT chunker_kind, chunk_overlap_tokens FROM kb_profiles WHERE id=$1`, pid); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+	}
 	var chunks []string
 	if err := r.db.SelectContext(ctx, &chunks, `
 		SELECT chunk_text FROM kb_embeddings
@@ -198,7 +210,71 @@ func (r *ReadingBookRepo) ReconstructKBFileText(ctx context.Context, fileID int6
 		ORDER BY chunk_index ASC`, fileID, pid); err != nil {
 		return "", err
 	}
-	return strings.Join(chunks, "\n\n"), nil
+	return joinKBChunks(chunks, cfg.usesOverlap()), nil
+}
+
+func (c kbChunkingConfig) usesOverlap() bool {
+	if c.ChunkOverlapTokens <= 0 {
+		return false
+	}
+	switch c.ChunkerKind {
+	case "qa", "parent_child":
+		return false
+	default:
+		return true
+	}
+}
+
+const minKBChunkOverlapRunes = 12
+
+func joinKBChunks(chunks []string, deoverlap bool) string {
+	parts := make([]string, 0, len(chunks))
+	prev := ""
+	for _, raw := range chunks {
+		chunk := normalizeKBChunk(raw)
+		if chunk == "" {
+			continue
+		}
+		if deoverlap && prev != "" {
+			chunk = trimLeadingChunkOverlap(prev, chunk)
+		}
+		if chunk == "" {
+			continue
+		}
+		parts = append(parts, chunk)
+		prev = chunk
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func normalizeKBChunk(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.TrimSpace(text)
+}
+
+func trimLeadingChunkOverlap(previous, chunk string) string {
+	prevRunes := []rune(normalizeKBChunk(previous))
+	chunkRunes := []rune(normalizeKBChunk(chunk))
+	maxOverlap := min(len(prevRunes), len(chunkRunes))
+	for size := maxOverlap; size >= minKBChunkOverlapRunes; size-- {
+		if equalRunes(prevRunes[len(prevRunes)-size:], chunkRunes[:size]) {
+			return strings.TrimSpace(string(chunkRunes[size:]))
+		}
+	}
+	return strings.TrimSpace(string(chunkRunes))
+}
+
+func equalRunes(a, b []rune) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }

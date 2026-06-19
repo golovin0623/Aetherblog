@@ -18,6 +18,8 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+const readerAccessCookiePath = "/reader"
+
 // ReadingBookHandler 处理「拟真阅读」相关的 HTTP 接口：
 //   - /admin/reading-books   后台管理（生成 / 列表 / 详情 / 删除）
 //   - /public/reading-books  前台阅读器只读取
@@ -168,7 +170,7 @@ func (h *ReadingBookHandler) setReaderAccessCookie(c echo.Context, token string)
 	cookie := &http.Cookie{
 		Name:     middleware.AccessTokenCookie,
 		Value:    token,
-		Path:     "/reader",
+		Path:     readerAccessCookiePath,
 		MaxAge:   300,
 		HttpOnly: true,
 		Secure:   h.cookieCfg.Secure,
