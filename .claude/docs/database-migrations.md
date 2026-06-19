@@ -290,6 +290,15 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 
 全部 `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`，单事务安全、可重放幂等。down 先 `DROP COLUMN IF EXISTS agent_id` 再逆序 `DROP TABLE`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
 
+### 000084 · `reading_books`
+
+拟真阅读（Simulated Reading）模块。取空号 000084（当前最大 000083 +1，**不顺移**）。纯新增单表：
+
+- `reading_books`（成书缓存；`source_type` POST/NOTE/KB_FILE + `source_id`、预渲染净化 `content_html`、`toc` JSONB、`status` PENDING/READY/FAILED、`theme`）
+- 唯一索引 `uq_reading_books_source (source_type, source_id)` —— 同源重复导入即原地更新而非新建；另有 `status` / `created_at` 普通索引。
+
+`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等。down `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
+
 ---
 
 ## 部署期 migration 自愈机制
