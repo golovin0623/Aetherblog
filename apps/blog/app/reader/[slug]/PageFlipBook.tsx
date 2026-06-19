@@ -89,11 +89,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  // 测量总页数（隐藏容器分列布局后读取 scrollWidth）。
-  useLayoutEffect(() => {
+  const measurePages = useCallback(() => {
     if (!dims || !measureRef.current) return;
     const el = measureRef.current;
-    // 让浏览器完成分列布局。
     const sw = el.scrollWidth;
     const pages = Math.max(1, Math.ceil(sw / dims.contentW));
     const prevCols = prevColsRef.current ?? dims.cols;
@@ -106,6 +104,48 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     });
     prevColsRef.current = dims.cols;
   }, [dims, book.contentHtml]);
+
+  // 测量总页数（隐藏容器分列布局后读取 scrollWidth）。
+  useLayoutEffect(() => {
+    measurePages();
+  }, [measurePages]);
+
+  // 图片解码后会改变多列 scrollWidth；监听隐藏测量流中的图片并重新分页。
+  useEffect(() => {
+    if (!dims || !measureRef.current) return;
+    const el = measureRef.current;
+    const images = Array.from(el.querySelectorAll('img'));
+    if (images.length === 0) return;
+
+    let raf = 0;
+    const scheduleMeasure = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(measurePages);
+      });
+    };
+
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleMeasure);
+
+    images.forEach((img) => {
+      img.addEventListener('load', scheduleMeasure);
+      img.addEventListener('error', scheduleMeasure);
+      observer?.observe(img);
+      void img.decode?.().then(scheduleMeasure, scheduleMeasure);
+      if (img.complete) scheduleMeasure();
+    });
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer?.disconnect();
+      images.forEach((img) => {
+        img.removeEventListener('load', scheduleMeasure);
+        img.removeEventListener('error', scheduleMeasure);
+      });
+    };
+  }, [dims, book.contentHtml, measurePages]);
 
   const cols = dims?.cols ?? 2;
   const unitCount = cols === 2 ? Math.ceil(totalPages / 2) : totalPages; // 翻页单元总数
