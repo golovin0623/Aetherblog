@@ -231,6 +231,19 @@ func (s *ReadingBookService) GetByID(ctx context.Context, id int64) (*dto.Readin
 	return &detail, nil
 }
 
+// GetBySlugForAdmin 按 slug 返回已生成正文，供已认证后台用户打开私有来源书籍。
+func (s *ReadingBookService) GetBySlugForAdmin(ctx context.Context, slug string) (*dto.ReadingBookDetail, error) {
+	b, err := s.repo.FindBySlug(ctx, slug)
+	if err != nil || b == nil {
+		return nil, err
+	}
+	if b.Status != model.ReadingStatusReady {
+		return nil, nil
+	}
+	detail := dto.ToReadingBookDetail(b)
+	return &detail, nil
+}
+
 // GetBySlug 前台阅读器读取（仅 READY 状态）。
 func (s *ReadingBookService) GetBySlug(ctx context.Context, slug string) (*dto.ReadingBookDetail, error) {
 	b, err := s.repo.FindBySlug(ctx, slug)

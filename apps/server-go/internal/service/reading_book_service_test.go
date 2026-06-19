@@ -113,3 +113,21 @@ func TestReadingBookGetBySlugRequiresPublicPostSource(t *testing.T) {
 		})
 	}
 }
+
+func TestReadingBookGetBySlugForAdminReturnsPrivateSources(t *testing.T) {
+	svc, mock, cleanup := newReadingBookServiceMock(t)
+	defer cleanup()
+
+	expectReadingBookBySlug(mock, model.ReadingSourceNote, 42, model.ReadingStatusReady)
+
+	book, err := svc.GetBySlugForAdmin(context.Background(), "book-slug")
+	if err != nil {
+		t.Fatalf("GetBySlugForAdmin returned error: %v", err)
+	}
+	if book == nil {
+		t.Fatal("expected admin slug lookup to return private-source book")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}

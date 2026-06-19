@@ -28,6 +28,10 @@ type ReadingBookListFilter struct {
 	PageSize   int
 }
 
+const readingBookListColumns = `
+	id, slug, title, author, cover_image, source_type, source_id, source_ref,
+	word_count, reading_time, status, error, theme, generated_at, created_at, updated_at`
+
 // Create 插入一条记录并回填生成字段。
 func (r *ReadingBookRepo) Create(ctx context.Context, b *model.ReadingBook) (*model.ReadingBook, error) {
 	var out model.ReadingBook
@@ -130,7 +134,7 @@ func (r *ReadingBookRepo) List(ctx context.Context, f ReadingBookListFilter) ([]
 	}
 
 	offset := (f.PageNum - 1) * f.PageSize
-	listSQL := `SELECT * FROM reading_books WHERE ` + where +
+	listSQL := `SELECT ` + readingBookListColumns + ` FROM reading_books WHERE ` + where +
 		` ORDER BY created_at DESC LIMIT $` + itoa(idx) + ` OFFSET $` + itoa(idx+1)
 	args = append(args, f.PageSize, offset)
 

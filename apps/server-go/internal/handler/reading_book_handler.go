@@ -31,6 +31,7 @@ func NewReadingBookHandler(svc *service.ReadingBookService, activitySvc *service
 func (h *ReadingBookHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.AdminList)
 	g.POST("/generate", h.Generate)
+	g.GET("/slug/:slug", h.AdminGetBySlug)
 	g.GET("/:id", h.AdminGet)
 	g.DELETE("/:id", h.Delete)
 }
@@ -93,6 +94,19 @@ func (h *ReadingBookHandler) AdminGet(c echo.Context) error {
 	}
 	if detail == nil {
 		return response.FailWith(c, response.NotFound, "拟真阅读不存在")
+	}
+	return response.OK(c, detail)
+}
+
+// AdminGetBySlug 处理 GET /admin/reading-books/slug/:slug。
+func (h *ReadingBookHandler) AdminGetBySlug(c echo.Context) error {
+	slug := c.Param("slug")
+	detail, err := h.svc.GetBySlugForAdmin(c.Request().Context(), slug)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if detail == nil {
+		return response.FailWith(c, response.NotFound, "拟真阅读不存在或尚未就绪")
 	}
 	return response.OK(c, detail)
 }

@@ -78,6 +78,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   const measureRef = useRef<HTMLDivElement>(null);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevColsRef = useRef<1 | 2 | null>(null);
   const animating = flip !== null;
 
   // 响应式尺寸。
@@ -95,8 +96,15 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     // 让浏览器完成分列布局。
     const sw = el.scrollWidth;
     const pages = Math.max(1, Math.ceil(sw / dims.contentW));
+    const prevCols = prevColsRef.current ?? dims.cols;
     setTotalPages(pages);
-    setCursor((c) => Math.min(c, dims.cols === 2 ? Math.ceil(pages / 2) - 1 : pages - 1));
+    setCursor((c) => {
+      const absolutePage = prevCols === 2 ? c * 2 : c;
+      const nextCursor = dims.cols === 2 ? Math.floor(absolutePage / 2) : absolutePage;
+      const maxNext = Math.max(0, dims.cols === 2 ? Math.ceil(pages / 2) - 1 : pages - 1);
+      return Math.min(nextCursor, maxNext);
+    });
+    prevColsRef.current = dims.cols;
   }, [dims, book.contentHtml]);
 
   const cols = dims?.cols ?? 2;

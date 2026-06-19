@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { SERVER_API_URL } from '@/app/lib/api';
 import { logger } from '@/app/lib/logger';
@@ -10,10 +11,11 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-async function getBook(slug: string): Promise<ReadingBook | null> {
+async function fetchBook(url: string, cookie?: string): Promise<ReadingBook | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/public/reading-books/${slug}`, {
+    const res = await fetch(url, {
       cache: 'no-store',
+      headers: cookie ? { Cookie: cookie } : undefined,
     });
     if (!res.ok) {
       return null;
@@ -27,6 +29,20 @@ async function getBook(slug: string): Promise<ReadingBook | null> {
     logger.error('Failed to fetch reading book:', err);
     return null;
   }
+}
+
+async function getBook(slug: string): Promise<ReadingBook | null> {
+  const encodedSlug = encodeURIComponent(slug);
+  const publicBook = await fetchBook(`${API_BASE_URL}/api/v1/public/reading-books/${encodedSlug}`);
+  if (publicBook) {
+    return publicBook;
+  }
+
+  const cookie = (await headers()).get('cookie');
+  if (!cookie) {
+    return null;
+  }
+  return fetchBook(`${API_BASE_URL}/api/v1/admin/reading-books/slug/${encodedSlug}`, cookie);
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
