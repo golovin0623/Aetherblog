@@ -40,9 +40,12 @@ const THEME_OPTIONS: SelectOption[] = [
   { value: 'night', label: '夜读 Night' },
 ];
 
-/** 拟真阅读器前台地址（与博客同源，位于站点根路径 /reader/:slug）。 */
+const BLOG_BASE_URL = (import.meta.env.VITE_BLOG_URL ?? '').trim().replace(/\/+$/, '');
+
+/** 拟真阅读器前台地址。网关同源时使用根路径；直连模式可用 VITE_BLOG_URL 指向博客前台。 */
 function readerUrl(slug: string): string {
-  return `/reader/${slug}`;
+  const path = `/reader/${encodeURIComponent(slug)}`;
+  return BLOG_BASE_URL ? `${BLOG_BASE_URL}${path}` : path;
 }
 
 /**
@@ -166,10 +169,13 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
   // 知识库列表（进入 KB tab 时拉取一次）。
   const loadKbs = useCallback(async () => {
     try {
-      const res = await knowledgeBaseService.list();
+      const res = await knowledgeBaseService.list({ kind: 'CUSTOM' });
       if (res.code === 200 && res.data) {
-        setKbs(res.data);
-        if (res.data.length > 0) setActiveKbId((prev) => prev ?? res.data[0].id);
+        const customKbs = res.data.filter((k) => k.kind === 'CUSTOM');
+        setKbs(customKbs);
+        setActiveKbId((prev) => (
+          customKbs.some((k) => k.id === prev) ? prev : customKbs[0]?.id ?? null
+        ));
       }
     } catch (err) {
       logger.error('加载知识库失败:', err);

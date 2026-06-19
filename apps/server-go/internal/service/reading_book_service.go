@@ -240,8 +240,24 @@ func (s *ReadingBookService) GetBySlug(ctx context.Context, slug string) (*dto.R
 	if b.Status != model.ReadingStatusReady {
 		return nil, nil
 	}
+	ok, err := s.canPublicRead(ctx, b)
+	if err != nil || !ok {
+		return nil, err
+	}
 	detail := dto.ToReadingBookDetail(b)
 	return &detail, nil
+}
+
+func (s *ReadingBookService) canPublicRead(ctx context.Context, b *model.ReadingBook) (bool, error) {
+	switch b.SourceType {
+	case model.ReadingSourcePost:
+		if s.postRepo == nil {
+			return false, nil
+		}
+		return s.postRepo.IsPublicNoPassword(ctx, b.SourceID)
+	default:
+		return false, nil
+	}
 }
 
 // Delete 删除一本书。

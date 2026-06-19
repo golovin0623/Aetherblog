@@ -180,10 +180,12 @@ NEXT_PUBLIC_ADMIN_URL 取值规则(`apps/blog/app/lib/adminUrl.ts`):
 
 ```
 VITE_API_URL=/api
+VITE_BLOG_URL=
 ```
 
 开发模式 Vite proxy 把 `/api/*` 转发到 `http://localhost:8080`。
 网关 / 生产模式由 nginx 转发到 backend。
+`VITE_BLOG_URL` 用于 admin 直连模式打开博客前台 `/reader/:slug`;网关同源时可留空。
 
 ### 3.3 ai-service env 来源
 
