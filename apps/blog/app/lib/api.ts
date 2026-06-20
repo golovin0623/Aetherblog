@@ -39,6 +39,9 @@ export const API_ENDPOINTS = {
   // 搜索
   search: `${API_BASE_URL}/api/v1/public/search`,
   searchQA: `${API_BASE_URL}/api/v1/public/search/qa`,
+
+  // 拟真阅读（3D 翻页阅读器）
+  readingBookBySlug: (slug: string) => `${API_BASE_URL}/api/v1/public/reading-books/${slug}`,
 };
 
 // 提供两个版本的 URL，供需要明确指定的场景使用

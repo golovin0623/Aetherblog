@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Handler 总览（26 个模块，按职责分组）
+## 1. Handler 总览（27 个模块，按职责分组）
 
 > 表格中「Handler 文件」列是**源文件名（不含 `.go` 扩展名）**（Go 仓库习惯 snake_case，例：`auth_handler` → 实际文件 `auth_handler.go`），对应的 Go 类型名为 PascalCase（例：`AuthHandler`，符合 `CLAUDE.md` §4 后端命名约定）。这样写便于直接 grep 文件 / 跳定义。
 
@@ -25,6 +25,7 @@
 | `category_handler` | `/v1/admin/categories/*` + `/v1/public/*` | 6 个端点 |
 | `tag_handler` | `/v1/admin/tags/*` + `/v1/public/*` | 5 个端点 |
 | `archive_handler` | `/v1/public/archives/*` | `list`、`stats` |
+| `reading_book_handler` | `/v1/admin/reading-books/*` + `/v1/public/reading-books/*` | 拟真阅读：admin `list / POST generate / get / delete`（来源 POST/NOTE/KB_FILE，经 goldmark 渲染成净化 HTML 缓存落库）；public `GET /:slug`（仅 READY，供前台 3D 翻页阅读器读取） |
 
 ### 媒体与文件
 

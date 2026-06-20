@@ -502,8 +502,9 @@ func (h *AuthHandler) writeAuthCookies(c echo.Context, accessToken, refreshToken
 func (h *AuthHandler) clearAuthCookies(c echo.Context) {
 	secure := h.cfg.Auth.Cookie.Secure
 	sameSite := h.cfg.Auth.Cookie.SameSite
-	setCookie(c, middleware.AccessTokenCookie, "", "/api", 0, secure, sameSite)
-	setCookie(c, middleware.RefreshTokenCookie, "", "/api/v1/auth", 0, secure, sameSite)
+	setCookie(c, middleware.AccessTokenCookie, "", "/api", -1, secure, sameSite)
+	setCookie(c, middleware.AccessTokenCookie, "", readerAccessCookiePath, -1, secure, sameSite)
+	setCookie(c, middleware.RefreshTokenCookie, "", "/api/v1/auth", -1, secure, sameSite)
 }
 
 // setCookie 向响应写入一个 HttpOnly Cookie，支持指定各项属性。

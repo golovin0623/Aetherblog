@@ -880,6 +880,21 @@ func (r *PostRepo) FilterPublicNoPassword(ctx context.Context, ids []int64) ([]i
 	return out, nil
 }
 
+// IsPublicNoPassword 判断文章是否可在无需身份与密码的公开接口中直接读取。
+func (r *PostRepo) IsPublicNoPassword(ctx context.Context, id int64) (bool, error) {
+	var ok bool
+	err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS (
+			SELECT 1 FROM posts
+			WHERE id = $1
+			  AND deleted = false
+			  AND status = 'PUBLISHED'
+			  AND is_hidden = false
+			  AND password IS NULL
+		)`, id)
+	return ok, err
+}
+
 // ListEmbeddingStatus 返回文章的向量索引状态列表（仅排除 deleted=true），支持按 embeddingStatus 过滤。
 // statusFilter 为空时返回所有文章，否则只返回指定状态的文章。
 func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string, limit, offset int) ([]dto.EmbeddingPostItem, int, error) {

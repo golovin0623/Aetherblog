@@ -270,6 +270,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	noteHandler.MountFolders(admin.Group("/note-folders"))
 	noteHandler.MountTags(admin.Group("/note-tags"))
 
+	// --- 拟真阅读（Simulated Reading）模块 ---
+	// 把文章 / 笔记 / 知识库文件预渲染成成书 HTML 缓存，前台 3D 阅读器直接读取。
+	readingBookRepo := repository.NewReadingBookRepo(s.DB)
+	readingBookSvc := service.NewReadingBookService(readingBookRepo, postRepo, noteRepo)
+	readingBookHandler := handler.NewReadingBookHandler(readingBookSvc, activitySvc, s.Config.Auth.Cookie)
+	readingBookHandler.MountAdmin(admin.Group("/reading-books"))
+
 	// --- Atlas（Aether Knowledge）子产品 ---
 	// 计划: docs/plan/task-aether-knowledge-system.md（5 阶段路线图）
 	// Phase 0 落地 schema + /health；Phase 1 P1-01/05/06/07: MarkdownCarrierAdapter +
@@ -334,6 +341,9 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	postPublic.POST("/:slug/verify-password", postHandler.VerifyPassword, middleware.RateLimitByIP(s.Redis, "rate:postpwd", 10, time.Minute))
 
 	handler.NewArchiveHandler(postSvc).Mount(public.Group("/archives"))
+
+	// 拟真阅读公开读取入口（前台 3D 阅读器）。
+	readingBookHandler.MountPublic(public.Group("/reading-books"))
 
 	// --- 登录用户协作内容路由 ---
 	// 内容共享授权由 /v1/admin/content-shares 管理，这里提供被授权用户的实际消费入口。

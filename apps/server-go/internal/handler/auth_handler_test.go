@@ -3,10 +3,13 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/golovin0623/aetherblog-server/internal/config"
 	handlertest "github.com/golovin0623/aetherblog-server/internal/handler/testutil"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
 )
 
 // TestAuthHandler_GetJWTSecretMeta_ReturnsErrorWhenRepoMissing 验证：
@@ -52,6 +55,27 @@ func TestPreviousGraceHours_DefaultsToFortyEightWhenUnset(t *testing.T) {
 	}
 }
 
+func TestClearAuthCookiesExpiresReaderScopedAccessCookie(t *testing.T) {
+	h := &AuthHandler{
+		cfg: &config.Config{
+			Auth: config.AuthConfig{
+				Cookie: config.CookieConfig{Secure: true, SameSite: "Lax"},
+			},
+		},
+	}
+	e := handlertest.NewEcho()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h.clearAuthCookies(c)
+
+	cookies := rec.Header().Values("Set-Cookie")
+	assertSetCookie(t, cookies, middleware.AccessTokenCookie, "/api")
+	assertSetCookie(t, cookies, middleware.AccessTokenCookie, readerAccessCookiePath)
+	assertSetCookie(t, cookies, middleware.RefreshTokenCookie, "/api/v1/auth")
+}
+
 // TestFormatNullableTime_ReturnsNilForNilPtr 验证：
 // nil 输入返回 nil 而不是空字符串。前端依赖 null 来隐藏对应行 —— 空字符串
 // 会让 UI 看起来"有但没填"反而更糟。
@@ -69,4 +93,16 @@ func TestFormatNullableTime_ReturnsRFC3339ForRealTime(t *testing.T) {
 	if s, ok := got.(string); !ok || s != "2026-05-03T12:34:56Z" {
 		t.Errorf("expected RFC3339 string, got %v", got)
 	}
+}
+
+func assertSetCookie(t *testing.T, cookies []string, name, path string) {
+	t.Helper()
+	for _, cookie := range cookies {
+		if strings.HasPrefix(cookie, name+"=") &&
+			strings.Contains(cookie, "Path="+path) &&
+			strings.Contains(cookie, "Max-Age=0") {
+			return
+		}
+	}
+	t.Fatalf("missing expired cookie %s at path %s in %#v", name, path, cookies)
 }

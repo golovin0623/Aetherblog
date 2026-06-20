@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
+
+把站内**文章 / 学习笔记 / 知识库文件**一键转换成可翻页的「拟真书籍」，前台以全屏 3D 翻页阅读器沉浸式呈现，后台在文章模块统一管理。
+
+- **后端（migration 000084 `reading_books`）：** 新增 `reading_book` 模块（model / repo / service / handler / dto）。新增 `internal/pkg/markdown`：用 goldmark（GFM + 自动标题 ID + chroma 内联高亮）→ bluemonday 一次性把 Markdown 渲染成**自包含、已净化的成书 HTML** 落库缓存，连同章节目录（TOC）与字数/阅读时长。**「转换后的格式文件」即该缓存** —— 下次打开直接读取，无需重新解析或渲染。
+  - 来源解析：文章/笔记直接取 `content_markdown`；知识库文件优先回退到其关联文章 Markdown，否则按 `chunk_index` 顺序从 `kb_embeddings` 重建全文。
+  - 路由：`/v1/admin/reading-books`（list / generate / get / delete）+ `/v1/public/reading-books/:slug`（前台只读，仅 READY）。同源来源重复导入即原地更新（`(source_type, source_id)` 唯一）。
+- **后台（admin）：** 文章管理页头部新增「拟真阅读」按钮 → `SimulatedReadingModal`：书架视图（打开 / 删除）+ 导入视图（来源选项卡 文章 / 学习笔记 / 知识库 → 选择条目 → 选主题 → 导入并生成）。复用现有 post/note/kb 列表接口与共享 `Modal` / `Select`。
+- **前台（blog）：** 新增 `/reader/[slug]` 全屏路由。`PageFlipBook` 用 CSS 多列分页 + CSS 3D `rotateY` 叶片实现双页书脊翻页（窄屏降级单页），含进度滑杆、页码、章节目录抽屉、键盘 ←/→/Esc 导航、paper/sepia/night 三主题。
+
 ### Fixed — PR 评审合并：安全加固 + 微优化 (2026-06-18, branch claude/pr-review-consolidation-9ifwqy)
 
 合并并消化历史 PR #779 / #787 / #790 / #792 及其代码评审建议为单一变更集：

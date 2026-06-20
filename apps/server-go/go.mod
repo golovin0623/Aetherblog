@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.17
@@ -24,6 +25,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rs/zerolog v1.35.0
+	github.com/yuin/goldmark v1.7.8
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/crypto v0.46.0
 	golang.org/x/net v0.48.0
 	golang.org/x/sync v0.19.0
@@ -41,6 +44,7 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect

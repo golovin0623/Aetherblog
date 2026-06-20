@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown,
-  Settings, Sparkles, EyeOff, Lock, Eye, FolderOpen, Tag as TagIcon, BarChart3, FileText,
+  Settings, Sparkles, EyeOff, Lock, Eye, FolderOpen, Tag as TagIcon, BarChart3, FileText, BookOpen,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -13,6 +13,7 @@ import { tagService, Tag } from '@/services/tagService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Select, DateRangePicker, type SelectOption, type DateRangeValue } from '@aetherblog/ui';
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
+import { SimulatedReadingModal } from '@/components/SimulatedReadingModal';
 import PostTableRow from '@/components/posts/PostTableRow';
 import { AdminModuleHeader } from '@/components/layout/AdminModuleHeader';
 import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
@@ -155,6 +156,7 @@ export default function PostsPage() {
   // 属性弹窗状态
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
+  const [isReadingModalOpen, setIsReadingModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
 
@@ -523,6 +525,16 @@ export default function PostsPage() {
           }
           actions={
             <>
+              <button
+                type="button"
+                onClick={() => setIsReadingModalOpen(true)}
+                className="admin-module-action-button posts-header-action"
+                aria-label="拟真阅读"
+              >
+                <BookOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">拟真阅读</span>
+                <span className="sm:hidden">阅读</span>
+              </button>
               <button
                 type="button"
                 onClick={() => navigate('/posts/ai-writing/new')}
@@ -1134,6 +1146,12 @@ export default function PostsPage() {
           onSave={handleSaveProperties}
         />
       )}
+
+      {/* 拟真阅读弹窗 */}
+      <SimulatedReadingModal
+        isOpen={isReadingModalOpen}
+        onClose={() => setIsReadingModalOpen(false)}
+      />
     </div>
   );
 }
