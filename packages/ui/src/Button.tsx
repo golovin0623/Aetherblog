@@ -46,7 +46,7 @@ export function Button({
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center rounded-xl font-bold',
-        'transition-colors duration-200',
+        'transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
         variants[variant],
         sizes[size],
         (disabled || loading) && 'opacity-50 cursor-not-allowed',
