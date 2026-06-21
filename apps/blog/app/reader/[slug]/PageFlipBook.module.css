@@ -228,8 +228,6 @@
   will-change: transform;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  filter: drop-shadow(-18px 14px 20px rgba(0, 0, 0, 0.22));
-  contain: layout paint style;
 }
 .leafFace {
   position: absolute;
