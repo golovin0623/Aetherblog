@@ -215,6 +215,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
   const [positionReady, setPositionReady] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
 
   const measureRef = useRef<HTMLDivElement>(null);
@@ -313,54 +314,94 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   // 测量总页数（隐藏容器分列布局后读取 scrollWidth）。
   useLayoutEffect(() => {
     measurePages();
-  }, [measurePages, book.contentHtml, preferences.fontSize, preferences.lineHeight, preferences.fontFamily, readerSkin]);
+  }, [
+    measurePages,
+    book.contentHtml,
+    preferences.fontSize,
+    preferences.lineHeight,
+    preferences.fontFamily,
+    preferences.paragraphMode,
+    readerSkin,
+  ]);
 
   // 图片解码后会改变多列 scrollWidth；监听隐藏测量流中的图片并重新分页。
   useEffect(() => {
-    if (!dims || !measureRef.current) return;
+    if (!dims || !measureRef.current) {
+      setMediaReady(false);
+      return;
+    }
     const el = measureRef.current;
     const images = Array.from(el.querySelectorAll('img'));
-    if (images.length === 0) return;
+    if (images.length === 0) {
+      const frame = requestAnimationFrame(() => setMediaReady(true));
+      return () => cancelAnimationFrame(frame);
+    }
 
     let raf = 0;
+    let settledFrame = 0;
+    let remaining = images.length;
+    const settledImages = new WeakSet<HTMLImageElement>();
+    const cleanupImageListeners: Array<() => void> = [];
     const scheduleMeasure = () => {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         raf = requestAnimationFrame(measurePages);
       });
     };
+    const markImageSettled = (img: HTMLImageElement) => {
+      if (settledImages.has(img)) return;
+      settledImages.add(img);
+      remaining -= 1;
+      scheduleMeasure();
+      if (remaining <= 0) {
+        settledFrame = requestAnimationFrame(() => {
+          settledFrame = requestAnimationFrame(() => setMediaReady(true));
+        });
+      }
+    };
 
     const observer = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(scheduleMeasure);
 
+    setMediaReady(false);
     images.forEach((img) => {
-      img.addEventListener('load', scheduleMeasure);
-      img.addEventListener('error', scheduleMeasure);
+      const onSettled = () => markImageSettled(img);
+      img.addEventListener('load', onSettled);
+      img.addEventListener('error', onSettled);
+      cleanupImageListeners.push(() => {
+        img.removeEventListener('load', onSettled);
+        img.removeEventListener('error', onSettled);
+      });
       observer?.observe(img);
-      void img.decode?.().then(scheduleMeasure, scheduleMeasure);
-      if (img.complete) scheduleMeasure();
+      if (typeof img.decode === 'function') {
+        void img.decode().then(onSettled, onSettled);
+      }
+      if (img.complete) onSettled();
     });
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
+      if (settledFrame) cancelAnimationFrame(settledFrame);
       observer?.disconnect();
-      images.forEach((img) => {
-        img.removeEventListener('load', scheduleMeasure);
-        img.removeEventListener('error', scheduleMeasure);
-      });
+      cleanupImageListeners.forEach((cleanup) => cleanup());
     };
   }, [dims, book.contentHtml, measurePages]);
 
   useEffect(() => {
-    if (!dims || positionReady) return;
+    setPositionReady(false);
+    setMediaReady(false);
+  }, [book.slug]);
+
+  useEffect(() => {
+    if (!dims || positionReady || !mediaReady) return;
     const storedPage = readStoredPage(book.slug);
     if (storedPage !== null) {
       setCursor(absolutePageToCursor(storedPage, dims.cols, totalPages));
     }
     const frame = window.requestAnimationFrame(() => setPositionReady(true));
     return () => window.cancelAnimationFrame(frame);
-  }, [book.slug, dims, positionReady, totalPages]);
+  }, [book.slug, dims, mediaReady, positionReady, totalPages]);
 
   useEffect(() => {
     if (!dims || !positionReady) return;
