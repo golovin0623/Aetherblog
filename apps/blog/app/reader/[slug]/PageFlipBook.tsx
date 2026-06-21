@@ -70,6 +70,7 @@ interface PointerState {
   id: number;
   startX: number;
   startY: number;
+  startedOnInteractive: boolean;
   handled: boolean;
 }
 
@@ -139,6 +140,11 @@ const TURN_OPTIONS: Array<{ value: ReaderPageTurn; label: string }> = [
 function isInteractiveKeyTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(target.closest('button, input, textarea, select, [role="button"], [role="slider"], [contenteditable="true"]'));
+}
+
+function isReaderContentInteractive(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest('a[href], button, input, textarea, select, summary, [role="button"], [role="link"], [contenteditable="true"]'));
 }
 
 const PARAGRAPH_OPTIONS: Array<{ value: ReaderParagraphMode; label: string }> = [
@@ -477,6 +483,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       id: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      startedOnInteractive: isReaderContentInteractive(e.target),
       handled: false,
     };
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -505,10 +512,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     const dx = e.clientX - pointer.startX;
     const dy = e.clientY - pointer.startY;
     const wasHandled = pointer.handled;
+    const startedOnInteractive = pointer.startedOnInteractive;
     pointerRef.current = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
 
     if (!wasHandled && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      if (startedOnInteractive) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       if (x < rect.width * 0.34) {
@@ -528,6 +537,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       suppressClickRef.current = false;
     }, 0);
   }, [goNext, goPrev]);
+
+  const handleBookClickCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressClickRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    suppressClickRef.current = false;
+  }, []);
 
   const handleBookPointerCancel = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (pointerRef.current?.id === e.pointerId) {
@@ -812,6 +828,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
           onPointerMove={handleBookPointerMove}
           onPointerUp={handleBookPointerUp}
           onPointerCancel={handleBookPointerCancel}
+          onClickCapture={handleBookClickCapture}
         >
           {/* 点击左右半区翻页 */}
           {cols === 2 ? (
