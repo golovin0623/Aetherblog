@@ -35,7 +35,7 @@ export interface ReadingBook {
 
 const FLIP_MS = 660;
 const TURN_ANGLE = -158;
-const TWO_PAGE_MIN_WIDTH = 340;
+const MOBILE_BREAKPOINT = 768;
 
 interface Dims {
   pageW: number;
@@ -51,12 +51,13 @@ interface Dims {
 function computeDims(): Dims {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const cols: 1 | 2 = vw < TWO_PAGE_MIN_WIDTH ? 1 : 2;
+  const isMobile = vw <= MOBILE_BREAKPOINT;
+  const cols: 1 | 2 = isMobile ? 1 : 2;
 
   // 预留顶栏 / 底栏的垂直空间。
-  const reservedV = vw < 760 ? 132 : 156;
+  const reservedV = isMobile ? 132 : 156;
   const maxPageH = Math.max(vh - reservedV, 240);
-  let pageH = Math.max(Math.min(maxPageH, vw < 760 ? 520 : 860), 240);
+  let pageH = Math.max(Math.min(maxPageH, isMobile ? 520 : 860), 240);
   // 书页纵横比（宽:高）约 0.66。
   let pageW = Math.round(pageH * 0.66);
 
@@ -72,9 +73,8 @@ function computeDims(): Dims {
     pageW = Math.floor((pageH * 0.66));
   }
 
-  const compactSpread = cols === 2 && vw < 760;
-  const padX = Math.round(pageW * (compactSpread ? 0.085 : 0.11));
-  const padTop = Math.round(pageH * (compactSpread ? 0.16 : 0.095));
+  const padX = Math.round(pageW * 0.11);
+  const padTop = Math.round(pageH * 0.095);
   const padBottom = Math.round(pageH * 0.075);
   const contentW = pageW - padX * 2;
   const contentH = pageH - padTop - padBottom;
