@@ -681,7 +681,7 @@
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr) 62px 42px;
+    grid-template-columns: 44px minmax(0, 1fr) 62px 44px;
     gap: 10px;
     padding: 10px 14px max(12px, env(safe-area-inset-bottom));
     background:
@@ -690,8 +690,8 @@
     transition: opacity 0.22s ease, transform 0.22s ease;
   }
   .navBtn {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     background: color-mix(in srgb, var(--reader-page) 74%, transparent);
     backdrop-filter: blur(12px);
   }
@@ -727,7 +727,7 @@
     animation: tocSheetIn 180ms ease-out;
   }
   .settingsPanel {
-    max-height: 74vh;
+    max-height: 66vh;
   }
   .skinGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
