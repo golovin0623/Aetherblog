@@ -19,6 +19,17 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+function isChunkLoadError(error: Error | null): boolean {
+  if (!error) return false;
+  const text = `${error.name} ${error.message}`.toLowerCase();
+  return (
+    text.includes('chunkloaderror') ||
+    text.includes('loading chunk') ||
+    text.includes('failed to fetch dynamically imported module') ||
+    text.includes('importing a module script failed')
+  );
+}
+
 /**
  * 错误边界组件
  * 
@@ -40,6 +51,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   handleRetry = () => {
+    if (isChunkLoadError(this.state.error)) {
+      window.location.reload();
+      return;
+    }
     this.setState({ hasError: false, error: null });
   };
 
@@ -57,7 +72,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               页面加载失败
             </h2>
             <p className="text-sm text-[var(--text-muted,#94a3b8)] mb-6 leading-relaxed">
-              可能是网络不稳定导致页面组件加载失败，请尝试刷新页面。
+              {isChunkLoadError(this.state.error)
+                ? '页面资源已更新或网络中断，重新加载会获取最新组件。'
+                : '页面组件加载失败，请重新尝试。'}
             </p>
             <button
               onClick={this.handleRetry}

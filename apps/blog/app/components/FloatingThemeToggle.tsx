@@ -25,9 +25,8 @@ export default function FloatingThemeToggle() {
 
   if (!mounted) return null;
 
-  // Agent 工作台自带主题入口，不让全局浮层占用 fixed bottom-right 位置
-  // 与 composer / FAB 相互遮挡。
-  if (pathname.startsWith('/agent/workspace')) return null;
+  // Agent 工作台和拟真阅读器自带全屏交互入口，不让全局浮层占用固定底部位置。
+  if (pathname.startsWith('/agent/workspace') || pathname.startsWith('/reader/')) return null;
 
   return (
     <button
