@@ -22,6 +22,7 @@ import {
   computeReaderDims,
   cursorToAbsolutePage,
   DEFAULT_READER_PREFERENCES,
+  horizontalOffsetToPage,
   resolveReaderSkin,
   type ReaderDims as Dims,
   type ReaderFontFamily,
@@ -542,7 +543,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       if (!dims || !measureRef.current) return;
       const target = measureRef.current.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
       if (!target) return;
-      const page = Math.floor(target.offsetLeft / dims.contentW);
+      const measureRect = measureRef.current.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const page = horizontalOffsetToPage(targetRect.left, measureRect.left, dims.contentW);
       const unit = cols === 2 ? Math.floor(page / 2) : page;
       jumpTo(unit);
       setTocOpen(false);
@@ -556,11 +559,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       return;
     }
     const currentPage = cursorToAbsolutePage(visibleCursor, cols);
+    const measureRect = measureRef.current.getBoundingClientRect();
     let active: string | null = null;
     for (const h of book.toc) {
       const target = measureRef.current.querySelector<HTMLElement>(`[id="${CSS.escape(h.id)}"]`);
       if (!target) continue;
-      const page = Math.floor(target.offsetLeft / dims.contentW);
+      const targetRect = target.getBoundingClientRect();
+      const page = horizontalOffsetToPage(targetRect.left, measureRect.left, dims.contentW);
       if (page <= currentPage) active = h.id;
       else break;
     }
@@ -936,7 +941,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
                 <strong>{preferences.fontSize}px</strong>
               </div>
               <div className={styles.stepper}>
-                <button onClick={() => updatePreferences({ fontSize: preferences.fontSize - 1 })}>A-</button>
+                <button
+                  type="button"
+                  disabled={preferences.fontSize <= 14}
+                  onClick={() => updatePreferences({ fontSize: preferences.fontSize - 1 })}
+                >
+                  A-
+                </button>
                 <input
                   type="range"
                   min={14}
@@ -945,7 +956,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
                   onChange={(e) => updatePreferences({ fontSize: Number(e.target.value) })}
                   aria-label="调整字号"
                 />
-                <button onClick={() => updatePreferences({ fontSize: preferences.fontSize + 1 })}>A+</button>
+                <button
+                  type="button"
+                  disabled={preferences.fontSize >= 24}
+                  onClick={() => updatePreferences({ fontSize: preferences.fontSize + 1 })}
+                >
+                  A+
+                </button>
               </div>
             </section>
 

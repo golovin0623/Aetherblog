@@ -538,6 +538,13 @@
 .resetButton:hover {
   background: rgba(127, 127, 127, 0.14);
 }
+.skinButton:disabled,
+.segmented button:disabled,
+.stepper button:disabled,
+.resetButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
 .skinSwatch {
   width: 18px;
   height: 18px;

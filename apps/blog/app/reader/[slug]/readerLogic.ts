@@ -55,7 +55,10 @@ const PAGE_TURNS = new Set<ReaderPageTurn>(['slide', 'curl', 'instant']);
 const PARAGRAPH_MODES = new Set<ReaderParagraphMode>(['book', 'article']);
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const n = typeof value === 'number' ? value : Number(value);
+  if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) {
+    return fallback;
+  }
+  const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
@@ -176,4 +179,11 @@ export function absolutePageToCursor(page: number, cols: 1 | 2, totalPages: numb
   const maxCursor = Math.max(0, cols === 2 ? Math.ceil(totalPages / 2) - 1 : totalPages - 1);
   const cursor = cols === 2 ? Math.floor(safePage / 2) : safePage;
   return Math.min(cursor, maxCursor);
+}
+
+export function horizontalOffsetToPage(targetLeft: number, containerLeft: number, contentW: number): number {
+  if (!Number.isFinite(targetLeft) || !Number.isFinite(containerLeft) || !Number.isFinite(contentW) || contentW <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((targetLeft - containerLeft) / contentW));
 }

@@ -4,6 +4,7 @@ import {
   clampReaderPreferences,
   computeReaderDims,
   cursorToAbsolutePage,
+  horizontalOffsetToPage,
   resolveReaderSkin,
 } from '../apps/blog/app/reader/[slug]/readerLogic';
 
@@ -63,6 +64,25 @@ describe('reader mobile experience gate', () => {
     expect(prefs.customBg).toBe('#ffffff');
     expect(prefs.customPage).toBe('#fbfaf6');
     expect(prefs.customInk).toBe('#123456');
+  });
+
+  it('uses default numeric preferences for falsy or non-numeric values', () => {
+    const prefs = clampReaderPreferences({
+      fontSize: null,
+      lineHeight: '',
+      brightness: false,
+    });
+
+    expect(prefs.fontSize).toBe(17);
+    expect(prefs.lineHeight).toBe(1.78);
+    expect(prefs.brightness).toBe(100);
+  });
+
+  it('calculates heading pages from element rects relative to the measurement flow', () => {
+    expect(horizontalOffsetToPage(626, 40, 300)).toBe(1);
+    expect(horizontalOffsetToPage(940, 40, 300)).toBe(3);
+    expect(horizontalOffsetToPage(20, 40, 300)).toBe(0);
+    expect(horizontalOffsetToPage(940, 40, 0)).toBe(0);
   });
 
   it('falls back to book-style paragraph rhythm for malformed preferences', () => {
