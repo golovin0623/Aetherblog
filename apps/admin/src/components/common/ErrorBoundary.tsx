@@ -16,7 +16,31 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  error: unknown;
+}
+
+function getErrorText(error: unknown): string {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return `${error.name} ${error.message}`;
+  if (typeof error === 'object') {
+    const maybeError = error as { name?: unknown; message?: unknown };
+    const name = typeof maybeError.name === 'string' ? maybeError.name : '';
+    const message = typeof maybeError.message === 'string' ? maybeError.message : '';
+    const text = `${name} ${message}`.trim();
+    return text || String(error);
+  }
+  return String(error);
+}
+
+function isChunkLoadError(error: unknown): boolean {
+  const text = getErrorText(error).toLowerCase();
+  return (
+    text.includes('chunkloaderror') ||
+    text.includes('loading chunk') ||
+    text.includes('failed to fetch dynamically imported module') ||
+    text.includes('importing a module script failed')
+  );
 }
 
 /**
@@ -31,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -40,6 +64,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   handleRetry = () => {
+    if (isChunkLoadError(this.state.error)) {
+      window.location.reload();
+      return;
+    }
     this.setState({ hasError: false, error: null });
   };
 
@@ -57,7 +85,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               页面加载失败
             </h2>
             <p className="text-sm text-[var(--text-muted,#94a3b8)] mb-6 leading-relaxed">
-              可能是网络不稳定导致页面组件加载失败，请尝试刷新页面。
+              {isChunkLoadError(this.state.error)
+                ? '页面资源已更新或网络中断，重新加载会获取最新组件。'
+                : '页面组件加载失败，请重新尝试。'}
             </p>
             <button
               onClick={this.handleRetry}

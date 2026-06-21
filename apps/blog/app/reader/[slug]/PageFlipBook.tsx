@@ -1,7 +1,16 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ChevronLeft, ChevronRight, List, X } from 'lucide-react';
 import styles from './PageFlipBook.module.css';
 
@@ -24,7 +33,9 @@ export interface ReadingBook {
   theme?: string;
 }
 
-const FLIP_MS = 720;
+const FLIP_MS = 660;
+const TURN_ANGLE = -158;
+const MOBILE_BREAKPOINT = 768;
 
 interface Dims {
   pageW: number;
@@ -40,29 +51,100 @@ interface Dims {
 function computeDims(): Dims {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const cols: 1 | 2 = vw < 760 ? 1 : 2;
+  const isMobile = vw <= MOBILE_BREAKPOINT;
+  const cols: 1 | 2 = isMobile ? 1 : 2;
 
   // 预留顶栏 / 底栏的垂直空间。
-  const reservedV = 150;
-  let pageH = Math.max(Math.min(vh - reservedV, 860), 320);
+  const reservedV = isMobile ? 132 : 156;
+  const maxPageH = Math.max(vh - reservedV, 240);
+  let pageH = Math.max(Math.min(maxPageH, isMobile ? 520 : 860), 240);
   // 书页纵横比（宽:高）约 0.66。
   let pageW = Math.round(pageH * 0.66);
 
-  const maxBookW = vw - (cols === 2 ? 56 : 36);
+  const maxBookW = Math.max(vw - (cols === 2 ? 28 : 36), 240);
   const bookW = cols * pageW;
   if (bookW > maxBookW) {
     pageW = Math.floor(maxBookW / cols);
     pageH = Math.round(pageW / 0.66);
   }
 
+  if (pageH > maxPageH) {
+    pageH = maxPageH;
+    pageW = Math.floor((pageH * 0.66));
+  }
+
   const padX = Math.round(pageW * 0.11);
-  const padTop = Math.round(pageH * 0.085);
+  const padTop = Math.round(pageH * 0.095);
   const padBottom = Math.round(pageH * 0.075);
   const contentW = pageW - padX * 2;
   const contentH = pageH - padTop - padBottom;
 
   return { pageW, pageH, padX, padTop, padBottom, contentW, contentH, cols };
 }
+
+interface FlipState {
+  dir: 'next' | 'prev';
+  angle: number;
+  from: number;
+  to: number;
+}
+
+interface PageSurfaceProps {
+  pageIndex: number;
+  side: 'left' | 'right' | 'single';
+  dims: Dims;
+  totalPages: number;
+  title: string;
+  contentHtml: string;
+}
+
+const PageSurface = memo(function PageSurface({
+  pageIndex,
+  side,
+  dims,
+  totalPages,
+  title,
+  contentHtml,
+}: PageSurfaceProps) {
+  const valid = pageIndex >= 0 && pageIndex < totalPages;
+  const pageClass =
+    side === 'left' ? styles.pageLeft : side === 'right' ? styles.pageRight : styles.pageSingle;
+  const pageStyle: CSSProperties = { width: dims.pageW, height: dims.pageH };
+  const wrapStyle: CSSProperties = {
+    left: dims.padX,
+    top: dims.padTop,
+    width: dims.contentW,
+    height: dims.contentH,
+  };
+  const flowStyle: CSSProperties = {
+    width: dims.contentW,
+    height: dims.contentH,
+    columnWidth: dims.contentW,
+    transform: `translate3d(${-pageIndex * dims.contentW}px, 0, 0)`,
+  };
+
+  return (
+    <div className={`${styles.page} ${pageClass}`} style={pageStyle} aria-hidden={!valid}>
+      {valid && (
+        <>
+          <div className={styles.pageHeader} style={{ top: dims.padTop * 0.42, paddingInline: dims.padX }}>
+            {title}
+          </div>
+          <div className={styles.flowWrap} style={wrapStyle}>
+            <div
+              className={`${styles.content} ${styles.flow}`}
+              style={flowStyle}
+              dangerouslySetInnerHTML={{ __html: contentHtml }}
+            />
+          </div>
+          <div className={styles.pageNumber} style={{ bottom: dims.padBottom * 0.4 }}>
+            {pageIndex + 1}
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
 
 export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const router = useRouter();
@@ -72,21 +154,35 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const [totalPages, setTotalPages] = useState(1);
   // cursor：double 模式下为 spread 索引，single 模式下为 page 索引。
   const [cursor, setCursor] = useState(0);
-  const [flip, setFlip] = useState<{ dir: 'next' | 'prev'; angle: number } | null>(null);
+  const [flip, setFlip] = useState<FlipState | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
 
   const measureRef = useRef<HTMLDivElement>(null);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flipFrames = useRef<number[]>([]);
   const prevColsRef = useRef<1 | 2 | null>(null);
   const animating = flip !== null;
 
+  const clearFlipWork = useCallback(() => {
+    if (flipTimer.current) {
+      clearTimeout(flipTimer.current);
+      flipTimer.current = null;
+    }
+    flipFrames.current.forEach((frame) => cancelAnimationFrame(frame));
+    flipFrames.current = [];
+  }, []);
+
   // 响应式尺寸。
   useLayoutEffect(() => {
-    const update = () => setDims(computeDims());
+    const update = () => {
+      clearFlipWork();
+      setFlip(null);
+      setDims(computeDims());
+    };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, []);
+  }, [clearFlipWork]);
 
   const measurePages = useCallback(() => {
     if (!dims || !measureRef.current) return;
@@ -94,20 +190,21 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     const sw = el.scrollWidth;
     const pages = Math.max(1, Math.ceil(sw / dims.contentW));
     const prevCols = prevColsRef.current ?? dims.cols;
-    setTotalPages(pages);
+    setTotalPages((prev) => (prev === pages ? prev : pages));
     setCursor((c) => {
       const absolutePage = prevCols === 2 ? c * 2 : c;
       const nextCursor = dims.cols === 2 ? Math.floor(absolutePage / 2) : absolutePage;
       const maxNext = Math.max(0, dims.cols === 2 ? Math.ceil(pages / 2) - 1 : pages - 1);
-      return Math.min(nextCursor, maxNext);
+      const clamped = Math.min(nextCursor, maxNext);
+      return c === clamped ? c : clamped;
     });
     prevColsRef.current = dims.cols;
-  }, [dims, book.contentHtml]);
+  }, [dims]);
 
   // 测量总页数（隐藏容器分列布局后读取 scrollWidth）。
   useLayoutEffect(() => {
     measurePages();
-  }, [measurePages]);
+  }, [measurePages, book.contentHtml]);
 
   // 图片解码后会改变多列 scrollWidth；监听隐藏测量流中的图片并重新分页。
   useEffect(() => {
@@ -149,32 +246,48 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const cols = dims?.cols ?? 2;
   const unitCount = cols === 2 ? Math.ceil(totalPages / 2) : totalPages; // 翻页单元总数
   const maxCursor = Math.max(0, unitCount - 1);
+  const visibleCursor = flip ? flip.to : cursor;
+
+  const startFlip = useCallback((dir: 'next' | 'prev', from: number, to: number) => {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    clearFlipWork();
+
+    if (prefersReduced) {
+      setFlip(null);
+      setCursor(to);
+      return;
+    }
+
+    const startAngle = dir === 'next' ? 0 : TURN_ANGLE;
+    const endAngle = dir === 'next' ? TURN_ANGLE : 0;
+
+    setFlip({ dir, angle: startAngle, from, to });
+    const firstFrame = requestAnimationFrame(() => {
+      const secondFrame = requestAnimationFrame(() => {
+        if (flipTimer.current) {
+          setFlip({ dir, angle: endAngle, from, to });
+        }
+      });
+      flipFrames.current = [secondFrame];
+    });
+    flipFrames.current = [firstFrame];
+    flipTimer.current = setTimeout(() => {
+      setCursor(to);
+      setFlip(null);
+      flipTimer.current = null;
+      flipFrames.current = [];
+    }, FLIP_MS);
+  }, [clearFlipWork]);
 
   const goNext = useCallback(() => {
     if (animating || cursor >= maxCursor) return;
-    if (flipTimer.current) clearTimeout(flipTimer.current);
-    setFlip({ dir: 'next', angle: 0 });
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => setFlip({ dir: 'next', angle: -180 })),
-    );
-    flipTimer.current = setTimeout(() => {
-      setCursor((c) => Math.min(c + 1, maxCursor));
-      setFlip(null);
-    }, FLIP_MS);
-  }, [animating, cursor, maxCursor]);
+    startFlip('next', cursor, Math.min(cursor + 1, maxCursor));
+  }, [animating, cursor, maxCursor, startFlip]);
 
   const goPrev = useCallback(() => {
     if (animating || cursor <= 0) return;
-    if (flipTimer.current) clearTimeout(flipTimer.current);
-    setFlip({ dir: 'prev', angle: -180 });
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => setFlip({ dir: 'prev', angle: 0 })),
-    );
-    flipTimer.current = setTimeout(() => {
-      setCursor((c) => Math.max(c - 1, 0));
-      setFlip(null);
-    }, FLIP_MS);
-  }, [animating, cursor]);
+    startFlip('prev', cursor, Math.max(cursor - 1, 0));
+  }, [animating, cursor, startFlip]);
 
   const jumpTo = useCallback(
     (unit: number) => {
@@ -200,7 +313,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [goNext, goPrev, close, tocOpen]);
 
-  useEffect(() => () => { if (flipTimer.current) clearTimeout(flipTimer.current); }, []);
+  useEffect(() => () => clearFlipWork(), [clearFlipWork]);
 
   // 跳转到目录锚点所在页（通过测量容器中锚点元素的水平偏移定位）。
   const jumpToHeading = useCallback(
@@ -216,43 +329,18 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     [dims, cols, jumpTo],
   );
 
-  const flowStyle = (pageIndex: number): React.CSSProperties => ({
-    width: dims!.contentW,
-    height: dims!.contentH,
-    columnWidth: dims!.contentW,
-    transform: `translateX(${-pageIndex * dims!.contentW}px)`,
-  });
-
-  const wrapStyle: React.CSSProperties = dims
-    ? { left: dims.padX, top: dims.padTop, width: dims.contentW, height: dims.contentH }
-    : {};
-
   // 给定页索引渲染一个完整页面（含页眉/页码/正文窗口）。
   const renderPage = (pageIndex: number, side: 'left' | 'right' | 'single') => {
     if (!dims) return null;
-    const valid = pageIndex >= 0 && pageIndex < totalPages;
-    const pageClass =
-      side === 'left' ? styles.pageLeft : side === 'right' ? styles.pageRight : styles.pageSingle;
     return (
-      <div className={`${styles.page} ${pageClass}`} style={{ width: dims.pageW, height: dims.pageH }}>
-        {valid && (
-          <>
-            <div className={styles.pageHeader} style={{ top: dims.padTop * 0.42, paddingInline: dims.padX }}>
-              {book.title}
-            </div>
-            <div className={styles.flowWrap} style={wrapStyle}>
-              <div
-                className={styles.content + ' ' + styles.flow}
-                style={flowStyle(pageIndex)}
-                dangerouslySetInnerHTML={{ __html: book.contentHtml }}
-              />
-            </div>
-            <div className={styles.pageNumber} style={{ bottom: dims.padBottom * 0.4 }}>
-              {pageIndex + 1}
-            </div>
-          </>
-        )}
-      </div>
+      <PageSurface
+        pageIndex={pageIndex}
+        side={side}
+        dims={dims}
+        totalPages={totalPages}
+        title={book.title}
+        contentHtml={book.contentHtml}
+      />
     );
   };
 
@@ -264,16 +352,24 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
         return { baseLeft: 2 * s, baseRight: 2 * s + 1, leaf: null as null | { front: number; back: number } };
       }
       if (flip.dir === 'next') {
-        return { baseLeft: 2 * s, baseRight: 2 * s + 3, leaf: { front: 2 * s + 1, back: 2 * s + 2 } };
+        return {
+          baseLeft: 2 * flip.from,
+          baseRight: 2 * flip.to + 1,
+          leaf: { front: 2 * flip.from + 1, back: 2 * flip.to },
+        };
       }
-      // prev：底层显示目标 spread s-1。
-      return { baseLeft: 2 * (s - 1), baseRight: 2 * s - 1, leaf: { front: 2 * s - 1, back: 2 * s } };
+      // prev：底层显示目标 spread，叶片背面保留原 spread 的左页。
+      return {
+        baseLeft: 2 * flip.to,
+        baseRight: 2 * flip.to + 1,
+        leaf: { front: 2 * flip.to + 1, back: 2 * flip.from },
+      };
     }
     // 单页模式
     const p = cursor;
     if (!flip) return { single: p, leaf: null as null | { front: number; back: number } };
-    if (flip.dir === 'next') return { single: p + 1, leaf: { front: p, back: p + 1 } };
-    return { single: p - 1, leaf: { front: p - 1, back: p } };
+    if (flip.dir === 'next') return { single: flip.to, leaf: { front: flip.from, back: flip.to } };
+    return { single: flip.to, leaf: { front: flip.to, back: flip.from } };
   }, [cols, cursor, flip]);
 
   if (!dims) {
@@ -282,12 +378,16 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   const counter =
     cols === 2
-      ? `${Math.min(cursor * 2 + 1, totalPages)}–${Math.min(cursor * 2 + 2, totalPages)} / ${totalPages}`
-      : `${cursor + 1} / ${totalPages}`;
+      ? `${Math.min(visibleCursor * 2 + 1, totalPages)}–${Math.min(visibleCursor * 2 + 2, totalPages)} / ${totalPages}`
+      : `${visibleCursor + 1} / ${totalPages}`;
 
   // 叶片几何：双页时叶片位于右页位置、绕书脊（左缘）旋转；单页时占满整页、绕左缘旋转。
   const leafLeft = cols === 2 ? dims.pageW : 0;
-  const leafTransition = flip ? `transform ${FLIP_MS}ms cubic-bezier(0.36, 0, 0.2, 1)` : 'none';
+  const turnProgress = flip ? Math.min(1, Math.abs(flip.angle / TURN_ANGLE)) : 0;
+  const leafTransition = flip ? `transform ${FLIP_MS}ms cubic-bezier(0.28, 0.02, 0.2, 1)` : 'none';
+  const leafTilt = flip?.dir === 'next' ? -0.9 : 0.9;
+  const leafSkew = flip ? (flip.dir === 'next' ? 1 : -1) * Math.sin(turnProgress * Math.PI) * 4.5 : 0;
+  const leafShadeOpacity = flip ? 0.1 + Math.sin(turnProgress * Math.PI) * 0.42 : 0;
 
   return (
     <div className={styles.overlay} data-theme={theme}>
@@ -328,13 +428,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
                 left: leafLeft,
                 width: dims.pageW,
                 height: dims.pageH,
-                transform: `rotateY(${flip.angle}deg)`,
+                transform: `translateZ(2px) rotateY(${flip.angle}deg) rotateZ(${leafTilt}deg) skewY(${leafSkew}deg)`,
                 transition: leafTransition,
               }}
             >
               <div className={styles.leafFace}>
                 {renderPage(layout.leaf.front, cols === 2 ? 'right' : 'single')}
-                <div className={styles.leafShade} style={{ opacity: 1 + flip.angle / 180 }} />
+                <div className={styles.leafShade} style={{ opacity: leafShadeOpacity }} />
               </div>
               <div className={`${styles.leafFace} ${styles.leafBack}`}>
                 {renderPage(layout.leaf.back, cols === 2 ? 'left' : 'single')}
@@ -348,14 +448,14 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
             onClick={goPrev}
             disabled={cursor <= 0 || animating}
             tabIndex={-1}
-            style={{ position: 'absolute', left: 0, top: 0, width: '38%', height: '100%', background: 'transparent', border: 'none', cursor: cursor > 0 ? 'w-resize' : 'default' }}
+            className={styles.hitZoneLeft}
           />
           <button
             aria-label="下一页"
             onClick={goNext}
             disabled={cursor >= maxCursor || animating}
             tabIndex={-1}
-            style={{ position: 'absolute', right: 0, top: 0, width: '38%', height: '100%', background: 'transparent', border: 'none', cursor: cursor < maxCursor ? 'e-resize' : 'default' }}
+            className={styles.hitZoneRight}
           />
         </div>
       </div>
@@ -370,7 +470,8 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
           type="range"
           min={0}
           max={maxCursor}
-          value={cursor}
+          value={visibleCursor}
+          disabled={animating}
           onChange={(e) => jumpTo(Number(e.target.value))}
           aria-label="阅读进度"
         />
@@ -384,12 +485,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       {tocOpen && (
         <>
           <div
-            style={{ position: 'absolute', inset: 0, zIndex: 49, background: 'rgba(0,0,0,0.25)' }}
+            className={styles.scrim}
             onClick={() => setTocOpen(false)}
           />
           <nav className={styles.toc}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <strong style={{ fontSize: 14 }}>目录</strong>
+            <div className={styles.tocHeader}>
+              <strong>目录</strong>
               <button className={styles.iconBtn} onClick={() => setTocOpen(false)} aria-label="关闭目录">
                 <X size={16} />
               </button>
