@@ -16,12 +16,25 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  error: unknown;
 }
 
-function isChunkLoadError(error: Error | null): boolean {
-  if (!error) return false;
-  const text = `${error.name} ${error.message}`.toLowerCase();
+function getErrorText(error: unknown): string {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return `${error.name} ${error.message}`;
+  if (typeof error === 'object') {
+    const maybeError = error as { name?: unknown; message?: unknown };
+    const name = typeof maybeError.name === 'string' ? maybeError.name : '';
+    const message = typeof maybeError.message === 'string' ? maybeError.message : '';
+    const text = `${name} ${message}`.trim();
+    return text || String(error);
+  }
+  return String(error);
+}
+
+function isChunkLoadError(error: unknown): boolean {
+  const text = getErrorText(error).toLowerCase();
   return (
     text.includes('chunkloaderror') ||
     text.includes('loading chunk') ||
@@ -42,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
     return { hasError: true, error };
   }
 

@@ -159,19 +159,30 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   const measureRef = useRef<HTMLDivElement>(null);
   const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flipFrames = useRef<number[]>([]);
   const prevColsRef = useRef<1 | 2 | null>(null);
   const animating = flip !== null;
+
+  const clearFlipWork = useCallback(() => {
+    if (flipTimer.current) {
+      clearTimeout(flipTimer.current);
+      flipTimer.current = null;
+    }
+    flipFrames.current.forEach((frame) => cancelAnimationFrame(frame));
+    flipFrames.current = [];
+  }, []);
 
   // 响应式尺寸。
   useLayoutEffect(() => {
     const update = () => {
+      clearFlipWork();
       setFlip(null);
       setDims(computeDims());
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, []);
+  }, [clearFlipWork]);
 
   const measurePages = useCallback(() => {
     if (!dims || !measureRef.current) return;
@@ -238,19 +249,35 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const visibleCursor = flip ? flip.to : cursor;
 
   const startFlip = useCallback((dir: 'next' | 'prev', from: number, to: number) => {
-    if (flipTimer.current) clearTimeout(flipTimer.current);
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    clearFlipWork();
+
+    if (prefersReduced) {
+      setFlip(null);
+      setCursor(to);
+      return;
+    }
+
     const startAngle = dir === 'next' ? 0 : TURN_ANGLE;
     const endAngle = dir === 'next' ? TURN_ANGLE : 0;
 
     setFlip({ dir, angle: startAngle, from, to });
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => setFlip({ dir, angle: endAngle, from, to })),
-    );
+    const firstFrame = requestAnimationFrame(() => {
+      const secondFrame = requestAnimationFrame(() => {
+        if (flipTimer.current) {
+          setFlip({ dir, angle: endAngle, from, to });
+        }
+      });
+      flipFrames.current = [secondFrame];
+    });
+    flipFrames.current = [firstFrame];
     flipTimer.current = setTimeout(() => {
       setCursor(to);
       setFlip(null);
+      flipTimer.current = null;
+      flipFrames.current = [];
     }, FLIP_MS);
-  }, []);
+  }, [clearFlipWork]);
 
   const goNext = useCallback(() => {
     if (animating || cursor >= maxCursor) return;
@@ -286,7 +313,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [goNext, goPrev, close, tocOpen]);
 
-  useEffect(() => () => { if (flipTimer.current) clearTimeout(flipTimer.current); }, []);
+  useEffect(() => () => clearFlipWork(), [clearFlipWork]);
 
   // 跳转到目录锚点所在页（通过测量容器中锚点元素的水平偏移定位）。
   const jumpToHeading = useCallback(
