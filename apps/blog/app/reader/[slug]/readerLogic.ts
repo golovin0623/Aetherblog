@@ -111,6 +111,12 @@ export function resolveReaderSkin(
   return siteTheme === 'dark' ? 'night' : 'paper';
 }
 
+export function resolveReaderPageTurn(preferredPageTurn: ReaderPageTurn, cols: 1 | 2): ReaderPageTurn {
+  if (preferredPageTurn === 'instant') return 'instant';
+  if (cols === 2) return 'curl';
+  return preferredPageTurn;
+}
+
 export function computeReaderDims(viewport: ReaderViewport): ReaderDims {
   const vw = Math.max(320, Math.round(viewport.width));
   const vh = Math.max(480, Math.round(viewport.height));

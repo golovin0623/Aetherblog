@@ -5,6 +5,7 @@ import {
   computeReaderDims,
   cursorToAbsolutePage,
   horizontalOffsetToPage,
+  resolveReaderPageTurn,
   resolveReaderSkin,
 } from '../apps/blog/app/reader/[slug]/readerLogic';
 
@@ -88,6 +89,13 @@ describe('reader mobile experience gate', () => {
   it('falls back to book-style paragraph rhythm for malformed preferences', () => {
     expect(clampReaderPreferences({ paragraphMode: 'unknown' }).paragraphMode).toBe('book');
     expect(clampReaderPreferences(null).paragraphMode).toBe('book');
+  });
+
+  it('reflects unsupported desktop page-turn choices as curl', () => {
+    expect(resolveReaderPageTurn('slide', 2)).toBe('curl');
+    expect(resolveReaderPageTurn('curl', 2)).toBe('curl');
+    expect(resolveReaderPageTurn('slide', 1)).toBe('slide');
+    expect(resolveReaderPageTurn('instant', 2)).toBe('instant');
   });
 
   it('preserves reading position across mobile and desktop cursor models', () => {

@@ -23,6 +23,7 @@ import {
   cursorToAbsolutePage,
   DEFAULT_READER_PREFERENCES,
   horizontalOffsetToPage,
+  resolveReaderPageTurn,
   resolveReaderSkin,
   type ReaderDims as Dims,
   type ReaderFontFamily,
@@ -134,6 +135,11 @@ const TURN_OPTIONS: Array<{ value: ReaderPageTurn; label: string }> = [
   { value: 'curl', label: '翻页' },
   { value: 'instant', label: '瞬切' },
 ];
+
+function isInteractiveKeyTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest('button, input, textarea, select, [role="button"], [role="slider"], [contenteditable="true"]'));
+}
 
 const PARAGRAPH_OPTIONS: Array<{ value: ReaderParagraphMode; label: string }> = [
   { value: 'book', label: '缩进' },
@@ -420,8 +426,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const unitCount = cols === 2 ? Math.ceil(totalPages / 2) : totalPages; // 翻页单元总数
   const maxCursor = Math.max(0, unitCount - 1);
   const visibleCursor = flip ? flip.to : cursor;
-  const turnMode: ReaderPageTurn =
-    preferences.pageTurn === 'instant' ? 'instant' : cols === 1 ? preferences.pageTurn : 'curl';
+  const turnMode = resolveReaderPageTurn(preferences.pageTurn, cols);
 
   const startFlip = useCallback((dir: 'next' | 'prev', from: number, to: number) => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -564,12 +569,17 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   // 键盘导航。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
-      else if (e.key === 'ArrowLeft') goPrev();
-      else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         if (settingsOpen) setSettingsOpen(false);
         else if (tocOpen) setTocOpen(false);
         else close();
+      } else if (settingsOpen || tocOpen || isInteractiveKeyTarget(e.target)) {
+        return;
+      } else if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        goNext();
+      } else if (e.key === 'ArrowLeft') {
+        goPrev();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1081,16 +1091,22 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
                 <span>翻页</span>
               </div>
               <div className={styles.segmented}>
-                {TURN_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    className={preferences.pageTurn === option.value ? styles.optionActive : ''}
-                    onClick={() => updatePreferences({ pageTurn: option.value })}
-                    aria-pressed={preferences.pageTurn === option.value}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                {TURN_OPTIONS.map((option) => {
+                  const unsupported = cols === 2 && option.value === 'slide';
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={unsupported}
+                      className={turnMode === option.value ? styles.optionActive : ''}
+                      onClick={() => updatePreferences({ pageTurn: option.value })}
+                      aria-pressed={turnMode === option.value}
+                      title={unsupported ? '双页模式使用翻页效果' : undefined}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
