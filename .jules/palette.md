@@ -1,0 +1,3 @@
+## 2026-06-22 - In-page Anchor Links Smooth Scrolling Accessibility
+**Learning:** When implementing smooth scrolling for in-page anchor links in React/Next.js (e.g., using `scrollIntoView` or `window.scrollTo`), screen reader and keyboard focus doesn't automatically move to the target element. The target element needs to explicitly receive focus.
+**Action:** Always explicitly move keyboard focus to the target element (e.g., `target.focus({ preventScroll: true })`), temporarily applying `tabIndex="-1"` if it is not natively focusable, to maintain proper keyboard and screen reader navigation accessibility.

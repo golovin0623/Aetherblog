@@ -140,6 +140,11 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
     if (el) {
       const y = el.getBoundingClientRect().top + window.scrollY - 100;
       window.scrollTo({ top: y, behavior: 'smooth' });
+
+      // Explicitly move keyboard focus to the target element
+      el.setAttribute('tabIndex', '-1');
+      el.focus({ preventScroll: true });
+
       setActiveId(id);
       setIsTocOpen(false);
     }
@@ -440,6 +445,8 @@ const TocItemComponent = memo(function TocItemComponent({
     <button
       type="button"
       onClick={() => scrollToHeading(heading.id)}
+      aria-label={`跳转到: ${heading.text}`}
+      title={`跳转到: ${heading.text}`}
       className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
         isActive
           ? 'text-primary bg-primary/5 font-medium'
