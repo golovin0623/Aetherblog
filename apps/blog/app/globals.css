@@ -756,7 +756,7 @@
   width: 300%;
   height: 100%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  transform: translateZ(0);
+  transform: translate3d(-33.333333%, 0, 0);
   transform-style: preserve-3d;
   will-change: transform;
 }

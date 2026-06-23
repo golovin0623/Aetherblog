@@ -531,7 +531,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
           <motion.div
             className="profile-card-stack-track absolute inset-y-0 left-0"
-            style={{ x: trackX }}
+            style={stageWidth > 0 ? { x: trackX } : undefined}
           >
             {stackSlots.map((slot) => (
               <div
