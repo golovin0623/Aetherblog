@@ -166,7 +166,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   aria-expanded={isTocOpen}
                   aria-controls="mobile-toc-drawer"
                   onClick={() => setIsTocOpen(true)}
-                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                   aria-label="打开目录"
                 >
                   <List className="w-5 h-5 text-[var(--text-secondary)]" />
@@ -176,7 +176,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 <button
                   type="button"
                   onClick={scrollToTop}
-                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                   aria-label="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
@@ -290,7 +290,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setIsTocOpen((prev) => !prev)}
-              className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
+              className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:outline-none"
               aria-label="打开目录"
               title="打开目录"
             >
