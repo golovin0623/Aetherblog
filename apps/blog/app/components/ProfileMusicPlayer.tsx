@@ -35,7 +35,6 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
     duration,
     percent,
     skin,
-    hasPlaybackSession,
     canUseSurface,
     playIndex,
     togglePlayback,
@@ -61,10 +60,6 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
         {emptyState}
       </div>
     );
-  }
-
-  if (surface === 'home' && !hasPlaybackSession && !isPlaying) {
-    return null;
   }
 
   const displayTrack = currentTrack ?? tracks[0];

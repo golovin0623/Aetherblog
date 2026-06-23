@@ -60,6 +60,8 @@ interface FloatingOrbDragState {
 interface FloatingOrbPointerSession {
   pointerId: number;
   dragging: boolean;
+  startX: number;
+  startY: number;
   lastX: number;
   lastY: number;
 }
@@ -593,7 +595,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       artwork: cover ? [{ src: cover, sizes: '512x512' }] : [],
     });
     navigator.mediaSession.setActionHandler('play', () => {
-      audioRef.current?.play().then(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.play().then(() => {
         setHasPlaybackSession(true);
         setIsPlaying(true);
       }).catch(() => setIsPlaying(false));
@@ -948,6 +952,8 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     orbPointerSessionRef.current = {
       pointerId,
       dragging: false,
+      startX: event.clientX,
+      startY: event.clientY,
       lastX: event.clientX,
       lastY: event.clientY,
     };
@@ -972,10 +978,16 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     if (!session || session.pointerId !== event.pointerId) return;
     session.lastX = event.clientX;
     session.lastY = event.clientY;
-    if (!session.dragging) return;
+    if (!session.dragging) {
+      const distance = Math.hypot(event.clientX - session.startX, event.clientY - session.startY);
+      if (distance > 10) {
+        clearOrbLongPress();
+      }
+      return;
+    }
     event.preventDefault();
     setOrbDrag(resolveOrbDragState(event.clientX, event.clientY));
-  }, [resolveOrbDragState]);
+  }, [clearOrbLongPress, resolveOrbDragState]);
 
   const handleFloatingOrbPointerUp = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     const session = orbPointerSessionRef.current;
@@ -1060,11 +1072,14 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     });
   }, [expanded, activeLyricIndex]);
 
+  const routeBlocksFloatingPlayer =
+    pathname.startsWith('/agent/workspace') ||
+    pathname.startsWith('/team-chat');
+
   if (
     !canRender ||
     !currentTrack ||
-    pathname.startsWith('/agent/workspace') ||
-    pathname.startsWith('/team-chat') ||
+    (!expanded && routeBlocksFloatingPlayer) ||
     (!hasPlaybackSession && !isPlaying && !expanded)
   ) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
@@ -1093,7 +1108,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 	          onPointerCancel={handleFloatingOrbPointerCancel}
 	          onLostPointerCapture={handleFloatingOrbPointerCancel}
 	          onContextMenu={(event) => event.preventDefault()}
-	          className="music-floating-orb-button relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)]"
+	          className="music-floating-orb-button relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
 	          aria-label="打开音乐播放器，长按拖到底部可移除"
 	          data-dragging={orbDrag ? 'true' : 'false'}
 	          data-removing={orbDrag?.overRemove ? 'true' : 'false'}
