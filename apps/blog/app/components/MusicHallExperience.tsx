@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   formatMusicClock,
+  NowPlayingGlyph,
   resolveMusicCoverSrc,
   SeekBar,
   useMusicPlayer,
@@ -301,11 +302,7 @@ export default function MusicHallExperience() {
                         <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</span>
                       </span>
                       {active && isPlaying ? (
-                        <span className="flex h-7 items-end gap-0.5" aria-hidden="true">
-                          <span className="music-eq-bar" />
-                          <span className="music-eq-bar [animation-delay:140ms]" />
-                          <span className="music-eq-bar [animation-delay:260ms]" />
-                        </span>
+                        <NowPlayingGlyph />
                       ) : (
                         <Play className="h-4 w-4 text-[var(--ink-muted)]" />
                       )}
