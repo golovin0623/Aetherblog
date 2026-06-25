@@ -883,16 +883,19 @@
   padding: 1px;
   background: conic-gradient(
     from var(--ai-ring-angle),
-    color-mix(in oklch, var(--aurora-1) 22%, transparent) 0deg,
-    color-mix(in oklch, var(--aurora-1) 22%, transparent) 60deg,
+    oklch(from var(--aurora-1) l c h / 0.22) 0deg,
+    oklch(from var(--aurora-1) l c h / 0.22) 60deg,
     var(--aurora-1) 110deg,
     var(--aurora-4) 155deg,
-    color-mix(in oklch, var(--aurora-1) 22%, transparent) 215deg,
-    color-mix(in oklch, var(--aurora-1) 22%, transparent) 360deg
+    oklch(from var(--aurora-1) l c h / 0.22) 215deg,
+    oklch(from var(--aurora-1) l c h / 0.22) 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(#000 0 0) border-box;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0) border-box;
   -webkit-mask-composite: xor;
           mask-composite: exclude;
   animation: ai-ring-spin 6s linear infinite;
