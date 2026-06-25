@@ -1,0 +1,3 @@
+## 2024-06-25 - Icon-Only External Links Accessibility
+**Learning:** In AetherBlog's UI, native browser tooltips (`title` attribute) on icon-only external links create a degraded visual experience and may not trigger consistently on touch devices. Wrapping these elements with `@aetherblog/ui`'s `Tooltip` provides a consistent, accessible overlay.
+**Action:** Always wrap icon-only external links (like those in `SiteFooter` or `AuthorProfileCard`) with `<Tooltip content={description} side="top">`. When doing so in a `.map()` loop, ensure the `key` prop is moved to the outermost `<Tooltip>` wrapper to satisfy React, and remove the redundant `title` attribute on the inner element to avoid double-tooltipping.

@@ -25,6 +25,7 @@ import { useMemo } from 'react';
 import { Github, Twitter, Mail, Globe, ExternalLink, MessageCircle, Rss } from 'lucide-react';
 import { useSiteSettings } from './SiteSettingsProvider';
 import { sanitizeUrl } from '../lib/sanitizeUrl';
+import { Tooltip } from '@aetherblog/ui';
 
 // SECURITY (VULN-098): 与 AuthorProfileCard 保持一致的 social_links 体量硬限制。
 const MAX_SOCIAL_LINKS_JSON_LEN = 65_536;
@@ -200,18 +201,19 @@ export default function SiteFooter() {
                     const isExternal = /^https?:\/\//i.test(link.url);
                     return (
                       <li key={`${link.platform}:${link.url}`}>
-                        <a
-                          href={link.url}
-                          title={link.name || link.platform}
-                          aria-label={link.name || link.platform}
-                          {...(isExternal
-                            ? { target: '_blank', rel: 'noopener noreferrer' }
-                            : {})}
-                          data-interactive
-                          className="surface-raised !rounded-full flex items-center justify-center w-11 h-11 text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] transition-colors"
-                        >
-                          <Icon className="w-[18px] h-[18px]" strokeWidth={1.5} />
-                        </a>
+                        <Tooltip content={link.name || link.platform} side="top">
+                          <a
+                            href={link.url}
+                            aria-label={link.name || link.platform}
+                            {...(isExternal
+                              ? { target: '_blank', rel: 'noopener noreferrer' }
+                              : {})}
+                            data-interactive
+                            className="surface-raised !rounded-full flex items-center justify-center w-11 h-11 text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] transition-colors"
+                          >
+                            <Icon className="w-[18px] h-[18px]" strokeWidth={1.5} />
+                          </a>
+                        </Tooltip>
                       </li>
                     );
                   })}

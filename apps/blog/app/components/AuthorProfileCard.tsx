@@ -11,6 +11,7 @@ import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 import { useSiteSettings } from './SiteSettingsProvider';
 import { CachedAvatarImage } from './CachedAvatarImage';
 import { ProfileMusicPlayer } from './ProfileMusicPlayer';
+import { Tooltip } from '@aetherblog/ui';
 
 // SECURITY (VULN-098): 限制 `social_links` JSON 解析的大小，避免恶意超大串在
 // 受害者浏览器里递归解析消耗内存；外加成员数上限防御 DoS。
@@ -115,17 +116,17 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
               className="flex items-center gap-3"
             >
               {currentItems.map((link, i) => (
-                <a
-                  key={link.url + i}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
-                  title={link.platform}
-                  aria-label={link.platform}
-                >
-                  <link.icon className="w-4 h-4" />
-                </a>
+                <Tooltip key={link.url + i} content={link.platform} side="top">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
+                    aria-label={link.platform}
+                  >
+                    <link.icon className="w-4 h-4" />
+                  </a>
+                </Tooltip>
               ))}
             </motion.div>
           </AnimatePresence>
