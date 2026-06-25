@@ -841,6 +841,77 @@
 }
 
 /* ========================================
+   AI 徽标 —— 首页 hero「AI 驱动」签名标识
+   暗色磨砂玻璃药丸 + 沿边缓慢旋转的极光光弧(conic + mask 只显 1px 边)
+   + 渐变火花微闪。区别于"扁平灰胶囊",传递"智能/在线"的高级质感。
+   仅用 aurora 设计 token;@property 让 conic 角度可平滑插值(Chrome 85+/Safari 16.4+)。
+   ======================================== */
+@property --ai-ring-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ai-ring-spin {
+  to {
+    --ai-ring-angle: 360deg;
+  }
+}
+
+@keyframes ai-spark-twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.84) rotate(15deg);
+  }
+}
+
+.ai-badge {
+  position: relative;
+  isolation: isolate;
+}
+
+/* 旋转极光描边环:整圈保底淡极光 + 一段亮弧绕行,mask 掉内部只留 1px 边 */
+.ai-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--ai-ring-angle),
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 0deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 60deg,
+    var(--aurora-1) 110deg,
+    var(--aurora-4) 155deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 215deg,
+    color-mix(in oklch, var(--aurora-1) 22%, transparent) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: ai-ring-spin 6s linear infinite;
+  pointer-events: none;
+}
+
+.ai-badge__spark {
+  animation: ai-spark-twinkle 3.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-badge::before,
+  .ai-badge__spark {
+    animation: none;
+  }
+}
+
+/* ========================================
    音乐域排印 —— 修正音乐组件全继承裸 Inter(违反设计系统禁忌 #1:
    不得用 Inter 作 Hero 标题)。标题统一走 display 衬线(西文 Playfair /
    中文宋体),西文小标签([data-eyebrow])走 Geist Mono。作用域限定在
