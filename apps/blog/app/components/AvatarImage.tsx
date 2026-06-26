@@ -14,6 +14,7 @@ interface AvatarImageProps {
   /** next/image sizes 提示，如 "96px" */
   sizes: string;
   priority?: boolean;
+  preload?: boolean;
   unoptimized?: boolean;
   draggable?: boolean;
   /** 头像多为装饰性，配合容器外的可见文字标签时设 true */
@@ -39,12 +40,13 @@ export default function AvatarImage({
   alt,
   sizes,
   priority,
+  preload = true,
   unoptimized,
   draggable,
   ariaHidden,
   className,
 }: AvatarImageProps) {
-  const cachedImage = useCachedImage(src, { enabled: Boolean(src), preload: false });
+  const cachedImage = useCachedImage(src, { enabled: Boolean(src), preload });
   const cachedStatus: LoadStatus = cachedImage.isError
     ? 'error'
     : cachedImage.isLoaded

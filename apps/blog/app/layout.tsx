@@ -1,13 +1,16 @@
 import type { Metadata, Viewport } from 'next';
+import { preconnect, preload } from 'react-dom';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
 import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
+import SiteAssetPreloader from './components/SiteAssetPreloader';
 import AnalyticsScripts from './components/AnalyticsScripts';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
+import { sanitizeImageUrl } from './lib/sanitizeUrl';
 import { getPreferredSiteIconUrl } from '@aetherblog/utils';
 import {
   themeInitScript,
@@ -15,6 +18,18 @@ import {
   THEME_LIGHT_BG,
   THEME_DARK_BG,
 } from '@aetherblog/hooks';
+
+const AUTHOR_AVATAR_FALLBACK =
+  'https://cravatar.cn/avatar/00000000000000000000000000000000?d=mp&s=200';
+
+function getPreconnectOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+}
 
 // Next 13.3+ 推荐的 viewport 配置对象 —— themeColor 让移动端浏览器顶栏
 // 跟主题走,避免暗黑模式下 URL bar 显示白色。
@@ -69,6 +84,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const settings = await getSiteSettings();
+  const authorAvatarUrl = sanitizeImageUrl(
+    settings.authorAvatar || settings.author_avatar || '',
+    AUTHOR_AVATAR_FALLBACK,
+  );
+  const authorAvatarPreconnectOrigin = getPreconnectOrigin(authorAvatarUrl);
   const fontFamily = (settings.font_family as string) || 'system';
   // 服务端预计算字体覆盖类和样式，避免 FOUC（字体闪烁）
   const isCustomFont = fontFamily !== 'system';
@@ -80,6 +100,14 @@ export default async function RootLayout({
   const fontOverrideStyle = isCustomFont && fontCssMap[fontFamily]
     ? { '--font-sans-override': fontCssMap[fontFamily] } as React.CSSProperties
     : undefined;
+
+  if (authorAvatarUrl && !authorAvatarUrl.startsWith('data:')) {
+    preload(authorAvatarUrl, { as: 'image', fetchPriority: 'high' });
+  }
+  if (authorAvatarPreconnectOrigin) {
+    preconnect(authorAvatarPreconnectOrigin);
+  }
+  preconnect('https://api.iconify.design');
 
   return (
     <html
@@ -102,6 +130,7 @@ export default async function RootLayout({
         />
         <Providers>
           <SiteSettingsProvider settings={settings}>
+            <SiteAssetPreloader settings={settings} />
             <FontProvider initialFont={fontFamily}>
               <BlogHeader />
               <ClientLayout>

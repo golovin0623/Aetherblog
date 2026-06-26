@@ -10,6 +10,7 @@ import {
 interface CachedAvatarImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src?: string | null;
   fallback?: ReactNode;
+  preload?: boolean;
   timeoutMs?: number;
 }
 
@@ -23,12 +24,13 @@ export function CachedAvatarImage({
   onError,
   loading = 'eager',
   decoding = 'async',
+  preload = true,
   ...props
 }: CachedAvatarImageProps) {
   const normalizedSrc = (src ?? '').trim();
   const cachedImage = useCachedImage(normalizedSrc, {
     enabled: Boolean(normalizedSrc),
-    preload: false,
+    preload,
     timeoutMs,
   });
 

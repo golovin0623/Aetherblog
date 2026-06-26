@@ -420,6 +420,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
                 src={avatar}
                 alt=""
                 className="h-full w-full select-none object-cover outline-none"
+                fetchPriority="high"
                 draggable={false}
                 aria-hidden
               />
