@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { animate, motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight, Music2 } from 'lucide-react';
+import { Tooltip } from '@aetherblog/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
@@ -115,17 +116,17 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
               className="flex items-center gap-3"
             >
               {currentItems.map((link, i) => (
-                <a
-                  key={link.url + i}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
-                  title={link.platform}
-                  aria-label={link.platform}
-                >
-                  <link.icon className="w-4 h-4" />
-                </a>
+                <Tooltip key={link.url + i} content={link.platform} side="top">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
+                    aria-label={link.platform}
+                  >
+                    <link.icon className="w-4 h-4" />
+                  </a>
+                </Tooltip>
               ))}
             </motion.div>
           </AnimatePresence>

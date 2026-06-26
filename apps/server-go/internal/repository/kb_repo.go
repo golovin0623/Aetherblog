@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // ErrKBSlugDuplicate 来自数据库 uniq 约束的语义版本。
@@ -89,7 +90,7 @@ func (r *KBRepo) ListAccessible(ctx context.Context, f AccessibleFilter) ([]mode
 		}
 		if f.Keyword != "" {
 			sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d OR COALESCE(description,'') ILIKE $%d)", idx, idx))
-			args = append(args, "%"+escapeKBLike(f.Keyword)+"%")
+			args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 			idx++
 		}
 		sb.WriteString(" ORDER BY kind ASC, created_at DESC")
@@ -148,7 +149,7 @@ func (r *KBRepo) ListAccessible(ctx context.Context, f AccessibleFilter) ([]mode
 	}
 	if f.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d OR COALESCE(description,'') ILIKE $%d)", idx, idx))
-		args = append(args, "%"+escapeKBLike(f.Keyword)+"%")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
 	sb.WriteString(" ORDER BY kind ASC, created_at DESC")
@@ -245,16 +246,6 @@ func (r *KBRepo) RefreshStats(ctx context.Context, kbID int64) error {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $1`, kbID)
 	return err
-}
-
-// --- 工具 ---
-
-func escapeKBLike(s string) string {
-	// 仅做最小转义：% 和 _ 用 \ 转义，反斜杠先于其他字符转义。
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
 }
 
 // int64ArrayLiteral 把 []int64 转为 postgres 数组字面量字符串（"{1,2,3}"）。
