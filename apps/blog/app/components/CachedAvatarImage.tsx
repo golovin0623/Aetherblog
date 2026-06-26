@@ -1,6 +1,6 @@
 'use client';
 
-import type { ImgHTMLAttributes, ReactNode } from 'react';
+import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react';
 import {
   markCachedImageFailed,
   markCachedImageLoaded,
@@ -10,6 +10,7 @@ import {
 interface CachedAvatarImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src?: string | null;
   fallback?: ReactNode;
+  preload?: boolean;
   timeoutMs?: number;
 }
 
@@ -23,16 +24,23 @@ export function CachedAvatarImage({
   onError,
   loading = 'eager',
   decoding = 'async',
+  preload = true,
   ...props
 }: CachedAvatarImageProps) {
   const normalizedSrc = (src ?? '').trim();
-  const cachedImage = useCachedImage(normalizedSrc, {
+  const [renderFailedSrc, setRenderFailedSrc] = useState<string | null>(null);
+
+  useCachedImage(normalizedSrc, {
     enabled: Boolean(normalizedSrc),
-    preload: false,
+    preload,
     timeoutMs,
   });
 
-  if (!normalizedSrc || cachedImage.isError) return <>{fallback}</>;
+  useEffect(() => {
+    setRenderFailedSrc(null);
+  }, [normalizedSrc]);
+
+  if (!normalizedSrc || renderFailedSrc === normalizedSrc) return <>{fallback}</>;
 
   return (
     <img
@@ -53,6 +61,7 @@ export function CachedAvatarImage({
       }}
       onError={(event) => {
         markCachedImageFailed(normalizedSrc);
+        setRenderFailedSrc(normalizedSrc);
         onError?.(event);
       }}
     />

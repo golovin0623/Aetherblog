@@ -159,6 +159,7 @@ export interface MarkdownPreviewProps {
   className?: string;
   style?: React.CSSProperties;
   theme?: 'light' | 'dark';
+  copyButtonLabel?: string;
 }
 
 const ALERT_DIRECTIVE_NAMES = ['info', 'note', 'warning', 'danger', 'tip'] as const;
@@ -243,6 +244,21 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+const DEFAULT_COPY_BUTTON_LABEL = 'Copy code';
+
+function renderCodeCopyButton(label: string = DEFAULT_COPY_BUTTON_LABEL): string {
+  const escapedLabel = escapeHtml(label || DEFAULT_COPY_BUTTON_LABEL);
+
+  return `
+    <button type="button" class="code-block-copy" data-copy-code="1" aria-label="${escapedLabel}" title="${escapedLabel}">
+      <svg class="code-block-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+        <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+      </svg>
+    </button>
+  `;
+}
+
 function preprocessMarkdown(content: string): string {
   if (!content) {
     return content;
@@ -318,7 +334,8 @@ function generateMermaidId(): string {
 function createLineTrackingRenderer(
   content: string,
   highlighter: Highlighter | null,
-  theme: 'light' | 'dark' = 'dark'
+  theme: 'light' | 'dark' = 'dark',
+  copyButtonLabel: string = DEFAULT_COPY_BUTTON_LABEL
 ): Renderer {
   const renderer = new Renderer();
   const lines = content.split('\n');
@@ -502,9 +519,7 @@ function createLineTrackingRenderer(
           <div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-block-lang">${langDisplay}</span>
-              <button type="button" class="code-block-copy" data-copy-code="1" aria-label="Copy code">
-                ⧉
-              </button>
+              ${renderCodeCopyButton(copyButtonLabel)}
             </div>
             <div class="code-block-content">${highlightedCode}</div>
           </div>
@@ -524,6 +539,7 @@ function createLineTrackingRenderer(
       <div class="code-block-wrapper">
         <div class="code-block-header">
           <span class="code-block-lang">${langDisplay}</span>
+          ${renderCodeCopyButton(copyButtonLabel)}
         </div>
         <pre class="code-block-fallback"><code>${escapedCode}</code></pre>
       </div>
@@ -533,7 +549,13 @@ function createLineTrackingRenderer(
   return renderer;
 }
 
-export function MarkdownPreview({ content, className = '', style, theme = 'dark' }: MarkdownPreviewProps) {
+export function MarkdownPreview({
+  content,
+  className = '',
+  style,
+  theme = 'dark',
+  copyButtonLabel = DEFAULT_COPY_BUTTON_LABEL,
+}: MarkdownPreviewProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -546,7 +568,12 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     if (!content) return '';
     try {
       const normalizedContent = preprocessMarkdown(content);
-      const renderer = createLineTrackingRenderer(normalizedContent, highlighter, theme);
+      const renderer = createLineTrackingRenderer(
+        normalizedContent,
+        highlighter,
+        theme,
+        copyButtonLabel,
+      );
       const parsedHtml = marked.parse(normalizedContent, {
         gfm: true,
         breaks: true,
@@ -557,7 +584,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     } catch {
       return DOMPurify.sanitize(`<p>${escapeHtml(preprocessMarkdown(content))}</p>`, MARKDOWN_SANITIZE_CONFIG);
     }
-  }, [content, highlighter, theme]);
+  }, [content, copyButtonLabel, highlighter, theme]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -854,7 +881,9 @@ export const markdownPreviewStyles = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5em 1em;
+    min-height: 2.15rem;
+    gap: 0.75rem;
+    padding: 0.34rem 0.55rem 0.34rem 0.8rem;
     background: rgba(255, 255, 255, 0.05);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
@@ -863,31 +892,62 @@ export const markdownPreviewStyles = `
     border-bottom: 1px solid #e2e8f0;
   }
   .markdown-preview .code-block-lang {
-    font-size: 0.75em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.68em;
     color: #94a3b8;
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
   }
   .markdown-preview .code-block-copy {
-    display: flex;
+    position: relative;
+    display: inline-flex;
+    width: 1.85rem;
+    height: 1.85rem;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    padding: 0.25em;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: #64748b;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 7px;
+    color: #cbd5e1;
     cursor: pointer;
-    transition: all 0.2s;
+    line-height: 1;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  }
+  .markdown-preview .code-block-copy::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  .markdown-preview .code-block-copy-icon {
+    position: relative;
+    z-index: 1;
+    width: 0.95rem;
+    height: 0.95rem;
   }
   .markdown-preview .code-block-copy:hover {
+    border-color: rgba(203, 213, 225, 0.42);
     background: rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
+    color: #f8fafc;
+    box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.08);
+  }
+  .markdown-preview .code-block-copy:focus-visible {
+    outline: 2px solid rgba(129, 140, 248, 0.42);
+    outline-offset: 2px;
+  }
+  .markdown-preview.light-mode .code-block-copy {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #475569;
   }
   .markdown-preview.light-mode .code-block-copy:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: #334155;
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
   }
   .markdown-preview .code-block-content {
     overflow-x: auto;
