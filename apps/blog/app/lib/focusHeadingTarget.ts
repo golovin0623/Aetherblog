@@ -1,18 +1,23 @@
+const headingFocusCleanups = new WeakMap<HTMLElement, () => void>();
+
 export function focusHeadingTarget(element: HTMLElement): void {
+  headingFocusCleanups.get(element)?.();
+
   const previousTabIndex = element.getAttribute('tabindex');
 
-  element.tabIndex = -1;
-  element.focus({ preventScroll: true });
-  element.addEventListener(
-    'blur',
-    () => {
-      if (previousTabIndex === null) {
-        element.removeAttribute('tabindex');
-        return;
-      }
-
+  const cleanup = () => {
+    if (previousTabIndex === null) {
+      element.removeAttribute('tabindex');
+    } else {
       element.setAttribute('tabindex', previousTabIndex);
-    },
-    { once: true }
-  );
+    }
+
+    element.removeEventListener('blur', cleanup);
+    headingFocusCleanups.delete(element);
+  };
+
+  element.tabIndex = -1;
+  headingFocusCleanups.set(element, cleanup);
+  element.addEventListener('blur', cleanup, { once: true });
+  element.focus({ preventScroll: true });
 }
