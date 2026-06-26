@@ -11,6 +11,7 @@ import { List, ArrowUp, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { extractHeadingsFromMarkdown, getMinHeadingLevel } from '../lib/headingId';
+import { focusHeadingTarget } from '../lib/focusHeadingTarget';
 
 const STROKE_CIRCUMFERENCE = 113;
 
@@ -140,6 +141,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
     if (el) {
       const y = el.getBoundingClientRect().top + window.scrollY - 100;
       window.scrollTo({ top: y, behavior: 'smooth' });
+      focusHeadingTarget(el);
       setActiveId(id);
       setIsTocOpen(false);
     }
@@ -166,7 +168,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   aria-expanded={isTocOpen}
                   aria-controls="mobile-toc-drawer"
                   onClick={() => setIsTocOpen(true)}
-                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                   aria-label="打开目录"
                 >
                   <List className="w-5 h-5 text-[var(--text-secondary)]" />
@@ -176,7 +178,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 <button
                   type="button"
                   onClick={scrollToTop}
-                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                   aria-label="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
@@ -290,7 +292,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setIsTocOpen((prev) => !prev)}
-              className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
+              className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none"
               aria-label="打开目录"
               title="打开目录"
             >
@@ -440,6 +442,8 @@ const TocItemComponent = memo(function TocItemComponent({
     <button
       type="button"
       onClick={() => scrollToHeading(heading.id)}
+      aria-label={`跳转到: ${heading.text}`}
+      title={heading.text}
       className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
         isActive
           ? 'text-primary bg-primary/5 font-medium'

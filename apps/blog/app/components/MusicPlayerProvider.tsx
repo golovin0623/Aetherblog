@@ -1350,16 +1350,16 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button type="button" onClick={() => setShuffle((value) => !value)} className={cn('flex h-12 w-12 items-center justify-center rounded-full border transition-colors', shuffle ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]' : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]')} aria-label="随机播放" aria-pressed={shuffle}>
+                  <button type="button" onClick={() => setShuffle((value) => !value)} className={cn('flex h-12 w-12 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)]', shuffle ? 'border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)]' : 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]')} aria-label="随机播放" aria-pressed={shuffle}>
                     <Shuffle className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={previousTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="上一首">
+                  <button type="button" onClick={previousTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)]" aria-label="上一首">
                     <SkipBack className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={togglePlayback} className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_20px_44px_-20px_color-mix(in_oklch,var(--aurora-1)_85%,transparent)] transition-transform hover:scale-105" aria-label={isPlaying ? '暂停音乐' : '播放音乐'}>
+                  <button type="button" onClick={togglePlayback} className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_20px_44px_-20px_color-mix(in_oklch,var(--aurora-1)_85%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)]" aria-label={isPlaying ? '暂停音乐' : '播放音乐'}>
                     {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 translate-x-0.5" />}
                   </button>
-                  <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="下一首">
+                  <button type="button" onClick={nextTrack} className="flex h-12 w-12 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)]" aria-label="下一首">
                     <SkipForward className="h-5 w-5" />
                   </button>
                   {/* 音量条移动端隐藏 —— 手机用系统音量,避免控件换行挤压传输按钮 */}
@@ -1452,7 +1452,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_80%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] [backdrop-filter:blur(16px)]"
+            className="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_80%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] [backdrop-filter:blur(16px)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
             aria-label="关闭音乐大厅播放器"
           >
             <X className="h-5 w-5" />
