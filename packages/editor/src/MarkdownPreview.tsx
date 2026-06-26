@@ -159,6 +159,7 @@ export interface MarkdownPreviewProps {
   className?: string;
   style?: React.CSSProperties;
   theme?: 'light' | 'dark';
+  copyButtonLabel?: string;
 }
 
 const ALERT_DIRECTIVE_NAMES = ['info', 'note', 'warning', 'danger', 'tip'] as const;
@@ -243,6 +244,21 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+const DEFAULT_COPY_BUTTON_LABEL = 'Copy code';
+
+function renderCodeCopyButton(label: string = DEFAULT_COPY_BUTTON_LABEL): string {
+  const escapedLabel = escapeHtml(label || DEFAULT_COPY_BUTTON_LABEL);
+
+  return `
+    <button type="button" class="code-block-copy" data-copy-code="1" aria-label="${escapedLabel}" title="${escapedLabel}">
+      <svg class="code-block-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+        <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+      </svg>
+    </button>
+  `;
+}
+
 function preprocessMarkdown(content: string): string {
   if (!content) {
     return content;
@@ -318,7 +334,8 @@ function generateMermaidId(): string {
 function createLineTrackingRenderer(
   content: string,
   highlighter: Highlighter | null,
-  theme: 'light' | 'dark' = 'dark'
+  theme: 'light' | 'dark' = 'dark',
+  copyButtonLabel: string = DEFAULT_COPY_BUTTON_LABEL
 ): Renderer {
   const renderer = new Renderer();
   const lines = content.split('\n');
@@ -502,12 +519,7 @@ function createLineTrackingRenderer(
           <div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-block-lang">${langDisplay}</span>
-              <button type="button" class="code-block-copy" data-copy-code="1" aria-label="复制代码" title="复制代码">
-                <svg class="code-block-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="8" y="8" width="12" height="12" rx="2"></rect>
-                  <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
-                </svg>
-              </button>
+              ${renderCodeCopyButton(copyButtonLabel)}
             </div>
             <div class="code-block-content">${highlightedCode}</div>
           </div>
@@ -527,12 +539,7 @@ function createLineTrackingRenderer(
       <div class="code-block-wrapper">
         <div class="code-block-header">
           <span class="code-block-lang">${langDisplay}</span>
-          <button type="button" class="code-block-copy" data-copy-code="1" aria-label="复制代码" title="复制代码">
-            <svg class="code-block-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="8" y="8" width="12" height="12" rx="2"></rect>
-              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
-            </svg>
-          </button>
+          ${renderCodeCopyButton(copyButtonLabel)}
         </div>
         <pre class="code-block-fallback"><code>${escapedCode}</code></pre>
       </div>
@@ -542,7 +549,13 @@ function createLineTrackingRenderer(
   return renderer;
 }
 
-export function MarkdownPreview({ content, className = '', style, theme = 'dark' }: MarkdownPreviewProps) {
+export function MarkdownPreview({
+  content,
+  className = '',
+  style,
+  theme = 'dark',
+  copyButtonLabel = DEFAULT_COPY_BUTTON_LABEL,
+}: MarkdownPreviewProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -555,7 +568,12 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     if (!content) return '';
     try {
       const normalizedContent = preprocessMarkdown(content);
-      const renderer = createLineTrackingRenderer(normalizedContent, highlighter, theme);
+      const renderer = createLineTrackingRenderer(
+        normalizedContent,
+        highlighter,
+        theme,
+        copyButtonLabel,
+      );
       const parsedHtml = marked.parse(normalizedContent, {
         gfm: true,
         breaks: true,
@@ -566,7 +584,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     } catch {
       return DOMPurify.sanitize(`<p>${escapeHtml(preprocessMarkdown(content))}</p>`, MARKDOWN_SANITIZE_CONFIG);
     }
-  }, [content, highlighter, theme]);
+  }, [content, copyButtonLabel, highlighter, theme]);
 
   useEffect(() => {
     if (!containerRef.current) return;

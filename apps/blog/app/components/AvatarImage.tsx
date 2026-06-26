@@ -48,7 +48,7 @@ export default function AvatarImage({
 }: AvatarImageProps) {
   const cachedImage = useCachedImage(src, { enabled: Boolean(src), preload });
   const cachedStatus: LoadStatus = cachedImage.isError
-    ? 'error'
+    ? 'loading'
     : cachedImage.isLoaded
       ? 'loaded'
       : 'loading';
