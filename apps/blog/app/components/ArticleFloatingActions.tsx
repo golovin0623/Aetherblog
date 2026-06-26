@@ -140,6 +140,8 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
     if (el) {
       const y = el.getBoundingClientRect().top + window.scrollY - 100;
       window.scrollTo({ top: y, behavior: 'smooth' });
+      el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
       setActiveId(id);
       setIsTocOpen(false);
     }

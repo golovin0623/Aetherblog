@@ -133,6 +133,8 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
       const offset = 100; // 考虑固定头部的偏移
       const y = element.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top: y, behavior: 'smooth' });
+      element.setAttribute('tabindex', '-1');
+      element.focus({ preventScroll: true });
       setActiveId(id);
       setIsDrawerOpen(false);
     }

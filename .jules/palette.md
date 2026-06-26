@@ -1,0 +1,3 @@
+## 2024-06-26 - [Smooth Scrolling Keyboard Focus Accessibility]
+**Learning:** In React/Next.js applications, when using `window.scrollTo` or `scrollIntoView` for in-page anchor links (like Table of Contents), simply moving the viewport visually is insufficient for keyboard and screen reader users. The browser's active focus remains on the clicked trigger button, meaning the next "Tab" press will unexpectedly continue from the origin rather than the new visual location.
+**Action:** Always explicitly move keyboard focus to the target element (e.g., `target.focus({ preventScroll: true })`) after scrolling. Temporarily apply `tabIndex="-1"` if the target is not natively focusable, to maintain proper keyboard and screen reader navigation context.
