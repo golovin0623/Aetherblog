@@ -7,7 +7,7 @@ import {
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
-  Undo2, Redo2, Hash, MessageSquareWarning
+  Undo2, Redo2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -76,6 +76,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
     <Tooltip content={tooltip} side={tooltipPosition} delay={0}>
       <button
         onClick={onClick}
+        aria-label={tooltip}
         className={cn(
           'relative inline-flex items-center justify-center appearance-none p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
           isActive && activeColor === 'primary' && 'bg-primary/90 text-white',

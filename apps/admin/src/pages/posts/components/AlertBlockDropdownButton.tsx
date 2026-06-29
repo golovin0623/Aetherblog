@@ -31,6 +31,7 @@ export function AlertBlockDropdownButton({ onInsertMarkdown, className }: AlertB
   const trigger = (
     <Tooltip content="自定义高亮块" side="top" delay={0}>
       <button
+        aria-label="自定义高亮块"
         className={cn(
           'relative inline-flex items-center justify-center appearance-none p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
           className
