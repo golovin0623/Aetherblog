@@ -102,12 +102,10 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
 //
-// 安全 / 透明代理要点（汇总 Gemini code-review 5 条反馈）：
-//  1. 必须使用 *已编码* 的子路径。`c.Param("*")` 返回的是 Echo 已 URL-decode
-//     后的值，若直接拼回 targetPath，`?` `#` `;` 会被下游误解析为查询串 /
-//     片段 / matrix 分隔符（参数注入 / SSRF 绕过），`%2F` 会被还原成真正
-//     的 `/`、空格等字符让下游 URL 非法。改用 `c.Request().URL.EscapedPath()`
-//     去掉前缀，原始编码完整透传给 FastAPI。
+// 安全 / 透明代理要点：
+//  1. 必须使用 `c.Param("*")` 获取子路径（Echo 4.x 会保留编码），而不能使用
+//     `c.Request().URL.EscapedPath()` 结合 `strings.TrimPrefix()`，后者是反模式，
+//     会导致路由不一致或 WAF 绕过问题。
 //  2. 多级解码循环只用于探测 `..` 路径穿越。循环不应把"解码失败"升级为
 //     400 —— 合法的 `%` 字面量（如 `100%25`）不可一竿子打死。decode 失败
 //     直接 break，用当前最新解码结果做 `..` 匹配。
@@ -120,10 +118,12 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 动态提取代理前缀：c.Path() = "/api/v1/admin/providers/*" → 去掉 "*" 再去掉尾 "/"
 	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
 
-	// 使用 EscapedPath() 保留客户端原始编码，避免 Echo 自动解码带来的注入/绕过
-	escapedFull := c.Request().URL.EscapedPath()
-	// subPath 保留前导斜杠；`/providers` → "" / `/providers/` → "/" / `/providers/foo/` → "/foo/"
-	encodedSubPath := strings.TrimPrefix(escapedFull, proxyPrefix)
+	// 获取通配符参数，因其省略了前导斜杠，故需手动补齐
+	param := c.Param("*")
+	encodedSubPath := ""
+	if param != "" {
+		encodedSubPath = "/" + param
+	}
 
 	// 多级解码，尽力发现隐藏的 `..`；遇到非法百分号编码时 break 而非 400
 	probe := encodedSubPath
