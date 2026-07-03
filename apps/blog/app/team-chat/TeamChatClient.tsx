@@ -85,7 +85,7 @@ export default function TeamChatClient() {
       default:
         break;
     }
-    // eslint-disable-next-line React-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId]);
 
   const { connected, sendTyping } = useChatSocket({
