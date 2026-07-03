@@ -42,13 +42,13 @@ export const THEME_DARK_BG = '#0a0a0f';
  * ⚠️ Admin 的 apps/admin/index.html 是静态 HTML,无法直接 import 此常量,
  * 需要手工同步两处值。改动时请同时更新 admin/index.html 顶部的 <style>。
  *
- * @example
- * ```tsx
- * // Next.js layout.tsx
- * <head>
- *   <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
- *   <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
- * </head>
+ * @例子
+ * ````tsx
+ * // Next.js 布局.tsx
+ * <头>
+ *   <styleangerlySetInnerHTML={{ __html: themeFoucGuardStyle }} />
+ *   <scriptangerlySetInnerHTML={{ __html: themeInitScript }} />
+ * </头>
  * ```
  */
 export const themeFoucGuardStyle =
@@ -78,13 +78,13 @@ export const themeFoucGuardStyle =
  * 在 <head> 中内联此脚本,在 CSS 加载前应用主题类名。
  * 与 themeFoucGuardStyle 配合使用(style 在前,script 在后)。
  *
- * @example
- * ```tsx
+ * @例子
+ * ````tsx
  * // Next.js 布局文件 layout.tsx
- * <head>
- *   <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
- *   <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
- * </head>
+ * <头>
+ *   <styleangerlySetInnerHTML={{ __html: themeFoucGuardStyle }} />
+ *   <scriptangerlySetInnerHTML={{ __html: themeInitScript }} />
+ * </头>
  * ```
  */
 export const themeInitScript = `

@@ -1,5 +1,5 @@
 /**
- * @file MediaViewer.tsx
+ * @文件MediaViewer.tsx
  * @description 媒体预览查看器组件 - 审美优化版 (Quick Look 风格)
  * @ref §3.2.4 - 媒体管理模块
  */

@@ -883,10 +883,10 @@ func parseRunLimit(c echo.Context) int {
 }
 
 func clientRateKey(c echo.Context) string {
-	// Use Echo's RealIP, which derives the peer from the trusted-proxy chain rather
-	// than the raw client-supplied X-Forwarded-For first hop. Consuming the raw header
-	// directly would let any caller rotate XFF to mint a fresh rate-limit bucket for
-	// the same publication.
+	// 使用 Echo 的 RealIP，它从可信代理链中派生对等点
+	// 比原始客户端提供的 X-Forwarded-For 第一跳。使用原始标头
+	// 直接让任何调用者旋转 XFF 来创建一个新的速率限制桶
+	// 同一份出版物。
 	ip := strings.TrimSpace(c.RealIP())
 	if strings.Contains(ip, ",") {
 		ip = strings.TrimSpace(strings.Split(ip, ",")[0])

@@ -58,7 +58,7 @@ func TestMockPipelineEndToEnd(t *testing.T) {
 		t.Fatal("拆分未产出任何块")
 	}
 
-	// 3) OCR。
+	// 3) 文字识别。
 	ocr, err := p.OCR(ctx, blocks)
 	if err != nil {
 		t.Fatalf("ocr: %v", err)

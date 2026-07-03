@@ -1,27 +1,27 @@
 /**
- * QA Document Zustand store
- * Pattern mirrors authStore.ts (create + persist where needed)
- * ref: docs/features/qa-document-workflow.md §1, §3
+ * QA 文档条件存储
+ * 模式镜像 authStore.ts（在需要时创建+保留）
+ * 参考：docs/features/qa-document-workflow.md §1、§3
  */
 
 import { create } from 'zustand';
 import type { QaDocument, CanonicalNode } from '@/types/qaDocument';
 
 interface QaDocumentState {
-  /** Currently viewed document */
+  /** 当前查看的文档 */
   currentDocument: QaDocument | null;
-  /** Canonical tree for the current document */
+  /** 当前文档的规范树 */
   tree: CanonicalNode[];
-  /** stableKey of the currently selected block (proofread view) */
+  /** 当前所选区块的stableKey（校对视图）*/
   selectedStableKey: string | null;
-  /** Whether the document detail is loading */
+  /** 文档详情是否正在加载 */
   loading: boolean;
-  /** Whether the tree is loading */
+  /** 树是否正在加载 */
   treeLoading: boolean;
-  /** Last error message */
+  /** 最后的错误信息 */
   error: string | null;
 
-  // Actions
+  // 行动
   setCurrentDocument: (doc: QaDocument | null) => void;
   setTree: (nodes: CanonicalNode[]) => void;
   setSelectedStableKey: (key: string | null) => void;

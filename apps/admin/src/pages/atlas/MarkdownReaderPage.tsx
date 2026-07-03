@@ -274,7 +274,7 @@ export default function MarkdownReaderPage() {
 
   // 重新对齐（点击 orphan / soft 状态的 reanchor 按钮）
   //
-  // PR #724 review fix (Codex P1, MarkdownReaderPage.tsx:164):
+  // PR #724 审查修复（Codex P1、MarkdownReaderPage.tsx:164）：
   //   过去把 state.note.contentMarkdown（raw markdown）传给 anchor()，
   //   但标注创建时锚定空间是渲染后 root.textContent（buildSelectorsFromDomRange）。
   //   markdown 语法 (`#`、`**`、链接 URL) 让 prefix/suffix/position 不对齐 → 误判 orphan

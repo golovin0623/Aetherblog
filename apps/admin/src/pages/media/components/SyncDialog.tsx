@@ -1,5 +1,5 @@
 /**
- * @file SyncDialog.tsx
+ * @文件SyncDialog.tsx
  * @description "备份同步"对话框 - Phase 4 同步备份的前端入口
  * @ref 对象存储 rollout - Phase 4
  *

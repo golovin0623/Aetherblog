@@ -1,8 +1,8 @@
 /**
- * @file CustomToolModal.tsx
+ * @文件CustomToolModal.tsx
  * @description 自定义 AI 工具配置弹窗
  * @ref §3.2 - 核心组件设计
- * @author AI Assistant
+ * @作者人工智能助手
  */
 
 import React, { useState, useEffect } from 'react';

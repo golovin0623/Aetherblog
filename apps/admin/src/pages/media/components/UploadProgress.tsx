@@ -1,5 +1,5 @@
 /**
- * @file UploadProgress.tsx
+ * @文件UploadProgress.tsx
  * @description 上传进度组件 - 可折叠悬浮通知 (长时间上传友好)
  * @ref §3.2.4 - 媒体管理模块
  */

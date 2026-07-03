@@ -126,7 +126,7 @@ function readStoredMusicSkin(): StoredMusicSkin | null {
       return { mode: 'custom', light: parsed.light, dark: typeof parsed.dark === 'string' ? parsed.dark : parsed.light };
     }
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
   return null;
 }
@@ -135,7 +135,7 @@ function writeStoredMusicSkin(value: StoredMusicSkin) {
   try {
     localStorage.setItem(MUSIC_SKIN_STORAGE_KEY, JSON.stringify(value));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -143,7 +143,7 @@ function clearStoredMusicSkin() {
   try {
     localStorage.removeItem(MUSIC_SKIN_STORAGE_KEY);
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -960,7 +960,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     try {
       button.setPointerCapture(pointerId);
     } catch {
-      /* pointer capture is best effort on older mobile browsers */
+      /* 指针捕获在较旧的移动浏览器上是最好的努力*/
     }
     orbLongPressTimerRef.current = window.setTimeout(() => {
       const session = orbPointerSessionRef.current;
@@ -1000,7 +1000,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
     orbPointerSessionRef.current = null;
     setOrbDrag(null);

@@ -166,7 +166,7 @@ export interface KbFileListResponse {
 }
 
 // ============================================================
-// REST API
+// 休息API
 // ============================================================
 
 const base = '/v1/admin/kbs';
@@ -228,7 +228,7 @@ export const knowledgeBaseService = {
 
   reindexAll: (id: number): Promise<R<unknown>> => api.post(`${base}/${id}/reindex`),
 
-  // ----- Profile -----
+  //  -  - - 轮廓  -  - -
   listProfiles: (id: number): Promise<R<KnowledgeBaseProfile[]>> =>
     api.get(`${base}/${id}/profiles`),
 
@@ -252,7 +252,7 @@ export const knowledgeBaseService = {
   deleteProfile: (id: number, pid: number): Promise<R<unknown>> =>
     api.delete(`${base}/${id}/profiles/${pid}`),
 
-  // ----- Member -----
+  //  -  - - 成员  -  - -
   listMembers: (id: number): Promise<R<KnowledgeBaseMember[]>> =>
     api.get(`${base}/${id}/members`),
 

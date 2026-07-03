@@ -1,5 +1,5 @@
 /**
- * @file systemService.ts
+ * @文件系统Service.ts
  * @description 系统监控服务 - 获取系统指标、存储明细、服务健康状态、历史趋势、告警
  * @ref §8.2 - Dashboard 系统监控
  */

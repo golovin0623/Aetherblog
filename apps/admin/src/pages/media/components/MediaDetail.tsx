@@ -1,5 +1,5 @@
 /**
- * @file MediaDetail.tsx
+ * @文件 MediaDetail.tsx
  * @description 媒体详情侧边栏组件 - 高级玻璃态设计
  * @ref §3.2.4 - 媒体管理模块
  * @ref 媒体库深度优化方案 - Phase 2-5 组件集成

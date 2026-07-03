@@ -201,7 +201,7 @@ func (h *StorageProviderHandler) ListObjects(c echo.Context) error {
 	return response.OK(c, res)
 }
 
-// importObjectsReq POST body
+// importObjectsReq POST 正文
 type importObjectsReq struct {
 	Keys []string `json:"keys" validate:"required,min=1,max=200"`
 }
@@ -237,7 +237,7 @@ func (h *StorageProviderHandler) ImportObjects(c echo.Context) error {
 	})
 }
 
-// deleteObjectsReq DELETE body
+// deleteObjectsReq 删除正文
 type deleteObjectsReq struct {
 	Keys []string `json:"keys"`
 }

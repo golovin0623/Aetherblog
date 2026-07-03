@@ -15,7 +15,7 @@ type atlasIndexAIClient interface {
 	DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error)
 }
 
-// AtlasIndexResult mirrors ai-service /api/v1/atlas/knowledge-points/{id}/index.
+// AtlasIndexResult 镜像 ai-service /API/v1/atlas/knowledge-points/{id}/index.html
 type AtlasIndexResult struct {
 	KPID         int64  `json:"kp_id"`
 	ProfileID    int64  `json:"profile_id"`
@@ -23,8 +23,8 @@ type AtlasIndexResult struct {
 	EmbeddingDim int    `json:"embedding_dim"`
 }
 
-// AtlasIndexerClient triggers ai-service Atlas embedding writes through the
-// same internal-service channel used by PDF extraction and AI suggestions.
+// AtlasIndexerClient触发ai-service Atlas嵌入写入通过
+// PDF 提取和 AI 建议使用相同的内部服务渠道。
 type AtlasIndexerClient struct {
 	client        atlasIndexAIClient
 	internalToken string
@@ -70,7 +70,7 @@ func (c *AtlasIndexerClient) IndexKnowledgePoint(ctx context.Context, kpID int64
 	return &out, nil
 }
 
-// AtlasSemanticKnowledgePointHit mirrors ai-service /api/v1/atlas/search/semantic hits.
+// AtlasSemanticKnowledgePointHit 镜像 ai-service /API/v1/atlas/search/semantic 命中。
 type AtlasSemanticKnowledgePointHit struct {
 	ID           int64    `json:"id"`
 	Title        string   `json:"title"`
@@ -83,14 +83,14 @@ type AtlasSemanticKnowledgePointHit struct {
 	RecallSource string   `json:"recall_source"`
 }
 
-// AtlasSemanticSearchResult mirrors ai-service /api/v1/atlas/search/semantic.
+// AtlasSemanticSearchResult 镜像 ai-service /API/v1/atlas/search/semantic。
 type AtlasSemanticSearchResult struct {
 	Query           string                           `json:"query"`
 	Limit           int                              `json:"limit"`
 	KnowledgePoints []AtlasSemanticKnowledgePointHit `json:"knowledge_points"`
 }
 
-// AtlasSemanticSearchClient calls ai-service semantic recall for Atlas search reranking.
+// AtlasSemanticSearchClient调用ai-service语义召回来进行Atlas搜索重新排序。
 type AtlasSemanticSearchClient struct {
 	client        atlasIndexAIClient
 	internalToken string

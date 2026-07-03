@@ -42,8 +42,8 @@ type atlasPermissionChecker interface {
 	UserHasPermission(ctx context.Context, userID int64, legacyRole string, permissionCode string) (bool, error)
 }
 
-// AtlasScopeMiddleware annotates requests with whether the user may inspect all
-// Atlas data. Normal read/write permissions still come from the route middleware.
+// AtlasScopeMiddleware 对请求进行注释，说明用户是否可以检查所有内容
+// 图集数据。正常的读/写权限仍然来自路由中间件。
 func AtlasScopeMiddleware(checker atlasPermissionChecker) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

@@ -1,4 +1,4 @@
-// Atlas — annotation_handler
+// 图集——annotation_handler
 //
 // 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST   /annotations          创建（请求体 ≥3 selectors）
@@ -52,7 +52,7 @@ func (h *AnnotationHandler) Mount(g *echo.Group, write echo.MiddlewareFunc) {
 	g.GET("/carriers/:id/annotations", h.ListByCarrier)
 }
 
-// Create POST /annotations。
+// 创建POST /注释。
 func (h *AnnotationHandler) Create(c echo.Context) error {
 	var req atlasdto.CreateAnnotationRequest
 	if err := c.Bind(&req); err != nil {
@@ -105,7 +105,7 @@ func (h *AnnotationHandler) Create(c echo.Context) error {
 	return response.OK(c, toAnnotationResponse(a))
 }
 
-// Get GET /annotations/:id。
+// 获取 GET /annotations/:id。
 func (h *AnnotationHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -128,7 +128,7 @@ func (h *AnnotationHandler) Get(c echo.Context) error {
 	return response.OK(c, toAnnotationResponse(a))
 }
 
-// Update PATCH /annotations/:id。
+// 更新PATCH /annotations/:id。
 func (h *AnnotationHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -173,7 +173,7 @@ func (h *AnnotationHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// ListByCarrier GET /carriers/:id/annotations。
+// ListByCarrier GET /Carriers/:id/annotations。
 func (h *AnnotationHandler) ListByCarrier(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

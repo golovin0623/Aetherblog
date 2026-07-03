@@ -8,7 +8,7 @@ import (
 // TestFernet_RoundTrip 基本加解密往返。
 func TestFernet_RoundTrip(t *testing.T) {
 	// 用一个固定的 32B 密钥(全 0)的 base64url 形态测试,避免随机依赖
-	// Python: base64.urlsafe_b64encode(b'\0' * 32).decode() == 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+	// Python: base64.URLsafe_b64encode(b'\0' * 32).decode() == 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 	const key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	f, err := NewFernet(key)
 	if err != nil {
@@ -230,7 +230,7 @@ func flipChar(c byte) string {
 //
 // 该 token 由以下命令生成 (key=base64.urlsafe_b64encode(b'\0'*32)):
 //
-//	python3 -c "from cryptography.fernet import Fernet; k=b'AAAA...A=' ; print(Fernet(k).encrypt(b'cross-language compat test').decode())"
+//	python3 -c "from cryptography.fernet import Fernet; k=b'AAAA...A=' ; print(Fernet(k).encrypt(b'跨语言兼容性测试').decode())"
 //
 // 注意:Fernet token 本身含 unix timestamp 和随机 IV,所以这里写死的是某次具体运行的输出,
 // 但只要 key 一样,任何时候 Go 端调 Decrypt 都该返回原始 plaintext。

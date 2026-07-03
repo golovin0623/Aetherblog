@@ -13,7 +13,7 @@
 
 // 标准 CSI SGR 序列：ESC[ … m（\x1b[），以及 8-bit C1 形态（\x9b）。
 // no-control-regex 是刻意的 —— 匹配 ANSI 必须命中 ESC/C1 控制字节。
-// eslint-disable-next-line no-control-regex
+// eslint-禁用-下一行无控制正则表达式
 const ANSI_SGR_RE = /\x1b\[[0-9;]*m|\x9b[0-9;]*m/g;
 // 退化形态：ESC 字节在传输/拷贝中丢失，仅剩 "[36m" 这种孤儿码。
 // 仅在确认行内出现过真实 ESC/C1 字节时才清理，避免误伤正文里的 "[200ms]" 之类。
@@ -21,7 +21,7 @@ const ORPHAN_SGR_RE = /\[\d{1,3}(?:;\d{1,3})*m/g;
 
 /** 行内是否含有 ANSI 色码（以 ESC / C1 字节判定）。 */
 export function hasAnsi(input: string): boolean {
-  // eslint-disable-next-line no-control-regex
+  // eslint-禁用-下一行无控制正则表达式
   return /\x1b\[|\x9b/.test(input);
 }
 
@@ -76,7 +76,7 @@ export function tokenizeAnsi(input: string): AnsiToken[] {
   let bold = false;
   let dim = false;
   let last = 0;
-  // eslint-disable-next-line no-control-regex
+  // eslint-禁用-下一行无控制正则表达式
   const re = /\x1b\[([0-9;]*)m|\x9b([0-9;]*)m/g;
   let m: RegExpExecArray | null;
 

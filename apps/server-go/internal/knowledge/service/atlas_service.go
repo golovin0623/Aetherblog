@@ -46,7 +46,7 @@ func (s *AtlasService) Markdown() *MarkdownCarrierService {
 	return s.markdown
 }
 
-// AttachPDF injects the PDF carrier service after media dependencies are wired.
+// AttachPDF 在连接媒体依赖项后注入 PDF 载体服务。
 func (s *AtlasService) AttachPDF(pdf *PdfCarrierService) {
 	s.pdf = pdf
 }
@@ -56,7 +56,7 @@ func (s *AtlasService) PDF() *PdfCarrierService {
 	return s.pdf
 }
 
-// AttachBlogPosts injects the blog-post carrier service after post dependencies are wired.
+// AttachBlogPosts 在帖子依赖关系连接后注入博客帖子载体服务。
 func (s *AtlasService) AttachBlogPosts(blogPosts *BlogPostCarrierService) {
 	s.blogPosts = blogPosts
 }
@@ -66,7 +66,7 @@ func (s *AtlasService) BlogPosts() *BlogPostCarrierService {
 	return s.blogPosts
 }
 
-// AttachWebClips injects the web clip carrier service.
+// AttachWebClips 注入 Web Clip 载体服务。
 func (s *AtlasService) AttachWebClips(webClips *WebClipCarrierService) {
 	s.webClips = webClips
 }
@@ -76,7 +76,7 @@ func (s *AtlasService) WebClips() *WebClipCarrierService {
 	return s.webClips
 }
 
-// AttachTranscriptMedia injects the video/audio transcript carrier service.
+// AttachTranscriptMedia注入视频/音频转录载体服务。
 func (s *AtlasService) AttachTranscriptMedia(transcripts *TranscriptCarrierService) {
 	s.transcripts = transcripts
 }
@@ -86,7 +86,7 @@ func (s *AtlasService) TranscriptMedia() *TranscriptCarrierService {
 	return s.transcripts
 }
 
-// AttachImageMedia injects the image carrier service.
+// AttachImageMedia注入图像载体服务。
 func (s *AtlasService) AttachImageMedia(images *ImageCarrierService) {
 	s.images = images
 }

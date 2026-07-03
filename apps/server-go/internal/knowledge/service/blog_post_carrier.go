@@ -144,7 +144,7 @@ func BlogPostSourceURI(postID int64) string {
 	return fmt.Sprintf("posts://%d", postID)
 }
 
-// BlogPostTextLayerStorageURI constructs the immutable rootText storage URI for a blog post snapshot.
+// BlogPostTextLayerStorageURI 为博客文章快照构造不可变的 rootText 存储 URI。
 func BlogPostTextLayerStorageURI(postID int64, hash string) string {
 	return fmt.Sprintf("atlas-text-layer://blog-post/%d/%s", postID, hash)
 }

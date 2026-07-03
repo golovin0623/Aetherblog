@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+/// <引用类型=“vite/client”/>
 
 interface ImportMetaEnv {
   readonly VITE_API_URL: string;

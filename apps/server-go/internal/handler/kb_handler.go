@@ -46,7 +46,7 @@ func NewKBHandler(svc *service.KBService, activitySvc activityRecorder) *KBHandl
 
 // recordKBEvent 写一条 KB 模块审计事件。activitySvc 为空时静默跳过（兼容旧调用方）。
 // event 命名遵循 module.action 风格："kb.create" / "kb.update" / "kb.delete" / "kb.file.upload" /
-// "kb.file.delete" / "kb.file.reindex" / "kb.reindex" / "kb.member.upsert" / "kb.member.delete" /
+// “kb.file.delete”/“kb.file.reindex”/“kb.reindex”/“kb.member.upsert”/“kb.member.delete”/
 // "kb.profile.create" / "kb.profile.activate" / "kb.profile.migrate" / "kb.profile.delete"。
 // statusEnum 把 service 层的语义状态映射为 activity_events 表的合法 enum:
 // "success" / "ok" → SUCCESS，"failed" / "error" → ERROR，其余 → INFO。
@@ -108,7 +108,7 @@ func (h *KBHandler) Mount(g *echo.Group) {
 	g.POST("/:id/reindex", h.ReindexAll)
 }
 
-// ---------- helpers ----------
+// ---------- 帮手 ----------
 
 func (h *KBHandler) buildUC(c echo.Context) (*service.KBUserContext, error) {
 	lu := middleware.GetLoginUser(c)
@@ -161,7 +161,7 @@ func (h *KBHandler) handleSvcErr(c echo.Context, err error) error {
 	}
 }
 
-// ---------- routes ----------
+// ----------路线----------
 
 func (h *KBHandler) List(c echo.Context) error {
 	uc, err := h.buildUC(c)

@@ -189,7 +189,7 @@ export function ApplyPreviewModal({
         />
       );
     }
-    // outline
+    // 大纲
     if (mode === 'append') {
       return (
         <div className="space-y-2">
@@ -207,7 +207,7 @@ export function ApplyPreviewModal({
         </div>
       );
     }
-    // outline replace
+    // 轮廓替换
     return (
       <SplitView
         leftLabel="当前正文"

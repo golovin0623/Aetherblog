@@ -1,8 +1,8 @@
 /**
- * QA Proofread Page — split-view: image + canonical tree editor
- * Left: original page image with bbox highlight overlay
- * Right: structured text tree (editable) + annotation creation
- * ref: docs/features/qa-document-workflow.md §3, §4, §7
+ * QA 校对页面 — 分割视图：图像 + 规范树编辑器
+ * 左：带有 bbox 突出显示叠加的原始页面图像
+ * 右：结构化文本树（可编辑）+注释创建
+ * 参考：docs/features/qa-document-workflow.md §3、§4、§7
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -29,7 +29,7 @@ const ANNOTATION_CATEGORIES: AnnotationCategory[] = [
   '错字', '漏字', '公式错', '表格错', '题号错', '拆分错', '答案错', '解析错',
 ];
 
-/** Render a positioned rectangle overlay for a bbox (normalized 0~1) */
+/** 渲染一个bbox的定位矩形覆盖（归一化0~1）*/
 function BBoxOverlay({ bbox, active }: { bbox: BBox; active: boolean }) {
   return (
     <div
@@ -207,7 +207,7 @@ export default function QaProofreadPage() {
   const [error, setError] = useState<string | null>(null);
   const [pageNo, setPageNo] = useState(1);
 
-  // Annotation form
+  // 注释形式
   const [annotateNode, setAnnotateNode] = useState<CanonicalNode | null>(null);
   const [annotateCategory, setAnnotateCategory] = useState<AnnotationCategory>('错字');
   const [annotateNote, setAnnotateNote] = useState('');
@@ -240,14 +240,14 @@ export default function QaProofreadPage() {
     fetchData();
   }, [fetchData]);
 
-  // Selected node for bbox display
+  // 用于 bbox 显示的选定节点
   const allNodes = flattenTree(tree);
   const selectedNode = allNodes.find((n) => n.stableKey === selectedStableKey);
   const pageNodes = allNodes.filter((n) => selectedNode ? n.pageNo === selectedNode.pageNo : n.pageNo === pageNo);
 
   const handlePatchText = async (node: CanonicalNode, text: string) => {
-    // Canonical tree nodes are keyed by stableKey (no numeric id); the backend
-    // PATCH /blocks/:blockKey route resolves the block by stableKey.
+    // 规范树节点以 stableKey 为键（无数字 id）；后端
+    // PATCH /blocks/:blockKey 路由通过 stableKey 解析块。
     if (!id || !node.stableKey) return;
     try {
       await qaDocumentService.patchBlock(id, node.stableKey, text);
@@ -285,7 +285,7 @@ export default function QaProofreadPage() {
     }
   };
 
-  // Current page image URL from the sourceCropUrl of page nodes or doc fileUrl
+  // 来自页面节点的sourceCropURL或doc fileURL的当前页面图像URL
   const currentPageNode = allNodes.find((n) => n.blockType === 'PAGE' && n.pageNo === (selectedNode?.pageNo ?? pageNo));
   const pageImageUrl = currentPageNode?.sourceCropUrl ?? doc?.fileUrl;
 
@@ -486,7 +486,7 @@ export default function QaProofreadPage() {
   );
 }
 
-/** Flatten nested tree to a flat array for lookups */
+/** 将嵌套树展平为平面数组以进行查找 */
 function flattenTree(nodes: CanonicalNode[]): CanonicalNode[] {
   const result: CanonicalNode[] = [];
   function walk(n: CanonicalNode) {

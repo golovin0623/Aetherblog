@@ -50,7 +50,7 @@ type QADocFilter struct {
 	PageSize int
 }
 
-// ---------------- qa_documents ----------------
+// ---------------- qa_文件 ----------------
 
 // CreateDocument 插入文档主记录。
 func (r *QARepo) CreateDocument(ctx context.Context, d *model.QADocument) (*model.QADocument, error) {
@@ -416,7 +416,7 @@ func (r *QARepo) DeleteAnnotation(ctx context.Context, documentID, id int64) err
 	return err
 }
 
-// ---------------- qa_patches ----------------
+// ---------------- qa_补丁 ----------------
 
 // CreatePatch 写入一个 Patch Proposal。
 func (r *QARepo) CreatePatch(ctx context.Context, p *model.QAPatch) (*model.QAPatch, error) {

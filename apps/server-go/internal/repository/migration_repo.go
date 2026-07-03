@@ -166,10 +166,10 @@ func (r *MigrationRepo) BatchInsertTags(
 // batchInsertNameSlug 是 categories/tags 两张 (name, slug) 形制相同表的共享写入路径。
 // SQL 形如：
 //
-//	INSERT INTO <table> (name, slug, post_count, created_at, updated_at)
-//	VALUES ($1,$2,0,NOW(),NOW()), ($3,$4,0,NOW(),NOW()), ...
-//	ON CONFLICT (slug) DO UPDATE SET updated_at = EXCLUDED.updated_at
-//	RETURNING id, name
+//	INSERT INTO <表>（名称、slug、post_count、created_at、updated_at）
+//	值 ($1,$2,0,NOW(),NOW()), ($3,$4,0,NOW(),NOW()), ...
+//	发生冲突时（slug）执行更新设置updated_at = EXCLUDED.updated_at
+//	返回 ID、姓名
 //
 // 注：ON CONFLICT (slug) 意味着若现有分类已用同一 slug（即使 name 不同），
 // 我们接纳其 id。service 层在 slug 碰撞但 name 不同时会产出 warning。

@@ -1424,7 +1424,7 @@ export function CreatePostPage() {
    * 把 axios/后端抛出的 error 转成人话。
    * - api.ts 拦截器把 error 规整为后端 JSON (含 message 字段)
    * - Go validator v10 的错误原文形如
-   *   `Key: 'CreatePostRequest.Summary' Error:Field validation for 'Summary' failed on the 'max' tag`
+   *   `键：'CreatePostRequest.Summary'错误：'Summary'的字段验证在'max'标签上失败`
    *   对用户不友好,这里翻译成中文场景描述
    */
   const extractSaveErrorMessage = (error: unknown, fallback: string): string => {

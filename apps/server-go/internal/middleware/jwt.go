@@ -104,8 +104,8 @@ func JWTOptionalWithKeys(keys func() []string) echo.MiddlewareFunc {
 // SECURITY (VULN-IDOR-cluster, 2026-04-17): 深度防御，与 RequireRole 在 group
 // 层互补，不可互相替代。用法：
 //
-//	existing, _ := h.svc.GetByID(ctx, id)
-//	if err := middleware.AssertOwnership(c, existing.AuthorID); err != nil {
+//	现有, _ := h.svc.GetByID(ctx, id)
+//	if err := middleware.AssertOwnership(c, 现有的.AuthorID);错误！=零{
 //	    return err // helper 已写入响应
 //	}
 func AssertOwnership(c echo.Context, ownerID *int64) error {
@@ -200,7 +200,7 @@ func GetLoginUser(c echo.Context) *jwtutil.LoginUser {
 
 // extractToken 按优先级从请求中提取 JWT 字符串：
 // 1. Authorization 请求头（Bearer 格式）
-// 2. HttpOnly Cookie
+// 2.HttpOnly Cookie
 func extractToken(c echo.Context) string {
 	// 优先从 Authorization: Bearer <token> 头中提取
 	auth := c.Request().Header.Get("Authorization")

@@ -1,6 +1,6 @@
 /**
- * QA Document Detail Page — pipeline/jobs timeline + actions
- * ref: docs/features/qa-document-workflow.md §1, §7
+ * QA 文档详细信息页面 — 管道/作业时间表 + 操作
+ * 参考：docs/features/qa-document-workflow.md §1、§7
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -66,8 +66,8 @@ export default function QaDocumentDetailPage() {
       }
       if (jobRes.code === 200 && jobRes.data) setJobs(jobRes.data);
       if (patchRes.code === 200 && patchRes.data) setPatches(patchRes.data);
-      // Always load persisted diffs so reopened/refreshed DIFF_READY/APPROVED docs
-      // keep the link to /qa/:id/diff/:diffId (not only same-session merges).
+      // 始终加载持久的差异，以便重新打开/刷新 DIFF_READY/APPROVED 文档
+      // 保留指向 /qa/:id/diff/:diffId 的链接（不仅仅是同一会话合并）。
       if (diffRes.code === 200 && diffRes.data) setDiffs(diffRes.data);
     } catch (err) {
       logger.error('Detail fetch error:', err);
@@ -98,7 +98,7 @@ export default function QaDocumentDetailPage() {
       } else if (action === 'agentFix') {
         await qaDocumentService.triggerAgentFix(id);
       } else if (action === 'approve') {
-        // approve latest version (numeric versionId — see service)
+        // 批准最新版本（数字 versionId — 请参阅服务）
         await qaDocumentService.approve(id, doc.currentVersion);
       } else if (action === 'publish') {
         await qaDocumentService.publish(id);

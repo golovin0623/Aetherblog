@@ -496,7 +496,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               <motion.div
                 ref={sendMenuRef}
                 // 仅可发送时才给按压反馈;禁用态保持 inert(苹果级触感原则,
-                // gemini review #770)。
+                // 双子座评论#770)。
                 whileTap={canSend ? { scale: 0.97 } : undefined}
                 transition={spring.precise}
                 className={[

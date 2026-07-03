@@ -85,7 +85,7 @@ export default function TeamChatClient() {
       default:
         break;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line React-hooks/exhaustive-deps
   }, [currentUserId]);
 
   const { connected, sendTyping } = useChatSocket({
@@ -99,7 +99,7 @@ export default function TeamChatClient() {
       const list = await chatApi.listConversations();
       setConversations(list);
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
   }, []);
 
@@ -149,7 +149,7 @@ export default function TeamChatClient() {
         prev.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c)),
       );
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
   }, []);
 
@@ -173,7 +173,7 @@ export default function TeamChatClient() {
       setMessages((prev) => [...older, ...prev]);
       setHasMore(older.length >= 30);
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
   }, [activeId, messages]);
 
@@ -235,7 +235,7 @@ export default function TeamChatClient() {
         if (activeIdRef.current !== convId) return;
         setMessages((prev) => mergeMessage(prev, saved));
       } catch {
-        /* ignore */
+        /* 忽略 */
       }
     },
     [activeId],

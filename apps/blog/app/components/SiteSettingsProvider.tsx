@@ -11,7 +11,7 @@ import {
 } from '@aetherblog/utils';
 
 // ============================================================
-// SiteSettingsProvider
+// 站点设置提供者
 // 将后台设置应用到博客前台，包括：
 // - 强制暗黑模式 (enable_dark_mode)
 // - 主色调 (theme_primary_color_light / theme_primary_color_dark)

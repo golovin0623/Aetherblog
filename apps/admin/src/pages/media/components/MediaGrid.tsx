@@ -1,5 +1,5 @@
 /**
- * @file MediaGrid.tsx
+ * @文件MediaGrid.tsx
  * @description 媒体网格视图 —— 迁移到 Aether Codex surface 层
  * @ref §3.2.4 - 媒体管理模块
  */

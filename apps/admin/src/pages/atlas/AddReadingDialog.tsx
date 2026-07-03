@@ -1,6 +1,6 @@
 // 添加读物对话框 —— Atlas 闭环「读 → 标 → 联 → 问」的统一入口。
 //
-// ref: docs/pm/atlas-redesign.md §4 P0-2
+// 参考：docs/pm/atlas-redesign.md §4 P0-2
 // 两种零依赖冷启动方式（不需要先去笔记/媒体/写作模块）：
 //   1. 网页快照：填链接 → 抓正文 → 存为 web carrier → 进 Reader
 //   2. 粘贴文本：贴 Markdown → 存为 markdown source → 进 Reader

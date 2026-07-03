@@ -1,5 +1,5 @@
 /**
- * @file useImageUpload.ts
+ * @文件useImageUpload.ts
  * @description 处理编辑器图片上传及进度追踪的 Hook
  */
 

@@ -9,14 +9,14 @@
 // 化简成与 react-markdown 默认渲染后 textContent 基本一致的字符串。
 //
 // 不追求完美（完美需要在 Go 端跑完整 markdown AST），而是覆盖标注锚定 5 个高频场景:
-//   1. ATX headers (#, ##, ...)
-//   2. emphasis (*, _, **, __)
-//   3. inline code (`code`)
-//   4. links / images [text](url) / ![alt](url) → keep text/alt
-//   5. block quote prefix (`> `)
-//   6. list markers (- / * / 1.)
-//   7. fenced code block (```lang ... ```) → keep content lines
-//   8. HTML tags <tag attr="..."> → strip
+//   1. ATX 标头（#、##、...）
+//   2. 强调（*、_、**、__）
+//   3. 内联代码（`code`）
+//   4. 链接/图片 [text](URL) / ![alt](URL) → 保留文字/alt
+//   5. 块引用前缀 (`> `)
+//   6. 列出标记 (- / * / 1.)
+//   7. 围栏代码块 (````lang ... ```) → 保留内容行
+//   8. HTML 标签 <tag attr="..."> → strip
 //   9. horizontal rule (--- / ***) → 空行
 //
 // **不处理**: 表格 (|...|)、setext header (===)、HTML entity decode、嵌套 emphasis 复杂场景。
@@ -55,7 +55,7 @@ func MarkdownToPlaintext(md string) string {
 		return ""
 	})
 
-	// 2) HTML tag
+	// 2）HTML标签
 	out = reHTMLTag.ReplaceAllString(out, "")
 
 	// 3) 自动链接 <https://...> → URL（react-markdown 默认显示 URL 文本）
@@ -67,7 +67,7 @@ func MarkdownToPlaintext(md string) string {
 	// 5) 链接 [text](url) → text
 	out = reLink.ReplaceAllString(out, "$1")
 
-	// 6) inline code `x` → x
+	// 6) 内联代码 `x` → x
 	out = reInlineCode.ReplaceAllString(out, "$1")
 
 	// 7) 加粗/斜体
@@ -79,7 +79,7 @@ func MarkdownToPlaintext(md string) string {
 	// 9) 块引用 prefix
 	out = reBlockquote.ReplaceAllString(out, "")
 
-	// 10) ATX header `# `
+	// 10) ATX 头`#`
 	out = reHeader.ReplaceAllString(out, "")
 
 	// 11) hr → 空行

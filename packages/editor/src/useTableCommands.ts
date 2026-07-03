@@ -1,5 +1,5 @@
 /**
- * @file useTableCommands.ts
+ * @文件useTableCommands.ts
  * @description 用于 CodeMirror 编辑器的 Markdown 表格操作 Hook
  * @ref §3.2.3 - 编辑器包开发
  */

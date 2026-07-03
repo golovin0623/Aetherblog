@@ -1,7 +1,7 @@
 package repository
 
-// EvidencePreviewRow is the first accessible evidence annotation joined with
-// its carrier for a graph subject such as a KP or typed relation.
+// EvidencePreviewRow 是第一个可访问的证据注释
+// 它是图形主题的载体，例如 KP 或类型化关系。
 type EvidencePreviewRow struct {
 	SubjectID          int64   `db:"subject_id"`
 	AnnotationID       int64   `db:"annotation_id"`

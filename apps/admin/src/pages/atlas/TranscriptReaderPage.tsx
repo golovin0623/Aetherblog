@@ -1,4 +1,4 @@
-// Atlas M2-04 — Video/audio transcript Reader.
+// Atlas M2-04 — 视频/音频转录阅读器。
 //
 // 路由: /atlas/reader/transcript/:carrierId
 // 用户先从媒体详情页保存 video/audio 转录文本，再在这里用转录文本作为稳定锚定空间。

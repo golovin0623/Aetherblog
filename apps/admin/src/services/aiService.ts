@@ -236,7 +236,7 @@ export const aiService = {
 
   /**
    * 生成文章摘要（流式）
-   * @returns EventSource URL
+   * @returns 事件源 URL
    */
   generateSummaryStream: (request: SummaryRequest): string => {
     const baseUrl = import.meta.env.VITE_API_URL || '/api';

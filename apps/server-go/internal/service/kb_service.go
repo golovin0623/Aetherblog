@@ -223,9 +223,9 @@ func (s *KBService) GetBySlugForUser(ctx context.Context, slug string, uc *KBUse
 //  1. slug 解析（若未提供则从 name 派生）
 //  2. INSERT knowledge_bases 取得 id
 //  3. EnsureFolderByPath /root/_system_kb/<slug>
-//  4. UPDATE knowledge_bases.folder_id
+//  4.更新knowledge_bases.folder_id
 //  5. INSERT 默认 profile（status='active', model 取 defaultModel, chunker='recursive'）
-//  6. UPDATE knowledge_bases.active_profile_id
+//  6.更新knowledge_bases.active_profile_id
 //
 // 任何步骤失败都让上层 tx 回滚（这里用 sql 而非显式 begin，因为 EnsureFolderByPath
 // 跨多 row，且文件夹幂等创建本身不需要回滚保护——失败的目录留着无害）。
@@ -436,7 +436,7 @@ func (s *KBService) Delete(ctx context.Context, id int64, uc *KBUserContext) err
 
 // resolveEffectivePermission 返回 uc 对 kb 的最高有效权限：
 //   - 系统管理员：MANAGE
-//   - owner：MANAGE
+//   - 所有者：MANAGE
 //   - kb_members 解析最高级
 //   - SYSTEM_POSTS + Visibility=PUBLIC：至少 USE（任何登录用户能用于对话）
 //   - 其他：空串（无权限）
@@ -811,9 +811,9 @@ func (s *KBService) ListFiles(ctx context.Context, kbID int64, q dto.KBFileListQ
 // listPostsAsKBFiles 把 posts 视为 SYSTEM_POSTS 库的虚拟文件。
 // 状态映射：
 //
-//	posts.embedding_status='INDEXED' → SUCCEEDED
-//	posts.embedding_status='PENDING' → PENDING
-//	posts.embedding_status='FAILED'  → FAILED
+//	posts.embedding_status='索引' → 成功
+//	posts.embedding_status='待处理' → 待处理
+//	posts.embedding_status='失败' → 失败
 //
 // chunk_count 来自 post_embeddings 的 active 行数。
 func (s *KBService) listPostsAsKBFiles(ctx context.Context, kb *model.KnowledgeBase, q dto.KBFileListQuery) ([]dto.KBFileVO, int64, error) {
@@ -1057,7 +1057,7 @@ func (s *KBService) ListForPicker(ctx context.Context, uc *KBUserContext, keywor
 }
 
 // =====================================================================
-// Profile
+// 轮廓
 // =====================================================================
 
 func (s *KBService) ListProfiles(ctx context.Context, kbID int64, uc *KBUserContext) ([]dto.KBProfileVO, error) {

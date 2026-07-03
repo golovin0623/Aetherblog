@@ -1028,10 +1028,10 @@ RETURNING
 		return nil, err
 	}
 
-	// An approval-paused run already has node logs persisted by PauseRunForApproval
-	// (sequence 1..N). The final trace starts again at sequence 1, which would hit the
-	// unique (run_id, sequence) index. Replace any existing logs for the run before
-	// inserting the terminal trace so resumed runs can finalize.
+	// 批准暂停的运行已具有由 PauseRunForApproval 保留的节点日志
+	// （序列 1..N）。最后的跟踪再次从序列 1 开始，这将命中
+	// 唯一（run_id，序列）索引。替换之前运行的任何现有日志
+	// 插入终端跟踪以便可以完成恢复的运行。
 	if len(req.Logs) > 0 {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_workflow_node_logs WHERE run_id = $1`, req.RunID); err != nil {
 			return nil, err
@@ -1198,11 +1198,11 @@ func (r *AgentWorkflowRepo) PauseRunForApproval(ctx context.Context, runID int64
 	if affected == 0 {
 		return tx.Commit()
 	}
-	// Persist the executor trace for the already-run upstream nodes before pausing.
-	// workflowResumeContext restores prior outputs from these node logs, so without
-	// this the resumed run would re-run the approved node with empty upstream
-	// dependencies (e.g. {{ nodes.load_post.output }} → missing). Replace any prior
-	// logs for the run so repeated pause/resume cycles stay idempotent.
+	// 在暂停之前保留已运行的上游节点的执行程序跟踪。
+	// workflowResumeContext 从这些节点日志中恢复先前的输出，因此无需
+	// 恢复运行将重新运行上游为空的已批准节点
+	// 依赖项（例如 {{nodes.load_post.output}} → 缺失）。替换任何先前的
+	// 运行日志，因此重复的暂停/恢复循环保持幂等性。
 	if _, err := tx.ExecContext(ctx, `DELETE FROM agent_workflow_node_logs WHERE run_id = $1`, runID); err != nil {
 		return err
 	}
@@ -1243,11 +1243,11 @@ VALUES ($1, $2, $3, $4::jsonb)`, runID, nodeID, toolCode, payload); err != nil {
 	return tx.Commit()
 }
 
-// ApproveResumeDecision records the human approval that a resume action represents:
-// it flips the pending agent_workflow_approvals row(s) for the run (optionally
-// scoped to a node) to 'approved'. This is the decision path that
-// HasApprovedDecision later checks, so a resumed approval-gated run can clear its
-// gate exactly once. Returns the number of rows transitioned.
+// ApproveResumeDecision 记录恢复操作所代表的人工批准：
+// 它会翻转运行的待处理的 agent_workflow_approvals 行（可选
+// 范围为节点）更改为“已批准”。这就是决策路径
+// HasApprovedDecision 稍后进行检查，因此恢复批准门控运行可以清除其
+// 门正好一次。返回转换的行数。
 func (r *AgentWorkflowRepo) ApproveResumeDecision(ctx context.Context, runID int64, nodeID string, decidedBy int64) (int64, error) {
 	query := `
 UPDATE agent_workflow_approvals
@@ -1265,10 +1265,10 @@ WHERE run_id = $1 AND status = 'pending'`
 	return res.RowsAffected()
 }
 
-// HasApprovedDecision reports whether the given run/node has a recorded
-// 'approved' decision in agent_workflow_approvals. Used to gate the
-// approval-bypass on resume so that merely matching the resumeFromNode id is
-// not enough to skip a governed tool's approval gate.
+// HasApprovedDecision 报告给定的运行/节点是否有记录
+// agent_workflow_approvals 中的“已批准”决定。用于门控
+// 绕过简历审批，以便仅匹配resumeFromNode id
+// 不足以跳过受管理工具的批准门。
 func (r *AgentWorkflowRepo) HasApprovedDecision(ctx context.Context, runID int64, nodeID string) (bool, error) {
 	if strings.TrimSpace(nodeID) == "" {
 		return false, nil
@@ -1774,18 +1774,18 @@ VALUES ($1, $2, $3)`, publicationID, userID, clientKey)
 	return err
 }
 
-// TryRecordPublicationInvocation atomically enforces the per-minute rate limit:
-// it counts recent invocations and records the new one in a single transaction so
-// concurrent invokes cannot both pass a low limit (e.g. 1/min). It returns true
-// when the invocation was allowed and recorded, false when the limit is exceeded.
+// TryRecordPublicationInitation 以原子方式强制执行每分钟的速率限制：
+// 它计算最近的调用并在单个事务中记录新的调用，因此
+// 并发调用不能同时通过下限（例如 1/min）。它返回 true
+// 当调用被允许并记录时，当超出限制时为 false。
 func (r *AgentWorkflowRepo) TryRecordPublicationInvocation(ctx context.Context, publicationID int64, userID *int64, clientKey string, limit int, since time.Time) (bool, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback()
-	// Serialize concurrent invokes for the same publication+key via an advisory lock
-	// so the count-then-insert window cannot interleave.
+	// 通过咨询锁对同一发布+密钥序列化并发调用
+	// 因此计数然后插入窗口不能交错。
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
 		fmt.Sprintf("agent_pub_invoke:%d:%s", publicationID, clientKey)); err != nil {
 		return false, err

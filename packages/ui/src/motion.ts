@@ -1,13 +1,13 @@
 /**
- * AetherBlog · Motion Preset
+ * AetherBlog · 动作预设
  * -----------------------------------------------------------
  * 规范:.claude/design-system/04-motion.md
  *
  * 使用:
- *   import { spring, transition, variants, duration, ease } from '@aetherblog/ui';
+ *   从“@aetherblog/ui”导入{ spring、transition、variants、duration、ease }；
  *
- *   <motion.div variants={variants.fadeUp} initial="initial" animate="animate" transition={transition.flow} />
- *   <motion.button whileTap={{ scale: 0.97 }} transition={spring.precise} />
+ *   <motion.divvariants={variants.fadeUp}initial=“initial”animate=“animate”transition={transition.flow}/>
+ *   <motion.button whileTap={{scale:0.97}}transition={spring.precise}/>
  *
  * 禁止:在组件内直接写 cubic-bezier / spring.stiffness 数值。
  */
@@ -110,7 +110,7 @@ export const variants = {
 
 /**
  * stagger —— 生成子元素逐个入场的 transition
- * @example transition={stagger(30)}
+ * @示例转换={交错(30)}
  */
 export const stagger = (delayMs: number = 40, childEach: number = duration.quick) => ({
   staggerChildren: delayMs / 1000,

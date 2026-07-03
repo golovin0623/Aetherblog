@@ -1,5 +1,5 @@
 /**
- * @file bearDecorations.ts
+ * @文件 bearDecorations.ts
  * @description Bear 风格 WYSIWYG Markdown 装饰器
  * 
  * 核心原理：使用 CodeMirror 的 ViewPlugin + Decoration 系统，
@@ -66,7 +66,7 @@ const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; b
 /** 水平分割线 Widget —— aurora 渐变细线,替代硬 hex
  *  (theme 参数保留用于调用处签名兼容,内部色值由 CSS 变量解析) */
 class HrWidget extends WidgetType {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-禁用-下一行@typescript-eslint/no-unused-vars
   constructor(_theme: string) {
     super();
   }

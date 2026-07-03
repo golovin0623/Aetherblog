@@ -1,5 +1,5 @@
 /**
- * @file DeleteMediaConfirmModal.tsx
+ * @文件DeleteMediaConfirmModal.tsx
  * @description 永久删除媒体文件确认对话框 — 带"是否同时清云端"选项
  * @ref 对象存储 rollout - Phase 3
  *

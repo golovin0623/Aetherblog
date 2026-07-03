@@ -6,11 +6,11 @@
  * 向 `/api/v1/agent/chat` 发起 POST，接收 SSE 流。SSE 事件格式与 ai-service
  * 的 QA / summary stream 对齐：
  *
- *   data: {"type":"delta","content":"…"}\n\n
+ *   数据: {"type":"delta","content":"…"}\n\n
  *   data: {"type":"think","content":"…"}\n\n  // 可选思考段
- *   data: {"type":"sources","sources":[…]}\n\n
- *   data: {"type":"done"}\n\n
- *   data: {"type":"error","code":"…","message":"…"}\n\n
+ *   数据: {"type":"sources","sources":[…]}\n\n
+ *   数据: {"type":"done"}\n\n
+ *   数据: {"type":"error","code":"…","message":"…"}\n\n
  *
  * 我们用 fetch + ReadableStream 解析（而非 EventSource），原因：
  *  1. EventSource 只支持 GET，不能 POST 多轮对话历史
@@ -127,7 +127,7 @@ export async function streamAgentChat(
     try {
       reader.releaseLock();
     } catch {
-      /* swallow */
+      /* 吞下*/
     }
   }
 }

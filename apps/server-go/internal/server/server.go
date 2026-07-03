@@ -114,10 +114,10 @@ func New(cfg *config.Config) (*Server, error) {
 	e.HideBanner = true
 	e.HidePort = true
 	e.Validator = &echoValidator{v: newValidator()}
-	// Derive client IP from X-Forwarded-For while trimming trusted proxy hops
-	// (loopback/link-local/private — covers the nginx gateway). Without a configured
-	// extractor, RealIP() trusts the raw client-supplied XFF, letting callers rotate
-	// the header to evade per-IP publication rate limits. ref: agent-workflow rate keys
+	// 从 X-Forwarded-For 派生客户端 IP，同时修剪可信代理跃点
+	// （loopback/link-local/private — 涵盖 nginx 网关）。没有配置的
+	// 提取器，RealIP() 信任原始客户端提供的 XFF，让调用者轮换
+	// 用于规避每个 IP 发布速率限制的标头。参考：座席工作流程速率键
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())

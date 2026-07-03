@@ -14,12 +14,12 @@ interface StreamEvent {
 
 /**
  * 结构化的流式终稿数据。各工具具体形状：
- * - summary:    { summary: string; characterCount: number; model?: string }
- * - tags:       { tags: string[]; model?: string }
- * - titles:     { titles: string[]; model?: string }
- * - polish:     { polishedContent: string; model?: string }
- * - outline:    { outline: string; characterCount: number; model?: string }
- * - translate:  { translatedContent: string; targetLanguage: string; sourceLanguage?: string | null; model?: string }
+ * - 摘要：{ 摘要：字符串；字符数：数量；型号？：字符串 }
+ * - 标签：{ 标签：字符串[]；型号？：字符串 }
+ * - 标题：{ 标题：字符串[]；型号？：字符串 }
+ * - 抛光：{抛光内容：字符串；型号？：字符串 }
+ * - 大纲：{ 大纲：字符串；字符数：数量；型号？：字符串 }
+ * - 翻译：{ 翻译内容：字符串；目标语言：字符串；源语言？：字符串 |无效的;型号？：字符串 }
  */
 export type StreamResult = Record<string, unknown> | null;
 
@@ -45,11 +45,11 @@ interface UseStreamResponseReturn {
  *
  * 解析 SSE (Server-Sent Events) 流格式：按 `\n\n` 分隔事件块，每块包含
  * 一行 `data: <json>` 形式的 JSON 载荷。支持的事件类型：
- * - data: {"type": "delta", "content": "...", "isThink": false}
- * - data: {"type": "delta", "content": "...", "isThink": true}
+ * - 数据：{“类型”：“增量”，“内容”：“...”，“isThink”：false}
+ * - 数据：{“类型”：“增量”，“内容”：“...”，“isThink”：true}
  * - data: {"type": "result", "data": {...}}  ← 结构化终稿（由后端 ai.py 末尾发送）
- * - data: {"type": "done"}
- * - data: {"type": "error", "code": "...", "message": "..."}
+ * - 数据：{“类型”：“完成”}
+ * - 数据：{“类型”：“错误”，“代码”：“...”，“消息”：“...”}
  */
 export function useStreamResponse(): UseStreamResponseReturn {
   const [content, setContent] = useState('');

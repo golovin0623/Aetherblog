@@ -77,11 +77,11 @@ const (
 
 // ImportOptions 是前端向导传入的导入选项 JSON 体。
 // 所有字段都有合理默认值，默认保持与 VanBlog 2.0 计划中确认的决策一致：
-//   - ConflictStrategy: skip
-//   - PreserveTimestamps: true
-//   - ImportHidden: true
-//   - ImportDrafts: true
-//   - ImportDeleted: false
+//   - 冲突策略：跳过
+//   - 保留时间戳：true
+//   - 导入隐藏：true
+//   - 导入草稿：true
+//   - 导入已删除： false
 //   - PreservePasswords: true（overwrite 时保留旧 bcrypt，不用 VanBlog 明文覆盖）
 type ImportOptions struct {
 	ConflictStrategy   string `json:"conflictStrategy,omitempty"`

@@ -98,7 +98,7 @@ function buildR2Endpoint(accountId: string): string {
  * S3 兼容配置(LOCAL 之外的统一形状)
  *
  * 后端 storage/s3.go 的 S3Config 字段:
- *   bucket, region, endpoint, accessKeyId, secretAccessKey, path, customUrl, options, urlPrefix, allowPrivateEndpoint, forcePathStyle
+ *   存储桶、区域、端点、accessKeyId、secretAccessKey、路径、customURL、选项、URLPrefix、allowPrivateEndpoint、forcePathStyle
  */
 interface S3LikeConfig {
   bucket: string;

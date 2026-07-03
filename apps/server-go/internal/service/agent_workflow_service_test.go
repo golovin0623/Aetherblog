@@ -150,15 +150,15 @@ func TestPublicationOriginPolicy(t *testing.T) {
 	if err := validatePublicationOrigin(`["https://blog.example.com"]`, "https://evil.example.com"); err == nil {
 		t.Fatalf("disallowed origin returned nil error")
 	}
-	// Wildcard must only match a real dot-delimited subdomain, not a sibling domain
-	// that merely ends with the same characters.
+	// 通配符只能匹配真正的点分隔子域，而不是同级域
+	// 只是以相同的字符结尾。
 	if err := validatePublicationOrigin(`["https://*.example.com"]`, "https://badexample.com"); err == nil {
 		t.Fatalf("wildcard must not accept sibling domain https://badexample.com")
 	}
 	if err := validatePublicationOrigin(`["https://*.example.com"]`, "https://foo.example.com"); err != nil {
 		t.Fatalf("wildcard should accept real subdomain: %v", err)
 	}
-	// The wildcard label must be non-empty: the bare apex must not match "*.example.com".
+	// 通配符标签必须非空：裸露的顶点不能匹配“*.example.com”。
 	if err := validatePublicationOrigin(`["https://*.example.com"]`, "https://example.com"); err == nil {
 		t.Fatalf("wildcard must not accept the bare apex domain")
 	}

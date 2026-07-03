@@ -1,5 +1,5 @@
 /**
- * @file EditorSettingsPanel.tsx
+ * @文件EditorSettingsPanel.tsx
  * @description 文章编辑器设置侧边栏 - 包含设置、分类标签、封面图片、摘要等可折叠区块
  * @ref §3.2.3.3 - 文章编辑器页面设计
  */

@@ -1,4 +1,4 @@
-// Atlas Phase 3 — Suggestion REST handler
+// Atlas 第 3 阶段 - 建议 REST 处理程序
 //
 // 路径 (/v1/admin/atlas, RBAC + AtlasScopeMiddleware):
 //   POST   /suggestions                  创建（由 ai-service 回调或 admin demo UI）

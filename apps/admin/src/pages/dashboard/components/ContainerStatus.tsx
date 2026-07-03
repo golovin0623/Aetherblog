@@ -1,5 +1,5 @@
 /**
- * @file ContainerStatus.tsx
+ * @文件ContainerStatus.tsx
  * @description Docker 容器资源监控组件 - 显示各模块 CPU/内存使用情况
  * @ref §8.2 - Dashboard 系统监控
  */

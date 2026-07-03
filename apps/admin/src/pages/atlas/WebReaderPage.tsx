@@ -1,4 +1,4 @@
-// Atlas M2-03 — Web clip Reader.
+// Atlas M2-03 — 网页剪辑阅读器。
 //
 // 路由: /atlas/reader/web/:carrierId
 // Web carrier 的正文快照由 POST /atlas/carriers/web 写入，并以 text layer 作为

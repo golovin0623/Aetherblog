@@ -1,5 +1,5 @@
 /**
- * @file SystemTrends.tsx
+ * @文件系统趋势.tsx
  * @description 系统资源历史趋势图组件
  */
 
@@ -78,7 +78,7 @@ function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
   }));
 }
 
-// ========== Component ==========
+// ========== 组件 ==========
 
 export function SystemTrends({ className }: { className?: string }) {
   const [data, setData] = useState<MergedDataPoint[]>([]);

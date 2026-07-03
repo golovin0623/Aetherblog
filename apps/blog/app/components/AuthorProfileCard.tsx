@@ -320,7 +320,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
-      // Some synthetic browser sessions do not support capture for every pointer.
+      // 某些合成浏览器会话不支持捕获每个指针。
     }
   }, [stageWidth, trackX]);
 
@@ -345,7 +345,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         try {
           event.currentTarget.releasePointerCapture(event.pointerId);
         } catch {
-          // Ignore capture release failures in older browser engines.
+          // 忽略旧版浏览器引擎中的捕获释放失败。
         }
         snapTrackToCenter();
         return;
@@ -365,7 +365,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
-      // Ignore capture release failures in older browser engines.
+      // 忽略旧版浏览器引擎中的捕获释放失败。
     }
     if (!swipe || !swipe.horizontal) {
       snapTrackToCenter();

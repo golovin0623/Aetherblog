@@ -32,7 +32,7 @@ export default function AgentBar({ conversationId }: Props) {
     try {
       setSeated(await chatApi.listConversationAgents(conversationId));
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
   }, [conversationId]);
 
@@ -75,7 +75,7 @@ export default function AgentBar({ conversationId }: Props) {
       await chatApi.unseatAgent(conversationId, removeAgent.id);
       await refresh();
     } catch {
-      /* ignore */
+      /* 忽略 */
     } finally {
       setRemoveAgent(null);
     }

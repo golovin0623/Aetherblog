@@ -101,7 +101,7 @@ interface UseReindexStreamReturn {
  *
  * 事件分桶（与 ai-service ``profiles.py:_sse_pack`` 协议一致）：
  *   {type: "start", total, profile}      → 写 total
- *   {type: "progress", postId, index, chunks, status, error?, elapsedMs}
+ *   {类型：“进度”，postId，索引，块，状态，错误？，elapsedMs}
  *                                          → 累加 counters + 推入 recent ring buffer
  *   {type: "result", data: {...}}         → 写 result
  *   {type: "done"}                        → 关闭 isRunning

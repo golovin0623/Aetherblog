@@ -121,7 +121,7 @@ export function SidebarSearchPalette({
     };
   }, [isOpen, anchorRef]);
 
-  // 250ms debounce
+  // 250ms 去抖
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 250);
     return () => clearTimeout(t);

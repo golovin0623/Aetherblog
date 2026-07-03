@@ -1,9 +1,9 @@
 /**
- * @file ErrorBoundary.tsx
+ * @文件ErrorBoundary.tsx
  * @description 全局错误边界组件 - 捕获 React.lazy 加载失败等渲染错误
- * @ref Issue #140
- * @author AI Assistant
- * @created 2026-02-12
+ * @ref 问题#140
+ * @作者人工智能助手
+ * @创建于2026-02-12
  */
 
 import { Component, type ReactNode, type ErrorInfo } from 'react';

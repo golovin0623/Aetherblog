@@ -1,8 +1,8 @@
 /**
- * @file ThemeToggle.tsx
+ * @文件ThemeToggle.tsx
  * @description 主题切换按钮组件 - 太阳/月亮图标切换，带圆形扩散动画
- * @author AI Assistant
- * @created 2026-01-16
+ * @作者人工智能助手
+ * @创建于2026-01-16
  */
 
 'use client';
@@ -67,16 +67,16 @@ const sizeMap = {
 /**
  * 主题切换按钮组件
  * 
- * @example
- * ```tsx
+ * @例子
+ * ````tsx
  * // 简单使用
- * <ThemeToggle />
+ * <主题切换/>
  * 
  * // 带系统选项的下拉
- * <ThemeToggle showSystem />
+ * <主题切换显示系统/>
  * 
  * // 自定义尺寸
- * <ThemeToggle size="lg" />
+ * <主题切换大小=“lg”/>
  * ```
  */
 export function ThemeToggle({

@@ -1,5 +1,5 @@
 /**
- * @file AuthGuard.tsx
+ * @文件AuthGuard.tsx
  * @description 认证守卫，在渲染受保护路由前验证令牌。
  *
  * 此组件通过在初始渲染时主动与后端验证令牌，解决了持久化认证状态过时的问题。

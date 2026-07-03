@@ -4,9 +4,9 @@
  * 在开发环境中，所有日志可见。
  * 
  * 用法:
- *   import { logger } from '@/lib/logger';
- *   logger.info('Something happened');
- *   logger.error('Something went wrong', error);
+ *   从'@/lib/logger'导入{logger}；
+ *   logger.info('发生了什么事');
+ *   logger.error('出了问题', error);
  */
 
 const isDev = import.meta.env.DEV;

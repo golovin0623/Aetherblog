@@ -1,4 +1,4 @@
-// Atlas M2-02 — Blog post Reader.
+// Atlas M2-02 — 博客文章阅读器。
 //
 // 路由: /atlas/reader/blog-post/:carrierId
 // blog_post carrier 的正文快照来自 posts://{id}，后端将文章标题/摘要/正文归一化

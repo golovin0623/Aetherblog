@@ -1,4 +1,4 @@
-// Atlas — typed_relation_repo (Phase 2 P2-03)
+// Atlas — typed_relation_repo（第 2 阶段 P2-03）
 
 package repository
 
@@ -209,8 +209,8 @@ func (r *RelationRepo) CountEvidenceByRelationIDs(ctx context.Context, relationI
 	return counts, nil
 }
 
-// FirstEvidencePreviewRowsByRelationIDs returns one scoped evidence annotation
-// per relation for graph inspector previews.
+// FirstEvidencePreviewRowsByRelationIDs 返回一个范围证据注释
+// 图形检查器预览的每个关系。
 func (r *RelationRepo) FirstEvidencePreviewRowsByRelationIDs(ctx context.Context, relationIDs []int64, authorID *int64) ([]EvidencePreviewRow, error) {
 	if len(relationIDs) == 0 {
 		return []EvidencePreviewRow{}, nil

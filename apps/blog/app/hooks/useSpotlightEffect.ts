@@ -3,7 +3,7 @@
 import React from 'react';
 
 /**
- * @file useSpotlightEffect.ts
+ * @文件 useSpotlightEffect.ts
  * @description 聚光灯效果自定义 Hook，统一管理鼠标跟随高光交互逻辑
  * @ref Issue #245 - 提取重复的 spotlight 逻辑到自定义 Hook
  */
@@ -41,13 +41,13 @@ interface UseSpotlightEffectReturn {
  * 原先在 ArticleCard、FeaturedPost、AuthorProfileCard、BlogHeader 四个组件中
  * 重复实现的鼠标跟随高光逻辑，统一提取至此。
  *
- * @example
- * ```tsx
- * const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
- *   = useSpotlightEffect({ radius: 600 });
+ * @例子
+ * ````tsx
+ * const { SpotlightRef、isHovering、handleMouseEnter、handleMouseLeave、handleMouseMove }
+ *   = useSpotlightEffect({ 半径: 600 });
  *
  * <div onMouseMove={handleMouseMove} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
- *   <div ref={spotlightRef} style={{ opacity: isHovering ? 'var(--spotlight-opacity)' : 0 }} />
+ *   <div ref={spotlightRef} style={{ 不透明度： isHovering ？ 'var(--spotlight-opacity)': 0 }} />
  * </div>
  * ```
  */

@@ -11,7 +11,7 @@ import (
 )
 
 // ============================================================
-// Carrier
+// 载体
 // ============================================================
 
 // CarrierResponse 是 GET /atlas/carriers/:id 与 POST /atlas/carriers/markdown 的响应。
@@ -116,7 +116,7 @@ type CarrierTextLayerResponse struct {
 }
 
 // ============================================================
-// Annotation
+// 注解
 // ============================================================
 
 // CreateAnnotationRequest 是 POST /atlas/annotations 的请求体。

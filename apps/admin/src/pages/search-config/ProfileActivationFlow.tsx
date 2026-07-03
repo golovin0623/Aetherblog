@@ -36,7 +36,7 @@ type PreviousActiveProfile = Pick<SearchProfile, 'code' | 'name'>;
 /**
  * Profile 激活四步向导：
  *
- *   confirm → reindexing → activating → done
+ *   确认→重建索引→激活→完成
  *                       ↓
  *                    failed (允许 retry)
  *

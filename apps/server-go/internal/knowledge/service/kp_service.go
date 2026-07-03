@@ -1,4 +1,4 @@
-// Atlas Phase 2 — KnowledgePointService + RelationService
+// Atlas 第 2 阶段 — KnowledgePointService + RelationService
 //
 // 红线:
 //   * C2-1 关系类型严格 9 种（由 model.IsSupportedRelationType 校验）
@@ -212,7 +212,7 @@ func (s *KnowledgePointService) CountEvidenceByKPIDs(ctx context.Context, kpIDs 
 	return s.kp.CountEvidenceByKPIDs(ctx, kpIDs)
 }
 
-// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence preview row per KP.
+// FirstEvidencePreviewRowsByKPIDs 返回每个 KP 的一个范围证据预览行。
 func (s *KnowledgePointService) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
 	return s.kp.FirstEvidencePreviewRowsByKPIDs(ctx, kpIDs, authorID)
 }
@@ -223,7 +223,7 @@ func (s *KnowledgePointService) ListKPsForAnnotation(ctx context.Context, annota
 }
 
 // ============================================================
-// RelationService
+// 关系服务
 // ============================================================
 
 // RelationService 编排 typed relation。
@@ -342,7 +342,7 @@ func (s *RelationService) CountEvidenceByRelationIDs(ctx context.Context, relati
 	return s.repo.CountEvidenceByRelationIDs(ctx, relationIDs)
 }
 
-// FirstEvidencePreviewRowsByRelationIDs returns one scoped evidence preview row per relation.
+// FirstEvidencePreviewRowsByRelationIDs 针对每个关系返回一个范围证据预览行。
 func (s *RelationService) FirstEvidencePreviewRowsByRelationIDs(ctx context.Context, relationIDs []int64, authorID *int64) ([]repository.EvidencePreviewRow, error) {
 	return s.repo.FirstEvidencePreviewRowsByRelationIDs(ctx, relationIDs, authorID)
 }

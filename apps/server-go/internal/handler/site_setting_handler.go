@@ -16,7 +16,7 @@ import (
 // allowedSettingKeys 定义允许通过 API 读写的站点配置键白名单。
 // 新增配置项时需在此处同步添加对应的键名。
 var allowedSettingKeys = map[string]bool{
-	// general
+	// 一般的
 	"site_name": true, "site_description": true, "site_url": true,
 	"site_logo": true, "site_favicon": true, "site_keywords": true,
 	"footer_text": true, "footer_signature": true,
@@ -27,17 +27,17 @@ var allowedSettingKeys = map[string]bool{
 	"welcome_secondary_btn_text": true, "welcome_secondary_btn_link": true,
 	// author（名称/头像/简介由「个人资料」用户档案维护并在 /site/info 注入覆盖；
 	// 站点设置侧仅邮箱与社交链接 JSON 可写。已移除从未有 UI、前台零消费的遗留键
-	// author_github / author_twitter。）
+	// 作者_github / 作者_twitter。）
 	"author_name": true, "author_avatar": true, "author_bio": true,
 	"author_email": true, "social_links": true,
-	// comment
+	// 评论
 	"comment_enabled": true, "comment_audit": true,
 	// appearance（show_banner 已从 UI 收敛到 welcome_enabled，但仍作 legacy 兜底读取，保留可写）
 	"theme_primary_color": true, "enable_dark_mode": true,
 	"show_banner": true, "post_page_size": true, "custom_css": true,
 	"font_family": true, "theme_primary_color_light": true, "theme_primary_color_dark": true,
 	"theme_visual_color_mode": true, "theme_visual_color_light": true, "theme_visual_color_dark": true,
-	// seo
+	// 搜索引擎优化
 	"seo_robots": true, "enable_sitemap": true,
 	"baidu_analytics_id": true, "google_analytics_id": true,
 	// advanced（已移除后端不消费/已被取代的 enable_registrations、storage_type、

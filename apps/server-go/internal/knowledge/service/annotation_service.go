@@ -1,4 +1,4 @@
-// Atlas annotation_service — Phase 1 P1-06
+// 图集注释_服务 — 第 1 阶段 P1-06
 //
 // 红线 C1-1: selectors 至少 3 个，至少包含 TextQuote + TextPosition 双选。
 // 服务层是最后一道闸——前端可绕过，后端不能。

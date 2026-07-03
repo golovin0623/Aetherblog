@@ -23,7 +23,7 @@ const (
 	minReadableWebClipChars    = 40
 )
 
-// WebClipSnapshot is the fetched, readable web page draft shown before carrier creation.
+// WebClipSnapshot 是在创建载体之前显示的获取的、可读的网页草稿。
 type WebClipSnapshot struct {
 	SourceURL       string
 	Title           string
@@ -32,14 +32,14 @@ type WebClipSnapshot struct {
 	Language        *string
 }
 
-// WebClipFetcher fetches and extracts a safe bounded readable HTML snapshot.
+// WebClipFetcher 获取并提取安全的有界可读 HTML 快照。
 type WebClipFetcher struct {
 	client   *http.Client
 	lookupIP func(context.Context, string) ([]netip.Addr, error)
 	maxBytes int64
 }
 
-// DefaultWebClipFetcher creates the production fetcher with timeouts and redirect validation.
+// DefaultWebClipFetcher 创建具有超时和重定向验证的生产提取器。
 func DefaultWebClipFetcher() *WebClipFetcher {
 	return &WebClipFetcher{
 		client:   defaultWebClipHTTPClient(),
@@ -48,7 +48,7 @@ func DefaultWebClipFetcher() *WebClipFetcher {
 	}
 }
 
-// Fetch downloads a public http(s) HTML page and returns a readable Markdown draft.
+// Fetch 下载公共 http(s) HTML 页面并返回可读的 Markdown 草稿。
 func (f *WebClipFetcher) Fetch(ctx context.Context, rawURL string) (*WebClipSnapshot, error) {
 	normalized, err := normalizeFetchWebClipURL(rawURL)
 	if err != nil {
@@ -119,7 +119,7 @@ func (f *WebClipFetcher) Fetch(ctx context.Context, rawURL string) (*WebClipSnap
 	return ExtractReadableWebSnapshot(finalURL, bytes.NewReader(data), contentType)
 }
 
-// ExtractReadableWebSnapshot parses a bounded HTML document into title/author/lang/text.
+// ExtractReadableWebSnapshot 将有界 HTML 文档解析为标题/作者/语言/文本。
 func ExtractReadableWebSnapshot(sourceURL string, body io.Reader, contentType string) (*WebClipSnapshot, error) {
 	if !isReadableHTMLContentType(contentType) {
 		return nil, fmt.Errorf("网页内容类型不支持: %s", firstNonEmpty(contentType, "unknown"))

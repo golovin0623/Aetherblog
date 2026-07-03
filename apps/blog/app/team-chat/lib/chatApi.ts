@@ -29,7 +29,7 @@ async function unwrap<T>(res: Response): Promise<T> {
       const json = (await res.json()) as Envelope<unknown>;
       if (json?.message) msg = json.message;
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
     throw new Error(msg);
   }

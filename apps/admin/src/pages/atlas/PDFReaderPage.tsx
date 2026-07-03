@@ -1,4 +1,4 @@
-// Atlas P1-02/P1-05 — PDF text-layer reader with PageRect jump-back.
+// Atlas P1-02/P1-05 — 具有 PageRect 跳转功能的 PDF 文本层阅读器。
 //
 // 路由: /atlas/reader/pdf/:carrierId
 // PDF 原文件由 media_files 管理；本页读取已抽取并持久化的页级文本层，

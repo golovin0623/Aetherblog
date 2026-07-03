@@ -14,7 +14,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
 
-// WebClipInput is the caller-supplied snapshot for a web page.
+// WebClipInput 是调用者提供的网页快照。
 type WebClipInput struct {
 	SourceURL       string
 	Title           string
@@ -23,29 +23,29 @@ type WebClipInput struct {
 	Language        *string
 }
 
-// WebClipCarrierService stores web pages as Atlas carriers.
+// WebClipCarrierService 将网页存储为 Atlas 载体。
 type WebClipCarrierService struct {
 	carriers   *repository.CarrierRepo
 	versioning *CarrierVersioningService
 	fetcher    *WebClipFetcher
 }
 
-// NewWebClipCarrierService creates a web clip carrier service.
+// NewWebClipCarrierService 创建 Web 剪辑载体服务。
 func NewWebClipCarrierService(carriers *repository.CarrierRepo) *WebClipCarrierService {
 	return &WebClipCarrierService{carriers: carriers, fetcher: DefaultWebClipFetcher()}
 }
 
-// AttachVersioning injects annotation migration for edited web clips.
+// AttachVersioning 为已编辑的 Web 剪辑注入注释迁移。
 func (s *WebClipCarrierService) AttachVersioning(v *CarrierVersioningService) {
 	s.versioning = v
 }
 
-// AttachFetcher injects a bounded web fetcher, primarily for tests.
+// AttachFetcher 注入一个有界的 Web fetcher，主要用于测试。
 func (s *WebClipCarrierService) AttachFetcher(fetcher *WebClipFetcher) {
 	s.fetcher = fetcher
 }
 
-// FetchSnapshot fetches a public web page and extracts a readable Markdown draft.
+// FetchSnapshot 获取公共网页并提取可读的 Markdown 草稿。
 func (s *WebClipCarrierService) FetchSnapshot(ctx context.Context, sourceURL string) (*WebClipSnapshot, error) {
 	fetcher := s.fetcher
 	if fetcher == nil {
@@ -54,7 +54,7 @@ func (s *WebClipCarrierService) FetchSnapshot(ctx context.Context, sourceURL str
 	return fetcher.Fetch(ctx, sourceURL)
 }
 
-// CreateOrUpdateWebClipAs stores the supplied web page snapshot for the current user.
+// CreateOrUpdateWebClipAs 存储为当前用户提供的网页快照。
 func (s *WebClipCarrierService) CreateOrUpdateWebClipAs(ctx context.Context, in WebClipInput, userID int64) (*model.Carrier, error) {
 	if s.carriers == nil {
 		return nil, errors.New("carrier repo not configured")
@@ -131,7 +131,7 @@ func (s *WebClipCarrierService) CreateOrUpdateWebClipAs(ctx context.Context, in 
 	return carrier, nil
 }
 
-// NormalizeWebClipSourceURI returns a stable http(s) URL without fragment.
+// NormalizeWebClipSourceURI 返回不带片段的稳定 http(s) URL。
 func NormalizeWebClipSourceURI(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -152,12 +152,12 @@ func NormalizeWebClipSourceURI(raw string) (string, error) {
 	return parsed.String(), nil
 }
 
-// WebTextLayerStorageURI constructs the immutable rootText storage URI for a web snapshot.
+// WebTextLayerStorageURI 为 Web 快照构造不可变的 rootText 存储 URI。
 func WebTextLayerStorageURI(ownerID int64, sourceURL string, hash string) string {
 	return fmt.Sprintf("atlas-text-layer://web/%d/%s/%s", ownerID, contentSHA256(sourceURL), hash)
 }
 
-// WebClipText builds the stable text space used for AI suggestions and annotation migration.
+// WebClipText构建了用于AI建议和注释迁移的稳定文本空间。
 func WebClipText(in WebClipInput) string {
 	parts := make([]string, 0, 2)
 	if title := strings.TrimSpace(in.Title); title != "" {

@@ -182,7 +182,7 @@ export const atlasService = {
 
   deleteAnnotation: (id: number): Promise<R<void>> => api.delete(`${base}/annotations/${id}`),
 
-  // ---------- Knowledge Points (Phase 2) ----------
+  // ---------- 知识点（第二阶段） ----------
   listKnowledgePoints: (params?: {
     type?: AtlasKnowledgePointType;
     status?: AtlasKnowledgePointStatus;
@@ -239,7 +239,7 @@ export const atlasService = {
   ): Promise<R<AtlasTypedRelation[]>> =>
     api.get(`${base}/knowledge-points/${kpId}/relations`, { params: { dir } }),
 
-  // ---------- Typed Relations ----------
+  // ---------- 类型关系 ----------
   createRelation: (payload: {
     fromKpId: number;
     toKpId: number;
@@ -261,7 +261,7 @@ export const atlasService = {
 
   deleteRelation: (id: number): Promise<R<void>> => api.delete(`${base}/relations/${id}`),
 
-  // ---------- Graph ----------
+  // ----------图----------
   getGraph: (
     limit?: number,
     params?: AtlasScopedParams
@@ -296,7 +296,7 @@ export const atlasService = {
   } & AtlasScopedParams): Promise<R<AtlasSearchResponse>> =>
     api.get(`${base}/search`, { params }),
 
-  // ---------- AI Suggestions (Phase 3) ----------
+  // ---------- AI建议（第3阶段） ----------
   listSuggestions: (params?: {
     kind?: 'kp' | 'relation';
     status?: 'pending' | 'accepted' | 'rejected' | 'ignored' | 'expired';

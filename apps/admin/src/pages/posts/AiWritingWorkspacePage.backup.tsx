@@ -202,7 +202,7 @@ export function AiWritingWorkspacePage() {
     }
 
     // TODO: 调用实际的 AI 服务接口
-    // const result = await aiService.executeCapability(toolId, { text: selectedText });
+    // const 结果 = 等待 aiService.executeCapability(toolId, { text: selectedText });
 
     // 示例：模拟 AI 响应（临时占位）
     await new Promise(resolve => setTimeout(resolve, 1000));

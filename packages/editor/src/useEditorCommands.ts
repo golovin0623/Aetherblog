@@ -1,5 +1,5 @@
 /**
- * @file useEditorCommands.ts
+ * @文件 useEditorCommands.ts
  * @description 用于在 CodeMirror 编辑器中以编程方式操作文本的 Hook
  * @ref §3.2.3 - 编辑器包开发
  */
@@ -66,15 +66,15 @@ export interface EditorCommands {
  * @param editorViewRef - 包含 CodeMirror EditorView 实例的 React ref
  * @returns 包含文本操作方法的 EditorCommands 对象
  * 
- * @example
- * const editorViewRef = useRef<EditorView | null>(null);
- * const commands = useEditorCommands(editorViewRef);
+ * @例子
+ * const editorViewRef = useRef<EditorView |空>(空);
+ * const 命令 = useEditorCommands(editorViewRef);
  * 
  * // 切换选中项的粗体
- * commands.toggleWrap('**', '**');
+ * 命令.toggleWrap('**', '**');
  * 
  * // 在行首插入标题
- * commands.insertAtLineStart('# ');
+ * 命令.insertAtLineStart('# ');
  */
 export function useEditorCommands(
   editorViewRef: React.RefObject<EditorView | null>

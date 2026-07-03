@@ -132,7 +132,7 @@ func buildSourceIDLabel(a *VanBlogArticle) string {
 	return "sha1:" + hex.EncodeToString(h[:])[:6]
 }
 
-// --- Analyze ---
+//  - - 分析  - -
 
 // Analyze 解析整份备份、做幂等/冲突预判，返回完整 AnalysisReport 用于前端预览页。
 // 不写 DB，调用方无需事务。
@@ -426,7 +426,7 @@ func buildOnlyFilter(ids []int) map[int]struct{} {
 	return m
 }
 
-// --- Execute ---
+//  - - 执行  - -
 
 // ProgressEmit 是 handler 注入的 SSE 写入回调。service 层调用它推事件。
 type ProgressEmit func(ev ProgressEvent)

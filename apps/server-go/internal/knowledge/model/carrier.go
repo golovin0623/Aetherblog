@@ -2,7 +2,7 @@
 //
 // 与 docs/plan/task-aether-knowledge-system.md §2 数据骨架一一对应：
 //
-//	Carrier / CarrierVersion / Annotation / KnowledgePoint / TypedRelation
+//	运营商/运营商版本/注释/知识点/TypedRelation
 //
 // 命名规范：与现有 internal/model 包对齐，避免 import 冲突时通过包前缀 atlasmodel 区分。
 package model
@@ -39,7 +39,7 @@ type CarrierVersion struct {
 	CreatedAt    time.Time `db:"created_at"`
 }
 
-// CarrierTextLayer stores extracted rootText artifacts for non-markdown carriers.
+// CarrierTextLayer 存储非 Markdown 载体提取的 rootText 工件。
 type CarrierTextLayer struct {
 	ID          int64     `db:"id"`
 	CarrierID   int64     `db:"carrier_id"`

@@ -1,4 +1,4 @@
-// Atlas P1-07 — Robust Anchoring
+// Atlas P1-07 — 坚固的锚固
 //
 // 把已保存的 W3C 选择器在新版本载体文本里重新定位。四档回退：
 //   1. TextPositionSelector 精确位置（直接 substring 比对）

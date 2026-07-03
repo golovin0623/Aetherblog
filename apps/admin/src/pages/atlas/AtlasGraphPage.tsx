@@ -1627,7 +1627,7 @@ function simulate(nodes: Node[], edges: AtlasTypedRelation[], iterations: number
     if (a && b) liveEdges.push({ a, b });
   }
   for (let iter = 0; iter < iterations; iter++) {
-    // repulsion
+    // 排斥力
     for (let i = 0; i < nodes.length; i++) {
       const a = nodes[i];
       let fx = 0;
@@ -1656,7 +1656,7 @@ function simulate(nodes: Node[], edges: AtlasTypedRelation[], iterations: number
       b.vx += dx * force * 0.05;
       b.vy += dy * force * 0.05;
     }
-    // apply velocity + boundary clamp
+    // 应用速度+边界钳
     for (const n of nodes) {
       n.x = clamp(n.x + n.vx, 30, VIEWPORT_W - 30);
       n.y = clamp(n.y + n.vy, 30, VIEWPORT_H - 30);

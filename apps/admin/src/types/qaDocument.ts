@@ -1,9 +1,9 @@
 /**
- * QA Document Workflow types
- * Mirrors the contract defined in docs/features/qa-document-workflow.md
+ * QA 文档工作流程类型
+ * 镜像 docs/features/qa-document-workflow.md 中定义的合同
  */
 
-// §1 Status Machine
+// §1 状态机
 export type QaDocumentStatus =
   | 'UPLOADED'
   | 'PREPROCESSING'
@@ -20,7 +20,7 @@ export type QaDocumentStatus =
   | 'PUBLISHED'
   | 'FAILED';
 
-// §2 Split Granularity
+// §2 分割粒度
 export type SplitGranularity = 'COARSE' | 'STANDARD' | 'FINE' | 'ULTRA_FINE';
 
 export const SPLIT_GRANULARITY_LABELS: Record<SplitGranularity, string> = {
@@ -30,7 +30,7 @@ export const SPLIT_GRANULARITY_LABELS: Record<SplitGranularity, string> = {
   ULTRA_FINE: '极精细',
 };
 
-// block_type full set (§2)
+// block_type 全套 (§2)
 export type BlockType =
   | 'PAGE'
   | 'BLOCK'
@@ -44,14 +44,14 @@ export type BlockType =
   | 'TABLE'
   | 'TABLE_CELL';
 
-// §3 Canonical Document Tree Node
+// §3 规范文档树节点
 export interface BoundingBox {
   x: number;
   y: number;
   w: number;
   h: number;
 }
-/** Alias matching the contract's 'bbox' shape */
+/** 与合约'bbox'形状匹配的别名*/
 export type BBox = BoundingBox;
 
 export interface CanonicalNode {
@@ -68,7 +68,7 @@ export interface CanonicalNode {
   children: CanonicalNode[];
 }
 
-// Annotation category
+// 注释类别
 export type AnnotationCategory =
   | '错字'
   | '漏字'
@@ -95,7 +95,7 @@ export interface QaAnnotation {
   updatedAt: string;
 }
 
-// §4 Patch Proposal
+// §4 补丁提案
 export type PatchOp =
   | 'replace_text'
   | 'update_field'
@@ -124,7 +124,7 @@ export interface QaPatch {
   updatedAt: string;
 }
 
-// §5 Diff
+// §5 差异
 export type DiffLevel = 'CHAR' | 'FIELD' | 'STRUCTURE';
 
 export interface CharDiffToken {
@@ -132,7 +132,7 @@ export interface CharDiffToken {
   op: '=' | '-' | '+';
 }
 
-/** Alias matching docs/features/qa-document-workflow.md §5 */
+/** 别名匹配 docs/features/qa-document-workflow.md §5 */
 export type CharDiffEntry = CharDiffToken;
 
 export interface DiffChange {
@@ -161,7 +161,7 @@ export interface QaDiff {
   createdAt: string;
 }
 
-// Pipeline Job
+// 管道作业
 export interface QaJob {
   id: string;
   documentId: string;
@@ -175,7 +175,7 @@ export interface QaJob {
   createdAt: string;
 }
 
-// QA Document main entity
+// QA 文档主要实体
 export interface QaDocument {
   id: string;
   title: string;
@@ -190,7 +190,7 @@ export interface QaDocument {
   jobs?: QaJob[];
 }
 
-// Published question from qa_questions
+// 来自 qa_questions 的已发布问题
 export interface QaQuestion {
   id: string;
   documentId: string;
@@ -201,7 +201,7 @@ export interface QaQuestion {
   createdAt: string;
 }
 
-// Audit log entry
+// 审核日志条目
 export interface QaAuditLog {
   id: string;
   documentId: string;
@@ -213,7 +213,7 @@ export interface QaAuditLog {
   createdAt: string;
 }
 
-// List/filter params
+// 列表/过滤参数
 export interface QaDocumentListParams {
   pageNum?: number;
   pageSize?: number;

@@ -1,7 +1,7 @@
 /**
- * QA Documents list page — upload entry + pipeline status polling
- * ref: docs/features/qa-document-workflow.md §1, §7
- * Pattern mirrors PostsPage.tsx (table / pagination / filter)
+ * QA 文档列表页面 — 上传条目 + 管道状态轮询
+ * 参考：docs/features/qa-document-workflow.md §1、§7
+ * 模式镜像PostsPage.tsx（表格/分页/过滤器）
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -62,7 +62,7 @@ const STATUS_LABEL: Record<QaDocumentStatus, string> = {
   FAILED: '失败',
 };
 
-/** States that mean the pipeline is still auto-running */
+/** 表示管道仍在自动运行的状态 */
 const PIPELINE_ACTIVE_STATUSES: QaDocumentStatus[] = [
   'PREPROCESSING', 'SEGMENTED', 'OCR_DONE', 'STRUCTURED', 'AGENT_RUNNING',
 ];
@@ -100,7 +100,7 @@ function StatusChip({ status }: { status: QaDocumentStatus }) {
 export default function QaDocumentsPage() {
   const navigate = useNavigate();
 
-  // List state
+  // 列表状态
   const [docs, setDocs] = useState<QaDocument[]>([]);
   const [pagination, setPagination] = useState<PageResult<QaDocument> | null>(null);
   const [pageNum, setPageNum] = useState(1);
@@ -109,7 +109,7 @@ export default function QaDocumentsPage() {
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<QaDocumentStatus | undefined>(undefined);
 
-  // Upload dialog state
+  // 上传对话框状态
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
@@ -119,10 +119,10 @@ export default function QaDocumentsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Delete dialog
+  // 删除对话框
   const [deleteDoc, setDeleteDoc] = useState<QaDocument | null>(null);
 
-  // Whether any row is in an auto-pipeline state (to enable polling)
+  // 是否有任何行处于自动管道状态（以启用轮询）
   const hasPipelineActive = docs.some((d) => PIPELINE_ACTIVE_STATUSES.includes(d.status));
 
   const fetchDocs = useCallback(async (page = 1) => {
@@ -156,7 +156,7 @@ export default function QaDocumentsPage() {
     fetchDocs(1);
   }, [fetchDocs]);
 
-  // Poll for pipeline updates
+  // 轮询管道更新
   useEffect(() => {
     if (!hasPipelineActive) return;
     const id = setInterval(() => fetchDocs(pageNum), POLL_INTERVAL_MS);
@@ -168,7 +168,7 @@ export default function QaDocumentsPage() {
     fetchDocs(page);
   };
 
-  // Upload
+  // 上传
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;

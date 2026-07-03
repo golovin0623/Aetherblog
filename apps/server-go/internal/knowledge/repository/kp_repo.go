@@ -1,4 +1,4 @@
-// Atlas — knowledge_point_repo (Phase 2 P2-01/02)
+// 图集 —knowledge_point_repo（第 2 阶段 P2-01/02）
 //
 // 落地手册: docs/plan/task-aether-knowledge-system.md §3 Phase 2
 
@@ -236,8 +236,8 @@ func (r *KPRepo) CountEvidenceByKPIDs(ctx context.Context, kpIDs []int64) (map[i
 	return counts, nil
 }
 
-// FirstEvidencePreviewRowsByKPIDs returns one scoped evidence annotation per KP
-// for graph inspector previews.
+// FirstEvidencePreviewRowsByKPIDs 返回每个 KP 的一个范围证据注释
+// 用于图形检查器预览。
 func (r *KPRepo) FirstEvidencePreviewRowsByKPIDs(ctx context.Context, kpIDs []int64, authorID *int64) ([]EvidencePreviewRow, error) {
 	if len(kpIDs) == 0 {
 		return []EvidencePreviewRow{}, nil

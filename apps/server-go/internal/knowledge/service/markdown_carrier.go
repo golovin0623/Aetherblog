@@ -132,7 +132,7 @@ func (s *MarkdownCarrierService) getOrCreateForNote(ctx context.Context, noteID 
 	}
 
 	// 已存在且 hash 变了：迁移标注 + bump 版本（注意**顺序**）
-	// PR #724 review fix (Codex P1, markdown_carrier.go:104):
+	// PR #724 审查修复（Codex P1、markdown_carrier.Go:104）：
 	//   过去顺序是 UpdateContent → MigrateAnnotations，hash 在 migration 之前就 commit。
 	//   一旦 migration 失败，下次 GetOrCreateForNote 会因 ContentHash == hash 跳过迁移分支，
 	//   标注永远停留在旧锚定状态。

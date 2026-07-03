@@ -1,11 +1,11 @@
-// Atlas Phase 2 DTOs — KP + Relation + Graph
+// Atlas 第 2 阶段 DTO — KP + 关系 + 图表
 
 package dto
 
 import "time"
 
 // ============================================================
-// KnowledgePoint
+// 知识点
 // ============================================================
 
 // CreateKnowledgePointRequest POST /atlas/knowledge-points 请求体。
@@ -54,7 +54,7 @@ type LinkAnnotationRequest struct {
 }
 
 // ============================================================
-// TypedRelation
+// 类型关系
 // ============================================================
 
 // CreateRelationRequest POST /atlas/relations 请求体。
@@ -97,7 +97,7 @@ type RelationEvidenceResponse struct {
 }
 
 // ============================================================
-// Graph
+// 图形
 // ============================================================
 
 // GraphResponse 是 GET /atlas/graph 的响应。

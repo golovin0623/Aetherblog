@@ -353,7 +353,7 @@ func (h *KPHandler) ListKPRelations(c echo.Context) error {
 	return response.OK(c, out)
 }
 
-// ---------- Relation ----------
+// ---------- 关系 ----------
 
 func (h *KPHandler) CreateRelation(c echo.Context) error {
 	var req atlasdto.CreateRelationRequest
@@ -502,7 +502,7 @@ func (h *KPHandler) DeleteRelation(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// ---------- Graph ----------
+// ----------图----------
 
 func (h *KPHandler) Graph(c echo.Context) error {
 	graph, _, err := h.graphResponseForRequest(c)
@@ -573,7 +573,7 @@ func (h *KPHandler) graphResponseForRequest(c echo.Context) (atlasdto.GraphRespo
 	}, atlasExportScopeLabel(scope, authorID), nil
 }
 
-// ExportGraph returns a scoped Atlas graph snapshot as JSON or GraphML.
+// ExportGraph 以 JSON 或 GraphML 形式返回范围化的 Atlas 图快照。
 func (h *KPHandler) ExportGraph(c echo.Context) error {
 	graph, scopeLabel, err := h.graphResponseForRequest(c)
 	if err != nil {
@@ -608,7 +608,7 @@ func (h *KPHandler) ExportGraph(c echo.Context) error {
 	}
 }
 
-// ImportGraph imports a user supplied Atlas-compatible graph source.
+// ImportGraph 导入用户提供的兼容 Atlas 的图形源。
 func (h *KPHandler) ImportGraph(c echo.Context) error {
 	var req atlasdto.GraphImportRequest
 	if err := c.Bind(&req); err != nil {

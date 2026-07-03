@@ -1,5 +1,5 @@
 /**
- * @file TrashDialog.tsx
+ * @文件TrashDialog.tsx
  * @description 回收站对话框组件
  * @ref 媒体库深度优化方案 - 回收站功能
  */

@@ -57,7 +57,7 @@ const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ def
 const AiWritingWorkspacePage = lazy(() => import('./pages/posts/AiWritingWorkspacePage').then(module => ({ default: module.AiWritingWorkspacePage })));
 
 // 试卷拆题 QA Document Workflow
-// ref: docs/features/qa-document-workflow.md §7
+// 参考：docs/features/qa-document-workflow.md §7
 const QaDocumentsPage = lazy(() => import('./pages/qa/QaDocumentsPage'));
 const QaDocumentDetailPage = lazy(() => import('./pages/qa/QaDocumentDetailPage'));
 const QaProofreadPage = lazy(() => import('./pages/qa/QaProofreadPage'));

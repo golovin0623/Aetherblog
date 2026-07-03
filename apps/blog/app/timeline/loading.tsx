@@ -1,6 +1,6 @@
 /**
- * Timeline loading skeleton.
- * Mirrors TimelineTree enough to keep route transitions stable across themes.
+ * 时间轴加载骨架。
+ * 镜像 TimelineTree 足以保持跨主题的路由转换稳定。
  */
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return (

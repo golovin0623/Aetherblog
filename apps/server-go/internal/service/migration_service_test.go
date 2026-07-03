@@ -59,7 +59,7 @@ func TestApplyDefaults_PreservesExplicit(t *testing.T) {
 
 func TestVanBlogBackup_DecodeRealShape(t *testing.T) {
 	// 真实 VanBlog 导出的顶层 key（来自 4.5MB 生产备份实测）：
-	//   articles/tags/meta/drafts/categories/user/viewer/visit/static/setting
+	//   文章/标签/元/草稿/类别/用户/查看者/访问/静态/设置
 	// 老 handler 的 DisallowUnknownFields() 在这份 JSON 上会直接 400；
 	// 新实现必须接住已知字段并安静丢弃 user/viewer/visit/static/setting。
 	raw := []byte(`{
@@ -237,7 +237,7 @@ func TestClassifyArticle_Paths(t *testing.T) {
 			t.Errorf("empty title should be invalid, got %q", action)
 		}
 	}
-	// skip_hidden: hidden=true, ImportHidden=false
+	// Skip_hidden：隐藏= true，ImportHidden = false
 	{
 		f := false
 		opts2 := opts
@@ -248,7 +248,7 @@ func TestClassifyArticle_Paths(t *testing.T) {
 			t.Errorf("want skip_hidden got %q", action)
 		}
 	}
-	// skip_deleted: deleted=true, ImportDeleted=false
+	// Skip_deleted：已删除= true，ImportDeleted = false
 	{
 		tr := true
 		a := &VanBlogArticle{Title: "d", Deleted: &tr}
@@ -283,7 +283,7 @@ func TestClassifyArticle_Paths(t *testing.T) {
 			t.Errorf("new-key match should return matched=vanblog:7, got %q", matched)
 		}
 	}
-	// overwrite: ConflictStrategy=overwrite
+	// 覆盖：ConflictStrategy=覆盖
 	{
 		opts2 := opts
 		opts2.ConflictStrategy = ConflictStrategyOverwrite

@@ -1,5 +1,5 @@
 /**
- * @file MediaPage.tsx
+ * @文件 MediaPage.tsx
  * @description 媒体库主页面
  * @ref §3.2.4 - 媒体管理模块
  */
@@ -124,7 +124,7 @@ function utilityButtonClass(tone: 'default' | 'danger' | 'primary' = 'default'):
  *
  * AbortController 不放在 state 里 —— 改用 controllersRef.current(Map<id, AbortController>),
  * 解决"异步 setState 完成前 cancel 即触发 → controller 还是 undefined,abort() 失效"的 race。
- * @ref PR #646 fix: gemini-code-assist medium — controller race condition
+ * @ref PR #646 修复：gemini-code-assist 中 — 控制器竞争条件
  */
 interface UploadingFile {
   file: File;

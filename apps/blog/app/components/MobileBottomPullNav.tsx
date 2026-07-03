@@ -1,5 +1,5 @@
 /**
- * @file MobileBottomPullNav.tsx
+ * @文件MobileBottomPullNav.tsx
  * @description 移动端底部上滑快捷导航 — Framer Motion + 速度感知手势
  *
  * 架构要点：
@@ -76,7 +76,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
 
   const router = useRouter();
 
-  // ── Refs ──
+  // ── 参考资料 ──
   const touchRef = useRef({
     startY: 0,
     startX: 0,

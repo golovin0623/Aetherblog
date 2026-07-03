@@ -49,7 +49,7 @@ func (h *SyncHandler) Mount(g *echo.Group) {
 // 这些是"per-media"路由,而不是 storage/sync 子组,所以单独 Mount。
 func (h *SyncHandler) MountMediaRoutes(g *echo.Group) {
 	g.POST("/:id/sync", h.SyncOne)
-	// Phase 5
+	// 第五阶段
 	g.DELETE("/:id/backup", h.RemoveBackup)
 	g.POST("/:id/verify", h.VerifyOne)
 }
@@ -174,7 +174,7 @@ func (h *SyncHandler) GetAutoEnabled(c echo.Context) error {
 	return response.OK(c, map[string]any{"autoEnabled": enabled})
 }
 
-// autoEnabledReq PUT body
+// autoEnabledReq PUT 主体
 type autoEnabledReq struct {
 	AutoEnabled bool `json:"autoEnabled"`
 }
@@ -257,7 +257,7 @@ func (h *SyncHandler) GetVerifyEnabled(c echo.Context) error {
 	})
 }
 
-// verifyEnabledReq PUT body
+// verifyEnabledReq PUT 主体
 type verifyEnabledReq struct {
 	AutoEnabled bool `json:"autoEnabled"`
 }

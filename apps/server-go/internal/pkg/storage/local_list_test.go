@@ -9,7 +9,7 @@ import (
 )
 
 func TestLocalListTraversal(t *testing.T) {
-	// Create temp dir
+	// 创建临时目录
 	tmpDir, err := os.MkdirTemp("", "storage-test-")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -21,7 +21,7 @@ func TestLocalListTraversal(t *testing.T) {
 		t.Fatalf("failed to create storage dir: %v", err)
 	}
 
-	// create a file outside storage
+	// 在存储之外创建文件
 	secretPath := filepath.Join(tmpDir, "secret.txt")
 	if err := os.WriteFile(secretPath, []byte("secret"), 0644); err != nil {
 		t.Fatalf("failed to write secret file: %v", err)
@@ -29,7 +29,7 @@ func TestLocalListTraversal(t *testing.T) {
 
 	ls := NewLocalStorage(storageDir, "/uploads")
 
-	// Try to list files outside storage using prefix
+	// 尝试使用前缀列出存储外部的文件
 	_, _, err = ls.List(context.Background(), "../", "", 10)
 
 	if err == nil {

@@ -12,7 +12,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
 
-// ImageMediaSnapshot is the media subset needed to create an image carrier.
+// ImageMediaSnapshot 是创建图像载体所需的媒体子集。
 type ImageMediaSnapshot struct {
 	ID           int64
 	Title        string
@@ -26,36 +26,36 @@ type ImageMediaSnapshot struct {
 	OwnerID      *int64
 }
 
-// ImageMediaReader is implemented by the server media adapter.
+// ImageMediaReader 由服务器媒体适配器实现。
 type ImageMediaReader interface {
 	GetImageMediaSnapshot(ctx context.Context, mediaFileID int64) (*ImageMediaSnapshot, error)
 }
 
-// ImageCarrierInput is a caller-supplied image description/OCR note for Atlas.
+// ImageCarrierInput 是调用者为 Atlas 提供的图像描述/OCR 注释。
 type ImageCarrierInput struct {
 	MediaFileID         int64
 	DescriptionMarkdown string
 	Language            *string
 }
 
-// ImageCarrierService stores user-supplied image descriptions as Atlas carriers.
+// ImageCarrierService 将用户提供的图像描述存储为 Atlas 载体。
 type ImageCarrierService struct {
 	carriers   *repository.CarrierRepo
 	media      ImageMediaReader
 	versioning *CarrierVersioningService
 }
 
-// NewImageCarrierService creates the image carrier service.
+// NewImageCarrierService 创建图像载体服务。
 func NewImageCarrierService(carriers *repository.CarrierRepo, media ImageMediaReader) *ImageCarrierService {
 	return &ImageCarrierService{carriers: carriers, media: media}
 }
 
-// AttachVersioning injects annotation migration for image description edits.
+// AttachVersioning 为图像描述编辑注入注释迁移。
 func (s *ImageCarrierService) AttachVersioning(v *CarrierVersioningService) {
 	s.versioning = v
 }
 
-// CreateOrUpdateForMediaAs creates or refreshes an image carrier under the caller scope.
+// CreateOrUpdateForMediaAs 在调用者范围下创建或刷新图像载体。
 func (s *ImageCarrierService) CreateOrUpdateForMediaAs(ctx context.Context, in ImageCarrierInput, userID int64, canAdmin bool) (*model.Carrier, error) {
 	if in.MediaFileID <= 0 {
 		return nil, errors.New("invalid media_file id")
@@ -146,12 +146,12 @@ func (s *ImageCarrierService) CreateOrUpdateForMediaAs(ctx context.Context, in I
 	return carrier, nil
 }
 
-// ImageTextLayerStorageURI constructs the immutable rootText storage URI for an image description.
+// ImageTextLayerStorageURI 为图像描述构造不可变的 rootText 存储 URI。
 func ImageTextLayerStorageURI(mediaID int64, hash string) string {
 	return fmt.Sprintf("atlas-text-layer://image/%d/%s", mediaID, hash)
 }
 
-// ImageCarrierText builds the stable text space for image annotations and AI suggestions.
+// ImageCarrierText为图像标注和AI建议构建稳定的文本空间。
 func ImageCarrierText(in ImageCarrierInput) string {
 	parts := make([]string, 0, 1)
 	if content := strings.TrimSpace(anchoring.MarkdownToPlaintext(in.DescriptionMarkdown)); content != "" {

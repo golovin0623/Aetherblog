@@ -1,5 +1,5 @@
 /**
- * @file StorageBadge.tsx
+ * @文件StorageBadge.tsx
  * @description 存储徽章 —— 显示文件存储后端类型 (LOCAL/S3/COS/OSS/MINIO/R2)
  * @ref 对象存储 rollout - Phase 3
  *

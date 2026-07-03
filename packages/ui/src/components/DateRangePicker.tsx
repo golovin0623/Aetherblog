@@ -233,7 +233,7 @@ export function DateRangePicker({
       setHoverDay(null);
       setViewMonth(valueEnd ?? valueStart ?? startOfDay(new Date()));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line React-hooks/exhaustive-deps
   }, [isOpen]);
 
   // 计算 popover 位置 + 尺寸

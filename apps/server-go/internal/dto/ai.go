@@ -11,10 +11,10 @@ package dto
 //   不识别的字段。本次清理移除了一批"幽灵字段"——Python 从未存在却长期
 //   保留在 Go 侧的兼容别名：
 //     - SummaryRequest:  Model / Style (模型 / 风格)
-//     - TagsRequest:     Model
+//     - 标签请求：型号
 //     - TitlesRequest:   Count / Style / Model (数量 / 风格 / 模型)
 //     - PolishRequest:   PolishType / Style / Model (润色类型 / 风格 / 模型)
-//     - OutlineRequest:  Model
+//     - 大纲请求：型号
 //   保留 ModelID + ProviderCode（Python schema 中存在），供用户级模型覆盖使用。
 
 // SummaryRequest 是 AI 摘要生成接口的请求 DTO。

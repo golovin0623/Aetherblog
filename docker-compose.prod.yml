@@ -3,21 +3,21 @@
 # =============================================================================
 # 
 # 使用方法 (本地构建):
-#   docker-compose -f docker-compose.prod.yml up -d --build
+#   Docker-compose -f Docker-compose.prod.yml up -d --build
 #
 # 使用方法 (从 Docker Hub 拉取):
-#   DOCKER_REGISTRY=golovin0623 docker-compose -f docker-compose.prod.yml up -d
+#   Docker_REGISTRY=Golovin0623 Docker-compose -f Docker-compose.prod.yml up -d
 #
 # 端口映射:
 #   - 7899: 统一入口网关 (Nginx) ← 推荐使用此端口访问
 #   - 7893: 博客前端直接访问 (可选)
 #   - 7894: 管理后台直接访问 (可选)
-#   - 7895: PostgreSQL
+#   - 7895：PostgreSQL
 #
 # 访问方式:
 #   - 博客: http://yourdomain:7896/
 #   - 后台: http://yourdomain:7896/admin
-#   - API:  http://yourdomain:7896/api
+#   - API：http://你的域名:7896/API
 #
 # =============================================================================
 
@@ -147,9 +147,9 @@ services:
   # ---------------------------------------------------------------------------
   #
   # 启用：
-  #   docker-compose -f docker-compose.prod.yml --profile with-monitor up -d
+  #   Docker-compose -f Docker-compose.prod.yml --profile with-monitor up -d
   # 同时在 .env 设：
-  #   DOCKER_SOCKET_PROXY_URL=http://docker-socket-proxy:2375
+  #   Docker_SOCKET_PROXY_URL=http://Docker-socket-proxy:2375
   #
   # 安全模型：tecnativa/docker-socket-proxy 在 backend 与 Docker daemon 之间
   # 充当只读白名单。下面的环境变量把 API 表面收紧到容器监控所需的最小权限：
@@ -230,7 +230,7 @@ services:
       - "8080"
     # 注意: 不暴露 8080 到宿主机，仅通过 Docker 内部网络访问
     # 如需直接访问后端，可启用下面的配置:
-    # ports:
+    # 端口：
     #   - "127.0.0.1:8081:8080"
     environment:
       AETHERBLOG_DATABASE_HOST: postgres
@@ -330,7 +330,7 @@ services:
       # Redis 容器内部端口 6379 + 宿主机映射到 6999, backend 走宿主机 IP + 6999
       # OK, 但 ai-service 如果只读 REDIS_URL 就容易拼出 redis:6999 这种永远
       # 不通的组合 —— 三段式配置让两边同步, 由 Python 侧合成 URL。
-      # ai-service: app/core/config.py::_build_redis_url_from_parts
+      # ai-service: app/core/config.py::_build_redis_URL_from_parts
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

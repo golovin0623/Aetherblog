@@ -126,10 +126,10 @@ func (s *AgentWorkflowService) ListTools(ctx context.Context, userID int64) ([]d
 		if tool.Description != nil {
 			desc = *tool.Description
 		}
-		// handler_config can carry secrets (e.g. HTTP Authorization headers / API
-		// keys). The list includes system/public tools owned by other accounts, so
-		// only expose the raw config for tools the caller actually owns; redact it
-		// for public/system rows to avoid leaking other owners' credentials.
+		// handler_config 可以携带机密（例如 HTTP 授权标头/API
+		// 键）。该列表包括其他帐户拥有的系统/公共工具，因此
+		// 只公开调用者实际拥有的工具的原始配置；编辑它
+		// 用于公共/系统行，以避免泄露其他所有者的凭据。
 		ownedByCaller := tool.UserID != nil && *tool.UserID == userID
 		handlerConfig := json.RawMessage("{}")
 		if ownedByCaller {
@@ -640,12 +640,12 @@ func (s *AgentWorkflowService) CreateRun(ctx context.Context, userID, workflowID
 	if err != nil || workflow == nil {
 		return nil, err
 	}
-	// The direct authenticated run path is for authoring/testing your OWN workflow.
-	// FindRunnableWorkflow also matches public workflows, but invoking someone else's
-	// published workflow must go through the slug path (InvokePublished), which
-	// enforces allowedOrigins, rateLimitPerMin, the publication input schema, and the
-	// published-version snapshot. Reject direct runs of non-owned workflows so this
-	// endpoint can't be used to bypass that governance.
+	// 直接经过身份验证的运行路径用于创作/测试您自己的工作流程。
+	// FindRunnableWorkflow 也匹配公共工作流程，但调用其他人的工作流程
+	// 发布的工作流程必须经过 slug 路径 (InvokePublished)，该路径
+	// 强制 allowedOrigins、rateLimitPerMin、发布输入模式和
+	// 发布版本快照。拒绝直接运行非拥有的工作流程，因此这
+	// 端点不能用于绕过该治理。
 	if workflow.UserID != userID {
 		return nil, fmt.Errorf("workflow is not owned by caller; invoke it through its published endpoint")
 	}
@@ -749,10 +749,10 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if !isRetryableRunStatus(run.Status) {
 		return nil, fmt.Errorf("run status %s is not retryable", run.Status)
 	}
-	// Reproduce the definition the original run executed: a retry is linked to that
-	// run (and may resume from its current_node), so loading the mutable current row
-	// would run a newer (possibly edited) definition that no longer matches. Mirror the
-	// resume path — prefer the run's recorded version snapshot, fall back to current.
+	// 重现执行的原始运行的定义：重试链接到该定义
+	// 运行（并且可以从其 current_node 恢复），因此加载可变的当前行
+	// 将运行不再匹配的较新（可能已编辑）的定义。镜像
+	// 恢复路径 — 更喜欢运行的记录版本快照，回退到当前版本。
 	workflow, err := s.repo.FindWorkflowVersionSnapshot(ctx, run.WorkflowID, run.Version)
 	if err != nil {
 		return nil, err
@@ -794,10 +794,10 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if err != nil {
 		return nil, err
 	}
-	// Re-run the node-budget preflight the original create path enforces. RetryRun
-	// goes straight to repo.CreateRun, and ai-service does not enforce maxNodes, so
-	// without this a run that was correctly rejected for exceeding maxNodes could be
-	// retried and execute anyway.
+	// 重新运行原始创建路径强制执行的节点预算预检。重试运行
+	// 直接进入repo.CreateRun，并且ai-service不强制maxNodes，所以
+	// 如果没有这个，则因超过 maxNodes 而被正确拒绝的运行可能是
+	// 无论如何重试并执行。
 	if req.MaxNodes != nil && countWorkflowNodes(workflow.DefinitionJSON) > *req.MaxNodes {
 		code, category, retryable := classifyWorkflowError("budget exceeded: max nodes")
 		failed, finishErr := s.repo.FinishRunWithMeta(ctx, repository.AgentWorkflowRunFinishRequest{
@@ -842,11 +842,11 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 	if err != nil || run == nil {
 		return nil, err
 	}
-	// Resume the definition the run actually paused on: run.Version, resumeFromNode,
-	// and the persisted node logs all refer to that snapshot. Reloading the mutable
-	// current workflow row would execute a newer (possibly edited) definition whose
-	// nodes/tools no longer match the paused run. Fall back to the current row only
-	// when the version snapshot is unavailable.
+	// 恢复运行实际暂停的定义：run.Version、resumeFromNode、
+	// 并且持久节点日志都引用该快照。重新加载可变的
+	// 当前工作流程行将执行一个更新的（可能是编辑过的）定义，其
+	// 节点/工具不再与暂停的运行匹配。仅回退到当前行
+	// 当版本快照不可用时。
 	workflow, err := s.repo.FindWorkflowVersionSnapshot(ctx, run.WorkflowID, run.Version)
 	if err != nil {
 		return nil, err
@@ -857,12 +857,12 @@ func (s *AgentWorkflowService) ResumeRun(ctx context.Context, userID, runID int6
 			return nil, err
 		}
 	}
-	// Resuming records the human approval decision that clears an approval-gated
-	// tool. Only the workflow *owner* may approve: a published workflow's run belongs
-	// to the invoker, and the repo lets the invoker resume too, so without this check
-	// an invoker could approve their own paused run and execute the owner's guarded
-	// HTTP/MCP tool credentials. A non-owner resume still re-runs but leaves the
-	// approval pending, so the governed tool re-pauses for owner review.
+	// 恢复记录清除审批门控的人工审批决策
+	// 工具。只有工作流程*所有者*可以批准：已发布工作流程的运行属于
+	// 到调用者，并且存储库也让调用者恢复，所以没有这个检查
+	// 调用者可以批准自己的暂停运行并执行所有者的保护
+	// HTTP/MCP 工具凭据。非所有者简历仍会重新运行，但会留下
+	// 等待批准，因此受管工具重新暂停以供所有者审核。
 	if userID == workflow.UserID {
 		if _, err := s.repo.ApproveResumeDecision(ctx, runID, resumeFromNode, userID); err != nil {
 			return nil, err
@@ -895,11 +895,11 @@ func (s *AgentWorkflowService) TestNode(ctx context.Context, userID, workflowID 
 	if err != nil || workflow == nil {
 		return nil, err
 	}
-	// Node testing is an authoring affordance for your OWN workflow. Like the direct
-	// run path, FindRunnableWorkflow also matches public workflows; without this check
-	// a non-owner could test a single node of someone else's public workflow and
-	// execute the owner's registered HTTP/tool handler outside the publication
-	// origin/rate/schema controls (the snapshot resolves with the owner's id).
+	// 节点测试是您自己的工作流程的创作可供性。喜欢直接
+	// 运行路径，FindRunnableWorkflow也匹配公共工作流；没有这个检查
+	// 非所有者可以测试其他人公共工作流程的单个节点，并且
+	// 在发布之外执行所有者注册的 HTTP/工具处理程序
+	// 来源/速率/架构控制（快照使用所有者的 ID 进行解析）。
 	if workflow.UserID != userID {
 		return nil, fmt.Errorf("workflow is not owned by caller")
 	}
@@ -1017,10 +1017,10 @@ func (s *AgentWorkflowService) executeRunDetached(workflow model.AgentWorkflow, 
 		return
 	}
 	if _, err := s.executeWorkflow(ctx, workflow, run, inputs, simulateExternal); err != nil {
-		// The run context may already be cancelled (e.g. it hit the maxDurationMs /
-		// 15-minute timeout, which is itself the error). Reusing it for the terminal
-		// update would fail with "context deadline exceeded" and leave the run stuck
-		// as 'running'. Persist the failed state with a fresh bounded context.
+		// 运行上下文可能已被取消（例如，它达到了 maxDurationMs /
+		// 15 分钟超时，这本身就是错误）。将其重新用于终端
+		// 更新将因“超出上下文截止日期”而失败，并使运行陷入困境
+		// 作为“跑步”。使用新的有界上下文保留失败状态。
 		finishCtx, finishCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer finishCancel()
 		code, category, retryable := classifyWorkflowError(err.Error())
@@ -1102,10 +1102,10 @@ type workflowTraceItem struct {
 }
 
 func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow model.AgentWorkflow, run model.AgentWorkflowRun, inputs string, simulateExternal bool) (*dto.AgentWorkflowRunSummary, error) {
-	// An approval-required tool may only be bypassed when a real 'approved' decision
-	// exists for this run/node. Matching the resumeFromNode id alone is not enough —
-	// otherwise any caller able to resume a paused run (incl. published/shared
-	// workflows) could skip the governed tool's approval gate.
+	// 只有当真正的“批准”决策时，才可以绕过需要批准的工具
+	// 此运行/节点存在。单独匹配resumeFromNode id 是不够的——
+	// 否则任何调用者都能够恢复暂停的运行（包括发布/共享
+	// 工作流程）可以跳过受管工具的批准门。
 	approvalBypassNodeID := ""
 	if node := stringValue(run.ResumeFromNode); node != "" {
 		approved, apErr := s.repo.HasApprovedDecision(ctx, run.ID, node)
@@ -1116,12 +1116,12 @@ func (s *AgentWorkflowService) executeWorkflow(ctx context.Context, workflow mod
 			approvalBypassNodeID = node
 		}
 	}
-	// Tool definitions/handler config must be resolved against the workflow *owner*,
-	// not the invoker: a published workflow can be run by another user (run.UserID),
-	// and FindToolByCode(run.UserID, ...) would then fail to find the author's custom
-	// tool or prefer the invoker's same-code tool, executing a different handler than
-	// the one the owner published. Per-invoker data access (e.g. KB scoping) is handled
-	// downstream in ai-service via the invoker identity, not here.
+	// 工具定义/处理程序配置必须根据工作流程*所有者*进行解析，
+	// 不是调用者：已发布的工作流可以由另一个用户 (run.UserID) 运行，
+	// 然后 FindToolByCode(run.UserID, ...) 将无法找到作者的自定义
+	// 工具或者更喜欢调用者的相同代码工具，执行不同的处理程序
+	// 楼主发表的那一篇。处理每个调用者的数据访问（例如 KB 范围）
+	// 通过调用者身份在 ai-service 的下游，而不是在这里。
 	tools, err := s.workflowToolSnapshot(ctx, workflow.UserID, workflow.DefinitionJSON, approvalBypassNodeID)
 	if err != nil {
 		return nil, err
@@ -1947,9 +1947,9 @@ func validatePublicationOrigin(rawOrigins string, origin string) error {
 		}
 		if strings.Contains(allowed, "*.") {
 			prefix, suffix, _ := strings.Cut(allowed, "*.")
-			// The wildcard must match a real dot-delimited subdomain label, so the
-			// portion after the prefix has to end with ".suffix" (e.g. ".example.com").
-			// A plain HasSuffix(suffix) would also accept sibling domains such as
+			// 通配符必须与真正的点分隔子域标签匹配，因此
+			// 前缀之后的部分必须以“.suffix”结尾（例如“.example.com”）。
+			// 普通的 HasSuffix(suffix) 也可以接受同级域，例如
 			// https://badexample.com for the pattern https://*.example.com.
 			if suffix != "" && strings.HasPrefix(origin, prefix) {
 				host := origin[len(prefix):]
@@ -1972,7 +1972,7 @@ func (s *AgentWorkflowService) enforcePublicationRateLimit(ctx context.Context, 
 	}
 	since := time.Now().Add(-time.Minute)
 	if s.repo != nil {
-		// Atomic count+insert so concurrent invokes cannot both pass a low limit.
+		// 原子计数+插入，因此并发调用不能同时超过下限。
 		allowed, err := s.repo.TryRecordPublicationInvocation(ctx, publication.ID, &userID, key, publication.RateLimitPerMin, since)
 		if err != nil {
 			return err

@@ -1,4 +1,4 @@
-// Package repository — Atlas annotation_repo
+// 包存储库 — Atlas annotation_repo
 //
 // 落地手册: docs/plan/task-aether-knowledge-system.md §3 Phase 1 task-knowledge-P1-06
 

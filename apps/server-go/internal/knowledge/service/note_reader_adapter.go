@@ -22,7 +22,7 @@ type NoteRepoReader struct {
 	scheduler NoteEmbeddingScheduler
 }
 
-// NoteEmbeddingScheduler schedules note embedding writes for created Atlas source notes.
+// NoteEmbeddingScheduler 为创建的 Atlas 源注释安排注释嵌入写入。
 type NoteEmbeddingScheduler interface {
 	ScheduleEmbedding(ctx context.Context, noteID int64, userID *int64, reason string)
 }

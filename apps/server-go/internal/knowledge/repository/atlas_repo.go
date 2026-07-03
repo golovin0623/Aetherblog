@@ -1,7 +1,7 @@
 // Package repository 是 Atlas 域的数据访问层。
 //
 // Phase 0 只提供构造函数与 Ping 用的最小查询，CRUD 由 Phase 1 起按子域填充
-// （carrier_repo / annotation_repo / kp_repo / relation_repo）。
+// （载体仓库/注释仓库/kp_仓库/关系仓库）。
 package repository
 
 import (

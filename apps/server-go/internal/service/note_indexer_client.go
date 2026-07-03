@@ -15,7 +15,7 @@ type noteIndexAIClient interface {
 	DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error)
 }
 
-// NoteIndexResult mirrors ai-service /v1/notes/{id}/index.
+// NoteIndexResult 镜像 ai-service /v1/notes/{id}/index。
 type NoteIndexResult struct {
 	NoteID       int64  `json:"note_id"`
 	ProfileID    int64  `json:"profile_id"`
@@ -28,8 +28,8 @@ type NoteIndexResult struct {
 	Error        string `json:"error,omitempty"`
 }
 
-// NoteIndexerClient triggers note embedding writes through the internal
-// ai-service channel used by Atlas and KB indexing.
+// NoteIndexerClient通过内部触发注释嵌入写入
+// Atlas 和 KB 索引使用的 ai-service 通道。
 type NoteIndexerClient struct {
 	client        noteIndexAIClient
 	internalToken string

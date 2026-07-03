@@ -12,7 +12,7 @@ import {
 const STYLE_ID = 'aetherblog-admin-primary-color';
 
 /**
- * AdminThemeColorProvider
+ * 管理主题颜色提供者
  * 读取设置中的主色调并动态覆盖 CSS 变量
  * 兼容旧字段 theme_primary_color 作为 fallback
  */

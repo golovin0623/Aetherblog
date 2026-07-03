@@ -65,7 +65,7 @@ export function rgbToHsl(r: number, g: number, b: number): [number, number, numb
 }
 
 /**
- * HSL → hex
+ * HSL → 十六进制
  */
 export function hslToHex(h: number, s: number, l: number): string {
   h /= 360; s /= 100; l /= 100;
@@ -159,15 +159,15 @@ export function resolveVisualPrimaryColor(
  * 根据一个主色生成完整的主色调 CSS 变量集（亮色或暗色主题）
  *
  * 生成变量：
- * - --color-primary
- * - --color-primary-hover
- * - --color-primary-light
- * - --color-primary-lighter
- * - --color-visual-primary
- * - --color-accent
+ * - --主色
+ * - --颜色主色悬停
+ * - --颜色-原色-光
+ * - --颜色主色打火机
+ * - --颜色视觉主色
+ * - --颜色强调
  * - --shadow-primary / --shadow-primary-lg
- * - --gradient-primary
- * - --focus-ring
+ * - --梯度初级
+ * - --对焦环
  */
 export function generateColorVars(
   hex: string,

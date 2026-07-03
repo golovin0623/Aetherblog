@@ -1,5 +1,5 @@
 /**
- * @file PostNavigation.tsx
+ * @文件 PostNavigation.tsx
  * @description 文章底部上一篇/下一篇导航组件
  * @ref §8.1 - 博客前台模块
  *

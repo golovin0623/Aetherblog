@@ -1,5 +1,5 @@
 /**
- * @file SystemStatus.tsx
+ * @文件系统状态.tsx
  * @description 系统状态监控组件 - 显示 CPU/内存/磁盘/网络 指标和服务健康状态
  * @ref §8.2 - Dashboard 系统监控
  */

@@ -70,7 +70,7 @@ function CardSkeleton() {
   );
 }
 
-// --- Stat card ---
+// --- 统计卡 ---
 function StatCard({
   label,
   value,
@@ -90,7 +90,7 @@ function StatCard({
   );
 }
 
-// --- Status badge ---
+// --- 状态徽章 ---
 const statusConfig: Record<string, { label: string; className: string }> = {
   INDEXED: { label: '已索引', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
   PENDING: { label: '待处理', className: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
@@ -106,7 +106,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// --- Filter tabs ---
+// --- 过滤选项卡 ---
 const filterTabs = [
   { key: '', label: '全部' },
   { key: 'PENDING', label: '待处理' },
@@ -297,7 +297,7 @@ function IndexingProgressPanel({
   );
 }
 
-// --- Main page ---
+// --- 主页面 ---
 export default function SearchConfigPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -567,7 +567,7 @@ export default function SearchConfigPage() {
     []
   );
 
-  // --- Mutations ---
+  // --- 突变 ---
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, string>) =>
       searchConfigService.updateConfig(data),
@@ -647,7 +647,7 @@ export default function SearchConfigPage() {
     },
   });
 
-  // --- Post list state ---
+  // --- 帖子列表状态 ---
   // 默认展示 PENDING（未索引），管理员进入页面最关心的就是"还有哪些没索引"
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [page, setPage] = useState(0);

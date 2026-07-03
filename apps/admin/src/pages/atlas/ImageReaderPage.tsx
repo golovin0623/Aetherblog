@@ -1,4 +1,4 @@
-// Atlas M2 — Image description Reader.
+// Atlas M2 — 图像描述阅读器。
 //
 // 路由: /atlas/reader/image/:carrierId
 // Image carrier 的描述/OCR 文本由 POST /atlas/carriers/image 写入，并以 text layer

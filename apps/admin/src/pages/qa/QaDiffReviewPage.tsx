@@ -1,7 +1,7 @@
 /**
- * QA Diff Review Page — show patch merge diff with char/field/structure diffs
- * Supports conflict display, Approve + Publish actions
- * ref: docs/features/qa-document-workflow.md §5, §7
+ * QA 差异审查页面 — 显示补丁合并差异与字符/字段/结构差异
+ * 支持冲突显示、批准+发布操作
+ * 参考：docs/features/qa-document-workflow.md §5、§7
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -19,7 +19,7 @@ import { qaDocumentService } from '@/services/qaDocumentService';
 import type { QaDiff, DiffChange, CharDiffEntry, QaDocument } from '@/types/qaDocument';
 import { logger } from '@/lib/logger';
 
-/** Inline char-level diff renderer, reusing DiffView color semantics */
+/** 内联字符级差异渲染器，重用 DiffView 颜色语义 */
 function CharDiff({ tokens }: { tokens: CharDiffEntry[] }) {
   return (
     <span>

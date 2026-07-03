@@ -38,7 +38,7 @@ const _QUOTE_STRIP_RE = /[\u201c\u201d\u2018\u2019"'`]/g;
 // `apps/ai-service/app/api/routes/ai.py` 的 `_OUTER_STRIP` 集合，使得
 // 像 `[“tag1”, “tag2”]` 这类畸形 LLM 输出（智能引号 → json.loads 失败 →
 // 走分隔符切分路径）仍然能得到干净的 `["tag1", "tag2"]` 而不是
-// `["[tag1", "tag2]"]`（PR #435 review C13）。
+// `["[tag1", "tag2]"]`（PR #435 评论 C13）。
 // 正则字符类中只有 `]` 需要转义；`[` 在字符类内部是字面量。
 const _OUTER_STRIP_RE = /^[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+|[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+$/g;
 

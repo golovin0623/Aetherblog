@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * @file useTheme.ts
+ * @文件useTheme.ts
  * @description 主题切换 Hook - 支持亮/暗主题切换、持久化存储、系统偏好检测
- * @author AI Assistant
- * @created 2026-01-16
+ * @作者人工智能助手
+ * @创建于2026-01-16
  */
 
 import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
@@ -281,19 +281,19 @@ const ThemeContext = createContext<UseThemeReturn | undefined>(undefined);
  * - 支持 View Transitions API 的圆形动画切换
  * - **跨标签页同步**: 在 Blog 修改主题后，Admin 后台会自动同步，反之亦然
  *
- * @example
- * ```tsx
+ * @例子
+ * ````tsx
  * // app/layout.tsx (示例)
- * import { ThemeProvider } from '@aetherblog/hooks';
+ * 从'@aetherblog/hooks'导入{ThemeProvider}；
  *
- * export default function RootLayout({ children }) {
- *   return (
+ * 导出默认函数 RootLayout({ Children }) {
+ *   返回 （
  *     <html>
- *       <body>
- *         <ThemeProvider>
- *           {children}
- *         </ThemeProvider>
- *       </body>
+ *       <正文>
+ *         <主题提供者>
+ *           {孩子们}
+ *         </主题提供者>
+ *       </正文>
  *     </html>
  *   );
  * }
@@ -448,21 +448,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 /**
  * 主题切换 Hook
  *
- * @example
- * ```tsx
- * const { theme, resolvedTheme, isDark, setTheme, toggleTheme } = useTheme();
+ * @例子
+ * ````tsx
+ * const { 主题，resolvedTheme，isDark，setTheme，toggleTheme } = useTheme();
  *
  * // 切换主题
- * <button onClick={toggleTheme}>
- *   {isDark ? '🌙' : '☀️'}
- * </button>
+ * <按钮onClick={toggleTheme}>
+ *   {是黑暗？ '🌙' : '☀️'}
+ * </按钮>
  *
  * // 设置特定主题
  * <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
  *   <option value="light">亮色</option>
  *   <option value="dark">暗色</option>
  *   <option value="system">跟随系统</option>
- * </select>
+ * </选择>
  * ```
  */
 export function useTheme(): UseThemeReturn {

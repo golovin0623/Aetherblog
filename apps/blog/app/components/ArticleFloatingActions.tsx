@@ -1,5 +1,5 @@
 /**
- * @file ArticleFloatingActions.tsx
+ * @文件ArticleFloatingActions.tsx
  * @description 文章详情页悬浮操作按钮组 - 目录快捷入口 + 回顶部（移动端 & PC端）
  * @ref §8.1 - 博客前台模块
  */

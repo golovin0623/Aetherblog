@@ -1,5 +1,5 @@
 /**
- * @file StorageStatusIcon.tsx
+ * @文件StorageStatusIcon.tsx
  * @description 类 iCloud 风格的存储/备份状态图标 —— 把 storageType + syncStatus 合成单一视觉指示
  * @ref 对象存储 rollout - Phase 4 (UI 重构) + Phase 5 (备份校验 MISSING 态)
  *
@@ -7,7 +7,7 @@
  *   cloud-native (S3/COS/...) + 任意 sync → 文件已在云端
  *     · NONE/默认  → 云 + 绿勾 (该文件本就在 default cloud,即"已备份")
  *     · SYNCING/PENDING/FAILED → 同步中/等待/失败 (镜像到第二个 provider 的状态)
- *   LOCAL:
+ *   当地的：
  *     · NONE  → 仅本地 (云上传图标,提示"可备份")
  *     · PENDING → 等待备份 (云上传 + 琥珀色)
  *     · SYNCING → 同步中 (云 + 旋转 loader)

@@ -1,4 +1,4 @@
-// Package repository — Atlas carrier_repo
+// 包存储库 — Atlas Carrier_repo
 //
 // 落地手册: docs/plan/task-aether-knowledge-system.md §3 Phase 1 task-knowledge-P1-01
 
@@ -271,7 +271,7 @@ func (r *CarrierRepo) UpdateContent(ctx context.Context, carrierID int64, newHas
 	return tx.Commit()
 }
 
-// UpdateIngestState refreshes non-versioned carrier ingest metadata.
+// UpdateIngestState 刷新非版本化运营商摄取元数据。
 func (r *CarrierRepo) UpdateIngestState(ctx context.Context, carrierID int64, metadata []byte, status string, statusMessage *string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE atlas_carriers
@@ -285,7 +285,7 @@ func (r *CarrierRepo) UpdateIngestState(ctx context.Context, carrierID int64, me
 	return err
 }
 
-// UpdateDisplayAndIngestState refreshes non-versioned carrier display fields and ingest metadata.
+// UpdateDisplayAndIngestState 刷新非版本化运营商显示字段和摄取元数据。
 func (r *CarrierRepo) UpdateDisplayAndIngestState(
 	ctx context.Context,
 	carrierID int64,
@@ -317,7 +317,7 @@ func (r *CarrierRepo) UpdateDisplayAndIngestState(
 	return err
 }
 
-// UpsertTextLayer persists an extracted rootText artifact for a carrier version.
+// UpsertTextLayer 保留运营商版本提取的 rootText 工件。
 func (r *CarrierRepo) UpsertTextLayer(
 	ctx context.Context,
 	layer *model.CarrierTextLayer,
@@ -345,7 +345,7 @@ func (r *CarrierRepo) UpsertTextLayer(
 	return err
 }
 
-// FindTextLayerByStorageURI returns one extracted rootText artifact by storage_uri.
+// FindTextLayerByStorageURI 返回一个通过 storage_uri 提取的 rootText 工件。
 func (r *CarrierRepo) FindTextLayerByStorageURI(ctx context.Context, storageURI string) (*model.CarrierTextLayer, error) {
 	var layer model.CarrierTextLayer
 	err := r.db.GetContext(ctx, &layer,
@@ -359,7 +359,7 @@ func (r *CarrierRepo) FindTextLayerByStorageURI(ctx context.Context, storageURI 
 	return &layer, nil
 }
 
-// FindTextLayerByCarrierAndHash returns the extracted text layer for the carrier's current content hash.
+// FindTextLayerByCarrierAndHash 返回运营商当前内容哈希的提取文本层。
 func (r *CarrierRepo) FindTextLayerByCarrierAndHash(ctx context.Context, carrierID int64, contentHash string) (*model.CarrierTextLayer, error) {
 	var layer model.CarrierTextLayer
 	err := r.db.GetContext(ctx, &layer,

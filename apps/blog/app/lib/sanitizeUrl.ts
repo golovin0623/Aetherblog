@@ -1,9 +1,9 @@
 /**
- * @file sanitizeUrl.ts
+ * @文件 sanitizeURL.ts
  * @description URL 安全验证工具 - 防止 XSS 攻击
- * @ref Issue #131
- * @author AI Assistant
- * @created 2026-02-12
+ * @ref 问题 #131
+ * @作者人工智能助手
+ * @创建于2026-02-12
  */
 
 /**

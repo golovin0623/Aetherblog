@@ -12,7 +12,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/knowledge/repository"
 )
 
-// TranscriptMediaSnapshot is the media subset needed to create a video/audio transcript carrier.
+// TranscriptMediaSnapshot 是创建视频/音频转录载体所需的媒体子集。
 type TranscriptMediaSnapshot struct {
 	ID           int64
 	Title        string
@@ -24,36 +24,36 @@ type TranscriptMediaSnapshot struct {
 	OwnerID      *int64
 }
 
-// TranscriptMediaReader is implemented by the server media adapter.
+// TranscriptMediaReader 由服务器媒体适配器实现。
 type TranscriptMediaReader interface {
 	GetTranscriptMediaSnapshot(ctx context.Context, mediaFileID int64) (*TranscriptMediaSnapshot, error)
 }
 
-// TranscriptCarrierInput is a caller-supplied transcript for a video/audio media file.
+// TranscriptCarrierInput 是呼叫者提供的视频/音频媒体文件的文字记录。
 type TranscriptCarrierInput struct {
 	MediaFileID        int64
 	TranscriptMarkdown string
 	Language           *string
 }
 
-// TranscriptCarrierService stores user-supplied video/audio transcripts as Atlas carriers.
+// TranscriptCarrierService 将用户提供的视频/音频转录本存储为 Atlas 载体。
 type TranscriptCarrierService struct {
 	carriers   *repository.CarrierRepo
 	media      TranscriptMediaReader
 	versioning *CarrierVersioningService
 }
 
-// NewTranscriptCarrierService creates the transcript carrier service.
+// NewTranscriptCarrierService 创建转录载体服务。
 func NewTranscriptCarrierService(carriers *repository.CarrierRepo, media TranscriptMediaReader) *TranscriptCarrierService {
 	return &TranscriptCarrierService{carriers: carriers, media: media}
 }
 
-// AttachVersioning injects annotation migration for transcript text edits.
+// AttachVersioning 为转录文本编辑注入注释迁移。
 func (s *TranscriptCarrierService) AttachVersioning(v *CarrierVersioningService) {
 	s.versioning = v
 }
 
-// CreateOrUpdateForMediaAs creates or refreshes a video/audio transcript carrier under the caller scope.
+// CreateOrUpdateForMediaAs 在调用者范围内创建或刷新视频/音频转录载体。
 func (s *TranscriptCarrierService) CreateOrUpdateForMediaAs(ctx context.Context, in TranscriptCarrierInput, userID int64, canAdmin bool) (*model.Carrier, error) {
 	if in.MediaFileID <= 0 {
 		return nil, errors.New("invalid media_file id")
@@ -144,17 +144,17 @@ func (s *TranscriptCarrierService) CreateOrUpdateForMediaAs(ctx context.Context,
 	return carrier, nil
 }
 
-// MediaSourceURI constructs a stable media-backed Atlas source URI.
+// MediaSourceURI 构造一个稳定的媒体支持的 Atlas 源 URI。
 func MediaSourceURI(mediaID int64) string {
 	return fmt.Sprintf("media://%d", mediaID)
 }
 
-// TranscriptTextLayerStorageURI constructs the immutable rootText storage URI for a transcript snapshot.
+// TranscriptTextLayerStorageURI 为转录快照构造不可变的 rootText 存储 URI。
 func TranscriptTextLayerStorageURI(carrierType string, mediaID int64, hash string) string {
 	return fmt.Sprintf("atlas-text-layer://%s-transcript/%d/%s", carrierType, mediaID, hash)
 }
 
-// TranscriptCarrierText builds the stable text space for transcript annotations and AI suggestions.
+// TranscriptCarrierText 为转录注释和人工智能建议构建稳定的文本空间。
 func TranscriptCarrierText(in TranscriptCarrierInput) string {
 	parts := make([]string, 0, 1)
 	if content := strings.TrimSpace(anchoring.MarkdownToPlaintext(in.TranscriptMarkdown)); content != "" {

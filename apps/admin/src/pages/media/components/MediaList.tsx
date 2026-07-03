@@ -1,5 +1,5 @@
 /**
- * @file MediaList.tsx
+ * @文件 MediaList.tsx
  * @description 媒体列表视图组件 - 优化交互逻辑
  * @ref §3.2.4 - 媒体管理模块
  */

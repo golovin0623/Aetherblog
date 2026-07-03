@@ -86,11 +86,11 @@ class AiPredictionService {
 
       // TODO: 调用真实的 AI API
       // 这里使用 aiService 或直接调用后端 AI 接口
-      // const response = await fetch('/api/v1/ai/predict', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ prompt, ...options }),
-      //   signal: controller.signal,
+      // const 响应 = 等待 fetch('/API/v1/ai/predict', {
+      //   方法：'POST'，
+      //   headers: { 'Content-Type': 'application/JSON' },
+      //   body: JSON.stringify({ 提示, ...选项 }),
+      //   信号：控制器.信号，
       // });
 
       // 模拟 AI 响应

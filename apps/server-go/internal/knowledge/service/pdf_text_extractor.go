@@ -15,18 +15,18 @@ type pdfAIClient interface {
 	DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error)
 }
 
-// AIPDFTextExtractor calls ai-service /api/v1/atlas/pdf/extract through the internal service channel.
+// AIPDFTextExtractor通过内部服务通道调用ai-service /API/v1/atlas/pdf/extract。
 type AIPDFTextExtractor struct {
 	client        pdfAIClient
 	internalToken string
 }
 
-// NewAIPDFTextExtractor creates the production PDF text extractor.
+// NewAIPDFTextExtractor 创建生产 PDF 文本提取器。
 func NewAIPDFTextExtractor(client pdfAIClient, internalToken string) *AIPDFTextExtractor {
 	return &AIPDFTextExtractor{client: client, internalToken: internalToken}
 }
 
-// ExtractPDFText extracts a page-aware text layer from a PDF byte stream.
+// ExtractPDFText 从 PDF 字节流中提取页面感知文本层。
 func (e *AIPDFTextExtractor) ExtractPDFText(ctx context.Context, content []byte, mimeType string, filename string) (*PDFTextLayer, error) {
 	if e == nil || e.client == nil {
 		return nil, errors.New("AI PDF text extractor client not configured")

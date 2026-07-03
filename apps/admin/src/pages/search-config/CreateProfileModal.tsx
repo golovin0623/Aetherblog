@@ -77,10 +77,10 @@ function resolveDim(model: AiModel | null | undefined): number | null {
  *
  * 字段约束（与 ai-service ``CreateSearchProfileRequest`` pydantic 验证保持一致，
  * 客户端先校验避免不必要的网络往返）：
- *   - code: ``^[a-z0-9][a-z0-9_-]{0,63}$``
+ *   - 代码：``^[a-z0-9][a-z0-9_-]{0,63}$``
  *   - name: 1-120 字符
  *   - description: ≤ 500 字符
- *   - chunkSizeTokens: 64-8192
+ *   - chunkSizeTokens：64-8192
  *   - chunkOverlapTokens: 0-2048 且 < chunkSizeTokens
  */
 export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps) {

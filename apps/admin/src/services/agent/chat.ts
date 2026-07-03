@@ -62,7 +62,7 @@ export async function streamAgentChat(
       const j = await res.json();
       if (j && typeof j.message === 'string') msg = j.message;
     } catch {
-      /* not JSON */
+      /* 不是 JSON */
     }
     handlers.onError?.(msg);
     return;
@@ -129,7 +129,7 @@ export async function streamAgentChat(
     try {
       reader.releaseLock();
     } catch {
-      /* swallow */
+      /* 吞下*/
     }
   }
 }

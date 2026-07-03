@@ -1,5 +1,5 @@
 /**
- * @file CloudExplorerPage.tsx
+ * @文件CloudExplorerPage.tsx
  * @description 云端浏览器 - 面向对象存储治理的管理台。
  *
  * 产品定位:

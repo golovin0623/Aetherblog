@@ -1,6 +1,6 @@
 // Atlas 概览 —— 知识图集工作台的落地页（Tab：概览）。
 //
-// ref: docs/pm/atlas-redesign.md §4 P0-5/P0-6
+// 参考：docs/pm/atlas-redesign.md §4 P0-5/P0-6
 // 设计目标：第一次回答「这是什么、从哪开始」。顶部是「读 → 标 → 联 → 问」引导条，
 // 然后才是健康度指标与最近内容。文案全部去术语化，不再裸露 Carrier/KP/provenance。
 
@@ -102,7 +102,7 @@ export default function AtlasPage() {
     try {
       window.localStorage.setItem(ONBOARDING_DISMISS_KEY, '1');
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
   };
 

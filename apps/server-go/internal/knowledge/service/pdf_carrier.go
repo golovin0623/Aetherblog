@@ -1,4 +1,4 @@
-// Atlas — Phase 1 P1-02 PdfCarrierService
+// Atlas — 第 1 阶段 P1-02 PdfCarrierService
 //
 // 从 media_files 里的 PDF 创建 atlas_carriers，并通过 ai-service 抽取逐页文本层。
 
@@ -208,7 +208,7 @@ func PdfSourceURI(mediaID int64) string {
 	return fmt.Sprintf("media://%d", mediaID)
 }
 
-// PdfTextLayerStorageURI constructs the immutable rootText storage URI referenced by carrier_versions.
+// PdfTextLayerStorageURI 构造由 Carrier_versions 引用的不可变 rootText 存储 URI。
 func PdfTextLayerStorageURI(mediaID int64, hash string) string {
 	return fmt.Sprintf("atlas-text-layer://pdf/%d/%s", mediaID, hash)
 }

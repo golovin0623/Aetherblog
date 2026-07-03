@@ -101,13 +101,13 @@ function stripMentionToken(draft: string, prefix: '@' | '#', label: string): str
  * /agent/workspace —— Agent 工作台主界面
  *
  * 结构：
- *   ┌─ Sidebar ─┬───────────── Section ─────────────────────────┐
+ *   ┌─ 侧边栏 ─┬──────────── 部分 ──────────────────────────┐
  *   │ wordmark  │ TopBar  back · 标题 · ModeSwitch · theme · me  │
  *   │ +新对话   │                                                │
  *   │ 搜索      │ Thread (max-w-3xl, scrollable)                 │
  *   │ 会话分组   │   user / assistant bubbles                    │
  *   │ ────────  │ ───────────────────────────────────────────── │
- *   │ user/logout │ Composer (max-w-3xl, sticky bottom)          │
+ *   │ 用户/注销 │ Composer (max-w-3xl，粘性底部) │
  *   └───────────┴────────────────────────────────────────────────┘
  *
  * 全屏 100dvh，把博客全局 BlogHeader 压住（已在 BlogHeader 里 path 守卫）。
@@ -837,7 +837,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     [activeId],
   );
 
-  // ---- @ / # / / picker handlers ----
+  // ----@/#//选择器处理程序----
   // 引用 token 与 textarea 文本解耦 —— ChatGPT / Codex 风格:已选项以独立胶囊
   // 在 composer 上方呈现,textarea 内只放纯用户输入。这样移除胶囊不会留下脏文本,
   // 也避免胶囊与文本"双份"显示导致歧义。这些 chip 是会话级显式上下文:

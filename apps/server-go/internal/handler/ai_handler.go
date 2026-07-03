@@ -543,7 +543,7 @@ func (h *AiHandler) DeleteTask(c echo.Context) error {
 // --- SSE 事件验证 ---
 
 // allowedSSETypes 定义了允许转发的 SSE 事件类型白名单。
-// `start` / `progress` / `chunk_progress` / `heartbeat`
+// `开始`/`进度`/`chunk_progress`/`心跳`
 // 是 search profile reindex stream 端点专属，
 // 其他通用 AI 流（summary/tags/...）不会发送，对它们而言相当于 no-op。
 var allowedSSETypes = map[string]bool{
