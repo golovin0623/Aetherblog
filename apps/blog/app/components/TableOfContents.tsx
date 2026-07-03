@@ -158,7 +158,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+            className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? '收起目录' : '展开目录'}
             title={isExpanded ? '收起目录' : '展开目录'}
@@ -209,7 +209,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
         <button
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl"
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
         >
           <ArrowUp className="h-4 w-4" />
           <span>返回顶部</span>
@@ -237,7 +237,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
           onClick={() => setIsDrawerOpen((prev) => !prev)}
           aria-expanded={isDrawerOpen}
           aria-controls="toc-drawer-content"
-          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isDrawerOpen
+          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${isDrawerOpen
               ? 'border-primary bg-primary/10 text-primary'
               : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40'
             } ${triggerClassName}`}
@@ -252,7 +252,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
           onClick={() => setIsDrawerOpen(true)}
           aria-expanded={isDrawerOpen}
           aria-controls="toc-drawer-content"
-          className={`surface-raised fixed right-6 bottom-8 z-[55] flex items-center gap-2 px-5 py-3 text-sm font-medium text-[var(--ink-primary,var(--text-primary))] transition-all duration-500 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
+          className={`surface-raised fixed right-6 bottom-8 z-[55] flex items-center gap-2 px-5 py-3 text-sm font-medium text-[var(--ink-primary,var(--text-primary))] transition-all duration-500 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
             } hover:opacity-100 hover:scale-105 hover:blur-0 hover:shadow-primary/20 hover:border-primary/30 ${triggerClassName}`}
         >
           <List className="h-4 w-4 text-primary" />
@@ -293,7 +293,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsDrawerOpen(false)}
-                    className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl"
+                    className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                     aria-label="关闭目录导航"
                   >
                     <X className="h-5 w-5" />
@@ -333,7 +333,7 @@ const TocItemComponent = React.memo(function TocItemComponent({
       onClick={() => scrollToHeading(heading.id)}
       aria-label={`跳转到: ${heading.text}`}
       title={heading.text}
-      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-lg ${isActive
+      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-lg focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${isActive
         ? 'text-primary bg-primary/5 font-medium'
         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
         }`}

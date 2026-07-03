@@ -329,7 +329,7 @@ const MobileMenu = memo(function MobileMenu() {
               {isAdminLinkAvailable ? (
                 <a
                   href={adminHomeUrl!}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                 >
                   <Settings2 size={16} />
                   管理后台
@@ -340,7 +340,7 @@ const MobileMenu = memo(function MobileMenu() {
                   disabled
                   aria-label="管理后台未配置"
                   title={`管理后台未配置：${adminLinkConfig.reason}`}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black/50 dark:text-[var(--text-secondary)]/50 bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black/50 dark:text-[var(--text-secondary)]/50 bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                 >
                   <Settings2 size={16} />
                   管理后台未配置
@@ -360,7 +360,7 @@ const MobileMenu = memo(function MobileMenu() {
         ref={triggerButtonRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg"
+        className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
         aria-label={isOpen ? "关闭导航菜单" : "打开导航菜单"}
         title={isOpen ? "关闭导航菜单" : "打开导航菜单"}
         aria-expanded={isOpen}

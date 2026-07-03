@@ -126,7 +126,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
             <button
               type="button"
               onClick={() => resetSkin()}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
             >
               <RotateCcw className="h-3 w-3" />
               跟随后台默认
@@ -146,7 +146,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
                 key={preset.id}
                 type="button"
                 onClick={() => selectPresetSkin(preset.id)}
-                className="group/skin flex flex-col items-center gap-1.5"
+                className="group/skin flex flex-col items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)] rounded-lg"
                 aria-pressed={active}
                 title={preset.label}
               >

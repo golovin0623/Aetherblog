@@ -1,0 +1,3 @@
+## 2024-07-03 - Focus Ring Visibility on Floating Elements
+**Learning:** In a highly themed UI with floating or layered elements (like drawers, mobile menus, and sticky table of contents), standard `focus-visible:ring-2` often blends into the background or appears disjointed without an explicit offset color.
+**Action:** Always apply `focus-visible:ring-offset-2` coupled with a theme-aware CSS variable (e.g., `focus-visible:ring-offset-[var(--bg-primary)]` or `[var(--bg-card)]`) to interactive elements, ensuring the focus indicator remains distinct regardless of the underlying container's background.
