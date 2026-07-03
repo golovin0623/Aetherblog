@@ -8,9 +8,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/golovin0623/aetherblog-server/internal/config"
 	handlertest "github.com/golovin0623/aetherblog-server/internal/handler/testutil"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/service"
@@ -29,6 +31,50 @@ func (f *fakeRecorder) Create(_ context.Context, e *model.ActivityEvent) error {
 	cp := *e
 	f.events = append(f.events, &cp)
 	return nil
+}
+
+func TestAiHandler_ProxyProvidersPreservesEncodedReservedPath(t *testing.T) {
+	received := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case received <- r.RequestURI:
+		default:
+		}
+		w.Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		_, _ = w.Write([]byte(`{"success":true,"data":{"ok":true}}`))
+	}))
+	defer upstream.Close()
+
+	h := NewAiHandler(&config.Config{
+		AI: config.AIConfig{
+			BaseURL:           upstream.URL,
+			ConnectTimeout:    time.Second,
+			ReadTimeout:       time.Second,
+			StreamReadTimeout: time.Second,
+		},
+	}, nil)
+	e := handlertest.NewEcho()
+	g := e.Group("/api/v1/admin/providers")
+	h.MountProviders(g)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/providers/models/%3Fstatus%3Dactive%23frag?client=web", nil)
+	resp := httptest.NewRecorder()
+
+	e.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected proxy response 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	select {
+	case got := <-received:
+		want := "/api/v1/admin/providers/models/%3Fstatus%3Dactive%23frag?client=web"
+		if got != want {
+			t.Fatalf("upstream RequestURI = %q, want %q", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("upstream server did not receive proxied request")
+	}
 }
 
 func TestAiHandler_MapStatusToErrorPreservesBadGatewayMessage(t *testing.T) {
