@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // ReadingBookRepo 提供 reading_books 表（拟真阅读）的数据访问能力，
@@ -111,8 +112,8 @@ func (r *ReadingBookRepo) List(ctx context.Context, f ReadingBookListFilter) ([]
 	args := []any{}
 	idx := 1
 	if f.Keyword != "" {
-		conds = append(conds, "title ILIKE $"+itoa(idx))
-		args = append(args, "%"+f.Keyword+"%")
+		conds = append(conds, "title ILIKE $"+itoa(idx)+" ESCAPE '\\'")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
 	if f.SourceType != "" {
