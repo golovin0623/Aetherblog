@@ -1237,7 +1237,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           onClick={() => setExpanded(false)}
         >
           <section
-            className="music-mobile-player-sheet absolute inset-x-3 bottom-[max(0.85rem,env(safe-area-inset-bottom))] max-h-[66vh] overflow-hidden rounded-[1.75rem] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] text-[var(--ink-primary)] shadow-[0_28px_90px_-44px_color-mix(in_oklch,var(--aurora-1)_84%,transparent),0_18px_48px_-36px_color-mix(in_oklch,black_82%,transparent)] [backdrop-filter:blur(28px)_saturate(160%)]"
+            className="music-mobile-player-sheet absolute inset-x-3 bottom-[max(0.85rem,env(safe-area-inset-bottom))] max-h-[66vh] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[1.75rem] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] text-[var(--ink-primary)] shadow-[0_28px_90px_-44px_color-mix(in_oklch,var(--aurora-1)_84%,transparent),0_18px_48px_-36px_color-mix(in_oklch,black_82%,transparent)] [backdrop-filter:blur(28px)_saturate(160%)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]" aria-hidden="true" />
@@ -1251,7 +1251,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
-                className="music-control-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                className="music-control-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                 aria-label="收起音乐播放器"
               >
                 <ChevronDown className="h-5 w-5" />

@@ -100,11 +100,18 @@ describe('mobile music player experience gate', () => {
     const sheet = mobileSheetSource();
 
     expect(sheet).toContain('max-h-[66vh]');
+    expect(sheet).toContain('overflow-y-auto');
     expect(sheet).toContain('music-mobile-player-stage');
     expect(sheet).toContain('music-mobile-player-seek');
     expect(sheet).toContain('music-mobile-player-controls');
     expect(sheet).toContain('music-mobile-player-actions');
     expect(sheet).toContain('size="md"');
     expect(sheet).toContain('duration={duration}');
+  });
+
+  it('keeps floating mobile sheet controls focus rings clean over dynamic backgrounds', () => {
+    const sheet = mobileSheetSource();
+
+    expect(sheet).toContain('focus-visible:ring-offset-2 focus-visible:ring-offset-transparent');
   });
 });
