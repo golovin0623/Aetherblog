@@ -201,6 +201,67 @@ function normalizeSiteSettings(raw: Record<string, unknown>): SiteSettings {
   return merged as SiteSettings;
 }
 
+type LooseApiRecord = Record<string, any>;
+
+function asApiRecord(value: unknown): LooseApiRecord {
+  return value && typeof value === 'object' ? value as LooseApiRecord : {};
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function toOptionalPositiveNumber(value: unknown): number | undefined {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? next : undefined;
+}
+
+function toText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  return String(value);
+}
+
+function toOptionalText(value: unknown): string | undefined {
+  const next = toText(value).trim();
+  return next ? next : undefined;
+}
+
+function normalizeMusicMedia(input: unknown): MusicMedia {
+  const raw = asApiRecord(input);
+  return {
+    id: toFiniteNumber(raw.id),
+    originalName: toText(raw.originalName ?? raw.original_name),
+    fileUrl: toText(raw.fileUrl ?? raw.file_url),
+    publicUrl: toOptionalText(raw.publicUrl ?? raw.public_url),
+    fileSize: toFiniteNumber(raw.fileSize ?? raw.file_size),
+    mimeType: toOptionalText(raw.mimeType ?? raw.mime_type),
+    fileType: toText(raw.fileType ?? raw.file_type),
+    deleted: Boolean(raw.deleted),
+  };
+}
+
+function normalizeMusicTrack(input: unknown): MusicTrack {
+  const raw = asApiRecord(input);
+  return {
+    id: toFiniteNumber(raw.id),
+    mediaFileId: toFiniteNumber(raw.mediaFileId ?? raw.media_file_id),
+    title: toText(raw.title),
+    artist: toText(raw.artist),
+    album: toText(raw.album),
+    durationSeconds: toOptionalPositiveNumber(raw.durationSeconds ?? raw.duration_seconds),
+    coverMediaFileId: toOptionalPositiveNumber(raw.coverMediaFileId ?? raw.cover_media_file_id),
+    coverUrl: toOptionalText(raw.coverUrl ?? raw.cover_url),
+    lyric: toOptionalText(raw.lyric),
+    status: raw.status === 'HIDDEN' ? 'HIDDEN' : 'ACTIVE',
+    sortOrder: toFiniteNumber(raw.sortOrder ?? raw.sort_order),
+    isFeatured: Boolean(raw.isFeatured ?? raw.is_featured),
+    playCount: toFiniteNumber(raw.playCount ?? raw.play_count),
+    media: normalizeMusicMedia(raw.media),
+  };
+}
+
 // React.cache 确保同一次渲染中 generateMetadata() 和 RootLayout 共享结果
 export const getSiteSettings = cache(async function getSiteSettings(): Promise<SiteSettings> {
   try {
@@ -281,7 +342,7 @@ export async function getMusicPlayer(): Promise<MusicPlayer> {
     return {
       ...DEFAULT_MUSIC_PLAYER,
       ...data,
-      tracks: Array.isArray(data.tracks) ? data.tracks : [],
+      tracks: Array.isArray(data.tracks) ? data.tracks.map(normalizeMusicTrack) : [],
     };
   } catch (error) {
     logger.warn('Failed to fetch music player:', error);

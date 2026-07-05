@@ -45,6 +45,11 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+function meaningfulMusicText(value: string | null | undefined): string {
+  const next = value?.trim() || '';
+  return next && next !== '未知艺术家' ? next : '';
+}
+
 const FLOATING_ORB_LONG_PRESS_MS = 330;
 const FLOATING_ORB_SIZE = 60;
 const FLOATING_ORB_EDGE_GUTTER = 18;
@@ -385,6 +390,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [hasPlaybackSession, setHasPlaybackSession] = useState(false);
 
   const currentTrack = tracks[currentIndex];
+  const trackDuration = currentTrack?.durationSeconds ?? 0;
   const audioSrc = resolveMusicAudioSrc(currentTrack);
   const canRender = Boolean(player?.enabled && tracks.length > 0);
   const carouselEnabled = Boolean(
@@ -394,9 +400,15 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   );
   const shouldRotateCarousel = carouselEnabled && (!isPlaying || player?.playbackMode === 'CAROUSEL');
   const carouselIntervalMs = Math.max(3, player?.carouselIntervalSeconds || 8) * 1000;
+  const effectiveDuration = duration > 0 ? duration : trackDuration;
+  const effectiveProgress = effectiveDuration > 0
+    ? Math.min(effectiveDuration, Math.max(0, progress))
+    : Math.max(0, progress);
+  const effectivePercent = effectiveDuration > 0
+    ? Math.min(100, Math.max(0, (effectiveProgress / effectiveDuration) * 100))
+    : 0;
   const lyrics = useMemo(() => parseMusicLyric(currentTrack?.lyric), [currentTrack?.lyric]);
-  const lyricIndex = useMemo(() => activeLyricIndex(lyrics, progress), [lyrics, progress]);
-  const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
+  const lyricIndex = useMemo(() => activeLyricIndex(lyrics, effectiveProgress), [lyrics, effectiveProgress]);
 
   const canUseSurface = useCallback(
     (surface: 'home' | 'profile') => {
@@ -450,11 +462,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     audio.src = audioSrc;
     audio.load();
     setProgress(0);
-    setDuration(currentTrack?.durationSeconds ?? 0);
+    setDuration(trackDuration);
     if (playingRef.current) {
       audio.play().catch(() => setIsPlaying(false));
     }
-  }, [audioSrc, currentTrack?.durationSeconds]);
+  }, [audioSrc, trackDuration]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -574,11 +586,18 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   const seekToPercent = useCallback((nextPercent: number) => {
     const audio = audioRef.current;
-    if (!audio || duration <= 0) return;
-    const nextTime = Math.min(duration, Math.max(0, (nextPercent / 100) * duration));
-    audio.currentTime = nextTime;
+    const targetDuration = effectiveDuration;
+    if (targetDuration <= 0) return;
+    const nextTime = Math.min(targetDuration, Math.max(0, (nextPercent / 100) * targetDuration));
+    if (audio) {
+      try {
+        audio.currentTime = nextTime;
+      } catch {
+        /* Safari may reject currentTime before metadata is ready; keep UI progress responsive. */
+      }
+    }
     setProgress(nextTime);
-  }, [duration]);
+  }, [effectiveDuration]);
 
   const setVolume = useCallback((value: number) => {
     setVolumeState(Math.min(1, Math.max(0, value)));
@@ -589,7 +608,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const cover = resolveMusicCoverSrc(currentTrack);
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentTrack.title,
-      artist: currentTrack.artist || '未知艺术家',
+      artist: meaningfulMusicText(currentTrack.artist) || player?.playlist?.name || '音乐大厅',
       album: currentTrack.album || player?.playlist?.name || '音乐大厅',
       // 不写死 type:封面可能是 jpg/webp,留空让浏览器按响应头判断
       artwork: cover ? [{ src: cover, sizes: '512x512' }] : [],
@@ -690,9 +709,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     currentIndex,
     isPlaying,
     shuffle,
-    progress,
-    duration,
-    percent,
+    progress: effectiveProgress,
+    duration: effectiveDuration,
+    percent: effectivePercent,
     volume,
     expanded,
     hasPlaybackSession,
@@ -725,20 +744,20 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     currentIndex,
     currentTrack,
     dismissFloatingPlayer,
-    duration,
+    effectiveDuration,
+    effectivePercent,
+    effectiveProgress,
     expanded,
     hasPlaybackSession,
     isPlaying,
     lyricIndex,
     lyrics,
     nextTrack,
-    percent,
     playAll,
     playIndex,
     playTrack,
     player,
     previousTrack,
-    progress,
     seekToPercent,
     shuffle,
     togglePlayback,
@@ -759,8 +778,22 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         ref={audioRef}
         preload="metadata"
         playsInline
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || currentTrack?.durationSeconds || 0)}
-        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime || 0)}
+        onLoadedMetadata={(event) => {
+          const metadataDuration = event.currentTarget.duration;
+          setDuration(Number.isFinite(metadataDuration) && metadataDuration > 0 ? metadataDuration : trackDuration);
+        }}
+        onDurationChange={(event) => {
+          const metadataDuration = event.currentTarget.duration;
+          if (Number.isFinite(metadataDuration) && metadataDuration > 0) setDuration(metadataDuration);
+        }}
+        onTimeUpdate={(event) => {
+          const nextProgress = event.currentTarget.currentTime;
+          if (Number.isFinite(nextProgress)) setProgress(nextProgress);
+        }}
+        onError={() => {
+          playingRef.current = false;
+          setIsPlaying(false);
+        }}
         onEnded={() => advanceTrack(false)}
       />
       <PersistentMusicDock value={value} />
@@ -1084,6 +1117,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   ) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
+  const artistLabel = meaningfulMusicText(currentTrack.artist) || meaningfulMusicText(currentTrack.album) || playlistName;
 
   return (
     <>
@@ -1108,7 +1142,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 	          onPointerCancel={handleFloatingOrbPointerCancel}
 	          onLostPointerCapture={handleFloatingOrbPointerCancel}
 	          onContextMenu={(event) => event.preventDefault()}
-	          className="music-floating-orb-button relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+	          className="music-floating-orb-button relative grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
 	          aria-label="打开音乐播放器，长按拖到底部可移除"
 	          data-dragging={orbDrag ? 'true' : 'false'}
 	          data-removing={orbDrag?.overRemove ? 'true' : 'false'}
@@ -1151,7 +1185,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               </div>
               <p className="mt-1 truncate text-sm font-bold text-[var(--ink-primary)] sm:text-base">{currentTrack.title}</p>
               <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
-                {currentTrack.artist || '未知艺术家'}{activeLine ? ` · ${activeLine}` : ''}
+                {artistLabel}{activeLine ? ` · ${activeLine}` : ''}
               </p>
               <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="mt-2" />
             </div>
@@ -1203,50 +1237,67 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
           onClick={() => setExpanded(false)}
         >
           <section
-            className="music-mobile-player-sheet absolute inset-x-3 bottom-[max(0.85rem,env(safe-area-inset-bottom))] overflow-hidden rounded-[1.65rem] border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_92%,transparent)] text-[var(--ink-primary)] shadow-[0_26px_80px_-42px_color-mix(in_oklch,var(--aurora-1)_82%,transparent),0_18px_44px_-36px_color-mix(in_oklch,black_80%,transparent)] [backdrop-filter:blur(24px)_saturate(150%)]"
+            className="music-mobile-player-sheet absolute inset-x-3 bottom-[max(0.85rem,env(safe-area-inset-bottom))] max-h-[66vh] overflow-hidden rounded-[1.75rem] border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] text-[var(--ink-primary)] shadow-[0_28px_90px_-44px_color-mix(in_oklch,var(--aurora-1)_84%,transparent),0_18px_48px_-36px_color-mix(in_oklch,black_82%,transparent)] [backdrop-filter:blur(28px)_saturate(160%)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]" aria-hidden="true" />
-            <div className="flex items-center justify-between gap-3 px-4 pt-3">
+            <div className="flex items-center justify-between gap-3 px-4 pt-2">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="inline-flex h-7 max-w-[8.5rem] items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] px-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--aurora-1)]">
+                <span className="inline-flex h-8 max-w-[9rem] items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--aurora-1)]">
                   <span className="truncate">{playlistName}</span>
                 </span>
                 <span className="text-xs tnum text-[var(--ink-muted)]">{currentIndex + 1}/{tracks.length}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="music-control-button flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                aria-label="收起音乐播放器"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
             </div>
 
-            <div className="grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3 px-4 pt-3">
+            <div className="music-mobile-player-stage mx-4 mt-2 grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-4 rounded-[1.35rem] p-4">
               <button
                 type="button"
                 onClick={togglePlayback}
-                className="music-control-button relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                className="music-control-button relative flex h-[4.75rem] w-[4.75rem] items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                 aria-label={isPlaying ? '暂停音乐' : '播放音乐'}
               >
-                <CoverDisc track={currentTrack} playing={isPlaying} size="sm" />
-                <span className="absolute inset-0 grid place-items-center rounded-full bg-[color-mix(in_oklch,black_28%,transparent)] text-[var(--bg-void)] opacity-0 transition-opacity duration-200 active:opacity-100">
+                <CoverDisc track={currentTrack} playing={isPlaying} size="md" />
+                <span className="absolute inset-[0.85rem] grid place-items-center rounded-full bg-[color-mix(in_oklch,black_38%,transparent)] text-[var(--bg-void)] opacity-0 transition-opacity duration-200 active:opacity-100">
                   {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
                 </span>
               </button>
               <div className="min-w-0">
-                <h3 className="truncate text-base font-black tracking-normal text-[var(--ink-primary)]" title={currentTrack.title}>
+                <p className="flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--aurora-1)]">
+                  <Volume2 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Now Playing</span>
+                </p>
+                <h3 className="mt-1 truncate text-lg font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={currentTrack.title}>
                   {currentTrack.title}
                 </h3>
-                <p className="mt-0.5 truncate text-sm text-[var(--ink-muted)]" title={currentTrack.artist || currentTrack.album || currentTrack.title}>
-                  {currentTrack.artist || '未知艺术家'}{activeLine ? ` · ${activeLine}` : ''}
+                <p className="mt-1 truncate text-sm text-[var(--ink-muted)]" title={artistLabel}>
+                  {artistLabel}
                 </p>
+                {activeLine && (
+                  <p className="mt-2 truncate rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-2.5 py-1 text-xs text-[var(--ink-secondary)]">
+                    {activeLine}
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="px-4 pt-3">
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
-              <div className="flex items-center justify-between text-[11px] tnum text-[var(--ink-muted)]">
+            <div className="music-mobile-player-seek px-5 pt-3">
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="md" />
+              <div className="-mt-0.5 flex items-center justify-between text-[11px] tnum text-[var(--ink-muted)]">
                 <span>{formatMusicClock(progress)}</span>
-                <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
+                <span>{formatMusicClock(duration)}</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-center gap-3 px-4 py-4">
+            <div className="music-mobile-player-controls flex items-center justify-center gap-3 px-4 py-3">
               <button
                 type="button"
                 onClick={() => setShuffle((value) => !value)}
@@ -1277,11 +1328,11 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-3">
+            <div className="music-mobile-player-actions grid grid-cols-2 gap-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-3">
               <Link
                 href="/music"
                 onClick={() => setExpanded(false)}
-                className="music-control-button inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-3 text-sm font-bold text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                className="music-control-button inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-3 text-sm font-bold text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
               >
                 <Disc3 className="h-4 w-4" />
                 音乐大厅
@@ -1289,7 +1340,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               <Link
                 href="/music#playlist"
                 onClick={() => setExpanded(false)}
-                className="music-control-button inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                className="music-control-button inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
               >
                 <ListMusic className="h-4 w-4" />
                 歌单页
@@ -1342,7 +1393,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 <div>
                   <p className="text-sm font-bold text-[var(--ink-muted)]">{playlistName}</p>
                   <h3 className="mt-1 text-3xl font-black tracking-normal sm:text-h1">{currentTrack.title}</h3>
-                  <p className="mt-2 text-base text-[var(--ink-secondary)]">{currentTrack.artist || '未知艺术家'} · {currentTrack.album || '未分专辑'}</p>
+                  <p className="mt-2 text-base text-[var(--ink-secondary)]">{artistLabel}</p>
                 </div>
                 <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="lg" />
                 <div className="flex items-center justify-between text-xs tnum text-[var(--ink-muted)]">
@@ -1435,7 +1486,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                       <span className="text-xs tnum text-[var(--ink-muted)]">{String(index + 1).padStart(2, '0')}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-bold text-[var(--ink-primary)]">{track.title}</span>
-                        <span className="mt-0.5 block truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'}</span>
+                        <span className="mt-0.5 block truncate text-xs text-[var(--ink-muted)]">{meaningfulMusicText(track.artist) || meaningfulMusicText(track.album) || playlistName}</span>
                       </span>
                       {currentTrack.id === track.id && isPlaying ? (
                         <NowPlayingGlyph />
