@@ -99,10 +99,11 @@ func (r *ReadingBookRepo) FindBySource(ctx context.Context, sourceType string, s
 
 // SlugExists 判断 slug 是否被其它记录占用。
 func (r *ReadingBookRepo) SlugExists(ctx context.Context, slug string, excludeID int64) (bool, error) {
-	var cnt int
-	err := r.db.GetContext(ctx, &cnt,
-		`SELECT COUNT(*) FROM reading_books WHERE slug=$1 AND id<>$2`, slug, excludeID)
-	return cnt > 0, err
+	var exists bool
+	// ⚡ Bolt: Removed use of COUNT(*) and replaced it with EXISTS() to prevent full index scans and return early.
+	err := r.db.GetContext(ctx, &exists,
+		`SELECT EXISTS(SELECT 1 FROM reading_books WHERE slug=$1 AND id<>$2)`, slug, excludeID)
+	return exists, err
 }
 
 // List 分页查询后台书架。
