@@ -126,7 +126,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
             <button
               type="button"
               onClick={() => resetSkin()}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
+              className="inline-flex items-center gap-1 rounded-sm text-[11px] font-bold text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
             >
               <RotateCcw className="h-3 w-3" />
               跟随后台默认
@@ -146,7 +146,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
                 key={preset.id}
                 type="button"
                 onClick={() => selectPresetSkin(preset.id)}
-                className="group/skin flex flex-col items-center gap-1.5"
+                className="group/skin flex flex-col items-center gap-1.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
                 aria-pressed={active}
                 title={preset.label}
               >
@@ -198,7 +198,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
           type="button"
           onClick={() => selectCustomSkin(customLight, customDark)}
           className={cn(
-            'mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full text-xs font-black transition-transform hover:scale-[1.02] sm:h-9',
+            'mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full text-xs font-black transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)] sm:h-9',
             skinMode === 'custom'
               ? 'bg-[var(--aurora-1)] text-[var(--bg-void)]'
               : 'border border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
@@ -216,7 +216,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] sm:w-auto sm:px-5"
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-3 text-sm font-bold text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] sm:w-auto sm:px-5"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="music-skin-popover"

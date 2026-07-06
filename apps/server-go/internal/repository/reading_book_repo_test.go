@@ -1,8 +1,13 @@
 package repository
 
 import (
+	"context"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 )
 
 func TestJoinKBChunksRemovesConfiguredOverlap(t *testing.T) {
@@ -70,5 +75,68 @@ func TestKBChunkingConfigUsesOverlapOnlyForOverlappingChunkers(t *testing.T) {
 				t.Fatalf("usesOverlap() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func newReadingBookRepoMock(t *testing.T) (*ReadingBookRepo, sqlmock.Sqlmock, func()) {
+	t.Helper()
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+
+	return NewReadingBookRepo(sqlx.NewDb(db, "sqlmock")), mock, func() { _ = db.Close() }
+}
+
+func TestReadingBookRepoSlugExistsUsesExistsQuery(t *testing.T) {
+	repo, mock, cleanup := newReadingBookRepoMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS(SELECT 1 FROM reading_books WHERE slug=$1 AND id<>$2)`)).
+		WithArgs("book-slug", int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	exists, err := repo.SlugExists(context.Background(), "book-slug", 42)
+	if err != nil {
+		t.Fatalf("SlugExists returned error: %v", err)
+	}
+	if !exists {
+		t.Fatal("SlugExists returned false, want true")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestReadingBookRepoListEscapesKeywordWildcards(t *testing.T) {
+	repo, mock, cleanup := newReadingBookRepoMock(t)
+	defer cleanup()
+
+	filter := ReadingBookListFilter{
+		Keyword:  `100%_guide\draft`,
+		PageNum:  2,
+		PageSize: 10,
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM reading_books WHERE 1=1 AND title ILIKE $1 ESCAPE E'\\'`)).
+		WithArgs(`%100\%\_guide\\draft%`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery(`(?s)SELECT\s+id, slug, title, author, cover_image, source_type, source_id, source_ref,\s+word_count, reading_time, status, error, theme, generated_at, created_at, updated_at\s+FROM reading_books WHERE 1=1 AND title ILIKE \$1 ESCAPE E'\\\\' ORDER BY created_at DESC LIMIT \$2 OFFSET \$3`).
+		WithArgs(`%100\%\_guide\\draft%`, 10, 10).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	rows, total, err := repo.List(context.Background(), filter)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if total != 0 {
+		t.Fatalf("total = %d, want 0", total)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows length = %d, want 0", len(rows))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
