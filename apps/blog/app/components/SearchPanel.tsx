@@ -144,7 +144,7 @@ const SearchResultItem = React.memo(({
       aria-selected={isActive}
       onClick={() => onClick(result)}
       onMouseEnter={() => onMouseEnter(index)}
-      className={`group/result flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] sm:gap-4 sm:px-5 ${
+      className={`group/result flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] sm:gap-4 sm:px-5 ${
         isActive ? 'bg-[var(--bg-card-hover)]' : 'hover:bg-[var(--bg-secondary)]'
       }`}
     >
@@ -755,7 +755,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                         <button
                           type="button"
                           onClick={clearHistory}
-                          className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${
+                          className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] ${
                             confirmClearHistory
                               ? 'bg-red-500/10 font-semibold text-red-500'
                               : 'text-[var(--text-muted)] hover:bg-red-400/10 hover:text-red-400'

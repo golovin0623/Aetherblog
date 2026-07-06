@@ -146,7 +146,7 @@ export function MusicSkinSwitcher({ className }: { className?: string }) {
                 key={preset.id}
                 type="button"
                 onClick={() => selectPresetSkin(preset.id)}
-                className="group/skin flex flex-col items-center gap-1.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
+                className="group/skin flex flex-col items-center gap-1.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
                 aria-pressed={active}
                 title={preset.label}
               >
