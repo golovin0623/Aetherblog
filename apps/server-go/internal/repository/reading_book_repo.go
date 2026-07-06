@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // ReadingBookRepo 提供 reading_books 表（拟真阅读）的数据访问能力，
@@ -99,10 +100,10 @@ func (r *ReadingBookRepo) FindBySource(ctx context.Context, sourceType string, s
 
 // SlugExists 判断 slug 是否被其它记录占用。
 func (r *ReadingBookRepo) SlugExists(ctx context.Context, slug string, excludeID int64) (bool, error) {
-	var cnt int
-	err := r.db.GetContext(ctx, &cnt,
-		`SELECT COUNT(*) FROM reading_books WHERE slug=$1 AND id<>$2`, slug, excludeID)
-	return cnt > 0, err
+	var exists bool
+	err := r.db.GetContext(ctx, &exists,
+		`SELECT EXISTS(SELECT 1 FROM reading_books WHERE slug=$1 AND id<>$2)`, slug, excludeID)
+	return exists, err
 }
 
 // List 分页查询后台书架。
@@ -111,8 +112,8 @@ func (r *ReadingBookRepo) List(ctx context.Context, f ReadingBookListFilter) ([]
 	args := []any{}
 	idx := 1
 	if f.Keyword != "" {
-		conds = append(conds, "title ILIKE $"+itoa(idx))
-		args = append(args, "%"+f.Keyword+"%")
+		conds = append(conds, "title ILIKE $"+itoa(idx)+" ESCAPE E'\\\\'")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
 	if f.SourceType != "" {
