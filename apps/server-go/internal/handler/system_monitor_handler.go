@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -340,9 +341,52 @@ func (h *SystemMonitorHandler) GetConfig(c echo.Context) error {
 // 包括：上传文件目录、日志目录、PostgreSQL 数据库大小、Redis 内存占用。
 func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdown {
 	var breakdown service.StorageBreakdown
+	var wg sync.WaitGroup
+
+	var uploadSize int64
+	var uploadCount int
+	var logSize int64
+	var logCount int
+	var dbSize int64
+	var redisSize int64
 
 	// 统计上传文件目录大小和文件数量
-	uploadSize, uploadCount := dirSizeAndCount(h.cfg.Upload.Path)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		uploadSize, uploadCount = dirSizeAndCount(h.cfg.Upload.Path)
+	}()
+
+	// 统计日志目录大小和文件数量
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logSize, logCount = dirSizeAndCount(h.cfg.Log.Path)
+	}()
+
+	// 通过 pg_database_size() 查询当前数据库占用空间
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
+	}()
+
+	// 通过 Redis INFO memory 命令获取内存占用
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer rcancel()
+		info, err := h.rdb.Info(rctx, "memory").Result()
+		if err == nil {
+			redisSize = parseRedisMemory(info)
+		}
+	}()
+
+	wg.Wait()
+
 	breakdown.Uploads = service.StorageItem{
 		Name:      "uploads",
 		Size:      uploadSize,
@@ -350,8 +394,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(uploadSize),
 	}
 
-	// 统计日志目录大小和文件数量
-	logSize, logCount := dirSizeAndCount(h.cfg.Log.Path)
 	breakdown.Logs = service.StorageItem{
 		Name:      "logs",
 		Size:      logSize,
@@ -359,11 +401,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(logSize),
 	}
 
-	// 通过 pg_database_size() 查询当前数据库占用空间
-	var dbSize int64
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
 	breakdown.Database = service.StorageItem{
 		Name:      "database",
 		Size:      dbSize,
@@ -371,14 +408,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(dbSize),
 	}
 
-	// 通过 Redis INFO memory 命令获取内存占用
-	var redisSize int64
-	rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer rcancel()
-	info, err := h.rdb.Info(rctx, "memory").Result()
-	if err == nil {
-		redisSize = parseRedisMemory(info)
-	}
 	breakdown.Redis = service.StorageItem{
 		Name:      "redis",
 		Size:      redisSize,
@@ -411,65 +440,80 @@ type ServiceHealth struct {
 // checkServiceHealth 检查所有依赖服务的健康状态，返回结果数组。
 // 依次检查：PostgreSQL、Redis、AI 服务。
 func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
-	var result []ServiceHealth
+	var wg sync.WaitGroup
+	var dbHealth, redisHealth, aiHealth ServiceHealth
 
-	// 检查 PostgreSQL 连接状态
-	dbStatus := "up"
-	dbMsg := ""
-	dbLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		return h.db.PingContext(ctx)
-	})
-	if dbLatency < 0 {
-		dbStatus = "down"
-		dbMsg = "Connection failed"
-		dbLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg})
-
-	// 检查 Redis 连接状态
-	redisStatus := "up"
-	redisMsg := ""
-	redisLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		return h.rdb.Ping(ctx).Err()
-	})
-	if redisLatency < 0 {
-		redisStatus = "down"
-		redisMsg = "Connection failed"
-		redisLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg})
-
-	// 检查 AI 服务健康状态（通过 GET /health 接口探测）
-	aiStatus := "down"
-	aiMsg := ""
-	var aiLatency int64
-	if h.cfg.AI.BaseURL != "" {
-		aiLatency = measureLatency(func() error {
-			client := &http.Client{Timeout: 3 * time.Second}
-			resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
-			if err != nil {
-				return err
-			}
-			resp.Body.Close()
-			return nil
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// 检查 PostgreSQL 连接状态
+		dbStatus := "up"
+		dbMsg := ""
+		dbLatency := measureLatency(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			return h.db.PingContext(ctx)
 		})
-		if aiLatency >= 0 {
-			aiStatus = "up"
-		} else {
-			aiMsg = "Connection failed"
-			aiLatency = 0
+		if dbLatency < 0 {
+			dbStatus = "down"
+			dbMsg = "Connection failed"
+			dbLatency = 0
 		}
-	} else {
-		// 未配置 AI 服务地址，视为不可用
-		aiStatus = "down"
-	}
-	result = append(result, ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg})
+		dbHealth = ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg}
+	}()
 
-	return result
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// 检查 Redis 连接状态
+		redisStatus := "up"
+		redisMsg := ""
+		redisLatency := measureLatency(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			return h.rdb.Ping(ctx).Err()
+		})
+		if redisLatency < 0 {
+			redisStatus = "down"
+			redisMsg = "Connection failed"
+			redisLatency = 0
+		}
+		redisHealth = ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// 检查 AI 服务健康状态（通过 GET /health 接口探测）
+		aiStatus := "down"
+		aiMsg := ""
+		var aiLatency int64
+		if h.cfg.AI.BaseURL != "" {
+			aiLatency = measureLatency(func() error {
+				client := &http.Client{Timeout: 3 * time.Second}
+				resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
+				if err != nil {
+					return err
+				}
+				resp.Body.Close()
+				return nil
+			})
+			if aiLatency >= 0 {
+				aiStatus = "up"
+			} else {
+				aiMsg = "Connection failed"
+				aiLatency = 0
+			}
+		} else {
+			// 未配置 AI 服务地址，视为不可用
+			aiStatus = "down"
+		}
+		aiHealth = ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg}
+	}()
+
+	wg.Wait()
+
+	return []ServiceHealth{dbHealth, redisHealth, aiHealth}
 }
 
 // flattenMetrics 将嵌套的 SystemMetrics 结构体转换为前端所需的扁平化键值映射。
