@@ -7,6 +7,7 @@ type MusicMediaVO struct {
 	OriginalName string  `json:"originalName"`
 	FileURL      string  `json:"fileUrl"`
 	PublicURL    string  `json:"publicUrl,omitempty"`
+	ThumbnailURL string  `json:"thumbnailUrl,omitempty"`
 	FileSize     int64   `json:"fileSize"`
 	MimeType     *string `json:"mimeType,omitempty"`
 	FileType     string  `json:"fileType"`
@@ -161,17 +162,17 @@ type MusicPlaylistReorderRequest struct {
 }
 
 type MusicSettingsRequest struct {
-	Enabled                 bool   `json:"enabled"`
-	ShowOnHomePage          bool   `json:"showOnHomePage"`
-	ShowOnProfileCard       bool   `json:"showOnProfileCard"`
-	FeaturedPlaylistID      *int64 `json:"featuredPlaylistId" validate:"omitempty,min=1"`
-	MediaFolderID           *int64 `json:"mediaFolderId" validate:"omitempty,min=1"`
-	PlaybackMode            string `json:"playbackMode" validate:"omitempty,oneof=SEQUENTIAL SHUFFLE LOOP CAROUSEL"`
-	CarouselEnabled         bool   `json:"carouselEnabled"`
-	CarouselIntervalSeconds int    `json:"carouselIntervalSeconds" validate:"omitempty,min=3,max=60"`
-	RandomEnabled           bool   `json:"randomEnabled"`
-	SkinMode                string `json:"skinMode" validate:"omitempty,oneof=preset custom"`
-	SkinPreset              string `json:"skinPreset" validate:"omitempty,max=40"`
+	Enabled                 bool    `json:"enabled"`
+	ShowOnHomePage          bool    `json:"showOnHomePage"`
+	ShowOnProfileCard       bool    `json:"showOnProfileCard"`
+	FeaturedPlaylistID      *int64  `json:"featuredPlaylistId" validate:"omitempty,min=1"`
+	MediaFolderID           *int64  `json:"mediaFolderId" validate:"omitempty,min=1"`
+	PlaybackMode            string  `json:"playbackMode" validate:"omitempty,oneof=SEQUENTIAL SHUFFLE LOOP CAROUSEL"`
+	CarouselEnabled         bool    `json:"carouselEnabled"`
+	CarouselIntervalSeconds int     `json:"carouselIntervalSeconds" validate:"omitempty,min=3,max=60"`
+	RandomEnabled           bool    `json:"randomEnabled"`
+	SkinMode                string  `json:"skinMode" validate:"omitempty,oneof=preset custom"`
+	SkinPreset              string  `json:"skinPreset" validate:"omitempty,max=40"`
 	SkinColorLight          *string `json:"skinColorLight" validate:"omitempty,max=32"`
 	SkinColorDark           *string `json:"skinColorDark" validate:"omitempty,max=32"`
 }

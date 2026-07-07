@@ -29,6 +29,8 @@ import (
 // 的图片体积上限。超过该上限的图片只读 header 算 width/height,跳过缩略图生成,
 // 避免高并发上传时 OOM。
 const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
+const maxAudioArtworkBackfillBytes int64 = 100 * 1024 * 1024
+const maxAudioArtworkBackfillPerPage = 8
 const publicBackupVerificationFreshness = 24 * time.Hour
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
@@ -55,12 +57,18 @@ var allowedMimeTypes = map[string]bool{
 	"video/x-msvideo":  true, // .avi
 	"video/x-matroska": true, // .mkv
 	// 音频
-	"audio/mpeg":  true,
-	"audio/wav":   true,
-	"audio/ogg":   true,
-	"audio/mp4":   true,
-	"audio/flac":  true,
-	"audio/x-m4a": true,
+	"audio/mpeg":   true,
+	"audio/wav":    true,
+	"audio/wave":   true,
+	"audio/x-wav":  true,
+	"audio/ogg":    true,
+	"audio/opus":   true,
+	"audio/mp4":    true,
+	"audio/aac":    true,
+	"audio/flac":   true,
+	"audio/x-flac": true,
+	"audio/x-m4a":  true,
+	"audio/webm":   true,
 	// Office 文档 (OOXML)
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
@@ -126,6 +134,9 @@ type MediaService struct {
 
 	storeCache   map[int64]storage.Storage
 	storeCacheMu sync.RWMutex
+
+	audioArtworkJobs   map[int64]struct{}
+	audioArtworkJobsMu sync.Mutex
 }
 
 // NewMediaService 创建 MediaService 实例。
@@ -138,11 +149,12 @@ type MediaService struct {
 // 时校验目标文件夹的 owner 与显式授权。
 func NewMediaService(repo *repository.MediaRepo, localStore storage.Storage, providerRepo *repository.StorageProviderRepo, uploadDir string) *MediaService {
 	return &MediaService{
-		repo:         repo,
-		localStore:   localStore,
-		providerRepo: providerRepo,
-		uploadDir:    uploadDir,
-		storeCache:   make(map[int64]storage.Storage),
+		repo:             repo,
+		localStore:       localStore,
+		providerRepo:     providerRepo,
+		uploadDir:        uploadDir,
+		storeCache:       make(map[int64]storage.Storage),
+		audioArtworkJobs: make(map[int64]struct{}),
 	}
 }
 
@@ -485,7 +497,16 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 		return nil, err
 	}
 
-	vo := toMediaFileVO(*m)
+	thumbnailURL := ""
+	if strings.HasPrefix(mimeType, "audio/") {
+		if artwork, aerr := extractAudioArtwork(f, fh.Size, mimeType); aerr != nil {
+			log.Warn().Err(aerr).Str("key", key).Msg("audio artwork extraction failed")
+		} else if artwork != nil {
+			thumbnailURL = s.persistAudioArtworkThumbnail(ctx, store, m, artwork)
+		}
+	}
+
+	vo := toMediaFileVOWithThumbnail(*m, thumbnailURL)
 	return &vo, nil
 }
 
@@ -607,15 +628,43 @@ func (s *MediaService) uploadRemoteThumbnailAsync(store storage.Storage, mainKey
 	}()
 }
 
+func (s *MediaService) persistAudioArtworkThumbnail(ctx context.Context, store storage.Storage, m *model.MediaFile, artwork *audioArtwork) string {
+	if store == nil || m == nil || artwork == nil || len(artwork.Data) == 0 {
+		return ""
+	}
+	thumbBytes, err := imgproc.GenerateThumbnailFromReader(bytes.NewReader(artwork.Data), 600, "jpeg")
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork thumbnail generation failed")
+		return ""
+	}
+	base := strings.TrimSuffix(m.FilePath, filepath.Ext(m.FilePath))
+	if base == "" {
+		base = m.FilePath
+	}
+	thumbKey := "thumbnails/audio/" + base + ".jpg"
+	thumbURL, err := store.Upload(ctx, thumbKey, bytes.NewReader(thumbBytes), int64(len(thumbBytes)), "image/jpeg")
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Str("thumb_key", thumbKey).Msg("audio artwork thumbnail upload failed")
+		return ""
+	}
+	if err := s.repo.UpsertVariantByMediaID(ctx, m.ID, "THUMBNAIL", thumbKey, thumbURL, int64(len(thumbBytes)), m.StorageProviderID); err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Str("thumb_key", thumbKey).Msg("audio artwork media_variants insert failed")
+		return ""
+	}
+	return thumbURL
+}
+
 // GetForAdmin 返回支持多条件过滤的分页媒体文件列表，供管理后台媒体管理页使用。
 func (s *MediaService) GetForAdmin(ctx context.Context, f repository.MediaFilter) (*response.PageResult, error) {
 	ms, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
 		return nil, err
 	}
+	thumbnailURLs := s.thumbnailURLsForMedia(ctx, ms)
+	s.scheduleMissingAudioArtworkBackfill(ms, thumbnailURLs)
 	vos := make([]dto.MediaFileVO, len(ms))
 	for i, m := range ms {
-		vos[i] = toMediaFileVO(m)
+		vos[i] = toMediaFileVOWithThumbnail(m, thumbnailURLs[m.ID])
 	}
 	pr := response.NewPageResult(vos, total, f.PageNum, f.PageSize)
 	return &pr, nil
@@ -644,7 +693,9 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	if err != nil || m == nil {
 		return nil, err
 	}
-	vo := toMediaFileVO(*m)
+	thumbnailURLs := s.thumbnailURLsForMedia(ctx, []model.MediaFile{*m})
+	s.scheduleMissingAudioArtworkBackfill([]model.MediaFile{*m}, thumbnailURLs)
+	vo := toMediaFileVOWithThumbnail(*m, thumbnailURLs[m.ID])
 	return &vo, nil
 }
 
@@ -1094,6 +1145,120 @@ func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
 	return vo
 }
 
+func toMediaFileVOWithThumbnail(m model.MediaFile, thumbnailURL string) dto.MediaFileVO {
+	vo := toMediaFileVO(m)
+	vo.ThumbnailURL = thumbnailURL
+	return vo
+}
+
+func (s *MediaService) thumbnailURLsForMedia(ctx context.Context, ms []model.MediaFile) map[int64]string {
+	out := map[int64]string{}
+	if s == nil || s.repo == nil || len(ms) == 0 {
+		return out
+	}
+	ids := make([]int64, 0, len(ms))
+	seen := make(map[int64]struct{}, len(ms))
+	for _, m := range ms {
+		if m.ID <= 0 {
+			continue
+		}
+		if _, ok := seen[m.ID]; ok {
+			continue
+		}
+		seen[m.ID] = struct{}{}
+		ids = append(ids, m.ID)
+	}
+	if len(ids) == 0 {
+		return out
+	}
+	urls, err := s.repo.FindVariantURLs(ctx, ids, "THUMBNAIL")
+	if err != nil {
+		log.Warn().Err(err).Msg("media thumbnail variant lookup failed")
+		return out
+	}
+	return urls
+}
+
+func (s *MediaService) scheduleMissingAudioArtworkBackfill(ms []model.MediaFile, thumbnailURLs map[int64]string) {
+	if s == nil || s.repo == nil || len(ms) == 0 {
+		return
+	}
+	scheduled := 0
+	for _, m := range ms {
+		if scheduled >= maxAudioArtworkBackfillPerPage {
+			return
+		}
+		if m.ID <= 0 || m.Deleted || m.FileType != "AUDIO" || thumbnailURLs[m.ID] != "" {
+			continue
+		}
+		if !s.markAudioArtworkJob(m.ID) {
+			continue
+		}
+		scheduled++
+		media := m
+		go func() {
+			defer s.unmarkAudioArtworkJob(media.ID)
+			s.ensureAudioArtworkThumbnail(context.Background(), media)
+		}()
+	}
+}
+
+func (s *MediaService) markAudioArtworkJob(mediaID int64) bool {
+	s.audioArtworkJobsMu.Lock()
+	defer s.audioArtworkJobsMu.Unlock()
+	if s.audioArtworkJobs == nil {
+		s.audioArtworkJobs = make(map[int64]struct{})
+	}
+	if _, ok := s.audioArtworkJobs[mediaID]; ok {
+		return false
+	}
+	s.audioArtworkJobs[mediaID] = struct{}{}
+	return true
+}
+
+func (s *MediaService) unmarkAudioArtworkJob(mediaID int64) {
+	s.audioArtworkJobsMu.Lock()
+	defer s.audioArtworkJobsMu.Unlock()
+	delete(s.audioArtworkJobs, mediaID)
+}
+
+func (s *MediaService) ensureAudioArtworkThumbnail(ctx context.Context, m model.MediaFile) {
+	store, _, err := s.resolveStoreForMedia(ctx, &m)
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: resolve store failed")
+		return
+	}
+	rc, size, mimeType, err := store.Get(ctx, m.FilePath)
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: read source failed")
+		return
+	}
+	defer rc.Close()
+	if size > maxAudioArtworkBackfillBytes {
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(rc, maxAudioArtworkBackfillBytes+1))
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: buffer source failed")
+		return
+	}
+	if int64(len(data)) > maxAudioArtworkBackfillBytes {
+		return
+	}
+	if mimeType == "" && m.MimeType != nil {
+		mimeType = *m.MimeType
+	}
+	artwork, err := extractAudioArtwork(bytes.NewReader(data), int64(len(data)), mimeType)
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: extract failed")
+		return
+	}
+	if artwork == nil {
+		return
+	}
+	s.persistAudioArtworkThumbnail(ctx, store, &m, artwork)
+}
+
 func publicMediaURL(id int64) string {
 	if id <= 0 {
 		return ""
@@ -1226,12 +1391,16 @@ func guessMimeType(filename string) string {
 		return "audio/mpeg"
 	case ".wav":
 		return "audio/wav"
-	case ".ogg":
+	case ".ogg", ".oga", ".opus":
 		return "audio/ogg"
-	case ".m4a":
+	case ".m4a", ".m4b":
 		return "audio/x-m4a"
+	case ".aac":
+		return "audio/aac"
 	case ".flac":
 		return "audio/flac"
+	case ".weba":
+		return "audio/webm"
 	// Office 文档 (OOXML — magic bytes 为 ZIP，必须靠扩展名区分)
 	case ".docx":
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

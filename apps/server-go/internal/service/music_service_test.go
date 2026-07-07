@@ -56,10 +56,14 @@ func musicPlaylistRowsWithTrackCount(trackCount int64) *sqlmock.Rows {
 }
 
 func musicTrackRows() *sqlmock.Rows {
-	return musicTrackRowsWithID(11, 99, "夜航")
+	return musicTrackRowsWithIDAndThumbnail(11, 99, "夜航", nil)
 }
 
 func musicTrackRowsWithID(trackID, mediaID int64, title string) *sqlmock.Rows {
+	return musicTrackRowsWithIDAndThumbnail(trackID, mediaID, title, nil)
+}
+
+func musicTrackRowsWithIDAndThumbnail(trackID, mediaID int64, title string, thumbnailURL *string) *sqlmock.Rows {
 	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	mime := "audio/mpeg"
 	folderID := int64(7)
@@ -67,11 +71,11 @@ func musicTrackRowsWithID(trackID, mediaID int64, title string) *sqlmock.Rows {
 		"id", "media_file_id", "title", "artist", "album", "duration_seconds",
 		"cover_media_file_id", "lyric", "source", "status", "sort_order", "is_featured",
 		"play_count", "created_at", "updated_at", "media_original_name", "media_file_url",
-		"media_file_size", "media_mime_type", "media_file_type", "media_folder_id", "media_deleted",
+		"media_file_size", "media_mime_type", "media_file_type", "media_folder_id", "media_deleted", "media_thumbnail_url",
 	}).AddRow(
 		trackID, mediaID, title, "Aether", "", nil, nil, nil, "MEDIA_LIBRARY",
 		"ACTIVE", 0, false, int64(0), now, now, "night-flight.mp3", "/api/uploads/music/night-flight.mp3",
-		int64(4_096), mime, "AUDIO", folderID, false,
+		int64(4_096), mime, "AUDIO", folderID, false, thumbnailURL,
 	)
 }
 
@@ -139,6 +143,38 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	}
 	if got := player.Tracks[0].Media.PublicURL; got != "/api/v1/public/media/99" {
 		t.Fatalf("track public URL = %q, want stable media endpoint", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMusicServicePublicPlayerFallsBackToExtractedAudioArtwork(t *testing.T) {
+	svc, mock, cleanup := newMusicServiceMock(t)
+	defer cleanup()
+	thumb := "/api/uploads/thumbnails/audio/2026/07/night-flight.jpg"
+	expectMusicSettings(mock, true)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
+		WillReturnRows(musicPlaylistRows())
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT `)).
+		WithArgs(int64(42), 100, 0).
+		WillReturnRows(musicTrackRowsWithIDAndThumbnail(11, 99, "夜航", &thumb))
+
+	player, err := svc.PublicPlayer(context.Background())
+	if err != nil {
+		t.Fatalf("PublicPlayer: %v", err)
+	}
+	if len(player.Tracks) != 1 {
+		t.Fatalf("tracks len = %d, want 1", len(player.Tracks))
+	}
+	if got := player.Tracks[0].CoverURL; got != thumb {
+		t.Fatalf("CoverURL = %q, want extracted thumbnail %q", got, thumb)
+	}
+	if got := player.Tracks[0].Media.ThumbnailURL; got != thumb {
+		t.Fatalf("Media.ThumbnailURL = %q, want %q", got, thumb)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)

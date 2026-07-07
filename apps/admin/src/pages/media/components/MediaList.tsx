@@ -88,6 +88,7 @@ export function MediaList({
             const isSidebarSelected = selectedId === item.id;
             const isBatchSelected = selectedIds.has(item.id);
             const fullUrl = getMediaUrl(item);
+            const thumbnailUrl = item.thumbnailUrl ? getMediaUrl(item.thumbnailUrl) : '';
             const stickyActionClass = cn(
               'sticky right-0 z-10 border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shadow-[-18px_0_24px_-24px_var(--ink-primary)]',
               isSidebarSelected && 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-leaf))]',
@@ -119,8 +120,8 @@ export function MediaList({
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
-                      {item.fileType === 'IMAGE' ? (
-                        <img src={fullUrl} alt="" className="w-full h-full object-cover" />
+                      {item.fileType === 'IMAGE' || thumbnailUrl ? (
+                        <img src={item.fileType === 'IMAGE' ? fullUrl : thumbnailUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <Icon className="h-4 w-4 text-[var(--ink-muted)]" />
                       )}
@@ -212,6 +213,7 @@ export function MediaList({
           const Icon = typeIcons[item.fileType] || FileText;
           const isSelected = selectedId === item.id || selectedIds.has(item.id);
           const fullUrl = getMediaUrl(item);
+          const thumbnailUrl = item.thumbnailUrl ? getMediaUrl(item.thumbnailUrl) : '';
 
           return (
             <div
@@ -226,8 +228,8 @@ export function MediaList({
               <div className="flex items-start gap-3">
                 {/* 缩略图 */}
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] shadow-inner">
-                  {item.fileType === 'IMAGE' ? (
-                    <img src={fullUrl} alt="" className="w-full h-full object-cover" />
+                  {item.fileType === 'IMAGE' || thumbnailUrl ? (
+                    <img src={item.fileType === 'IMAGE' ? fullUrl : thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <Icon className="h-5 w-5 text-[var(--ink-muted)]" />
                   )}

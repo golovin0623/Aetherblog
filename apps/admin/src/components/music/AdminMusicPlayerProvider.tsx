@@ -109,7 +109,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const currentTrack = queue[currentIndex];
   const audioUrl = resolveAudioUrl(currentTrack);
   const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
-  const cover = currentTrack?.coverUrl || '';
+  const cover = currentTrack?.coverUrl || currentTrack?.media?.thumbnailUrl || '';
 
   const lyrics = useMemo(() => parseLyric(currentTrack?.lyric), [currentTrack?.lyric]);
   const activeLyric = useMemo(() => activeLyricIndex(lyrics, progress), [lyrics, progress]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
@@ -51,6 +51,10 @@ import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
 import { mediaService } from '@/services/mediaService';
 import { musicService } from '@/services/musicService';
+import {
+  PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
+  buildPlaylistTrackOptions,
+} from './music/playlistTrackOptions';
 
 type MusicTab = 'library' | 'playlists' | 'display';
 type PendingDelete =
@@ -61,6 +65,14 @@ type PlaylistDraft = MusicPlaylistRequest & { sortOrder: number };
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
 const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
+const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba', 'webm']);
+const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba,.webm';
+
+function isCommonAudioFile(file: File): boolean {
+  if (file.type.startsWith('audio/')) return true;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  return COMMON_AUDIO_EXTENSIONS.has(ext);
+}
 
 const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
   {
@@ -400,7 +412,6 @@ export default function MusicPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
-    queue,
     currentTrack,
     currentIndex,
     isPlaying,
@@ -439,7 +450,6 @@ export default function MusicPage() {
   const [scanKeyword, setScanKeyword] = useState('');
   const [scanPage, setScanPage] = useState(1);
   const [scanPageSize, setScanPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [includeMapped, setIncludeMapped] = useState(false);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
   const [newFolderName, setNewFolderName] = useState(MUSIC_HALL_FOLDER_NAME);
   const [uploadingLabel, setUploadingLabel] = useState('');
@@ -465,7 +475,9 @@ export default function MusicPage() {
     sortOrder: 0,
   });
   const [trackToAdd, setTrackToAdd] = useState('');
+  const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
 
   const settingsQuery = useQuery({
     queryKey: ['music-settings'],
@@ -484,6 +496,17 @@ export default function MusicPage() {
         pageNum: trackPage,
         pageSize: trackPageSize,
         keyword: trackKeyword || undefined,
+      })).data,
+  });
+
+  const playlistTrackCandidatesQuery = useQuery({
+    queryKey: ['music-track-candidates', deferredPlaylistTrackKeyword],
+    enabled: activeTab === 'playlists',
+    queryFn: async () =>
+      (await musicService.getTracks({
+        pageNum: 1,
+        pageSize: PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
+        keyword: deferredPlaylistTrackKeyword.trim() || undefined,
       })).data,
   });
 
@@ -513,6 +536,7 @@ export default function MusicPage() {
     }
   }, [settings.skinColorLight, settings.skinColorDark]);
   const tracks = tracksQuery.data?.list ?? [];
+  const playlistTrackCandidates = playlistTrackCandidatesQuery.data?.list ?? [];
   const playlists = playlistsQuery.data?.list ?? [];
   const selectedPlaylist = playlists.find((item) => item.id === selectedPlaylistId);
   const folderOptions = useMemo<SelectOption[]>(
@@ -527,23 +551,14 @@ export default function MusicPage() {
     })),
     [playlists]
   );
-  const trackOptions = useMemo<SelectOption[]>(
-    () => tracks.map((item) => ({
-      value: String(item.id),
-      label: item.title,
-      description: `${item.artist || '未知艺术家'} · ${item.media.originalName}`,
-    })),
-    [tracks]
-  );
-
   const scanQuery = useQuery({
-    queryKey: ['music-scan', settings.mediaFolderId, scanKeyword, includeMapped, scanPage, scanPageSize],
+    queryKey: ['music-scan', settings.mediaFolderId, scanKeyword, scanPage, scanPageSize],
     enabled: Boolean(settings.mediaFolderId),
     queryFn: async () =>
       (await musicService.scanAudio({
         folderId: settings.mediaFolderId,
         keyword: scanKeyword || undefined,
-        includeMapped,
+        includeMapped: false,
         pageNum: scanPage,
         pageSize: scanPageSize,
       })).data,
@@ -554,12 +569,24 @@ export default function MusicPage() {
     enabled: activeTab === 'playlists' && Boolean(selectedPlaylistId),
     queryFn: async () => (await musicService.getPlaylist(selectedPlaylistId!, { includeTracks: true })).data,
   });
+  const scanItems = useMemo(() => scanQuery.data?.list ?? [], [scanQuery.data]);
   const selectedCandidateSet = useMemo(() => new Set(selectedCandidateIds), [selectedCandidateIds]);
+  const currentPageCandidateIds = useMemo(
+    () => scanItems.filter((item) => !item.mappedTrackId).map((item) => item.id),
+    [scanItems]
+  );
+  const selectedCurrentPageCount = useMemo(
+    () => currentPageCandidateIds.filter((id) => selectedCandidateSet.has(id)).length,
+    [currentPageCandidateIds, selectedCandidateSet]
+  );
+  const isCurrentPageFullySelected =
+    currentPageCandidateIds.length > 0 && selectedCurrentPageCount === currentPageCandidateIds.length;
 
   const invalidateMusic = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['music-summary'] });
     queryClient.invalidateQueries({ queryKey: ['music-settings'] });
     queryClient.invalidateQueries({ queryKey: ['music-tracks'] });
+    queryClient.invalidateQueries({ queryKey: ['music-track-candidates'] });
     queryClient.invalidateQueries({ queryKey: ['music-scan'] });
     queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     queryClient.invalidateQueries({ queryKey: ['music-playlist-detail'] });
@@ -578,6 +605,9 @@ export default function MusicPage() {
     mutationFn: musicService.importMedia,
     onSuccess: (res) => {
       toast.success(`已纳入曲库：${res.data?.title || '音频'}`);
+      if (res.data?.mediaFileId) {
+        setSelectedCandidateIds((ids) => ids.filter((id) => id !== res.data?.mediaFileId));
+      }
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '纳入曲库失败')),
@@ -754,7 +784,11 @@ export default function MusicPage() {
 
   useEffect(() => {
     setSelectedCandidateIds([]);
-  }, [settings.mediaFolderId, scanKeyword, includeMapped, scanPage, scanPageSize]);
+  }, [settings.mediaFolderId, scanKeyword, scanPage, scanPageSize]);
+
+  useEffect(() => {
+    setTrackToAdd('');
+  }, [selectedPlaylistId, deferredPlaylistTrackKeyword]);
 
   const saveSettingsPatch = (patch: Partial<MusicSettings>) => {
     settingsMutation.mutate({
@@ -779,6 +813,20 @@ export default function MusicPage() {
     );
   };
 
+  const toggleCurrentPageCandidates = () => {
+    if (currentPageCandidateIds.length === 0) return;
+    setSelectedCandidateIds((ids) => {
+      const pageIds = new Set(currentPageCandidateIds);
+      const allCurrentPageSelected = currentPageCandidateIds.every((id) => ids.includes(id));
+      if (allCurrentPageSelected) {
+        return ids.filter((id) => !pageIds.has(id));
+      }
+      const next = new Set(ids);
+      currentPageCandidateIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  };
+
   const saveSelectedPlaylist = () => {
     if (!selectedPlaylistId) return;
     updatePlaylistMutation.mutate({
@@ -798,7 +846,7 @@ export default function MusicPage() {
       return;
     }
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith('audio/')) {
+      if (!isCommonAudioFile(file)) {
         toast.error(`${file.name} 不是音频文件`);
         continue;
       }
@@ -832,7 +880,7 @@ export default function MusicPage() {
     const stageIsCurrent = Boolean(currentTrack && stageTrack && currentTrack.id === stageTrack.id);
     const stagePlaying = stageIsCurrent && isPlaying;
     const stageProgressPercent = stageIsCurrent ? percent : 0;
-    const stageCover = stageTrack?.coverUrl || '';
+    const stageCover = stageTrack?.coverUrl || stageTrack?.media?.thumbnailUrl || '';
     const stageQueueIndex = stageIsCurrent ? currentIndex : 0;
     const handleStageMain = () => {
       if (!stageTrack) return;
@@ -901,95 +949,121 @@ export default function MusicPage() {
             </div>
           </div>
 
-          <div className="flex flex-col rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[linear-gradient(160deg,color-mix(in_oklch,var(--aurora-1)_22%,var(--bg-raised)),color-mix(in_oklch,var(--aurora-1)_8%,var(--bg-raised)))] p-4 text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,white_14%,transparent),0_20px_60px_-44px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)]">
-            <div className="flex items-center justify-between gap-3">
-              <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--aurora-1)]">
-                <span className="relative flex h-2 w-2">
-                  {stagePlaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--aurora-1)] opacity-60" />}
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--aurora-1)]" />
-                </span>
-                Now Auditioning
-              </p>
-              <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-2.5 py-1 text-xs font-bold text-[var(--ink-muted)]">
-                后台试听 · 不影响公开
-              </span>
-            </div>
+          <div className="relative isolate overflow-hidden rounded-[1.65rem] border border-[color-mix(in_oklch,white_12%,var(--aurora-1)_18%)] bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-raised)_88%,white_6%),color-mix(in_oklch,var(--bg-void)_82%,var(--aurora-1)_18%))] p-4 text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,white_16%,transparent),0_26px_70px_-46px_color-mix(in_oklch,black_80%,transparent)]">
+            {stageCover && (
+              <img
+                src={stageCover}
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-x-10 -top-10 h-56 w-[calc(100%+5rem)] scale-110 object-cover opacity-[0.22] blur-3xl saturate-150"
+              />
+            )}
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,black_4%,transparent),color-mix(in_oklch,var(--bg-void)_62%,transparent)_72%),radial-gradient(circle_at_50%_0%,color-mix(in_oklch,var(--aurora-1)_22%,transparent),transparent_48%)]" />
 
-            <div className="mt-4 flex items-center gap-4">
-              <div className={cn(
-                'relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]',
-                stagePlaying && 'shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
-              )}>
-                {stageCover ? (
-                  <img src={stageCover} alt={stageTrack?.title || ''} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklch,var(--aurora-1)_32%,var(--bg-raised)),var(--bg-void))]">
-                    <Disc3 className={cn('h-8 w-8 text-[var(--ink-secondary)]', stagePlaying && 'animate-spin [animation-duration:6s]')} />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate text-lg font-black tracking-normal" title={stageTrack?.title}>{stageTrack?.title || '等待选择歌曲'}</h3>
-                <p className="mt-1 truncate text-sm text-[var(--ink-secondary)]">{stageTrack?.artist || '从曲库或歌单点击试听'}</p>
-                <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-                  {stageTrack ? (stageTrack.album || '未分专辑') : (settings.mediaFolderId ? `媒体目录 #${settings.mediaFolderId}` : '未指定媒体目录')}
-                  {tracks.length > 0 && ` · 队列 ${stageQueueIndex + 1}/${tracks.length}`}
+            <div className="relative z-10">
+              <div className="flex items-center justify-between gap-3">
+                <p className="flex min-w-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    {stagePlaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--aurora-1)] opacity-60" />}
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--aurora-1)]" />
+                  </span>
+                  <span className="truncate">后台试听</span>
                 </p>
+                <span className="shrink-0 rounded-full border border-[color-mix(in_oklch,white_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_62%,transparent)] px-2.5 py-1 text-[11px] font-bold text-[var(--ink-secondary)] [backdrop-filter:blur(14px)_saturate(140%)]">
+                  {tracks.length > 0 ? `${stageQueueIndex + 1}/${tracks.length}` : '队列 0'}
+                </span>
               </div>
-            </div>
 
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={(event) => {
-                  if (!stageIsCurrent) {
-                    handleStageMain();
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  if (rect.width > 0) {
-                    seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (!stageIsCurrent) return;
-                  if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    seekToPercent(Math.min(100, stageProgressPercent + 5));
-                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    seekToPercent(Math.max(0, stageProgressPercent - 5));
-                  }
-                }}
-                disabled={!stageTrack}
-                className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed"
-                aria-label={stageIsCurrent ? '调整试听进度' : '开始试听'}
-              >
-                <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
-              </button>
-              <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-                <span>{fmtClock(stageIsCurrent ? progress : 0)}</span>
-                <span>{fmtClock(stageIsCurrent ? duration : (stageTrack?.durationSeconds || 0))}</span>
-              </div>
-            </div>
-
-            <div className="mt-3 flex items-center justify-center gap-4">
-              <button type="button" onClick={previousTrack} disabled={tracks.length === 0} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-40" aria-label="上一首" title="上一首">
-                <SkipBack className="h-4 w-4" />
-              </button>
               <button
                 type="button"
                 onClick={handleStageMain}
                 disabled={!stageTrack}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_16px_34px_-18px_color-mix(in_oklch,var(--aurora-1)_85%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                className="group mx-auto mt-4 block w-[min(58vw,11.5rem)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label={stagePlaying ? '暂停试听' : '播放试听'}
-                title={stagePlaying ? '暂停' : '播放'}
               >
-                {stagePlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-px" />}
+                <span className={cn(
+                  'relative block aspect-square overflow-hidden rounded-[1.35rem] border border-[color-mix(in_oklch,white_18%,transparent)] bg-[radial-gradient(circle_at_50%_44%,color-mix(in_oklch,var(--aurora-1)_24%,var(--bg-raised)),color-mix(in_oklch,var(--bg-void)_88%,var(--aurora-1)_12%))] shadow-[0_24px_42px_-28px_color-mix(in_oklch,black_90%,transparent)] transition-transform duration-300 group-hover:scale-[1.018]',
+                  stagePlaying && 'shadow-[0_28px_52px_-30px_color-mix(in_oklch,var(--aurora-1)_65%,black_35%)]'
+                )}>
+                  {stageCover ? (
+                    <img src={stageCover} alt={stageTrack?.title || ''} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center">
+                      <Disc3 className={cn('h-16 w-16 text-[color-mix(in_oklch,var(--ink-secondary)_88%,transparent)]', stagePlaying && 'animate-spin [animation-duration:6s]')} />
+                    </span>
+                  )}
+                  <span className="absolute inset-0 bg-[linear-gradient(180deg,transparent_58%,color-mix(in_oklch,black_34%,transparent))]" />
+                  <span className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,black_54%,transparent)] text-white shadow-lg [backdrop-filter:blur(12px)]">
+                    {stagePlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
+                  </span>
+                </span>
               </button>
-              <button type="button" onClick={nextTrack} disabled={tracks.length === 0} className="flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-40" aria-label="下一首" title="下一首">
-                <SkipForward className="h-4 w-4" />
-              </button>
+
+              <div className="mx-auto mt-4 max-w-[18rem] text-center">
+                <h3 className="truncate text-xl font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={stageTrack?.title}>
+                  {stageTrack?.title || '等待选择歌曲'}
+                </h3>
+                <p className="mt-1 truncate text-sm font-medium text-[var(--ink-secondary)]" title={stageTrack?.artist || stageTrack?.album || stageTrack?.media?.originalName}>
+                  {stageTrack?.artist || '未知艺术家'}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
+                  {stageTrack ? (stageTrack.album || '未分专辑') : (settings.mediaFolderId ? `媒体目录 #${settings.mediaFolderId}` : '未指定媒体目录')}
+                </p>
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    if (!stageIsCurrent) {
+                      handleStageMain();
+                      return;
+                    }
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    if (rect.width > 0) {
+                      seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (!stageIsCurrent) return;
+                    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      seekToPercent(Math.min(100, stageProgressPercent + 5));
+                    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      seekToPercent(Math.max(0, stageProgressPercent - 5));
+                    }
+                  }}
+                  disabled={!stageTrack}
+                  className="block h-2 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] shadow-[inset_0_1px_1px_color-mix(in_oklch,black_22%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed"
+                  aria-label={stageIsCurrent ? '调整试听进度' : '开始试听'}
+                >
+                  <span className="block h-full rounded-full bg-[linear-gradient(90deg,var(--aurora-1),color-mix(in_oklch,var(--aurora-3)_76%,white_24%))] shadow-[0_0_18px_-6px_color-mix(in_oklch,var(--aurora-1)_90%,transparent)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+                </button>
+                <div className="mt-2 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
+                  <span>{fmtClock(stageIsCurrent ? progress : 0)}</span>
+                  <span>{fmtClock(stageIsCurrent ? duration : (stageTrack?.durationSeconds || 0))}</span>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-center gap-4">
+                <button type="button" onClick={previousTrack} disabled={tracks.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_50%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-40 [backdrop-filter:blur(12px)]" aria-label="上一首" title="上一首">
+                  <SkipBack className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStageMain}
+                  disabled={!stageTrack}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--aurora-1)] text-white shadow-[0_18px_36px_-18px_color-mix(in_oklch,var(--aurora-1)_92%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={stagePlaying ? '暂停试听' : '播放试听'}
+                  title={stagePlaying ? '暂停' : '播放'}
+                >
+                  {stagePlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
+                </button>
+                <button type="button" onClick={nextTrack} disabled={tracks.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_50%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-40 [backdrop-filter:blur(12px)]" aria-label="下一首" title="下一首">
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1063,7 +1137,7 @@ export default function MusicPage() {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="audio/*"
+              accept={MUSIC_UPLOAD_ACCEPT}
               className="sr-only"
               disabled={!settings.mediaFolderId || Boolean(uploadingLabel)}
               onChange={(event) => handleFiles(event.target.files)}
@@ -1208,11 +1282,14 @@ export default function MusicPage() {
               <div className="flex flex-wrap justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIncludeMapped((value) => !value)}
-                  className={textButtonClass(includeMapped ? 'primary' : 'default')}
+                  onClick={toggleCurrentPageCandidates}
+                  className={textButtonClass(isCurrentPageFullySelected ? 'default' : 'primary')}
+                  disabled={currentPageCandidateIds.length === 0 || scanQuery.isFetching || batchImportMutation.isPending}
+                  aria-label={isCurrentPageFullySelected ? '取消选择当前页扫描结果' : '选择当前页扫描结果'}
                 >
-                  <RefreshCw className="h-4 w-4" />
-                  {includeMapped ? '包含已纳入' : '仅未纳入'}
+                  <Check className="h-4 w-4" />
+                  {isCurrentPageFullySelected ? '取消本页' : '全选本页'}
+                  {currentPageCandidateIds.length > 0 ? ` ${currentPageCandidateIds.length}` : ''}
                 </button>
                 <button
                   type="button"
@@ -1246,10 +1323,10 @@ export default function MusicPage() {
               <div className="p-6 text-sm text-[var(--ink-muted)]">请先指定音乐大厅媒体目录。</div>
             ) : scanQuery.isLoading ? (
               <div className="p-6 text-sm text-[var(--ink-muted)]">正在扫描媒体目录...</div>
-            ) : (scanQuery.data?.list ?? []).length === 0 ? (
+            ) : scanItems.length === 0 ? (
               <div className="p-6 text-sm text-[var(--ink-muted)]">未发现可纳入的音频文件。</div>
             ) : (
-              (scanQuery.data?.list ?? []).map((item: MusicAudioCandidate) => (
+              scanItems.map((item: MusicAudioCandidate) => (
                 <div key={item.id} className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
                   <label className="flex h-10 w-10 items-center justify-center rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]">
                     <input
@@ -1307,6 +1384,18 @@ export default function MusicPage() {
   function renderPlaylists() {
     const detail = playlistDetailQuery.data;
     const detailTracks = detail?.tracks ?? [];
+    const existingTrackIds = new Set(detailTracks.map((track) => track.id));
+    const playlistTrackOptions = buildPlaylistTrackOptions(playlistTrackCandidates, existingTrackIds);
+    const playlistCandidateTotal = playlistTrackCandidatesQuery.data?.total ?? 0;
+    const playlistCandidateLoaded = playlistTrackCandidates.length;
+    const hasMorePlaylistCandidates = playlistCandidateTotal > playlistCandidateLoaded;
+    const playlistTrackPlaceholder = playlistTrackCandidatesQuery.isFetching
+      ? '正在加载曲库'
+      : playlistTrackOptions.length > 0
+        ? '从候选歌曲加入'
+        : playlistTrackKeyword.trim()
+          ? '没有匹配的可加入歌曲'
+          : '没有可加入歌曲';
     const moveTrack = (index: number, direction: -1 | 1) => {
       if (!selectedPlaylistId || !detail) return;
       const next = [...detailTracks];
@@ -1485,14 +1574,35 @@ export default function MusicPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4 md:grid-cols-[minmax(0,1fr)_auto]">
-                <Select
-                  value={trackToAdd}
-                  onValueChange={setTrackToAdd}
-                  options={trackOptions}
-                  placeholder="从曲库选择歌曲加入"
-                  prefix={<Music2 />}
-                  ariaLabel="选择歌曲加入歌单"
-                />
+                <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[minmax(180px,0.75fr)_minmax(0,1fr)]">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
+                    <input
+                      value={playlistTrackKeyword}
+                      onChange={(event) => setPlaylistTrackKeyword(event.target.value)}
+                      className={inputClass('pl-9')}
+                      placeholder="搜索曲库歌曲、艺术家或文件名"
+                      aria-label="搜索可加入歌单的歌曲"
+                    />
+                  </div>
+                  <Select
+                    value={trackToAdd}
+                    onValueChange={setTrackToAdd}
+                    options={playlistTrackOptions}
+                    placeholder={playlistTrackPlaceholder}
+                    disabled={playlistTrackOptions.length === 0 || playlistTrackCandidatesQuery.isFetching}
+                    disabledHint={playlistTrackPlaceholder}
+                    prefix={<Music2 />}
+                    ariaLabel="选择歌曲加入歌单"
+                  />
+                  <p className="text-xs leading-5 text-[var(--ink-muted)] lg:col-span-2">
+                    {playlistTrackCandidatesQuery.isFetching
+                      ? '正在更新候选歌曲...'
+                      : hasMorePlaylistCandidates
+                        ? `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`
+                        : `可加入 ${playlistTrackOptions.length} 首${playlistCandidateTotal ? ` · 曲库匹配 ${playlistCandidateTotal} 首` : ''}`}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => selectedPlaylistId && trackToAdd && playlistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: Number(trackToAdd) })}

@@ -89,6 +89,7 @@ export interface Media {
   originalName: string;
   url: string;
   publicUrl?: string;
+  thumbnailUrl?: string;
   type: MediaType;
   mimeType: string;
   size: number;

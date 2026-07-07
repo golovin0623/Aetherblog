@@ -513,7 +513,18 @@ func trimOptColor(p *string) *string {
 	return &v
 }
 
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrackVO {
+	coverURL := publicMediaURLForID(row.CoverMediaFileID)
+	if coverURL == "" && row.MediaThumbnailURL != nil {
+		coverURL = *row.MediaThumbnailURL
+	}
 	return dto.MusicTrackVO{
 		ID:               row.ID,
 		MediaFileID:      row.MediaFileID,
@@ -522,7 +533,7 @@ func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrack
 		Album:            row.Album,
 		DurationSeconds:  row.DurationSeconds,
 		CoverMediaFileID: row.CoverMediaFileID,
-		CoverURL:         publicMediaURLForID(row.CoverMediaFileID),
+		CoverURL:         coverURL,
 		Lyric:            row.Lyric,
 		Source:           row.Source,
 		Status:           row.Status,
@@ -534,6 +545,7 @@ func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrack
 			OriginalName: row.MediaOriginalName,
 			FileURL:      row.MediaFileURL,
 			PublicURL:    fmt.Sprintf("/api/v1/public/media/%d", row.MediaFileID),
+			ThumbnailURL: derefString(row.MediaThumbnailURL),
 			FileSize:     row.MediaFileSize,
 			MimeType:     row.MediaMimeType,
 			FileType:     row.MediaFileType,
@@ -573,6 +585,7 @@ func (s *MusicService) audioCandidateToVO(row repository.MusicAudioCandidateRow)
 			OriginalName: row.OriginalName,
 			FileURL:      row.FileURL,
 			PublicURL:    fmt.Sprintf("/api/v1/public/media/%d", row.ID),
+			ThumbnailURL: derefString(row.ThumbnailURL),
 			FileSize:     row.FileSize,
 			MimeType:     row.MimeType,
 			FileType:     row.FileType,

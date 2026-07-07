@@ -70,6 +70,7 @@ type MusicTrackRow struct {
 	MediaFileType     string     `db:"media_file_type"`
 	MediaFolderID     *int64     `db:"media_folder_id"`
 	MediaDeleted      bool       `db:"media_deleted"`
+	MediaThumbnailURL *string    `db:"media_thumbnail_url"`
 }
 
 type MusicPlaylistRow struct {
@@ -99,6 +100,7 @@ type MusicAudioCandidateRow struct {
 	FileType      string  `db:"file_type"`
 	FolderID      *int64  `db:"folder_id"`
 	Deleted       bool    `db:"deleted"`
+	ThumbnailURL  *string `db:"thumbnail_url"`
 	MappedTrackID *int64  `db:"mapped_track_id"`
 	MappedTitle   *string `db:"mapped_title"`
 }
@@ -121,7 +123,8 @@ const musicTrackSelect = `
 	mf.mime_type AS media_mime_type,
 	mf.file_type AS media_file_type,
 	mf.folder_id AS media_folder_id,
-	mf.deleted AS media_deleted`
+	mf.deleted AS media_deleted,
+	mv.file_url AS media_thumbnail_url`
 
 func (r *MusicRepo) GetSettings(ctx context.Context) (*model.MusicSettings, error) {
 	if _, err := r.db.ExecContext(ctx, `INSERT INTO music_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`); err != nil {
@@ -172,9 +175,10 @@ func (r *MusicRepo) FindAudioMediaByID(ctx context.Context, mediaID int64) (*Mus
 	err := r.db.GetContext(ctx, &row, `
 		SELECT
 			mf.id, mf.original_name, mf.file_url, mf.file_size, mf.mime_type, mf.file_type,
-			mf.folder_id, mf.deleted, mt.id AS mapped_track_id, mt.title AS mapped_title
+			mf.folder_id, mf.deleted, mv.file_url AS thumbnail_url, mt.id AS mapped_track_id, mt.title AS mapped_title
 		FROM media_files mf
 		LEFT JOIN music_tracks mt ON mt.media_file_id = mf.id
+		LEFT JOIN media_variants mv ON mv.media_file_id = mf.id AND mv.variant_type='THUMBNAIL'
 		WHERE mf.id=$1 AND mf.file_type='AUDIO'`, mediaID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -194,6 +198,7 @@ func (r *MusicRepo) ScanAudioMedia(ctx context.Context, f MusicScanFilter) ([]Mu
 	sb.WriteString(`
 		FROM media_files mf
 		LEFT JOIN music_tracks mt ON mt.media_file_id = mf.id
+		LEFT JOIN media_variants mv ON mv.media_file_id = mf.id AND mv.variant_type='THUMBNAIL'
 		WHERE mf.deleted=false
 		  AND mf.file_type='AUDIO'
 		  AND (mf.folder_id IS NULL OR mf.folder_id NOT IN (SELECT id FROM media_folders WHERE is_system = TRUE))`)
@@ -221,7 +226,7 @@ func (r *MusicRepo) ScanAudioMedia(ctx context.Context, f MusicScanFilter) ([]Mu
 	query := fmt.Sprintf(`
 		SELECT
 			mf.id, mf.original_name, mf.file_url, mf.file_size, mf.mime_type, mf.file_type,
-			mf.folder_id, mf.deleted, mt.id AS mapped_track_id, mt.title AS mapped_title
+			mf.folder_id, mf.deleted, mv.file_url AS thumbnail_url, mt.id AS mapped_track_id, mt.title AS mapped_title
 		%s
 		ORDER BY mf.created_at DESC
 		LIMIT $%d OFFSET $%d`, base, idx, idx+1)
@@ -286,6 +291,7 @@ func (r *MusicRepo) FindTrackByID(ctx context.Context, id int64) (*MusicTrackRow
 		SELECT `+musicTrackSelect+`
 		FROM music_tracks t
 		JOIN media_files mf ON mf.id=t.media_file_id
+		LEFT JOIN media_variants mv ON mv.media_file_id = mf.id AND mv.variant_type='THUMBNAIL'
 		WHERE t.id=$1`, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -305,7 +311,8 @@ func (r *MusicRepo) ListTracks(ctx context.Context, f MusicTrackFilter) ([]Music
 
 	sb.WriteString(`
 		FROM music_tracks t
-		JOIN media_files mf ON mf.id=t.media_file_id`)
+		JOIN media_files mf ON mf.id=t.media_file_id
+		LEFT JOIN media_variants mv ON mv.media_file_id = mf.id AND mv.variant_type='THUMBNAIL'`)
 	if f.PlaylistID != nil {
 		sb.WriteString(" JOIN music_playlist_tracks mpt ON mpt.track_id=t.id")
 		orderBy = "mpt.sort_order ASC, t.sort_order ASC, t.created_at DESC"

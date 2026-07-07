@@ -52,6 +52,7 @@ export function VirtualMediaGrid({
       if (!item) return null;
 
       const isSelected = selectedIds.has(item.id);
+      const thumbnailUrl = item.thumbnailUrl ? getMediaUrl(item.thumbnailUrl) : '';
 
       return (
         <div style={style} className="p-2">
@@ -89,9 +90,9 @@ export function VirtualMediaGrid({
                 }
               }}
             >
-              {item.fileType === 'IMAGE' ? (
+              {item.fileType === 'IMAGE' || thumbnailUrl ? (
                 <img
-                  src={getMediaUrl(item)}
+                  src={item.fileType === 'IMAGE' ? getMediaUrl(item) : thumbnailUrl}
                   alt={item.originalName}
                   className="w-full h-full object-cover"
                   loading="lazy"

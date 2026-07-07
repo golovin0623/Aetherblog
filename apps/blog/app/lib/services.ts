@@ -81,6 +81,7 @@ export interface MusicMedia {
   originalName: string;
   fileUrl: string;
   publicUrl?: string;
+  thumbnailUrl?: string;
   fileSize: number;
   mimeType?: string;
   fileType: string;
@@ -235,6 +236,7 @@ function normalizeMusicMedia(input: unknown): MusicMedia {
     originalName: toText(raw.originalName ?? raw.original_name),
     fileUrl: toText(raw.fileUrl ?? raw.file_url),
     publicUrl: toOptionalText(raw.publicUrl ?? raw.public_url),
+    thumbnailUrl: toOptionalText(raw.thumbnailUrl ?? raw.thumbnail_url),
     fileSize: toFiniteNumber(raw.fileSize ?? raw.file_size),
     mimeType: toOptionalText(raw.mimeType ?? raw.mime_type),
     fileType: toText(raw.fileType ?? raw.file_type),
