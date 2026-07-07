@@ -412,7 +412,9 @@ func TestResolveMimeWithFallbackNormalizesAudioContainerMimes(t *testing.T) {
 		{"application/ogg", "song.opus", "audio/ogg"},
 		{"video/mp4", "song.m4a", "audio/x-m4a"},
 		{"video/mp4", "song.m4b", "audio/x-m4a"},
+		{"video/webm", "song.weba", "audio/webm"},
 		{"video/mp4", "movie.mp4", "video/mp4"},
+		{"video/webm", "movie.webm", "video/webm"},
 		{"application/ogg", "movie.ogv", "application/ogg"},
 	}
 	for _, tc := range cases {
@@ -429,6 +431,29 @@ func TestResolveMimeWithFallbackNormalizesAudioContainerMimes(t *testing.T) {
 				if classifyFileType(got) != "AUDIO" {
 					t.Fatalf("%q must classify as AUDIO", got)
 				}
+			}
+		})
+	}
+}
+
+func TestResolveAudioArtworkExtractionMimeFallsBackForOctetStream(t *testing.T) {
+	persisted := " audio/flac "
+	cases := []struct {
+		name      string
+		source    string
+		persisted *string
+		want      string
+	}{
+		{"empty_source_uses_persisted", "", &persisted, "audio/flac"},
+		{"octet_stream_uses_persisted", "application/octet-stream", &persisted, "audio/flac"},
+		{"concrete_source_wins", "audio/mpeg", &persisted, "audio/mpeg"},
+		{"octet_stream_without_persisted_stays_octet", "application/octet-stream", nil, "application/octet-stream"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveAudioArtworkExtractionMime(tc.source, tc.persisted)
+			if got != tc.want {
+				t.Fatalf("resolveAudioArtworkExtractionMime(%q, ...) = %q, want %q", tc.source, got, tc.want)
 			}
 		})
 	}

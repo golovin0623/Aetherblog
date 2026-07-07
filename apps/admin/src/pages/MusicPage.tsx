@@ -65,13 +65,15 @@ type PlaylistDraft = MusicPlaylistRequest & { sortOrder: number };
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
 const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
-const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba', 'webm']);
-const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba,.webm';
+const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba']);
+const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba';
 
 function isCommonAudioFile(file: File): boolean {
-  if (file.type.startsWith('audio/')) return true;
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  return COMMON_AUDIO_EXTENSIONS.has(ext);
+  if (ext === 'webm') return false;
+  if (COMMON_AUDIO_EXTENSIONS.has(ext)) return true;
+  if (file.type.startsWith('audio/')) return true;
+  return false;
 }
 
 const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [

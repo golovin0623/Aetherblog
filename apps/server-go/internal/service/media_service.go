@@ -1245,9 +1245,7 @@ func (s *MediaService) ensureAudioArtworkThumbnail(ctx context.Context, m model.
 	if int64(len(data)) > maxAudioArtworkBackfillBytes {
 		return
 	}
-	if mimeType == "" && m.MimeType != nil {
-		mimeType = *m.MimeType
-	}
+	mimeType = resolveAudioArtworkExtractionMime(mimeType, m.MimeType)
 	artwork, err := extractAudioArtwork(bytes.NewReader(data), int64(len(data)), mimeType)
 	if err != nil {
 		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: extract failed")
@@ -1264,6 +1262,16 @@ func publicMediaURL(id int64) string {
 		return ""
 	}
 	return fmt.Sprintf("/api/v1/public/media/%d", id)
+}
+
+func resolveAudioArtworkExtractionMime(sourceMime string, persistedMime *string) string {
+	mimeType := strings.TrimSpace(sourceMime)
+	if (mimeType == "" || mimeType == "application/octet-stream") && persistedMime != nil {
+		if persisted := strings.TrimSpace(*persistedMime); persisted != "" {
+			return persisted
+		}
+	}
+	return mimeType
 }
 
 func normalizePersistedMediaURL(raw string) string {
@@ -1334,6 +1342,8 @@ func rejectSVGByFilename(filename string) error {
 //     归一为音频 MIME,否则会被上传白名单拒绝。
 //  5. video/mp4                — M4A/M4B 共享 MP4 容器 magic bytes,需要按扩展名抬升为
 //     audio/x-m4a,否则导入曲库时会被误分类为 VIDEO。
+//  6. video/webm               — .weba 是 WebM 音频扩展,需要按扩展名抬升为 audio/webm;
+//     .webm 本身仍保留视频类型,避免破坏普通视频上传。
 //
 // guessMimeType 返回 application/octet-stream 表示扩展名也无法识别,此时保留嗅探结果。
 //
@@ -1351,6 +1361,9 @@ func resolveMimeWithFallback(detected, filename string) string {
 	}
 	if mime == "video/mp4" && (ext == ".m4a" || ext == ".m4b") {
 		return "audio/x-m4a"
+	}
+	if mime == "video/webm" && ext == ".weba" {
+		return "audio/webm"
 	}
 	if mime == "application/octet-stream" || mime == "application/zip" || strings.HasPrefix(mime, "text/plain") {
 		if guessed := guessMimeType(filename); guessed != "application/octet-stream" {

@@ -64,6 +64,29 @@ func TestLocalStorage_Type(t *testing.T) {
 	}
 }
 
+func TestGuessMimeFromExtCoversAudioExtensions(t *testing.T) {
+	cases := []struct {
+		ext  string
+		want string
+	}{
+		{".flac", "audio/flac"},
+		{".m4a", "audio/x-m4a"},
+		{".m4b", "audio/x-m4a"},
+		{".ogg", "audio/ogg"},
+		{".oga", "audio/ogg"},
+		{".opus", "audio/ogg"},
+		{".weba", "audio/webm"},
+		{".webm", "video/webm"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.ext, func(t *testing.T) {
+			if got := guessMimeFromExt(tc.ext); got != tc.want {
+				t.Fatalf("guessMimeFromExt(%q) = %q, want %q", tc.ext, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestLocalStorage_DeleteNonExistent 测试删除不存在的文件时不应返回错误（幂等性验证）。
 func TestLocalStorage_DeleteNonExistent(t *testing.T) {
 	store := NewLocalStorage(t.TempDir(), "/uploads")

@@ -268,6 +268,18 @@ func guessMimeFromExt(ext string) string {
 		return "video/webm"
 	case ".mp3":
 		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".ogg", ".oga", ".opus":
+		return "audio/ogg"
+	case ".m4a", ".m4b":
+		return "audio/x-m4a"
+	case ".aac":
+		return "audio/aac"
+	case ".flac":
+		return "audio/flac"
+	case ".weba":
+		return "audio/webm"
 	default:
 		return "application/octet-stream"
 	}
