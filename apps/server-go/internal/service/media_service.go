@@ -349,7 +349,14 @@ func (s *MediaService) resolveStore(ctx context.Context, providerID *int64) (sto
 // resolveStoreForMedia 按 media 记录上的 storage_provider_id 反查对应 store。
 // 历史 storage_provider_id IS NULL 的记录走 localStore(VULN-fix 安全升级:不影响存量数据)。
 func (s *MediaService) resolveStoreForMedia(ctx context.Context, m *model.MediaFile) (storage.Storage, *model.StorageProvider, error) {
+	if isLegacyLocalMedia(m) {
+		return s.localStore, nil, nil
+	}
 	return s.resolveStore(ctx, m.StorageProviderID)
+}
+
+func isLegacyLocalMedia(m *model.MediaFile) bool {
+	return m != nil && m.StorageProviderID == nil && strings.EqualFold(m.StorageType, "LOCAL")
 }
 
 // Upload 将 multipart 文件保存到 default storage provider 配置的后端,提取图片尺寸,并创建数据库记录。

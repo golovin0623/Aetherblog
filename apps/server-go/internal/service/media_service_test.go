@@ -484,6 +484,29 @@ func TestAudioArtworkBackfillRetryThrottle(t *testing.T) {
 	}
 }
 
+func TestIsLegacyLocalMedia(t *testing.T) {
+	providerID := int64(9)
+	cases := []struct {
+		name string
+		in   *model.MediaFile
+		want bool
+	}{
+		{"nil", nil, false},
+		{"local_without_provider", &model.MediaFile{StorageType: "LOCAL"}, true},
+		{"local_case_insensitive", &model.MediaFile{StorageType: "local"}, true},
+		{"local_with_provider", &model.MediaFile{StorageType: "LOCAL", StorageProviderID: &providerID}, false},
+		{"s3_without_provider", &model.MediaFile{StorageType: "S3"}, false},
+		{"empty_storage_type", &model.MediaFile{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isLegacyLocalMedia(tc.in); got != tc.want {
+				t.Fatalf("isLegacyLocalMedia(%+v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestXMLSniffedSVGStillBlocked 文档化并锁死 text/xml 嗅探绕过:
 // 带 <?xml ?> 头的 SVG 会被 http.DetectContentType 嗅探为 "text/xml; charset=utf-8",
 // 而 text/xml 在 allowedMimeTypes 中(OOXML / 订阅源等需要它),不能整体下白名单。
