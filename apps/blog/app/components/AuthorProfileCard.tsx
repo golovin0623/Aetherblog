@@ -409,7 +409,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           data-card-panel="profile"
           aria-hidden={!isCurrent}
           inert={!isCurrent}
-          className="profile-card-stack-panel flex h-full flex-col items-center overflow-hidden rounded-[1.75rem] border p-4 text-center [backdrop-filter:blur(22px)_saturate(145%)]"
+          className="profile-card-stack-panel flex h-full flex-col items-center border p-4 text-center [backdrop-filter:blur(22px)_saturate(145%)]"
         >
           {/* 头像：仅阴影层次，无光圈/边环 */}
           <div
@@ -471,7 +471,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         data-card-panel="music"
         aria-hidden={!isCurrent}
         inert={!isCurrent}
-        className="profile-card-stack-panel h-full rounded-[1.75rem] border p-1 [backdrop-filter:blur(22px)_saturate(145%)]"
+        className="profile-card-stack-panel h-full border p-0 [backdrop-filter:blur(22px)_saturate(145%)]"
       >
         <ProfileMusicPlayer
           variant="stack"
@@ -492,7 +492,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
   return (
     <div
-      className={`surface-raised relative group !rounded-3xl overflow-hidden ${className || ''}`}
+      className={`surface-raised profile-card-stack-frame relative group overflow-hidden ${className || ''}`}
       data-interactive
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}

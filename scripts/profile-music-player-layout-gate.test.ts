@@ -6,6 +6,10 @@ const profileSource = readFileSync(
   path.resolve(__dirname, '../apps/blog/app/components/ProfileMusicPlayer.tsx'),
   'utf8'
 );
+const authorProfileSource = readFileSync(
+  path.resolve(__dirname, '../apps/blog/app/components/AuthorProfileCard.tsx'),
+  'utf8'
+);
 const providerSource = readFileSync(
   path.resolve(__dirname, '../apps/blog/app/components/MusicPlayerProvider.tsx'),
   'utf8'
@@ -62,6 +66,44 @@ describe('profile music player stack layout gate', () => {
     expect(stack).toContain('profile-music-progress-rail');
     expect(stack).toContain('style={{ width: `${shownPercent}%` }}');
     expect(stack).toContain('profile-music-stack-actions');
+  });
+});
+
+describe('author profile stack radius gate', () => {
+  it('uses one shared profile stack radius instead of nested hard-coded card radii', () => {
+    expect(authorProfileSource).toContain('profile-card-stack-frame');
+    expect(globalCss).toContain('--profile-card-stack-radius');
+    expect(globalCss).toContain('--profile-card-stack-panel-radius');
+    expect(profileSource).toContain('profile-music-stack-shell');
+    expect(profileSource).toContain('rounded-[var(--profile-card-stack-panel-radius,1.75rem)]');
+
+    expect(authorProfileSource).not.toContain('!rounded-3xl');
+    expect(authorProfileSource).not.toContain('rounded-[1.75rem]');
+    expect(profileSource).not.toContain('rounded-[1.35rem]');
+    expect(globalCss).not.toContain('border-radius: 1.95rem');
+  });
+
+  it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
+    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*clip-path:\s*inset\(0 round var\(--profile-card-stack-panel-radius\)\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-slot\s*{[\s\S]*padding-inline:\s*var\(--profile-card-stack-slide-gutter\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*overflow:\s*hidden;/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel::before\s*{[\s\S]*border-radius:\s*inherit;/);
+  });
+
+  it('keeps light theme card boundaries visible instead of letting white corners disappear', () => {
+    expect(globalCss).toContain('--profile-stack-stage-bg');
+    expect(globalCss).toContain('--profile-stack-stage-border');
+    expect(globalCss).toContain('--profile-stack-panel-border: color-mix(in oklch, var(--text-primary) 14%, transparent);');
+    expect(globalCss).toContain('0 0 0 1px color-mix(in oklch, var(--text-primary) 5%, transparent)');
+  });
+
+  it('lets the music card share the outer panel surface instead of drawing a second rounded frame', () => {
+    expect(authorProfileSource).toContain('data-card-panel="music"');
+    expect(authorProfileSource).toContain('className="profile-card-stack-panel h-full border p-0');
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\[data-card-panel="music"\]\s*{[\s\S]*display:\s*flex;/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\[data-card-panel="music"\] \.profile-music-stack-shell\s*{[\s\S]*background:\s*transparent;/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\[data-card-panel="music"\] \.profile-music-stack-shell\s*{[\s\S]*box-shadow:\s*none;/);
   });
 });
 

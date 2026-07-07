@@ -4,6 +4,7 @@ import type { SiteBrandingSettings } from '@aetherblog/utils';
 
 export interface PublicSiteInfo extends SiteBrandingSettings {
   site_name?: string;
+  siteName?: string;
   siteTitle?: string;
   site_description?: string;
   siteDescription?: string;
