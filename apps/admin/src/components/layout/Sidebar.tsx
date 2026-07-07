@@ -36,7 +36,7 @@ import {
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { usePrefersReducedMotion, useTheme } from '@/hooks';
-import { useSiteLogo } from '@/hooks/useSiteLogo';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 import { cn } from '@/lib/utils';
 import { startTransition, useCallback, useRef, useState } from 'react';
 
@@ -302,7 +302,7 @@ function SidebarContent({
   closePalette,
 }: SidebarContentProps) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
-  const siteLogo = useSiteLogo();
+  const { siteName, siteLogo } = useSiteBranding();
   const searchAnchorRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -318,7 +318,7 @@ function SidebarContent({
           title="访问主站"
           aria-label="访问主站"
           className={cn(
-            'flex items-center gap-3 rounded-lg px-1 py-1 -mx-1 transition-colors duration-200 group outline-none',
+            'flex min-w-0 items-center gap-3 rounded-lg px-1 py-1 -mx-1 transition-colors duration-200 group outline-none',
             isMobile
               ? 'active:bg-[var(--bg-card-hover)]' // 移动端仅 active 状态，避免触摸残留 hover
               : 'hover:bg-[var(--bg-card-hover)]'
@@ -327,7 +327,7 @@ function SidebarContent({
           {/* 站点 Logo */}
           {siteLogo ? (
             <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-              <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
+              <img src={siteLogo} alt={`${siteName} Logo`} className="w-full h-full object-contain" />
             </div>
           ) : (
             <span className="relative w-8 h-8 inline-flex items-center justify-center flex-shrink-0">
@@ -335,14 +335,16 @@ function SidebarContent({
             </span>
           )}
           <div className={cn(
-            'overflow-hidden transition-all duration-300',
+            'min-w-0 overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <span className={cn(
-              'font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap transition-all duration-200',
+              'block max-w-[9.5rem] truncate font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap transition-all duration-200',
               !isMobile && 'group-hover:from-primary group-hover:to-accent'
-            )}>
-              AetherBlog
+            )}
+              title={siteName}
+            >
+              {siteName}
             </span>
           </div>
         </a>

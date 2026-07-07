@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { getPreferredSiteIconUrl, getSiteIconMimeType } from '@aetherblog/utils';
-import { publicSiteService } from '@/services/publicSiteService';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 
 const INSERTED_ATTR = 'data-aetherblog-inserted-icon';
 const DEFAULT_HREF_ATTR = 'data-aetherblog-default-href';
@@ -87,11 +86,7 @@ function resetFavicon(): void {
 }
 
 export default function AdminFaviconSync() {
-  const { data: siteInfo } = useQuery({
-    queryKey: ['public-site-info'],
-    queryFn: () => publicSiteService.getInfo(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { siteInfo, siteName } = useSiteBranding();
 
   useEffect(() => {
     if (!siteInfo) return;
@@ -104,6 +99,12 @@ export default function AdminFaviconSync() {
 
     syncFavicon(faviconUrl);
   }, [siteInfo]);
+
+  useEffect(() => {
+    if (!siteInfo) return;
+
+    document.title = `${siteName} Admin`;
+  }, [siteInfo, siteName]);
 
   return null;
 }

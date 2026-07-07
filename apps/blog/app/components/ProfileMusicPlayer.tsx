@@ -51,7 +51,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
 
   const isStack = variant === 'stack';
   const shellClass = isStack
-    ? 'relative flex h-full min-h-[168px] w-full flex-col justify-center gap-3 overflow-hidden rounded-[1.35rem] border border-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-4 text-left shadow-[0_18px_48px_-38px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]'
+    ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-3 overflow-hidden rounded-[var(--profile-card-stack-panel-radius,1.75rem)] border border-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-4 text-left shadow-[0_18px_48px_-38px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]'
     : cn(
         'surface-leaf group/music-entry relative w-full overflow-hidden text-left',
         surface === 'home' ? 'mb-8 p-4 md:p-5' : 'mb-3 p-3'

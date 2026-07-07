@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 
 // 设计语言锚定 Aether Codex (/design, /about) —— 与 LoginPage 配套。
 // 首次登录（isFirstLogin）会叠加一层 signal-warn 语境:aurora-3 橙向渲染,
@@ -25,6 +26,7 @@ export function ChangePasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useAuthStore((state) => state.logout);
+  const { siteName } = useSiteBranding();
 
   const isFirstLogin = location.state?.firstLogin === true;
 
@@ -117,7 +119,7 @@ export function ChangePasswordPage() {
         className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
       >
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-3">
+          <div className="inline-flex max-w-full min-w-0 items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{
@@ -131,7 +133,12 @@ export function ChangePasswordPage() {
                 strokeWidth={1.75}
               />
             </div>
-            <span className="font-display text-lg font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</span>
+            <span
+              className="block max-w-[min(28rem,calc(50vw-8rem))] truncate font-display text-lg font-semibold tracking-normal text-[var(--ink-primary)]"
+              title={siteName}
+            >
+              {siteName}
+            </span>
           </div>
         </div>
 

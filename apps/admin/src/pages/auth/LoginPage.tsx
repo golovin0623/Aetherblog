@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { useSiteBranding } from '@/hooks/useSiteBranding';
 
 // NOTE: 本页设计语言锚定 `apps/blog/app/design/` + `apps/blog/app/about/` 里建立的
 // Aether Codex 规范 —— surface-overlay / --ink-* / --aurora-* / Fraunces display.
@@ -15,6 +16,34 @@ import { logger } from '@/lib/logger';
 // 反转 ink / bg / signal 色），不在本文件里手写 dark: variant.
 
 // AetherMark —— 品牌图形,来自 @aetherblog/ui 共享组件,双主题跟随 --aurora-* tokens 自动切换.
+
+interface AdminBrandMarkProps {
+  siteLogo: string;
+  siteName: string;
+  size: number;
+  className?: string;
+}
+
+function AdminBrandMark({ siteLogo, siteName, size, className }: AdminBrandMarkProps) {
+  return (
+    <span
+      className={cn('aether-mark-wrap shrink-0', className)}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      {siteLogo ? (
+        <img
+          src={siteLogo}
+          alt=""
+          className="h-full w-full rounded-full object-contain"
+          title={siteName}
+        />
+      ) : (
+        <AetherMark size={size} />
+      )}
+    </span>
+  );
+}
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
@@ -25,6 +54,7 @@ export function LoginPage() {
   const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
   const location = useLocation();
+  const { siteName, siteLogo } = useSiteBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,15 +138,14 @@ export function LoginPage() {
       >
         {/* 字标 —— AetherMark + Fraunces 字标 */}
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-3.5">
-            <span className="aether-mark-wrap" aria-hidden="true">
-              <AetherMark size={32} />
-            </span>
+          <div className="inline-flex max-w-full min-w-0 items-center gap-3.5">
+            <AdminBrandMark siteLogo={siteLogo} siteName={siteName} size={32} />
             <span
-              className="font-display text-[1.35rem] tracking-[-0.01em] text-[var(--ink-primary)]"
+              className="block max-w-[min(28rem,calc(50vw-8rem))] truncate font-display text-[1.35rem] tracking-normal text-[var(--ink-primary)]"
+              title={siteName}
               style={{ fontWeight: 500, fontVariationSettings: '"opsz" 16, "SOFT" 50, "WONK" 0' }}
             >
-              AetherBlog
+              {siteName}
             </span>
           </div>
         </div>
@@ -184,10 +213,14 @@ export function LoginPage() {
             transition={transition.quick}
             className="lg:hidden flex flex-col items-center mb-8 text-center"
           >
-            <span className="aether-mark-wrap mb-4" aria-hidden="true">
-              <AetherMark size={44} />
-            </span>
-            <h1 className="font-display text-2xl tracking-[-0.01em] text-[var(--ink-primary)]" style={{ fontWeight: 500 }}>AetherBlog</h1>
+            <AdminBrandMark siteLogo={siteLogo} siteName={siteName} size={44} className="mb-4" />
+            <h1
+              className="max-w-full break-words px-3 font-display text-2xl tracking-normal text-[var(--ink-primary)] leading-tight"
+              title={siteName}
+              style={{ fontWeight: 500 }}
+            >
+              {siteName}
+            </h1>
             <p className="font-mono text-[10px] mt-1.5 uppercase tracking-[0.22em] text-[var(--ink-muted)]">Cognitive Elegance</p>
           </motion.div>
 
