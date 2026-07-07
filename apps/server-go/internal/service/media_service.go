@@ -31,6 +31,7 @@ import (
 const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
 const maxAudioArtworkBackfillBytes int64 = 100 * 1024 * 1024
 const maxAudioArtworkBackfillPerPage = 8
+const audioArtworkBackfillRetryDelay = 24 * time.Hour
 const publicBackupVerificationFreshness = 24 * time.Hour
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
@@ -135,8 +136,9 @@ type MediaService struct {
 	storeCache   map[int64]storage.Storage
 	storeCacheMu sync.RWMutex
 
-	audioArtworkJobs   map[int64]struct{}
-	audioArtworkJobsMu sync.Mutex
+	audioArtworkJobs       map[int64]struct{}
+	audioArtworkRetryAfter map[int64]time.Time
+	audioArtworkJobsMu     sync.Mutex
 }
 
 // NewMediaService 创建 MediaService 实例。
@@ -149,12 +151,13 @@ type MediaService struct {
 // 时校验目标文件夹的 owner 与显式授权。
 func NewMediaService(repo *repository.MediaRepo, localStore storage.Storage, providerRepo *repository.StorageProviderRepo, uploadDir string) *MediaService {
 	return &MediaService{
-		repo:             repo,
-		localStore:       localStore,
-		providerRepo:     providerRepo,
-		uploadDir:        uploadDir,
-		storeCache:       make(map[int64]storage.Storage),
-		audioArtworkJobs: make(map[int64]struct{}),
+		repo:                   repo,
+		localStore:             localStore,
+		providerRepo:           providerRepo,
+		uploadDir:              uploadDir,
+		storeCache:             make(map[int64]storage.Storage),
+		audioArtworkJobs:       make(map[int64]struct{}),
+		audioArtworkRetryAfter: make(map[int64]time.Time),
 	}
 }
 
@@ -1184,6 +1187,7 @@ func (s *MediaService) scheduleMissingAudioArtworkBackfill(ms []model.MediaFile,
 		return
 	}
 	scheduled := 0
+	now := time.Now()
 	for _, m := range ms {
 		if scheduled >= maxAudioArtworkBackfillPerPage {
 			return
@@ -1191,23 +1195,36 @@ func (s *MediaService) scheduleMissingAudioArtworkBackfill(ms []model.MediaFile,
 		if m.ID <= 0 || m.Deleted || m.FileType != "AUDIO" || thumbnailURLs[m.ID] != "" {
 			continue
 		}
-		if !s.markAudioArtworkJob(m.ID) {
+		if !s.markAudioArtworkJobAt(m.ID, now) {
 			continue
 		}
 		scheduled++
 		media := m
 		go func() {
-			defer s.unmarkAudioArtworkJob(media.ID)
-			s.ensureAudioArtworkThumbnail(context.Background(), media)
+			created := s.ensureAudioArtworkThumbnail(context.Background(), media)
+			s.finishAudioArtworkJob(media.ID, created, time.Now())
 		}()
 	}
 }
 
 func (s *MediaService) markAudioArtworkJob(mediaID int64) bool {
+	return s.markAudioArtworkJobAt(mediaID, time.Now())
+}
+
+func (s *MediaService) markAudioArtworkJobAt(mediaID int64, now time.Time) bool {
 	s.audioArtworkJobsMu.Lock()
 	defer s.audioArtworkJobsMu.Unlock()
 	if s.audioArtworkJobs == nil {
 		s.audioArtworkJobs = make(map[int64]struct{})
+	}
+	if s.audioArtworkRetryAfter == nil {
+		s.audioArtworkRetryAfter = make(map[int64]time.Time)
+	}
+	if retryAfter, ok := s.audioArtworkRetryAfter[mediaID]; ok {
+		if now.Before(retryAfter) {
+			return false
+		}
+		delete(s.audioArtworkRetryAfter, mediaID)
 	}
 	if _, ok := s.audioArtworkJobs[mediaID]; ok {
 		return false
@@ -1216,45 +1233,53 @@ func (s *MediaService) markAudioArtworkJob(mediaID int64) bool {
 	return true
 }
 
-func (s *MediaService) unmarkAudioArtworkJob(mediaID int64) {
+func (s *MediaService) finishAudioArtworkJob(mediaID int64, created bool, now time.Time) {
 	s.audioArtworkJobsMu.Lock()
 	defer s.audioArtworkJobsMu.Unlock()
 	delete(s.audioArtworkJobs, mediaID)
+	if s.audioArtworkRetryAfter == nil {
+		s.audioArtworkRetryAfter = make(map[int64]time.Time)
+	}
+	if created {
+		delete(s.audioArtworkRetryAfter, mediaID)
+		return
+	}
+	s.audioArtworkRetryAfter[mediaID] = now.Add(audioArtworkBackfillRetryDelay)
 }
 
-func (s *MediaService) ensureAudioArtworkThumbnail(ctx context.Context, m model.MediaFile) {
+func (s *MediaService) ensureAudioArtworkThumbnail(ctx context.Context, m model.MediaFile) bool {
 	store, _, err := s.resolveStoreForMedia(ctx, &m)
 	if err != nil {
 		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: resolve store failed")
-		return
+		return false
 	}
 	rc, size, mimeType, err := store.Get(ctx, m.FilePath)
 	if err != nil {
 		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: read source failed")
-		return
+		return false
 	}
 	defer rc.Close()
 	if size > maxAudioArtworkBackfillBytes {
-		return
+		return false
 	}
 	data, err := io.ReadAll(io.LimitReader(rc, maxAudioArtworkBackfillBytes+1))
 	if err != nil {
 		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: buffer source failed")
-		return
+		return false
 	}
 	if int64(len(data)) > maxAudioArtworkBackfillBytes {
-		return
+		return false
 	}
 	mimeType = resolveAudioArtworkExtractionMime(mimeType, m.MimeType)
 	artwork, err := extractAudioArtwork(bytes.NewReader(data), int64(len(data)), mimeType)
 	if err != nil {
 		log.Warn().Err(err).Int64("media_id", m.ID).Msg("audio artwork backfill: extract failed")
-		return
+		return false
 	}
 	if artwork == nil {
-		return
+		return false
 	}
-	s.persistAudioArtworkThumbnail(ctx, store, &m, artwork)
+	return s.persistAudioArtworkThumbnail(ctx, store, &m, artwork) != ""
 }
 
 func publicMediaURL(id int64) string {

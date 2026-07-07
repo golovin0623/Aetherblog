@@ -459,6 +459,31 @@ func TestResolveAudioArtworkExtractionMimeFallsBackForOctetStream(t *testing.T) 
 	}
 }
 
+func TestAudioArtworkBackfillRetryThrottle(t *testing.T) {
+	s := &MediaService{}
+	now := time.Date(2026, 7, 8, 2, 0, 0, 0, time.UTC)
+
+	if !s.markAudioArtworkJobAt(7, now) {
+		t.Fatal("first artwork backfill job should be scheduled")
+	}
+	if s.markAudioArtworkJobAt(7, now) {
+		t.Fatal("running artwork backfill job should not be scheduled twice")
+	}
+
+	s.finishAudioArtworkJob(7, false, now)
+	if s.markAudioArtworkJobAt(7, now.Add(time.Hour)) {
+		t.Fatal("failed/no-artwork backfill should be throttled before retry delay expires")
+	}
+	if !s.markAudioArtworkJobAt(7, now.Add(audioArtworkBackfillRetryDelay).Add(time.Second)) {
+		t.Fatal("artwork backfill should be allowed after retry delay expires")
+	}
+
+	s.finishAudioArtworkJob(7, true, now.Add(audioArtworkBackfillRetryDelay).Add(2*time.Second))
+	if !s.markAudioArtworkJobAt(7, now.Add(audioArtworkBackfillRetryDelay).Add(3*time.Second)) {
+		t.Fatal("successful artwork backfill should clear retry throttle")
+	}
+}
+
 // TestXMLSniffedSVGStillBlocked 文档化并锁死 text/xml 嗅探绕过:
 // 带 <?xml ?> 头的 SVG 会被 http.DetectContentType 嗅探为 "text/xml; charset=utf-8",
 // 而 text/xml 在 allowedMimeTypes 中(OOXML / 订阅源等需要它),不能整体下白名单。
