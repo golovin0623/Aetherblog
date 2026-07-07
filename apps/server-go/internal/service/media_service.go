@@ -1321,15 +1321,19 @@ func rejectSVGByFilename(filename string) error {
 }
 
 // resolveMimeWithFallback 是 Upload / UpdateContent 共用的 MIME 解析器:
-// 优先用内容嗅探(防伪造的 Content-Type),仅当嗅探退化为通用类型时回退到扩展名猜测。
+// 优先用内容嗅探(防伪造的 Content-Type),仅当嗅探退化为通用类型或容器类型无法区分音频/视频时回退到扩展名猜测。
 //
-// 触发回退的三种通用类型:
+// 触发回退的类型:
 //  1. application/octet-stream — 嗅探完全失败的兜底。
 //  2. application/zip          — DOCX/XLSX/PPTX 等 OOXML 格式 magic bytes 与 ZIP 相同,
 //     必须用扩展名区分具体类型。
 //  3. text/plain 前缀          — 常见 <svg ...> 载荷会被嗅探成 "text/plain; charset=utf-8",
 //     必须用扩展名抬升为 image/svg+xml 配合白名单拒收。
 //     注意是 HasPrefix 而非 == — 嗅探结果通常带 charset 后缀。
+//  4. application/ogg          — Go 嗅探器只知道 Ogg 容器,需要按 .ogg/.oga/.opus
+//     归一为音频 MIME,否则会被上传白名单拒绝。
+//  5. video/mp4                — M4A/M4B 共享 MP4 容器 magic bytes,需要按扩展名抬升为
+//     audio/x-m4a,否则导入曲库时会被误分类为 VIDEO。
 //
 // guessMimeType 返回 application/octet-stream 表示扩展名也无法识别,此时保留嗅探结果。
 //
@@ -1341,6 +1345,13 @@ func rejectSVGByFilename(filename string) error {
 //     production 的 HasPrefix 条件)。
 func resolveMimeWithFallback(detected, filename string) string {
 	mime := detected
+	ext := strings.ToLower(filepath.Ext(filename))
+	if mime == "application/ogg" && (ext == ".ogg" || ext == ".oga" || ext == ".opus") {
+		return "audio/ogg"
+	}
+	if mime == "video/mp4" && (ext == ".m4a" || ext == ".m4b") {
+		return "audio/x-m4a"
+	}
 	if mime == "application/octet-stream" || mime == "application/zip" || strings.HasPrefix(mime, "text/plain") {
 		if guessed := guessMimeType(filename); guessed != "application/octet-stream" {
 			mime = guessed

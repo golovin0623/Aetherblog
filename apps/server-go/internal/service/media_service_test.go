@@ -401,6 +401,39 @@ func TestResolveMimeWithFallbackPreservesAllowedDetected(t *testing.T) {
 	}
 }
 
+func TestResolveMimeWithFallbackNormalizesAudioContainerMimes(t *testing.T) {
+	cases := []struct {
+		detected string
+		filename string
+		want     string
+	}{
+		{"application/ogg", "song.ogg", "audio/ogg"},
+		{"application/ogg", "song.oga", "audio/ogg"},
+		{"application/ogg", "song.opus", "audio/ogg"},
+		{"video/mp4", "song.m4a", "audio/x-m4a"},
+		{"video/mp4", "song.m4b", "audio/x-m4a"},
+		{"video/mp4", "movie.mp4", "video/mp4"},
+		{"application/ogg", "movie.ogv", "application/ogg"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.detected+"/"+tc.filename, func(t *testing.T) {
+			got := resolveMimeWithFallback(tc.detected, tc.filename)
+			if got != tc.want {
+				t.Fatalf("resolveMimeWithFallback(%q, %q) = %q, want %q",
+					tc.detected, tc.filename, got, tc.want)
+			}
+			if strings.HasPrefix(tc.filename, "song.") {
+				if !allowedMimeTypes[got] {
+					t.Fatalf("%q must be allowed for audio upload", got)
+				}
+				if classifyFileType(got) != "AUDIO" {
+					t.Fatalf("%q must classify as AUDIO", got)
+				}
+			}
+		})
+	}
+}
+
 // TestXMLSniffedSVGStillBlocked 文档化并锁死 text/xml 嗅探绕过:
 // 带 <?xml ?> 头的 SVG 会被 http.DetectContentType 嗅探为 "text/xml; charset=utf-8",
 // 而 text/xml 在 allowedMimeTypes 中(OOXML / 订阅源等需要它),不能整体下白名单。
