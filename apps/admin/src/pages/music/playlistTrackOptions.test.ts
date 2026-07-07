@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
   PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
+  buildPlaylistTrackIdSet,
   buildPlaylistTrackOptions,
+  getMissingPlaylistMemberPageNumbers,
   type PlaylistTrackOptionSource,
 } from './playlistTrackOptions';
 
@@ -37,5 +40,32 @@ describe('playlist track candidate options', () => {
         description: 'Singer · b.mp3',
       },
     ]);
+  });
+
+  it('filters tracks already present beyond the first playlist detail page', () => {
+    const candidates: PlaylistTrackOptionSource[] = [
+      { id: 101, title: 'Already Added After First Page', media: { originalName: 'a.mp3' } },
+      { id: 102, title: 'Candidate', artist: 'Singer', media: { originalName: 'b.mp3' } },
+    ];
+    const existing = buildPlaylistTrackIdSet(
+      Array.from({ length: 101 }, (_, index) => ({
+        id: index + 1,
+        title: `Existing ${index + 1}`,
+      }))
+    );
+
+    expect(buildPlaylistTrackOptions(candidates, existing)).toEqual([
+      {
+        value: '102',
+        label: 'Candidate',
+        description: 'Singer · b.mp3',
+      },
+    ]);
+  });
+
+  it('requests the remaining playlist member pages when a playlist has more than one page', () => {
+    expect(PLAYLIST_MEMBER_TRACK_PAGE_SIZE).toBe(100);
+    expect(getMissingPlaylistMemberPageNumbers(250, 100)).toEqual([2, 3]);
+    expect(getMissingPlaylistMemberPageNumbers(100, 100)).toEqual([]);
   });
 });

@@ -52,8 +52,11 @@ import { folderService } from '@/services/folderService';
 import { mediaService } from '@/services/mediaService';
 import { musicService } from '@/services/musicService';
 import {
+  PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
   PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
+  buildPlaylistTrackIdSet,
   buildPlaylistTrackOptions,
+  getMissingPlaylistMemberPageNumbers,
 } from './music/playlistTrackOptions';
 
 type MusicTab = 'library' | 'playlists' | 'display';
@@ -74,6 +77,35 @@ function isCommonAudioFile(file: File): boolean {
   if (COMMON_AUDIO_EXTENSIONS.has(ext)) return true;
   if (file.type.startsWith('audio/')) return true;
   return false;
+}
+
+async function fetchAllPlaylistTracks(playlistId: number): Promise<MusicTrack[]> {
+  const firstPage = (await musicService.getTracks({
+    playlistId,
+    pageNum: 1,
+    pageSize: PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
+  })).data;
+  const tracks = [...(firstPage.list ?? [])];
+  const missingPages = getMissingPlaylistMemberPageNumbers(
+    firstPage.total,
+    tracks.length,
+    PLAYLIST_MEMBER_TRACK_PAGE_SIZE
+  );
+  if (missingPages.length === 0) return tracks;
+
+  const remainingPages = await Promise.all(
+    missingPages.map(async (pageNum) =>
+      (await musicService.getTracks({
+        playlistId,
+        pageNum,
+        pageSize: PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
+      })).data
+    )
+  );
+  for (const page of remainingPages) {
+    tracks.push(...(page.list ?? []));
+  }
+  return tracks;
 }
 
 const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
@@ -571,6 +603,11 @@ export default function MusicPage() {
     enabled: activeTab === 'playlists' && Boolean(selectedPlaylistId),
     queryFn: async () => (await musicService.getPlaylist(selectedPlaylistId!, { includeTracks: true })).data,
   });
+  const playlistMemberTracksQuery = useQuery({
+    queryKey: ['music-playlist-member-tracks', selectedPlaylistId],
+    enabled: activeTab === 'playlists' && Boolean(selectedPlaylistId),
+    queryFn: async () => fetchAllPlaylistTracks(selectedPlaylistId!),
+  });
   const scanItems = useMemo(() => scanQuery.data?.list ?? [], [scanQuery.data]);
   const selectedCandidateSet = useMemo(() => new Set(selectedCandidateIds), [selectedCandidateIds]);
   const currentPageCandidateIds = useMemo(
@@ -592,6 +629,7 @@ export default function MusicPage() {
     queryClient.invalidateQueries({ queryKey: ['music-scan'] });
     queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     queryClient.invalidateQueries({ queryKey: ['music-playlist-detail'] });
+    queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks'] });
   }, [queryClient]);
 
   const settingsMutation = useMutation({
@@ -1385,19 +1423,38 @@ export default function MusicPage() {
 
   function renderPlaylists() {
     const detail = playlistDetailQuery.data;
-    const detailTracks = detail?.tracks ?? [];
-    const existingTrackIds = new Set(detailTracks.map((track) => track.id));
+    const detailTracks = playlistMemberTracksQuery.data ?? detail?.tracks ?? [];
+    const existingTrackIds = buildPlaylistTrackIdSet(playlistMemberTracksQuery.data ?? []);
     const playlistTrackOptions = buildPlaylistTrackOptions(playlistTrackCandidates, existingTrackIds);
     const playlistCandidateTotal = playlistTrackCandidatesQuery.data?.total ?? 0;
     const playlistCandidateLoaded = playlistTrackCandidates.length;
     const hasMorePlaylistCandidates = playlistCandidateTotal > playlistCandidateLoaded;
-    const playlistTrackPlaceholder = playlistTrackCandidatesQuery.isFetching
-      ? '正在加载曲库'
-      : playlistTrackOptions.length > 0
-        ? '从候选歌曲加入'
-        : playlistTrackKeyword.trim()
-          ? '没有匹配的可加入歌曲'
-          : '没有可加入歌曲';
+    const isPlaylistMemberTrackLoading = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isLoading;
+    const isPlaylistMemberTrackUnavailable = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isError;
+    const playlistTrackPickerDisabled =
+      playlistTrackOptions.length === 0 ||
+      playlistTrackCandidatesQuery.isFetching ||
+      isPlaylistMemberTrackLoading ||
+      isPlaylistMemberTrackUnavailable;
+    let playlistTrackPlaceholder = '没有可加入歌曲';
+    let playlistTrackStatusText = `可加入 ${playlistTrackOptions.length} 首${playlistCandidateTotal ? ` · 曲库匹配 ${playlistCandidateTotal} 首` : ''}`;
+    if (isPlaylistMemberTrackLoading) {
+      playlistTrackPlaceholder = '正在核对已加入歌曲';
+      playlistTrackStatusText = '正在核对歌单内全部歌曲，避免重复加入已存在曲目...';
+    } else if (isPlaylistMemberTrackUnavailable) {
+      playlistTrackPlaceholder = '无法核对已加入歌曲';
+      playlistTrackStatusText = '无法核对歌单内歌曲，请刷新后重试。';
+    } else if (playlistTrackCandidatesQuery.isFetching) {
+      playlistTrackPlaceholder = '正在加载曲库';
+      playlistTrackStatusText = '正在更新候选歌曲...';
+    } else if (playlistTrackOptions.length > 0) {
+      playlistTrackPlaceholder = '从候选歌曲加入';
+    } else if (playlistTrackKeyword.trim()) {
+      playlistTrackPlaceholder = '没有匹配的可加入歌曲';
+    }
+    if (!isPlaylistMemberTrackLoading && !isPlaylistMemberTrackUnavailable && !playlistTrackCandidatesQuery.isFetching && hasMorePlaylistCandidates) {
+      playlistTrackStatusText = `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`;
+    }
     const moveTrack = (index: number, direction: -1 | 1) => {
       if (!selectedPlaylistId || !detail) return;
       const next = [...detailTracks];
@@ -1505,7 +1562,7 @@ export default function MusicPage() {
             icon={<Headphones className="h-4 w-4" />}
             title={selectedPlaylist?.name || '选择歌单'}
             description={selectedPlaylist ? '歌单排序独立于媒体库和曲库排序' : '创建或选择一个歌单后开始编排'}
-            aside={selectedPlaylist ? <AdminSectionCount>{detailTracks.length} 首</AdminSectionCount> : null}
+            aside={selectedPlaylist ? <AdminSectionCount>{selectedPlaylist.trackCount} 首</AdminSectionCount> : null}
           />
           {selectedPlaylist ? (
             <>
@@ -1592,31 +1649,27 @@ export default function MusicPage() {
                     onValueChange={setTrackToAdd}
                     options={playlistTrackOptions}
                     placeholder={playlistTrackPlaceholder}
-                    disabled={playlistTrackOptions.length === 0 || playlistTrackCandidatesQuery.isFetching}
+                    disabled={playlistTrackPickerDisabled}
                     disabledHint={playlistTrackPlaceholder}
                     prefix={<Music2 />}
                     ariaLabel="选择歌曲加入歌单"
                   />
                   <p className="text-xs leading-5 text-[var(--ink-muted)] lg:col-span-2">
-                    {playlistTrackCandidatesQuery.isFetching
-                      ? '正在更新候选歌曲...'
-                      : hasMorePlaylistCandidates
-                        ? `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`
-                        : `可加入 ${playlistTrackOptions.length} 首${playlistCandidateTotal ? ` · 曲库匹配 ${playlistCandidateTotal} 首` : ''}`}
+                    {playlistTrackStatusText}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => selectedPlaylistId && trackToAdd && playlistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: Number(trackToAdd) })}
                   className={textButtonClass('primary')}
-                  disabled={!trackToAdd || playlistTrackMutation.isPending}
+                  disabled={!trackToAdd || playlistTrackMutation.isPending || playlistTrackPickerDisabled}
                 >
                   <Plus className="h-4 w-4" />
                   加入歌单
                 </button>
               </div>
               <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-                {playlistDetailQuery.isLoading ? (
+                {playlistDetailQuery.isLoading || isPlaylistMemberTrackLoading ? (
                   <div className="p-6 text-sm text-[var(--ink-muted)]">正在加载歌单歌曲...</div>
                 ) : detailTracks.length === 0 ? (
                   <div className="p-6 text-sm text-[var(--ink-muted)]">这个歌单还没有歌曲。</div>

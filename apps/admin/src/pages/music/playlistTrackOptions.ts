@@ -1,4 +1,5 @@
 export const PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE = 100;
+export const PLAYLIST_MEMBER_TRACK_PAGE_SIZE = 100;
 
 export interface PlaylistTrackOptionSource {
   id: number;
@@ -26,4 +27,19 @@ export function buildPlaylistTrackOptions(
       label: track.title,
       description: `${track.artist || '未知艺术家'} · ${track.media?.originalName || '未加载媒体文件名'}`,
     }));
+}
+
+export function buildPlaylistTrackIdSet(tracks: PlaylistTrackOptionSource[]): Set<number> {
+  return new Set(tracks.map((track) => track.id));
+}
+
+export function getMissingPlaylistMemberPageNumbers(
+  total: number | undefined,
+  loadedCount: number,
+  pageSize = PLAYLIST_MEMBER_TRACK_PAGE_SIZE
+): number[] {
+  if (!total || total <= loadedCount || pageSize < 1) return [];
+  const pageCount = Math.ceil(total / pageSize);
+  const firstMissingPage = Math.floor(loadedCount / pageSize) + 1;
+  return Array.from({ length: Math.max(0, pageCount - firstMissingPage + 1) }, (_, index) => firstMissingPage + index);
 }
