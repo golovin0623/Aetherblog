@@ -32,5 +32,6 @@ export function resolveSiteDescription(siteInfo?: SiteBrandingSource | null): st
 }
 
 export function resolveSiteLogo(siteInfo?: SiteBrandingSource | null): string {
-  return resolveSiteAssetUrl(siteInfo?.site_logo);
+  const logo = siteInfo?.site_logo;
+  return typeof logo === 'string' && logo.trim() ? resolveSiteAssetUrl(logo) : '';
 }
