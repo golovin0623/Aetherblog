@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -29,7 +30,7 @@ var containerIDRegex = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 // SystemMonitorHandler 处理所有系统监控相关的 HTTP 接口。
 type SystemMonitorHandler struct {
-	monitor   *service.SystemMonitorService   // 系统指标采集服务
+	monitor   *service.SystemMonitorService    // 系统指标采集服务
 	container *service.ContainerMonitorService // Docker 容器监控服务
 	logViewer *service.LogViewerService        // 日志查看服务
 	history   *service.MetricsHistoryService   // 历史指标存储服务
@@ -268,27 +269,35 @@ func (h *SystemMonitorHandler) NetworkTest(c echo.Context) error {
 	}{"Redis", h.cfg.Redis.Addr()})
 
 	// 对每个目标执行 TCP 连接测试并记录延迟
-	var results []TestResult
-	for _, t := range targets {
-		start := time.Now()
-		conn, err := net.DialTimeout("tcp", t.addr, 3*time.Second)
-		latency := float64(time.Since(start).Microseconds()) / 1000.0 // 转换为毫秒
+	results := make([]TestResult, len(targets))
+	var wg sync.WaitGroup
 
-		r := TestResult{
-			Name: t.name,
-			Host: t.addr,
-		}
-		if err != nil {
-			r.Status = "failed"
-			r.Latency = 0
-			r.Message = err.Error()
-		} else {
-			conn.Close()
-			r.Status = "ok"
-			r.Latency = latency
-		}
-		results = append(results, r)
+	// ⚡ Bolt: Run network tests concurrently to reduce overall latency.
+	wg.Add(len(targets))
+	for i, t := range targets {
+		go func(idx int, target struct{ name, addr string }) {
+			defer wg.Done()
+			start := time.Now()
+			conn, err := net.DialTimeout("tcp", target.addr, 3*time.Second)
+			latency := float64(time.Since(start).Microseconds()) / 1000.0 // 转换为毫秒
+
+			r := TestResult{
+				Name: target.name,
+				Host: target.addr,
+			}
+			if err != nil {
+				r.Status = "failed"
+				r.Latency = 0
+				r.Message = err.Error()
+			} else {
+				conn.Close()
+				r.Status = "ok"
+				r.Latency = latency
+			}
+			results[idx] = r
+		}(i, t)
 	}
+	wg.Wait()
 
 	return response.OK(c, map[string]any{
 		"status":    "completed",
@@ -341,8 +350,47 @@ func (h *SystemMonitorHandler) GetConfig(c echo.Context) error {
 func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdown {
 	var breakdown service.StorageBreakdown
 
+	var uploadSize, logSize, dbSize, redisSize int64
+	var uploadCount, logCount int
+
+	var wg sync.WaitGroup
+
+	// ⚡ Bolt: Fetch storage metrics concurrently to reduce overall latency.
+	wg.Add(4)
+
 	// 统计上传文件目录大小和文件数量
-	uploadSize, uploadCount := dirSizeAndCount(h.cfg.Upload.Path)
+	go func() {
+		defer wg.Done()
+		uploadSize, uploadCount = dirSizeAndCount(h.cfg.Upload.Path)
+	}()
+
+	// 统计日志目录大小和文件数量
+	go func() {
+		defer wg.Done()
+		logSize, logCount = dirSizeAndCount(h.cfg.Log.Path)
+	}()
+
+	// 通过 pg_database_size() 查询当前数据库占用空间
+	go func() {
+		defer wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
+	}()
+
+	// 通过 Redis INFO memory 命令获取内存占用
+	go func() {
+		defer wg.Done()
+		rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer rcancel()
+		info, err := h.rdb.Info(rctx, "memory").Result()
+		if err == nil {
+			redisSize = parseRedisMemory(info)
+		}
+	}()
+
+	wg.Wait()
+
 	breakdown.Uploads = service.StorageItem{
 		Name:      "uploads",
 		Size:      uploadSize,
@@ -350,8 +398,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(uploadSize),
 	}
 
-	// 统计日志目录大小和文件数量
-	logSize, logCount := dirSizeAndCount(h.cfg.Log.Path)
 	breakdown.Logs = service.StorageItem{
 		Name:      "logs",
 		Size:      logSize,
@@ -359,11 +405,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(logSize),
 	}
 
-	// 通过 pg_database_size() 查询当前数据库占用空间
-	var dbSize int64
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
 	breakdown.Database = service.StorageItem{
 		Name:      "database",
 		Size:      dbSize,
@@ -371,14 +412,6 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		Formatted: service.FormatBytes(dbSize),
 	}
 
-	// 通过 Redis INFO memory 命令获取内存占用
-	var redisSize int64
-	rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer rcancel()
-	info, err := h.rdb.Info(rctx, "memory").Result()
-	if err == nil {
-		redisSize = parseRedisMemory(info)
-	}
 	breakdown.Redis = service.StorageItem{
 		Name:      "redis",
 		Size:      redisSize,
@@ -411,64 +444,78 @@ type ServiceHealth struct {
 // checkServiceHealth 检查所有依赖服务的健康状态，返回结果数组。
 // 依次检查：PostgreSQL、Redis、AI 服务。
 func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
-	var result []ServiceHealth
+	result := make([]ServiceHealth, 3)
+	var wg sync.WaitGroup
+
+	// ⚡ Bolt: Execute service health checks concurrently to significantly reduce overall latency.
+	wg.Add(3)
 
 	// 检查 PostgreSQL 连接状态
-	dbStatus := "up"
-	dbMsg := ""
-	dbLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		return h.db.PingContext(ctx)
-	})
-	if dbLatency < 0 {
-		dbStatus = "down"
-		dbMsg = "Connection failed"
-		dbLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg})
+	go func() {
+		defer wg.Done()
+		dbStatus := "up"
+		dbMsg := ""
+		dbLatency := measureLatency(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			return h.db.PingContext(ctx)
+		})
+		if dbLatency < 0 {
+			dbStatus = "down"
+			dbMsg = "Connection failed"
+			dbLatency = 0
+		}
+		result[0] = ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg}
+	}()
 
 	// 检查 Redis 连接状态
-	redisStatus := "up"
-	redisMsg := ""
-	redisLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		return h.rdb.Ping(ctx).Err()
-	})
-	if redisLatency < 0 {
-		redisStatus = "down"
-		redisMsg = "Connection failed"
-		redisLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg})
+	go func() {
+		defer wg.Done()
+		redisStatus := "up"
+		redisMsg := ""
+		redisLatency := measureLatency(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			return h.rdb.Ping(ctx).Err()
+		})
+		if redisLatency < 0 {
+			redisStatus = "down"
+			redisMsg = "Connection failed"
+			redisLatency = 0
+		}
+		result[1] = ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg}
+	}()
 
 	// 检查 AI 服务健康状态（通过 GET /health 接口探测）
-	aiStatus := "down"
-	aiMsg := ""
-	var aiLatency int64
-	if h.cfg.AI.BaseURL != "" {
-		aiLatency = measureLatency(func() error {
-			client := &http.Client{Timeout: 3 * time.Second}
-			resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
-			if err != nil {
-				return err
+	go func() {
+		defer wg.Done()
+		aiStatus := "down"
+		aiMsg := ""
+		var aiLatency int64
+		if h.cfg.AI.BaseURL != "" {
+			aiLatency = measureLatency(func() error {
+				client := &http.Client{Timeout: 3 * time.Second}
+				resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
+				if err != nil {
+					return err
+				}
+				resp.Body.Close()
+				return nil
+			})
+			if aiLatency >= 0 {
+				aiStatus = "up"
+			} else {
+				aiMsg = "Connection failed"
+				aiLatency = 0
 			}
-			resp.Body.Close()
-			return nil
-		})
-		if aiLatency >= 0 {
-			aiStatus = "up"
 		} else {
-			aiMsg = "Connection failed"
-			aiLatency = 0
+			// 未配置 AI 服务地址，视为不可用
+			aiStatus = "down"
 		}
-	} else {
-		// 未配置 AI 服务地址，视为不可用
-		aiStatus = "down"
-	}
-	result = append(result, ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg})
+		result[2] = ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg}
+	}()
 
+	wg.Wait()
 	return result
 }
 
