@@ -69,7 +69,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
 
                 {comment.website && (
                   <Tooltip content="访问网站" side="top">
-                    <a href={sanitizeUrl(comment.website)} target="_blank" rel="noopener noreferrer" aria-label="访问网站" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)] focus-visible:rounded-sm">
+                    <a href={sanitizeUrl(comment.website)} target="_blank" rel="noopener noreferrer" aria-label="访问网站" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-sm">
                       <Globe className="w-3 h-3" />
                     </a>
                   </Tooltip>
@@ -350,7 +350,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setIsFormExpanded(true)}
-                className="surface-leaf w-full p-4 flex items-center gap-4 transition-all group mb-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)]"
+                className="surface-leaf w-full p-4 flex items-center gap-4 transition-all group mb-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                 data-interactive
               >
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-[var(--color-primary)] group-hover:border-[var(--border-hover)] transition-colors">
