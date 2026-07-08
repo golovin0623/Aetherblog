@@ -1640,10 +1640,9 @@ body {
   }
 }
 
-/* Hero 大标题的克制呼吸。
-   只动合成层友好的 opacity / filter / transform；不再动画 letter-spacing，
-   避免移动端中文标题逐帧重排导致每个字左右颤动。 */
-@keyframes breath-soft {
+/* 首页 Hero 大标题专用整体呼吸。
+   使用独立 keyframes，避免覆盖共享 breath-soft，也不影响 Framer Motion 的入场 transform。 */
+@keyframes hero-title-breath {
   0%, 100% {
     opacity: 0.92;
     filter: brightness(0.98);
@@ -1657,7 +1656,7 @@ body {
 }
 
 .hero-breath-title {
-  animation: breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite;
+  animation: hero-title-breath 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite;
   backface-visibility: hidden;
   transform-origin: center;
   transform: translateZ(0);

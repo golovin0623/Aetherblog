@@ -47,7 +47,6 @@ export default function BlogHeader() {
     queryFn: getSiteSettings,
     staleTime: 10 * 60 * 1000,
     initialData: ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
-    initialDataUpdatedAt: 0,
   });
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
   const siteName = settings?.site_name || settings?.siteTitle || 'AetherBlog';
