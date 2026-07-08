@@ -15,6 +15,7 @@ import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 import { getSiteSettings } from '../lib/services';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
+import { useSiteSettings } from './SiteSettingsProvider';
 
 /**
  * 博客共享头部组件
@@ -38,13 +39,18 @@ export default function BlogHeader() {
   const adminHomeUrl = buildAdminUrl('/');
   const isAdminLinkAvailable = Boolean(adminHomeUrl);
 
-  // 获取站点设置中的 Logo
+  // 获取站点设置中的 Logo 与站点名。RootLayout 已经在 SSR 阶段下发 settings，
+  // 这里用作 initialData，避免导航栏首屏先显示默认站点名再跳变。
+  const { settings: ssrSettings } = useSiteSettings();
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
     staleTime: 10 * 60 * 1000,
+    initialData: ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
+    initialDataUpdatedAt: 0,
   });
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
+  const siteName = settings?.site_name || settings?.siteTitle || 'AetherBlog';
 
   // 导航页面类型
   type NavPage = 'posts' | 'timeline' | 'agent' | 'chat' | 'music' | 'friends' | 'about' | 'design' | null;
@@ -353,7 +359,7 @@ export default function BlogHeader() {
               </span>
             )}
             <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">
-              AetherBlog
+              {siteName}
             </span>
           </Link>
 

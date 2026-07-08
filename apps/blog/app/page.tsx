@@ -84,9 +84,8 @@ export default async function HomePage() {
             </div>
 
             <h1
-              className="font-display text-[clamp(3rem,7vw,5.5rem)] font-semibold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.05] tracking-[-0.02em]"
+              className="hero-breath-title font-display text-[clamp(3rem,7vw,5.5rem)] font-semibold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.05] tracking-[-0.02em]"
               style={{
-                animation: 'breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite',
                 textWrap: 'balance' as unknown as 'inherit',
               }}
             >
