@@ -70,6 +70,7 @@ export function MediaGrid({
           const isActive = activeId === item.id;
           // Phase 1: getMediaUrl 接收 MediaItem 时优先 cdnUrl,LOCAL 模式回落 fileUrl
           const fullUrl = getMediaUrl(item);
+          const thumbnailUrl = item.thumbnailUrl ? getMediaUrl(item.thumbnailUrl) : '';
 
           return (
             <motion.div
@@ -128,6 +129,13 @@ export function MediaGrid({
                       src={fullUrl}
                       className="w-full h-full object-cover"
                       muted
+                    />
+                  ) : thumbnailUrl ? (
+                    <img
+                      src={thumbnailUrl}
+                      alt={item.originalName}
+                      className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]">

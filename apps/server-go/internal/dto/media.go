@@ -16,6 +16,7 @@ type MediaFileVO struct {
 	OriginalName      string     `json:"originalName"`                // 上传时的原始文件名
 	FileURL           string     `json:"fileUrl"`                     // 文件可访问的完整 URL
 	PublicURL         string     `json:"publicUrl,omitempty"`         // 稳定公共访问 URL,会按当前存储/备份状态重定向到最佳文件地址
+	ThumbnailURL      string     `json:"thumbnailUrl,omitempty"`      // 派生缩略图 URL；音频封面等不进入 media_files
 	FileSize          int64      `json:"fileSize"`                    // 文件大小（字节）
 	MimeType          *string    `json:"mimeType,omitempty"`          // 文件 MIME 类型（如 image/jpeg，可为空）
 	FileType          string     `json:"fileType"`                    // 文件类型分类（如 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER）

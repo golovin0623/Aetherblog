@@ -9,6 +9,7 @@ export interface MusicMedia {
   originalName: string;
   fileUrl: string;
   publicUrl?: string;
+  thumbnailUrl?: string;
   fileSize: number;
   mimeType?: string;
   fileType: 'AUDIO' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'OTHER';

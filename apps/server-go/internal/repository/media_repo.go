@@ -450,6 +450,7 @@ type MediaVariant struct {
 	VariantType string `db:"variant_type"`
 	FilePath    string `db:"file_path"`
 	FileURL     string `db:"file_url"`
+	FileSize    int64  `db:"file_size"`
 }
 
 // UpsertVariant 把指定 mediaKey 对应主文件的 THUMBNAIL variant 写入 media_variants。
@@ -473,10 +474,52 @@ func (r *MediaRepo) UpsertVariant(ctx context.Context, mediaKey, thumbKey, thumb
 	return err
 }
 
+func (r *MediaRepo) UpsertVariantByMediaID(ctx context.Context, mediaID int64, variantType, filePath, fileURL string, fileSize int64, providerID *int64) error {
+	if mediaID <= 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO media_variants (media_file_id, variant_type, file_path, file_url, file_size, storage_provider_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (media_file_id, variant_type) DO UPDATE
+		  SET file_path = EXCLUDED.file_path, file_url = EXCLUDED.file_url, file_size = EXCLUDED.file_size, storage_provider_id = EXCLUDED.storage_provider_id`,
+		mediaID, variantType, filePath, fileURL, fileSize, providerID)
+	return err
+}
+
+func (r *MediaRepo) FindVariantURLs(ctx context.Context, mediaIDs []int64, variantType string) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(mediaIDs) == 0 {
+		return out, nil
+	}
+	query, args, err := sqlx.In(`
+		SELECT media_file_id, file_url
+		FROM media_variants
+		WHERE variant_type = ? AND media_file_id IN (?)`, variantType, mediaIDs)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mediaID int64
+		var fileURL string
+		if err := rows.Scan(&mediaID, &fileURL); err != nil {
+			return nil, err
+		}
+		out[mediaID] = fileURL
+	}
+	return out, rows.Err()
+}
+
 // ListVariants 返回指定 media_file_id 的所有 variant 行。
 func (r *MediaRepo) ListVariants(ctx context.Context, mediaID int64) ([]MediaVariant, error) {
 	var vs []MediaVariant
-	err := r.db.SelectContext(ctx, &vs, `SELECT id, media_file_id, variant_type, file_path, file_url FROM media_variants WHERE media_file_id=$1`, mediaID)
+	err := r.db.SelectContext(ctx, &vs, `SELECT id, media_file_id, variant_type, file_path, file_url, file_size FROM media_variants WHERE media_file_id=$1`, mediaID)
 	return vs, err
 }
 

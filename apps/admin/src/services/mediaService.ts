@@ -13,6 +13,7 @@ export interface MediaItem {
   originalName: string;
   fileUrl: string;
   publicUrl?: string;
+  thumbnailUrl?: string;
   fileType: MediaType;
   fileSize: number;
   mimeType: string;

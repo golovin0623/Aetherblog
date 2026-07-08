@@ -167,7 +167,7 @@ export function resolveMusicAudioSrc(track: MusicTrack | undefined): string {
 }
 
 export function resolveMusicCoverSrc(track: MusicTrack | undefined, fallback = ''): string {
-  return sanitizeImageUrl(track?.coverUrl, fallback);
+  return sanitizeImageUrl(track?.coverUrl || track?.media?.thumbnailUrl, fallback);
 }
 
 export function formatMusicClock(seconds: number): string {

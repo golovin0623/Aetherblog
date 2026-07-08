@@ -196,6 +196,7 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
 
   const Icon = typeIcons[media.fileType] || FileText;
   const fullUrl = getMediaUrl(media);
+  const thumbnailUrl = media.thumbnailUrl ? getMediaUrl(media.thumbnailUrl) : '';
   const isImage = media.fileType === 'IMAGE';
   const isPDF = media.fileType === 'DOCUMENT' && (
     media.mimeType?.toLowerCase() === 'application/pdf' ||
@@ -489,8 +490,16 @@ export function MediaDetail({ item: initialMedia, onClose, onDelete, onMove }: M
             className="w-full h-full object-contain"
           />
         ) : media.fileType === 'AUDIO' ? (
-          <div className="w-full h-full flex flex-col items-center justify-center p-4">
-            <Music className="mb-3 h-12 w-12 text-[color-mix(in_oklch,var(--aurora-1)_72%,transparent)]" />
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={media.originalName}
+                className="min-h-0 max-h-[calc(100%-3.25rem)] max-w-full rounded-xl object-contain shadow-[0_18px_48px_-34px_color-mix(in_oklch,black_70%,transparent)]"
+              />
+            ) : (
+              <Music className="h-12 w-12 text-[color-mix(in_oklch,var(--aurora-1)_72%,transparent)]" />
+            )}
             <audio src={fullUrl} controls className="w-full" />
           </div>
         ) : (

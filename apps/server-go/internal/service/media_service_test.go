@@ -401,6 +401,112 @@ func TestResolveMimeWithFallbackPreservesAllowedDetected(t *testing.T) {
 	}
 }
 
+func TestResolveMimeWithFallbackNormalizesAudioContainerMimes(t *testing.T) {
+	cases := []struct {
+		detected string
+		filename string
+		want     string
+	}{
+		{"application/ogg", "song.ogg", "audio/ogg"},
+		{"application/ogg", "song.oga", "audio/ogg"},
+		{"application/ogg", "song.opus", "audio/ogg"},
+		{"video/mp4", "song.m4a", "audio/x-m4a"},
+		{"video/mp4", "song.m4b", "audio/x-m4a"},
+		{"video/webm", "song.weba", "audio/webm"},
+		{"video/mp4", "movie.mp4", "video/mp4"},
+		{"video/webm", "movie.webm", "video/webm"},
+		{"application/ogg", "movie.ogv", "application/ogg"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.detected+"/"+tc.filename, func(t *testing.T) {
+			got := resolveMimeWithFallback(tc.detected, tc.filename)
+			if got != tc.want {
+				t.Fatalf("resolveMimeWithFallback(%q, %q) = %q, want %q",
+					tc.detected, tc.filename, got, tc.want)
+			}
+			if strings.HasPrefix(tc.filename, "song.") {
+				if !allowedMimeTypes[got] {
+					t.Fatalf("%q must be allowed for audio upload", got)
+				}
+				if classifyFileType(got) != "AUDIO" {
+					t.Fatalf("%q must classify as AUDIO", got)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveAudioArtworkExtractionMimeFallsBackForOctetStream(t *testing.T) {
+	persisted := " audio/flac "
+	cases := []struct {
+		name      string
+		source    string
+		persisted *string
+		want      string
+	}{
+		{"empty_source_uses_persisted", "", &persisted, "audio/flac"},
+		{"octet_stream_uses_persisted", "application/octet-stream", &persisted, "audio/flac"},
+		{"concrete_source_wins", "audio/mpeg", &persisted, "audio/mpeg"},
+		{"octet_stream_without_persisted_stays_octet", "application/octet-stream", nil, "application/octet-stream"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveAudioArtworkExtractionMime(tc.source, tc.persisted)
+			if got != tc.want {
+				t.Fatalf("resolveAudioArtworkExtractionMime(%q, ...) = %q, want %q", tc.source, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAudioArtworkBackfillRetryThrottle(t *testing.T) {
+	s := &MediaService{}
+	now := time.Date(2026, 7, 8, 2, 0, 0, 0, time.UTC)
+
+	if !s.markAudioArtworkJobAt(7, now) {
+		t.Fatal("first artwork backfill job should be scheduled")
+	}
+	if s.markAudioArtworkJobAt(7, now) {
+		t.Fatal("running artwork backfill job should not be scheduled twice")
+	}
+
+	s.finishAudioArtworkJob(7, false, now)
+	if s.markAudioArtworkJobAt(7, now.Add(time.Hour)) {
+		t.Fatal("failed/no-artwork backfill should be throttled before retry delay expires")
+	}
+	if !s.markAudioArtworkJobAt(7, now.Add(audioArtworkBackfillRetryDelay).Add(time.Second)) {
+		t.Fatal("artwork backfill should be allowed after retry delay expires")
+	}
+
+	s.finishAudioArtworkJob(7, true, now.Add(audioArtworkBackfillRetryDelay).Add(2*time.Second))
+	if !s.markAudioArtworkJobAt(7, now.Add(audioArtworkBackfillRetryDelay).Add(3*time.Second)) {
+		t.Fatal("successful artwork backfill should clear retry throttle")
+	}
+}
+
+func TestIsLegacyLocalMedia(t *testing.T) {
+	providerID := int64(9)
+	cases := []struct {
+		name string
+		in   *model.MediaFile
+		want bool
+	}{
+		{"nil", nil, false},
+		{"local_without_provider", &model.MediaFile{StorageType: "LOCAL"}, true},
+		{"local_case_insensitive", &model.MediaFile{StorageType: "local"}, true},
+		{"local_with_provider", &model.MediaFile{StorageType: "LOCAL", StorageProviderID: &providerID}, false},
+		{"s3_without_provider", &model.MediaFile{StorageType: "S3"}, false},
+		{"empty_storage_type", &model.MediaFile{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isLegacyLocalMedia(tc.in); got != tc.want {
+				t.Fatalf("isLegacyLocalMedia(%+v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestXMLSniffedSVGStillBlocked 文档化并锁死 text/xml 嗅探绕过:
 // 带 <?xml ?> 头的 SVG 会被 http.DetectContentType 嗅探为 "text/xml; charset=utf-8",
 // 而 text/xml 在 allowedMimeTypes 中(OOXML / 订阅源等需要它),不能整体下白名单。
