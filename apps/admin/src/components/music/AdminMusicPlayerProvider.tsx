@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react';
 import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from 'framer-motion';
@@ -236,19 +237,6 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     setDockDismissed(true);
   }, []);
 
-  useEffect(() => {
-    if (!currentTrack || dockSuppressed || dockDismissed) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      dismissDock();
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentTrack, dismissDock, dockDismissed, dockSuppressed]);
-
   const value = useMemo<AdminMusicPlayerContextValue>(() => ({
     queue,
     currentTrack,
@@ -279,6 +267,12 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     if (info.offset.y > DISMISS_DRAG_DISTANCE || info.velocity.y > DISMISS_DRAG_VELOCITY) {
       dismissDock();
     }
+  }, [dismissDock]);
+
+  const handleDockKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    dismissDock();
   }, [dismissDock]);
 
   return (
@@ -318,6 +312,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
               dragTransition={prefersReducedMotion ? { bounceStiffness: 600, bounceDamping: 60 } : { bounceStiffness: 360, bounceDamping: 34 }}
               whileDrag={prefersReducedMotion ? undefined : { scale: 0.985 }}
               onDragEnd={handleDockDragEnd}
+              onKeyDown={handleDockKeyDown}
               aria-keyshortcuts="Escape"
               className="pointer-events-auto w-full max-w-[460px]"
             >
@@ -326,7 +321,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                   type="button"
                   onPointerDown={(event) => dragControls.start(event)}
                   onClick={() => setExpanded((v) => !v)}
-                  className="mx-auto mb-2 flex h-11 w-28 cursor-grab touch-none items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:text-[var(--ink-secondary)] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  className="mx-auto mb-2 flex h-11 w-28 cursor-grab touch-none items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:text-[var(--ink-secondary)] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                   aria-label={expanded ? '拖动隐藏后台播放器,点击收起' : '拖动隐藏后台播放器,点击展开'}
                   aria-keyshortcuts="Escape"
                   title={expanded ? '拖动隐藏,点击收起' : '拖动隐藏,点击展开'}
@@ -424,7 +419,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                           seekToPercent(100);
                         }
                       }}
-                      className="mt-1.5 flex h-5 w-full cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                      className="mt-1.5 flex h-5 w-full cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                       aria-label="调整播放进度"
                       aria-valuemin={0}
                       aria-valuemax={100}
