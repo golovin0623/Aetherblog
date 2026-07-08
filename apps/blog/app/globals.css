@@ -1640,19 +1640,27 @@ body {
   }
 }
 
-/* Hero 大标题的克制呼吸 —— 7.2s 一循环,
-   仅微调 opacity + letter-spacing + brightness,不撼动布局 */
-@keyframes breath-soft {
+/* 首页 Hero 大标题专用整体呼吸。
+   使用独立 keyframes，避免覆盖共享 breath-soft，也不影响 Framer Motion 的入场 transform。 */
+@keyframes hero-title-breath {
   0%, 100% {
     opacity: 0.92;
-    letter-spacing: -0.020em;
     filter: brightness(0.98);
+    transform: translateZ(0) scale(0.996);
   }
   50% {
     opacity: 1;
-    letter-spacing: -0.015em;
     filter: brightness(1.04);
+    transform: translateZ(0) scale(1.004);
   }
+}
+
+.hero-breath-title {
+  animation: hero-title-breath 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite;
+  backface-visibility: hidden;
+  transform-origin: center;
+  transform: translateZ(0);
+  will-change: opacity, filter, transform;
 }
 
 .shimmer-effect {
