@@ -42,11 +42,17 @@ export default function BlogHeader() {
   // 获取站点设置中的 Logo 与站点名。RootLayout 已经在 SSR 阶段下发 settings，
   // 这里用作 initialData，避免导航栏首屏先显示默认站点名再跳变。
   const { settings: ssrSettings } = useSiteSettings();
+  const hasSsrSettings = Object.keys(ssrSettings).length > 0;
+  const shouldRefreshFallbackSettings =
+    hasSsrSettings &&
+    !ssrSettings.site_name &&
+    ssrSettings.siteTitle === 'AetherBlog';
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
     staleTime: 10 * 60 * 1000,
-    initialData: ssrSettings && Object.keys(ssrSettings).length > 0 ? ssrSettings : undefined,
+    initialData: hasSsrSettings ? ssrSettings : undefined,
+    initialDataUpdatedAt: shouldRefreshFallbackSettings ? 0 : undefined,
   });
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
   const siteName = settings?.site_name || settings?.siteTitle || 'AetherBlog';
