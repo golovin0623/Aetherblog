@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings2, Search } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
-import { AetherMark } from '@aetherblog/ui';
+import { AetherMark, Tooltip } from '@aetherblog/ui';
 import { useQuery } from '@tanstack/react-query';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
@@ -375,15 +375,16 @@ export default function BlogHeader() {
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 ml-auto">
             {/* 移动端视图切换 - 右对齐且稳定 */}
             <div className="md:hidden flex items-center justify-center gap-2">
-              <button
-                type="button"
-                aria-label="搜索"
-                title="搜索"
-                onClick={openSearchPanel}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Search className="w-4 h-4" />
-              </button>
+              <Tooltip content="搜索" side="bottom">
+                <button
+                  type="button"
+                  aria-label="搜索"
+                  onClick={openSearchPanel}
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </Tooltip>
               <MobileNavSwitch />
             </div>
 
@@ -576,39 +577,42 @@ export default function BlogHeader() {
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
 
               {/* 搜索按钮 */}
-              <button
-                type="button"
-                aria-label="搜索"
-                title="搜索 (Ctrl/⌘ K)"
-                onClick={openSearchPanel}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Search className="w-4 h-4 group-hover/search:scale-110 transition-transform" />
-              </button>
+              <Tooltip content="搜索 (Ctrl/⌘ K)" side="bottom">
+                <button
+                  type="button"
+                  aria-label="搜索"
+                  onClick={openSearchPanel}
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Search className="w-4 h-4 group-hover/search:scale-110 transition-transform" />
+                </button>
+              </Tooltip>
 
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
 
               {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
               {isAdminLinkAvailable ? (
-                <a
-                  href={adminHomeUrl!}
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  title="管理后台"
-                  aria-label="管理后台"
-                >
-                  <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
-                </a>
+                <Tooltip content="管理后台" side="bottom">
+                  <a
+                    href={adminHomeUrl!}
+                    className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label="管理后台"
+                  >
+                    <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
+                  </a>
+                </Tooltip>
               ) : (
-                <button
-                  type="button"
-                  disabled
-                  aria-label="管理后台未配置"
-                  title={`管理后台未配置：${adminLinkConfig.reason}`}
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[var(--text-muted)] opacity-50 cursor-not-allowed"
-                >
-                  <Settings2 className="w-4 h-4" />
-                </button>
+                <Tooltip content={`管理后台未配置：${adminLinkConfig.reason}`} side="bottom">
+                  <button
+                    type="button"
+                    disabled
+                    aria-label="管理后台未配置"
+                    className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[var(--text-muted)] opacity-50 cursor-not-allowed"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               )}
             </nav>
 
