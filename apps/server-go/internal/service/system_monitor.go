@@ -96,11 +96,11 @@ func NewSystemMonitorService(cfg *config.Config) *SystemMonitorService {
 // CollectMetrics 一次性采集所有类别的系统指标并返回聚合结果。
 func (s *SystemMonitorService) CollectMetrics() SystemMetrics {
 	var m SystemMetrics
+	var wg sync.WaitGroup
 
 	// CPU 指标
 	m.CPU.Cores = runtime.NumCPU()
 	m.CPU.MaxProcs = runtime.GOMAXPROCS(0)
-	m.CPU.UsagePercent = s.collectCPUUsage()
 
 	// Go 堆内存统计
 	var ms runtime.MemStats
@@ -110,14 +110,45 @@ func (s *SystemMonitorService) CollectMetrics() SystemMetrics {
 	m.Memory.GoHeapAlloc = ms.HeapAlloc
 	m.Memory.GoHeapSys = ms.HeapSys
 	m.Memory.GoTotalAlloc = ms.TotalAlloc
-	// 操作系统内存统计（平台相关）
-	s.collectOSMemory(&m.Memory)
 
-	// 磁盘指标
-	m.Disk = s.collectDisk()
+	var cpuUsage float64
+	var osMem MemoryMetrics
+	var disk DiskMetrics
+	var network NetworkMetrics
 
-	// 网络指标
-	m.Network = s.collectNetwork()
+	// ⚡ Bolt: Execute independent system commands concurrently to reduce overall latency
+	wg.Add(4)
+
+	go func() {
+		defer wg.Done()
+		cpuUsage = s.collectCPUUsage()
+	}()
+
+	go func() {
+		defer wg.Done()
+		// 操作系统内存统计（平台相关）
+		s.collectOSMemory(&osMem)
+	}()
+
+	go func() {
+		defer wg.Done()
+		disk = s.collectDisk()
+	}()
+
+	go func() {
+		defer wg.Done()
+		network = s.collectNetwork()
+	}()
+
+	wg.Wait()
+
+	m.CPU.UsagePercent = cpuUsage
+	m.Memory.TotalBytes = osMem.TotalBytes
+	m.Memory.UsedBytes = osMem.UsedBytes
+	m.Memory.FreeBytes = osMem.FreeBytes
+	m.Memory.UsagePercent = osMem.UsagePercent
+	m.Disk = disk
+	m.Network = network
 
 	// Go 运行时信息
 	uptime := time.Since(startTime)
