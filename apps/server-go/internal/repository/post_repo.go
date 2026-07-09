@@ -271,7 +271,7 @@ func buildAdminWhere(f AdminPostFilter) (string, []any) {
 		pattern := "%" + dbutil.EscapeLike(*f.Keyword) + "%"
 		ph := placeholder(pattern)
 		clauses = append(clauses,
-			fmt.Sprintf("(p.title ILIKE %s OR p.content_markdown ILIKE %s)", ph, ph))
+			fmt.Sprintf("(p.title ILIKE %s ESCAPE '\\' OR p.content_markdown ILIKE %s ESCAPE '\\')", ph, ph))
 	}
 	if f.CategoryID != nil {
 		clauses = append(clauses, "p.category_id = "+placeholder(*f.CategoryID))

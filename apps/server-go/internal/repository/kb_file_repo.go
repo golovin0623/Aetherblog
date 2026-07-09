@@ -85,7 +85,7 @@ func (r *KBFileRepo) ListByKB(ctx context.Context, f KBFileListFilter) ([]model.
 		idx++
 	}
 	if f.Keyword != "" {
-		sb.WriteString(fmt.Sprintf(" AND (COALESCE(title,'') ILIKE $%d OR COALESCE(category,'') ILIKE $%d)", idx, idx))
+		sb.WriteString(fmt.Sprintf(" AND (COALESCE(title,'') ILIKE $%d ESCAPE '\\' OR COALESCE(category,'') ILIKE $%d ESCAPE '\\')", idx, idx))
 		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}

@@ -89,7 +89,7 @@ func (r *KBRepo) ListAccessible(ctx context.Context, f AccessibleFilter) ([]mode
 			idx++
 		}
 		if f.Keyword != "" {
-			sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d OR COALESCE(description,'') ILIKE $%d)", idx, idx))
+			sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d ESCAPE '\\' OR COALESCE(description,'') ILIKE $%d ESCAPE '\\')", idx, idx))
 			args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 			idx++
 		}
@@ -148,7 +148,7 @@ func (r *KBRepo) ListAccessible(ctx context.Context, f AccessibleFilter) ([]mode
 		idx++
 	}
 	if f.Keyword != "" {
-		sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d OR COALESCE(description,'') ILIKE $%d)", idx, idx))
+		sb.WriteString(fmt.Sprintf(" AND (name ILIKE $%d ESCAPE '\\' OR COALESCE(description,'') ILIKE $%d ESCAPE '\\')", idx, idx))
 		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 		idx++
 	}
