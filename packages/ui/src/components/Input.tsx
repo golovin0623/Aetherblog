@@ -10,6 +10,10 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, error, helperText, leftIcon, rightIcon, ...props }, ref) => {
+    const generatedId = React.useId();
+    const helperId = helperText ? `input-helper-${generatedId}` : undefined;
+    const describedBy = [props['aria-describedby'], helperId].filter(Boolean).join(' ') || undefined;
+
     return (
       <div className="w-full">
         <div className="relative">
@@ -31,6 +35,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               rightIcon && 'pr-10',
               className
             )}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
             {...props}
           />
           {rightIcon && (
@@ -40,7 +46,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {helperText && (
-          <p className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}>
+          <p id={helperId} className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}>
             {helperText}
           </p>
         )}

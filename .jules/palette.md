@@ -1,0 +1,3 @@
+## 2024-03-24 - Input & Textarea Accessibility
+**Learning:** Reusable form components like Input and Textarea frequently fail to link their `helperText` (or error messages) to the input field for screen readers. Using `aria-invalid` and dynamically linking the helper text via `aria-describedby` provides critical context during keyboard navigation.
+**Action:** When creating or modifying generic input components, automatically generate a unique ID using `React.useId()` for the helper text, and ensure the input's `aria-describedby` concatenates any externally provided IDs with the internal helper ID. Additionally, always set `aria-invalid={error ? true : undefined}`.
