@@ -3,6 +3,7 @@
 import { Moon, Sun } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@aetherblog/hooks';
+import { Tooltip } from '@aetherblog/ui';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
@@ -29,51 +30,52 @@ export default function FloatingThemeToggle() {
   if (pathname.startsWith('/agent/workspace') || pathname.startsWith('/reader/')) return null;
 
   return (
-    <button
-      type="button"
-      data-theme-toggle
-      onClick={(e) => {
-        // 防止和底部导航或滚动冲突
-        e.preventDefault();
-        const x = e.clientX;
-        const y = e.clientY;
-        toggleThemeWithAnimation(x, y);
-      }}
-      className="surface-raised !rounded-full md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px]
-        theme-toggle-vt
-        transition-[background-color,border-color,color,box-shadow,opacity] duration-200
-        flex items-center justify-center group
-        focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:outline-none overflow-hidden"
-      aria-label={isDark ? '切换到亮色主题' : '切换到暗色主题'}
-      title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
-    >
-      <span className="relative block h-5 w-5" aria-hidden="true">
-        <AnimatePresence mode="wait" initial={false}>
-          {isDark ? (
-            <motion.span
-              key="moon"
-              initial={{ rotate: -35, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: 35, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0 flex items-center justify-center"
-            >
-              <Moon className="w-5 h-5 text-[var(--text-secondary)]" />
-            </motion.span>
-          ) : (
-            <motion.span
-              key="sun"
-              initial={{ rotate: 35, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: -35, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0 flex items-center justify-center"
-            >
-              <Sun className="w-5 h-5 text-[var(--text-secondary)]" />
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </span>
-    </button>
+    <Tooltip content={isDark ? '切换到亮色主题' : '切换到暗色主题'} side="left">
+      <button
+        type="button"
+        data-theme-toggle
+        onClick={(e) => {
+          // 防止和底部导航或滚动冲突
+          e.preventDefault();
+          const x = e.clientX;
+          const y = e.clientY;
+          toggleThemeWithAnimation(x, y);
+        }}
+        className="surface-raised !rounded-full md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px]
+          theme-toggle-vt
+          transition-[background-color,border-color,color,box-shadow,opacity] duration-200
+          flex items-center justify-center group
+          focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none overflow-hidden"
+        aria-label={isDark ? '切换到亮色主题' : '切换到暗色主题'}
+      >
+        <span className="relative block h-5 w-5" aria-hidden="true">
+          <AnimatePresence mode="wait" initial={false}>
+            {isDark ? (
+              <motion.span
+                key="moon"
+                initial={{ rotate: -35, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: 35, opacity: 0 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <Moon className="w-5 h-5 text-[var(--text-secondary)]" />
+              </motion.span>
+            ) : (
+              <motion.span
+                key="sun"
+                initial={{ rotate: 35, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: -35, opacity: 0 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <Sun className="w-5 h-5 text-[var(--text-secondary)]" />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </span>
+      </button>
+    </Tooltip>
   );
 }

@@ -5,6 +5,9 @@ export default defineConfig({
   root: path.resolve(__dirname, '..'),
   test: {
     environment: 'node',
-    include: ['scripts/reader-mobile-experience-gate.test.ts'],
+    include: [
+      'scripts/reader-mobile-experience-gate.test.ts',
+      'scripts/blog-tooltip-accessibility-gate.test.ts',
+    ],
   },
 });
