@@ -72,8 +72,8 @@ func TestCheckAIServiceHealthRejectsNonOKStatus(t *testing.T) {
 
 	got := checkAIServiceHealth(context.Background(), server.Client(), server.URL+"/")
 
-	if got.Name != "ai" || got.Status != "down" || got.Latency != 0 || got.Message != "Connection failed" {
-		t.Fatalf("health = %#v, want ai/down/0/Connection failed", got)
+	if got.Name != "ai" || got.Status != "down" || got.Latency != 0 || got.Message != "unexpected AI health status: 503" {
+		t.Fatalf("health = %#v, want ai/down/0/unexpected AI health status: 503", got)
 	}
 }
 

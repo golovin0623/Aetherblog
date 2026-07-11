@@ -482,6 +482,7 @@ func checkAIServiceHealth(ctx context.Context, client systemMonitorHTTPDoer, bas
 		client = http.DefaultClient
 	}
 
+	var healthErr error
 	latency := measureLatency(func() error {
 		requestCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
@@ -493,21 +494,28 @@ func checkAIServiceHealth(ctx context.Context, client systemMonitorHTTPDoer, bas
 			nil,
 		)
 		if err != nil {
+			healthErr = err
 			return err
 		}
 		resp, err := client.Do(req)
 		if err != nil {
+			healthErr = err
 			return err
 		}
 		defer resp.Body.Close()
 		_, _ = io.Copy(io.Discard, resp.Body)
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("unexpected AI health status: %d", resp.StatusCode)
+			healthErr = fmt.Errorf("unexpected AI health status: %d", resp.StatusCode)
+			return healthErr
 		}
 		return nil
 	})
 	if latency < 0 {
-		return ServiceHealth{Name: "ai", Status: "down", Message: "Connection failed"}
+		message := "Connection failed"
+		if healthErr != nil {
+			message = healthErr.Error()
+		}
+		return ServiceHealth{Name: "ai", Status: "down", Message: message}
 	}
 	return ServiceHealth{Name: "ai", Status: "up", Latency: latency}
 }

@@ -43,9 +43,10 @@ describe('blog icon tooltip accessibility gate', () => {
     expect(fallback).not.toMatch(/\btitle=/);
   });
 
-  it('uses a transparent focus offset for the fixed mobile theme control', () => {
+  it('uses transparent focus offsets for fixed controls', () => {
     expect(floatingThemeSource).toContain('focus-visible:ring-offset-2 focus-visible:ring-offset-transparent');
     expect(floatingThemeSource).not.toContain('focus-visible:ring-offset-[var(--bg-primary)]');
+    expect(scrollToTopSource).toContain('focus-visible:ring-offset-2 focus-visible:ring-offset-transparent');
   });
 
   it('preserves the context-correct comment focus offsets rejected from PR 824', () => {
