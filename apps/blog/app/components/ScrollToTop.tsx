@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
+import { Tooltip } from '@aetherblog/ui';
 
 const STROKE_CIRCUMFERENCE = 113;
 
@@ -51,36 +52,37 @@ const ScrollToTopBase = () => {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   return (
-    <button
-      type="button"
-      onClick={scrollToTop}
-      className={`surface-raised !rounded-full fixed bottom-8 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:block focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
-        isVisible ? 'md:opacity-100 md:translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
-      }`}
-      aria-label="返回顶部"
-      title="返回顶部"
-      tabIndex={isVisible ? 0 : -1}
-    >
-      <div className="relative flex items-center justify-center w-10 h-10">
-        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
-          <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
-          <circle
-            ref={circleRef}
-            cx="22"
-            cy="22"
-            r="18"
-            fill="none"
-            stroke="var(--color-primary)"
-            strokeWidth="2"
-            strokeDasharray={STROKE_CIRCUMFERENCE}
-            strokeDashoffset={STROKE_CIRCUMFERENCE}
-            strokeLinecap="round"
-            className="transition-all duration-75 ease-out"
-          />
-        </svg>
-        <ArrowUp className="w-5 h-5 text-[var(--text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300" />
-      </div>
-    </button>
+    <Tooltip content="返回顶部" side="left">
+      <button
+        type="button"
+        onClick={scrollToTop}
+        className={`surface-raised !rounded-full fixed bottom-8 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:block focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none ${
+          isVisible ? 'md:opacity-100 md:translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
+        }`}
+        aria-label="返回顶部"
+        tabIndex={isVisible ? 0 : -1}
+      >
+        <div className="relative flex items-center justify-center w-10 h-10">
+          <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
+            <circle
+              ref={circleRef}
+              cx="22"
+              cy="22"
+              r="18"
+              fill="none"
+              stroke="var(--color-primary)"
+              strokeWidth="2"
+              strokeDasharray={STROKE_CIRCUMFERENCE}
+              strokeDashoffset={STROKE_CIRCUMFERENCE}
+              strokeLinecap="round"
+              className="transition-all duration-75 ease-out"
+            />
+          </svg>
+          <ArrowUp className="w-5 h-5 text-[var(--text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300" />
+        </div>
+      </button>
+    </Tooltip>
   );
 };
 

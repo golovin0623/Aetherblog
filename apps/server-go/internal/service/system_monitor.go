@@ -93,6 +93,44 @@ func NewSystemMonitorService(cfg *config.Config) *SystemMonitorService {
 	return &SystemMonitorService{cfg: cfg}
 }
 
+type systemMetricParts struct {
+	CPUUsage float64
+	OSMemory MemoryMetrics
+	Disk     DiskMetrics
+	Network  NetworkMetrics
+}
+
+func collectSystemMetricParts(
+	collectCPUUsage func() float64,
+	collectOSMemory func(*MemoryMetrics),
+	collectDisk func() DiskMetrics,
+	collectNetwork func() NetworkMetrics,
+) systemMetricParts {
+	var parts systemMetricParts
+	var wg sync.WaitGroup
+
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		parts.CPUUsage = collectCPUUsage()
+	}()
+	go func() {
+		defer wg.Done()
+		collectOSMemory(&parts.OSMemory)
+	}()
+	go func() {
+		defer wg.Done()
+		parts.Disk = collectDisk()
+	}()
+	go func() {
+		defer wg.Done()
+		parts.Network = collectNetwork()
+	}()
+
+	wg.Wait()
+	return parts
+}
+
 // CollectMetrics 一次性采集所有类别的系统指标并返回聚合结果。
 func (s *SystemMonitorService) CollectMetrics() SystemMetrics {
 	var m SystemMetrics
@@ -100,7 +138,6 @@ func (s *SystemMonitorService) CollectMetrics() SystemMetrics {
 	// CPU 指标
 	m.CPU.Cores = runtime.NumCPU()
 	m.CPU.MaxProcs = runtime.GOMAXPROCS(0)
-	m.CPU.UsagePercent = s.collectCPUUsage()
 
 	// Go 堆内存统计
 	var ms runtime.MemStats
@@ -110,14 +147,20 @@ func (s *SystemMonitorService) CollectMetrics() SystemMetrics {
 	m.Memory.GoHeapAlloc = ms.HeapAlloc
 	m.Memory.GoHeapSys = ms.HeapSys
 	m.Memory.GoTotalAlloc = ms.TotalAlloc
-	// 操作系统内存统计（平台相关）
-	s.collectOSMemory(&m.Memory)
 
-	// 磁盘指标
-	m.Disk = s.collectDisk()
-
-	// 网络指标
-	m.Network = s.collectNetwork()
+	parts := collectSystemMetricParts(
+		s.collectCPUUsage,
+		s.collectOSMemory,
+		s.collectDisk,
+		s.collectNetwork,
+	)
+	m.CPU.UsagePercent = parts.CPUUsage
+	m.Memory.TotalBytes = parts.OSMemory.TotalBytes
+	m.Memory.UsedBytes = parts.OSMemory.UsedBytes
+	m.Memory.FreeBytes = parts.OSMemory.FreeBytes
+	m.Memory.UsagePercent = parts.OSMemory.UsagePercent
+	m.Disk = parts.Disk
+	m.Network = parts.Network
 
 	// Go 运行时信息
 	uptime := time.Since(startTime)

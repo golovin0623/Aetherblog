@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -27,15 +29,55 @@ import (
 // containerIDRegex 校验容器 ID 格式：仅允许 12–64 位小写十六进制字符。
 var containerIDRegex = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
+type systemMonitorHTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+type networkTestTarget struct {
+	name string
+	addr string
+}
+
+type networkTestResult struct {
+	Name    string  `json:"name"`
+	Host    string  `json:"host"`
+	Status  string  `json:"status"`
+	Latency float64 `json:"latency"`
+	Message string  `json:"message,omitempty"`
+}
+
+type storageMeasurement struct {
+	size      int64
+	fileCount int
+}
+
+func runConcurrently[T any](tasks ...func() T) []T {
+	results := make([]T, len(tasks))
+	var wg sync.WaitGroup
+
+	wg.Add(len(tasks))
+	for i, task := range tasks {
+		index, run := i, task
+		go func() {
+			defer wg.Done()
+			results[index] = run()
+		}()
+	}
+	wg.Wait()
+
+	return results
+}
+
 // SystemMonitorHandler 处理所有系统监控相关的 HTTP 接口。
 type SystemMonitorHandler struct {
-	monitor   *service.SystemMonitorService   // 系统指标采集服务
-	container *service.ContainerMonitorService // Docker 容器监控服务
-	logViewer *service.LogViewerService        // 日志查看服务
-	history   *service.MetricsHistoryService   // 历史指标存储服务
-	db        *sqlx.DB                         // 数据库连接（用于健康检查和存储统计）
-	rdb       *redis.Client                    // Redis 客户端（用于健康检查和内存统计）
-	cfg       *config.Config                   // 应用配置
+	monitor          *service.SystemMonitorService    // 系统指标采集服务
+	container        *service.ContainerMonitorService // Docker 容器监控服务
+	logViewer        *service.LogViewerService        // 日志查看服务
+	history          *service.MetricsHistoryService   // 历史指标存储服务
+	db               *sqlx.DB                         // 数据库连接（用于健康检查和存储统计）
+	rdb              *redis.Client                    // Redis 客户端（用于健康检查和内存统计）
+	cfg              *config.Config                   // 应用配置
+	healthHTTPClient systemMonitorHTTPDoer            // AI 健康探测客户端（复用连接池）
 }
 
 // NewSystemMonitorHandler 创建 SystemMonitorHandler 实例。
@@ -49,13 +91,14 @@ func NewSystemMonitorHandler(
 	cfg *config.Config,
 ) *SystemMonitorHandler {
 	return &SystemMonitorHandler{
-		monitor:   monitor,
-		container: container,
-		logViewer: logViewer,
-		history:   history,
-		db:        db,
-		rdb:       rdb,
-		cfg:       cfg,
+		monitor:          monitor,
+		container:        container,
+		logViewer:        logViewer,
+		history:          history,
+		db:               db,
+		rdb:              rdb,
+		cfg:              cfg,
+		healthHTTPClient: http.DefaultClient,
 	}
 }
 
@@ -89,14 +132,14 @@ func (h *SystemMonitorHandler) GetMetrics(c echo.Context) error {
 // GetStorage 处理 GET /api/v1/admin/system/storage 请求。
 // 返回各存储子系统（上传文件、日志、数据库、Redis）的磁盘占用明细。
 func (h *SystemMonitorHandler) GetStorage(c echo.Context) error {
-	breakdown := h.collectStorageBreakdown()
+	breakdown := h.collectStorageBreakdown(c.Request().Context())
 	return response.OK(c, breakdown)
 }
 
 // GetHealth 处理 GET /api/v1/admin/system/health 请求。
 // 检查并返回所有依赖服务（数据库、Redis、Elasticsearch、AI 服务）的健康状态。
 func (h *SystemMonitorHandler) GetHealth(c echo.Context) error {
-	health := h.checkServiceHealth()
+	health := h.checkServiceHealth(c.Request().Context())
 	return response.OK(c, health)
 }
 
@@ -104,8 +147,8 @@ func (h *SystemMonitorHandler) GetHealth(c echo.Context) error {
 // 聚合返回系统指标、存储占用和服务健康状态的综合概览。
 func (h *SystemMonitorHandler) GetOverview(c echo.Context) error {
 	metrics := h.monitor.CollectMetrics()
-	storage := h.collectStorageBreakdown()
-	health := h.checkServiceHealth()
+	storage := h.collectStorageBreakdown(c.Request().Context())
+	health := h.checkServiceHealth(c.Request().Context())
 
 	return response.OK(c, map[string]any{
 		"metrics":  h.flattenMetrics(metrics),
@@ -218,20 +261,8 @@ func (h *SystemMonitorHandler) DownloadLog(c echo.Context) error {
 // 通过 TCP 拨号测试各依赖服务（Google DNS、Cloudflare DNS、AI 服务、PostgreSQL、Redis）的网络连通性，
 // 返回每个目标的连接状态和延迟（毫秒）。
 func (h *SystemMonitorHandler) NetworkTest(c echo.Context) error {
-	// TestResult 表示单次网络连通性测试结果
-	type TestResult struct {
-		Name    string  `json:"name"`
-		Host    string  `json:"host"`
-		Status  string  `json:"status"`
-		Latency float64 `json:"latency"`
-		Message string  `json:"message,omitempty"`
-	}
-
 	// 预设测试目标：Google DNS 和 Cloudflare DNS
-	targets := []struct {
-		name string
-		addr string
-	}{
+	targets := []networkTestTarget{
 		{"Google DNS", "8.8.8.8:53"},
 		{"Cloudflare DNS", "1.1.1.1:53"},
 	}
@@ -248,47 +279,39 @@ func (h *SystemMonitorHandler) NetworkTest(c echo.Context) error {
 					host += ":80"
 				}
 			}
-			targets = append(targets, struct {
-				name string
-				addr string
-			}{"AI Service", host})
+			targets = append(targets, networkTestTarget{"AI Service", host})
 		}
 	}
 
 	// 添加 PostgreSQL 测试目标
-	targets = append(targets, struct {
-		name string
-		addr string
-	}{"PostgreSQL", fmt.Sprintf("%s:%d", h.cfg.Database.Host, h.cfg.Database.Port)})
+	targets = append(targets, networkTestTarget{"PostgreSQL", fmt.Sprintf("%s:%d", h.cfg.Database.Host, h.cfg.Database.Port)})
 
 	// 添加 Redis 测试目标
-	targets = append(targets, struct {
-		name string
-		addr string
-	}{"Redis", h.cfg.Redis.Addr()})
+	targets = append(targets, networkTestTarget{"Redis", h.cfg.Redis.Addr()})
 
-	// 对每个目标执行 TCP 连接测试并记录延迟
-	var results []TestResult
+	// 对每个目标并发执行 TCP 连接测试，同时保持响应顺序稳定。
+	tasks := make([]func() networkTestResult, 0, len(targets))
 	for _, t := range targets {
-		start := time.Now()
-		conn, err := net.DialTimeout("tcp", t.addr, 3*time.Second)
-		latency := float64(time.Since(start).Microseconds()) / 1000.0 // 转换为毫秒
+		target := t
+		tasks = append(tasks, func() networkTestResult {
+			start := time.Now()
+			dialer := net.Dialer{Timeout: 3 * time.Second}
+			conn, err := dialer.DialContext(c.Request().Context(), "tcp", target.addr)
+			latency := float64(time.Since(start).Microseconds()) / 1000.0 // 转换为毫秒
 
-		r := TestResult{
-			Name: t.name,
-			Host: t.addr,
-		}
-		if err != nil {
-			r.Status = "failed"
-			r.Latency = 0
-			r.Message = err.Error()
-		} else {
-			conn.Close()
-			r.Status = "ok"
-			r.Latency = latency
-		}
-		results = append(results, r)
+			result := networkTestResult{Name: target.name, Host: target.addr}
+			if err != nil {
+				result.Status = "failed"
+				result.Message = err.Error()
+				return result
+			}
+			_ = conn.Close()
+			result.Status = "ok"
+			result.Latency = latency
+			return result
+		})
 	}
+	results := runConcurrently(tasks...)
 
 	return response.OK(c, map[string]any{
 		"status":    "completed",
@@ -338,56 +361,67 @@ func (h *SystemMonitorHandler) GetConfig(c echo.Context) error {
 
 // collectStorageBreakdown 汇总各存储子系统的磁盘占用情况。
 // 包括：上传文件目录、日志目录、PostgreSQL 数据库大小、Redis 内存占用。
-func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdown {
+func (h *SystemMonitorHandler) collectStorageBreakdown(ctx context.Context) service.StorageBreakdown {
 	var breakdown service.StorageBreakdown
 
-	// 统计上传文件目录大小和文件数量
-	uploadSize, uploadCount := dirSizeAndCount(h.cfg.Upload.Path)
+	measurements := runConcurrently(
+		func() storageMeasurement {
+			size, count := dirSizeAndCount(h.cfg.Upload.Path)
+			return storageMeasurement{size: size, fileCount: count}
+		},
+		func() storageMeasurement {
+			size, count := dirSizeAndCount(h.cfg.Log.Path)
+			return storageMeasurement{size: size, fileCount: count}
+		},
+		func() storageMeasurement {
+			queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			var size int64
+			_ = h.db.QueryRowContext(queryCtx, "SELECT pg_database_size(current_database())").Scan(&size)
+			return storageMeasurement{size: size}
+		},
+		func() storageMeasurement {
+			queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			info, err := h.rdb.Info(queryCtx, "memory").Result()
+			if err != nil {
+				return storageMeasurement{}
+			}
+			return storageMeasurement{size: parseRedisMemory(info)}
+		},
+	)
+	uploads, logs, database, redisMemory := measurements[0], measurements[1], measurements[2], measurements[3]
+
 	breakdown.Uploads = service.StorageItem{
 		Name:      "uploads",
-		Size:      uploadSize,
-		FileCount: uploadCount,
-		Formatted: service.FormatBytes(uploadSize),
+		Size:      uploads.size,
+		FileCount: uploads.fileCount,
+		Formatted: service.FormatBytes(uploads.size),
 	}
 
-	// 统计日志目录大小和文件数量
-	logSize, logCount := dirSizeAndCount(h.cfg.Log.Path)
 	breakdown.Logs = service.StorageItem{
 		Name:      "logs",
-		Size:      logSize,
-		FileCount: logCount,
-		Formatted: service.FormatBytes(logSize),
+		Size:      logs.size,
+		FileCount: logs.fileCount,
+		Formatted: service.FormatBytes(logs.size),
 	}
 
-	// 通过 pg_database_size() 查询当前数据库占用空间
-	var dbSize int64
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
 	breakdown.Database = service.StorageItem{
 		Name:      "database",
-		Size:      dbSize,
+		Size:      database.size,
 		FileCount: 0,
-		Formatted: service.FormatBytes(dbSize),
+		Formatted: service.FormatBytes(database.size),
 	}
 
-	// 通过 Redis INFO memory 命令获取内存占用
-	var redisSize int64
-	rctx, rcancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer rcancel()
-	info, err := h.rdb.Info(rctx, "memory").Result()
-	if err == nil {
-		redisSize = parseRedisMemory(info)
-	}
 	breakdown.Redis = service.StorageItem{
 		Name:      "redis",
-		Size:      redisSize,
+		Size:      redisMemory.size,
 		FileCount: 0,
-		Formatted: service.FormatBytes(redisSize),
+		Formatted: service.FormatBytes(redisMemory.size),
 	}
 
 	// 汇总各项占用总量
-	total := uploadSize + logSize + dbSize + redisSize
+	total := uploads.size + logs.size + database.size + redisMemory.size
 	breakdown.TotalSize = total
 	breakdown.UsedSize = total
 
@@ -410,66 +444,80 @@ type ServiceHealth struct {
 
 // checkServiceHealth 检查所有依赖服务的健康状态，返回结果数组。
 // 依次检查：PostgreSQL、Redis、AI 服务。
-func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
-	var result []ServiceHealth
-
-	// 检查 PostgreSQL 连接状态
-	dbStatus := "up"
-	dbMsg := ""
-	dbLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		return h.db.PingContext(ctx)
-	})
-	if dbLatency < 0 {
-		dbStatus = "down"
-		dbMsg = "Connection failed"
-		dbLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg})
-
-	// 检查 Redis 连接状态
-	redisStatus := "up"
-	redisMsg := ""
-	redisLatency := measureLatency(func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		return h.rdb.Ping(ctx).Err()
-	})
-	if redisLatency < 0 {
-		redisStatus = "down"
-		redisMsg = "Connection failed"
-		redisLatency = 0
-	}
-	result = append(result, ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg})
-
-	// 检查 AI 服务健康状态（通过 GET /health 接口探测）
-	aiStatus := "down"
-	aiMsg := ""
-	var aiLatency int64
-	if h.cfg.AI.BaseURL != "" {
-		aiLatency = measureLatency(func() error {
-			client := &http.Client{Timeout: 3 * time.Second}
-			resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
-			if err != nil {
-				return err
+func (h *SystemMonitorHandler) checkServiceHealth(ctx context.Context) []ServiceHealth {
+	return runConcurrently(
+		func() ServiceHealth {
+			latency := measureLatency(func() error {
+				queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+				return h.db.PingContext(queryCtx)
+			})
+			if latency < 0 {
+				return ServiceHealth{Name: "database", Status: "down", Message: "Connection failed"}
 			}
-			resp.Body.Close()
-			return nil
-		})
-		if aiLatency >= 0 {
-			aiStatus = "up"
-		} else {
-			aiMsg = "Connection failed"
-			aiLatency = 0
-		}
-	} else {
-		// 未配置 AI 服务地址，视为不可用
-		aiStatus = "down"
-	}
-	result = append(result, ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg})
+			return ServiceHealth{Name: "database", Status: "up", Latency: latency}
+		},
+		func() ServiceHealth {
+			latency := measureLatency(func() error {
+				queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				return h.rdb.Ping(queryCtx).Err()
+			})
+			if latency < 0 {
+				return ServiceHealth{Name: "redis", Status: "down", Message: "Connection failed"}
+			}
+			return ServiceHealth{Name: "redis", Status: "up", Latency: latency}
+		},
+		func() ServiceHealth {
+			return checkAIServiceHealth(ctx, h.healthHTTPClient, h.cfg.AI.BaseURL)
+		},
+	)
+}
 
-	return result
+func checkAIServiceHealth(ctx context.Context, client systemMonitorHTTPDoer, baseURL string) ServiceHealth {
+	if baseURL == "" {
+		return ServiceHealth{Name: "ai", Status: "down"}
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	var healthErr error
+	latency := measureLatency(func() error {
+		requestCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(
+			requestCtx,
+			http.MethodGet,
+			strings.TrimRight(baseURL, "/")+"/health",
+			nil,
+		)
+		if err != nil {
+			healthErr = err
+			return err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			healthErr = err
+			return err
+		}
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			healthErr = fmt.Errorf("unexpected AI health status: %d", resp.StatusCode)
+			return healthErr
+		}
+		return nil
+	})
+	if latency < 0 {
+		message := "Connection failed"
+		if healthErr != nil {
+			message = healthErr.Error()
+		}
+		return ServiceHealth{Name: "ai", Status: "down", Message: message}
+	}
+	return ServiceHealth{Name: "ai", Status: "up", Latency: latency}
 }
 
 // flattenMetrics 将嵌套的 SystemMetrics 结构体转换为前端所需的扁平化键值映射。
