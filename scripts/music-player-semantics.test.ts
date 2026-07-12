@@ -161,9 +161,14 @@ describe('music provider semantic integration gates', () => {
     expect(providerSource).not.toContain('可以在后台音乐大厅的歌曲信息里维护歌词');
   });
 
-  it('treats dragging the floating player to remove as a real session close', () => {
+  it('offers an explicit session close that stops audio and removes the restore snapshot', () => {
+    expect(providerSource).toContain('dismissPlayer: () => void;');
+    expect(providerSource).toContain('const dismissPlayer = useCallback(() => {');
+    expect(providerSource).toContain("registerAction('stop', dismissPlayer)");
     expect(providerSource).toContain('localStorage.removeItem(MUSIC_PLAYBACK_STORAGE_KEY)');
     expect(providerSource).toContain("audio.removeAttribute('src')");
     expect(providerSource).toContain('pendingRestoreRef.current = null');
+    expect(providerSource.match(/data-dismiss-music-player/g)).toHaveLength(2);
+    expect(providerSource.match(/aria-label="停止播放并关闭播放器"/g)).toHaveLength(2);
   });
 });

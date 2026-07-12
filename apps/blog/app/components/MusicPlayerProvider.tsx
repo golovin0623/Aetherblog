@@ -32,6 +32,7 @@ import {
   SkipForward,
   Shuffle,
   Volume2,
+  X,
 } from 'lucide-react';
 import { getMusicPlayer, type MusicPlayer, type MusicTrack } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
@@ -361,6 +362,7 @@ interface MusicPlayerContextValue {
   nextTrack: () => void;
   previousTrack: () => void;
   seekToPercent: (percent: number) => void;
+  dismissPlayer: () => void;
   setShuffle: (value: boolean | ((prev: boolean) => boolean)) => void;
   setExpanded: (value: boolean) => void;
   setVolume: (value: number) => void;
@@ -1000,21 +1002,29 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setVolumeState(nextVolume);
   }, []);
 
-  const stopPlayback = useCallback(() => {
-    pausePlayback();
+  const dismissPlayer = useCallback(() => {
     const audio = audioRef.current;
+    playIntentRef.current = false;
+    // Make queued pause/load events stale before clearing storage, so they cannot recreate the snapshot.
+    sourceTransitionRef.current = true;
+    sourceRequestRef.current += 1;
+    activeAudioSrcRef.current = '';
     if (audio) {
-      try {
-        audio.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
     }
     progressRef.current = 0;
+    lastPersistAtRef.current = 0;
     setProgress(0);
+    setDuration(0);
+    setIsPlaying(false);
+    setIsBuffering(false);
+    setPlaybackError(null);
     setHasPlaybackSession(false);
-    persistPlaybackSnapshot(0);
-  }, [pausePlayback, persistPlaybackSnapshot]);
+    setExpanded(false);
+    clearPlaybackSnapshot();
+  }, [clearPlaybackSnapshot]);
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
@@ -1064,7 +1074,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       }
       seekToTime(details.seekTime);
     });
-    registerAction('stop', stopPlayback);
+    registerAction('stop', dismissPlayer);
 
     return () => {
       for (const action of registeredActions) {
@@ -1086,7 +1096,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     player?.playlist?.name,
     previousTrack,
     seekToTime,
-    stopPlayback,
+    dismissPlayer,
   ]);
 
   useEffect(() => {
@@ -1215,6 +1225,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     nextTrack,
     previousTrack,
     seekToPercent,
+    dismissPlayer,
     setShuffle,
     setExpanded,
     setVolume,
@@ -1250,6 +1261,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     playerLoadError,
     previousTrack,
     seekToPercent,
+    dismissPlayer,
     shuffle,
     setShuffle,
     togglePlayback,
@@ -1455,6 +1467,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     nextTrack,
     previousTrack,
     seekToPercent,
+    dismissPlayer,
     setShuffle,
     setExpanded,
     setVolume,
@@ -1726,7 +1739,15 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   {mobilePane === 'player' ? `${currentIndex + 1} / ${tracks.length}` : mobilePane === 'lyrics' ? currentPresentation.title : `${tracks.length} 首`}
                 </p>
               </div>
-              <span aria-hidden="true" />
+              <button
+                type="button"
+                data-dismiss-music-player
+                onClick={dismissPlayer}
+                className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                aria-label="停止播放并关闭播放器"
+              >
+                <X className="h-5 w-5" strokeWidth={1.7} />
+              </button>
             </header>
 
             {mobilePane === 'player' ? (
@@ -1943,6 +1964,15 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                     aria-label="收起播放器"
                   >
                     <ChevronDown className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    data-dismiss-music-player
+                    onClick={dismissPlayer}
+                    className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                    aria-label="停止播放并关闭播放器"
+                  >
+                    <X className="h-5 w-5" strokeWidth={1.7} />
                   </button>
                 </div>
               </div>
