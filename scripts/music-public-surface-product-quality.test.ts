@@ -98,6 +98,7 @@ describe('public music hall product-quality gates', () => {
 
   it('does not stack the global theme floater on top of music controls', () => {
     expect(floatingThemeSource).toContain('useMusicPlayer');
+    expect(floatingThemeSource).toContain('if (!mounted || !pathname) return null;');
     expect(floatingThemeSource).toContain("pathname.startsWith('/music')");
     expect(floatingThemeSource).toContain('hasPlaybackSession');
   });

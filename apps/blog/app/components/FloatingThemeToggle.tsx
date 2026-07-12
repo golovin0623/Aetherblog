@@ -26,7 +26,7 @@ export default function FloatingThemeToggle() {
     setMounted(true);
   }, []);
 
-  if (!mounted) return null;
+  if (!mounted || !pathname) return null;
 
   // 全屏工具与音乐播放路径已有专属底部操作，不让第二个悬浮控件争抢同一拇指热区。
   if (

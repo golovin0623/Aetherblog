@@ -16,7 +16,11 @@ import { AlertCircle, Disc3, Music2, Pause, Play, RefreshCw, SkipBack, SkipForwa
 import { spring, transition } from '@aetherblog/ui';
 import type { MusicTrack } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
-import { resolveAdminAdjacentTrack, resolveAdminAudioUrl } from './adminMusicPlayerState';
+import {
+  resolveAdminAdjacentTrack,
+  resolveAdminAudioUrl,
+  resolveAdminMediaErrorMessage,
+} from './adminMusicPlayerState';
 
 const DISMISS_DRAG_DISTANCE = 86;
 const DISMISS_DRAG_VELOCITY = 720;
@@ -436,10 +440,11 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
           setIsPlaying(false);
         }}
         onError={() => {
-          if (!audioRef.current?.getAttribute('src')) return;
+          const audio = audioRef.current;
+          if (!audio?.getAttribute('src')) return;
           playingRef.current = false;
           setIsPlaying(false);
-          setPlaybackError('这首歌暂时无法播放。');
+          setPlaybackError(resolveAdminMediaErrorMessage(audio.error?.code));
         }}
         onEnded={nextTrack}
         onLoadedMetadata={(event) => {
