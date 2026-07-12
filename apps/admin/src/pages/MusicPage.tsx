@@ -1,6 +1,9 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   Disc3,
   ExternalLink,
@@ -11,6 +14,7 @@ import {
   ListPlus,
   Loader2,
   Music2,
+  MoreHorizontal,
   Palette,
   Pause,
   Play,
@@ -39,6 +43,7 @@ import type {
   MusicPlaylist,
   MusicPlaylistRequest,
   MusicSettings,
+  MusicSettingsRequest,
   MusicTrack,
   MusicTrackRequest,
 } from '@aetherblog/types';
@@ -58,16 +63,33 @@ import {
   buildPlaylistTrackOptions,
   getMissingPlaylistMemberPageNumbers,
 } from './music/playlistTrackOptions';
+import {
+  buildMusicPlaylistUpdate,
+  buildMusicSettingsUpdate,
+  buildMusicTrackUpdate,
+  canSavePlaylistDraft,
+  movePlaylistTrack,
+  playlistToDraft,
+  shouldApplyPlaylistSaveResult,
+  shouldApplyTrackSaveResult,
+  shouldConfirmPlaylistSwitch,
+  shouldConfirmTrackDraftDiscard,
+  type PlaylistDraft,
+} from './music/musicDrafts';
 
 type MusicTab = 'library' | 'playlists' | 'display';
+type PendingTrackNavigation =
+  | { kind: 'select'; track: MusicTrack }
+  | { kind: 'close' }
+  | { kind: 'tab'; tab: MusicTab };
 type PendingDelete =
   | { kind: 'track'; track: MusicTrack; deleteMedia: boolean }
   | { kind: 'playlist'; playlist: MusicPlaylist };
-type PlaylistDraft = MusicPlaylistRequest & { sortOrder: number };
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
 const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
+const MUSIC_SETTINGS_QUERY_KEY = ['music-settings'] as const;
 const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba']);
 const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba';
 
@@ -127,43 +149,44 @@ const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
     key: 'display',
     label: '展示播放',
     shortLabel: '展示',
-    description: '配置个人卡片入口、首页展示、随机与轮播播放策略。',
+    description: '配置个人卡片入口、随机与轮播播放策略。',
     icon: SlidersHorizontal,
   },
 ];
 
 const panelClass = cn(
-  'access-surface surface-leaf surface-admin-panel rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
-  'p-3 shadow-sm sm:p-4'
+  'surface-leaf surface-admin-panel rounded-[1.25rem]',
+  'p-3 sm:p-4'
 );
 
 const shellClass = cn(
-  'access-surface overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
-  'bg-[var(--bg-leaf)] shadow-[0_18px_48px_-42px_rgba(0,0,0,0.45)]'
+  'surface-leaf overflow-hidden rounded-[1.25rem]'
 );
 
 function iconButtonClass(active = false, tone: 'default' | 'primary' | 'danger' = 'default') {
   return cn(
-    'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-all duration-200 active:translate-y-px',
-    active && 'shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
+    'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-60 min-[769px]:h-10 min-[769px]:w-10',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
+    active && 'bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]',
     tone === 'primary' &&
-      'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)]',
+      'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)]',
     tone === 'danger' &&
-      'border-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)]',
+      'text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--signal-danger)] focus-visible:text-[var(--signal-danger)]',
     tone === 'default' &&
-      'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+      'bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
   );
 }
 
 function textButtonClass(tone: 'default' | 'primary' | 'danger' = 'default') {
   return cn(
-    'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-all duration-200 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50',
+    'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-transparent px-3 text-sm font-semibold transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 min-[769px]:h-10',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
     tone === 'primary' &&
-      'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
+      'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
     tone === 'danger' &&
-      'border-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)]',
+      'bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_13%,transparent)]',
     tone === 'default' &&
-      'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)]'
+      'bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]'
   );
 }
 
@@ -172,6 +195,135 @@ function inputClass(extra?: string) {
     'h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-3 text-sm text-[var(--ink-primary)]',
     'placeholder:text-[var(--ink-muted)] transition-[border-color,box-shadow] duration-200 focus:border-[color-mix(in_oklch,var(--aurora-1)_48%,transparent)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
     extra
+  );
+}
+
+function PlaylistTrackActionMenu({
+  trackTitle,
+  moveUpDisabled,
+  moveDownDisabled,
+  removeDisabled,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}: {
+  trackTitle: string;
+  moveUpDisabled: boolean;
+  moveDownDisabled: boolean;
+  removeDisabled: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: 'fixed',
+      right: Math.max(12, window.innerWidth - rect.right),
+      top: Math.max(12, Math.min(window.innerHeight - 184, rect.bottom + 6)),
+      zIndex: 90,
+    });
+    window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus());
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        closeMenu();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMenu(true);
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+
+      const items = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []
+      );
+      if (items.length === 0) return;
+      event.preventDefault();
+      const activeIndex = items.findIndex((item) => item === document.activeElement);
+      if (event.key === 'Home') {
+        items[0]?.focus();
+      } else if (event.key === 'End') {
+        items.at(-1)?.focus();
+      } else if (event.key === 'ArrowDown') {
+        items[(activeIndex + 1 + items.length) % items.length]?.focus();
+      } else {
+        items[(activeIndex - 1 + items.length) % items.length]?.focus();
+      }
+    };
+    const onViewportChange = () => closeMenu();
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
+    };
+  }, [closeMenu, open]);
+
+  const runAction = (action: () => void) => {
+    action();
+    closeMenu(true);
+  };
+
+  return (
+    <div className="min-[769px]:hidden">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={iconButtonClass()}
+        aria-label={`更多「${trackTitle}」操作`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <MoreHorizontal className="h-5 w-5" />
+      </button>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={`「${trackTitle}」排序与移除`}
+          style={menuStyle}
+          className="surface-overlay w-44 overflow-hidden rounded-xl p-1 shadow-xl"
+        >
+          <button type="button" role="menuitem" onClick={() => runAction(onMoveUp)} disabled={moveUpDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] disabled:opacity-40">
+            <ArrowUp className="h-4 w-4" />
+            上移
+          </button>
+          <button type="button" role="menuitem" onClick={() => runAction(onMoveDown)} disabled={moveDownDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] disabled:opacity-40">
+            <ArrowDown className="h-4 w-4" />
+            下移
+          </button>
+          <button type="button" role="menuitem" onClick={() => runAction(onRemove)} disabled={removeDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--signal-danger)] disabled:opacity-40">
+            <Trash2 className="h-4 w-4" />
+            从歌单移除
+          </button>
+        </div>,
+        document.body
+      )}
+    </div>
   );
 }
 
@@ -230,7 +382,7 @@ function musicSkinScopeProps(
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
+    <div className="rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
       <p className="text-xs text-[var(--ink-muted)]">{label}</p>
       <p className="tnum mt-1 text-2xl font-bold text-[var(--ink-primary)]">{value}</p>
     </div>
@@ -239,7 +391,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 function StageMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] p-3">
+    <div className="rounded-xl bg-[color-mix(in_oklch,var(--bg-leaf)_82%,transparent)] p-3">
       <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">{label}</p>
       <p className="tnum mt-1 text-xl font-black text-[var(--ink-primary)]">{value}</p>
     </div>
@@ -255,10 +407,11 @@ function TogglePill({ checked, label, onClick }: { checked: boolean; label: stri
       aria-checked={checked}
       aria-label={label}
       className={cn(
-        'inline-flex h-10 items-center justify-between gap-3 rounded-lg border px-3 text-sm font-semibold transition-all duration-200',
+        'inline-flex h-11 items-center justify-between gap-3 rounded-xl border border-transparent px-3 text-sm font-semibold transition-[background-color,color,box-shadow] duration-150 min-[769px]:h-10',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
         checked
-          ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--ink-primary)]'
-          : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] text-[var(--ink-muted)]'
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)]'
+          : 'bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-muted)]'
       )}
     >
       <span>{label}</span>
@@ -271,6 +424,8 @@ function TrackEditor({
   track,
   onClose,
   onSave,
+  onDraftChange,
+  dirty,
   saving,
   playlistOptions,
   playlistCount,
@@ -282,6 +437,8 @@ function TrackEditor({
   track: MusicTrack;
   onClose: () => void;
   onSave: (track: MusicTrack, data: MusicTrackRequest) => void;
+  onDraftChange: () => void;
+  dirty: boolean;
   saving: boolean;
   playlistOptions: SelectOption[];
   playlistCount: number;
@@ -296,11 +453,22 @@ function TrackEditor({
     setDraft(track);
     setAddPlaylistId('');
   }, [track]);
+  const updateDraft = (changes: Partial<MusicTrack>) => {
+    onDraftChange();
+    setDraft((current) => ({ ...current, ...changes }));
+  };
   return (
     <div className={cn(panelClass, 'sticky top-4 space-y-4')}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
+            {dirty && (
+              <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] px-2 py-0.5 text-[10px] font-bold text-[var(--signal-warn)]">
+                未保存
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
         </div>
         <button type="button" onClick={onClose} className={iconButtonClass()} aria-label="关闭歌曲信息">
@@ -310,15 +478,15 @@ function TrackEditor({
       <div className="space-y-3">
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">标题</span>
-          <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className={inputClass()} />
+          <input value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} className={inputClass()} />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">艺术家</span>
-          <input value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })} className={inputClass()} />
+          <input value={draft.artist} onChange={(e) => updateDraft({ artist: e.target.value })} className={inputClass()} />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">专辑</span>
-          <input value={draft.album} onChange={(e) => setDraft({ ...draft, album: e.target.value })} className={inputClass()} />
+          <input value={draft.album} onChange={(e) => updateDraft({ album: e.target.value })} className={inputClass()} />
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
           <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
@@ -334,8 +502,7 @@ function TrackEditor({
               type="number"
               min={1}
               value={draft.coverMediaFileId ?? ''}
-              onChange={(e) => setDraft({
-                ...draft,
+              onChange={(e) => updateDraft({
                 coverMediaFileId: e.target.value ? Number(e.target.value) : undefined,
               })}
               className={inputClass()}
@@ -348,7 +515,7 @@ function TrackEditor({
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</span>
           <textarea
             value={draft.lyric || ''}
-            onChange={(e) => setDraft({ ...draft, lyric: e.target.value })}
+            onChange={(e) => updateDraft({ lyric: e.target.value })}
             className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
             placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
           />
@@ -359,7 +526,7 @@ function TrackEditor({
             <input
               type="number"
               value={draft.sortOrder}
-              onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })}
+              onChange={(e) => updateDraft({ sortOrder: Number(e.target.value) || 0 })}
               className={inputClass()}
             />
           </label>
@@ -367,7 +534,7 @@ function TrackEditor({
             <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">状态</span>
             <Select
               value={draft.status}
-              onValueChange={(value) => setDraft({ ...draft, status: value as MusicTrack['status'] })}
+              onValueChange={(value) => updateDraft({ status: value as MusicTrack['status'] })}
               options={[
                 { value: 'ACTIVE', label: '展示' },
                 { value: 'HIDDEN', label: '隐藏' },
@@ -421,7 +588,7 @@ function TrackEditor({
         </button>
         <button
           type="button"
-          onClick={() => onSave(track, {
+          onClick={() => onSave(track, buildMusicTrackUpdate(track, {
             title: draft.title,
             artist: draft.artist,
             album: draft.album,
@@ -430,12 +597,12 @@ function TrackEditor({
             status: draft.status,
             sortOrder: draft.sortOrder,
             isFeatured: draft.isFeatured,
-          })}
+          }))}
           className={textButtonClass('primary')}
-          disabled={saving}
+          disabled={saving || !dirty}
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-          保存
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : dirty ? <RotateCw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+          {saving ? '保存中' : dirty ? '保存' : '已保存'}
         </button>
       </div>
     </div>
@@ -445,29 +612,33 @@ function TrackEditor({
 export default function MusicPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const settingsWriteLockRef = useRef(false);
+  const deleteWriteLockRef = useRef(false);
+  const [activeTab, setActiveTab] = useState<MusicTab>('library');
   const {
+    queue,
     currentTrack,
     currentIndex,
     isPlaying,
     progress,
     duration,
     percent,
+    playbackError,
     playTracks,
     togglePlayback,
     nextTrack,
     previousTrack,
     seekToPercent,
+    retryPlayback,
+    setMusicSkin,
     setDockSuppressed,
   } = useAdminMusicPlayer();
 
-  // 音乐管理页本身已有「NOW AUDITIONING」内嵌播放卡 + 行内试听控件,
-  // 抑制全局浮层,避免与右侧「歌曲信息」编辑面板重合、与上方卡片重复。
-  // 离开本页时浮层恢复(继续后台试听的全局指示)。
+  // 完整试听舞台只属于「展示播放」；曲库和歌单保持管理优先，继续使用紧凑全局播放器。
   useEffect(() => {
-    setDockSuppressed(true);
+    setDockSuppressed(activeTab === 'display');
     return () => setDockSuppressed(false);
-  }, [setDockSuppressed]);
-  const [activeTab, setActiveTab] = useState<MusicTab>('library');
+  }, [activeTab, setDockSuppressed]);
   // 后台明暗主题 —— 自定义皮肤预览按当前主题取对应光源种子
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
@@ -488,11 +659,15 @@ export default function MusicPage() {
   const [newFolderName, setNewFolderName] = useState(MUSIC_HALL_FOLDER_NAME);
   const [uploadingLabel, setUploadingLabel] = useState('');
   const [editingTrack, setEditingTrack] = useState<MusicTrack | null>(null);
+  const editingTrackIdRef = useRef<number | null>(null);
+  const trackDraftRevisionRef = useRef(0);
+  const [trackDraftDirty, setTrackDraftDirty] = useState(false);
+  const [pendingTrackNavigation, setPendingTrackNavigation] = useState<PendingTrackNavigation | null>(null);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
+  const selectedPlaylistIdRef = useRef<number | null>(null);
   const [playlistForm, setPlaylistForm] = useState({
     name: '我的歌单',
     description: '',
-    displayOnHome: true,
     displayOnProfile: true,
     carouselEnabled: true,
     randomEnabled: false,
@@ -508,13 +683,77 @@ export default function MusicPage() {
     randomEnabled: false,
     sortOrder: 0,
   });
+  const [playlistDraftSourceId, setPlaylistDraftSourceId] = useState<number | null>(null);
+  const [playlistDraftDirty, setPlaylistDraftDirty] = useState(false);
+  const playlistDraftRevisionRef = useRef(0);
+  const [pendingPlaylistSelectionId, setPendingPlaylistSelectionId] = useState<number | null>(null);
   const [trackToAdd, setTrackToAdd] = useState('');
   const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [isSettingsWriteBusy, setIsSettingsWriteBusy] = useState(false);
   const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
 
+  const selectPlaylist = useCallback((playlistId: number | null) => {
+    playlistDraftRevisionRef.current += 1;
+    selectedPlaylistIdRef.current = playlistId;
+    setPlaylistDraftSourceId(null);
+    setPlaylistDraftDirty(false);
+    setSelectedPlaylistId(playlistId);
+  }, []);
+  const updatePlaylistDraft = useCallback(
+    (updater: (draft: PlaylistDraft) => PlaylistDraft) => {
+      playlistDraftRevisionRef.current += 1;
+      setPlaylistDraftDirty(true);
+      setPlaylistDraft(updater);
+    },
+    []
+  );
+  const performTrackNavigation = useCallback((navigation: PendingTrackNavigation) => {
+    trackDraftRevisionRef.current += 1;
+    setTrackDraftDirty(false);
+    setPendingTrackNavigation(null);
+    if (navigation.kind === 'select') {
+      editingTrackIdRef.current = navigation.track.id;
+      setEditingTrack(navigation.track);
+      return;
+    }
+    if (navigation.kind === 'close') {
+      editingTrackIdRef.current = null;
+      setEditingTrack(null);
+      return;
+    }
+    setActiveTab(navigation.tab);
+  }, []);
+  const requestTrackNavigation = useCallback((navigation: PendingTrackNavigation) => {
+    if (navigation.kind === 'tab' && navigation.tab === activeTab) return;
+    const targetTrackId = navigation.kind === 'select' ? navigation.track.id : null;
+    if (shouldConfirmTrackDraftDiscard({
+      isDirty: trackDraftDirty,
+      currentTrackId: editingTrackIdRef.current,
+      targetTrackId,
+    })) {
+      setPendingTrackNavigation(navigation);
+      return;
+    }
+    if (navigation.kind === 'select' && navigation.track.id === editingTrackIdRef.current) return;
+    performTrackNavigation(navigation);
+  }, [activeTab, performTrackNavigation, trackDraftDirty]);
+  const requestPlaylistSelection = useCallback((playlistId: number) => {
+    if (playlistId === selectedPlaylistId) return;
+    if (shouldConfirmPlaylistSwitch({
+      selectedPlaylistId,
+      targetPlaylistId: playlistId,
+      loadedPlaylistId: playlistDraftSourceId,
+      isDirty: playlistDraftDirty,
+    })) {
+      setPendingPlaylistSelectionId(playlistId);
+      return;
+    }
+    selectPlaylist(playlistId);
+  }, [playlistDraftDirty, playlistDraftSourceId, selectPlaylist, selectedPlaylistId]);
+
   const settingsQuery = useQuery({
-    queryKey: ['music-settings'],
+    queryKey: MUSIC_SETTINGS_QUERY_KEY,
     queryFn: async () => (await musicService.getSettings()).data,
   });
 
@@ -555,9 +794,18 @@ export default function MusicPage() {
   });
 
   const settings = defaultSettings(settingsQuery.data);
+  useEffect(() => {
+    const value = resolveMusicSkinValue(settings.skinMode, settings.skinPreset);
+    const seed = value === 'custom'
+      ? ((isDark ? settings.skinColorDark : settings.skinColorLight) || settings.skinColorLight || settings.skinColorDark)
+      : undefined;
+    setMusicSkin(value, seed);
+  }, [isDark, setMusicSkin, settings.skinColorDark, settings.skinColorLight, settings.skinMode, settings.skinPreset]);
   // 自定义皮肤取色草稿 —— 从后台已存值回填,点击「应用」才落库(避免拖动取色器时狂发请求)
   const [skinDraftLight, setSkinDraftLight] = useState('#DC3D44');
   const [skinDraftDark, setSkinDraftDark] = useState('#FF6B6E');
+  const [carouselIntervalDraft, setCarouselIntervalDraft] = useState('8');
+  const [carouselIntervalDirty, setCarouselIntervalDirty] = useState(false);
   // 只在首次拿到后台存值时回填一次草稿。之后后台因其它设置保存而 refetch 时不再覆盖,
   // 避免把正在拖动的取色器重置(load-window 抖动)。
   const skinDraftSeededRef = useRef(false);
@@ -569,6 +817,11 @@ export default function MusicPage() {
       skinDraftSeededRef.current = true;
     }
   }, [settings.skinColorLight, settings.skinColorDark]);
+
+  useEffect(() => {
+    if (!settingsQuery.data || carouselIntervalDirty) return;
+    setCarouselIntervalDraft(String(settingsQuery.data.carouselIntervalSeconds));
+  }, [carouselIntervalDirty, settingsQuery.data]);
   const tracks = tracksQuery.data?.list ?? [];
   const playlistTrackCandidates = playlistTrackCandidatesQuery.data?.list ?? [];
   const playlists = playlistsQuery.data?.list ?? [];
@@ -632,13 +885,44 @@ export default function MusicPage() {
     queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks'] });
   }, [queryClient]);
 
+  const beginSettingsWrite = useCallback(() => {
+    if (settingsWriteLockRef.current) return false;
+    settingsWriteLockRef.current = true;
+    setIsSettingsWriteBusy(true);
+    return true;
+  }, []);
+
+  const finishSettingsWrite = useCallback(() => {
+    settingsWriteLockRef.current = false;
+    setIsSettingsWriteBusy(false);
+  }, []);
+
+  const getLatestSettings = useCallback(() => {
+    const latest = queryClient.getQueryData<MusicSettings>(MUSIC_SETTINGS_QUERY_KEY);
+    if (!latest) {
+      throw new Error('播放设置尚未载入，请刷新后重试。');
+    }
+    return latest;
+  }, [queryClient]);
+
   const settingsMutation = useMutation({
-    mutationFn: musicService.updateSettings,
-    onSuccess: () => {
+    mutationFn: (patch: Partial<MusicSettingsRequest>) =>
+      musicService.updateSettings(buildMusicSettingsUpdate(getLatestSettings(), patch)),
+    onSuccess: (response) => {
+      queryClient.setQueryData(MUSIC_SETTINGS_QUERY_KEY, response.data);
       toast.success('播放展示设置已保存');
-      invalidateMusic();
+      queryClient.invalidateQueries({ queryKey: ['music-summary'] });
     },
-    onError: (error) => toast.error(extractApiErrorMessage(error, '保存设置失败')),
+    onError: async (error, patch) => {
+      if ('carouselIntervalSeconds' in patch) {
+        const latest = queryClient.getQueryData<MusicSettings>(MUSIC_SETTINGS_QUERY_KEY);
+        if (latest) setCarouselIntervalDraft(String(latest.carouselIntervalSeconds));
+        setCarouselIntervalDirty(false);
+      }
+      toast.error(extractApiErrorMessage(error, '保存设置失败'));
+      await queryClient.invalidateQueries({ queryKey: MUSIC_SETTINGS_QUERY_KEY });
+    },
+    onSettled: finishSettingsWrite,
   });
 
   const importMutation = useMutation({
@@ -664,10 +948,20 @@ export default function MusicPage() {
   });
 
   const updateTrackMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: MusicTrackRequest }) => musicService.updateTrack(id, data),
-    onSuccess: (res) => {
+    mutationFn: ({ id, data }: { id: number; data: MusicTrackRequest; revision: number }) => musicService.updateTrack(id, data),
+    onSuccess: (res, { id, revision }) => {
       toast.success('歌曲信息已更新');
-      setEditingTrack(res.data);
+      const shouldApply = shouldApplyTrackSaveResult({
+        savedTrackId: id,
+        selectedTrackId: editingTrackIdRef.current,
+        savedRevision: revision,
+        currentRevision: trackDraftRevisionRef.current,
+      });
+      if (shouldApply) {
+        setEditingTrack(res.data);
+        setTrackDraftDirty(false);
+        setPendingTrackNavigation(null);
+      }
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '更新歌曲失败')),
@@ -676,24 +970,54 @@ export default function MusicPage() {
   const deleteTrackMutation = useMutation({
     mutationFn: ({ id, deleteMedia }: { id: number; deleteMedia: boolean }) =>
       musicService.deleteTrack(id, { deleteMedia }),
-    onSuccess: () => {
+    onSuccess: (_response, { id }) => {
       toast.success('歌曲已移除');
-      setEditingTrack(null);
+      if (editingTrackIdRef.current === id) {
+        editingTrackIdRef.current = null;
+        trackDraftRevisionRef.current += 1;
+        setEditingTrack(null);
+        setTrackDraftDirty(false);
+        setPendingTrackNavigation(null);
+      }
       setPendingDelete(null);
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '移除歌曲失败')),
+    onSettled: () => {
+      deleteWriteLockRef.current = false;
+    },
   });
 
   const createFolderMutation = useMutation({
-    mutationFn: () => folderService.create({ name: newFolderName.trim() || MUSIC_HALL_FOLDER_NAME }),
-    onSuccess: async (res) => {
-      const folderId = res.data.id;
-      toast.success(`已创建媒体目录：${res.data.name}`);
-      queryClient.invalidateQueries({ queryKey: ['media-folders-tree'] });
-      await settingsMutation.mutateAsync({ ...settings, mediaFolderId: folderId });
+    mutationFn: async () => {
+      const folderResponse = await folderService.create({
+        name: newFolderName.trim() || MUSIC_HALL_FOLDER_NAME,
+      });
+      try {
+        const settingsResponse = await musicService.updateSettings(
+          buildMusicSettingsUpdate(getLatestSettings(), {
+            mediaFolderId: folderResponse.data.id,
+          })
+        );
+        return { folder: folderResponse.data, settings: settingsResponse.data };
+      } catch (error) {
+        throw new Error(
+          `目录「${folderResponse.data.name}」已创建，但未能设为音乐大厅目录：${extractApiErrorMessage(error, '请重新选择目录')}`
+        );
+      }
+    },
+    onSuccess: ({ folder, settings: updatedSettings }) => {
+      queryClient.setQueryData(MUSIC_SETTINGS_QUERY_KEY, updatedSettings);
+      toast.success(`已创建并启用媒体目录：${folder.name}`);
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '创建媒体目录失败')),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['media-folders-tree'] }),
+        queryClient.invalidateQueries({ queryKey: MUSIC_SETTINGS_QUERY_KEY }),
+      ]);
+      finishSettingsWrite();
+    },
   });
 
   const createPlaylistMutation = useMutation({
@@ -701,7 +1025,7 @@ export default function MusicPage() {
       musicService.createPlaylist({
         name: playlistForm.name.trim() || '我的歌单',
         description: playlistForm.description.trim() || undefined,
-        displayOnHome: playlistForm.displayOnHome,
+        displayOnHome: false,
         displayOnProfile: playlistForm.displayOnProfile,
         carouselEnabled: playlistForm.carouselEnabled,
         randomEnabled: playlistForm.randomEnabled,
@@ -710,17 +1034,38 @@ export default function MusicPage() {
       }),
     onSuccess: (res) => {
       toast.success(`已创建歌单：${res.data.name}`);
-      setSelectedPlaylistId(res.data.id);
+      queryClient.setQueryData(
+        ['music-playlists'],
+        (current: typeof playlistsQuery.data) => current
+          ? {
+              ...current,
+              list: [res.data, ...current.list.filter((playlist) => playlist.id !== res.data.id)],
+              total: current.total + 1,
+            }
+          : current
+      );
+      requestPlaylistSelection(res.data.id);
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '创建歌单失败')),
   });
 
   const updatePlaylistMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: MusicPlaylistRequest }) =>
+    mutationFn: ({ id, data }: { id: number; data: MusicPlaylistRequest; revision: number }) =>
       musicService.updatePlaylist(id, data),
-    onSuccess: (res) => {
+    onSuccess: (res, { id, revision }) => {
       toast.success(`已保存歌单：${res.data.name}`);
+      queryClient.setQueryData(['music-playlist-detail', id], res.data);
+      if (shouldApplyPlaylistSaveResult({
+        savedPlaylistId: id,
+        selectedPlaylistId: selectedPlaylistIdRef.current,
+        savedRevision: revision,
+        currentRevision: playlistDraftRevisionRef.current,
+      })) {
+        setPlaylistDraft(playlistToDraft(res.data));
+        setPlaylistDraftSourceId(res.data.id);
+        setPlaylistDraftDirty(false);
+      }
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '保存歌单失败')),
@@ -728,22 +1073,40 @@ export default function MusicPage() {
 
   const deletePlaylistMutation = useMutation({
     mutationFn: musicService.deletePlaylist,
-    onSuccess: () => {
+    onSuccess: (_data, deletedPlaylistId) => {
       toast.success('歌单已删除');
       setPendingDelete(null);
-      setSelectedPlaylistId(null);
+      const nextPlaylist = playlists.find((playlist) => playlist.id !== deletedPlaylistId);
+      queryClient.setQueryData(
+        ['music-playlists'],
+        (current: typeof playlistsQuery.data) => current
+          ? {
+              ...current,
+              list: current.list.filter((playlist) => playlist.id !== deletedPlaylistId),
+              total: Math.max(0, current.total - 1),
+            }
+          : current
+      );
+      if (selectedPlaylistIdRef.current === deletedPlaylistId) {
+        selectPlaylist(nextPlaylist?.id ?? null);
+      }
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '删除歌单失败')),
+    onSettled: () => {
+      deleteWriteLockRef.current = false;
+    },
   });
 
   const playlistTrackMutation = useMutation({
     mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
       musicService.addTrackToPlaylist(playlistId, trackId),
-    onSuccess: () => {
+    onSuccess: (_data, { playlistId }) => {
       toast.success('已加入歌单');
-      setTrackToAdd('');
-      invalidateMusic();
+      if (selectedPlaylistIdRef.current === playlistId) setTrackToAdd('');
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '加入歌单失败')),
   });
@@ -751,9 +1114,11 @@ export default function MusicPage() {
   const removePlaylistTrackMutation = useMutation({
     mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
       musicService.removeTrackFromPlaylist(playlistId, trackId),
-    onSuccess: () => {
+    onSuccess: (_data, { playlistId }) => {
       toast.success('已从歌单移除');
-      invalidateMusic();
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '移出歌单失败')),
   });
@@ -764,8 +1129,49 @@ export default function MusicPage() {
         playlistId,
         tracks.map((track, index) => ({ trackId: track.id, sortOrder: index }))
       ),
-    onSuccess: () => invalidateMusic(),
-    onError: (error) => toast.error(extractApiErrorMessage(error, '调整排序失败')),
+    onMutate: async ({ playlistId, tracks }) => {
+      const memberKey = ['music-playlist-member-tracks', playlistId] as const;
+      const detailKey = ['music-playlist-detail', playlistId] as const;
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: memberKey }),
+        queryClient.cancelQueries({ queryKey: detailKey }),
+      ]);
+      const previousTracks = queryClient.getQueryData<MusicTrack[]>(memberKey);
+      const previousDetail = queryClient.getQueryData<MusicPlaylist>(detailKey);
+      queryClient.setQueryData(memberKey, tracks);
+      if (previousDetail) {
+        queryClient.setQueryData<MusicPlaylist>(detailKey, {
+          ...previousDetail,
+          tracks,
+        });
+      }
+      return { previousTracks, previousDetail };
+    },
+    onError: (error, { playlistId }, context) => {
+      if (context?.previousTracks) {
+        queryClient.setQueryData(
+          ['music-playlist-member-tracks', playlistId],
+          context.previousTracks
+        );
+      } else {
+        queryClient.removeQueries({
+          queryKey: ['music-playlist-member-tracks', playlistId],
+          exact: true,
+        });
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(
+          ['music-playlist-detail', playlistId],
+          context.previousDetail
+        );
+      }
+      toast.error(extractApiErrorMessage(error, '调整排序失败，已恢复原顺序'));
+    },
+    onSettled: (_data, _error, { playlistId }) => {
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
+    },
   });
 
   // 一键发布:把「编排歌单」与「对外发布」串成一步。
@@ -790,37 +1196,54 @@ export default function MusicPage() {
           sortOrder: target.sortOrder,
         });
       }
-      await musicService.updateSettings({ ...settings, featuredPlaylistId: playlistId, enabled: true });
+      const response = await musicService.updateSettings(
+        buildMusicSettingsUpdate(getLatestSettings(), {
+          featuredPlaylistId: playlistId,
+          enabled: true,
+        })
+      );
+      queryClient.setQueryData(MUSIC_SETTINGS_QUERY_KEY, response.data);
     },
     onSuccess: (_data, { playlistId }) => {
       const name = playlists.find((item) => item.id === playlistId)?.name;
       toast.success(`已公开展示「${name || '该歌单'}」 · 公开播放器已启用`);
       invalidateMusic();
     },
-    onError: (error) => toast.error(extractApiErrorMessage(error, '发布歌单失败')),
+    onError: async (error, { playlistId }) => {
+      toast.error(extractApiErrorMessage(error, '发布歌单失败'));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: MUSIC_SETTINGS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ['music-playlists'] }),
+        queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] }),
+      ]);
+    },
+    onSettled: finishSettingsWrite,
   });
+
+  const isPlaylistWriteBusy =
+    createPlaylistMutation.isPending ||
+    updatePlaylistMutation.isPending ||
+    deletePlaylistMutation.isPending ||
+    playlistTrackMutation.isPending ||
+    removePlaylistTrackMutation.isPending ||
+    reorderPlaylistMutation.isPending ||
+    publishPlaylistMutation.isPending;
 
   useEffect(() => {
     if (!selectedPlaylistId && playlists.length > 0) {
-      setSelectedPlaylistId(playlists[0].id);
+      selectPlaylist(playlists[0].id);
     }
-  }, [playlists, selectedPlaylistId]);
+  }, [playlists, selectPlaylist, selectedPlaylistId]);
 
   useEffect(() => {
     const detail = playlistDetailQuery.data;
-    if (!detail) return;
-    setPlaylistDraft({
-      name: detail.name,
-      description: detail.description || '',
-      visibility: detail.visibility,
-      status: detail.status,
-      displayOnHome: detail.displayOnHome,
-      displayOnProfile: detail.displayOnProfile,
-      carouselEnabled: detail.carouselEnabled,
-      randomEnabled: detail.randomEnabled,
-      sortOrder: detail.sortOrder,
-    });
-  }, [playlistDetailQuery.data]);
+    if (!detail || detail.id !== selectedPlaylistId) return;
+    if (playlistDraftSourceId === detail.id && playlistDraftDirty) return;
+    playlistDraftRevisionRef.current += 1;
+    setPlaylistDraft(playlistToDraft(detail));
+    setPlaylistDraftSourceId(detail.id);
+    setPlaylistDraftDirty(false);
+  }, [playlistDetailQuery.data, playlistDraftDirty, playlistDraftSourceId, selectedPlaylistId]);
 
   useEffect(() => {
     setSelectedCandidateIds([]);
@@ -830,21 +1253,31 @@ export default function MusicPage() {
     setTrackToAdd('');
   }, [selectedPlaylistId, deferredPlaylistTrackKeyword]);
 
-  const saveSettingsPatch = (patch: Partial<MusicSettings>) => {
-    settingsMutation.mutate({
-      ...settings,
-      ...patch,
-      playbackMode: (patch.playbackMode || settings.playbackMode) as MusicPlaybackMode,
-    });
+  const saveSettingsPatch = (patch: Partial<MusicSettingsRequest>) => {
+    if (!settingsQuery.data || settingsWriteLockRef.current) return;
+    if (!beginSettingsWrite()) return;
+    settingsMutation.mutate(patch);
+  };
+
+  const commitCarouselInterval = () => {
+    const value = Math.min(60, Math.max(3, Number(carouselIntervalDraft) || 8));
+    setCarouselIntervalDraft(String(value));
+    setCarouselIntervalDirty(false);
+    if (value !== settings.carouselIntervalSeconds) {
+      saveSettingsPatch({ carouselIntervalSeconds: value });
+    }
   };
 
   const publishPlaylist = (playlistId: number) => {
-    if (publishPlaylistMutation.isPending) return;
+    if (publishPlaylistMutation.isPending || deletePlaylistMutation.isPending || !settingsQuery.data || !beginSettingsWrite()) return;
     publishPlaylistMutation.mutate({ playlistId });
+  };
+  const createMusicFolder = () => {
+    if (createFolderMutation.isPending || !settingsQuery.data || !beginSettingsWrite()) return;
+    createFolderMutation.mutate();
   };
   const unpublishPlayer = () => {
     saveSettingsPatch({ enabled: false });
-    toast.success('已停止对外公开');
   };
 
   const toggleCandidate = (id: number) => {
@@ -868,14 +1301,16 @@ export default function MusicPage() {
   };
 
   const saveSelectedPlaylist = () => {
-    if (!selectedPlaylistId) return;
+    if (!canSavePlaylistDraft({
+      selectedPlaylistId,
+      loadedPlaylistId: playlistDraftSourceId,
+      isFetching: playlistDetailQuery.isFetching,
+      isSaving: updatePlaylistMutation.isPending || publishPlaylistMutation.isPending || deletePlaylistMutation.isPending,
+    })) return;
     updatePlaylistMutation.mutate({
-      id: selectedPlaylistId,
-      data: {
-        ...playlistDraft,
-        name: playlistDraft.name.trim() || selectedPlaylist?.name || '未命名歌单',
-        description: playlistDraft.description?.trim() || undefined,
-      },
+      id: selectedPlaylistId!,
+      data: buildMusicPlaylistUpdate(playlistDraft, selectedPlaylist?.name || '未命名歌单'),
+      revision: playlistDraftRevisionRef.current,
     });
   };
 
@@ -906,6 +1341,10 @@ export default function MusicPage() {
   };
 
   const playSingle = (track: MusicTrack) => {
+    if (currentTrack?.id === track.id) {
+      void (playbackError ? retryPlayback() : togglePlayback());
+      return;
+    }
     const source = tracks.length > 0 ? tracks : [track];
     const index = Math.max(0, source.findIndex((item) => item.id === track.id));
     playTracks(source, index);
@@ -916,7 +1355,7 @@ export default function MusicPage() {
     const featuredName = settings.featuredPlaylistId
       ? playlists.find((p) => p.id === settings.featuredPlaylistId)?.name
       : undefined;
-    const surfaceList = [settings.showOnHomePage && '首页', settings.showOnProfileCard && '个人卡片'].filter(Boolean).join(' · ');
+    const surfaceList = ['公开音乐页', settings.showOnProfileCard && '个人卡片'].filter(Boolean).join(' · ');
     const stageIsCurrent = Boolean(currentTrack && stageTrack && currentTrack.id === stageTrack.id);
     const stagePlaying = stageIsCurrent && isPlaying;
     const stageProgressPercent = stageIsCurrent ? percent : 0;
@@ -925,7 +1364,7 @@ export default function MusicPage() {
     const handleStageMain = () => {
       if (!stageTrack) return;
       if (stageIsCurrent) {
-        void togglePlayback();
+        void (playbackError ? retryPlayback() : togglePlayback());
         return;
       }
       if (tracks.length > 0) {
@@ -937,20 +1376,42 @@ export default function MusicPage() {
       const w = Math.floor(s);
       return `${Math.floor(w / 60)}:${String(w % 60).padStart(2, '0')}`;
     };
+    const handleStageSeekPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!stageIsCurrent) return;
+      if (event.type === 'pointercancel') {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        return;
+      }
+      if (event.type === 'pointerdown') {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      if (event.type === 'pointermove' && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+        return;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (rect.width > 0) {
+        seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
+      }
+      if (event.type === 'pointerup' && event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    };
     return (
-      <div {...musicSkinScopeProps(settings, isDark)} className="access-surface overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--bg-leaf)_90%,var(--aurora-1)_10%),var(--bg-leaf)_50%,color-mix(in_oklch,var(--bg-leaf)_88%,var(--ink-primary)_12%))] shadow-[0_22px_70px_-52px_color-mix(in_oklch,black_50%,transparent)]">
+      <div {...musicSkinScopeProps(settings, isDark)} className="access-surface overflow-hidden rounded-[var(--music-radius-panel)]">
         <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:p-5">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[var(--aurora-1)]">
-              <Disc3 className={cn('h-3.5 w-3.5', isPlaying && 'animate-spin [animation-duration:3s]')} />
+            <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--aurora-1)]">
+              <Disc3 className="h-3.5 w-3.5" />
               Music Hall Control
             </div>
-            <h2 className="mt-4 text-2xl font-black tracking-normal text-[var(--ink-primary)] sm:text-4xl">音乐大厅中控台</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--ink-secondary)]">
+            <h2 className="mt-3 text-xl font-black tracking-normal text-[var(--ink-primary)] sm:text-3xl">音乐大厅中控台</h2>
+            <p className="mt-3 hidden max-w-3xl text-sm leading-7 text-[var(--ink-secondary)] min-[769px]:block">
               媒体库负责存储，音乐大厅负责策展、排序、公开展示、歌词封面和播放策略。上传入口会写入指定媒体目录，歌单排序与媒体库目录保持解耦。
             </p>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-3">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
                 <span className="flex items-center gap-2 font-bold">
                   <span className={cn('h-2 w-2 rounded-full', settings.enabled ? 'bg-[var(--signal-success)]' : 'bg-[color-mix(in_oklch,var(--ink-primary)_30%,transparent)]')} />
@@ -964,6 +1425,7 @@ export default function MusicPage() {
                   type="button"
                   onClick={() => (settings.enabled ? unpublishPlayer() : saveSettingsPatch({ enabled: true }))}
                   className={textButtonClass(settings.enabled ? 'default' : 'primary')}
+                  disabled={!settingsQuery.data || isSettingsWriteBusy}
                 >
                   <Radio className="h-4 w-4" />
                   {settings.enabled ? '停止公开' : '启用公开'}
@@ -981,7 +1443,7 @@ export default function MusicPage() {
               </p>
             )}
 
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="mt-5 hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
               <StageMetric label="曲库" value={summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0} />
               <StageMetric label="展示中" value={summaryQuery.data?.activeTrackCount ?? 0} />
               <StageMetric label="歌单" value={summaryQuery.data?.playlistCount ?? playlists.length} />
@@ -989,7 +1451,7 @@ export default function MusicPage() {
             </div>
           </div>
 
-          <div className="relative isolate overflow-hidden rounded-[1.65rem] border border-[color-mix(in_oklch,white_12%,var(--aurora-1)_18%)] bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-raised)_88%,white_6%),color-mix(in_oklch,var(--bg-void)_82%,var(--aurora-1)_18%))] p-4 text-[var(--ink-primary)] shadow-[inset_0_1px_0_color-mix(in_oklch,white_16%,transparent),0_26px_70px_-46px_color-mix(in_oklch,black_80%,transparent)]">
+          <div className="relative isolate overflow-hidden rounded-[var(--music-radius-detail)] bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-raised)_88%,white_6%),color-mix(in_oklch,var(--bg-void)_82%,var(--aurora-1)_18%))] p-4 text-[var(--ink-primary)] shadow-[0_20px_50px_-40px_color-mix(in_oklch,black_80%,transparent)]">
             {stageCover && (
               <img
                 src={stageCover}
@@ -1003,41 +1465,25 @@ export default function MusicPage() {
             <div className="relative z-10">
               <div className="flex items-center justify-between gap-3">
                 <p className="flex min-w-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--ink-muted)]">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    {stagePlaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--aurora-1)] opacity-60" />}
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--aurora-1)]" />
-                  </span>
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--aurora-1)]" />
                   <span className="truncate">后台试听</span>
                 </p>
                 <span className="shrink-0 rounded-full border border-[color-mix(in_oklch,white_12%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_62%,transparent)] px-2.5 py-1 text-[11px] font-bold text-[var(--ink-secondary)] [backdrop-filter:blur(14px)_saturate(140%)]">
-                  {tracks.length > 0 ? `${stageQueueIndex + 1}/${tracks.length}` : '队列 0'}
+                  {queue.length > 0 ? `${stageQueueIndex + 1}/${queue.length}` : '队列 0'}
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={handleStageMain}
-                disabled={!stageTrack}
-                className="group mx-auto mt-4 block w-[min(58vw,11.5rem)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label={stagePlaying ? '暂停试听' : '播放试听'}
-              >
-                <span className={cn(
-                  'relative block aspect-square overflow-hidden rounded-[1.35rem] border border-[color-mix(in_oklch,white_18%,transparent)] bg-[radial-gradient(circle_at_50%_44%,color-mix(in_oklch,var(--aurora-1)_24%,var(--bg-raised)),color-mix(in_oklch,var(--bg-void)_88%,var(--aurora-1)_12%))] shadow-[0_24px_42px_-28px_color-mix(in_oklch,black_90%,transparent)] transition-transform duration-300 group-hover:scale-[1.018]',
-                  stagePlaying && 'shadow-[0_28px_52px_-30px_color-mix(in_oklch,var(--aurora-1)_65%,black_35%)]'
-                )}>
+              <div className="mx-auto mt-4 block w-[min(58vw,11.5rem)] rounded-[var(--music-radius-artwork-lg)]">
+                <span className="relative block aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)] bg-[radial-gradient(circle_at_50%_44%,color-mix(in_oklch,var(--aurora-1)_24%,var(--bg-raised)),color-mix(in_oklch,var(--bg-void)_88%,var(--aurora-1)_12%))] shadow-[var(--music-shadow-artwork)]">
                   {stageCover ? (
                     <img src={stageCover} alt={stageTrack?.title || ''} className="h-full w-full object-cover" />
                   ) : (
                     <span className="flex h-full w-full items-center justify-center">
-                      <Disc3 className={cn('h-16 w-16 text-[color-mix(in_oklch,var(--ink-secondary)_88%,transparent)]', stagePlaying && 'animate-spin [animation-duration:6s]')} />
+                      <Disc3 className="h-16 w-16 text-[color-mix(in_oklch,var(--ink-secondary)_88%,transparent)]" />
                     </span>
                   )}
-                  <span className="absolute inset-0 bg-[linear-gradient(180deg,transparent_58%,color-mix(in_oklch,black_34%,transparent))]" />
-                  <span className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,black_54%,transparent)] text-white shadow-lg [backdrop-filter:blur(12px)]">
-                    {stagePlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
-                  </span>
                 </span>
-              </button>
+              </div>
 
               <div className="mx-auto mt-4 max-w-[18rem] text-center">
                 <h3 className="truncate text-xl font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={stageTrack?.title}>
@@ -1054,16 +1500,10 @@ export default function MusicPage() {
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={(event) => {
-                    if (!stageIsCurrent) {
-                      handleStageMain();
-                      return;
-                    }
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    if (rect.width > 0) {
-                      seekToPercent(((event.clientX - rect.left) / rect.width) * 100);
-                    }
-                  }}
+                  onPointerDown={handleStageSeekPointer}
+                  onPointerMove={handleStageSeekPointer}
+                  onPointerUp={handleStageSeekPointer}
+                  onPointerCancel={handleStageSeekPointer}
                   onKeyDown={(event) => {
                     if (!stageIsCurrent) return;
                     if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
@@ -1072,13 +1512,26 @@ export default function MusicPage() {
                     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
                       event.preventDefault();
                       seekToPercent(Math.max(0, stageProgressPercent - 5));
+                    } else if (event.key === 'Home') {
+                      event.preventDefault();
+                      seekToPercent(0);
+                    } else if (event.key === 'End') {
+                      event.preventDefault();
+                      seekToPercent(100);
                     }
                   }}
-                  disabled={!stageTrack}
-                  className="block h-2 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] shadow-[inset_0_1px_1px_color-mix(in_oklch,black_22%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed"
-                  aria-label={stageIsCurrent ? '调整试听进度' : '开始试听'}
+                  disabled={!stageTrack || !stageIsCurrent}
+                  role={stageIsCurrent ? 'slider' : undefined}
+                  aria-valuemin={stageIsCurrent ? 0 : undefined}
+                  aria-valuemax={stageIsCurrent ? 100 : undefined}
+                  aria-valuenow={stageIsCurrent ? Math.round(stageProgressPercent) : undefined}
+                  aria-valuetext={stageIsCurrent ? `${fmtClock(progress)} / ${fmtClock(duration || stageTrack?.durationSeconds || 0)}` : undefined}
+                  className="flex min-h-11 w-full touch-none items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed"
+                  aria-label={stageIsCurrent ? '调整试听进度' : '播放后可调整进度'}
                 >
-                  <span className="block h-full rounded-full bg-[linear-gradient(90deg,var(--aurora-1),color-mix(in_oklch,var(--aurora-3)_76%,white_24%))] shadow-[0_0_18px_-6px_color-mix(in_oklch,var(--aurora-1)_90%,transparent)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+                  <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
+                    <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+                  </span>
                 </button>
                 <div className="mt-2 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
                   <span>{fmtClock(stageIsCurrent ? progress : 0)}</span>
@@ -1087,23 +1540,36 @@ export default function MusicPage() {
               </div>
 
               <div className="mt-3 flex items-center justify-center gap-4">
-                <button type="button" onClick={previousTrack} disabled={tracks.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_50%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-40 [backdrop-filter:blur(12px)]" aria-label="上一首" title="上一首">
-                  <SkipBack className="h-4 w-4" />
+                <button type="button" onClick={previousTrack} disabled={queue.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-40" aria-label="上一首" title="上一首">
+                  <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
                 </button>
                 <button
                   type="button"
                   onClick={handleStageMain}
                   disabled={!stageTrack}
-                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--aurora-1)] text-white shadow-[0_18px_36px_-18px_color-mix(in_oklch,var(--aurora-1)_92%,transparent)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={stagePlaying ? '暂停试听' : '播放试听'}
-                  title={stagePlaying ? '暂停' : '播放'}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)] transition-opacity duration-100 hover:opacity-90 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={stageIsCurrent && playbackError ? '重新尝试试听' : stagePlaying ? '暂停试听' : '播放试听'}
+                  title={stageIsCurrent && playbackError ? '重新尝试' : stagePlaying ? '暂停' : '播放'}
                 >
-                  {stagePlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
+                  {stagePlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
                 </button>
-                <button type="button" onClick={nextTrack} disabled={tracks.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full border border-[color-mix(in_oklch,white_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_50%,transparent)] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] disabled:cursor-not-allowed disabled:opacity-40 [backdrop-filter:blur(12px)]" aria-label="下一首" title="下一首">
-                  <SkipForward className="h-4 w-4" />
+                <button type="button" onClick={nextTrack} disabled={queue.length === 0} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-40" aria-label="下一首" title="下一首">
+                  <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
                 </button>
               </div>
+              {playbackError && stageIsCurrent && (
+                <div role="alert" className="mt-3 flex items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_9%,transparent)] px-3 py-2 text-xs text-[var(--ink-primary)]">
+                  <span className="min-w-0 flex-1">{playbackError}</span>
+                  <button
+                    type="button"
+                    onClick={() => void retryPlayback()}
+                    className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    重试
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1142,8 +1608,8 @@ export default function MusicPage() {
         />
         <button
           type="button"
-          onClick={() => createFolderMutation.mutate()}
-          disabled={createFolderMutation.isPending}
+          onClick={createMusicFolder}
+          disabled={createFolderMutation.isPending || isSettingsWriteBusy || !settingsQuery.data}
           className={textButtonClass('primary')}
         >
           {createFolderMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
@@ -1245,14 +1711,14 @@ export default function MusicPage() {
                     type="button"
                     onClick={() => playSingle(track)}
                     className={iconButtonClass(currentTrack?.id === track.id, 'primary')}
-                    aria-label={`播放 ${track.title}`}
+                    aria-label={currentTrack?.id === track.id && isPlaying ? `暂停 ${track.title}` : `播放 ${track.title}`}
                   >
                     {currentTrack?.id === track.id && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditingTrack(track)}
-                    className="min-w-0 text-left"
+                    onClick={() => requestTrackNavigation({ kind: 'select', track })}
+                    className="flex min-h-11 min-w-0 flex-col justify-center rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                   >
                     <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
                     <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">
@@ -1300,13 +1766,22 @@ export default function MusicPage() {
         {editingTrack && (
           <TrackEditor
             track={editingTrack}
-            onClose={() => setEditingTrack(null)}
-            onSave={(track, data) => updateTrackMutation.mutate({ id: track.id, data })}
+            onClose={() => requestTrackNavigation({ kind: 'close' })}
+            onDraftChange={() => {
+              trackDraftRevisionRef.current += 1;
+              setTrackDraftDirty(true);
+            }}
+            dirty={trackDraftDirty}
+            onSave={(track, data) => updateTrackMutation.mutate({
+              id: track.id,
+              data,
+              revision: trackDraftRevisionRef.current,
+            })}
             saving={updateTrackMutation.isPending}
             playlistOptions={playlistOptions}
             playlistCount={playlists.length}
             onAddToPlaylist={(playlistId, trackId) => playlistTrackMutation.mutate({ playlistId, trackId })}
-            addingToPlaylist={playlistTrackMutation.isPending}
+            addingToPlaylist={playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
             onRequestDeleteWithMedia={(track) => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
             onPreview={playSingle}
           />
@@ -1368,7 +1843,7 @@ export default function MusicPage() {
             ) : (
               scanItems.map((item: MusicAudioCandidate) => (
                 <div key={item.id} className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-                  <label className="flex h-10 w-10 items-center justify-center rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)]">
+                  <label className="flex h-11 w-11 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] min-[769px]:h-10 min-[769px]:w-10">
                     <input
                       type="checkbox"
                       checked={selectedCandidateSet.has(item.id)}
@@ -1422,7 +1897,9 @@ export default function MusicPage() {
   );
 
   function renderPlaylists() {
-    const detail = playlistDetailQuery.data;
+    const detail = playlistDetailQuery.data?.id === selectedPlaylistId
+      ? playlistDetailQuery.data
+      : undefined;
     const detailTracks = playlistMemberTracksQuery.data ?? detail?.tracks ?? [];
     const existingTrackIds = buildPlaylistTrackIdSet(playlistMemberTracksQuery.data ?? []);
     const playlistTrackOptions = buildPlaylistTrackOptions(playlistTrackCandidates, existingTrackIds);
@@ -1456,11 +1933,16 @@ export default function MusicPage() {
       playlistTrackStatusText = `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`;
     }
     const moveTrack = (index: number, direction: -1 | 1) => {
-      if (!selectedPlaylistId || !detail) return;
-      const next = [...detailTracks];
-      const target = index + direction;
-      if (target < 0 || target >= next.length) return;
-      [next[index], next[target]] = [next[target], next[index]];
+      if (
+        !selectedPlaylistId ||
+        !detail ||
+        reorderPlaylistMutation.isPending ||
+        playlistTrackMutation.isPending ||
+        removePlaylistTrackMutation.isPending ||
+        deletePlaylistMutation.isPending
+      ) return;
+      const next = movePlaylistTrack(detailTracks, index, direction);
+      if (next === detailTracks) return;
       reorderPlaylistMutation.mutate({ playlistId: selectedPlaylistId, tracks: next });
     };
 
@@ -1471,13 +1953,12 @@ export default function MusicPage() {
             <p className="text-sm font-bold text-[var(--ink-primary)]">创建歌单</p>
             <input value={playlistForm.name} onChange={(e) => setPlaylistForm((f) => ({ ...f, name: e.target.value }))} className={inputClass()} />
             <input value={playlistForm.description} onChange={(e) => setPlaylistForm((f) => ({ ...f, description: e.target.value }))} className={inputClass()} placeholder="歌单描述" />
-            <div className="grid grid-cols-2 gap-2">
-              <TogglePill checked={playlistForm.displayOnHome} label="首页展示" onClick={() => setPlaylistForm((f) => ({ ...f, displayOnHome: !f.displayOnHome }))} />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <TogglePill checked={playlistForm.displayOnProfile} label="个人卡片" onClick={() => setPlaylistForm((f) => ({ ...f, displayOnProfile: !f.displayOnProfile }))} />
               <TogglePill checked={playlistForm.carouselEnabled} label="轮播" onClick={() => setPlaylistForm((f) => ({ ...f, carouselEnabled: !f.carouselEnabled }))} />
               <TogglePill checked={playlistForm.randomEnabled} label="随机" onClick={() => setPlaylistForm((f) => ({ ...f, randomEnabled: !f.randomEnabled }))} />
             </div>
-            <button type="button" onClick={() => createPlaylistMutation.mutate()} className={textButtonClass('primary')} disabled={createPlaylistMutation.isPending}>
+            <button type="button" onClick={() => createPlaylistMutation.mutate()} className={textButtonClass('primary')} disabled={isPlaylistWriteBusy}>
               <Plus className="h-4 w-4" />
               创建歌单
             </button>
@@ -1499,9 +1980,9 @@ export default function MusicPage() {
                   {/* 左侧选择区改回原生 <button> —— 不再用 role=button 容器套子按钮(ARIA 禁止嵌套交互控件);原生按钮自带 Enter/Space 键盘支持 */}
                   <button
                     type="button"
-                    onClick={() => setSelectedPlaylistId(playlist.id)}
+                    onClick={() => requestPlaylistSelection(playlist.id)}
                     aria-pressed={selectedPlaylistId === playlist.id}
-                    className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                   >
                     <span className="flex items-center gap-2">
                       <span className="truncate text-sm font-semibold text-[var(--ink-primary)]">{playlist.name}</span>
@@ -1530,7 +2011,7 @@ export default function MusicPage() {
                         className={iconButtonClass(false, 'primary')}
                         title="设为公开展示并启用公开播放器"
                         aria-label={`将「${playlist.name}」设为公开展示`}
-                        disabled={publishPlaylistMutation.isPending}
+                        disabled={isPlaylistWriteBusy || isSettingsWriteBusy || !settingsQuery.data}
                       >
                         {publishPlaylistMutation.isPending && publishPlaylistMutation.variables?.playlistId === playlist.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1546,6 +2027,7 @@ export default function MusicPage() {
                         setPendingDelete({ kind: 'playlist', playlist });
                       }}
                       className={iconButtonClass(false, 'danger')}
+                      disabled={isPlaylistWriteBusy || isSettingsWriteBusy}
                       aria-label={`删除歌单「${playlist.name}」`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1562,9 +2044,40 @@ export default function MusicPage() {
             icon={<Headphones className="h-4 w-4" />}
             title={selectedPlaylist?.name || '选择歌单'}
             description={selectedPlaylist ? '歌单排序独立于媒体库和曲库排序' : '创建或选择一个歌单后开始编排'}
-            aside={selectedPlaylist ? <AdminSectionCount>{selectedPlaylist.trackCount} 首</AdminSectionCount> : null}
+            aside={selectedPlaylist ? (
+              <span className="flex items-center gap-2">
+                {playlistDraftDirty && playlistDraftSourceId === selectedPlaylistId && (
+                  <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] px-2 py-1 text-[10px] font-bold text-[var(--signal-warn)]">
+                    未保存
+                  </span>
+                )}
+                <AdminSectionCount>{selectedPlaylist.trackCount} 首</AdminSectionCount>
+              </span>
+            ) : null}
           />
           {selectedPlaylist ? (
+            playlistDetailQuery.isError ? (
+              <div className="p-6 text-sm text-[var(--ink-muted)]" role="alert">
+                <p className="font-semibold text-[var(--ink-primary)]">歌单详情载入失败</p>
+                <p className="mt-1">为避免把其他歌单的草稿误存到当前歌单，编辑区已锁定。</p>
+                <button
+                  type="button"
+                  onClick={() => void playlistDetailQuery.refetch()}
+                  className={cn(textButtonClass('primary'), 'mt-4')}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  重新载入
+                </button>
+              </div>
+            ) : playlistDraftSourceId !== selectedPlaylistId ? (
+              <div className="flex min-h-48 items-center justify-center p-6 text-center" role="status">
+                <div>
+                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-[var(--aurora-1)]" />
+                  <p className="mt-3 text-sm font-semibold text-[var(--ink-primary)]">正在切换到「{selectedPlaylist.name}」</p>
+                  <p className="mt-1 text-xs text-[var(--ink-muted)]">载入完成前不会显示或保存上一份歌单草稿。</p>
+                </div>
+              </div>
+            ) : (
             <>
               <div className="space-y-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
@@ -1572,7 +2085,7 @@ export default function MusicPage() {
                     <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌单名称</span>
                     <input
                       value={playlistDraft.name}
-                      onChange={(e) => setPlaylistDraft((draft) => ({ ...draft, name: e.target.value }))}
+                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, name: e.target.value }))}
                       className={inputClass()}
                     />
                   </label>
@@ -1580,7 +2093,7 @@ export default function MusicPage() {
                     <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">描述</span>
                     <input
                       value={playlistDraft.description || ''}
-                      onChange={(e) => setPlaylistDraft((draft) => ({ ...draft, description: e.target.value }))}
+                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, description: e.target.value }))}
                       className={inputClass()}
                       placeholder="可选"
                     />
@@ -1590,21 +2103,20 @@ export default function MusicPage() {
                     <input
                       type="number"
                       value={playlistDraft.sortOrder}
-                      onChange={(e) => setPlaylistDraft((draft) => ({ ...draft, sortOrder: Number(e.target.value) || 0 }))}
+                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, sortOrder: Number(e.target.value) || 0 }))}
                       className={inputClass()}
                     />
                   </label>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <TogglePill checked={playlistDraft.displayOnHome} label="首页" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnHome: !draft.displayOnHome }))} />
-                  <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => setPlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
-                  <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => setPlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
-                  <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => setPlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
+                  <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
+                  <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <Select
                     value={playlistDraft.visibility || 'PUBLIC'}
-                    onValueChange={(value) => setPlaylistDraft((draft) => ({ ...draft, visibility: value as MusicPlaylist['visibility'] }))}
+                    onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, visibility: value as MusicPlaylist['visibility'] }))}
                     options={[
                       { value: 'PUBLIC', label: '公开' },
                       { value: 'PRIVATE', label: '私有' },
@@ -1613,7 +2125,7 @@ export default function MusicPage() {
                   />
                   <Select
                     value={playlistDraft.status || 'ACTIVE'}
-                    onValueChange={(value) => setPlaylistDraft((draft) => ({ ...draft, status: value as MusicPlaylist['status'] }))}
+                    onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, status: value as MusicPlaylist['status'] }))}
                     options={[
                       { value: 'ACTIVE', label: '展示' },
                       { value: 'HIDDEN', label: '隐藏' },
@@ -1624,7 +2136,12 @@ export default function MusicPage() {
                     type="button"
                     onClick={saveSelectedPlaylist}
                     className={textButtonClass('primary')}
-                    disabled={updatePlaylistMutation.isPending || !playlistDraft.name.trim()}
+                    disabled={!canSavePlaylistDraft({
+                      selectedPlaylistId,
+                      loadedPlaylistId: playlistDraftSourceId,
+                      isFetching: playlistDetailQuery.isFetching,
+                      isSaving: isPlaylistWriteBusy,
+                    }) || !playlistDraft.name.trim()}
                   >
                     {updatePlaylistMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                     保存歌单
@@ -1662,7 +2179,7 @@ export default function MusicPage() {
                   type="button"
                   onClick={() => selectedPlaylistId && trackToAdd && playlistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: Number(trackToAdd) })}
                   className={textButtonClass('primary')}
-                  disabled={!trackToAdd || playlistTrackMutation.isPending || playlistTrackPickerDisabled}
+                  disabled={!trackToAdd || playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending || playlistTrackPickerDisabled}
                 >
                   <Plus className="h-4 w-4" />
                   加入歌单
@@ -1684,26 +2201,39 @@ export default function MusicPage() {
                       <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')} aria-label={`从「${track.title}」开始播放歌单`} title="试听">
                         <Play className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={() => moveTrack(index, -1)} className={iconButtonClass()} disabled={index === 0} aria-label={`将「${track.title}」上移`} title="上移">
-                        <SkipBack className="h-4 w-4" />
-                      </button>
-                      <button type="button" onClick={() => moveTrack(index, 1)} className={iconButtonClass()} disabled={index === detailTracks.length - 1} aria-label={`将「${track.title}」下移`} title="下移">
-                        <SkipForward className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
-                        className={iconButtonClass(false, 'danger')}
-                        aria-label={`从歌单移除「${track.title}」`}
-                        title="从歌单移除"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="hidden items-center gap-2 min-[769px]:flex">
+                        <button type="button" onClick={() => moveTrack(index, -1)} className={iconButtonClass()} disabled={index === 0 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending} aria-label={`将「${track.title}」上移`} title="上移">
+                          <ArrowUp className="h-4 w-4" strokeWidth={1.9} />
+                        </button>
+                        <button type="button" onClick={() => moveTrack(index, 1)} className={iconButtonClass()} disabled={index === detailTracks.length - 1 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending} aria-label={`将「${track.title}」下移`} title="下移">
+                          <ArrowDown className="h-4 w-4" strokeWidth={1.9} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
+                          className={iconButtonClass(false, 'danger')}
+                          disabled={reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
+                          aria-label={`从歌单移除「${track.title}」`}
+                          title="从歌单移除"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <PlaylistTrackActionMenu
+                        trackTitle={track.title}
+                        moveUpDisabled={index === 0 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
+                        moveDownDisabled={index === detailTracks.length - 1 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
+                        removeDisabled={reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
+                        onMoveUp={() => moveTrack(index, -1)}
+                        onMoveDown={() => moveTrack(index, 1)}
+                        onRemove={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
             </>
+            )
           ) : (
             <div className="p-6 text-sm text-[var(--ink-muted)]">选择左侧歌单后可以加入歌曲、试听和调整排序。</div>
           )}
@@ -1719,13 +2249,36 @@ export default function MusicPage() {
       { value: 'LOOP', label: '列表循环', icon: RotateCw },
       { value: 'CAROUSEL', label: '轮播展示', icon: Disc3 },
     ];
+    if (settingsQuery.isLoading) {
+      return (
+        <div className={cn(panelClass, 'flex min-h-48 items-center justify-center text-center')} role="status">
+          <div>
+            <Loader2 className="mx-auto h-7 w-7 animate-spin text-[var(--aurora-1)]" />
+            <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">正在载入播放设置</p>
+          </div>
+        </div>
+      );
+    }
+    if (settingsQuery.isError || !settingsQuery.data) {
+      return (
+        <div className={cn(panelClass, 'flex min-h-48 items-center justify-center text-center')} role="alert">
+          <div>
+            <p className="text-sm font-bold text-[var(--ink-primary)]">播放设置载入失败</p>
+            <p className="mt-2 text-xs text-[var(--ink-muted)]">未使用默认值覆盖现有配置。</p>
+            <button type="button" onClick={() => void settingsQuery.refetch()} className={cn(textButtonClass('primary'), 'mt-4')}>
+              <RefreshCw className="h-4 w-4" />
+              重新载入
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className={cn(panelClass, 'space-y-4')}>
+        <fieldset disabled={isSettingsWriteBusy} aria-busy={isSettingsWriteBusy} className={cn(panelClass, 'space-y-4 disabled:opacity-70')}>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <TogglePill checked={settings.enabled} label="启用公开播放器" onClick={() => saveSettingsPatch({ enabled: !settings.enabled })} />
             <TogglePill checked={settings.showOnProfileCard} label="个人卡片入口" onClick={() => saveSettingsPatch({ showOnProfileCard: !settings.showOnProfileCard })} />
-            <TogglePill checked={settings.showOnHomePage} label="首页展示" onClick={() => saveSettingsPatch({ showOnHomePage: !settings.showOnHomePage })} />
             <TogglePill checked={settings.carouselEnabled} label="轮播控件" onClick={() => saveSettingsPatch({ carouselEnabled: !settings.carouselEnabled })} />
             <TogglePill checked={settings.randomEnabled} label="随机按钮默认开启" onClick={() => saveSettingsPatch({ randomEnabled: !settings.randomEnabled })} />
           </div>
@@ -1756,13 +2309,24 @@ export default function MusicPage() {
                 type="number"
                 min={3}
                 max={60}
-                value={settings.carouselIntervalSeconds}
-                onChange={(event) => saveSettingsPatch({ carouselIntervalSeconds: Number(event.target.value) || 8 })}
+                value={carouselIntervalDraft}
+                onChange={(event) => {
+                  setCarouselIntervalDraft(event.target.value);
+                  setCarouselIntervalDirty(true);
+                }}
+                onBlur={commitCarouselInterval}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitCarouselInterval();
+                    event.currentTarget.blur();
+                  }
+                }}
                 className={inputClass()}
               />
             </label>
           </div>
-          <div className="rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-4">
+          <div className="rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] p-4">
             <div className="flex items-center gap-2">
               <Palette className="h-4 w-4 text-[var(--aurora-1)]" />
               <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">音乐皮肤(站点默认)</span>
@@ -1779,10 +2343,11 @@ export default function MusicPage() {
                     type="button"
                     onClick={() => saveSettingsPatch({ skinMode: 'preset', skinPreset: preset.id })}
                     className={cn(
-                      'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors',
+                      'inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent px-3 py-1.5 text-xs font-bold transition-[background-color,color,box-shadow] min-[769px]:min-h-10',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
                       active
-                        ? 'border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)]'
-                        : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                        ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+                        : 'bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]'
                     )}
                     aria-pressed={active}
                   >
@@ -1800,7 +2365,7 @@ export default function MusicPage() {
                   type="color"
                   value={skinDraftLight}
                   onChange={(event) => setSkinDraftLight(event.target.value)}
-                  className="h-7 w-9 cursor-pointer rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent"
+                  className="h-11 w-12 cursor-pointer rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] min-[769px]:h-10"
                   aria-label="亮主题光源"
                 />
                 亮
@@ -1810,7 +2375,7 @@ export default function MusicPage() {
                   type="color"
                   value={skinDraftDark}
                   onChange={(event) => setSkinDraftDark(event.target.value)}
-                  className="h-7 w-9 cursor-pointer rounded-md border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent"
+                  className="h-11 w-12 cursor-pointer rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] min-[769px]:h-10"
                   aria-label="暗主题光源"
                 />
                 暗
@@ -1819,10 +2384,11 @@ export default function MusicPage() {
                 type="button"
                 onClick={() => saveSettingsPatch({ skinMode: 'custom', skinColorLight: skinDraftLight, skinColorDark: skinDraftDark })}
                 className={cn(
-                  'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-black transition-transform hover:scale-[1.02]',
+                  'inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-black transition-[background-color,color,box-shadow] min-[769px]:min-h-10',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
                   settings.skinMode === 'custom'
                     ? 'bg-[var(--aurora-1)] text-[var(--bg-void)]'
-                    : 'border border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
+                    : 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)]'
                 )}
               >
                 {settings.skinMode === 'custom' ? '自定义已应用' : '应用自定义'}
@@ -1840,12 +2406,12 @@ export default function MusicPage() {
               ariaLabel="音乐大厅媒体目录"
             />
             <input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} className={inputClass()} />
-            <button type="button" onClick={() => createFolderMutation.mutate()} className={textButtonClass('primary')} disabled={createFolderMutation.isPending}>
+            <button type="button" onClick={createMusicFolder} className={textButtonClass('primary')} disabled={createFolderMutation.isPending || isSettingsWriteBusy || !settingsQuery.data}>
               <FolderPlus className="h-4 w-4" />
               创建目录
             </button>
           </div>
-        </div>
+        </fieldset>
 
         <div className={cn(panelClass, 'space-y-4')}>
           <div className="flex items-start gap-3">
@@ -1855,7 +2421,7 @@ export default function MusicPage() {
             <div>
               <p className="text-sm font-bold text-[var(--ink-primary)]">公开播放器预案</p>
               <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
-                前台首页和个人卡片会读取公开接口，只展示启用、公开且未删除媒体文件的歌曲。
+                公开音乐页和个人卡片会读取公开接口，只展示启用、公开且未删除媒体文件的歌曲。
               </p>
             </div>
           </div>
@@ -1870,8 +2436,6 @@ export default function MusicPage() {
     );
   }
 
-  const totalTracks = summaryQuery.data?.trackCount ?? tracksQuery.data?.total ?? 0;
-  const activeTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? '音乐大厅';
   const pendingDeleteTitle =
     pendingDelete?.kind === 'playlist'
       ? '删除歌单'
@@ -1884,18 +2448,25 @@ export default function MusicPage() {
       : pendingDelete?.deleteMedia
         ? `歌曲「${pendingDelete.track.title}」会从曲库移除，并把对应媒体文件移入媒体库回收站。`
         : `歌曲「${pendingDelete?.track.title ?? ''}」只会从音乐管理中移除，媒体库原文件会保留。`;
+  const pendingTrackNavigationMessage = pendingTrackNavigation?.kind === 'select'
+    ? `切换到「${pendingTrackNavigation.track.title}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`
+    : pendingTrackNavigation?.kind === 'tab'
+      ? `切换到「${tabs.find((tab) => tab.key === pendingTrackNavigation.tab)?.label || '目标页签'}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的修改。`
+      : `关闭歌曲编辑器会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`;
 
   return (
-    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-hidden p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-x-clip p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
+          className="music-module-header"
           title="音乐大厅"
           description="以媒体库音频为存储层，独立管理歌曲、歌单、展示入口与播放策略。"
           tabs={tabs}
           activeKey={activeTab}
-          onTabChange={setActiveTab}
-          currentLabel={activeTabLabel}
-          activeSummary={`曲库 ${totalTracks} 首 · 歌单 ${summaryQuery.data?.playlistCount ?? playlists.length} 个 · ${settings.enabled ? '公开播放器已启用' : '公开播放器未启用'}`}
+          onTabChange={(tab) => requestTrackNavigation({ kind: 'tab', tab })}
+          tabPanelIdPrefix="admin-module"
+          showCurrentLabel={false}
+          showActiveSummary={false}
           actions={
             <>
               <button
@@ -1914,6 +2485,7 @@ export default function MusicPage() {
                 type="button"
                 onClick={() => saveSettingsPatch({ enabled: !settings.enabled })}
                 className="admin-module-action-button"
+                disabled={!settingsQuery.data || isSettingsWriteBusy}
                 aria-label={settings.enabled ? '停用公开播放器' : '启用公开播放器'}
                 title={settings.enabled ? '公开播放器:已启用(点击停用)' : '公开播放器:未启用(点击启用)'}
               >
@@ -1924,11 +2496,22 @@ export default function MusicPage() {
           }
         />
 
-        {renderHallStage()}
-
-        {activeTab === 'library' && renderLibrary()}
-        {activeTab === 'playlists' && renderPlaylists()}
-        {activeTab === 'display' && renderDisplay()}
+        {activeTab === 'library' && (
+          <section id="admin-module-panel-library" role="tabpanel" aria-labelledby="admin-module-tab-library" tabIndex={0}>
+            {renderLibrary()}
+          </section>
+        )}
+        {activeTab === 'playlists' && (
+          <section id="admin-module-panel-playlists" role="tabpanel" aria-labelledby="admin-module-tab-playlists" tabIndex={0}>
+            {renderPlaylists()}
+          </section>
+        )}
+        {activeTab === 'display' && (
+          <section id="admin-module-panel-display" role="tabpanel" aria-labelledby="admin-module-tab-display" tabIndex={0} className="space-y-4">
+            {renderHallStage()}
+            {renderDisplay()}
+          </section>
+        )}
       </div>
 
       <ConfirmDialog
@@ -1938,17 +2521,53 @@ export default function MusicPage() {
         confirmText="确认删除"
         cancelText="取消"
         variant="danger"
-        onCancel={() => setPendingDelete(null)}
+        pending={deletePlaylistMutation.isPending || deleteTrackMutation.isPending}
+        onCancel={() => {
+          if (deleteWriteLockRef.current || deletePlaylistMutation.isPending || deleteTrackMutation.isPending) return;
+          setPendingDelete(null);
+        }}
         onConfirm={() => {
-          if (!pendingDelete) return;
+          if (!pendingDelete || deleteWriteLockRef.current) return;
           if (pendingDelete.kind === 'playlist') {
+            if (isPlaylistWriteBusy) return;
+            deleteWriteLockRef.current = true;
             deletePlaylistMutation.mutate(pendingDelete.playlist.id);
           } else {
+            if (deleteTrackMutation.isPending || updateTrackMutation.isPending) return;
+            deleteWriteLockRef.current = true;
             deleteTrackMutation.mutate({
               id: pendingDelete.track.id,
               deleteMedia: pendingDelete.deleteMedia,
             });
           }
+        }}
+      />
+      <ConfirmDialog
+        isOpen={pendingTrackNavigation != null}
+        title="放弃未保存的歌曲修改？"
+        message={pendingTrackNavigationMessage}
+        confirmText={pendingTrackNavigation?.kind === 'close' ? '放弃并关闭' : '放弃并继续'}
+        cancelText="继续编辑"
+        variant="warning"
+        onCancel={() => setPendingTrackNavigation(null)}
+        onConfirm={() => {
+          if (!pendingTrackNavigation) return;
+          performTrackNavigation(pendingTrackNavigation);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={pendingPlaylistSelectionId != null}
+        title="放弃未保存的歌单修改？"
+        message={`切换到「${playlists.find((playlist) => playlist.id === pendingPlaylistSelectionId)?.name || '目标歌单'}」会丢弃当前尚未保存的名称、描述或展示设置。`}
+        confirmText="放弃并切换"
+        cancelText="继续编辑"
+        variant="warning"
+        onCancel={() => setPendingPlaylistSelectionId(null)}
+        onConfirm={() => {
+          if (pendingPlaylistSelectionId == null) return;
+          const targetId = pendingPlaylistSelectionId;
+          setPendingPlaylistSelectionId(null);
+          selectPlaylist(targetId);
         }}
       />
     </div>

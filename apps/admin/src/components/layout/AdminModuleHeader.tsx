@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +21,7 @@ interface AdminModuleHeaderProps<T extends string> {
   activeSummary?: string;
   showCurrentLabel?: boolean;
   showActiveSummary?: boolean;
+  tabPanelIdPrefix?: string;
   actions?: ReactNode;
   className?: string;
 }
@@ -36,15 +37,28 @@ export function AdminModuleHeader<T extends string>({
   activeSummary,
   showCurrentLabel = true,
   showActiveSummary = true,
+  tabPanelIdPrefix,
   actions,
   className,
 }: AdminModuleHeaderProps<T>) {
   const safeTabs = tabs ?? [];
   const hasTabs = safeTabs.length > 0 && activeKey !== undefined && onTabChange !== undefined;
+  const hasSemanticTabPanels = hasTabs && Boolean(tabPanelIdPrefix);
   const activeTab = hasTabs ? safeTabs.find((item) => item.key === activeKey) ?? safeTabs[0] : undefined;
   const HeaderIcon = activeTab?.icon ?? HeaderIconProp;
   const currentText = showCurrentLabel ? (activeTab ? `当前：${activeTab.label}` : currentLabel) : undefined;
   const summaryText = showActiveSummary ? (activeTab?.description ?? activeSummary) : undefined;
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % safeTabs.length;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + safeTabs.length) % safeTabs.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = safeTabs.length - 1;
+    if (nextIndex == null) return;
+    event.preventDefault();
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
     <header
@@ -73,15 +87,22 @@ export function AdminModuleHeader<T extends string>({
           <div className="admin-module-side">
             {actions && <div className="admin-module-actions">{actions}</div>}
             {hasTabs && (
-              <nav className="admin-module-tabs" aria-label={`${title}视图`}>
-                {safeTabs.map((item) => {
+              <nav className="admin-module-tabs" aria-label={`${title}视图`} role={hasSemanticTabPanels ? 'tablist' : undefined}>
+                {safeTabs.map((item, index) => {
                   const Icon = item.icon;
                   const active = item.key === activeKey;
                   return (
                     <button
                       key={item.key}
+                      ref={(node) => { tabRefs.current[index] = node; }}
                       type="button"
+                      role={hasSemanticTabPanels ? 'tab' : undefined}
                       onClick={() => onTabChange?.(item.key)}
+                      onKeyDown={hasSemanticTabPanels ? (event) => handleTabKeyDown(event, index) : undefined}
+                      id={hasSemanticTabPanels ? `${tabPanelIdPrefix}-tab-${item.key}` : undefined}
+                      aria-controls={hasSemanticTabPanels ? `${tabPanelIdPrefix}-panel-${item.key}` : undefined}
+                      aria-selected={hasSemanticTabPanels ? active : undefined}
+                      tabIndex={hasSemanticTabPanels ? (active ? 0 : -1) : undefined}
                       data-active={active}
                       className={cn(
                         'admin-module-tab-button',

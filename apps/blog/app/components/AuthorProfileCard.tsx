@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { animate, motion, AnimatePresence, useMotionValue } from 'framer-motion';
-import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight, Music2 } from 'lucide-react';
+import { animate, motion, AnimatePresence, useMotionValue, useReducedMotion } from 'framer-motion';
+import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight, Music2, UserRound } from 'lucide-react';
 import { Tooltip } from '@aetherblog/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
@@ -192,6 +192,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
   const [activeIndex, setActiveIndex] = useState(0);
+  const prefersReducedMotion = useReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(0);
   const trackX = useMotionValue(0);
@@ -246,6 +247,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     { key: 'music' as const, label: '音乐' },
   ], []);
   const activeStackCard = stackCards[activeIndex] ?? stackCards[0];
+  const nextStackCard = stackCards[(activeIndex + 1) % stackCards.length] ?? stackCards[0];
   const activeCard = activeStackCard.key;
   const stackSlots = useMemo(() => {
     const total = stackCards.length;
@@ -279,16 +281,25 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   }, [stackCards.length]);
 
   const snapTrackToCenter = useCallback(() => {
+    if (prefersReducedMotion) {
+      trackX.set(-stageWidth);
+      return;
+    }
     animate(trackX, -stageWidth, {
       type: 'spring',
       stiffness: 560,
       damping: 42,
       mass: 0.62,
     });
-  }, [stageWidth, trackX]);
+  }, [prefersReducedMotion, stageWidth, trackX]);
 
   const animateStackSwitch = useCallback((step: 1 | -1) => {
     if (stageWidth <= 0) return;
+    if (prefersReducedMotion) {
+      commitStackSwitch(step);
+      trackX.set(-stageWidth);
+      return;
+    }
     const controls = animate(trackX, step === 1 ? -stageWidth * 2 : 0, {
       type: 'spring',
       stiffness: 520,
@@ -299,7 +310,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       commitStackSwitch(step);
       trackX.set(-stageWidth);
     });
-  }, [commitStackSwitch, stageWidth, trackX]);
+  }, [commitStackSwitch, prefersReducedMotion, stageWidth, trackX]);
 
   const handleStackPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -387,6 +398,9 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   }, [animateStackSwitch, snapTrackToCenter, stageWidth, trackX]);
 
   const handleStackKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('a,button,input,textarea,select,[role="slider"]')) return;
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
       animateStackSwitch(-1);
@@ -395,6 +409,18 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       animateStackSwitch(1);
     }
   }, [animateStackSwitch]);
+
+  const renderStackSwitchButton = (floating = false) => (
+    <button
+      type="button"
+      onClick={() => animateStackSwitch(1)}
+      className={`profile-stack-switch-button grid h-11 w-11 shrink-0 place-items-center rounded-full border-0 bg-[var(--profile-stack-control-bg)] text-[var(--ink-secondary,var(--text-secondary))] shadow-none [backdrop-filter:blur(14px)] transition-[background-color,color,opacity] duration-100 hover:bg-[var(--profile-stack-control-hover)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-stack-dot-active)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--profile-stack-focus-offset)] ${floating ? 'absolute right-2 top-2 z-[5]' : ''}`}
+      aria-label={`切换到${nextStackCard.label}`}
+      title={`切换到${nextStackCard.label}`}
+    >
+      {activeCard === 'profile' ? <Music2 className="h-[18px] w-[18px]" /> : <UserRound className="h-[18px] w-[18px]" />}
+    </button>
+  );
 
   const renderStackPanel = (
     card: (typeof stackCards)[number],
@@ -405,7 +431,9 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     if (card.key === 'profile') {
       return (
         <section
-          role={isCurrent ? 'tabpanel' : undefined}
+          role="group"
+          aria-roledescription="slide"
+          aria-label={`${card.label}卡片`}
           data-card-panel="profile"
           aria-hidden={!isCurrent}
           inert={!isCurrent}
@@ -467,7 +495,9 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
     return (
       <section
-        role={isCurrent ? 'tabpanel' : undefined}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={`${card.label}卡片`}
         data-card-panel="music"
         aria-hidden={!isCurrent}
         inert={!isCurrent}
@@ -476,12 +506,13 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         <ProfileMusicPlayer
           variant="stack"
           className="h-full"
+          stackSwitchAction={renderStackSwitchButton()}
           emptyState={
             <div className="flex h-full flex-col items-center justify-center text-center">
               <Music2 className="h-8 w-8 text-[var(--aurora-1)]" />
-              <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">音乐卡片未启用</p>
+              <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">歌单还在准备中</p>
               <p className="mt-1 max-w-[12rem] text-xs leading-5 text-[var(--ink-muted)]">
-                后台启用公开播放器后，这里会显示播放控件。
+                有新音乐时会出现在这里，稍后再回来听听。
               </p>
             </div>
           }
@@ -521,15 +552,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           onPointerUp={handleStackPointerEnd}
           onPointerCancel={handleStackPointerEnd}
         >
-          <div className="profile-stack-dots" aria-hidden="true">
-            {stackCards.map((item, index) => (
-              <span
-                key={item.key}
-                data-active={index === activeIndex ? 'true' : 'false'}
-                className="profile-stack-dot"
-              />
-            ))}
-          </div>
+          {activeCard === 'profile' && renderStackSwitchButton(true)}
 
           <motion.div
             className="profile-card-stack-track absolute inset-y-0 left-0"

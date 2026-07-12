@@ -42,6 +42,22 @@ func TestExtractAudioArtworkNoPictureIsNonFatal(t *testing.T) {
 	}
 }
 
+func TestExtractAudioTrackMetadataFromID3v2(t *testing.T) {
+	payload := buildID3v23TextPayload(map[string]string{
+		"TIT2": "假如让我说下去",
+		"TPE1": "杨千嬅",
+		"TALB": "千嬅盛放",
+	})
+
+	metadata := extractAudioTrackMetadata(bytes.NewReader(payload), "audio/mpeg")
+	if metadata == nil {
+		t.Fatal("expected ID3 metadata, got nil")
+	}
+	if metadata.Title != "假如让我说下去" || metadata.Artist != "杨千嬅" || metadata.Album != "千嬅盛放" {
+		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
+}
+
 func TestAudioMimeFallbackCoversCommonPlayableExtensions(t *testing.T) {
 	cases := []struct {
 		filename string
@@ -101,6 +117,30 @@ func buildID3v23APICPayload(mime string, image []byte) []byte {
 	tag.Write([]byte{3, 0, 0})
 	tag.Write(syncSafeSize(frame.Len()))
 	tag.Write(frame.Bytes())
+	return tag.Bytes()
+}
+
+func buildID3v23TextPayload(values map[string]string) []byte {
+	frames := bytes.NewBuffer(nil)
+	for _, id := range []string{"TIT2", "TPE1", "TALB"} {
+		value := values[id]
+		if value == "" {
+			continue
+		}
+		body := append([]byte{3}, []byte(value)...)
+		frames.WriteString(id)
+		var frameSize [4]byte
+		binary.BigEndian.PutUint32(frameSize[:], uint32(len(body)))
+		frames.Write(frameSize[:])
+		frames.Write([]byte{0, 0})
+		frames.Write(body)
+	}
+
+	tag := bytes.NewBuffer(nil)
+	tag.WriteString("ID3")
+	tag.Write([]byte{3, 0, 0})
+	tag.Write(syncSafeSize(frames.Len()))
+	tag.Write(frames.Bytes())
 	return tag.Bytes()
 }
 

@@ -3,21 +3,17 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { Disc3, ListMusic, Pause, Play, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import { AlertCircle, Disc3, ListMusic, Maximize2, Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import {
   formatMusicClock,
   resolveMusicCoverSrc,
   SeekBar,
   useMusicPlayer,
 } from './MusicPlayerProvider';
+import { resolveMusicTrackPresentation } from './musicPlayerState';
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
-}
-
-function meaningfulMusicText(value: string | null | undefined): string {
-  const next = value?.trim() || '';
-  return next && next !== '未知艺术家' ? next : '';
 }
 
 interface ProfileMusicPlayerProps {
@@ -25,15 +21,58 @@ interface ProfileMusicPlayerProps {
   className?: string;
   variant?: 'card' | 'stack';
   emptyState?: ReactNode;
+  stackSwitchAction?: ReactNode;
 }
 
-export function ProfileMusicPlayer({ surface = 'profile', className, variant = 'card', emptyState }: ProfileMusicPlayerProps) {
+function ProfileMusicArtwork({
+  cover,
+  title,
+  size,
+}: {
+  cover: string;
+  title: string;
+  size: 'compact' | 'featured';
+}) {
+  const sizeClass = size === 'featured' ? 'h-16 w-16' : 'h-[52px] w-[52px]';
+  const imageSize = size === 'featured' ? '64px' : '52px';
+
+  return (
+    <div
+      className={cn(
+        'music-artwork relative shrink-0 overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[var(--music-control-fill)] text-[var(--ink-muted)]',
+        sizeClass,
+      )}
+    >
+      {cover ? (
+        <Image
+          src={cover}
+          alt={`${title} 封面`}
+          fill
+          sizes={imageSize}
+          className="object-cover"
+          unoptimized
+        />
+      ) : (
+        <span className="grid h-full w-full place-items-center" role="img" aria-label="暂无歌曲封面">
+          <Disc3 className="h-5 w-5" aria-hidden="true" />
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function ProfileMusicPlayer({ surface = 'profile', className, variant = 'card', emptyState, stackSwitchAction }: ProfileMusicPlayerProps) {
   const {
     player,
+    isPlayerLoading,
+    playerLoadError,
+    retryPlayer,
     tracks,
     currentTrack,
     currentIndex,
     isPlaying,
+    isBuffering,
+    playbackError,
     shuffle,
     progress,
     duration,
@@ -42,6 +81,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
     canUseSurface,
     playIndex,
     togglePlayback,
+    retryPlayback,
     nextTrack,
     previousTrack,
     seekToPercent,
@@ -51,16 +91,62 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
 
   const isStack = variant === 'stack';
   const shellClass = isStack
-    ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-3 overflow-hidden rounded-[var(--profile-card-stack-panel-radius,1.75rem)] border border-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-4 text-left shadow-[0_18px_48px_-38px_color-mix(in_oklch,var(--aurora-1)_75%,transparent)]'
+    ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-3 overflow-hidden rounded-[var(--profile-card-stack-panel-radius,1.75rem)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-4 text-left shadow-[var(--music-shadow-float)]'
     : cn(
-        'surface-leaf group/music-entry relative w-full overflow-hidden text-left',
+        'surface-leaf group/music-entry relative w-full overflow-hidden rounded-[var(--music-radius-panel)] text-left',
         surface === 'home' ? 'mb-8 p-4 md:p-5' : 'mb-3 p-3'
       );
+
+  if (isPlayerLoading) {
+    return (
+      <div
+        data-music-skin={skin}
+        role="status"
+        aria-live="polite"
+        className={cn(shellClass, 'flex flex-col items-center justify-center text-center', className)}
+      >
+        {isStack && stackSwitchAction && (
+          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
+        )}
+        <RefreshCw className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
+        <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">正在载入音乐</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">歌单准备好后会在这里出现。</p>
+      </div>
+    );
+  }
+
+  if (playerLoadError) {
+    return (
+      <div
+        data-music-skin={skin}
+        role="alert"
+        className={cn(shellClass, 'flex flex-col items-center justify-center text-center', className)}
+      >
+        {isStack && stackSwitchAction && (
+          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
+        )}
+        <AlertCircle className="h-6 w-6 text-[var(--signal-danger)]" />
+        <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">音乐暂时没有载入</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">检查网络后再试一次。</p>
+        <button
+          type="button"
+          onClick={retryPlayer}
+          className="music-control-button music-pill-button mt-3 inline-flex min-h-11 items-center justify-center gap-2 bg-[var(--music-control-fill)] px-4 text-xs text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={1.9} />
+          重新载入
+        </button>
+      </div>
+    );
+  }
 
   if (!canUseSurface(surface)) {
     if (!emptyState) return null;
     return (
       <div data-music-skin={skin} className={cn(shellClass, className)}>
+        {isStack && stackSwitchAction && (
+          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
+        )}
         {emptyState}
       </div>
     );
@@ -76,13 +162,18 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
   const activeDuration = duration || displayTrack.durationSeconds || 0;
   const shownPercent = isCurrentTrack ? percent : 0;
   const shownProgress = isCurrentTrack ? progress : 0;
-  const artistName = meaningfulMusicText(displayTrack.artist);
+  const presentation = resolveMusicTrackPresentation(displayTrack);
+  const artistName = presentation.artist;
   const trackPosition = `${(currentTrack ? currentIndex : 0) + 1}/${tracks.length}`;
   const trackMeta = artistName ? `${artistName} · ${trackPosition}` : trackPosition;
 
   const handleMainAction = async () => {
     if (!isCurrentTrack) {
       playIndex(0);
+      return;
+    }
+    if (playbackError) {
+      await retryPlayback();
       return;
     }
     await togglePlayback();
@@ -98,126 +189,87 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
 
   if (isStack) {
     const stackPlaying = isCurrentTrack && isPlaying;
+    const stackBuffering = isCurrentTrack && isBuffering;
+    const stackFailed = isCurrentTrack && Boolean(playbackError);
     return (
       <div data-music-skin={skin} className={cn(shellClass, className)}>
         <div className="absolute inset-x-6 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--aurora-1),transparent)] opacity-70" />
-        <div className="profile-music-stack-header grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3">
-          <div
-            className="profile-music-cover-orb relative flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[radial-gradient(circle,color-mix(in_oklch,black_82%,var(--aurora-1))_0_42%,color-mix(in_oklch,black_90%,var(--aurora-1))_43%_100%)] text-[var(--bg-void)] shadow-md"
-            aria-hidden="true"
-            data-playing={stackPlaying ? 'true' : 'false'}
-          >
-            {cover ? (
-              <Image
-                src={cover}
-                alt={displayTrack.title}
-                fill
-                sizes="3.25rem"
-                className={cn('object-cover opacity-76', stackPlaying && 'music-vinyl-spin')}
-                unoptimized
-              />
-            ) : (
-              <Disc3 className={cn('absolute h-8 w-8 text-[var(--ink-muted)]', stackPlaying && 'animate-spin [animation-duration:3s]')} />
-            )}
-            <span className="profile-music-cover-core" />
-          </div>
+        <div className="profile-music-stack-header grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-2.5">
+          <ProfileMusicArtwork cover={cover} title={presentation.title} size="compact" />
 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--aurora-1)]">
               <Volume2 className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{playlistName}</span>
             </div>
-            <p className="profile-music-stack-title mt-1 text-base font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={displayTrack.title}>
-              {displayTrack.title}
+            <p className="profile-music-stack-title mt-1 text-base font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={presentation.title}>
+              {presentation.title}
             </p>
-            <p className="mt-1 truncate text-xs text-[var(--ink-muted)]" title={artistName || displayTrack.album || displayTrack.media?.originalName || displayTrack.title}>
+            <p className="mt-1 truncate text-xs text-[var(--ink-muted)]" title={artistName || displayTrack.album || displayTrack.media?.originalName || presentation.title}>
               {trackMeta}
             </p>
           </div>
-        </div>
 
-        <div
-          className="profile-music-flow-panel profile-music-progress-rail relative h-14 overflow-hidden rounded-[1.15rem] border border-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]"
-          data-playing={stackPlaying ? 'true' : 'false'}
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_46%,color-mix(in_oklch,var(--aurora-1)_28%,transparent),transparent_43%),linear-gradient(90deg,color-mix(in_oklch,var(--aurora-1)_9%,transparent),transparent_64%)]" />
-          <div className="absolute left-4 right-[6.75rem] top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,white_5%,transparent)]" aria-hidden="true">
-            <span
-              className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,var(--aurora-1),var(--aurora-3))] shadow-[0_0_18px_-5px_color-mix(in_oklch,var(--aurora-1)_90%,transparent)] transition-[width] duration-300 ease-out"
-              style={{ width: `${shownPercent}%` }}
-            />
-          </div>
-          <div className="absolute left-4 right-[6.75rem] top-1/2 -translate-y-1/2" aria-hidden="true">
-            <span
-              className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color-mix(in_oklch,white_48%,transparent)] bg-[color-mix(in_oklch,white_72%,var(--aurora-1))] shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--aurora-1)_95%,transparent)] transition-[left] duration-300 ease-out"
-              style={{ left: `${shownPercent}%` }}
-            />
-          </div>
-          <div className="absolute left-5 right-[7.6rem] top-1/2 flex -translate-y-1/2 items-center justify-between opacity-55" aria-hidden="true">
-            <span className="h-1 w-1 rounded-full bg-[var(--aurora-1)]" />
-            <span className="h-1 w-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-2)_72%,transparent)]" />
-            <span className="h-1 w-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-3)_76%,transparent)]" />
-          </div>
-          <div className="profile-music-stack-actions absolute right-2.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShuffle((value) => !value)}
-              className={cn(
-                'music-control-button flex h-11 w-11 items-center justify-center rounded-full border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
-                shuffle
-                  ? 'border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
-                  : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_62%,transparent)] text-[var(--ink-muted)]'
-              )}
-              aria-pressed={shuffle}
-              aria-label="随机播放"
-              title="随机播放"
-            >
-              <Shuffle className="h-3.5 w-3.5" />
-            </button>
+          <div className="profile-music-stack-actions flex items-center">
             <button
               type="button"
               onClick={() => setExpanded(true)}
-              className="music-control-button profile-music-expand-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--bg-raised)_62%,transparent)] text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+              className="music-control-button music-icon-button music-icon-button--tinted profile-music-expand-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
               aria-label="打开音乐播放器"
               title="打开音乐播放器"
             >
-              <Disc3 className={cn('h-3.5 w-3.5', stackPlaying && 'animate-spin [animation-duration:3s]')} />
+              <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.9} />
             </button>
           </div>
         </div>
 
-        <div className="profile-music-stack-progress">
-          <SeekBar
-            percent={shownPercent}
-            progress={shownProgress}
-            duration={activeDuration}
-            onSeek={handleSeek}
-            size="sm"
-            label="调整个人卡片音乐进度"
-          />
-          <div className="flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-            <span>{formatMusicClock(shownProgress)}</span>
-            <span>{formatMusicClock(activeDuration)}</span>
+        {!playbackError && (
+          <div className="profile-music-stack-progress">
+            <SeekBar
+              percent={shownPercent}
+              progress={shownProgress}
+              duration={activeDuration}
+              onSeek={handleSeek}
+              size="sm"
+              label="调整个人卡片音乐进度"
+            />
+            <div className="flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
+              <span>{formatMusicClock(shownProgress)}</span>
+              <span>{formatMusicClock(activeDuration)}</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="profile-music-stack-footer flex items-center justify-center pt-1">
-          <div className="profile-music-play-cluster flex min-w-0 items-center gap-2">
-            <button type="button" onClick={previousTrack} className="music-control-button flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)]" aria-label="上一首">
-              <SkipBack className="h-4 w-4" />
+        <PlaybackFailure message={playbackError} onRetry={retryPlayback} compact />
+
+        <div className="profile-music-stack-footer flex items-center justify-between gap-1.5 pt-1">
+          <div className="profile-music-play-cluster flex min-w-0 items-center gap-1">
+            <button type="button" onClick={previousTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+              <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
             </button>
             <button
               type="button"
               onClick={handleMainAction}
-              className="music-control-button music-primary-play-button flex h-12 w-12 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-              aria-label={stackPlaying ? '暂停音乐' : '播放音乐'}
+              className="music-control-button music-primary-play-button flex h-12 w-12 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+              aria-label={stackFailed ? '重新尝试播放' : stackBuffering ? '取消载入' : stackPlaying ? '暂停音乐' : '播放音乐'}
               data-playing={stackPlaying ? 'true' : 'false'}
             >
-              {stackPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
+              {stackBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.9} /> : stackPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
             </button>
-            <button type="button" onClick={nextTrack} className="music-control-button flex h-9 w-9 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)]" aria-label="下一首">
-              <SkipForward className="h-4 w-4" />
+            <button type="button" onClick={nextTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+              <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
             </button>
+          </div>
+          <div className="profile-music-stack-utility flex shrink-0 items-center gap-1">
+            {stackSwitchAction}
+            <Link
+              href="/music"
+              className="music-control-button music-icon-button music-icon-button--tinted inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+              aria-label="浏览歌单"
+              title="浏览歌单"
+            >
+              <ListMusic className="h-[18px] w-[18px]" strokeWidth={1.9} />
+            </Link>
           </div>
         </div>
       </div>
@@ -231,41 +283,17 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
     >
       <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--aurora-1),transparent)] opacity-60" />
       <div className={cn('grid items-center gap-3', isHome ? 'grid-cols-[64px_minmax(0,1fr)_auto]' : 'grid-cols-[52px_minmax(0,1fr)_auto]')}>
-        <button
-          type="button"
-          onClick={handleMainAction}
-          className={cn(
-            'music-control-button relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[radial-gradient(circle,color-mix(in_oklch,black_82%,var(--aurora-1))_0_42%,color-mix(in_oklch,black_90%,var(--aurora-1))_43%_100%)] text-[var(--bg-void)] shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
-            isHome ? 'h-16 w-16' : 'h-[3.25rem] w-[3.25rem]'
-          )}
-          aria-label={isCurrentTrack && isPlaying ? '暂停音乐' : '播放音乐'}
-        >
-          {cover ? (
-            <Image
-              src={cover}
-              alt={displayTrack.title}
-              fill
-              sizes={isHome ? '4rem' : '3.25rem'}
-              className={cn('object-cover opacity-72', isCurrentTrack && isPlaying && 'music-vinyl-spin')}
-              unoptimized
-            />
-          ) : (
-            <Disc3 className={cn('absolute h-8 w-8 text-[var(--ink-muted)]', isCurrentTrack && isPlaying && 'animate-spin [animation-duration:3s]')} />
-          )}
-          <span className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-lg">
-            {isCurrentTrack && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
-          </span>
-        </button>
+        <ProfileMusicArtwork cover={cover} title={presentation.title} size={isHome ? 'featured' : 'compact'} />
 
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--ink-muted)]">
             <Volume2 className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-1)]" />
             <span className="truncate">{playlistName}</span>
           </div>
-          <p className={cn('mt-1 truncate font-black tracking-normal text-[var(--ink-primary)]', isHome ? 'text-base md:text-lg' : 'text-sm')} title={displayTrack.title}>
-            {displayTrack.title}
+          <p className={cn('mt-1 truncate font-black tracking-normal text-[var(--ink-primary)]', isHome ? 'text-base md:text-lg' : 'text-sm')} title={presentation.title}>
+            {presentation.title}
           </p>
-          <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]" title={displayTrack.artist || displayTrack.album || displayTrack.media?.originalName || displayTrack.title}>
+          <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]" title={artistName || displayTrack.album || displayTrack.media?.originalName || presentation.title}>
             {trackMeta}
           </p>
         </div>
@@ -275,31 +303,41 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
             type="button"
             onClick={() => setShuffle((value) => !value)}
             className={cn(
-              'music-control-button hidden h-10 w-10 items-center justify-center rounded-xl border sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+              'music-control-button music-icon-button hidden h-11 w-11 items-center justify-center rounded-full sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]',
               shuffle
-                ? 'border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                ? 'bg-[var(--music-control-fill-hover)] text-[var(--aurora-1)]'
+                : 'text-[var(--ink-muted)]'
             )}
+            data-selected={shuffle ? 'true' : 'false'}
             aria-pressed={shuffle}
             aria-label="随机播放"
           >
-            <Shuffle className="h-4 w-4" />
+            <Shuffle className="h-[18px] w-[18px]" strokeWidth={1.9} />
           </button>
           <button
             type="button"
             onClick={previousTrack}
-            className="music-control-button hidden h-10 w-10 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+            className="music-control-button music-icon-button hidden h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] sm:flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
             aria-label="上一首"
           >
-            <SkipBack className="h-4 w-4" />
+            <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
+            onClick={handleMainAction}
+            className="music-control-button music-primary-play-button flex h-12 w-12 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+            aria-label={isCurrentTrack && playbackError ? '重新尝试播放' : isCurrentTrack && isBuffering ? '取消载入' : isCurrentTrack && isPlaying ? '暂停音乐' : '播放音乐'}
+            data-playing={isCurrentTrack && isPlaying ? 'true' : 'false'}
+          >
+            {isCurrentTrack && isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.9} /> : isCurrentTrack && isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
           </button>
           <button
             type="button"
             onClick={nextTrack}
-            className="music-control-button flex h-10 w-10 items-center justify-center rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+            className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
             aria-label="下一首"
           >
-            <SkipForward className="h-4 w-4" />
+            <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
           </button>
         </div>
       </div>
@@ -319,23 +357,58 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <PlaybackFailure message={playbackError} onRetry={retryPlayback} />
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="music-control-button inline-flex h-9 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-3 text-xs font-bold text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+          className="music-control-button music-pill-button inline-flex min-h-11 items-center justify-center gap-1.5 bg-[var(--music-control-fill-hover)] px-3 text-xs text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
         >
-          <Disc3 className={cn('h-3.5 w-3.5', isCurrentTrack && isPlaying && 'animate-spin [animation-duration:3s]')} />
-          打开播放页
+          <Maximize2 className="h-4 w-4" strokeWidth={1.9} />
+          展开播放器
         </button>
         <Link
           href="/music"
-          className="music-control-button inline-flex h-9 items-center gap-2 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 text-xs font-bold text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+          className="music-control-button music-pill-button inline-flex min-h-11 items-center justify-center gap-1.5 bg-[var(--music-control-fill)] px-3 text-xs text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
         >
-          <ListMusic className="h-3.5 w-3.5" />
-          音乐大厅
+          <ListMusic className="h-4 w-4" strokeWidth={1.9} />
+          浏览歌单
         </Link>
       </div>
+    </div>
+  );
+}
+
+function PlaybackFailure({
+  message,
+  onRetry,
+  compact = false,
+}: {
+  message: string | null;
+  onRetry: () => Promise<void>;
+  compact?: boolean;
+}) {
+  if (!message) return null;
+
+  return (
+    <div
+      role="alert"
+      className={cn(
+        'flex min-w-0 items-center gap-2 rounded-[var(--music-radius-detail)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-left text-xs text-[var(--ink-secondary)]',
+        compact ? 'px-2.5 py-1.5' : 'mt-3 px-3 py-2'
+      )}
+    >
+      <AlertCircle className="h-4 w-4 shrink-0 text-[var(--signal-danger)]" />
+      <span className="min-w-0 flex-1 line-clamp-2">{message}</span>
+      <button
+        type="button"
+        onClick={() => void onRetry()}
+        className="music-control-button music-pill-button inline-flex min-h-11 shrink-0 items-center justify-center bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] px-3 text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+        aria-label="重新尝试播放"
+      >
+        重试
+      </button>
     </div>
   );
 }

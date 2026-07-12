@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
@@ -113,6 +116,211 @@ func TestMusicServiceImportMediaRejectsMissingAudio(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}
+}
+
+func TestResolveMusicImportFieldsUsesTagsWithoutOverridingExplicitValues(t *testing.T) {
+	metadata := &audioTrackMetadata{
+		Title:  "假如让我说下去",
+		Artist: "杨千嬅",
+		Album:  "千嬅盛放",
+	}
+
+	title, artist, album := resolveMusicImportFields(
+		dto.MusicImportMediaRequest{MediaFileID: 37},
+		metadata,
+		"杨千嬅 - 假如让我说下去.mp3",
+	)
+	if title != "假如让我说下去" || artist != "杨千嬅" || album != "千嬅盛放" {
+		t.Fatalf("tag-derived fields = %q, %q, %q", title, artist, album)
+	}
+
+	title, artist, album = resolveMusicImportFields(
+		dto.MusicImportMediaRequest{
+			MediaFileID: 37,
+			Title:       "手动歌名",
+			Artist:      "手动艺人",
+		},
+		metadata,
+		"杨千嬅 - 假如让我说下去.mp3",
+	)
+	if title != "手动歌名" || artist != "手动艺人" || album != "千嬅盛放" {
+		t.Fatalf("explicit precedence fields = %q, %q, %q", title, artist, album)
+	}
+
+	title, artist, album = resolveMusicImportFields(
+		dto.MusicImportMediaRequest{MediaFileID: 37},
+		&audioTrackMetadata{
+			Title:  strings.Repeat("歌", musicTrackTitleMaxRunes+20),
+			Artist: strings.Repeat("艺", musicTrackArtistMaxRunes+20),
+			Album:  strings.Repeat("专", musicTrackAlbumMaxRunes+20),
+		},
+		"fallback.mp3",
+	)
+	if utf8.RuneCountInString(title) != musicTrackTitleMaxRunes ||
+		utf8.RuneCountInString(artist) != musicTrackArtistMaxRunes ||
+		utf8.RuneCountInString(album) != musicTrackAlbumMaxRunes {
+		t.Fatalf("metadata fields were not bounded: %d, %d, %d", utf8.RuneCountInString(title), utf8.RuneCountInString(artist), utf8.RuneCountInString(album))
+	}
+}
+
+func TestResolveMusicMetadataMimeFallsBackWithoutTrustingNonAudioNames(t *testing.T) {
+	persistedFLAC := " audio/flac "
+	persistedGeneric := "application/octet-stream"
+	cases := []struct {
+		name            string
+		downloadedMime  string
+		persistedMime   *string
+		downloadedName  string
+		rowOriginalName string
+		want            string
+	}{
+		{
+			name:            "persisted audio mime wins over filenames",
+			downloadedMime:  "application/octet-stream",
+			persistedMime:   &persistedFLAC,
+			downloadedName:  "download.mp3",
+			rowOriginalName: "row.m4a",
+			want:            "audio/flac",
+		},
+		{
+			name:            "download original name is the first filename fallback",
+			downloadedMime:  "application/octet-stream",
+			persistedMime:   &persistedGeneric,
+			downloadedName:  "download.mp3",
+			rowOriginalName: "row.flac",
+			want:            "audio/mpeg",
+		},
+		{
+			name:            "row original name is used after unsafe download name",
+			downloadedMime:  "application/octet-stream",
+			downloadedName:  "download.svg",
+			rowOriginalName: "row.m4a",
+			want:            "audio/x-m4a",
+		},
+		{
+			name:            "non audio filename guesses never escape the audio boundary",
+			downloadedMime:  "application/octet-stream",
+			downloadedName:  "download.svg",
+			rowOriginalName: "row.png",
+			want:            "application/octet-stream",
+		},
+		{
+			name:            "concrete storage mime is authoritative",
+			downloadedMime:  "audio/ogg",
+			persistedMime:   &persistedFLAC,
+			downloadedName:  "download.mp3",
+			rowOriginalName: "row.m4a",
+			want:            "audio/ogg",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveMusicMetadataMime(
+				tc.downloadedMime,
+				tc.persistedMime,
+				tc.downloadedName,
+				tc.rowOriginalName,
+			)
+			if got != tc.want {
+				t.Fatalf("resolveMusicMetadataMime() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMusicServiceImportMediaExtractsID3WhenStorageReturnsOctetStream(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	payload := buildID3v23TextPayload(map[string]string{
+		"TIT2": "假如让我说下去",
+		"TPE1": "杨千嬅",
+		"TALB": "千嬅盛放",
+	})
+	persistedMime := "audio/mpeg"
+	media := model.MediaFile{
+		ID:           37,
+		Filename:     "opaque-object",
+		OriginalName: "杨千嬅 - 假如让我说下去.mp3",
+		FilePath:     "music/opaque-object",
+		FileURL:      "music/opaque-object",
+		FileSize:     int64(len(payload)),
+		MimeType:     &persistedMime,
+		FileType:     "AUDIO",
+		StorageType:  "LOCAL",
+	}
+	sqlDB := sqlx.NewDb(db, "sqlmock")
+	mediaSvc := NewMediaService(
+		repository.NewMediaRepo(sqlDB),
+		musicMetadataStorage{data: payload, mimeType: "application/octet-stream"},
+		nil,
+		"",
+	)
+	svc := NewMusicService(repository.NewMusicRepo(sqlDB), mediaSvc)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM media_files mf`)).
+		WithArgs(int64(37)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "original_name", "file_url", "file_size", "mime_type", "file_type",
+			"folder_id", "deleted", "thumbnail_url", "mapped_track_id", "mapped_title",
+		}).AddRow(
+			media.ID, media.OriginalName, media.FileURL, media.FileSize, media.MimeType, media.FileType,
+			nil, false, nil, nil, nil,
+		))
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM media_files WHERE id=$1`)).
+		WithArgs(int64(37)).
+		WillReturnRows(syncMediaFileRows(media))
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO music_tracks (`)).
+		WithArgs(
+			int64(37), "假如让我说下去", "杨千嬅", "千嬅盛放", nil, nil,
+			nil, "MEDIA_LIBRARY", "ACTIVE", 0, false,
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(11)))
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM music_tracks t`)).
+		WithArgs(int64(11)).
+		WillReturnRows(musicTrackRowsWithID(11, 37, "假如让我说下去"))
+
+	track, err := svc.ImportMedia(
+		context.Background(),
+		dto.MusicImportMediaRequest{MediaFileID: 37},
+		"MEDIA_LIBRARY",
+	)
+	if err != nil {
+		t.Fatalf("ImportMedia: %v", err)
+	}
+	if track == nil || track.Title != "假如让我说下去" {
+		t.Fatalf("imported track = %#v", track)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+type musicMetadataStorage struct {
+	data     []byte
+	mimeType string
+}
+
+func (s musicMetadataStorage) Upload(context.Context, string, io.Reader, int64, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s musicMetadataStorage) Delete(context.Context, string) error {
+	return errors.New("not implemented")
+}
+
+func (s musicMetadataStorage) GetURL(key string) string {
+	return "/api/uploads/" + key
+}
+
+func (s musicMetadataStorage) Type() string { return "LOCAL" }
+
+func (s musicMetadataStorage) Get(context.Context, string) (io.ReadCloser, int64, string, error) {
+	return io.NopCloser(bytes.NewReader(s.data)), int64(len(s.data)), s.mimeType, nil
 }
 
 func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {

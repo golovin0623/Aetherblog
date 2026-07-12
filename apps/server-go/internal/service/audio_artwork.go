@@ -17,6 +17,38 @@ type audioArtwork struct {
 	Extension string
 }
 
+type audioTrackMetadata struct {
+	Title  string
+	Artist string
+	Album  string
+}
+
+func extractAudioTrackMetadata(r io.ReadSeeker, mimeType string) *audioTrackMetadata {
+	if r == nil || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(mimeType)), "audio/") {
+		return nil
+	}
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+	defer func() {
+		_, _ = r.Seek(0, io.SeekStart)
+	}()
+
+	metadata, err := tag.ReadFrom(r)
+	if err != nil {
+		return nil
+	}
+	out := &audioTrackMetadata{
+		Title:  strings.TrimSpace(metadata.Title()),
+		Artist: strings.TrimSpace(metadata.Artist()),
+		Album:  strings.TrimSpace(metadata.Album()),
+	}
+	if out.Title == "" && out.Artist == "" && out.Album == "" {
+		return nil
+	}
+	return out
+}
+
 func extractAudioArtwork(r io.ReadSeeker, size int64, mimeType string) (*audioArtwork, error) {
 	if r == nil || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(mimeType)), "audio/") {
 		return nil, nil

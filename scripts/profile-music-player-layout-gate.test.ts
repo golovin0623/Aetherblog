@@ -35,7 +35,7 @@ function stackVariantSource() {
 
 function mobileSheetSource() {
   const start = providerSource.indexOf('className="music-mobile-player-sheet');
-  const end = providerSource.indexOf('\n        <div\n          data-music-skin={skin}', start);
+  const end = providerSource.indexOf('\n        <div\n          ref={desktopDialogRef}', start);
 
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
@@ -58,22 +58,47 @@ describe('profile music player stack layout gate', () => {
     expect(stack).toContain('profile-music-stack-footer');
     expect(stack).toContain('profile-music-play-cluster');
     expect(stack).toContain('profile-music-expand-button');
+    expect(stack).toContain('profile-music-stack-utility');
+    expect(globalCss).toContain('@container (max-width: 17.5rem)');
+    expect(globalCss).toMatch(/@container \(max-width: 17\.5rem\)[\s\S]*?\.profile-music-stack-footer \{[\s\S]*?flex-direction: column;/);
+    expect(globalCss).toMatch(/@container \(max-width: 17\.5rem\)[\s\S]*?\.profile-music-play-cluster,[\s\S]*?\.profile-music-stack-utility \{[\s\S]*?justify-content: center;/);
   });
 
-  it('keeps stack card playback rail tied to real progress instead of a decorative-only bar', () => {
+  it('keeps a touch-sized profile return action in every stack loading and empty state', () => {
+    expect(profileSource.match(/isStack && stackSwitchAction/g)).toHaveLength(3);
+    expect(profileSource.match(/absolute right-2 top-2 z-\[2\]/g)).toHaveLength(3);
+  });
+
+  it('keeps stack card playback progress singular and moves utility actions into the header', () => {
     const stack = stackVariantSource();
 
-    expect(stack).toContain('profile-music-progress-rail');
-    expect(stack).toContain('style={{ width: `${shownPercent}%` }}');
     expect(stack).toContain('profile-music-stack-actions');
+    expect(stack).toContain('grid-cols-[52px_minmax(0,1fr)_auto]');
+    expect(stack).not.toContain('profile-music-progress-rail');
+    expect(stack).not.toContain('style={{ width: `${shownPercent}%` }}');
   });
 });
 
 describe('author profile stack radius gate', () => {
-  it('uses one shared profile stack radius instead of nested hard-coded card radii', () => {
+  it('offers an explicit touch-sized control for switching between profile and music', () => {
+    expect(authorProfileSource).toContain('profile-stack-switch-button');
+    expect(authorProfileSource).toContain('aria-label={`切换到${nextStackCard.label}`}');
+    expect(authorProfileSource).toContain('h-11 w-11');
+    expect(authorProfileSource).toContain('useReducedMotion');
+    expect(authorProfileSource).toContain('if (event.defaultPrevented) return;');
+    expect(authorProfileSource).toContain("target?.closest('a,button,input,textarea,select,[role=\"slider\"]')");
+    expect(authorProfileSource).toContain("activeCard === 'profile'");
+    expect(authorProfileSource).toContain('stackSwitchAction={renderStackSwitchButton()}');
+    expect(profileSource).toContain('{stackSwitchAction}');
+  });
+
+  it('derives concentric stage and panel curvature from the outer card inset', () => {
     expect(authorProfileSource).toContain('profile-card-stack-frame');
     expect(globalCss).toContain('--profile-card-stack-radius');
-    expect(globalCss).toContain('--profile-card-stack-panel-radius');
+    expect(globalCss).toContain('--profile-card-stack-stage-radius: max(0.5rem, calc(var(--profile-card-stack-radius) - 1rem))');
+    expect(globalCss).toContain('--profile-card-stack-panel-radius: max(0.375rem, calc(var(--profile-card-stack-stage-radius) - var(--profile-card-stack-slide-gutter)))');
+    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-stage-radius\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(profileSource).toContain('profile-music-stack-shell');
     expect(profileSource).toContain('rounded-[var(--profile-card-stack-panel-radius,1.75rem)]');
 
@@ -84,18 +109,36 @@ describe('author profile stack radius gate', () => {
   });
 
   it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
-    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*clip-path:\s*inset\(0 round var\(--profile-card-stack-panel-radius\)\);/);
-    expect(globalCss).toMatch(/\.profile-card-stack-slot\s*{[\s\S]*padding-inline:\s*var\(--profile-card-stack-slide-gutter\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*clip-path:\s*inset\(0 round var\(--profile-card-stack-stage-radius\)\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-slot\s*{[\s\S]*padding:\s*var\(--profile-card-stack-slide-gutter\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*overflow:\s*hidden;/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel::before\s*{[\s\S]*border-radius:\s*inherit;/);
   });
 
-  it('keeps light theme card boundaries visible instead of letting white corners disappear', () => {
+  it('lets the panel own the visible boundary while the stage remains a clean clipping surface', () => {
     expect(globalCss).toContain('--profile-stack-stage-bg');
     expect(globalCss).toContain('--profile-stack-stage-border');
     expect(globalCss).toContain('--profile-stack-panel-border: color-mix(in oklch, var(--text-primary) 14%, transparent);');
     expect(globalCss).toContain('0 0 0 1px color-mix(in oklch, var(--text-primary) 5%, transparent)');
+    expect(globalCss).not.toMatch(/\.profile-card-stack-stage\s*{[\s\S]*box-shadow:\s*inset 0 0 0 1px var\(--profile-stack-stage-border\);/);
+  });
+
+  it('uses real color tokens for the stack switch material and focus offset', () => {
+    expect(globalCss).toContain('--profile-stack-control-bg:');
+    expect(globalCss).toContain('--profile-stack-control-hover:');
+    expect(globalCss).toContain('--profile-stack-focus-offset:');
+    expect(authorProfileSource).toContain('bg-[var(--profile-stack-control-bg)]');
+    expect(authorProfileSource).toContain('hover:bg-[var(--profile-stack-control-hover)]');
+    expect(authorProfileSource).toContain('focus-visible:ring-offset-[var(--profile-stack-focus-offset)]');
+    expect(authorProfileSource).not.toContain('color-mix(in_oklch,var(--profile-stack-panel-bg)');
+    expect(authorProfileSource).not.toContain('ring-offset-[var(--profile-stack-stage-bg)]');
+  });
+
+  it('describes carousel cards as slides instead of orphan tab panels', () => {
+    expect(authorProfileSource.match(/role="group"/g)).toHaveLength(2);
+    expect(authorProfileSource.match(/aria-roledescription="slide"/g)).toHaveLength(2);
+    expect(authorProfileSource).not.toContain("role={isCurrent ? 'tabpanel' : undefined}");
   });
 
   it('lets the music card share the outer panel surface instead of drawing a second rounded frame', () => {
@@ -125,28 +168,34 @@ describe('mobile music player experience gate', () => {
   });
 
   it('treats backend unknown-artist placeholders as empty display text', () => {
-    expect(profileSource).toContain("next && next !== '未知艺术家' ? next : ''");
+    expect(profileSource).toContain('resolveMusicTrackPresentation(displayTrack)');
     expect(providerSource).toContain("next && next !== '未知艺术家' ? next : ''");
     expect(providerSource).not.toContain("currentTrack.artist || '未知艺术家'");
     expect(providerSource).not.toContain("track.artist || '未知艺术家'");
   });
 
-  it('clips the floating liquid orb to a circular paint surface to avoid mobile Safari square glow artifacts', () => {
-    expect(providerSource).toContain('music-floating-orb-button relative grid h-[3.75rem] w-[3.75rem]');
-    expect(globalCss).toMatch(/\.music-floating-orb-button\s*{[\s\S]*overflow:\s*hidden;/);
-    expect(globalCss).toMatch(/\.music-floating-orb-button\s*{[\s\S]*clip-path:\s*circle\(50%\);/);
-    expect(globalCss).toMatch(/-webkit-mask-image:\s*radial-gradient\(circle,\s*#000 98%,\s*transparent 100%\)/);
+  it('uses a content-rich mobile MiniPlayer rather than an icon-only orb', () => {
+    expect(providerSource).toContain('data-music-mini-player');
+    expect(providerSource).toContain('grid-cols-[40px_minmax(0,1fr)_44px_44px]');
+    expect(providerSource).toContain('music-mini-player');
+    expect(providerSource).toContain('h-14');
+    expect(providerSource).toContain('aria-label="打开音乐播放器"');
+    expect(providerSource).not.toContain('music-floating-orb-button');
   });
 
-  it('keeps the mobile sheet structured as a polished playback system with dedicated stage, seek, controls, and actions', () => {
+  it('keeps the mobile sheet structured as a single-view playback system with artwork, seek, transport, volume, and tools', () => {
     const sheet = mobileSheetSource();
 
-    expect(sheet).toContain('max-h-[66vh]');
+    expect(sheet).toContain('h-[100dvh]');
     expect(sheet).toContain('overflow-y-auto');
-    expect(sheet).toContain('music-mobile-player-stage');
+    expect(sheet).toContain('overscroll-contain');
+    expect(sheet).toContain('data-now-playing-artwork');
     expect(sheet).toContain('music-mobile-player-seek');
-    expect(sheet).toContain('music-mobile-player-controls');
-    expect(sheet).toContain('music-mobile-player-actions');
+    expect(sheet).toContain('music-mobile-player-transport');
+    expect(sheet).toContain('music-mobile-player-volume');
+    expect(sheet).toContain('music-mobile-player-tools');
+    expect(sheet).not.toContain('music-mobile-player-stage');
+    expect(sheet).not.toContain('music-mobile-player-actions');
     expect(sheet).toContain('size="md"');
     expect(sheet).toContain('duration={duration}');
   });
@@ -154,6 +203,6 @@ describe('mobile music player experience gate', () => {
   it('keeps floating mobile sheet controls focus rings clean over dynamic backgrounds', () => {
     const sheet = mobileSheetSource();
 
-    expect(sheet).toContain('focus-visible:ring-offset-2 focus-visible:ring-offset-transparent');
+    expect(sheet).toContain('focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]');
   });
 });

@@ -21,6 +21,19 @@
   --music-seed: #DC3D44;               /* crimson · light 默认 */
   --aurora-source: var(--music-seed);  /* 作用域内改写光源(--aurora-field 等沿用) */
 
+  /* 音乐域几何与材质：封面、控件、面板各自只消费一档曲率。 */
+  --music-radius-artwork-sm: 0.5rem;
+  --music-radius-artwork-lg: 0.75rem;
+  --music-radius-control: 0.75rem;
+  --music-radius-detail: 1rem;
+  --music-radius-panel: 1.5rem;
+  --music-radius-capsule: 999px;
+  --music-stroke: rgb(28 26 20 / 0.08);
+  --music-control-fill: rgb(28 26 20 / 0.055);
+  --music-control-fill-hover: rgb(28 26 20 / 0.09);
+  --music-shadow-float: 0 14px 34px -24px rgb(0 0 0 / 0.34);
+  --music-shadow-artwork: 0 24px 52px -32px rgb(0 0 0 / 0.58);
+
   /* 保底值 —— 不支持 oklch 相对色的旧浏览器(退化为单色,不撞色) */
   --aurora-1: var(--music-seed);
   --aurora-2: var(--music-seed);
@@ -31,6 +44,9 @@
 /* ---------- 作用域光源(暗) ---------- */
 :root.dark [data-music-skin] {
   --music-seed: #FF6B6E;               /* crimson · dark 默认(更亮) */
+  --music-stroke: rgb(255 255 255 / 0.09);
+  --music-control-fill: rgb(255 255 255 / 0.065);
+  --music-control-fill-hover: rgb(255 255 255 / 0.105);
 }
 
 /* ---------- 预设皮肤(纯 CSS,仅换种子) ---------- */

@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Copy, Trash2, Info, X } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AlertTriangle, Copy, Info, Loader2, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConfirmDialogProps {
@@ -12,9 +13,37 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   variant?: 'danger' | 'warning' | 'info' | 'copy';
+  pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
+
+const variantConfig = {
+  danger: {
+    icon: Trash2,
+    iconBg: 'bg-status-danger/10',
+    iconColor: 'text-status-danger',
+    button: 'bg-status-danger text-white hover:bg-status-danger/90',
+  },
+  warning: {
+    icon: AlertTriangle,
+    iconBg: 'bg-status-warning/10',
+    iconColor: 'text-status-warning',
+    button: 'bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90',
+  },
+  info: {
+    icon: Info,
+    iconBg: 'bg-primary/10',
+    iconColor: 'text-primary',
+    button: 'bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90',
+  },
+  copy: {
+    icon: Copy,
+    iconBg: 'bg-primary/10',
+    iconColor: 'text-primary',
+    button: 'bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90',
+  },
+} as const;
 
 export function ConfirmDialog({
   isOpen,
@@ -23,139 +52,157 @@ export function ConfirmDialog({
   confirmText = '确认',
   cancelText = '取消',
   variant = 'danger',
+  pending = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  
-  const variantConfig = {
-    danger: {
-      icon: Trash2,
-      iconBg: 'bg-gradient-to-br from-status-danger/20 to-status-danger/10',
-      iconColor: 'text-status-danger',
-      iconGlow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-status-danger to-status-danger hover:from-status-danger hover:to-status-danger',
-      buttonShadow: 'shadow-lg shadow-status-danger/25',
-    },
-    warning: {
-      icon: AlertTriangle,
-      iconBg: 'bg-gradient-to-br from-status-warning/20 to-status-warning/10',
-      iconColor: 'text-status-warning',
-      iconGlow: 'shadow-[0_0_20px_rgba(245,158,11,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-status-warning to-status-warning hover:from-status-warning hover:to-status-warning',
-      buttonShadow: 'shadow-lg shadow-status-warning/25',
-    },
-    info: {
-      icon: Info,
-      iconBg: 'bg-gradient-to-br from-primary/20 to-accent/10',
-      iconColor: 'text-primary',
-      iconGlow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90',
-      buttonShadow: 'shadow-lg shadow-primary/25',
-    },
-    copy: {
-      icon: Copy,
-      iconBg: 'bg-gradient-to-br from-primary/20 to-accent/10',
-      iconColor: 'text-primary',
-      iconGlow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90',
-      buttonShadow: 'shadow-lg shadow-primary/25',
-    },
-  };
+  const prefersReducedMotion = useReducedMotion();
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCancelRef = useRef(onCancel);
+  const pendingRef = useRef(pending);
 
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusFrame = window.requestAnimationFrame(() => cancelButtonRef.current?.focus());
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (pendingRef.current) return;
+        event.preventDefault();
+        onCancelRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      ) ?? []).filter((element) => !element.hasAttribute('hidden'));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocusedRef.current?.focus({ preventScroll: true });
+    };
+  }, [isOpen]);
+
+  if (typeof document === 'undefined') return null;
   const config = variantConfig[variant];
   const IconComponent = config.icon;
 
-  const content = (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          {/* 背景遮罩 */}
           <motion.div
+            aria-hidden="true"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/70 backdrop-blur-md"
-            onClick={onCancel}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.16 }}
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            onClick={() => {
+              if (!pending) onCancel();
+            }}
           />
-          
-          {/* 对话框 */}
+
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
-            className="relative w-full max-w-md"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={descriptionId}
+            aria-busy={pending}
+            tabIndex={-1}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="surface-overlay relative w-full max-w-md overflow-hidden rounded-[1.25rem] focus:outline-none"
           >
-            {/* 玻璃拟态卡片 —— 规范 surface-overlay 层级（40px blur + aurora 辉光边）*/}
-            <div className="relative overflow-hidden surface-overlay">
-              {/* 微妙的渐变叠加 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-overlay)] to-transparent pointer-events-none" />
-              
-              {/* 关闭按钮 */}
-              <button
-                onClick={onCancel}
-                className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              
-              {/* 内容 */}
-              <div className="relative p-6">
-                <div className="flex items-start gap-4">
-                  {/* 图标 */}
-                  <motion.div
-                    initial={{ scale: 0, rotate: -180 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{ type: 'spring', delay: 0.1, duration: 0.4, bounce: 0.4 }}
-                    className={cn(
-                      'flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center',
-                      config.iconBg,
-                      config.iconGlow
-                    )}
-                  >
-                    <IconComponent className={cn('w-6 h-6', config.iconColor)} />
-                  </motion.div>
-                  
-                  {/* 文本 */}
-                  <div className="flex-1 pt-1">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
-                    <p className="mt-2 text-sm text-[var(--text-secondary)] leading-relaxed">{message}</p>
-                  </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={pending}
+              className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full text-[var(--text-muted)] transition-[background-color,color,opacity] duration-100 hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label="关闭确认对话框"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start gap-3 pr-11 sm:gap-4">
+                <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', config.iconBg)}>
+                  <IconComponent className={cn('h-5 w-5', config.iconColor)} />
                 </div>
-                
-                {/* 操作按钮 */}
-                <div className="flex justify-end gap-3 mt-8">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onCancel}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all duration-200"
-                  >
-                    {cancelText}
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onConfirm}
-                    className={cn(
-                      'px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200',
-                      config.buttonBg,
-                      config.buttonShadow
-                    )}
-                  >
-                    {confirmText}
-                  </motion.button>
+                <div className="min-w-0 pt-0.5">
+                  <h3 id={titleId} className="text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
+                  <p id={descriptionId} className="mt-1.5 text-sm leading-6 text-[var(--text-secondary)]">{message}</p>
                 </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-2.5">
+                <button
+                  ref={cancelButtonRef}
+                  type="button"
+                  onClick={onCancel}
+                  disabled={pending}
+                  className="min-h-11 rounded-xl bg-[var(--bg-secondary)] px-4 text-sm font-semibold text-[var(--text-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] active:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {cancelText}
+                </button>
+                <button
+                  type="button"
+                  onClick={onConfirm}
+                  disabled={pending}
+                  className={cn(
+                    'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-opacity duration-100 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60',
+                    config.button
+                  )}
+                >
+                  {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                  {confirmText}
+                </button>
               </div>
             </div>
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
-
-  return createPortal(content, document.body);
 }
 
 export default ConfirmDialog;

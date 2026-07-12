@@ -110,6 +110,8 @@ export interface MusicPlaylist {
   name: string;
   slug: string;
   description?: string;
+  coverMediaFileId?: number;
+  coverUrl?: string;
   displayOnHome: boolean;
   displayOnProfile: boolean;
   carouselEnabled: boolean;
@@ -264,6 +266,23 @@ function normalizeMusicTrack(input: unknown): MusicTrack {
   };
 }
 
+function normalizeMusicPlaylist(input: unknown): MusicPlaylist {
+  const raw = asApiRecord(input);
+  return {
+    id: toFiniteNumber(raw.id),
+    name: toText(raw.name),
+    slug: toText(raw.slug),
+    description: toOptionalText(raw.description),
+    coverMediaFileId: toOptionalPositiveNumber(raw.coverMediaFileId ?? raw.cover_media_file_id),
+    coverUrl: toOptionalText(raw.coverUrl ?? raw.cover_url),
+    displayOnHome: Boolean(raw.displayOnHome ?? raw.display_on_home),
+    displayOnProfile: Boolean(raw.displayOnProfile ?? raw.display_on_profile),
+    carouselEnabled: Boolean(raw.carouselEnabled ?? raw.carousel_enabled),
+    randomEnabled: Boolean(raw.randomEnabled ?? raw.random_enabled),
+    trackCount: toFiniteNumber(raw.trackCount ?? raw.track_count),
+  };
+}
+
 // React.cache 确保同一次渲染中 generateMetadata() 和 RootLayout 共享结果
 export const getSiteSettings = cache(async function getSiteSettings(): Promise<SiteSettings> {
   try {
@@ -344,11 +363,12 @@ export async function getMusicPlayer(): Promise<MusicPlayer> {
     return {
       ...DEFAULT_MUSIC_PLAYER,
       ...data,
+      playlist: data.playlist ? normalizeMusicPlaylist(data.playlist) : undefined,
       tracks: Array.isArray(data.tracks) ? data.tracks.map(normalizeMusicTrack) : [],
     };
   } catch (error) {
     logger.warn('Failed to fetch music player:', error);
-    return DEFAULT_MUSIC_PLAYER;
+    throw error;
   }
 }
 
