@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -21,6 +22,8 @@ var (
 	ErrMusicPlaylistNotFound = errors.New("歌单不存在")
 	ErrMusicMediaNotAudio    = errors.New("请选择媒体库中的音频文件")
 )
+
+const maxMusicMetadataBytes int64 = 64 * 1024 * 1024
 
 type MusicService struct {
 	repo     *repository.MusicRepo
@@ -125,14 +128,14 @@ func (s *MusicService) ImportMedia(ctx context.Context, req dto.MusicImportMedia
 	if row == nil || row.Deleted || row.FileType != "AUDIO" {
 		return nil, ErrMusicMediaNotAudio
 	}
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		title = titleFromFilename(row.OriginalName)
+	var metadata *audioTrackMetadata
+	if s.mediaSvc != nil && (strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Artist) == "" || strings.TrimSpace(req.Album) == "") {
+		if data, mimeType, originalName, metadataErr := s.mediaSvc.DownloadBytes(ctx, req.MediaFileID, maxMusicMetadataBytes); metadataErr == nil {
+			mimeType = resolveMusicMetadataMime(mimeType, row.MimeType, originalName, row.OriginalName)
+			metadata = extractAudioTrackMetadata(bytes.NewReader(data), mimeType)
+		}
 	}
-	artist := strings.TrimSpace(req.Artist)
-	if artist == "" {
-		artist = "未知艺术家"
-	}
+	title, artist, album := resolveMusicImportFields(req, metadata, row.OriginalName)
 	if source == "" {
 		source = "MEDIA_LIBRARY"
 	}
@@ -140,7 +143,7 @@ func (s *MusicService) ImportMedia(ctx context.Context, req dto.MusicImportMedia
 		MediaFileID: req.MediaFileID,
 		Title:       title,
 		Artist:      artist,
-		Album:       strings.TrimSpace(req.Album),
+		Album:       album,
 		Source:      source,
 		Status:      "ACTIVE",
 	})
@@ -148,6 +151,75 @@ func (s *MusicService) ImportMedia(ctx context.Context, req dto.MusicImportMedia
 		return nil, err
 	}
 	return s.GetTrack(ctx, id)
+}
+
+func resolveMusicImportFields(
+	req dto.MusicImportMediaRequest,
+	metadata *audioTrackMetadata,
+	originalName string,
+) (title, artist, album string) {
+	title = strings.TrimSpace(req.Title)
+	artist = strings.TrimSpace(req.Artist)
+	album = strings.TrimSpace(req.Album)
+	if metadata != nil {
+		if title == "" {
+			title = metadata.Title
+		}
+		if artist == "" {
+			artist = metadata.Artist
+		}
+		if album == "" {
+			album = metadata.Album
+		}
+	}
+	if title == "" {
+		title = titleFromFilename(originalName)
+	}
+	if artist == "" {
+		artist = "未知艺术家"
+	}
+	title = normalizeMusicImportField(title, musicTrackTitleMaxRunes)
+	artist = normalizeMusicImportField(artist, musicTrackArtistMaxRunes)
+	album = normalizeMusicImportField(album, musicTrackAlbumMaxRunes)
+	if title == "" {
+		title = "未命名音频"
+	}
+	if artist == "" {
+		artist = "未知艺术家"
+	}
+	return title, artist, album
+}
+
+// resolveMusicMetadataMime narrows MIME fallback to audio formats before ID3/tag extraction.
+// Storage backends can legitimately return application/octet-stream for opaque object keys,
+// so music import reuses the catalog MIME first, then the downloaded and query-row original
+// names. Filename inference is accepted only when it resolves to audio/*; an unrelated or
+// attacker-controlled extension must not turn this metadata-only path into a generic parser.
+func resolveMusicMetadataMime(
+	downloadedMime string,
+	persistedMime *string,
+	downloadedOriginalName string,
+	rowOriginalName string,
+) string {
+	mimeType := strings.TrimSpace(downloadedMime)
+	if mimeType != "" && !strings.EqualFold(mimeType, "application/octet-stream") {
+		return mimeType
+	}
+
+	if persistedMime != nil {
+		persisted := strings.TrimSpace(*persistedMime)
+		if strings.HasPrefix(strings.ToLower(persisted), "audio/") {
+			return persisted
+		}
+	}
+
+	for _, originalName := range []string{downloadedOriginalName, rowOriginalName} {
+		guessed := strings.TrimSpace(resolveMimeWithFallback("application/octet-stream", originalName))
+		if strings.HasPrefix(strings.ToLower(guessed), "audio/") {
+			return guessed
+		}
+	}
+	return mimeType
 }
 
 func (s *MusicService) BatchImportMedia(ctx context.Context, req dto.MusicBatchImportRequest) ([]dto.MusicTrackVO, error) {
@@ -622,7 +694,23 @@ func normalizeOptionalText(v *string) *string {
 	return &trimmed
 }
 
-const musicTrackTitleMaxRunes = 160
+const (
+	musicTrackTitleMaxRunes  = 160
+	musicTrackArtistMaxRunes = 120
+	musicTrackAlbumMaxRunes  = 120
+)
+
+func normalizeMusicImportField(value string, maxRunes int) string {
+	value = strings.TrimSpace(strings.ToValidUTF8(value, ""))
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes])
+	}
+	return value
+}
 
 func titleFromFilename(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
@@ -630,10 +718,7 @@ func titleFromFilename(name string) string {
 	if base == "" {
 		return "未命名音频"
 	}
-	if runes := []rune(base); len(runes) > musicTrackTitleMaxRunes {
-		return string(runes[:musicTrackTitleMaxRunes])
-	}
-	return base
+	return normalizeMusicImportField(base, musicTrackTitleMaxRunes)
 }
 
 var musicSlugNonAlnum = regexp.MustCompile(`[^a-z0-9]+`)

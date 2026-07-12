@@ -6,6 +6,7 @@ import { useTheme } from '@aetherblog/hooks';
 import { Tooltip } from '@aetherblog/ui';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useMusicPlayer } from './MusicPlayerProvider';
 
 /**
  * 全局移动端悬浮主题切换按钮
@@ -19,15 +20,21 @@ export default function FloatingThemeToggle() {
   const { isDark, toggleThemeWithAnimation } = useTheme();
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
+  const { hasPlaybackSession } = useMusicPlayer();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted) return null;
+  if (!mounted || !pathname) return null;
 
-  // Agent 工作台和拟真阅读器自带全屏交互入口，不让全局浮层占用固定底部位置。
-  if (pathname.startsWith('/agent/workspace') || pathname.startsWith('/reader/')) return null;
+  // 全屏工具与音乐播放路径已有专属底部操作，不让第二个悬浮控件争抢同一拇指热区。
+  if (
+    pathname.startsWith('/agent/workspace') ||
+    pathname.startsWith('/reader/') ||
+    pathname.startsWith('/music') ||
+    hasPlaybackSession
+  ) return null;
 
   return (
     <Tooltip content={isDark ? '切换到亮色主题' : '切换到暗色主题'} side="left">
