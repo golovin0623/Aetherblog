@@ -9,6 +9,7 @@ import {
   resolveMusicCoverSrc,
   SeekBar,
   useMusicPlayer,
+  useMusicPlayerTimeline,
 } from './MusicPlayerProvider';
 import { resolveMusicTrackPresentation } from './musicPlayerState';
 
@@ -22,6 +23,7 @@ interface ProfileMusicPlayerProps {
   variant?: 'card' | 'stack';
   emptyState?: ReactNode;
   stackSwitchAction?: ReactNode;
+  timelineActive?: boolean;
 }
 
 function ProfileMusicArtwork({
@@ -61,7 +63,91 @@ function ProfileMusicArtwork({
   );
 }
 
-export function ProfileMusicPlayer({ surface = 'profile', className, variant = 'card', emptyState, stackSwitchAction }: ProfileMusicPlayerProps) {
+interface ProfileMusicTimelineProps {
+  fallbackDuration: number;
+  isCurrentTrack: boolean;
+  layout: 'card' | 'stack';
+  onSeek: (percent: number) => void;
+}
+
+interface ProfileMusicTimelineViewProps extends ProfileMusicTimelineProps {
+  duration: number;
+  percent: number;
+  progress: number;
+}
+
+function ProfileMusicTimelineView({
+  duration,
+  fallbackDuration,
+  isCurrentTrack,
+  layout,
+  onSeek,
+  percent,
+  progress,
+}: ProfileMusicTimelineViewProps) {
+  const activeDuration = duration || fallbackDuration;
+  const shownPercent = isCurrentTrack ? percent : 0;
+  const shownProgress = isCurrentTrack ? progress : 0;
+  const timeClassName = cn(
+    'flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]',
+    layout === 'card' && 'mt-1.5',
+  );
+
+  return (
+    <div className={layout === 'stack' ? 'profile-music-stack-progress' : 'mt-3'}>
+      <SeekBar
+        percent={shownPercent}
+        progress={shownProgress}
+        duration={activeDuration}
+        onSeek={onSeek}
+        size="sm"
+        label="调整个人卡片音乐进度"
+      />
+      <div className={timeClassName}>
+        <span>{formatMusicClock(shownProgress)}</span>
+        <span>{formatMusicClock(activeDuration)}</span>
+      </div>
+    </div>
+  );
+}
+
+function LiveProfileMusicTimeline(props: ProfileMusicTimelineProps) {
+  const { progress, duration, percent } = useMusicPlayerTimeline();
+
+  return (
+    <ProfileMusicTimelineView
+      {...props}
+      progress={progress}
+      duration={duration}
+      percent={percent}
+    />
+  );
+}
+
+function ProfileMusicTimelineSlot({
+  live,
+  ...props
+}: ProfileMusicTimelineProps & { live: boolean }) {
+  if (live) return <LiveProfileMusicTimeline {...props} />;
+
+  return (
+    <ProfileMusicTimelineView
+      {...props}
+      progress={0}
+      duration={0}
+      percent={0}
+    />
+  );
+}
+
+export function ProfileMusicPlayer({
+  surface = 'profile',
+  className,
+  variant = 'card',
+  emptyState,
+  stackSwitchAction,
+  timelineActive = true,
+}: ProfileMusicPlayerProps) {
   const {
     player,
     isPlayerLoading,
@@ -74,9 +160,6 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
     isBuffering,
     playbackError,
     shuffle,
-    progress,
-    duration,
-    percent,
     skin,
     canUseSurface,
     playIndex,
@@ -159,9 +242,6 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
   const isCurrentTrack = currentTrack?.id === displayTrack.id;
   const isHome = surface === 'home';
   const playlistName = player?.playlist?.name || '音乐大厅';
-  const activeDuration = duration || displayTrack.durationSeconds || 0;
-  const shownPercent = isCurrentTrack ? percent : 0;
-  const shownProgress = isCurrentTrack ? progress : 0;
   const presentation = resolveMusicTrackPresentation(displayTrack);
   const artistName = presentation.artist;
   const trackPosition = `${(currentTrack ? currentIndex : 0) + 1}/${tracks.length}`;
@@ -185,6 +265,12 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
       return;
     }
     seekToPercent(nextPercent);
+  };
+
+  const openPlayer = () => {
+    // Surface navigation must never be a disguised playback command. The
+    // dedicated play control remains the only action that starts audio.
+    setExpanded(true);
   };
 
   if (isStack) {
@@ -218,7 +304,7 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
             {stackSwitchAction}
             <button
               type="button"
-              onClick={() => setExpanded(true)}
+              onClick={openPlayer}
               className="music-control-button music-icon-button music-icon-button--tinted profile-music-expand-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
               aria-label="打开音乐播放器"
               title="打开音乐播放器"
@@ -229,20 +315,13 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
         </div>
 
         {!playbackError && (
-          <div className="profile-music-stack-progress">
-            <SeekBar
-              percent={shownPercent}
-              progress={shownProgress}
-              duration={activeDuration}
-              onSeek={handleSeek}
-              size="sm"
-              label="调整个人卡片音乐进度"
-            />
-            <div className="flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-              <span>{formatMusicClock(shownProgress)}</span>
-              <span>{formatMusicClock(activeDuration)}</span>
-            </div>
-          </div>
+          <ProfileMusicTimelineSlot
+            live={timelineActive}
+            fallbackDuration={displayTrack.durationSeconds || 0}
+            isCurrentTrack={isCurrentTrack}
+            layout="stack"
+            onSeek={handleSeek}
+          />
         )}
 
         <PlaybackFailure message={playbackError} onRetry={retryPlayback} compact />
@@ -336,27 +415,20 @@ export function ProfileMusicPlayer({ surface = 'profile', className, variant = '
         </div>
       </div>
 
-      <div className="mt-3">
-        <SeekBar
-          percent={shownPercent}
-          progress={shownProgress}
-          duration={activeDuration}
-          onSeek={handleSeek}
-          size="sm"
-          label="调整个人卡片音乐进度"
-        />
-        <div className="mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-          <span>{formatMusicClock(shownProgress)}</span>
-          <span>{formatMusicClock(activeDuration)}</span>
-        </div>
-      </div>
+      <ProfileMusicTimelineSlot
+        live={timelineActive}
+        fallbackDuration={displayTrack.durationSeconds || 0}
+        isCurrentTrack={isCurrentTrack}
+        layout="card"
+        onSeek={handleSeek}
+      />
 
       <PlaybackFailure message={playbackError} onRetry={retryPlayback} />
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={openPlayer}
           className="music-control-button music-pill-button inline-flex min-h-11 items-center justify-center gap-1.5 bg-[var(--music-control-fill-hover)] px-3 text-xs text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
         >
           <Maximize2 className="h-4 w-4" strokeWidth={1.9} />

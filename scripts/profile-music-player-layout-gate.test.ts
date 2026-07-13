@@ -33,9 +33,29 @@ function stackVariantSource() {
   return profileSource.slice(start, end);
 }
 
+function profilePlayerSource() {
+  const start = profileSource.indexOf('export function ProfileMusicPlayer');
+  const end = profileSource.indexOf('\nfunction PlaybackFailure', start);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+
+  return profileSource.slice(start, end);
+}
+
+function liveTimelineLeafSource() {
+  const start = profileSource.indexOf('function LiveProfileMusicTimeline');
+  const end = profileSource.indexOf('\nfunction ProfileMusicTimelineSlot', start);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+
+  return profileSource.slice(start, end);
+}
+
 function mobileSheetSource() {
   const start = providerSource.indexOf('className="music-mobile-player-sheet');
-  const end = providerSource.indexOf('\n        <div\n          ref={desktopDialogRef}', start);
+  const end = providerSource.indexOf("\n      {surface === 'immersive' && !isMobile && (", start);
 
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
@@ -44,6 +64,23 @@ function mobileSheetSource() {
 }
 
 describe('profile music player stack layout gate', () => {
+  it('subscribes to the high-frequency timeline only inside the progress leaf', () => {
+    const player = profilePlayerSource();
+    const liveTimeline = liveTimelineLeafSource();
+
+    expect(profileSource.match(/useMusicPlayerTimeline\(\)/g)).toHaveLength(1);
+    expect(player).not.toContain('useMusicPlayerTimeline()');
+    expect(player).toContain('<ProfileMusicTimelineSlot');
+    expect(liveTimeline).toContain('useMusicPlayerTimeline()');
+    expect(liveTimeline).toContain('<ProfileMusicTimelineView');
+  });
+
+  it('does not subscribe an offscreen stack music card to playback time updates', () => {
+    expect(profileSource).toContain('timelineActive = true');
+    expect(profileSource).toContain('live={timelineActive}');
+    expect(authorProfileSource).toContain('timelineActive={isCurrent}');
+  });
+
   it('keeps the narrow card expand action icon-only to prevent right-edge text squeeze', () => {
     const stack = stackVariantSource();
 
@@ -72,7 +109,7 @@ describe('profile music player stack layout gate', () => {
   it('keeps stack card playback progress singular and moves utility actions into the header', () => {
     const stack = stackVariantSource();
     const headerIndex = stack.indexOf('profile-music-stack-header');
-    const progressIndex = stack.indexOf('profile-music-stack-progress');
+    const progressIndex = stack.indexOf('<ProfileMusicTimelineSlot');
     const footerIndex = stack.indexOf('profile-music-stack-footer');
 
     expect(stack).toContain('profile-music-stack-actions');
@@ -80,12 +117,24 @@ describe('profile music player stack layout gate', () => {
     expect(headerIndex).toBeGreaterThanOrEqual(0);
     expect(progressIndex).toBeGreaterThan(headerIndex);
     expect(footerIndex).toBeGreaterThan(progressIndex);
+    expect(profileSource).toContain("layout === 'stack' ? 'profile-music-stack-progress' : 'mt-3'");
     expect(stack).not.toContain('profile-music-progress-rail');
     expect(stack).not.toContain('style={{ width: `${shownPercent}%` }}');
   });
 });
 
 describe('author profile stack radius gate', () => {
+  it('mounts each logical two-card carousel panel once and repositions the adjacent panel by direction', () => {
+    expect(authorProfileSource).toContain("useState<'previous' | 'next'>('next')");
+    expect(authorProfileSource).toContain("{ position: 'current' as const, card: activeStackCard }");
+    expect(authorProfileSource).toContain('{ position: adjacentStackPosition, card: nextStackCard }');
+    expect(authorProfileSource).toContain('key={slot.card.key}');
+    expect(authorProfileSource).toContain('gridColumn: resolveStackGridColumn(slot.position)');
+    expect(authorProfileSource).not.toContain('key={`${slot.position}-${slot.card.key}`}');
+    expect(authorProfileSource).not.toContain('const previousIndex =');
+    expect(authorProfileSource).not.toContain('const nextIndex =');
+  });
+
   it('offers an explicit touch-sized control for switching between profile and music', () => {
     expect(authorProfileSource).toContain('profile-stack-switch-button');
     expect(authorProfileSource).toContain('aria-label={`切换到${nextStackCard.label}`}');
@@ -101,8 +150,8 @@ describe('author profile stack radius gate', () => {
   it('uses the shared system radius scale for outer, stage, and panel curvature', () => {
     expect(authorProfileSource).toContain('profile-card-stack-frame');
     expect(globalCss).toContain('--profile-card-stack-radius: var(--radius-xl, 1.5rem)');
-    expect(globalCss).toContain('--profile-card-stack-stage-radius: var(--radius-lg, 1rem)');
-    expect(globalCss).toContain('--profile-card-stack-panel-radius: var(--radius-md, 0.75rem)');
+    expect(globalCss).toContain('--profile-card-stack-stage-radius: var(--radius-sm, 0.5rem)');
+    expect(globalCss).toContain('calc(var(--profile-card-stack-stage-radius) - var(--profile-card-stack-slide-gutter))');
     expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-stage-radius\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(profileSource).toContain('profile-music-stack-shell');
@@ -129,7 +178,8 @@ describe('author profile stack radius gate', () => {
   });
 
   it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
-    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*clip-path:\s*inset\(0 round var\(--profile-card-stack-stage-radius\)\);/);
+    expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*overflow:\s*hidden;/);
+    expect(globalCss).not.toContain('clip-path: inset(0 round var(--profile-card-stack-stage-radius))');
     expect(globalCss).toMatch(/\.profile-card-stack-slot\s*{[\s\S]*padding:\s*var\(--profile-card-stack-slide-gutter\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*overflow:\s*hidden;/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
@@ -194,19 +244,20 @@ describe('mobile music player experience gate', () => {
     expect(providerSource).not.toContain("track.artist || '未知艺术家'");
   });
 
-  it('uses a content-rich mobile MiniPlayer rather than an icon-only orb', () => {
-    expect(providerSource).toContain('data-music-mini-player');
-    expect(providerSource).toContain('grid-cols-[40px_minmax(0,1fr)_44px_44px]');
-    expect(providerSource).toContain('music-mini-player');
-    expect(providerSource).toContain('h-14');
-    expect(providerSource).toContain('aria-label="打开音乐播放器"');
-    expect(providerSource).not.toContain('music-floating-orb-button');
+  it('uses a small labeled orb that opens a content-rich compact player without navigating', () => {
+    expect(providerSource).toContain('data-music-playback-orb');
+    expect(providerSource).toContain('data-music-compact-player');
+    expect(providerSource).toContain('打开迷你播放器：');
+    expect(providerSource).toContain('aria-label="进入音乐大厅"');
+    expect(providerSource).toContain('aria-label="打开沉浸播放器"');
   });
 
   it('keeps the mobile sheet structured as a single-view playback system with artwork, seek, transport, volume, and tools', () => {
     const sheet = mobileSheetSource();
 
-    expect(sheet).toContain('h-[100dvh]');
+    expect(sheet).toContain('top-[max(0.5rem,env(safe-area-inset-top))]');
+    expect(sheet).toContain('left-[max(0.75rem,env(safe-area-inset-left))]');
+    expect(sheet).toContain('right-[max(0.75rem,env(safe-area-inset-right))]');
     expect(sheet).toContain('overflow-y-auto');
     expect(sheet).toContain('overscroll-contain');
     expect(sheet).toContain('data-now-playing-artwork');

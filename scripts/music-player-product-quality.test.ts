@@ -3,11 +3,17 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   getMusicPlaybackModeLabel,
+  parseMusicLyric,
   resolveAdjacentTrack,
+  resolveMusicArtworkSource,
+  resolveMusicPlayerGesture,
+  resolveMusicPlayerSurface,
+  resolveStableMusicTrackIndex,
   resolveMusicTrackPresentation,
   resolveMusicStartIndex,
   shouldRotateMusicPresentation,
 } from '../apps/blog/app/components/musicPlayerState';
+import { resolveDialogTabTarget } from '../apps/blog/app/hooks/useDialogLifecycle';
 
 const providerSource = readFileSync(
   path.resolve(__dirname, '../apps/blog/app/components/MusicPlayerProvider.tsx'),
@@ -58,7 +64,174 @@ function sourceBetween(source: string, startMarker: string, endMarker: string): 
   return source.slice(start, end);
 }
 
+describe('dialog focus trap policy', () => {
+  const baseState = {
+    shiftKey: false,
+    activeIsContainer: false,
+    activeIsFirst: false,
+    activeIsLast: false,
+    activeIsInside: true,
+  };
+
+  it('moves forward from the focused dialog container to the first control', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      activeIsContainer: true,
+    })).toBe('first');
+  });
+
+  it('moves backward from the focused dialog container to the last control', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      shiftKey: true,
+      activeIsContainer: true,
+    })).toBe('last');
+  });
+
+  it('wraps forward from the last control to the first control', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      activeIsLast: true,
+    })).toBe('first');
+  });
+
+  it('wraps backward from the first control to the last control', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      shiftKey: true,
+      activeIsFirst: true,
+    })).toBe('last');
+  });
+
+  it('leaves focus movement inside the dialog to the browser', () => {
+    expect(resolveDialogTabTarget(baseState)).toBeNull();
+  });
+
+  it('recovers forward focus that has escaped outside the dialog', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      activeIsInside: false,
+    })).toBe('first');
+  });
+
+  it('recovers backward focus that has escaped outside the dialog', () => {
+    expect(resolveDialogTabTarget({
+      ...baseState,
+      shiftKey: true,
+      activeIsInside: false,
+    })).toBe('last');
+  });
+
+  it('wires the focused dialog container into the lifecycle trap', () => {
+    expect(dialogLifecycleSource).toContain('activeIsContainer: active === container');
+  });
+});
+
 describe('music playback policy', () => {
+  it('keeps restored history hidden until the visitor explicitly starts playback', () => {
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: false,
+      routeBlocked: false,
+      compactOpen: false,
+      expanded: false,
+    })).toBe('hidden');
+  });
+
+  it('opens Now Playing without coupling surface navigation to audio playback', () => {
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: false,
+      routeBlocked: false,
+      compactOpen: false,
+      expanded: true,
+    })).toBe('immersive');
+  });
+
+  it('progressively discloses the ambient orb, compact player, and immersive player', () => {
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      compactOpen: false,
+      expanded: false,
+    })).toBe('orb');
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      compactOpen: true,
+      expanded: false,
+    })).toBe('compact');
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      compactOpen: false,
+      expanded: true,
+    })).toBe('immersive');
+  });
+
+  it('renders the compact player on the first explicit playback frame without flashing the orb', () => {
+    expect(providerSource).toContain(
+      'const compactSurfaceOpen = compactOpen || (hasPlaybackSession && !previousSessionRef.current);',
+    );
+    expect(providerSource).toContain('compactOpen: compactSurfaceOpen,');
+  });
+
+  it('locks swipe intent and only commits deliberate navigation or collapse gestures', () => {
+    expect(resolveMusicPlayerGesture({ deltaX: -74, deltaY: 7, velocityX: -240, velocityY: 0 })).toBe('next');
+    expect(resolveMusicPlayerGesture({ deltaX: 72, deltaY: 4, velocityX: 180, velocityY: 0 })).toBe('previous');
+    expect(resolveMusicPlayerGesture({ deltaX: 8, deltaY: 98, velocityX: 0, velocityY: 180 })).toBe('collapse');
+    expect(resolveMusicPlayerGesture({ deltaX: -34, deltaY: 7, velocityX: -260, velocityY: 0 })).toBe('none');
+    expect(resolveMusicPlayerGesture({ deltaX: 38, deltaY: 36, velocityX: 900, velocityY: 850 })).toBe('none');
+    expect(resolveMusicPlayerGesture({ deltaX: 12, deltaY: 2, velocityX: -760, velocityY: 0 })).toBe('next');
+    expect(resolveMusicPlayerGesture({ deltaX: 2, deltaY: -12, velocityX: 0, velocityY: 760 })).toBe('collapse');
+    expect(resolveMusicPlayerGesture({ deltaX: 72, deltaY: 0, velocityX: -900, velocityY: 0 })).toBe('previous');
+  });
+
+  it('keeps track identity stable across queue reorder and deletion', () => {
+    const original = [{ id: 10 }, { id: 20 }, { id: 30 }];
+    expect(resolveStableMusicTrackIndex(original, 20, 1)).toBe(1);
+    expect(resolveStableMusicTrackIndex([{ id: 30 }, { id: 10 }, { id: 20 }], 20, 1)).toBe(2);
+    expect(resolveStableMusicTrackIndex([{ id: 10 }, { id: 30 }], 20, 1)).toBe(1);
+    expect(resolveStableMusicTrackIndex([{ id: 10 }], 30, 2)).toBe(0);
+  });
+
+  it('parses long LRC timelines while excluding metadata and invalid seconds', () => {
+    expect(parseMusicLyric([
+      '[ti:Long-form mix]',
+      '[ar:Aether Artist]',
+      '[1:02.5]Short minute token',
+      '[123:59.125]Long timeline',
+      '[03:60.00]Invalid timestamp text',
+      'Untimed outro',
+    ].join('\n'))).toEqual([
+      { time: 62.5, text: 'Short minute token' },
+      { time: 7439.125, text: 'Long timeline' },
+      { time: null, text: 'Invalid timestamp text' },
+      { time: null, text: 'Untimed outro' },
+    ]);
+  });
+
+  it('uses uploaded thumbnails for compact artwork and full covers for hero artwork', () => {
+    const artwork = {
+      coverUrl: '/media/full-cover.jpg',
+      thumbnailUrl: '/media/cover-thumb.jpg',
+    };
+    expect(resolveMusicArtworkSource({ ...artwork, size: 'thumbnail' })).toBe('/media/cover-thumb.jpg');
+    expect(resolveMusicArtworkSource({ ...artwork, size: 'hero' })).toBe('/media/full-cover.jpg');
+    expect(resolveMusicArtworkSource({ coverUrl: artwork.coverUrl, size: 'thumbnail' })).toBe(artwork.coverUrl);
+    expect(providerSource).toContain("resolveMusicCoverSrc(track, '', size)");
+    expect(sourceBetween(providerSource, 'function MusicArtwork({', 'export function NowPlayingGlyph')).toContain('unoptimized');
+  });
+
+  it('keeps previous and next as presentation-only actions before playback starts', () => {
+    expect(providerSource).toContain('if (!hasPlaybackSession) {\n      previewAdjacentTrack(-1);');
+    expect(providerSource).toContain('if (!hasPlaybackSession) {\n      previewAdjacentTrack(1);');
+    expect(providerSource).not.toContain('previewIndex: (index: number) => void');
+  });
+
   it('never rotates the real playback track after a playback session exists', () => {
     expect(shouldRotateMusicPresentation({
       carouselEnabled: true,
@@ -119,6 +292,25 @@ describe('music playback policy', () => {
 });
 
 describe('music modal product quality gates', () => {
+  it('isolates immersive lyric and queue row construction from unchanged timeline frames', () => {
+    const persistentDockSource = providerSource.slice(providerSource.indexOf('function PersistentMusicDock'));
+    expect({
+      memoizedLyricLeaf: providerSource.includes('const MemoizedMusicLyricRows = memo('),
+      memoizedQueueLeaf: providerSource.includes('const MemoizedMusicQueueRows = memo('),
+      mobileAndDesktopLyricLeaves: (persistentDockSource.match(/<MemoizedMusicLyricRows/g) ?? []).length,
+      mobileAndDesktopQueueLeaves: (persistentDockSource.match(/<MemoizedMusicQueueRows/g) ?? []).length,
+      rawLyricMapInDock: persistentDockSource.includes('lyrics.map('),
+      rawQueueMapInDock: persistentDockSource.includes('tracks.map('),
+    }).toEqual({
+      memoizedLyricLeaf: true,
+      memoizedQueueLeaf: true,
+      mobileAndDesktopLyricLeaves: 2,
+      mobileAndDesktopQueueLeaves: 2,
+      rawLyricMapInDock: false,
+      rawQueueMapInDock: false,
+    });
+  });
+
   it('supports continuous pointer scrubbing with a 44px hit target', () => {
     expect(providerSource).toContain('onPointerDown={handlePointerDown}');
     expect(providerSource).toContain('onPointerMove={handlePointerMove}');
@@ -144,14 +336,11 @@ describe('music modal product quality gates', () => {
     expect(dialogLifecycleSource).toContain("document.documentElement.style.overflow = 'hidden'");
     expect(dialogLifecycleSource).toContain("document.body.style.position = 'fixed'");
     expect(dialogLifecycleSource).toContain('window.scrollTo(0, scrollPosition)');
-    expect(providerSource).toContain('min-[769px]:hidden');
-    expect(providerSource).toContain('min-[769px]:block');
-    expect(providerSource).toContain('min-[769px]:overflow-hidden');
-    expect(providerSource).not.toContain('md:hidden');
+    expect(providerSource).toContain("surface === 'immersive' && isMobile");
+    expect(providerSource).toContain("surface === 'immersive' && !isMobile");
     expect(providerSource).toContain('initialFocusRef: isMobile ? mobileDialogRef : desktopDialogRef');
-    expect(providerSource).toContain('returnFocusRef: isMobile ? mobilePlayerTriggerRef : desktopPlayerTriggerRef');
-    expect(providerSource).toContain('ref={mobilePlayerTriggerRef}');
-    expect(providerSource).toContain('ref={desktopPlayerTriggerRef}');
+    expect(providerSource).toContain('returnFocusRef: surfaceTriggerRef');
+    expect(providerSource).toContain('ref={surfaceTriggerRef}');
     expect(dialogLifecycleSource).toContain('previouslyFocused?.isConnected');
     expect(dialogLifecycleSource).toContain('latestReturnFocusRef.current?.current');
     expect(skinSource).toContain('min-[769px]:hidden');
@@ -165,6 +354,33 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain("playbackError ? '重新尝试播放'");
     expect(providerSource).toContain("isBuffering ? '取消载入'");
     expect(providerSource).not.toContain('playbackError ? <RefreshCw');
+  });
+
+  it('keeps the current track in the compact player accessible name and mobile live region', () => {
+    expect(providerSource).toContain('aria-label={`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`}');
+    expect(providerSource).toContain('`${currentPresentation.title} · ${currentIndex + 1} / ${tracks.length}`');
+  });
+
+  it('only lets keyboard focus pause compact-player auto collapse', () => {
+    expect(providerSource).toContain("const compactInputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');");
+    expect(providerSource).toContain("if (compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);");
+    expect(providerSource).toContain("compactInputModalityRef.current = 'pointer';");
+    expect(providerSource).toContain('setCompactFocusWithin(false);');
+  });
+
+  it('reopens actionable compact recovery when a collapsed session fails', () => {
+    expect(providerSource).toContain('const previousPlaybackErrorRef = useRef<string | null>(null);');
+    expect(providerSource).toContain('if (playbackError && !previousPlaybackErrorRef.current)');
+    expect(providerSource).toContain("playbackError ? `播放失败，打开迷你播放器重试：${currentPresentation.title}`");
+  });
+
+  it('uses one continuous surface transition instead of serial exit-then-enter animations', () => {
+    expect(providerSource).toContain('<AnimatePresence initial={false} mode="popLayout"');
+    expect(providerSource).toContain("layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}");
+    expect(providerSource).not.toContain('<AnimatePresence initial={false} mode="wait"');
+    expect(providerSource).toContain("initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}");
+    expect(providerSource).toContain('key="music-desktop-immersive"');
+    expect(providerSource).toContain('data-music-desktop-immersive');
   });
 
   it('gives the skin dialog an explicit close action and modal lifecycle', () => {
@@ -188,19 +404,19 @@ describe('music modal product quality gates', () => {
     expect(skinSource).toContain('min-[769px]:max-h-[calc(100dvh-1.5rem)]');
   });
 
-  it('uses an informative MiniPlayer instead of an unexplained floating orb', () => {
-    expect(providerSource).toContain('data-music-mini-player');
-    expect(providerSource).toContain('打开音乐播放器');
-    expect(providerSource).not.toContain('music-floating-orb-button');
-    expect(providerSource).not.toContain('LiquidMusicOrb');
+  it('uses a labeled ambient orb before progressively disclosing the compact player', () => {
+    expect(providerSource).toContain('data-music-playback-orb');
+    expect(providerSource).toContain('data-music-compact-player');
+    expect(providerSource).toContain('打开迷你播放器');
+    expect(providerSource).toContain('进入音乐大厅');
+    expect(providerSource).toContain('打开沉浸播放器');
   });
 
-  it('keeps persistent players out of full-screen routes and reserves page-end space elsewhere', () => {
+  it('keeps persistent players out of full-screen routes without reserving document space', () => {
     expect(providerSource).toContain("pathname.startsWith('/reader/')");
-    expect(providerSource).not.toContain('(!expanded && routeBlocksPlayerSurface)');
     expect(providerSource).toContain('if (routeBlocksPlayerSurface && expanded) setExpanded(false)');
-    expect(providerSource).toContain('data-music-mini-player-spacer');
-    expect(providerSource).toContain('h-[calc(5.5rem+env(safe-area-inset-bottom))]');
+    expect(providerSource).not.toContain('data-music-mini-player-spacer');
+    expect(providerSource).not.toContain('data-music-desktop-dock');
   });
 
   it('keeps mobile failure announcements available from the MiniPlayer', () => {
@@ -227,10 +443,9 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).not.toContain('translate3d(0, -1px, 0)');
   });
 
-  it('removes the retired floating liquid-orb visual system from global CSS', () => {
+  it('uses a restrained progress-aware orb without reviving the retired liquid blob system', () => {
     for (const retiredStyle of [
       '.music-eq-bar',
-      'music-floating-orb',
       'music-floating-remove',
       'music-liquid-orb',
       'music-liquid-core',
@@ -241,9 +456,15 @@ describe('music modal product quality gates', () => {
     ]) {
       expect(globalsSource).not.toContain(retiredStyle);
     }
+    expect(globalsSource).toContain('.music-playback-orb');
+    expect(globalsSource).toContain('.music-playback-orb__progress');
+    expect(globalsSource).toContain('@media (prefers-reduced-motion: reduce)');
     expect(globalsSource).toContain('@keyframes music-eq-pulse');
     expect(globalsSource).toContain('.music-wave-mark > span');
-    expect(globalsSource).toContain('@keyframes music-sheet-rise');
+    expect(providerSource).toContain('dragControls={immersiveDragControls}');
+    expect(providerSource).toContain('style={{ y: immersiveDragY }}');
+    expect(providerSource).toContain('style={{ opacity: mobileBackdropOpacity }}');
+    expect(providerSource).toContain('onClick={closeExpandedPlayer}');
     expect(globalsSource).toContain('.music-mobile-player-sheet');
     expect(globalsSource).toContain('[data-music-skin] .animate-spin');
   });
@@ -270,25 +491,20 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toContain('.music-volume-range::-webkit-slider-runnable-track');
   });
 
-  it('uses system-rounded mini players and soft-rectangle actions instead of oversized capsules', () => {
-    expect(providerSource).toContain('inset-x-5');
-    expect(providerSource).toContain('music-mini-player');
-    expect(providerSource).toContain('grid-rows-[auto_minmax(0,1fr)_auto]');
+  it('uses system-rounded compact players and safe narrow-screen insets', () => {
+    expect(providerSource).toContain('max-[360px]:left-3');
+    expect(providerSource).toContain('music-compact-player');
+    expect(providerSource).toContain('overflow-hidden');
     expect(providerSource).toContain('music-desktop-player-artwork-frame');
-    expect(globalsSource).toMatch(/\.music-mini-player\s*\{[\s\S]*?border-radius:\s*var\(--music-radius-panel\);/);
+    expect(globalsSource).toMatch(/\.music-compact-player\s*\{[\s\S]*?border-radius:\s*var\(--music-radius-floating\);/);
     expect(globalsSource).toMatch(/\.music-pill-button\s*\{[\s\S]*?border-radius:\s*var\(--music-radius-control\);/);
   });
 
-  it('keeps the desktop dock compact enough for its reserved page-end space', () => {
-    expect(providerSource).toContain('data-music-desktop-dock');
-    expect(providerSource).toContain('data-music-desktop-dock-progress');
-    expect(providerSource).toContain('grid-cols-[48px_minmax(0,1fr)_auto]');
-    expect(providerSource).toContain('grid-rows-[48px_20px]');
-    expect(providerSource).toContain('data-music-desktop-dock-transport');
+  it('keeps compact transport symmetric instead of stretching a dock across the page', () => {
+    expect(providerSource).toContain('data-music-compact-transport');
     expect(providerSource).toContain('grid-cols-[44px_48px_44px]');
-    expect(providerSource).toContain('!min-h-5 !py-2');
-    expect(providerSource).not.toContain('data-music-desktop-dock-progress className="absolute');
-    expect(providerSource).not.toContain('onSeek={seekToPercent} size="sm" className="mt-2"');
+    expect(providerSource).not.toContain('data-music-desktop-dock');
+    expect(providerSource).not.toContain('fixed inset-x-0 bottom-0');
   });
 
   it('makes lyrics and queue real in-player panes instead of dead anchor links', () => {
@@ -303,14 +519,16 @@ describe('music modal product quality gates', () => {
   it('respects reduced motion for lyric following and active-line transitions', () => {
     expect(providerSource.match(/behavior: prefersReducedMotion \? 'auto' : 'smooth'/g)).toHaveLength(2);
     expect(providerSource).not.toContain('scroll-smooth');
-    expect(providerSource.match(/motion-reduce:translate-x-0 motion-reduce:transition-none/g)).toHaveLength(2);
+    expect(providerSource.match(/motion-reduce:translate-x-0 motion-reduce:transition-none/g)).toHaveLength(1);
+    expect(providerSource.match(/<MemoizedMusicLyricRows/g)).toHaveLength(2);
     expect(adminPlayerSource).toContain("behavior: prefersReducedMotion ? 'auto' : 'smooth'");
   });
 
   it('makes current queue rows pause or retry instead of restarting the track', () => {
-    expect(providerSource.match(/const active = hasPlaybackSession && currentIndex === index;/g)).toHaveLength(2);
+    expect(providerSource.match(/const active = hasPlaybackSession && currentIndex === index;/g)).toHaveLength(1);
+    expect(providerSource.match(/<MemoizedMusicQueueRows/g)).toHaveLength(2);
     expect(providerSource).not.toContain('onClick={() => value.playIndex(index)}');
-    expect(providerSource.match(/else if \(playbackError\) \{/g)).toHaveLength(2);
+    expect(providerSource.match(/else if \(playbackError\) \{/g)).toHaveLength(1);
     expect(providerSource).toContain('`取消载入 ${presentation.title}`');
     expect(providerSource).toContain('`暂停 ${presentation.title}`');
   });
@@ -363,7 +581,8 @@ describe('music modal product quality gates', () => {
     expect(adminMusicPageSource).toContain("setDockSuppressed(activeTab === 'display')");
     expect(adminMusicPageSource).toContain("{activeTab === 'display' && (");
     expect(adminMusicPageSource).toContain('id="admin-module-panel-display"');
-    expect(adminMusicPageSource).toContain('{renderHallStage()}');
+    expect(adminMusicPageSource).toContain('<AdminMusicTimelineSlot>');
+    expect(adminMusicPageSource).toContain('{(timeline) => renderHallStage(timeline)}');
     expect(adminMusicPageSource).toContain("role={stageIsCurrent ? 'slider' : undefined}");
     expect(adminMusicPageSource).toContain('disabled={!stageTrack || !stageIsCurrent}');
     expect(adminMusicPageSource).toContain('if (!stageIsCurrent) return;');
@@ -392,7 +611,7 @@ describe('music modal product quality gates', () => {
   });
 
   it('keeps the admin floating player compact, tokenized, and synchronized with its selected skin', () => {
-    expect(adminPlayerSource).toContain('rounded-[var(--music-radius-panel)]');
+    expect(adminPlayerSource).toContain('rounded-[var(--music-radius-floating)]');
     expect(adminPlayerSource).toContain('rounded-[var(--music-radius-artwork-lg)]');
     expect(adminPlayerSource).toContain('data-music-skin={musicSkin.value}');
     expect(adminPlayerSource).toContain('data-admin-player-drag-handle');
@@ -401,7 +620,8 @@ describe('music modal product quality gates', () => {
     expect(adminPlayerSource).toContain('data-admin-player-compact-layout');
     expect(adminPlayerSource).toContain('data-admin-player-expanded-layout');
     expect(adminPlayerSource).toContain('grid-cols-[44px_56px_44px]');
-    expect(adminPlayerSource).toContain('px-4 max-[360px]:px-3');
+    expect(adminPlayerSource).toContain('pl-[max(1rem,env(safe-area-inset-left))]');
+    expect(adminPlayerSource).toContain('pr-[max(1rem,env(safe-area-inset-right))]');
     expect(adminPlayerSource).not.toContain('bottom-[max(1rem,env(safe-area-inset-bottom))] z-50');
     expect(adminPlayerSource).not.toContain('data-music-skin="crimson"');
     expect(adminPlayerSource).not.toContain("isPlaying && 'animate-spin");

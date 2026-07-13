@@ -72,18 +72,30 @@ export function Select({
 }: SelectProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
+  const generatedId = React.useId();
+  const triggerId = id ?? `${generatedId}-trigger`;
+  const listboxId = `${generatedId}-listbox`;
+  const getOptionId = (index: number) => `${generatedId}-option-${index}`;
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const optionsRef = React.useRef<Array<HTMLButtonElement | null>>([]);
   const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
 
   const selected = options.find((o) => o.value === value);
+  const activeOption = activeIndex >= 0 ? options[activeIndex] : undefined;
+  const activeOptionId =
+    isOpen && activeOption && !activeOption.disabled
+      ? getOptionId(activeIndex)
+      : undefined;
 
-  // 打开时：把 activeIndex 指向当前选中项（若无则 0）
+  // 打开时：优先指向未禁用的选中项，否则指向首个可用项。
   React.useEffect(() => {
     if (isOpen) {
-      const idx = options.findIndex((o) => o.value === value);
-      setActiveIndex(idx >= 0 ? idx : 0);
+      const selectedIndex = options.findIndex(
+        (option) => option.value === value && !option.disabled
+      );
+      const firstEnabledIndex = options.findIndex((option) => !option.disabled);
+      setActiveIndex(selectedIndex >= 0 ? selectedIndex : firstEnabledIndex);
     }
   }, [isOpen, options, value]);
 
@@ -220,11 +232,13 @@ export function Select({
     <>
       <button
         ref={triggerRef}
-        id={id}
+        id={triggerId}
         type="button"
         role="combobox"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
+        aria-controls={isOpen ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((v) => !v)}
@@ -282,8 +296,10 @@ export function Select({
             {isOpen && (
               <motion.div
                 ref={menuRef}
+                id={listboxId}
                 role="listbox"
                 aria-label={ariaLabel}
+                aria-labelledby={ariaLabel ? undefined : triggerId}
                 style={menuStyle}
                 variants={variants.dropDown}
                 initial="initial"
@@ -297,20 +313,22 @@ export function Select({
                     无可选项
                   </div>
                 ) : (
-                  <ul className="space-y-0.5">
+                  <ul role="none" className="space-y-0.5">
                     {options.map((opt, i) => {
                       const isSelected = opt.value === value;
                       const isActive = i === activeIndex;
                       const Icon = opt.icon;
                       return (
-                        <li key={opt.value}>
+                        <li role="none" key={opt.value}>
                           <button
                             ref={(el) => {
                               optionsRef.current[i] = el;
                             }}
+                            id={getOptionId(i)}
                             type="button"
                             role="option"
                             aria-selected={isSelected}
+                            aria-disabled={opt.disabled || undefined}
                             disabled={opt.disabled}
                             onClick={() => {
                               if (opt.disabled) return;

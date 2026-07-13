@@ -12,6 +12,11 @@ export interface StoredMusicPlayback {
   volume: number;
 }
 
+export interface IdleMusicSeekPreview {
+  trackId: number;
+  position: number;
+}
+
 export interface MusicTrackPresentationInput {
   title?: string | null;
   artist?: string | null;
@@ -22,9 +27,225 @@ export interface MusicTrackPresentation {
   artist: string;
 }
 
+export type MusicArtworkSize = 'thumbnail' | 'hero';
+
+export interface LyricLine {
+  time: number | null;
+  text: string;
+}
+
+export type MusicPlayerSurface = 'hidden' | 'orb' | 'compact' | 'immersive';
+
+export type MusicPlayerGestureAction = 'none' | 'previous' | 'next' | 'collapse';
+
+export interface MusicPlayerGestureInput {
+  deltaX: number;
+  deltaY: number;
+  /** Framer Motion reports velocity in pixels per second. */
+  velocityX: number;
+  velocityY: number;
+  allowHorizontal?: boolean;
+  allowVertical?: boolean;
+}
+
 const MAX_SHUFFLE_HISTORY = 100;
+const MUSIC_GESTURE_AXIS_DOMINANCE = 1.15;
+const MUSIC_GESTURE_HORIZONTAL_DISTANCE_PX = 68;
+const MUSIC_GESTURE_HORIZONTAL_VELOCITY_PX_S = 550;
+const MUSIC_GESTURE_VERTICAL_DISTANCE_PX = 92;
+const MUSIC_GESTURE_VERTICAL_VELOCITY_PX_S = 650;
+const LRC_TIMESTAMP_PATTERN = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+const LRC_METADATA_LINE_PATTERN = /^(?:\s*\[(?:al|ar|au|by|la|length|offset|re|ti|ve):[^\]]*\])+\s*$/i;
 
 const UNKNOWN_MUSIC_ARTISTS = new Set(['', '未知艺术家', 'unknown artist']);
+
+/**
+ * An empty preview and an empty current track both expose `undefined` ids.
+ * Compare only after proving that both records exist, otherwise
+ * `undefined === undefined` would select the preview branch and dereference null.
+ */
+export function resolveIdleMusicSeekPreviewPosition(
+  preview: IdleMusicSeekPreview | null,
+  currentTrackId: number | null,
+): number {
+  if (!preview || currentTrackId == null || preview.trackId !== currentTrackId) return 0;
+  return Number.isFinite(preview.position) ? Math.max(0, preview.position) : 0;
+}
+
+function resolveCommittedGestureDirection({
+  delta,
+  velocity,
+  distanceThreshold,
+  velocityThreshold,
+}: {
+  delta: number;
+  velocity: number;
+  distanceThreshold: number;
+  velocityThreshold: number;
+}): -1 | 1 | null {
+  if (Math.abs(delta) >= distanceThreshold) return delta < 0 ? -1 : 1;
+  if (Math.abs(velocity) >= velocityThreshold) return velocity < 0 ? -1 : 1;
+  return null;
+}
+
+/**
+ * 播放生命周期与表面显隐分开：历史断点只恢复歌曲/位置，绝不能凭此激活全局播放器。
+ */
+export function resolveMusicPlayerSurface({
+  canRender,
+  hasPlaybackSession,
+  routeBlocked,
+  compactOpen,
+  expanded,
+}: {
+  canRender: boolean;
+  hasPlaybackSession: boolean;
+  routeBlocked: boolean;
+  compactOpen: boolean;
+  expanded: boolean;
+}): MusicPlayerSurface {
+  if (!canRender || routeBlocked) return 'hidden';
+  // Opening Now Playing is a surface intent, not a playback command. This lets
+  // profile-card visitors inspect the current selection without unexpectedly
+  // starting audio, while restored history still stays completely hidden.
+  if (expanded) return 'immersive';
+  if (!hasPlaybackSession) return 'hidden';
+  return compactOpen ? 'compact' : 'orb';
+}
+
+/**
+ * Keeps the selected track stable across refreshed/reordered arrays before any
+ * effect can observe a stale numeric index. If the track disappeared, the old
+ * slot is clamped so the queue naturally advances to its successor or tail.
+ */
+export function resolveStableMusicTrackIndex(
+  tracks: readonly { id: number }[],
+  trackId: number | null,
+  fallbackIndex: number,
+): number {
+  if (tracks.length === 0) return 0;
+  if (trackId != null) {
+    const matchingIndex = tracks.findIndex((track) => track.id === trackId);
+    if (matchingIndex >= 0) return matchingIndex;
+  }
+  const finiteIndex = Number.isFinite(fallbackIndex) ? Math.trunc(fallbackIndex) : 0;
+  return Math.min(Math.max(finiteIndex, 0), tracks.length - 1);
+}
+
+/** Small playback surfaces should not decode the full cover when an uploaded thumbnail exists. */
+export function resolveMusicArtworkSource({
+  coverUrl,
+  thumbnailUrl,
+  size,
+}: {
+  coverUrl?: string | null;
+  thumbnailUrl?: string | null;
+  size: MusicArtworkSize;
+}): string {
+  const cover = coverUrl?.trim() || '';
+  const thumbnail = thumbnailUrl?.trim() || '';
+  return size === 'thumbnail'
+    ? (thumbnail || cover)
+    : (cover || thumbnail);
+}
+
+/**
+ * Parses the public LRC subset used by every blog playback surface. Common LRC
+ * metadata is not rendered as lyrics; malformed seconds are kept only as
+ * untimed text instead of being converted into a different minute.
+ */
+export function parseMusicLyric(raw: string | undefined | null): LyricLine[] {
+  if (!raw || !raw.trim()) return [];
+  const lines: LyricLine[] = [];
+
+  for (const line of raw.split(/\r?\n/)) {
+    if (LRC_METADATA_LINE_PATTERN.test(line)) continue;
+
+    LRC_TIMESTAMP_PATTERN.lastIndex = 0;
+    const matches = Array.from(line.matchAll(LRC_TIMESTAMP_PATTERN));
+    LRC_TIMESTAMP_PATTERN.lastIndex = 0;
+    const text = line.replace(LRC_TIMESTAMP_PATTERN, '').trim();
+    const validMatches = matches.filter((match) => Number(match[2]) < 60);
+
+    if (validMatches.length === 0) {
+      if (text) lines.push({ time: null, text });
+      continue;
+    }
+
+    for (const match of validMatches) {
+      const minutes = Number(match[1] || 0);
+      const seconds = Number(match[2] || 0);
+      const fractionRaw = match[3] || '0';
+      const fraction = Number(fractionRaw.padEnd(3, '0').slice(0, 3)) / 1000;
+      lines.push({ time: minutes * 60 + seconds + fraction, text: text || '...' });
+    }
+  }
+
+  return lines.sort((left, right) => {
+    if (left.time == null && right.time == null) return 0;
+    if (left.time == null) return 1;
+    if (right.time == null) return -1;
+    return left.time - right.time;
+  });
+}
+
+/**
+ * 播放器手势只在主轴明确且达到位移/速度阈值时提交，避免斜滑、短滑与页面滚动误触。
+ */
+export function resolveMusicPlayerGesture({
+  deltaX,
+  deltaY,
+  velocityX,
+  velocityY,
+  allowHorizontal = true,
+  allowVertical = true,
+}: MusicPlayerGestureInput): MusicPlayerGestureAction {
+  const absoluteX = Math.abs(deltaX);
+  const absoluteY = Math.abs(deltaY);
+  const absoluteVelocityX = Math.abs(velocityX);
+  const absoluteVelocityY = Math.abs(velocityY);
+
+  const horizontalCommitted = absoluteX >= MUSIC_GESTURE_HORIZONTAL_DISTANCE_PX
+    || absoluteVelocityX >= MUSIC_GESTURE_HORIZONTAL_VELOCITY_PX_S;
+  const verticalCommitted = absoluteY >= MUSIC_GESTURE_VERTICAL_DISTANCE_PX
+    || absoluteVelocityY >= MUSIC_GESTURE_VERTICAL_VELOCITY_PX_S;
+  if (!horizontalCommitted && !verticalCommitted) return 'none';
+
+  // Compare axes in one physical unit. Normalizing each axis by a different
+  // threshold would turn a near-45° flick into a false horizontal gesture.
+  const useDistanceVector = absoluteX >= MUSIC_GESTURE_HORIZONTAL_DISTANCE_PX
+    || absoluteY >= MUSIC_GESTURE_VERTICAL_DISTANCE_PX;
+  const horizontalStrength = horizontalCommitted
+    ? (useDistanceVector ? absoluteX : absoluteVelocityX)
+    : 0;
+  const verticalStrength = verticalCommitted
+    ? (useDistanceVector ? absoluteY : absoluteVelocityY)
+    : 0;
+
+  if (allowHorizontal && horizontalStrength >= verticalStrength * MUSIC_GESTURE_AXIS_DOMINANCE) {
+    const direction = resolveCommittedGestureDirection({
+      delta: deltaX,
+      velocity: velocityX,
+      distanceThreshold: MUSIC_GESTURE_HORIZONTAL_DISTANCE_PX,
+      velocityThreshold: MUSIC_GESTURE_HORIZONTAL_VELOCITY_PX_S,
+    });
+    if (direction === -1) return 'next';
+    if (direction === 1) return 'previous';
+    return 'none';
+  }
+
+  if (allowVertical && verticalStrength >= horizontalStrength * MUSIC_GESTURE_AXIS_DOMINANCE) {
+    const direction = resolveCommittedGestureDirection({
+      delta: deltaY,
+      velocity: velocityY,
+      distanceThreshold: MUSIC_GESTURE_VERTICAL_DISTANCE_PX,
+      velocityThreshold: MUSIC_GESTURE_VERTICAL_VELOCITY_PX_S,
+    });
+    return direction === 1 ? 'collapse' : 'none';
+  }
+
+  return 'none';
+}
 
 /**
  * 统一播放表面上的空值/占位艺人处理。

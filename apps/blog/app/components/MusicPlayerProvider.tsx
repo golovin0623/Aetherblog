@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -13,17 +14,29 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useIsMobile } from '@aetherblog/hooks';
-import { useReducedMotion } from 'framer-motion';
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useDragControls,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type PanInfo,
+} from 'framer-motion';
 import {
   ChevronDown,
   ChevronLeft,
   AlertCircle,
   Disc3,
   ListMusic,
+  LibraryBig,
+  Maximize2,
   Music2,
   Pause,
   Play,
@@ -43,16 +56,27 @@ import {
 } from '@aetherblog/utils';
 import {
   createShuffleHistory,
+  parseMusicLyric,
   parseStoredMusicPlayback,
   recordShuffleSelection,
   resolveAdjacentTrack,
+  resolveIdleMusicSeekPreviewPosition,
+  resolveMusicArtworkSource,
+  resolveMusicPlayerGesture,
+  resolveMusicPlayerSurface,
+  resolveStableMusicTrackIndex,
   resolveMusicTrackPresentation,
   resolveMusicStartIndex,
   resolveRestoredMusicPosition,
   resolveShuffleNavigation,
   shouldRotateMusicPresentation,
+  type MusicArtworkSize,
+  type LyricLine,
 } from './musicPlayerState';
 import { useDialogLifecycle } from '../hooks/useDialogLifecycle';
+
+export { parseMusicLyric };
+export type { LyricLine };
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -145,11 +169,6 @@ function clearStoredMusicSkin() {
   }
 }
 
-export interface LyricLine {
-  time: number | null;
-  text: string;
-}
-
 export function resolveMusicAudioSrc(track: MusicTrack | undefined): string {
   if (!track) return '';
   const raw = track.media?.publicUrl || track.media?.fileUrl || '';
@@ -159,8 +178,16 @@ export function resolveMusicAudioSrc(track: MusicTrack | undefined): string {
   return safe === '#' ? '' : safe;
 }
 
-export function resolveMusicCoverSrc(track: MusicTrack | undefined, fallback = ''): string {
-  return sanitizeImageUrl(track?.coverUrl || track?.media?.thumbnailUrl, fallback);
+export function resolveMusicCoverSrc(
+  track: MusicTrack | undefined,
+  fallback = '',
+  size: MusicArtworkSize = 'hero',
+): string {
+  return sanitizeImageUrl(resolveMusicArtworkSource({
+    coverUrl: track?.coverUrl,
+    thumbnailUrl: track?.media?.thumbnailUrl,
+    size,
+  }), fallback);
 }
 
 export function formatMusicClock(seconds: number): string {
@@ -289,36 +316,6 @@ function pickRandomIndex(length: number, currentIndex: number): number {
   return next;
 }
 
-export function parseMusicLyric(raw: string | undefined | null): LyricLine[] {
-  if (!raw || !raw.trim()) return [];
-  const lines: LyricLine[] = [];
-  const timePattern = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
-
-  for (const line of raw.split(/\r?\n/)) {
-    const text = line.replace(timePattern, '').trim();
-    timePattern.lastIndex = 0;
-    const matches = Array.from(line.matchAll(timePattern));
-    if (matches.length === 0) {
-      if (text) lines.push({ time: null, text });
-      continue;
-    }
-    for (const match of matches) {
-      const minutes = Number(match[1] || 0);
-      const seconds = Number(match[2] || 0);
-      const fractionRaw = match[3] || '0';
-      const fraction = Number(fractionRaw.padEnd(3, '0').slice(0, 3)) / 1000;
-      lines.push({ time: minutes * 60 + seconds + fraction, text: text || '...' });
-    }
-  }
-
-  return lines.sort((a, b) => {
-    if (a.time == null && b.time == null) return 0;
-    if (a.time == null) return 1;
-    if (b.time == null) return -1;
-    return a.time - b.time;
-  });
-}
-
 function activeLyricIndex(lines: LyricLine[], progress: number): number {
   if (lines.length === 0) return -1;
   let active = -1;
@@ -343,14 +340,10 @@ interface MusicPlayerContextValue {
   isBuffering: boolean;
   playbackError: string | null;
   shuffle: boolean;
-  progress: number;
-  duration: number;
-  percent: number;
   volume: number;
   expanded: boolean;
   hasPlaybackSession: boolean;
   lyrics: LyricLine[];
-  activeLyricIndex: number;
   canRender: boolean;
   canUseSurface: (surface: 'home' | 'profile') => boolean;
   playIndex: (index: number, options?: { expand?: boolean }) => void;
@@ -361,6 +354,7 @@ interface MusicPlayerContextValue {
   retryPlayback: () => Promise<void>;
   nextTrack: () => void;
   previousTrack: () => void;
+  seekToTime: (seconds: number) => void;
   seekToPercent: (percent: number) => void;
   dismissPlayer: () => void;
   setShuffle: (value: boolean | ((prev: boolean) => boolean)) => void;
@@ -378,12 +372,29 @@ interface MusicPlayerContextValue {
   resetSkin: () => void;
 }
 
+interface MusicPlayerTimelineValue {
+  progress: number;
+  duration: number;
+  percent: number;
+  activeLyricIndex: number;
+}
+
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
+const MusicPlayerTimelineContext = createContext<MusicPlayerTimelineValue | null>(null);
 
 export function useMusicPlayer() {
   const context = useContext(MusicPlayerContext);
   if (!context) {
     throw new Error('useMusicPlayer must be used within MusicPlayerProvider');
+  }
+  return context;
+}
+
+/** 高频播放时间线独立订阅，避免整页与列表随 audio.timeupdate 重渲染。 */
+export function useMusicPlayerTimeline() {
+  const context = useContext(MusicPlayerTimelineContext);
+  if (!context) {
+    throw new Error('useMusicPlayerTimeline must be used within MusicPlayerProvider');
   }
   return context;
 }
@@ -396,6 +407,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const activeAudioSrcRef = useRef('');
   const playbackIndexRef = useRef(0);
   const presentationIndexRef = useRef(0);
+  const playbackTrackIdRef = useRef<number | null>(null);
+  const presentationTrackIdRef = useRef<number | null>(null);
+  const trackOrderSignatureRef = useRef('');
   const progressRef = useRef(0);
   const volumeRef = useRef(0.86);
   const shuffleHistoryRef = useRef(createShuffleHistory(0));
@@ -428,11 +442,22 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(0.86);
   const [expanded, setExpanded] = useState(false);
   const [hasPlaybackSession, setHasPlaybackSession] = useState(false);
+  const [idleSeekPreview, setIdleSeekPreview] = useState<{ trackId: number; position: number } | null>(null);
   const [playbackPreferencesHydrated, setPlaybackPreferencesHydrated] = useState(false);
 
-  const currentIndex = hasPlaybackSession ? playbackIndex : presentationIndex;
+  const stablePlaybackIndex = resolveStableMusicTrackIndex(
+    tracks,
+    playbackTrackIdRef.current,
+    playbackIndex,
+  );
+  const stablePresentationIndex = resolveStableMusicTrackIndex(
+    tracks,
+    presentationTrackIdRef.current,
+    presentationIndex,
+  );
+  const currentIndex = hasPlaybackSession ? stablePlaybackIndex : stablePresentationIndex;
   const currentTrack = tracks[currentIndex];
-  const playbackTrack = tracks[playbackIndex];
+  const playbackTrack = tracks[stablePlaybackIndex];
   const displayTrackDuration = currentTrack?.durationSeconds ?? 0;
   const playbackTrackDuration = playbackTrack?.durationSeconds ?? 0;
   const audioSrc = resolveMusicAudioSrc(playbackTrack);
@@ -452,7 +477,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const effectiveDuration = hasPlaybackSession
     ? (duration > 0 ? duration : playbackTrackDuration)
     : displayTrackDuration;
-  const displayedProgress = hasPlaybackSession ? progress : 0;
+  const displayedProgress = hasPlaybackSession
+    ? progress
+    : resolveIdleMusicSeekPreviewPosition(idleSeekPreview, currentTrack?.id ?? null);
   const effectiveProgress = effectiveDuration > 0
     ? Math.min(effectiveDuration, Math.max(0, displayedProgress))
     : Math.max(0, displayedProgress);
@@ -515,10 +542,15 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const selectPlaybackIndex = useCallback((index: number) => {
+  const selectPlaybackIndex = useCallback((
+    index: number,
+    options?: { initialPosition?: number },
+  ) => {
     if (tracks.length === 0) return 0;
     const safeIndex = Math.max(0, Math.min(index, tracks.length - 1));
-    const sourceChanged = safeIndex !== playbackIndexRef.current;
+    const targetTrack = tracks[safeIndex];
+    const initialPosition = Math.max(0, options?.initialPosition ?? 0);
+    const sourceChanged = tracks[safeIndex]?.id !== playbackTrackIdRef.current;
     if (sourceChanged) {
       sourceTransitionRef.current = true;
       sourceRequestRef.current += 1;
@@ -526,7 +558,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       audioRef.current?.pause();
       setIsPlaying(false);
     }
-    pendingRestoreRef.current = null;
+    pendingRestoreRef.current = targetTrack && initialPosition > 0
+      ? { trackId: targetTrack.id, position: initialPosition }
+      : null;
     if (!sourceChanged && audioRef.current) {
       try {
         audioRef.current.currentTime = 0;
@@ -536,16 +570,36 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }
     playbackIndexRef.current = safeIndex;
     presentationIndexRef.current = safeIndex;
+    playbackTrackIdRef.current = tracks[safeIndex]?.id ?? null;
+    presentationTrackIdRef.current = tracks[safeIndex]?.id ?? null;
     setPlaybackIndex(safeIndex);
     setPresentationIndex(safeIndex);
-    progressRef.current = 0;
-    setProgress(0);
+    progressRef.current = initialPosition;
+    setProgress(initialPosition);
+    setIdleSeekPreview(null);
     if (shuffle) {
       shuffleHistoryRef.current = recordShuffleSelection(shuffleHistoryRef.current, safeIndex);
     }
-    persistPlaybackSnapshot(0);
+    persistPlaybackSnapshot(initialPosition);
     return safeIndex;
   }, [persistPlaybackSnapshot, shuffle, tracks]);
+
+  const previewAdjacentTrack = useCallback((direction: -1 | 1) => {
+    if (tracks.length === 0) return;
+    const currentPresentationIndex = resolveStableMusicTrackIndex(
+      tracks,
+      presentationTrackIdRef.current,
+      presentationIndexRef.current,
+    );
+    const { nextIndex } = resolveAdjacentTrack({
+      currentIndex: currentPresentationIndex,
+      direction,
+      trackCount: tracks.length,
+    });
+    presentationIndexRef.current = nextIndex;
+    presentationTrackIdRef.current = tracks[nextIndex]?.id ?? null;
+    setPresentationIndex(nextIndex);
+  }, [tracks]);
 
   const attemptPlayback = useCallback(async ({
     source = audioSrc,
@@ -558,6 +612,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (!audio || !source) return;
     const requestId = sourceRequestRef.current;
     playIntentRef.current = true;
+    setIdleSeekPreview(null);
     setHasPlaybackSession(true);
     setPlaybackError(null);
     setIsBuffering(true);
@@ -665,6 +720,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     });
     playbackIndexRef.current = restoredIndex;
     presentationIndexRef.current = restoredIndex;
+    playbackTrackIdRef.current = restoredTrack.id;
+    presentationTrackIdRef.current = restoredTrack.id;
     setPlaybackIndex(restoredIndex);
     setPresentationIndex(restoredIndex);
     shuffleHistoryRef.current = createShuffleHistory(restoredIndex);
@@ -672,16 +729,45 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setProgress(position);
     if (position > 0) {
       pendingRestoreRef.current = { trackId: restoredTrack.id, position };
-      setHasPlaybackSession(true);
     }
   }, [playbackPreferencesHydrated, tracks]);
 
   useEffect(() => {
-    if (tracks.length > 0 && playbackIndexRef.current >= tracks.length) {
-      playbackIndexRef.current = 0;
-      presentationIndexRef.current = 0;
-      setPlaybackIndex(0);
-      setPresentationIndex(0);
+    if (tracks.length > 0) {
+      // The restore effect runs immediately before this one. Resolve once more
+      // from the refs it may have updated, while render-time consumers already
+      // use the stable indexes above and cannot observe a stale audio source.
+      const nextPlaybackIndex = resolveStableMusicTrackIndex(
+        tracks,
+        playbackTrackIdRef.current,
+        stablePlaybackIndex,
+      );
+      const nextPresentationIndex = resolveStableMusicTrackIndex(
+        tracks,
+        presentationTrackIdRef.current,
+        stablePresentationIndex,
+      );
+      playbackIndexRef.current = nextPlaybackIndex;
+      presentationIndexRef.current = nextPresentationIndex;
+      playbackTrackIdRef.current = tracks[nextPlaybackIndex]?.id ?? null;
+      presentationTrackIdRef.current = tracks[nextPresentationIndex]?.id ?? null;
+      setPlaybackIndex((current) => current === nextPlaybackIndex ? current : nextPlaybackIndex);
+      setPresentationIndex((current) => current === nextPresentationIndex ? current : nextPresentationIndex);
+      const trackOrderSignature = tracks.map((track) => track.id).join(',');
+      if (trackOrderSignatureRef.current !== trackOrderSignature) {
+        trackOrderSignatureRef.current = trackOrderSignature;
+        shuffleHistoryRef.current = createShuffleHistory(nextPlaybackIndex);
+      }
+      if (
+        pendingRestoreRef.current
+        && !tracks.some((track) => track.id === pendingRestoreRef.current?.trackId)
+      ) {
+        pendingRestoreRef.current = null;
+      }
+    } else {
+      playbackTrackIdRef.current = null;
+      presentationTrackIdRef.current = null;
+      trackOrderSignatureRef.current = '';
     }
     if (!canRender) {
       const audio = audioRef.current;
@@ -700,8 +786,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       setProgress(0);
       setDuration(0);
       setHasPlaybackSession(false);
+      setExpanded(false);
     }
-  }, [canRender, tracks.length]);
+  }, [canRender, stablePlaybackIndex, stablePresentationIndex, tracks]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -883,7 +970,16 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackError(null);
     setIsBuffering(true);
     if (!hasPlaybackSession || !isCurrentSource) {
-      selectPlaybackIndex(targetIndex);
+      const pendingRestore = pendingRestoreRef.current;
+      if (!hasPlaybackSession && isCurrentSource && pendingRestore?.trackId === tracks[targetIndex]?.id) {
+        await attemptPlayback({ source: targetSource });
+        return;
+      }
+      selectPlaybackIndex(targetIndex, {
+        initialPosition: !hasPlaybackSession && pendingRestore?.trackId === tracks[targetIndex]?.id
+          ? pendingRestore.position
+          : 0,
+      });
       await attemptPlayback({ source: targetSource });
       return;
     }
@@ -903,6 +999,10 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   const previousTrack = useCallback(() => {
     if (tracks.length === 0) return;
+    if (!hasPlaybackSession) {
+      previewAdjacentTrack(-1);
+      return;
+    }
     const index = playbackIndexRef.current;
     if (progressRef.current > 3) {
       restartCurrentPlayback();
@@ -934,12 +1034,18 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackError(null);
     setIsBuffering(true);
     selectPlaybackIndex(result.nextIndex);
-  }, [restartCurrentPlayback, selectPlaybackIndex, shuffle, tracks.length]);
+  }, [hasPlaybackSession, previewAdjacentTrack, restartCurrentPlayback, selectPlaybackIndex, shuffle, tracks.length]);
 
-  const nextTrack = useCallback(() => advanceTrack(true), [advanceTrack]);
+  const nextTrack = useCallback(() => {
+    if (!hasPlaybackSession) {
+      previewAdjacentTrack(1);
+      return;
+    }
+    advanceTrack(true);
+  }, [advanceTrack, hasPlaybackSession, previewAdjacentTrack]);
 
   useEffect(() => {
-    if (!canRender || !shouldRotateCarousel || tracks.length <= 1) return;
+    if (!canRender || expanded || !shouldRotateCarousel || tracks.length <= 1) return;
 
     const timer = window.setInterval(() => {
       setPresentationIndex((index) => {
@@ -947,12 +1053,13 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
           ? pickRandomIndex(tracks.length, index)
           : (index + 1) % tracks.length;
         presentationIndexRef.current = nextIndex;
+        presentationTrackIdRef.current = tracks[nextIndex]?.id ?? null;
         return nextIndex;
       });
     }, carouselIntervalMs);
 
     return () => window.clearInterval(timer);
-  }, [canRender, carouselIntervalMs, shouldRotateCarousel, shuffle, tracks.length]);
+  }, [canRender, carouselIntervalMs, expanded, shouldRotateCarousel, shuffle, tracks]);
 
   const seekToTime = useCallback((requestedTime: number) => {
     if (!Number.isFinite(requestedTime)) return;
@@ -968,12 +1075,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       ? Math.min(targetDuration, Math.max(0, requestedTime))
       : Math.max(0, requestedTime);
     if (!hasPlaybackSession) {
-      selectPlaybackIndex(targetIndex);
-      setHasPlaybackSession(true);
-      if (targetTrack) {
-        pendingRestoreRef.current = { trackId: targetTrack.id, position: nextTime };
-      }
-    } else if (targetTrack && (!audio || audio.readyState === 0)) {
+      if (!targetTrack) return;
+      setIdleSeekPreview({ trackId: targetTrack.id, position: nextTime });
+      pendingRestoreRef.current = { trackId: targetTrack.id, position: nextTime };
+      progressRef.current = nextTime;
+      setProgress(nextTime);
+      return;
+    }
+    if (targetTrack && (!audio || audio.readyState === 0)) {
       pendingRestoreRef.current = { trackId: targetTrack.id, position: nextTime };
     }
     if (audio) {
@@ -986,7 +1095,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     progressRef.current = nextTime;
     setProgress(nextTime);
     persistPlaybackSnapshot(nextTime);
-  }, [effectiveDuration, hasPlaybackSession, persistPlaybackSnapshot, selectPlaybackIndex, tracks]);
+  }, [effectiveDuration, hasPlaybackSession, persistPlaybackSnapshot, tracks]);
 
   const seekToPercent = useCallback((nextPercent: number) => {
     if (!Number.isFinite(nextPercent)) return;
@@ -1022,6 +1131,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setIsBuffering(false);
     setPlaybackError(null);
     setHasPlaybackSession(false);
+    setIdleSeekPreview(null);
     setExpanded(false);
     clearPlaybackSnapshot();
   }, [clearPlaybackSnapshot]);
@@ -1206,14 +1316,10 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     isBuffering,
     playbackError,
     shuffle,
-    progress: effectiveProgress,
-    duration: effectiveDuration,
-    percent: effectivePercent,
     volume,
     expanded,
     hasPlaybackSession,
     lyrics,
-    activeLyricIndex: lyricIndex,
     canRender,
     canUseSurface,
     playIndex,
@@ -1224,6 +1330,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     retryPlayback,
     nextTrack,
     previousTrack,
+    seekToTime,
     seekToPercent,
     dismissPlayer,
     setShuffle,
@@ -1242,15 +1349,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     canUseSurface,
     currentIndex,
     currentTrack,
-    effectiveDuration,
-    effectivePercent,
-    effectiveProgress,
     expanded,
     hasPlaybackSession,
     isPlaying,
     isBuffering,
     isPlayerLoading,
-    lyricIndex,
     lyrics,
     nextTrack,
     playAll,
@@ -1260,6 +1363,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     player,
     playerLoadError,
     previousTrack,
+    seekToTime,
     seekToPercent,
     dismissPlayer,
     shuffle,
@@ -1278,10 +1382,18 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     playbackError,
   ]);
 
+  const timelineValue = useMemo<MusicPlayerTimelineValue>(() => ({
+    progress: effectiveProgress,
+    duration: effectiveDuration,
+    percent: effectivePercent,
+    activeLyricIndex: lyricIndex,
+  }), [effectiveDuration, effectivePercent, effectiveProgress, lyricIndex]);
+
   return (
     <MusicPlayerContext.Provider value={value}>
-      {children}
-      <audio
+      <MusicPlayerTimelineContext.Provider value={timelineValue}>
+        {children}
+        <audio
         ref={audioRef}
         preload="metadata"
         playsInline
@@ -1377,8 +1489,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
           if (!isActiveAudioEvent(event.currentTarget) || sourceTransitionRef.current) return;
           advanceTrack(false);
         }}
-      />
-      <PersistentMusicDock value={value} />
+        />
+        <PersistentMusicDock value={value} timeline={timelineValue} />
+      </MusicPlayerTimelineContext.Provider>
     </MusicPlayerContext.Provider>
   );
 }
@@ -1396,7 +1509,7 @@ function MusicArtwork({
   size?: 'thumbnail' | 'hero';
   showFallbackLabel?: boolean;
 }) {
-  const cover = resolveMusicCoverSrc(track);
+  const cover = resolveMusicCoverSrc(track, '', size);
   const presentation = resolveMusicTrackPresentation(track ?? {});
 
   return (
@@ -1440,7 +1553,144 @@ export function NowPlayingGlyph({ className }: { className?: string }) {
   );
 }
 
-function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
+const MemoizedMusicLyricRows = memo(function MemoizedMusicLyricRows({
+  lines,
+  activeIndex,
+  activeRef,
+  onSeek,
+  onResumeFollowing,
+  variant,
+}: {
+  lines: readonly LyricLine[];
+  activeIndex: number;
+  activeRef: RefObject<HTMLButtonElement | null>;
+  onSeek: (seconds: number) => void;
+  onResumeFollowing: () => void;
+  variant: 'mobile' | 'desktop';
+}) {
+  const mobile = variant === 'mobile';
+  return lines.map((line, index) => {
+    const lineClass = cn(
+      'block min-h-11 w-full rounded-[var(--music-radius-control)] px-2 py-1 text-left font-semibold leading-8 transition-[color,opacity,transform,background-color] duration-200 motion-reduce:translate-x-0 motion-reduce:transition-none',
+      mobile ? 'text-[1.15rem]' : 'text-base',
+      line.time != null && 'hover:bg-[var(--music-control-fill)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]',
+      index === activeIndex
+        ? 'translate-x-1 text-[var(--ink-primary)]'
+        : 'text-[var(--ink-muted)] opacity-55',
+    );
+    if (line.time == null) {
+      return (
+        <p key={mobile ? `plain-mobile-${index}` : `plain-${index}`} className={lineClass}>
+          {line.text}
+        </p>
+      );
+    }
+    return (
+      <button
+        key={mobile ? `${line.time}-mobile-${index}` : `${line.time}-${index}`}
+        type="button"
+        ref={index === activeIndex ? activeRef : undefined}
+        onClick={() => {
+          onSeek(line.time!);
+          onResumeFollowing();
+        }}
+        aria-current={index === activeIndex ? 'true' : undefined}
+        className={lineClass}
+      >
+        {line.text}
+      </button>
+    );
+  });
+});
+
+const MemoizedMusicQueueRows = memo(function MemoizedMusicQueueRows({
+  tracks,
+  currentIndex,
+  hasPlaybackSession,
+  isPlaying,
+  isBuffering,
+  playbackError,
+  playlistName,
+  onPlayIndex,
+  onRetryPlayback,
+  onTogglePlayback,
+  variant,
+}: {
+  tracks: readonly MusicTrack[];
+  currentIndex: number;
+  hasPlaybackSession: boolean;
+  isPlaying: boolean;
+  isBuffering: boolean;
+  playbackError: string | null;
+  playlistName: string;
+  onPlayIndex: (index: number) => void;
+  onRetryPlayback: () => Promise<void>;
+  onTogglePlayback: () => Promise<void>;
+  variant: 'mobile' | 'desktop';
+}) {
+  const mobile = variant === 'mobile';
+  return tracks.map((track, index) => {
+    const active = hasPlaybackSession && currentIndex === index;
+    const presentation = resolveMusicTrackPresentation(track);
+    const queueArtist = presentation.artist || meaningfulMusicText(track.album) || playlistName;
+    return (
+      <button
+        key={track.id}
+        type="button"
+        onClick={() => {
+          if (!active) {
+            onPlayIndex(index);
+          } else if (playbackError) {
+            void onRetryPlayback();
+          } else {
+            void onTogglePlayback();
+          }
+        }}
+        aria-label={active
+          ? playbackError
+            ? `重新尝试 ${presentation.title}`
+            : isBuffering
+              ? `取消载入 ${presentation.title}`
+              : isPlaying
+                ? `暂停 ${presentation.title}`
+                : `继续播放 ${presentation.title}`
+          : `播放 ${presentation.title}`}
+        aria-current={active ? 'true' : undefined}
+        className={mobile
+          ? 'grid min-h-[72px] w-full grid-cols-[1.25rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'
+          : 'grid min-h-[72px] w-full grid-cols-[2rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'}
+      >
+        <span className={mobile ? 'text-center text-xs tnum text-[var(--ink-muted)]' : 'text-xs tnum text-[var(--ink-muted)]'}>
+          {mobile
+            ? (active && isPlaying ? <NowPlayingGlyph /> : index + 1)
+            : String(index + 1).padStart(2, '0')}
+        </span>
+        <MusicArtwork track={track} className="h-12 w-12" sizes="48px" />
+        <span className="min-w-0">
+          <span className={cn('block truncate text-sm font-bold', active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]')}>
+            {presentation.title}
+          </span>
+          <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{queueArtist}</span>
+        </span>
+        <span className="grid h-11 w-11 place-items-center text-[var(--ink-muted)]" aria-hidden="true">
+          {active && isBuffering
+            ? <RefreshCw className="h-4 w-4 animate-spin" />
+            : active && isPlaying
+              ? <Pause className="h-4 w-4" />
+              : <Play className="h-4 w-4" />}
+        </span>
+      </button>
+    );
+  });
+});
+
+function PersistentMusicDock({
+  value,
+  timeline,
+}: {
+  value: MusicPlayerContextValue;
+  timeline: MusicPlayerTimelineValue;
+}) {
   const pathname = usePathname();
   const isMobile = useIsMobile();
   const {
@@ -1452,42 +1702,198 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     isBuffering,
     playbackError,
     shuffle,
-    progress,
-    duration,
-    percent,
     volume,
     expanded,
     hasPlaybackSession,
     lyrics,
-    activeLyricIndex,
     canRender,
     skin,
+    playIndex,
     togglePlayback,
     retryPlayback,
     nextTrack,
     previousTrack,
+    seekToTime,
     seekToPercent,
     dismissPlayer,
     setShuffle,
     setExpanded,
     setVolume,
   } = value;
+  const { progress, duration, percent, activeLyricIndex } = timeline;
 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
-  const activeLyricRef = useRef<HTMLParagraphElement>(null);
+  const activeLyricRef = useRef<HTMLButtonElement>(null);
   const mobileDialogRef = useRef<HTMLDivElement>(null);
   const desktopDialogRef = useRef<HTMLDivElement>(null);
-  const mobilePlayerTriggerRef = useRef<HTMLButtonElement>(null);
-  const desktopPlayerTriggerRef = useRef<HTMLButtonElement>(null);
+  const surfaceTriggerRef = useRef<HTMLButtonElement>(null);
+  const compactPanelRef = useRef<HTMLElement>(null);
+  const compactGestureRef = useRef(false);
+  const immersiveGestureRef = useRef(false);
+  const compactInputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
+  const pendingSurfaceFocusRef = useRef<'orb' | 'compact' | null>(null);
   const mobileLyricsBoxRef = useRef<HTMLDivElement>(null);
-  const mobileActiveLyricRef = useRef<HTMLParagraphElement>(null);
+  const mobileActiveLyricRef = useRef<HTMLButtonElement>(null);
   const mobilePaneHeadingRef = useRef<HTMLHeadingElement>(null);
   const desktopLyricsTabRef = useRef<HTMLButtonElement>(null);
   const desktopQueueTabRef = useRef<HTMLButtonElement>(null);
   const [mobilePane, setMobilePane] = useState<'player' | 'lyrics' | 'queue'>('player');
   const [desktopPane, setDesktopPane] = useState<'lyrics' | 'queue'>('lyrics');
+  const [compactOpen, setCompactOpen] = useState(false);
+  const [compactInteractionVersion, setCompactInteractionVersion] = useState(0);
+  const [compactPointerInside, setCompactPointerInside] = useState(false);
+  const [compactFocusWithin, setCompactFocusWithin] = useState(false);
+  const [lyricsFollowing, setLyricsFollowing] = useState(true);
+  const [artworkDirection, setArtworkDirection] = useState<1 | -1>(1);
+  const previousSessionRef = useRef(false);
+  const previousPlaybackErrorRef = useRef<string | null>(null);
+  const compactDragControls = useDragControls();
+  const immersiveDragControls = useDragControls();
+  const compactDragY = useMotionValue(0);
+  const immersiveDragY = useMotionValue(0);
+  const mobileBackdropOpacity = useTransform(immersiveDragY, [0, 320], [1, 0.18]);
   const prefersReducedMotion = useReducedMotion();
-  const closeExpandedPlayer = useCallback(() => setExpanded(false), [setExpanded]);
+  const registerCompactInteraction = useCallback(() => {
+    setCompactInteractionVersion((version) => version + 1);
+  }, []);
+  const resumeLyricsFollowing = useCallback(() => {
+    setLyricsFollowing(true);
+  }, []);
+  const collapseToOrb = useCallback(() => {
+    setCompactPointerInside(false);
+    setCompactFocusWithin(false);
+    setCompactOpen(false);
+  }, []);
+  const manuallyCollapseToOrb = useCallback((restoreKeyboardFocus = true) => {
+    if (restoreKeyboardFocus) pendingSurfaceFocusRef.current = 'orb';
+    collapseToOrb();
+  }, [collapseToOrb]);
+  const focusPendingSurface = useCallback(() => {
+    const pendingTarget = pendingSurfaceFocusRef.current;
+    if (!pendingTarget) return;
+    window.requestAnimationFrame(() => {
+      const target = surfaceTriggerRef.current;
+      if (!target?.isConnected) return;
+      target.focus({ preventScroll: true });
+      pendingSurfaceFocusRef.current = null;
+    });
+  }, []);
+  const closeExpandedPlayer = useCallback(() => {
+    compactDragY.set(0);
+    setExpanded(false);
+    setCompactPointerInside(false);
+    setCompactFocusWithin(false);
+    setCompactOpen(true);
+    registerCompactInteraction();
+  }, [compactDragY, registerCompactInteraction, setExpanded]);
+  const openImmersivePlayer = useCallback(() => {
+    immersiveDragY.set(0);
+    setCompactPointerInside(false);
+    setCompactFocusWithin(false);
+    setCompactOpen(false);
+    setExpanded(true);
+  }, [immersiveDragY, setExpanded]);
+  const goToNextTrack = useCallback(() => {
+    setArtworkDirection(1);
+    nextTrack();
+  }, [nextTrack]);
+  const goToPreviousTrack = useCallback(() => {
+    setArtworkDirection(-1);
+    previousTrack();
+  }, [previousTrack]);
+  const handleTrackGesture = useCallback((info: PanInfo) => {
+    registerCompactInteraction();
+    const action = resolveMusicPlayerGesture({
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+      allowHorizontal: true,
+      allowVertical: false,
+    });
+    if (action === 'next') goToNextTrack();
+    if (action === 'previous') goToPreviousTrack();
+    window.setTimeout(() => {
+      compactGestureRef.current = false;
+    }, 0);
+  }, [goToNextTrack, goToPreviousTrack, registerCompactInteraction]);
+  const handleCompactCollapseGesture = useCallback((info: PanInfo) => {
+    registerCompactInteraction();
+    const action = resolveMusicPlayerGesture({
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+      allowHorizontal: false,
+      allowVertical: true,
+    });
+    if (action === 'collapse') {
+      if (prefersReducedMotion) {
+        collapseToOrb();
+      } else {
+        const destination = Math.max(compactPanelRef.current?.offsetHeight ?? 0, 280);
+        void animate(compactDragY, destination, {
+          duration: 0.2,
+          ease: [0.32, 0.72, 0, 1],
+        }).then(collapseToOrb);
+      }
+    } else {
+      animate(compactDragY, 0, {
+        type: 'spring',
+        stiffness: 440,
+        damping: 38,
+        mass: 0.72,
+      });
+    }
+    window.setTimeout(() => {
+      compactGestureRef.current = false;
+    }, 0);
+  }, [collapseToOrb, compactDragY, prefersReducedMotion, registerCompactInteraction]);
+  const handleImmersiveCollapseGesture = useCallback((info: PanInfo) => {
+    const action = resolveMusicPlayerGesture({
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+      allowHorizontal: false,
+      allowVertical: true,
+    });
+    if (action === 'collapse') {
+      if (prefersReducedMotion) {
+        closeExpandedPlayer();
+      } else {
+        void animate(immersiveDragY, Math.max(window.innerHeight, 720), {
+          duration: 0.24,
+          ease: [0.32, 0.72, 0, 1],
+        }).then(closeExpandedPlayer);
+      }
+    } else {
+      animate(immersiveDragY, 0, {
+        type: 'spring',
+        stiffness: 420,
+        damping: 40,
+        mass: 0.8,
+      });
+    }
+    window.setTimeout(() => {
+      immersiveGestureRef.current = false;
+    }, 0);
+  }, [closeExpandedPlayer, immersiveDragY, prefersReducedMotion]);
+  const handleImmersiveSurfaceGesture = useCallback((info: PanInfo) => {
+    const action = resolveMusicPlayerGesture({
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+      allowHorizontal: true,
+      allowVertical: false,
+    });
+    if (action === 'next') goToNextTrack();
+    if (action === 'previous') goToPreviousTrack();
+    window.setTimeout(() => {
+      compactGestureRef.current = false;
+    }, 0);
+  }, [goToNextTrack, goToPreviousTrack]);
   const focusDesktopPaneTab = useCallback((pane: 'lyrics' | 'queue') => {
     setDesktopPane(pane);
     window.requestAnimationFrame(() => {
@@ -1509,14 +1915,101 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     onClose: closeExpandedPlayer,
     containerRef: isMobile ? mobileDialogRef : desktopDialogRef,
     initialFocusRef: isMobile ? mobileDialogRef : desktopDialogRef,
-    returnFocusRef: isMobile ? mobilePlayerTriggerRef : desktopPlayerTriggerRef,
+    returnFocusRef: surfaceTriggerRef,
     modal: true,
     trapFocus: true,
   });
 
   useEffect(() => {
+    const markKeyboard = () => {
+      compactInputModalityRef.current = 'keyboard';
+    };
+    const markPointer = () => {
+      compactInputModalityRef.current = 'pointer';
+    };
+    window.addEventListener('keydown', markKeyboard, true);
+    window.addEventListener('pointerdown', markPointer, true);
+    return () => {
+      window.removeEventListener('keydown', markKeyboard, true);
+      window.removeEventListener('pointerdown', markPointer, true);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!expanded) setMobilePane('player');
   }, [expanded]);
+
+  useEffect(() => {
+    if (hasPlaybackSession && !previousSessionRef.current) {
+      compactDragY.set(0);
+      setCompactOpen(true);
+      registerCompactInteraction();
+    }
+    if (!hasPlaybackSession) setCompactOpen(false);
+    previousSessionRef.current = hasPlaybackSession;
+  }, [compactDragY, hasPlaybackSession, registerCompactInteraction]);
+
+  useEffect(() => {
+    if (playbackError && !previousPlaybackErrorRef.current) {
+      compactDragY.set(0);
+      setCompactOpen(true);
+      registerCompactInteraction();
+    }
+    previousPlaybackErrorRef.current = playbackError;
+  }, [compactDragY, playbackError, registerCompactInteraction]);
+
+  useEffect(() => {
+    if (compactOpen) compactDragY.set(0);
+  }, [compactDragY, compactOpen]);
+
+  useEffect(() => {
+    if (expanded) immersiveDragY.set(0);
+  }, [expanded, immersiveDragY]);
+
+  useEffect(() => {
+    if (
+      !compactOpen ||
+      expanded ||
+      playbackError ||
+      compactPointerInside ||
+      compactFocusWithin
+    ) return;
+    const timer = window.setTimeout(collapseToOrb, isPlaying ? 8000 : 14000);
+    return () => window.clearTimeout(timer);
+  }, [
+    collapseToOrb,
+    compactFocusWithin,
+    compactInteractionVersion,
+    compactOpen,
+    compactPointerInside,
+    expanded,
+    isPlaying,
+    playbackError,
+  ]);
+
+  useEffect(() => {
+    if (!compactOpen || expanded) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (compactPanelRef.current?.contains(event.target as Node)) return;
+      collapseToOrb();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        manuallyCollapseToOrb(true);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [collapseToOrb, compactOpen, expanded, manuallyCollapseToOrb]);
+
+  useEffect(() => {
+    setLyricsFollowing(true);
+  }, [currentTrack?.id]);
 
   useEffect(() => {
     if (!expanded || !isMobile || mobilePane === 'player') return;
@@ -1525,7 +2018,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
   // 歌词自动滚动:当前行始终居中可见，并尊重系统“减少动态效果”设置。
   useEffect(() => {
-    if (!expanded || isMobile || desktopPane !== 'lyrics') return;
+    if (!expanded || isMobile || desktopPane !== 'lyrics' || !lyricsFollowing) return;
     const line = activeLyricRef.current;
     const box = lyricsBoxRef.current;
     if (!line || !box) return;
@@ -1533,10 +2026,10 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
       top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
     });
-  }, [activeLyricIndex, desktopPane, expanded, isMobile, prefersReducedMotion]);
+  }, [activeLyricIndex, desktopPane, expanded, isMobile, lyricsFollowing, prefersReducedMotion]);
 
   useEffect(() => {
-    if (!expanded || !isMobile || mobilePane !== 'lyrics') return;
+    if (!expanded || !isMobile || mobilePane !== 'lyrics' || !lyricsFollowing) return;
     const line = mobileActiveLyricRef.current;
     const box = mobileLyricsBoxRef.current;
     if (!line || !box) return;
@@ -1544,7 +2037,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
       top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
     });
-  }, [activeLyricIndex, expanded, isMobile, mobilePane, prefersReducedMotion]);
+  }, [activeLyricIndex, expanded, isMobile, lyricsFollowing, mobilePane, prefersReducedMotion]);
 
   const routeBlocksPlayerSurface =
     pathname.startsWith('/agent/workspace') ||
@@ -1555,12 +2048,19 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
     if (routeBlocksPlayerSurface && expanded) setExpanded(false);
   }, [expanded, routeBlocksPlayerSurface, setExpanded]);
 
-  if (
-    !canRender ||
-    !currentTrack ||
-    routeBlocksPlayerSurface ||
-    (!hasPlaybackSession && !isPlaying && !expanded)
-  ) return null;
+  // A new explicit playback session must land directly on the useful compact
+  // controls. Waiting for the effect below would render an orb for one frame
+  // (and AnimatePresence would then delay compact mounting until its exit).
+  const compactSurfaceOpen = compactOpen || (hasPlaybackSession && !previousSessionRef.current);
+  const surface = resolveMusicPlayerSurface({
+    canRender: canRender && Boolean(currentTrack),
+    hasPlaybackSession,
+    routeBlocked: routeBlocksPlayerSurface,
+    compactOpen: compactSurfaceOpen,
+    expanded,
+  });
+
+  if (surface === 'hidden' || !currentTrack) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
   const currentPresentation = resolveMusicTrackPresentation(currentTrack);
@@ -1569,13 +2069,13 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
   const currentCover = resolveMusicCoverSrc(currentTrack);
   const mobilePaneTransport = (
     <div className="grid grid-cols-3 items-center justify-items-center border-t border-[var(--music-stroke)] py-3">
-      <button type="button" onClick={previousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+      <button type="button" onClick={goToPreviousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
         <SkipBack className="h-7 w-7 fill-current" strokeWidth={1.5} />
       </button>
       <button type="button" onClick={playbackError ? () => void retryPlayback() : togglePlayback} className="music-control-button music-transport-button music-transport-button--primary grid h-16 w-16 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}>
         {isBuffering ? <RefreshCw className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-9 w-9 fill-current" strokeWidth={1.5} /> : <Play className="h-9 w-9 translate-x-px fill-current" strokeWidth={1.5} />}
       </button>
-      <button type="button" onClick={nextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+      <button type="button" onClick={goToNextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
         <SkipForward className="h-7 w-7 fill-current" strokeWidth={1.5} />
       </button>
     </div>
@@ -1583,149 +2083,259 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
   return (
     <>
-      {/* 沉浸层打开时隐藏 dock —— dock(z-70)原本盖在沉浸层(z-65)之上,移动端尤其会压住沉浸层控件 */}
-      {!expanded && (
-      <>
-        {!pathname.startsWith('/music') && (
-          <div
-            data-music-mini-player-spacer
-            className="h-[calc(5.5rem+env(safe-area-inset-bottom))] w-full shrink-0"
-            aria-hidden="true"
-          />
-        )}
-        <div
-          data-music-skin={skin}
-          data-music-mini-player
-          className="pointer-events-none fixed inset-x-5 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[70] min-[769px]:hidden"
-        >
-          <div className="music-mini-player pointer-events-auto grid h-14 grid-cols-[40px_minmax(0,1fr)_44px_44px] items-center gap-1 overflow-hidden p-1.5 text-[var(--ink-primary)]">
+      <AnimatePresence initial={false} mode="popLayout" onExitComplete={focusPendingSurface}>
+        {surface === 'orb' && (
+          <motion.div
+            key="music-orb"
+            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
+            data-music-skin={skin}
+            className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[70] max-[360px]:left-3 min-[769px]:bottom-8 min-[769px]:left-8"
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.86, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 6 }}
+            transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+          >
             <button
-              ref={mobilePlayerTriggerRef}
+              ref={surfaceTriggerRef}
               type="button"
-              onClick={() => setExpanded(true)}
-              className="col-span-2 grid h-11 min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-1.5 rounded-[var(--music-radius-artwork-sm)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-              aria-label="打开音乐播放器"
+              data-music-playback-orb
+              data-playing={isPlaying ? 'true' : 'false'}
+              data-buffering={isBuffering ? 'true' : 'false'}
+              onClick={(event) => {
+                if (event.detail === 0) pendingSurfaceFocusRef.current = 'compact';
+                compactDragY.set(0);
+                setCompactOpen(true);
+                registerCompactInteraction();
+              }}
+              className="music-playback-orb pointer-events-auto relative grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent min-[769px]:h-12 min-[769px]:w-12"
+              aria-label={playbackError ? `播放失败，打开迷你播放器重试：${currentPresentation.title}` : `打开迷你播放器：${currentPresentation.title}`}
+              title="打开迷你播放器"
+              style={{ ['--music-orb-progress' as string]: `${percent * 3.6}deg` }}
             >
-              <MusicArtwork track={currentTrack} className="h-10 w-10" sizes="40px" />
-              <span className="min-w-0 px-1">
-                <span className="block truncate text-[13px] font-bold leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
-                <span className={cn('block truncate text-[11px] leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
-                  {playbackError ? playbackError : isBuffering ? '正在载入…' : compactArtistLabel}
-                </span>
+              <span className="music-playback-orb__progress" aria-hidden="true" />
+              <span className="music-playback-orb__core" aria-hidden="true">
+                {playbackError ? (
+                  <AlertCircle className="h-5 w-5" />
+                ) : isBuffering ? (
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Music2 className="h-5 w-5" strokeWidth={2} />
+                )}
               </span>
             </button>
+          </motion.div>
+        )}
 
+        {surface === 'compact' && (
+          <motion.section
+            key="music-compact"
+            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
+            ref={compactPanelRef}
+            drag={prefersReducedMotion ? false : 'y'}
+            dragControls={compactDragControls}
+            dragListener={false}
+            dragMomentum={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0.02, bottom: 0.58 }}
+            onDragStart={() => {
+              compactGestureRef.current = true;
+              registerCompactInteraction();
+            }}
+            onDragEnd={(_, info) => handleCompactCollapseGesture(info)}
+            data-music-skin={skin}
+            data-music-compact-player
+            aria-label="迷你播放器"
+            className="music-compact-player fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] w-auto max-w-[22.5rem] overflow-hidden text-[var(--ink-primary)] max-[360px]:left-3 max-[360px]:right-3 min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto min-[769px]:w-[23rem] min-[769px]:max-w-none"
+            style={{ y: compactDragY }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, x: -8 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, x: -6 }}
+            transition={{ duration: prefersReducedMotion ? 0.08 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            onPointerEnter={() => setCompactPointerInside(true)}
+            onPointerLeave={() => setCompactPointerInside(false)}
+            onPointerDown={() => {
+              compactInputModalityRef.current = 'pointer';
+              setCompactFocusWithin(false);
+              registerCompactInteraction();
+            }}
+            onFocusCapture={() => {
+              if (compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);
+            }}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setCompactFocusWithin(false);
+              }
+            }}
+          >
             <button
               type="button"
-              onClick={playbackError ? () => void retryPlayback() : togglePlayback}
-              className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-              aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
+              data-music-compact-drag-handle
+              onPointerDown={(event) => {
+                if (!prefersReducedMotion) compactDragControls.start(event);
+                registerCompactInteraction();
+              }}
+              onClick={(event) => {
+                if (!compactGestureRef.current) manuallyCollapseToOrb(event.detail === 0);
+              }}
+              className="flex h-11 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+              aria-label="下滑或点击收起为灵动音乐元"
             >
-              {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
+              <span className="h-1 w-9 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_20%,transparent)]" />
             </button>
 
-            <button
-              type="button"
-              onClick={nextTrack}
-              className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-              aria-label="下一首"
-            >
-              <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-            </button>
-            {playbackError && <span role="alert" className="sr-only">音乐播放失败，请打开播放器重试。</span>}
-          </div>
-        </div>
-
-      <div data-music-skin={skin} data-music-desktop-dock className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] hidden px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))] min-[769px]:block">
-        <div className="music-dock pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden text-[var(--ink-primary)]">
-          <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] grid-rows-[48px_20px] items-center gap-x-4 px-3 pb-2 pt-2.5">
-            <button
-              ref={desktopPlayerTriggerRef}
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="music-control-button relative row-span-2 row-start-1 h-12 w-12 self-center rounded-[var(--music-radius-artwork-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-              aria-label="打开音乐大厅播放器"
-            >
-              <MusicArtwork track={currentTrack} className="h-12 w-12" sizes="48px" />
-            </button>
-
-            <div className="col-start-2 row-start-1 flex h-12 min-w-0 flex-col justify-center">
-              <p className="truncate text-sm font-bold leading-5 text-[var(--ink-primary)] sm:text-[15px]">{currentPresentation.title}</p>
-              {playbackError ? (
-                <p role="alert" className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--signal-danger)]" title={playbackError}>
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{playbackError} · 点击右侧重试</span>
-                </p>
-              ) : (
-                <p className="truncate text-[11px] leading-4 text-[var(--ink-secondary)]">
-                  {isBuffering ? '正在载入…' : `${compactArtistLabel} · ${playlistName} · ${currentIndex + 1}/${tracks.length}${activeLine ? ` · ${activeLine}` : ''}`}
-                </p>
-              )}
-            </div>
-
-            <div data-music-desktop-dock-progress className="col-start-2 row-start-2 min-w-0 self-center">
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="!min-h-5 !py-2" />
-            </div>
-
-            <div className="col-start-3 row-span-2 row-start-1 flex items-center gap-3 self-center">
+            <div className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-1 px-3">
+              <motion.button
+                ref={surfaceTriggerRef}
+                type="button"
+                drag={prefersReducedMotion ? false : 'x'}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.2}
+                dragMomentum={false}
+                onDragStart={() => {
+                  compactGestureRef.current = true;
+                  registerCompactInteraction();
+                }}
+                onDragEnd={(_, info) => handleTrackGesture(info)}
+                onClick={() => {
+                  if (!compactGestureRef.current) openImmersivePlayer();
+                }}
+                style={{ touchAction: 'pan-y pinch-zoom' }}
+                className="grid h-14 min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 rounded-[var(--music-radius-detail)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                aria-label={`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`}
+              >
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={currentTrack.id}
+                    initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * 14, scale: 0.96 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * -10, scale: 0.96 }}
+                    transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    className="block h-[52px] w-[52px]"
+                  >
+                    <MusicArtwork track={currentTrack} className="h-[52px] w-[52px]" sizes="52px" />
+                  </motion.span>
+                </AnimatePresence>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
+                  <span className={cn('mt-0.5 block truncate text-xs leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
+                    {playbackError ? playbackError : isBuffering ? '正在载入…' : `${compactArtistLabel} · ${currentIndex + 1}/${tracks.length}`}
+                  </span>
+                  {activeLine && <span className="mt-0.5 block truncate text-[10px] leading-4 text-[var(--ink-muted)]">{activeLine}</span>}
+                </span>
+              </motion.button>
               <button
                 type="button"
-                onClick={() => setShuffle((value) => !value)}
-                className={cn(
-                  'music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]',
-                  shuffle
-                    ? 'text-[var(--aurora-1)]'
-                    : 'text-[var(--ink-muted)]'
-                )}
-                data-selected={shuffle ? 'true' : 'false'}
-                aria-label="随机播放"
-                aria-pressed={shuffle}
+                data-dismiss-music-player
+                onClick={dismissPlayer}
+                className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                aria-label="停止播放并关闭播放器"
               >
-                <Shuffle className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
               </button>
-              <div data-music-desktop-dock-transport className="grid w-fit grid-cols-[44px_48px_44px] items-center gap-2">
-                <button type="button" onClick={previousTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
-                  <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                </button>
-                <button
-                  type="button"
-                  onClick={playbackError ? () => void retryPlayback() : togglePlayback}
-                  className="music-control-button music-icon-button music-icon-button--tinted flex h-12 w-12 items-center justify-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                  aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
-                >
-                  {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
-                </button>
-                <button type="button" onClick={nextTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
-                  <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
-      </div>
-      </>
-      )}
 
-      {expanded && (
-        <>
-        <div
+            <div className="px-3">
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
+            </div>
+
+            <div data-music-compact-transport className="mx-auto grid w-fit grid-cols-[44px_48px_44px] items-center gap-3">
+              <button type="button" onClick={goToPreviousTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+              </button>
+              <button
+                type="button"
+                onClick={playbackError ? () => void retryPlayback() : togglePlayback}
+                className="music-control-button music-icon-button music-icon-button--tinted grid h-12 w-12 place-items-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
+              >
+                {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
+              </button>
+              <button type="button" onClick={goToNextTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="mt-1 grid grid-cols-4 border-t border-[var(--music-stroke)] px-2 pb-1">
+              <button type="button" onClick={(event) => manuallyCollapseToOrb(event.detail === 0)} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="收起为灵动音乐元">
+                <ChevronDown className="h-[18px] w-[18px]" />
+              </button>
+              <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
+                <Shuffle className="h-[18px] w-[18px]" />
+              </button>
+              <button type="button" onClick={openImmersivePlayer} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
+                <Maximize2 className="h-[18px] w-[18px]" />
+              </button>
+              <Link href="/music" onClick={collapseToOrb} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅" title="进入音乐大厅">
+                <LibraryBig className="h-[19px] w-[19px]" />
+              </Link>
+            </div>
+            {playbackError && <span role="alert" className="sr-only">音乐播放失败，请打开播放器重试。</span>}
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence initial={false}>
+      {surface === 'immersive' && isMobile && (
+        <motion.div
           ref={mobileDialogRef}
           data-music-skin={skin}
           role="dialog"
           aria-modal="true"
           aria-label="音乐播放器"
           tabIndex={-1}
-          className="fixed inset-0 z-[70] h-[100dvh] overflow-hidden bg-[color-mix(in_oklch,var(--bg-void)_92%,transparent)] text-[var(--ink-primary)] [backdrop-filter:blur(30px)_saturate(150%)] min-[769px]:hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-0 z-[70] h-[100dvh] overflow-hidden text-[var(--ink-primary)]"
         >
-          <section className="music-mobile-player-sheet relative flex h-[100dvh] min-h-0 flex-col overflow-x-hidden overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <motion.div
+            onClick={closeExpandedPlayer}
+            aria-hidden="true"
+            className="absolute inset-0 cursor-default bg-[color-mix(in_oklch,var(--bg-void)_82%,transparent)]"
+            style={{ opacity: mobileBackdropOpacity }}
+          />
+          <motion.section
+            drag={prefersReducedMotion ? false : 'y'}
+            dragControls={immersiveDragControls}
+            dragListener={false}
+            dragMomentum={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0.015, bottom: 0.62 }}
+            onDragStart={() => {
+              immersiveGestureRef.current = true;
+            }}
+            onDragEnd={(_, info) => handleImmersiveCollapseGesture(info)}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
+            transition={{ duration: prefersReducedMotion ? 0.08 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            style={{ y: immersiveDragY }}
+            className="music-mobile-player-sheet absolute bottom-0 left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
             {currentCover && (
               <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-                <Image src={currentCover} alt="" fill sizes="100vw" className="scale-110 object-cover opacity-20 blur-[56px] saturate-150" unoptimized />
+                <Image src={currentCover} alt="" fill sizes="100vw" className="scale-105 object-cover opacity-[0.14] blur-3xl saturate-125" unoptimized />
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-void)_34%,transparent),var(--bg-void)_84%)]" />
               </div>
             )}
 
-            <header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-3">
+            <button
+              type="button"
+              data-mobile-player-drag-handle
+              onPointerDown={(event) => {
+                if (!prefersReducedMotion) immersiveDragControls.start(event);
+              }}
+              onClick={() => {
+                if (!immersiveGestureRef.current) closeExpandedPlayer();
+              }}
+              className="relative z-20 flex h-11 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+              aria-label="下滑或点击收起音乐播放器"
+            >
+              <span className="h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_24%,transparent)]" />
+            </button>
+
+            <header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-2">
               <button
                 type="button"
                 onClick={mobilePane === 'player' ? closeExpandedPlayer : () => setMobilePane('player')}
@@ -1739,7 +2349,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   {mobilePane === 'player' ? playlistName : mobilePane === 'lyrics' ? '歌词' : '播放队列'}
                 </p>
                 <p className="mt-0.5 truncate text-[10px] tnum text-[var(--ink-muted)]">
-                  {mobilePane === 'player' ? `${currentIndex + 1} / ${tracks.length}` : mobilePane === 'lyrics' ? currentPresentation.title : `${tracks.length} 首`}
+                  {mobilePane === 'player' ? `${currentPresentation.title} · ${currentIndex + 1} / ${tracks.length}` : mobilePane === 'lyrics' ? currentPresentation.title : `${tracks.length} 首`}
                 </p>
               </div>
               <button
@@ -1754,26 +2364,47 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
             </header>
 
             {mobilePane === 'player' ? (
-            <div className="relative z-10 mx-auto flex w-full max-w-[26rem] flex-1 flex-col px-6">
-              <div
+            <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col overflow-y-auto overscroll-contain px-5">
+              <motion.div
                 data-now-playing-artwork
+                drag={prefersReducedMotion ? false : 'x'}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.2}
+                dragMomentum={false}
+                onDragStart={() => {
+                  compactGestureRef.current = true;
+                  registerCompactInteraction();
+                }}
+                onDragEnd={(_, info) => handleImmersiveSurfaceGesture(info)}
+                style={{ touchAction: 'pan-y pinch-zoom' }}
                 className={cn(
                   'flex justify-center',
                   currentCover ? 'min-h-0 flex-1 items-center py-4' : 'items-start pb-6 pt-5',
                 )}
               >
-                <MusicArtwork
-                  track={currentTrack}
-                  size="hero"
-                  className={cn(
-                    currentCover
-                      ? 'w-[min(calc(100vw-3rem),40dvh,23rem)]'
-                      : 'w-[min(42vw,10rem)]',
-                  )}
-                  sizes="(max-width: 768px) calc(100vw - 3rem), 23rem"
-                  showFallbackLabel={!currentCover}
-                />
-              </div>
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.div
+                    key={currentTrack.id}
+                    initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * 28, scale: 0.97 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * -22, scale: 0.97 }}
+                    transition={{ duration: prefersReducedMotion ? 0.08 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+                    className="flex w-full justify-center"
+                  >
+                    <MusicArtwork
+                      track={currentTrack}
+                      size="hero"
+                      className={cn(
+                        currentCover
+                          ? 'w-[min(calc(100vw-3rem),40dvh,23rem)]'
+                          : 'w-[min(42vw,10rem)]',
+                      )}
+                      sizes="(max-width: 768px) calc(100vw - 3rem), 23rem"
+                      showFallbackLabel={!currentCover}
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
 
               <div data-now-playing-track-info className="min-w-0 text-left">
                 <h2 className="truncate text-[1.35rem] font-bold leading-tight tracking-[-0.025em] text-[var(--ink-primary)]" title={currentPresentation.title}>{currentPresentation.title}</h2>
@@ -1798,7 +2429,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               </div>
 
               <div data-now-playing-transport className="music-mobile-player-transport mt-3 grid grid-cols-3 items-center justify-items-center px-7">
-                <button type="button" onClick={previousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                <button type="button" onClick={goToPreviousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
                   <SkipBack className="h-8 w-8 fill-current" strokeWidth={1.5} />
                 </button>
                 <button
@@ -1809,7 +2440,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 >
                   {isBuffering ? <RefreshCw className="h-9 w-9 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-10 w-10 fill-current" strokeWidth={1.45} /> : <Play className="h-10 w-10 translate-x-0.5 fill-current" strokeWidth={1.45} />}
                 </button>
-                <button type="button" onClick={nextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                <button type="button" onClick={goToNextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
                   <SkipForward className="h-8 w-8 fill-current" strokeWidth={1.5} />
                 </button>
               </div>
@@ -1819,7 +2450,7 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                 <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="music-volume-range h-11 min-w-0 flex-1 cursor-pointer appearance-none bg-transparent accent-[var(--ink-primary)]" aria-label="音量" />
               </label>
 
-              <div data-now-playing-tools className="music-mobile-player-tools mt-auto grid grid-cols-3 border-t border-[var(--music-stroke)] pt-2">
+              <div data-now-playing-tools className="music-mobile-player-tools mt-auto grid grid-cols-4 border-t border-[var(--music-stroke)] pt-2">
                 <button
                   type="button"
                   onClick={() => setShuffle((value) => !value)}
@@ -1839,6 +2470,10 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <ListMusic className="h-[22px] w-[22px]" strokeWidth={1.75} />
                   <span className="sr-only">播放队列</span>
                 </button>
+                <Link href="/music" onClick={closeExpandedPlayer} className="music-control-button music-icon-button mx-auto grid h-12 w-12 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅">
+                  <LibraryBig className="h-[21px] w-[21px]" strokeWidth={1.7} />
+                  <span className="sr-only">进入音乐大厅</span>
+                </Link>
               </div>
             </div>
             ) : mobilePane === 'lyrics' ? (
@@ -1850,28 +2485,34 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                     <h2 className="truncate text-base font-bold text-[var(--ink-primary)]">{currentPresentation.title}</h2>
                     <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{compactArtistLabel}</p>
                   </div>
+                  {!lyricsFollowing && (
+                    <button type="button" onClick={() => setLyricsFollowing(true)} className="music-control-button music-pill-button ml-auto min-h-11 shrink-0 bg-[var(--music-control-fill)] px-3 text-xs font-semibold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
+                      回到当前歌词
+                    </button>
+                  )}
                 </div>
-                <div ref={mobileLyricsBoxRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto py-6 pr-1">
+                <div
+                  ref={mobileLyricsBoxRef}
+                  onPointerDown={() => setLyricsFollowing(false)}
+                  onWheel={() => setLyricsFollowing(false)}
+                  className="min-h-0 flex-1 space-y-3 overflow-y-auto py-6 pr-1"
+                >
                   {lyrics.length === 0 ? (
                     <div className="flex min-h-[16rem] flex-col items-center justify-center text-center text-[var(--ink-muted)]">
                       <Music2 className="h-7 w-7" aria-hidden="true" />
                       <p className="mt-4 text-sm font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词</p>
                       <p className="mt-1 text-xs">旋律仍会继续播放。</p>
                     </div>
-                  ) : lyrics.map((line, index) => (
-                    <p
-                      key={`${line.time ?? 'plain'}-mobile-${index}`}
-                      ref={index === activeLyricIndex ? mobileActiveLyricRef : undefined}
-                      className={cn(
-                        'text-[1.15rem] font-semibold leading-8 transition-[color,opacity,transform] duration-200 motion-reduce:translate-x-0 motion-reduce:transition-none',
-                        index === activeLyricIndex
-                          ? 'translate-x-1 text-[var(--ink-primary)]'
-                          : 'text-[var(--ink-muted)] opacity-55',
-                      )}
-                    >
-                      {line.text}
-                    </p>
-                  ))}
+                  ) : (
+                    <MemoizedMusicLyricRows
+                      lines={lyrics}
+                      activeIndex={activeLyricIndex}
+                      activeRef={mobileActiveLyricRef}
+                      onSeek={seekToTime}
+                      onResumeFollowing={resumeLyricsFollowing}
+                      variant="mobile"
+                    />
+                  )}
                 </div>
                 {mobilePaneTransport}
               </div>
@@ -1886,62 +2527,44 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <span className="text-xs tnum text-[var(--ink-muted)]">{tracks.length} 首</span>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto border-t border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)]">
-                  {tracks.map((track, index) => {
-                    const active = hasPlaybackSession && currentIndex === index;
-                    const presentation = resolveMusicTrackPresentation(track);
-                    const queueArtist = presentation.artist || meaningfulMusicText(track.album) || playlistName;
-                    return (
-                      <button
-                        key={track.id}
-                        type="button"
-                        onClick={() => {
-                          if (!active) {
-                            value.playIndex(index);
-                          } else if (playbackError) {
-                            void retryPlayback();
-                          } else {
-                            void togglePlayback();
-                          }
-                        }}
-                        aria-label={active
-                          ? playbackError
-                            ? `重新尝试 ${presentation.title}`
-                            : isBuffering
-                              ? `取消载入 ${presentation.title}`
-                              : isPlaying
-                                ? `暂停 ${presentation.title}`
-                                : `继续播放 ${presentation.title}`
-                          : `播放 ${presentation.title}`}
-                        aria-current={active ? 'true' : undefined}
-                        className="grid min-h-[72px] w-full grid-cols-[1.25rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                      >
-                        <span className="text-center text-xs tnum text-[var(--ink-muted)]">{active && isPlaying ? <NowPlayingGlyph /> : index + 1}</span>
-                        <MusicArtwork track={track} className="h-12 w-12" sizes="48px" />
-                        <span className="min-w-0">
-                          <span className={cn('block truncate text-sm font-bold', active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]')}>{presentation.title}</span>
-                          <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{queueArtist}</span>
-                        </span>
-                        <span className="grid h-11 w-11 place-items-center text-[var(--ink-muted)]" aria-hidden="true">
-                          {active && isBuffering ? <RefreshCw className="h-4 w-4 animate-spin" /> : active && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <MemoizedMusicQueueRows
+                    tracks={tracks}
+                    currentIndex={currentIndex}
+                    hasPlaybackSession={hasPlaybackSession}
+                    isPlaying={isPlaying}
+                    isBuffering={isBuffering}
+                    playbackError={playbackError}
+                    playlistName={playlistName}
+                    onPlayIndex={playIndex}
+                    onRetryPlayback={retryPlayback}
+                    onTogglePlayback={togglePlayback}
+                    variant="mobile"
+                  />
                 </div>
                 {mobilePaneTransport}
               </div>
             )}
-          </section>
-        </div>
+          </motion.section>
+        </motion.div>
+      )}
+      </AnimatePresence>
 
-        <div
+      <AnimatePresence initial={false}>
+      {surface === 'immersive' && !isMobile && (
+        <motion.div
+          key="music-desktop-immersive"
           ref={desktopDialogRef}
+          data-music-desktop-immersive
           data-music-skin={skin}
           role="dialog"
           aria-modal="true"
           aria-label="音乐大厅播放器"
           tabIndex={-1}
-          className="music-desktop-player-dialog fixed inset-0 z-[65] hidden overflow-y-auto bg-[color-mix(in_oklch,var(--bg-void)_92%,transparent)] p-4 text-[var(--ink-primary)] [backdrop-filter:blur(28px)_saturate(140%)] min-[769px]:grid min-[769px]:place-items-center min-[769px]:overflow-hidden"
+          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.992 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.992 }}
+          transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="music-desktop-player-dialog fixed inset-0 z-[65] grid place-items-center overflow-hidden bg-[color-mix(in_oklch,var(--bg-void)_92%,transparent)] p-4 text-[var(--ink-primary)] [backdrop-filter:blur(28px)_saturate(140%)]"
         >
           <div className="music-desktop-player-layout mx-auto grid min-h-[calc(100dvh-2rem)] w-full max-w-6xl grid-cols-1 gap-4 min-[769px]:h-[calc(100dvh-2rem)] min-[769px]:max-h-[48rem] min-[769px]:min-h-0 min-[769px]:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)]">
             <section className="music-desktop-player-main surface-luminous grid min-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-[var(--music-radius-panel)] p-5 min-[769px]:min-h-0 min-[769px]:overflow-hidden min-[769px]:p-6">
@@ -2002,13 +2625,13 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
                 </div>
                 <div data-desktop-player-transport className="flex items-center justify-center gap-8 py-1">
-                  <button type="button" onClick={previousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                  <button type="button" onClick={goToPreviousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
                     <SkipBack className="h-8 w-8 fill-current" strokeWidth={1.5} />
                   </button>
                   <button type="button" onClick={playbackError ? () => void retryPlayback() : togglePlayback} className="music-control-button music-transport-button music-transport-button--primary grid h-16 w-16 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}>
                     {isBuffering ? <RefreshCw className="h-9 w-9 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-10 w-10 fill-current" strokeWidth={1.45} /> : <Play className="h-10 w-10 translate-x-0.5 fill-current" strokeWidth={1.45} />}
                   </button>
-                  <button type="button" onClick={nextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                  <button type="button" onClick={goToNextTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
                     <SkipForward className="h-8 w-8 fill-current" strokeWidth={1.5} />
                   </button>
                 </div>
@@ -2085,27 +2708,33 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               </div>
 
               {desktopPane === 'lyrics' ? (
-                <section id="desktop-lyrics-panel" role="tabpanel" aria-labelledby="desktop-lyrics-tab" className="min-h-0 flex-1">
-                  <div ref={lyricsBoxRef} className="h-full space-y-4 overflow-y-auto py-5 pr-1">
+                <section id="desktop-lyrics-panel" role="tabpanel" aria-labelledby="desktop-lyrics-tab" className="relative min-h-0 flex-1">
+                  {!lyricsFollowing && (
+                    <button type="button" onClick={() => setLyricsFollowing(true)} className="music-control-button music-pill-button absolute right-1 top-2 z-10 min-h-11 bg-[var(--music-control-fill)] px-3 text-xs font-semibold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
+                      回到当前歌词
+                    </button>
+                  )}
+                  <div
+                    ref={lyricsBoxRef}
+                    onPointerDown={() => setLyricsFollowing(false)}
+                    onWheel={() => setLyricsFollowing(false)}
+                    className="h-full space-y-2 overflow-y-auto py-5 pr-1"
+                  >
                     {lyrics.length === 0 ? (
                       <div className="flex min-h-[18rem] flex-col items-center justify-center text-center text-[var(--ink-muted)]">
                         <Music2 className="h-7 w-7" aria-hidden="true" />
                         <p className="mt-4 text-sm font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词，先让旋律继续。</p>
                       </div>
-                    ) : lyrics.map((line, index) => (
-                      <p
-                        key={`${line.time ?? 'plain'}-${index}`}
-                        ref={index === activeLyricIndex ? activeLyricRef : undefined}
-                        className={cn(
-                          'px-1 text-base font-semibold leading-8 transition-[color,opacity,transform] duration-200 motion-reduce:translate-x-0 motion-reduce:transition-none',
-                          index === activeLyricIndex
-                            ? 'translate-x-1 text-[var(--ink-primary)]'
-                            : 'text-[var(--ink-muted)] opacity-55',
-                        )}
-                      >
-                        {line.text}
-                      </p>
-                    ))}
+                    ) : (
+                      <MemoizedMusicLyricRows
+                        lines={lyrics}
+                        activeIndex={activeLyricIndex}
+                        activeRef={activeLyricRef}
+                        onSeek={seekToTime}
+                        onResumeFollowing={resumeLyricsFollowing}
+                        variant="desktop"
+                      />
+                    )}
                   </div>
                 </section>
               ) : (
@@ -2115,55 +2744,28 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                     <span className="tnum">{tracks.length} 首</span>
                   </div>
                   <div className="border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-                    {tracks.map((track, index) => {
-                      const active = hasPlaybackSession && currentIndex === index;
-                      const presentation = resolveMusicTrackPresentation(track);
-                      return (
-                        <button
-                          key={track.id}
-                          type="button"
-                          onClick={() => {
-                            if (!active) {
-                              value.playIndex(index);
-                            } else if (playbackError) {
-                              void retryPlayback();
-                            } else {
-                              void togglePlayback();
-                            }
-                          }}
-                          aria-label={active
-                            ? playbackError
-                              ? `重新尝试 ${presentation.title}`
-                              : isBuffering
-                                ? `取消载入 ${presentation.title}`
-                                : isPlaying
-                                  ? `暂停 ${presentation.title}`
-                                  : `继续播放 ${presentation.title}`
-                            : `播放 ${presentation.title}`}
-                          aria-current={active ? 'true' : undefined}
-                          className="grid min-h-[72px] w-full grid-cols-[2rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                        >
-                          <span className="text-xs tnum text-[var(--ink-muted)]">{String(index + 1).padStart(2, '0')}</span>
-                          <MusicArtwork track={track} className="h-12 w-12" sizes="48px" />
-                          <span className="min-w-0">
-                            <span className={cn('block truncate text-sm font-bold', active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]')}>{presentation.title}</span>
-                            <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{presentation.artist || meaningfulMusicText(track.album) || playlistName}</span>
-                          </span>
-                          <span className="grid h-11 w-11 place-items-center text-[var(--ink-muted)]" aria-hidden="true">
-                            {active && isBuffering ? <RefreshCw className="h-4 w-4 animate-spin" /> : active && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    <MemoizedMusicQueueRows
+                      tracks={tracks}
+                      currentIndex={currentIndex}
+                      hasPlaybackSession={hasPlaybackSession}
+                      isPlaying={isPlaying}
+                      isBuffering={isBuffering}
+                      playbackError={playbackError}
+                      playlistName={playlistName}
+                      onPlayIndex={playIndex}
+                      onRetryPlayback={retryPlayback}
+                      onTogglePlayback={togglePlayback}
+                      variant="desktop"
+                    />
                   </div>
                 </section>
               )}
             </aside>
           </div>
 
-        </div>
-        </>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   );
 }
