@@ -99,6 +99,10 @@ describe('admin music player state', () => {
     expect(providerSource).toContain('mode="popLayout"');
     expect(providerSource).toContain('scaleX(${percent / 100})');
     expect(providerSource).toContain('motion-reduce:transition-none');
+    expect(providerSource).toContain('const percentRef = useRef(percent)');
+    expect(providerSource).toContain('const currentPercent = percentRef.current');
+    expect(providerSource).toContain('}, [seekToPercent]);');
+    expect(providerSource).not.toContain('}, [percent, seekToPercent]);');
     expect(providerSource).not.toContain("height: 'auto'");
     expect(providerSource).not.toContain('mode="wait"');
     expect(providerSource).not.toContain('whileDrag={prefersReducedMotion ? undefined : { scale:');

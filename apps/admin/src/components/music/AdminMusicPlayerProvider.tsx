@@ -131,7 +131,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLParagraphElement>(null);
+  const percentRef = useRef(percent);
   const inputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
+  percentRef.current = percent;
 
   useEffect(() => {
     playingRef.current = isPlaying;
@@ -472,12 +474,13 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   }, [handleDockKeyDown, markPlayerActivity]);
 
   const handleSeekKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const currentPercent = percentRef.current;
     if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
       event.preventDefault();
-      seekToPercent(Math.min(100, percent + 5));
+      seekToPercent(Math.min(100, currentPercent + 5));
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
       event.preventDefault();
-      seekToPercent(Math.max(0, percent - 5));
+      seekToPercent(Math.max(0, currentPercent - 5));
     } else if (event.key === 'Home') {
       event.preventDefault();
       seekToPercent(0);
@@ -485,7 +488,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       event.preventDefault();
       seekToPercent(100);
     }
-  }, [percent, seekToPercent]);
+  }, [seekToPercent]);
 
   const resolvedDuration = duration || currentTrack?.durationSeconds || 0;
   const renderSeekBar = (showTimes: boolean) => (

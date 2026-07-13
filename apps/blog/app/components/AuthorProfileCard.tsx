@@ -404,7 +404,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     <button
       type="button"
       onClick={() => animateStackSwitch(1)}
-      className={`profile-stack-switch-button grid h-11 w-11 shrink-0 place-items-center rounded-full border-0 bg-[var(--profile-stack-control-bg)] text-[var(--ink-secondary,var(--text-secondary))] shadow-none transition-[background-color,color,opacity] duration-100 hover:bg-[var(--profile-stack-control-hover)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-stack-dot-active)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--profile-stack-focus-offset)] ${floating ? 'absolute right-2 top-2 z-[5]' : ''}`}
+      className={`profile-stack-switch-button grid h-11 w-11 shrink-0 place-items-center rounded-full border-0 bg-[var(--profile-stack-control-bg)] text-[var(--ink-secondary,var(--text-secondary))] shadow-none transition-[background-color,color,opacity] duration-100 hover:bg-[var(--profile-stack-control-hover)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-stack-dot-active)] focus-visible:ring-offset-2 ${floating ? 'absolute right-2 top-2 z-[5] focus-visible:ring-offset-transparent' : 'focus-visible:ring-offset-[var(--profile-stack-focus-offset)]'}`}
       aria-label={`切换到${nextStackCard.label}`}
       title={`切换到${nextStackCard.label}`}
     >

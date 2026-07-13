@@ -124,6 +124,10 @@ describe('author profile stack radius gate', () => {
     expect(globalCss).not.toMatch(/\.profile-card-stack-panel\s*\{[^}]*will-change:/);
   });
 
+  it('uses a transparent focus-ring offset only when the switch floats over dynamic content', () => {
+    expect(authorProfileSource).toContain("focus-visible:ring-offset-transparent' : 'focus-visible:ring-offset-[var(--profile-stack-focus-offset)]'");
+  });
+
   it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
     expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*clip-path:\s*inset\(0 round var\(--profile-card-stack-stage-radius\)\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-slot\s*{[\s\S]*padding:\s*var\(--profile-card-stack-slide-gutter\);/);
