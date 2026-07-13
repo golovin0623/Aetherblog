@@ -1,5 +1,23 @@
 import type { MusicTrack } from '@aetherblog/types';
 
+export const ADMIN_PLAYER_AUTO_COLLAPSE_MS = 8_000;
+
+export function resolveAdminPlayerAutoCollapseDelay({
+  expanded,
+  isPlaying,
+  pointerInside,
+  focusWithin,
+}: {
+  expanded: boolean;
+  isPlaying: boolean;
+  pointerInside: boolean;
+  focusWithin: boolean;
+}): number | null {
+  return expanded && isPlaying && !pointerInside && !focusWithin
+    ? ADMIN_PLAYER_AUTO_COLLAPSE_MS
+    : null;
+}
+
 export function resolveAdminAudioUrl(track: MusicTrack | undefined): string {
   if (!track) return '';
   const raw = track.media?.publicUrl || track.media?.fileUrl || '';

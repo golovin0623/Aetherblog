@@ -13,10 +13,11 @@ import {
 } from 'react';
 import { AnimatePresence, motion, useDragControls, useReducedMotion, type PanInfo } from 'framer-motion';
 import { AlertCircle, Disc3, Music2, Pause, Play, RefreshCw, SkipBack, SkipForward, X } from 'lucide-react';
-import { spring, transition } from '@aetherblog/ui';
+import { transition } from '@aetherblog/ui';
 import type { MusicTrack } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
 import {
+  resolveAdminPlayerAutoCollapseDelay,
   resolveAdminAdjacentTrack,
   resolveAdminAudioUrl,
   resolveAdminMediaErrorMessage,
@@ -104,6 +105,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const playingRef = useRef(false);
   const dragControls = useDragControls();
   const prefersReducedMotion = useReducedMotion();
+  const dockDraggedRef = useRef(false);
   // 记录当前已 load 进 <audio> 的 URL —— 用来判断「重新点同一首」与「切到新一首」,
   // 替代用 currentIndex 比对(换队列后旧 index 的语义已失效,会抢播旧 src)。
   const loadedUrlRef = useRef('');
@@ -114,6 +116,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [pointerInside, setPointerInside] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const [interactionVersion, setInteractionVersion] = useState(0);
   const [dockSuppressed, setDockSuppressed] = useState(false);
   const [musicSkin, setMusicSkinState] = useState<{ value: string; seed?: string }>({ value: 'crimson' });
   const currentTrack = queue[currentIndex];
@@ -126,10 +131,39 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLParagraphElement>(null);
+  const inputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
 
   useEffect(() => {
     playingRef.current = isPlaying;
   }, [isPlaying]);
+
+  useEffect(() => {
+    const markKeyboard = () => {
+      inputModalityRef.current = 'keyboard';
+    };
+    const markPointer = () => {
+      inputModalityRef.current = 'pointer';
+    };
+    window.addEventListener('keydown', markKeyboard, true);
+    window.addEventListener('pointerdown', markPointer, true);
+    return () => {
+      window.removeEventListener('keydown', markKeyboard, true);
+      window.removeEventListener('pointerdown', markPointer, true);
+    };
+  }, []);
+
+  const autoCollapseDelay = resolveAdminPlayerAutoCollapseDelay({
+    expanded,
+    isPlaying,
+    pointerInside,
+    focusWithin,
+  });
+
+  useEffect(() => {
+    if (autoCollapseDelay == null) return;
+    const timeout = window.setTimeout(() => setExpanded(false), autoCollapseDelay);
+    return () => window.clearTimeout(timeout);
+  }, [autoCollapseDelay, currentIndex, interactionVersion]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -417,6 +451,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     if (info.offset.y > DISMISS_DRAG_DISTANCE || info.velocity.y > DISMISS_DRAG_VELOCITY) {
       dismissDock();
     }
+    window.setTimeout(() => {
+      dockDraggedRef.current = false;
+    }, 0);
   }, [dismissDock]);
 
   const handleDockKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -424,6 +461,86 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     event.preventDefault();
     dismissDock();
   }, [dismissDock]);
+
+  const markPlayerActivity = useCallback(() => {
+    setInteractionVersion((version) => version + 1);
+  }, []);
+
+  const handlePlayerKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    markPlayerActivity();
+    handleDockKeyDown(event);
+  }, [handleDockKeyDown, markPlayerActivity]);
+
+  const handleSeekKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      seekToPercent(Math.min(100, percent + 5));
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      seekToPercent(Math.max(0, percent - 5));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      seekToPercent(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      seekToPercent(100);
+    }
+  }, [percent, seekToPercent]);
+
+  const resolvedDuration = duration || currentTrack?.durationSeconds || 0;
+  const renderSeekBar = (showTimes: boolean) => (
+    <div>
+      <div
+        role="slider"
+        tabIndex={0}
+        onPointerDown={handleSeekPointer}
+        onPointerMove={handleSeekPointer}
+        onPointerUp={handleSeekPointer}
+        onPointerCancel={handleSeekPointer}
+        onKeyDown={handleSeekKeyDown}
+        className="flex min-h-11 w-full touch-none cursor-pointer items-center rounded-[var(--music-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+        aria-label="调整播放进度"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        aria-valuetext={`${formatClock(progress)} / ${formatClock(resolvedDuration)}`}
+      >
+        <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
+          <span
+            className="block h-full origin-left rounded-full bg-[var(--aurora-1)] transition-transform duration-200 ease-out motion-reduce:transition-none"
+            style={{ transform: `scaleX(${percent / 100})` }}
+          />
+        </span>
+      </div>
+      {showTimes && (
+        <div className="-mt-1 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
+          <span>{formatClock(progress)}</span>
+          <span>{formatClock(resolvedDuration)}</span>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderPlayButton = (large: boolean) => (
+    <button
+      type="button"
+      onClick={playbackError ? () => void retryPlayback() : togglePlayback}
+      className={cn(
+        'relative flex items-center justify-center rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)] transition-opacity duration-100 hover:opacity-90 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+        large ? 'h-14 w-14' : 'h-12 w-12'
+      )}
+      aria-label={playbackError ? '重新尝试后台播放' : isPlaying ? '暂停后台播放' : '继续后台播放'}
+      title={playbackError ? '重新尝试' : isPlaying ? '暂停' : '播放'}
+    >
+      {playbackError ? (
+        <RefreshCw className="h-5 w-5" strokeWidth={1.9} />
+      ) : isPlaying ? (
+        <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} />
+      ) : (
+        <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />
+      )}
+    </button>
+  );
 
   return (
     <AdminMusicPlayerContext.Provider value={value}>
@@ -458,12 +575,11 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
           <motion.div
             data-music-skin={musicSkin.value}
             style={musicSkin.seed ? ({ ['--music-seed']: musicSkin.seed } as CSSProperties) : undefined}
-            layout
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 32, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 42, scale: 0.96 }}
-            transition={prefersReducedMotion ? transition.quick : spring.soft}
-            className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-3 sm:px-4"
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+            transition={prefersReducedMotion ? transition.instant : transition.quick}
+            className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4 max-[360px]:px-3"
           >
             <motion.div
               drag="y"
@@ -471,22 +587,41 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
               dragListener={false}
               dragDirectionLock
               dragSnapToOrigin
+              dragMomentum={false}
               dragConstraints={{ top: 0, bottom: 180 }}
-              dragElastic={{ top: 0.02, bottom: 0.35 }}
-              dragTransition={prefersReducedMotion ? { bounceStiffness: 600, bounceDamping: 60 } : { bounceStiffness: 360, bounceDamping: 34 }}
-              whileDrag={prefersReducedMotion ? undefined : { scale: 0.985 }}
+              dragElastic={{ top: 0, bottom: 0.18 }}
+              onDragStart={() => {
+                dockDraggedRef.current = true;
+              }}
               onDragEnd={handleDockDragEnd}
-              onKeyDown={handleDockKeyDown}
+              onPointerEnter={(event) => {
+                if (event.pointerType === 'mouse') setPointerInside(true);
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === 'mouse') setPointerInside(false);
+              }}
+              onPointerDown={markPlayerActivity}
+              onFocusCapture={() => {
+                if (inputModalityRef.current === 'keyboard') setFocusWithin(true);
+              }}
+              onBlurCapture={(event) => {
+                const nextTarget = event.relatedTarget as Node | null;
+                if (!nextTarget || !event.currentTarget.contains(nextTarget)) setFocusWithin(false);
+              }}
+              onKeyDown={handlePlayerKeyDown}
               role="region"
               aria-label="后台音乐播放器"
               aria-keyshortcuts="Escape"
-              className="pointer-events-auto w-full max-w-[460px]"
+              className="pointer-events-auto w-full max-w-[520px]"
             >
               <div className="relative">
                 <button
                   type="button"
                   onPointerDown={(event) => dragControls.start(event)}
-                  onClick={() => setExpanded((v) => !v)}
+                  onClick={() => {
+                    if (dockDraggedRef.current) return;
+                    setExpanded((value) => !value);
+                  }}
                   data-admin-player-drag-handle
                   className="absolute left-1/2 -top-8 z-20 flex h-11 w-24 -translate-x-1/2 cursor-grab touch-none items-end justify-center rounded-full pb-2 text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:text-[var(--ink-secondary)] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                   aria-label={expanded ? '下拖关闭后台播放器,点击收起' : '下拖关闭后台播放器,点击展开'}
@@ -497,41 +632,58 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                 >
                   <span className="h-1 w-10 rounded-full bg-current opacity-30" />
                 </button>
-                <div className="surface-raised relative overflow-hidden rounded-[var(--music-radius-panel)] p-3 text-[var(--ink-primary)]">
-                {expanded && (
-                  <button
-                    type="button"
-                    onClick={closePlayer}
-                    className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                    aria-label="关闭后台播放器"
-                    title="关闭后台播放器"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-
-                {/* 展开区:封面 + 滚动歌词 */}
-                <AnimatePresence initial={false}>
-                  {expanded && (
+                <motion.div
+                  layout="size"
+                  transition={prefersReducedMotion ? transition.instant : transition.quick}
+                  className="surface-raised relative max-h-[calc(100dvh_-_5rem_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain rounded-[var(--music-radius-panel)] p-3 text-[var(--ink-primary)]"
+                >
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {expanded ? (
                     <motion.div
                       id="admin-music-player-expanded"
                       key="expanded"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={prefersReducedMotion ? transition.instant : transition.flow}
-                      className="overflow-hidden"
+                      data-admin-player-expanded-layout
+                      initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                      transition={prefersReducedMotion ? transition.instant : transition.quick}
+                      className="p-1"
                     >
-                      <div className="mb-3 grid grid-cols-[104px_minmax(0,1fr)] gap-3 pr-10 max-[360px]:grid-cols-[80px_minmax(0,1fr)] max-[360px]:pr-8 sm:grid-cols-[118px_minmax(0,1fr)]">
-                        <div className="relative aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)]">
+                      <div className="grid grid-cols-[minmax(0,1fr)_44px] items-start gap-3">
+                        <div className="min-w-0">
+                          <div data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
+                            <Disc3 className="h-3.5 w-3.5" />
+                            {playlistName}
+                          </div>
+                          <h2 className="mt-1 truncate text-lg font-black leading-tight" title={currentTrack.title}>
+                            {currentTrack.title}
+                          </h2>
+                          <p className="mt-1 truncate text-xs text-[var(--ink-secondary)]">
+                            {currentTrack.artist || '未知艺术家'} · 队列 {currentIndex + 1}/{queue.length}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={closePlayer}
+                          className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                          aria-label="关闭后台播放器"
+                          title="关闭后台播放器"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-[104px_minmax(0,1fr)] items-stretch gap-4 max-[380px]:grid-cols-[88px_minmax(0,1fr)] max-[380px]:gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
+                        <div className="relative aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]">
                           {coverNode}
                         </div>
                         <div
                           ref={lyricsBoxRef}
-                          className="relative max-h-[104px] overflow-y-auto pr-1 text-center text-sm leading-7 max-[360px]:max-h-20 sm:max-h-[118px]"
+                          className="relative h-[104px] overflow-y-auto overscroll-contain pr-1 text-center text-sm leading-7 [scrollbar-width:none] max-[380px]:h-[88px] sm:h-[120px]"
+                          aria-label="歌词"
                         >
                           {lyrics.length === 0 ? (
-                            <div className="flex h-[104px] flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)] max-[360px]:h-20 sm:h-[118px]">
+                            <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)]">
                               <Music2 className="h-5 w-5" />
                               暂无歌词
                             </div>
@@ -554,113 +706,85 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                           )}
                         </div>
                       </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
 
-                {/* 紧凑常驻行 */}
-                <div className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-2.5 max-[360px]:grid-cols-[44px_minmax(0,1fr)] sm:gap-3">
-                  <div
-                    className={cn(
-                      'relative h-[3.25rem] w-[3.25rem] overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] max-[360px]:h-11 max-[360px]:w-11'
-                    )}
-                    aria-hidden="true"
-                  >
-                    {coverNode}
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
-                      <Disc3 className="h-3.5 w-3.5" />
-                      {playlistName}
-                    </div>
-                    <p className="mt-1 truncate text-sm font-black">{currentTrack.title}</p>
-                    <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
-                      {currentTrack.artist || '未知艺术家'} · 队列 {currentIndex + 1}/{queue.length}
-                    </p>
-                    <div
-                      role="slider"
-                      tabIndex={0}
-                      onPointerDown={handleSeekPointer}
-                      onPointerMove={handleSeekPointer}
-                      onPointerUp={handleSeekPointer}
-                      onPointerCancel={handleSeekPointer}
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-                          event.preventDefault();
-                          seekToPercent(Math.min(100, percent + 5));
-                        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                          event.preventDefault();
-                          seekToPercent(Math.max(0, percent - 5));
-                        } else if (event.key === 'Home') {
-                          event.preventDefault();
-                          seekToPercent(0);
-                        } else if (event.key === 'End') {
-                          event.preventDefault();
-                          seekToPercent(100);
-                        }
-                      }}
-                      className="mt-1 flex min-h-11 w-full touch-none cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                      aria-label="调整播放进度"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.round(percent)}
-                      aria-valuetext={`${formatClock(progress)} / ${formatClock(duration || currentTrack.durationSeconds || 0)}`}
-                    >
-                      <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
-                        <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${percent}%` }} />
-                      </span>
-                    </div>
-                    {expanded && (
-                      <div className="mt-1 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-                        <span>{formatClock(progress)}</span>
-                        <span>{formatClock(duration || currentTrack.durationSeconds || 0)}</span>
+                      <div className="mt-2">
+                        {renderSeekBar(true)}
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-1 max-[360px]:col-span-2 max-[360px]:mt-1 max-[360px]:justify-center">
-                    {expanded && (
-                      <button type="button" onClick={previousTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="上一首" title="上一首">
-                        <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={playbackError ? () => void retryPlayback() : togglePlayback}
-                      className="relative flex h-12 min-h-12 w-12 min-w-12 items-center justify-center rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)] transition-opacity duration-100 hover:opacity-90 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                      aria-label={playbackError ? '重新尝试后台播放' : isPlaying ? '暂停后台播放' : '继续后台播放'}
-                      title={playbackError ? '重新尝试' : isPlaying ? '暂停' : '播放'}
-                    >
-                      {isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
-                    </button>
-                    <button type="button" onClick={nextTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="下一首" title="下一首">
-                      <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                    </button>
-                    {!expanded && (
-                      <button
-                        type="button"
-                        onClick={closePlayer}
-                        className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                        aria-label="关闭后台播放器"
-                        title="关闭后台播放器"
+                      <div
+                        data-admin-player-transport
+                        className="mx-auto mt-2 grid w-fit grid-cols-[44px_56px_44px] items-center gap-3"
                       >
-                        <X className="h-4 w-4" />
-                      </button>
+                        <button type="button" onClick={previousTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="上一首" title="上一首">
+                          <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                        </button>
+                        {renderPlayButton(true)}
+                        <button type="button" onClick={nextTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="下一首" title="下一首">
+                          <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    </motion.div>
+                    ) : (
+                      <motion.div
+                        key="compact"
+                        data-admin-player-compact-layout
+                        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                        transition={prefersReducedMotion ? transition.instant : transition.quick}
+                        className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 max-[460px]:grid-cols-[48px_minmax(0,1fr)] max-[360px]:gap-2.5"
+                      >
+                        <div
+                          className="relative h-[3.25rem] w-[3.25rem] overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] max-[460px]:h-12 max-[460px]:w-12"
+                          aria-hidden="true"
+                        >
+                          {coverNode}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
+                            <Disc3 className="h-3.5 w-3.5" />
+                            {playlistName}
+                          </div>
+                          <p className="mt-1 truncate text-sm font-black" title={currentTrack.title}>{currentTrack.title}</p>
+                          <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
+                            {currentTrack.artist || '未知艺术家'} · {currentIndex + 1}/{queue.length}
+                          </p>
+                          <div className="mt-0.5">
+                            {renderSeekBar(false)}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-[48px_44px_44px] items-center gap-1 max-[460px]:col-span-2 max-[460px]:mt-1 max-[460px]:justify-self-center">
+                          {renderPlayButton(false)}
+                          <button type="button" onClick={nextTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="下一首" title="下一首">
+                            <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closePlayer}
+                            className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-muted)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                            aria-label="关闭后台播放器"
+                            title="关闭后台播放器"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </motion.div>
                     )}
-                  </div>
-                </div>
-                {playbackError && (
-                  <div role="alert" className="mt-3 flex items-center gap-2 rounded-[var(--music-radius-detail)] bg-[color-mix(in_oklch,var(--signal-danger)_9%,transparent)] px-3 py-2 text-xs text-[var(--ink-primary)]">
-                    <AlertCircle className="h-4 w-4 shrink-0 text-[var(--signal-danger)]" />
-                    <span className="min-w-0 flex-1">{playbackError}</span>
-                    <button type="button" onClick={() => void retryPlayback()} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      重新尝试
-                    </button>
-                  </div>
-                )}
-                </div>
+                  </AnimatePresence>
+
+                  {playbackError && (
+                    <div role="alert" className="mt-2 flex items-center gap-2 rounded-[var(--music-radius-detail)] bg-[color-mix(in_oklch,var(--signal-danger)_9%,transparent)] px-3 py-2 text-xs text-[var(--ink-primary)]">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-[var(--signal-danger)]" />
+                      <span className="min-w-0 flex-1">{playbackError}</span>
+                      <button type="button" onClick={() => void retryPlayback()} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-[var(--music-radius-control)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        重新尝试
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
               </div>
             </motion.div>
           </motion.div>

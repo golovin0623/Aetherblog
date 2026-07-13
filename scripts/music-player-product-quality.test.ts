@@ -249,10 +249,10 @@ describe('music modal product quality gates', () => {
   });
 
   it('centralizes artwork, control, and panel curvature instead of mixing local radius guesses', () => {
-    expect(musicSkinSource).toContain('--music-radius-artwork-sm: 0.5rem');
-    expect(musicSkinSource).toContain('--music-radius-artwork-lg: 0.75rem');
-    expect(musicSkinSource).toContain('--music-radius-control: 0.75rem');
-    expect(musicSkinSource).toContain('--music-radius-panel: 1.5rem');
+    expect(musicSkinSource).toContain('--music-radius-artwork-sm: var(--radius-sm, 0.5rem)');
+    expect(musicSkinSource).toContain('--music-radius-artwork-lg: var(--radius-md, 0.75rem)');
+    expect(musicSkinSource).toContain('--music-radius-control: var(--radius-md, 0.75rem)');
+    expect(musicSkinSource).toContain('--music-radius-panel: var(--radius-lg, 1rem)');
     expect(globalsSource).toContain('.music-artwork[data-size="hero"]');
     expect(providerSource).toContain('size="hero"');
     expect(providerSource).not.toContain('rounded-[1.6rem]');
@@ -270,17 +270,24 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toContain('.music-volume-range::-webkit-slider-runnable-track');
   });
 
-  it('uses a true compact MiniPlayer capsule and a bounded desktop artwork row', () => {
+  it('uses system-rounded mini players and soft-rectangle actions instead of oversized capsules', () => {
     expect(providerSource).toContain('inset-x-5');
     expect(providerSource).toContain('music-mini-player');
     expect(providerSource).toContain('grid-rows-[auto_minmax(0,1fr)_auto]');
     expect(providerSource).toContain('music-desktop-player-artwork-frame');
+    expect(globalsSource).toMatch(/\.music-mini-player\s*\{[\s\S]*?border-radius:\s*var\(--music-radius-panel\);/);
+    expect(globalsSource).toMatch(/\.music-pill-button\s*\{[\s\S]*?border-radius:\s*var\(--music-radius-control\);/);
   });
 
   it('keeps the desktop dock compact enough for its reserved page-end space', () => {
     expect(providerSource).toContain('data-music-desktop-dock');
     expect(providerSource).toContain('data-music-desktop-dock-progress');
     expect(providerSource).toContain('grid-cols-[48px_minmax(0,1fr)_auto]');
+    expect(providerSource).toContain('grid-rows-[48px_20px]');
+    expect(providerSource).toContain('data-music-desktop-dock-transport');
+    expect(providerSource).toContain('grid-cols-[44px_48px_44px]');
+    expect(providerSource).toContain('!min-h-5 !py-2');
+    expect(providerSource).not.toContain('data-music-desktop-dock-progress className="absolute');
     expect(providerSource).not.toContain('onSeek={seekToPercent} size="sm" className="mt-2"');
   });
 
@@ -391,9 +398,10 @@ describe('music modal product quality gates', () => {
     expect(adminPlayerSource).toContain('data-admin-player-drag-handle');
     expect(adminPlayerSource).toContain('z-30');
     expect(adminPlayerSource).toContain('-top-8');
-    expect(adminPlayerSource).toContain('max-[360px]:grid-cols-[44px_minmax(0,1fr)]');
-    expect(adminPlayerSource).toContain('max-[360px]:col-span-2');
-    expect(adminPlayerSource).toContain('max-[360px]:grid-cols-[80px_minmax(0,1fr)]');
+    expect(adminPlayerSource).toContain('data-admin-player-compact-layout');
+    expect(adminPlayerSource).toContain('data-admin-player-expanded-layout');
+    expect(adminPlayerSource).toContain('grid-cols-[44px_56px_44px]');
+    expect(adminPlayerSource).toContain('px-4 max-[360px]:px-3');
     expect(adminPlayerSource).not.toContain('bottom-[max(1rem,env(safe-area-inset-bottom))] z-50');
     expect(adminPlayerSource).not.toContain('data-music-skin="crimson"');
     expect(adminPlayerSource).not.toContain("isPlaying && 'animate-spin");

@@ -265,8 +265,8 @@ export function SeekBar({
         )}
       >
         <span
-          className="absolute inset-y-0 left-0 rounded-full bg-[var(--aurora-1)]"
-          style={{ width: `${clampedPercent}%` }}
+          className="absolute inset-0 origin-left rounded-full bg-[var(--aurora-1)] transition-transform duration-200 ease-out motion-reduce:transition-none"
+          style={{ transform: `scaleX(${clampedPercent / 100})` }}
         />
         <span
           className={cn(
@@ -1638,18 +1638,18 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
 
       <div data-music-skin={skin} data-music-desktop-dock className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] hidden px-3 pb-[max(0.85rem,env(safe-area-inset-bottom))] min-[769px]:block">
         <div className="music-dock pointer-events-auto mx-auto w-full max-w-5xl overflow-hidden text-[var(--ink-primary)]">
-          <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-4 p-2.5">
+          <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] grid-rows-[48px_20px] items-center gap-x-4 px-3 pb-2 pt-2.5">
             <button
               ref={desktopPlayerTriggerRef}
               type="button"
               onClick={() => setExpanded(true)}
-              className="music-control-button relative h-12 w-12 self-center rounded-[var(--music-radius-artwork-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+              className="music-control-button relative row-span-2 row-start-1 h-12 w-12 self-center rounded-[var(--music-radius-artwork-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
               aria-label="打开音乐大厅播放器"
             >
               <MusicArtwork track={currentTrack} className="h-12 w-12" sizes="48px" />
             </button>
 
-            <div className="relative flex h-12 min-w-0 flex-col justify-center">
+            <div className="col-start-2 row-start-1 flex h-12 min-w-0 flex-col justify-center">
               <p className="truncate text-sm font-bold leading-5 text-[var(--ink-primary)] sm:text-[15px]">{currentPresentation.title}</p>
               {playbackError ? (
                 <p role="alert" className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--signal-danger)]" title={playbackError}>
@@ -1661,12 +1661,13 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
                   {isBuffering ? '正在载入…' : `${compactArtistLabel} · ${playlistName} · ${currentIndex + 1}/${tracks.length}${activeLine ? ` · ${activeLine}` : ''}`}
                 </p>
               )}
-              <div data-music-desktop-dock-progress className="absolute inset-x-0 -bottom-2.5 z-10">
-                <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
-              </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div data-music-desktop-dock-progress className="col-start-2 row-start-2 min-w-0 self-center">
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="!min-h-5 !py-2" />
+            </div>
+
+            <div className="col-start-3 row-span-2 row-start-1 flex items-center gap-3 self-center">
               <button
                 type="button"
                 onClick={() => setShuffle((value) => !value)}
@@ -1682,20 +1683,22 @@ function PersistentMusicDock({ value }: { value: MusicPlayerContextValue }) {
               >
                 <Shuffle className="h-[18px] w-[18px]" strokeWidth={1.8} />
               </button>
-              <button type="button" onClick={previousTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
-                <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-              </button>
-              <button
-                type="button"
-                onClick={playbackError ? () => void retryPlayback() : togglePlayback}
-                className="music-control-button music-icon-button music-icon-button--tinted flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
-              >
-                {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
-              </button>
-              <button type="button" onClick={nextTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
-                <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-              </button>
+              <div data-music-desktop-dock-transport className="grid w-fit grid-cols-[44px_48px_44px] items-center gap-2">
+                <button type="button" onClick={previousTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                  <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={playbackError ? () => void retryPlayback() : togglePlayback}
+                  className="music-control-button music-icon-button music-icon-button--tinted flex h-12 w-12 items-center justify-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                  aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
+                >
+                  {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
+                </button>
+                <button type="button" onClick={nextTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                  <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                </button>
+              </div>
             </div>
           </div>
         </div>

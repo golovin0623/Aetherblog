@@ -22,11 +22,11 @@
   --aurora-source: var(--music-seed);  /* 作用域内改写光源(--aurora-field 等沿用) */
 
   /* 音乐域几何与材质：封面、控件、面板各自只消费一档曲率。 */
-  --music-radius-artwork-sm: 0.5rem;
-  --music-radius-artwork-lg: 0.75rem;
-  --music-radius-control: 0.75rem;
-  --music-radius-detail: 1rem;
-  --music-radius-panel: 1.5rem;
+  --music-radius-artwork-sm: var(--radius-sm, 0.5rem);
+  --music-radius-artwork-lg: var(--radius-md, 0.75rem);
+  --music-radius-control: var(--radius-md, 0.75rem);
+  --music-radius-detail: var(--radius-lg, 1rem);
+  --music-radius-panel: var(--radius-lg, 1rem);
   --music-radius-capsule: 999px;
   --music-stroke: rgb(28 26 20 / 0.08);
   --music-control-fill: rgb(28 26 20 / 0.055);
