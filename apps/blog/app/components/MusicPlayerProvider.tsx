@@ -1660,7 +1660,7 @@ const MemoizedMusicQueueRows = memo(function MemoizedMusicQueueRows({
           ? 'grid min-h-[72px] w-full grid-cols-[1.25rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'
           : 'grid min-h-[72px] w-full grid-cols-[2rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'}
       >
-        <span className={mobile ? 'text-center text-xs tnum text-[var(--ink-muted)]' : 'text-xs tnum text-[var(--ink-muted)]'}>
+        <span className={cn('text-xs tnum text-[var(--ink-muted)]', mobile && 'text-center')}>
           {mobile
             ? (active && isPlaying ? <NowPlayingGlyph /> : index + 1)
             : String(index + 1).padStart(2, '0')}
