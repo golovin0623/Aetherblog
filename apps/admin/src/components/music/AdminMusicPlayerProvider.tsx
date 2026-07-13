@@ -217,6 +217,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const playTracks = useCallback((tracks: MusicTrack[], index: number) => {
     if (tracks.length === 0) return;
+    // A new queue can begin at the same numeric index (or even replay the same
+    // URL), so index/audio identity alone cannot reliably restart idle timing.
+    setInteractionVersion((version) => version + 1);
     const safeIndex = Math.max(0, Math.min(index, tracks.length - 1));
     const nextUrl = resolveAdminAudioUrl(tracks[safeIndex]);
     setQueue(tracks);
