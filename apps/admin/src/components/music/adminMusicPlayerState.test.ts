@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { MusicTrack } from '@aetherblog/types';
 import {
+  ADMIN_PLAYER_AUTO_COLLAPSE_MS,
   resolveAdminAdjacentTrack,
   resolveAdminAudioUrl,
+  resolveAdminPlayerAutoCollapseDelay,
   resolveAdminMediaErrorMessage,
 } from './adminMusicPlayerState';
 
@@ -56,5 +58,57 @@ describe('admin music player state', () => {
     expect(providerSource).toContain('closePlayer();');
     expect(providerSource).toContain('下拖关闭后台播放器');
     expect(providerSource).toContain('aria-label="关闭后台播放器"');
+  });
+
+  it('auto-collapses only an idle expanded player while audio is playing', () => {
+    expect(ADMIN_PLAYER_AUTO_COLLAPSE_MS).toBe(8_000);
+    expect(resolveAdminPlayerAutoCollapseDelay({
+      expanded: true,
+      isPlaying: true,
+      pointerInside: false,
+      focusWithin: false,
+    })).toBe(8_000);
+
+    for (const state of [
+      { expanded: false, isPlaying: true, pointerInside: false, focusWithin: false },
+      { expanded: true, isPlaying: false, pointerInside: false, focusWithin: false },
+      { expanded: true, isPlaying: true, pointerInside: true, focusWithin: false },
+      { expanded: true, isPlaying: true, pointerInside: false, focusWithin: true },
+    ]) {
+      expect(resolveAdminPlayerAutoCollapseDelay(state)).toBeNull();
+    }
+
+    expect(providerSource).toContain('resolveAdminPlayerAutoCollapseDelay({');
+    expect(providerSource).toContain('window.setTimeout(() => setExpanded(false), autoCollapseDelay)');
+    expect(providerSource).toContain('[audioUrl, autoCollapseDelay, currentIndex, interactionVersion]');
+    expect(providerSource).toMatch(/const playTracks = useCallback\([\s\S]*?setInteractionVersion\(\(version\) => version \+ 1\);/);
+  });
+
+  it('uses mutually exclusive player densities with one symmetric expanded transport', () => {
+    expect(providerSource).toContain('data-admin-player-compact-layout');
+    expect(providerSource).toContain('data-admin-player-expanded-layout');
+    expect(providerSource).toContain('data-admin-player-transport');
+    expect(providerSource).toContain('grid-cols-[44px_56px_44px]');
+    expect(providerSource).toContain('gap-3');
+    expect(providerSource).toContain('grid w-fit grid-cols-[44px_56px_44px]');
+    expect(providerSource).not.toContain('紧凑常驻行');
+  });
+
+  it('keeps mobile content away from the screen edge and animates without auto-height layout churn', () => {
+    expect(providerSource).toContain('px-4 max-[360px]:px-3');
+    expect(providerSource).toContain('max-w-[520px]');
+    expect(providerSource).toContain('layout="size"');
+    expect(providerSource).toContain('mode="popLayout"');
+    expect(providerSource).toContain('scaleX(${percent / 100})');
+    expect(providerSource).toContain('motion-reduce:transition-none');
+    expect(providerSource).toContain('const percentRef = useRef(percent)');
+    expect(providerSource).toContain('const currentPercent = percentRef.current');
+    expect(providerSource).toContain('}, [seekToPercent]);');
+    expect(providerSource).not.toContain('}, [percent, seekToPercent]);');
+    expect(providerSource).not.toContain("height: 'auto'");
+    expect(providerSource).not.toContain('mode="wait"');
+    expect(providerSource).not.toContain('whileDrag={prefersReducedMotion ? undefined : { scale:');
+    expect(providerSource).toContain('dockDraggedRef.current = true');
+    expect(providerSource).toContain('if (dockDraggedRef.current) return');
   });
 });

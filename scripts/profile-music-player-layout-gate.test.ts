@@ -52,16 +52,16 @@ describe('profile music player stack layout gate', () => {
     expect(stack).not.toMatch(/>\s*播放器\s*<\/button>/);
   });
 
-  it('keeps stack controls in stable fixed-size footer groups', () => {
+  it('keeps stack transport centered with equal previous/play/next spacing', () => {
     const stack = stackVariantSource();
 
     expect(stack).toContain('profile-music-stack-footer');
-    expect(stack).toContain('profile-music-play-cluster');
+    expect(stack).toContain('profile-music-stack-transport');
+    expect(stack).toContain('grid-cols-[44px_52px_44px]');
+    expect(stack).toContain('gap-2.5');
     expect(stack).toContain('profile-music-expand-button');
-    expect(stack).toContain('profile-music-stack-utility');
+    expect(stack).not.toContain('profile-music-stack-utility');
     expect(globalCss).toContain('@container (max-width: 17.5rem)');
-    expect(globalCss).toMatch(/@container \(max-width: 17\.5rem\)[\s\S]*?\.profile-music-stack-footer \{[\s\S]*?flex-direction: column;/);
-    expect(globalCss).toMatch(/@container \(max-width: 17\.5rem\)[\s\S]*?\.profile-music-play-cluster,[\s\S]*?\.profile-music-stack-utility \{[\s\S]*?justify-content: center;/);
   });
 
   it('keeps a touch-sized profile return action in every stack loading and empty state', () => {
@@ -71,9 +71,15 @@ describe('profile music player stack layout gate', () => {
 
   it('keeps stack card playback progress singular and moves utility actions into the header', () => {
     const stack = stackVariantSource();
+    const headerIndex = stack.indexOf('profile-music-stack-header');
+    const progressIndex = stack.indexOf('profile-music-stack-progress');
+    const footerIndex = stack.indexOf('profile-music-stack-footer');
 
     expect(stack).toContain('profile-music-stack-actions');
     expect(stack).toContain('grid-cols-[52px_minmax(0,1fr)_auto]');
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    expect(progressIndex).toBeGreaterThan(headerIndex);
+    expect(footerIndex).toBeGreaterThan(progressIndex);
     expect(stack).not.toContain('profile-music-progress-rail');
     expect(stack).not.toContain('style={{ width: `${shownPercent}%` }}');
   });
@@ -92,20 +98,34 @@ describe('author profile stack radius gate', () => {
     expect(profileSource).toContain('{stackSwitchAction}');
   });
 
-  it('derives concentric stage and panel curvature from the outer card inset', () => {
+  it('uses the shared system radius scale for outer, stage, and panel curvature', () => {
     expect(authorProfileSource).toContain('profile-card-stack-frame');
-    expect(globalCss).toContain('--profile-card-stack-radius');
-    expect(globalCss).toContain('--profile-card-stack-stage-radius: max(0.5rem, calc(var(--profile-card-stack-radius) - 1rem))');
-    expect(globalCss).toContain('--profile-card-stack-panel-radius: max(0.375rem, calc(var(--profile-card-stack-stage-radius) - var(--profile-card-stack-slide-gutter)))');
+    expect(globalCss).toContain('--profile-card-stack-radius: var(--radius-xl, 1.5rem)');
+    expect(globalCss).toContain('--profile-card-stack-stage-radius: var(--radius-lg, 1rem)');
+    expect(globalCss).toContain('--profile-card-stack-panel-radius: var(--radius-md, 0.75rem)');
     expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-stage-radius\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(profileSource).toContain('profile-music-stack-shell');
-    expect(profileSource).toContain('rounded-[var(--profile-card-stack-panel-radius,1.75rem)]');
+    expect(profileSource).toContain('rounded-[var(--profile-card-stack-panel-radius)]');
 
     expect(authorProfileSource).not.toContain('!rounded-3xl');
     expect(authorProfileSource).not.toContain('rounded-[1.75rem]');
     expect(profileSource).not.toContain('rounded-[1.35rem]');
     expect(globalCss).not.toContain('border-radius: 1.95rem');
+    expect(globalCss).not.toContain('--profile-card-stack-stage-radius: max(');
+  });
+
+  it('moves the carousel with shared motion tokens and avoids permanent filtered layers', () => {
+    expect(authorProfileSource).toContain('spring.precise');
+    expect(authorProfileSource).not.toContain('stiffness: 560');
+    expect(authorProfileSource).not.toContain('stiffness: 520');
+    expect(authorProfileSource).not.toContain('[backdrop-filter:blur(22px)_saturate(145%)]');
+    expect(globalCss).not.toMatch(/\.profile-card-stack-track\s*\{[^}]*will-change:/);
+    expect(globalCss).not.toMatch(/\.profile-card-stack-panel\s*\{[^}]*will-change:/);
+  });
+
+  it('uses a transparent focus-ring offset only when the switch floats over dynamic content', () => {
+    expect(authorProfileSource).toContain("focus-visible:ring-offset-transparent' : 'focus-visible:ring-offset-[var(--profile-stack-focus-offset)]'");
   });
 
   it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
