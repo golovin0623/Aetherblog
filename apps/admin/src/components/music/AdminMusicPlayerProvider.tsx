@@ -165,7 +165,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     if (autoCollapseDelay == null) return;
     const timeout = window.setTimeout(() => setExpanded(false), autoCollapseDelay);
     return () => window.clearTimeout(timeout);
-  }, [autoCollapseDelay, currentIndex, interactionVersion]);
+  }, [audioUrl, autoCollapseDelay, currentIndex, interactionVersion]);
 
   useEffect(() => {
     const audio = audioRef.current;

@@ -80,6 +80,7 @@ describe('admin music player state', () => {
 
     expect(providerSource).toContain('resolveAdminPlayerAutoCollapseDelay({');
     expect(providerSource).toContain('window.setTimeout(() => setExpanded(false), autoCollapseDelay)');
+    expect(providerSource).toContain('[audioUrl, autoCollapseDelay, currentIndex, interactionVersion]');
     expect(providerSource).toMatch(/const playTracks = useCallback\([\s\S]*?setInteractionVersion\(\(version\) => version \+ 1\);/);
   });
 
