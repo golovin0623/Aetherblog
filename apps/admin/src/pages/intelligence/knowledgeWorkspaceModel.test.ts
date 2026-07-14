@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isKnowledgeBaseQueryable } from './KnowledgeWorkspacePage';
 import {
   buildWorkspacePlan,
   getKnowledgeReadiness,
@@ -6,6 +7,35 @@ import {
   reduceWorkspaceState,
   type WorkspaceState,
 } from './knowledgeWorkspaceModel';
+
+describe('knowledge workspace source eligibility', () => {
+  const readyKnowledgeBase = {
+    kind: 'CUSTOM',
+    fileCount: 2,
+    vectorizedCount: 2,
+    failedCount: 0,
+    chunkCount: 8,
+    activeProfileId: 7,
+    activeProfile: null,
+    effectivePermission: 'USE',
+  } satisfies Parameters<typeof isKnowledgeBaseQueryable>[0];
+
+  it('requires USE permission as well as index readiness', () => {
+    expect(
+      isKnowledgeBaseQueryable({ ...readyKnowledgeBase, effectivePermission: 'VIEW' }),
+    ).toBe(false);
+    expect(
+      isKnowledgeBaseQueryable({ ...readyKnowledgeBase, effectivePermission: 'USE' }),
+    ).toBe(true);
+    expect(
+      isKnowledgeBaseQueryable({
+        ...readyKnowledgeBase,
+        effectivePermission: 'MANAGE',
+        vectorizedCount: 1,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe('knowledge workspace task plan', () => {
   it('translates a one-time check into business steps and explicit boundaries', () => {

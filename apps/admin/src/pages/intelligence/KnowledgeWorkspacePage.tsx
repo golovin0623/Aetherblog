@@ -36,7 +36,10 @@ import {
 } from '@/services/knowledgeWorkspaceHandoff';
 import { useAuthStore } from '@/stores';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
-import { getKnowledgeBaseReadiness } from '@/pages/knowledge/knowledgeBaseReadiness';
+import {
+  canUseKnowledgeBase,
+  getKnowledgeBaseReadiness,
+} from '@/pages/knowledge/knowledgeBaseReadiness';
 import {
   IntelligenceHeader,
   IntelligencePanel,
@@ -122,8 +125,21 @@ function modeToIntent(mode: WorkspaceMode): KnowledgeWorkspaceIntent {
   return 'verify';
 }
 
-function isKnowledgeBaseQueryable(kb: KnowledgeBase): boolean {
+type QueryableKnowledgeBase = Pick<
+  KnowledgeBase,
+  | 'kind'
+  | 'fileCount'
+  | 'vectorizedCount'
+  | 'failedCount'
+  | 'chunkCount'
+  | 'activeProfileId'
+  | 'activeProfile'
+  | 'effectivePermission'
+>;
+
+export function isKnowledgeBaseQueryable(kb: QueryableKnowledgeBase): boolean {
   return (
+    canUseKnowledgeBase(kb.effectivePermission) &&
     getKnowledgeBaseReadiness({
       kind: kb.kind,
       fileCount: kb.fileCount,
@@ -162,9 +178,20 @@ function SourceRow({
   disabled?: boolean;
   label: string;
   meta: string;
-  status?: 'ready' | 'processing' | 'attention' | 'empty';
+  status?: 'ready' | 'processing' | 'attention' | 'empty' | 'view-only';
   onToggle: () => void;
 }) {
+  const statusTitle =
+    status === 'ready'
+      ? '可用'
+      : status === 'processing'
+        ? '准备中'
+        : status === 'attention'
+          ? '需要处理'
+          : status === 'view-only'
+            ? '仅可查看'
+            : '暂无可用内容';
+
   return (
     <button
       type="button"
@@ -200,9 +227,9 @@ function SourceRow({
             status === 'ready' && 'bg-[var(--signal-success)]',
             status === 'processing' && 'bg-[var(--aurora-1)]',
             status === 'attention' && 'bg-[var(--signal-warn)]',
-            status === 'empty' && 'bg-[var(--ink-muted)]'
+            (status === 'empty' || status === 'view-only') && 'bg-[var(--ink-muted)]'
           )}
-          title={status === 'ready' ? '可用' : status === 'processing' ? '准备中' : status === 'attention' ? '需要处理' : '暂无可用内容'}
+          title={statusTitle}
         />
       )}
     </button>
@@ -311,9 +338,8 @@ export default function KnowledgeWorkspacePage() {
 
   const knowledgeBaseStates = useMemo(
     () =>
-      sources.knowledgeBases.map((knowledgeBase) => ({
-        knowledgeBase,
-        readiness: getKnowledgeBaseReadiness({
+      sources.knowledgeBases.map((knowledgeBase) => {
+        const readiness = getKnowledgeBaseReadiness({
           kind: knowledgeBase.kind,
           fileCount: knowledgeBase.fileCount,
           vectorizedCount: knowledgeBase.vectorizedCount,
@@ -322,8 +348,15 @@ export default function KnowledgeWorkspacePage() {
           hasActiveProfile: Boolean(
             knowledgeBase.activeProfileId || knowledgeBase.activeProfile,
           ),
-        }),
-      })),
+        });
+        const hasUsePermission = canUseKnowledgeBase(knowledgeBase.effectivePermission);
+        return {
+          knowledgeBase,
+          readiness,
+          hasUsePermission,
+          queryable: hasUsePermission && readiness === 'ready',
+        };
+      }),
     [sources.knowledgeBases]
   );
 
@@ -331,18 +364,18 @@ export default function KnowledgeWorkspacePage() {
     () =>
       knowledgeBaseStates.reduce(
         (sum, item) =>
-          item.readiness === 'ready' ? sum + item.knowledgeBase.vectorizedCount : sum,
+          item.queryable ? sum + item.knowledgeBase.vectorizedCount : sum,
         0,
       ),
     [knowledgeBaseStates],
   );
 
   const preparedKnowledgeBaseStates = knowledgeBaseStates.filter(
-    (item) => item.readiness !== 'empty',
+    (item) => item.hasUsePermission && item.readiness !== 'empty',
   );
   const readiness = getKnowledgeReadiness({
     fileCount: preparedKnowledgeBaseStates.length,
-    vectorizedCount: preparedKnowledgeBaseStates.filter((item) => item.readiness === 'ready').length,
+    vectorizedCount: preparedKnowledgeBaseStates.filter((item) => item.queryable).length,
     failedCount: preparedKnowledgeBaseStates.filter((item) => item.readiness === 'attention').length,
     carrierCount: 0,
     readyCarrierCount: 0,
@@ -556,19 +589,26 @@ export default function KnowledgeWorkspacePage() {
                             chunkCount: kb.chunkCount,
                             hasActiveProfile: Boolean(kb.activeProfileId || kb.activeProfile),
                           });
+                          const hasUsePermission = canUseKnowledgeBase(kb.effectivePermission);
                           const queryable = isKnowledgeBaseQueryable(kb);
+                          const sourceMeta = !hasUsePermission
+                            ? '仅可查看 · 需要“可使用”权限才能指定'
+                            : queryable
+                              ? `${kb.chunkCount} 个片段可以检索`
+                              : `${kb.vectorizedCount}/${kb.fileCount} 份资料已处理 · 暂不可提问`;
+                          const sourceStatus = queryable
+                            ? 'ready'
+                            : hasUsePermission
+                              ? itemReadiness
+                              : 'view-only';
                           return (
                             <SourceRow
                               key={sourceRefKey(ref)}
                               checked={selectedRefs.some((item) => sourceRefKey(item) === sourceRefKey(ref))}
                               disabled={sourceMode !== 'selected' || !queryable}
                               label={kb.name}
-                              meta={
-                                queryable
-                                  ? `${kb.chunkCount} 个片段可以检索`
-                                  : `${kb.vectorizedCount}/${kb.fileCount} 份资料已处理 · 暂不可提问`
-                              }
-                              status={queryable ? 'ready' : itemReadiness}
+                              meta={sourceMeta}
+                              status={sourceStatus}
                               onToggle={() => toggleRef(ref)}
                             />
                           );
