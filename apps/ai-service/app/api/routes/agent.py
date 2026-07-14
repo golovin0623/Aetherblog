@@ -1090,20 +1090,24 @@ async def _build_atlas_retrieval_for_chat(
         from app.services.atlas_recall import (
             recall_atlas_context,
             render_atlas_context,
-            selected_atlas_sources_available,
+            selected_atlas_sources_snapshot,
         )
 
-        if strict and not await selected_atlas_sources_available(
-            pool,
-            user_id=user_id,
-            kp_ids=kp_ids,
-            carrier_ids=carrier_ids,
-        ):
+        selected_snapshot = None
+        if strict:
+            selected_snapshot = await selected_atlas_sources_snapshot(
+                pool,
+                llm=llm_router,
+                user_id=user_id,
+                kp_ids=kp_ids,
+                carrier_ids=carrier_ids,
+            )
+        if strict and selected_snapshot is None:
             part.outcome = "unavailable"
             part.warnings.append(
                 _retrieval_warning(
                     "atlas",
-                    "部分所选 Atlas 来源不存在或无权访问，本次回答未使用所选知识。",
+                    "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
                     "selected_source_unavailable",
                 )
             )
@@ -1119,7 +1123,31 @@ async def _build_atlas_retrieval_for_chat(
             semantic_limit=atlas_scope.semanticLimit if atlas_scope.semanticRecall else 0,
             neighborhood_depth=atlas_scope.neighborhoodDepth,
             include_evidence=atlas_scope.includeEvidence,
+            strict=strict,
         )
+        post_snapshot = None
+        if strict:
+            post_snapshot = await selected_atlas_sources_snapshot(
+                pool,
+                llm=llm_router,
+                user_id=user_id,
+                kp_ids=kp_ids,
+                carrier_ids=carrier_ids,
+            )
+        if strict and (
+            post_snapshot is None
+            or post_snapshot != selected_snapshot
+            or context.selected_note_revisions != selected_snapshot.note_revisions
+        ):
+            part.outcome = "unavailable"
+            part.warnings.append(
+                _retrieval_warning(
+                    "atlas",
+                    "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
+                    "selected_source_unavailable",
+                )
+            )
+            return part
         part.context = render_atlas_context(context)
         part.hits = _atlas_context_to_receipt_hits(context)
         part.outcome = "matched" if part.hits else "empty"

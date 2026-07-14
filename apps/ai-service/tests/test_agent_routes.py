@@ -541,6 +541,7 @@ async def test_build_atlas_context_uses_last_user_message_for_semantic_recall(
         "semantic_limit": 5,
         "neighborhood_depth": 2,
         "include_evidence": False,
+        "strict": False,
     }
 
 
@@ -588,6 +589,7 @@ async def test_build_atlas_context_uses_empty_scope_for_semantic_recall(
         "semantic_limit": 8,
         "neighborhood_depth": 1,
         "include_evidence": True,
+        "strict": False,
     }
 
 
@@ -597,16 +599,22 @@ async def test_build_atlas_retrieval_selected_valid_empty_scope_stays_empty(
 ) -> None:
     from app.services import atlas_recall as atlas_recall_module
 
-    async def selected_atlas_sources_available(*_args: Any, **_kwargs: Any) -> bool:
-        return True
+    stable_snapshot = atlas_recall_module.AtlasSelectedSourceSnapshot(
+        kp_versions=((3, "kp-v1"),),
+        carrier_versions=(),
+        note_revisions=(),
+    )
+
+    async def selected_atlas_sources_snapshot(*_args: Any, **_kwargs: Any) -> object:
+        return stable_snapshot
 
     async def fake_recall_atlas_context(*_args: Any, **_kwargs: Any):
         return atlas_recall_module.AtlasRecallContext()
 
     monkeypatch.setattr(
         atlas_recall_module,
-        "selected_atlas_sources_available",
-        selected_atlas_sources_available,
+        "selected_atlas_sources_snapshot",
+        selected_atlas_sources_snapshot,
     )
     monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
     monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: None)
@@ -628,12 +636,111 @@ async def test_build_atlas_retrieval_selected_valid_empty_scope_stays_empty(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("revision_race", ["changed_after_recall", "profile_flipped_away_and_back"])
+async def test_build_atlas_retrieval_selected_rechecks_sources_after_recall(
+    monkeypatch: pytest.MonkeyPatch,
+    revision_race: str,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    revision_a = atlas_recall_module.AtlasNoteSourceRevision(
+        note_id=11,
+        status="INDEXED",
+        fingerprint="revision-a",
+        profile_id=42,
+        model_id="embed-model",
+        embedding_dims=(3,),
+    )
+    revision_b = atlas_recall_module.AtlasNoteSourceRevision(
+        note_id=11,
+        status="INDEXED",
+        fingerprint="revision-b",
+        profile_id=42,
+        model_id="embed-model",
+        embedding_dims=(3,),
+    )
+    snapshot_a = atlas_recall_module.AtlasSelectedSourceSnapshot(
+        kp_versions=((3, "kp-v1"),),
+        carrier_versions=((4, "carrier-v1", "hash-v1"),),
+        note_revisions=(revision_a,),
+    )
+    snapshot_b = atlas_recall_module.AtlasSelectedSourceSnapshot(
+        kp_versions=((3, "kp-v1"),),
+        carrier_versions=((4, "carrier-v2", "hash-v2"),),
+        note_revisions=(revision_b,),
+    )
+    validation_results = iter(
+        [snapshot_a, snapshot_b if revision_race == "changed_after_recall" else snapshot_a]
+    )
+    recalled_revision = (
+        revision_a if revision_race == "changed_after_recall" else revision_b
+    )
+    validation_calls: list[dict[str, Any]] = []
+
+    async def selected_atlas_sources_snapshot(*_args: Any, **kwargs: Any) -> object:
+        validation_calls.append(kwargs)
+        return next(validation_results)
+
+    async def fake_recall_atlas_context(*_args: Any, **_kwargs: Any):
+        return atlas_recall_module.AtlasRecallContext(
+            knowledge_points=[
+                atlas_recall_module.AtlasKnowledgePointHit(
+                    id=3,
+                    title="Concurrent source",
+                    body_markdown="Must be discarded when a selected source changes.",
+                    type="claim",
+                    status="evergreen",
+                    confidence=0.9,
+                    provenance="user",
+                )
+            ],
+            selected_note_revisions=(recalled_revision,),
+        )
+
+    monkeypatch.setattr(
+        atlas_recall_module,
+        "selected_atlas_sources_snapshot",
+        selected_atlas_sources_snapshot,
+    )
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: "stale atlas")
+
+    llm_router = object()
+    part = await agent_module._build_atlas_retrieval_for_chat(
+        object(),
+        atlas_scope=agent_module.AgentAtlasScope(
+            kpIds=[3],
+            carrierIds=[4],
+            semanticRecall=False,
+        ),
+        user_id=7,
+        llm_router=llm_router,
+        messages=[AgentChatMessage(role="user", content="并发编辑后还能回答吗？")],
+        strict=True,
+    )
+
+    assert len(validation_calls) == 2
+    assert all(call["llm"] is llm_router for call in validation_calls)
+    assert part.requested is True
+    assert part.outcome == "unavailable"
+    assert part.context is None
+    assert part.hits == []
+    assert part.warnings == [
+        {
+            "scope": "atlas",
+            "code": "selected_source_unavailable",
+            "message": "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_build_atlas_retrieval_auto_skips_selected_source_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services import atlas_recall as atlas_recall_module
 
-    async def forbidden_selected_atlas_validation(*_args: Any, **_kwargs: Any) -> bool:
+    async def forbidden_selected_atlas_validation(*_args: Any, **_kwargs: Any) -> object:
         raise AssertionError("auto Atlas recall must remain best-effort")
 
     async def fake_recall_atlas_context(*_args: Any, **_kwargs: Any):
@@ -641,7 +748,7 @@ async def test_build_atlas_retrieval_auto_skips_selected_source_validation(
 
     monkeypatch.setattr(
         atlas_recall_module,
-        "selected_atlas_sources_available",
+        "selected_atlas_sources_snapshot",
         forbidden_selected_atlas_validation,
     )
     monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
@@ -873,7 +980,7 @@ async def test_agent_chat_selected_atlas_blocks_when_any_requested_source_is_una
         {
             "scope": "atlas",
             "code": "selected_source_unavailable",
-            "message": "部分所选 Atlas 来源不存在或无权访问，本次回答未使用所选知识。",
+            "message": "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
         }
     ]
     assert events[1]["code"] == "selected_context_not_grounded"
@@ -1131,15 +1238,21 @@ async def test_agent_chat_emits_versioned_retrieval_before_first_content_event(
             ],
         )
 
-    async def selected_atlas_sources_available(*_args: Any, **_kwargs: Any) -> bool:
-        return True
+    stable_snapshot = atlas_recall_module.AtlasSelectedSourceSnapshot(
+        kp_versions=((3, "kp-v1"),),
+        carrier_versions=((4, "carrier-v1", "hash-v1"),),
+        note_revisions=(),
+    )
+
+    async def selected_atlas_sources_snapshot(*_args: Any, **_kwargs: Any) -> object:
+        return stable_snapshot
 
     monkeypatch.setattr(kb_recall_module, "recall_kbs", fake_recall_kbs)
     monkeypatch.setattr(kb_recall_module, "render_kb_context", lambda _hits: "rendered kb")
     monkeypatch.setattr(
         atlas_recall_module,
-        "selected_atlas_sources_available",
-        selected_atlas_sources_available,
+        "selected_atlas_sources_snapshot",
+        selected_atlas_sources_snapshot,
     )
     monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
     monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: "rendered atlas")
