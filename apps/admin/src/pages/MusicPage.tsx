@@ -1,7 +1,8 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useBlocker } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
 import {
   ArrowDown,
   ArrowUp,
@@ -55,6 +56,7 @@ import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useAdminMusicPlayer, useAdminMusicPlayerTimeline } from '@/components/music/AdminMusicPlayerProvider';
 import { hasSameAdminMusicQueueTrackIds } from '@/components/music/adminMusicQueueState';
+import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
 import { getMediaUrl, mediaService, type MediaItem } from '@/services/mediaService';
@@ -88,6 +90,16 @@ type PendingTrackNavigation =
 type PendingDelete =
   | { kind: 'track'; track: MusicTrack; deleteMedia: boolean }
   | { kind: 'playlist'; playlist: MusicPlaylist };
+type MusicConfirmationConfig = {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  variant: 'danger' | 'warning';
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
 
 function AdminMusicTimelineSlot({
   children,
@@ -585,7 +597,12 @@ function TrackEditor({
   const lyricFileInputRef = useRef<HTMLInputElement>(null);
   const lyricImportRequestRef = useRef(0);
   const selectedTrackRef = useRef(track);
+  const sheetPanelRef = useRef<HTMLDivElement>(null);
+  const sheetDragControls = useDragControls();
+  const sheetY = useMotionValue(0);
+  const prefersReducedMotion = useReducedMotion();
   selectedTrackRef.current = track;
+  const mediaFileName = track.media?.originalName || '未加载媒体文件名';
   const lyricSummary = useMemo(
     () => summarizeLyricDraft(draft.lyric || ''),
     [draft.lyric]
@@ -601,41 +618,128 @@ function TrackEditor({
   useEffect(() => {
     if (!dirty) setDraft(track);
   }, [dirty, track]);
+  useEffect(() => {
+    sheetY.set(0);
+  }, [sheetY, track.id]);
   const updateDraft = (changes: Partial<MusicTrack>) => {
     onDraftChange();
     setDraft((current) => ({ ...current, ...changes }));
   };
+  const settleSheet = useCallback((onSettled?: () => void) => {
+    if (prefersReducedMotion) {
+      sheetY.set(0);
+      onSettled?.();
+      return;
+    }
+    const controls = animate(sheetY, 0, {
+      type: 'spring',
+      stiffness: 520,
+      damping: 42,
+      mass: 0.8,
+    });
+    if (onSettled) void controls.then(onSettled);
+  }, [prefersReducedMotion, sheetY]);
+  const exitSheet = useCallback(() => {
+    if (!mobile || dirty || prefersReducedMotion) {
+      onClose();
+      return;
+    }
+    const targetY = (sheetPanelRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.66) + 32;
+    const controls = animate(sheetY, targetY, {
+      duration: 0.22,
+      ease: [0.22, 1, 0.36, 1],
+    });
+    void controls.then(onClose);
+  }, [dirty, mobile, onClose, prefersReducedMotion, sheetY]);
+  const startSheetDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!mobile) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, textarea, select, [role="combobox"]')) return;
+    sheetDragControls.start(event);
+  }, [mobile, sheetDragControls]);
+  const handleSheetDragEnd = useCallback((
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo,
+  ) => {
+    const sheetHeight = sheetPanelRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.66;
+    const distanceThreshold = Math.min(132, Math.max(76, sheetHeight * 0.2));
+    const shouldDismiss = info.offset.y >= distanceThreshold
+      || (info.velocity.y >= 900 && info.offset.y >= 24);
+
+    if (!shouldDismiss) {
+      settleSheet();
+      return;
+    }
+    if (dirty) {
+      settleSheet(onClose);
+      return;
+    }
+    if (prefersReducedMotion) {
+      onClose();
+      return;
+    }
+    const controls = animate(sheetY, sheetHeight + 32, {
+      duration: 0.22,
+      ease: [0.22, 1, 0.36, 1],
+    });
+    void controls.then(onClose);
+  }, [dirty, onClose, prefersReducedMotion, settleSheet, sheetY]);
   return (
-    <div className={cn(
-      panelClass,
-      mobile
-        ? 'flex max-h-[66dvh] w-full flex-col !rounded-b-none !rounded-t-[var(--radius-xl)] !p-0'
-        : 'sticky top-4 space-y-4'
-    )}>
+    <motion.div
+      ref={sheetPanelRef}
+      drag={mobile ? 'y' : false}
+      dragControls={sheetDragControls}
+      dragListener={false}
+      dragMomentum={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.55 }}
+      onDragEnd={handleSheetDragEnd}
+      style={mobile ? { y: sheetY, touchAction: 'auto' } : undefined}
+      className={cn(
+        panelClass,
+        mobile
+          ? 'flex max-h-[66dvh] w-full flex-col !rounded-b-none !rounded-t-[var(--radius-xl)] !p-0'
+          : 'sticky top-4 space-y-4'
+      )}
+    >
       {mobile && (
-        <div className="flex h-6 shrink-0 items-center justify-center" aria-hidden="true">
+        <div
+          data-track-editor-drag-handle
+          onPointerDown={startSheetDrag}
+          className="flex h-7 shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing"
+          aria-hidden="true"
+        >
           <span className="h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]" />
         </div>
       )}
-      <div className={cn(
-        'flex items-start justify-between gap-3',
-        mobile && 'shrink-0 pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
-      )}>
-        <div>
+      <div
+        data-track-editor-drag-region={mobile ? true : undefined}
+        onPointerDown={mobile ? startSheetDrag : undefined}
+        className={cn(
+          'flex items-start justify-between gap-3',
+          mobile && 'shrink-0 cursor-grab touch-none select-none pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] active:cursor-grabbing'
+        )}
+      >
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
             {dirty && (
-              <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] px-2 py-0.5 text-[10px] font-bold text-[var(--signal-warn)]">
+              <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] px-2 py-0.5 text-[10px] font-bold text-[var(--signal-warn)]">
                 未保存
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
+          <p
+            className="mt-1 truncate text-xs text-[var(--ink-muted)]"
+            title={`媒体文件：${mediaFileName}`}
+          >
+            媒体文件：{mediaFileName}
+          </p>
         </div>
         <button
           type="button"
-          onClick={onClose}
-          className={iconButtonClass()}
+          onClick={exitSheet}
+          className={cn(iconButtonClass(), 'shrink-0')}
           aria-label="关闭歌曲信息"
           data-track-editor-initial-focus={mobile ? 'true' : undefined}
         >
@@ -795,17 +899,17 @@ function TrackEditor({
       </div>
       <div className={cn(
         'flex flex-wrap justify-end gap-2',
-        mobile && 'shrink-0 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-3'
+        mobile && 'shrink-0 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-3 max-[360px]:!grid max-[360px]:grid-cols-[1.35fr_0.8fr_0.9fr] max-[360px]:gap-1.5'
       )}>
         <button
           type="button"
           onClick={() => onRequestDeleteWithMedia(track)}
-          className={textButtonClass('danger')}
+          className={cn(textButtonClass('danger'), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}
         >
           <Trash2 className="h-4 w-4" />
           连媒体删除
         </button>
-        <button type="button" onClick={() => onPreview(track)} className={textButtonClass()}>
+        <button type="button" onClick={() => onPreview(track)} className={cn(textButtonClass(), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}>
           <Play className="h-4 w-4" />
           试听
         </button>
@@ -821,14 +925,14 @@ function TrackEditor({
             sortOrder: draft.sortOrder,
             isFeatured: draft.isFeatured,
           }))}
-          className={textButtonClass('primary')}
+          className={cn(textButtonClass('primary'), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}
           disabled={saving || !dirty}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : dirty ? <RotateCw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
           {saving ? '保存中' : dirty ? '保存' : '已保存'}
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -869,7 +973,7 @@ export default function MusicPage() {
   } = useAdminMusicPlayer();
 
   // 完整试听舞台只属于「展示播放」；曲库和歌单保持管理优先，继续使用紧凑全局播放器。
-  useEffect(() => {
+  useLayoutEffect(() => {
     setDockSuppressed(activeTab === 'display');
     return () => setDockSuppressed(false);
   }, [activeTab, setDockSuppressed]);
@@ -927,15 +1031,18 @@ export default function MusicPage() {
   const [isSettingsWriteBusy, setIsSettingsWriteBusy] = useState(false);
   const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
   const dirtyNavigationBlocker = useBlocker(trackDraftDirty || playlistDraftDirty);
+  const activeConfirmation = pendingDelete
+    ? 'delete'
+    : pendingTrackNavigation
+      ? 'track-navigation'
+      : pendingPlaylistSelectionId != null
+        ? 'playlist-selection'
+        : dirtyNavigationBlocker.state === 'blocked'
+          ? 'route-navigation'
+          : null;
+  const activeMobileEditorId = isMobile ? (editingTrack?.id ?? null) : null;
   const mobileEditorCoveredByModal = Boolean(
-    isMobile
-    && editingTrack
-    && (
-      pendingDelete
-      || pendingTrackNavigation
-      || pendingPlaylistSelectionId != null
-      || dirtyNavigationBlocker.state === 'blocked'
-    )
+    activeMobileEditorId != null && activeConfirmation != null
   );
 
   useEffect(() => {
@@ -1012,15 +1119,15 @@ export default function MusicPage() {
     previousMobileEditorIdRef.current = editorId;
   }, [editingTrack?.id, isMobile]);
   useEffect(() => {
+    if (activeMobileEditorId == null) return;
+    return acquireOverlayScrollLock();
+  }, [activeMobileEditorId]);
+  useEffect(() => {
     if (
       !editingTrack
       || !isMobile
-      || pendingDelete
-      || pendingTrackNavigation
-      || dirtyNavigationBlocker.state === 'blocked'
+      || mobileEditorCoveredByModal
     ) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const shouldMoveInitialFocus = initiallyFocusedMobileEditorIdRef.current !== editingTrack.id;
     if (shouldMoveInitialFocus) initiallyFocusedMobileEditorIdRef.current = editingTrack.id;
     const focusFrame = shouldMoveInitialFocus
@@ -1057,15 +1164,12 @@ export default function MusicPage() {
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       if (focusFrame != null) window.cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [
-    dirtyNavigationBlocker.state,
     editingTrack,
     isMobile,
-    pendingDelete,
-    pendingTrackNavigation,
+    mobileEditorCoveredByModal,
     requestTrackNavigation,
   ]);
   const requestPlaylistSelection = useCallback((playlistId: number) => {
@@ -2912,6 +3016,93 @@ export default function MusicPage() {
     : pendingTrackNavigation?.kind === 'tab'
       ? `切换到「${tabs.find((tab) => tab.key === pendingTrackNavigation.tab)?.label || '目标页签'}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的修改。`
       : `关闭歌曲编辑器会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`;
+  const activeConfirmationConfig: MusicConfirmationConfig | null = (() => {
+    switch (activeConfirmation) {
+      case 'delete':
+        if (!pendingDelete) return null;
+        return {
+          title: pendingDeleteTitle,
+          message: pendingDeleteMessage,
+          confirmText: '确认删除',
+          cancelText: '取消',
+          variant: 'danger',
+          pending: deletePlaylistMutation.isPending || deleteTrackMutation.isPending,
+          onCancel: () => {
+            if (deleteWriteLockRef.current || deletePlaylistMutation.isPending || deleteTrackMutation.isPending) return;
+            setPendingDelete(null);
+          },
+          onConfirm: () => {
+            if (deleteWriteLockRef.current) return;
+            if (pendingDelete.kind === 'playlist') {
+              if (isPlaylistWriteBusy) return;
+              deleteWriteLockRef.current = true;
+              deletePlaylistMutation.mutate(pendingDelete.playlist.id);
+              return;
+            }
+            if (deleteTrackMutation.isPending || updateTrackMutation.isPending) return;
+            deleteWriteLockRef.current = true;
+            deleteTrackMutation.mutate({
+              id: pendingDelete.track.id,
+              deleteMedia: pendingDelete.deleteMedia,
+            });
+          },
+        };
+      case 'track-navigation':
+        if (!pendingTrackNavigation) return null;
+        return {
+          title: '放弃未保存的歌曲修改？',
+          message: pendingTrackNavigationMessage,
+          confirmText: pendingTrackNavigation.kind === 'close' ? '放弃并关闭' : '放弃并继续',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => setPendingTrackNavigation(null),
+          onConfirm: () => performTrackNavigation(pendingTrackNavigation),
+        };
+      case 'playlist-selection':
+        if (pendingPlaylistSelectionId == null) return null;
+        return {
+          title: '放弃未保存的歌单修改？',
+          message: `切换到「${playlists.find((playlist) => playlist.id === pendingPlaylistSelectionId)?.name || '目标歌单'}」会丢弃当前尚未保存的名称、描述或展示设置。`,
+          confirmText: '放弃并切换',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => setPendingPlaylistSelectionId(null),
+          onConfirm: () => {
+            const targetId = pendingPlaylistSelectionId;
+            setPendingPlaylistSelectionId(null);
+            selectPlaylist(targetId);
+          },
+        };
+      case 'route-navigation':
+        return {
+          title: '放弃未保存的音乐修改？',
+          message: trackDraftDirty && playlistDraftDirty
+            ? '当前歌曲和歌单都有尚未保存的修改。继续前往其他页面会丢弃这些修改。'
+            : trackDraftDirty
+              ? `歌曲「${editingTrack?.title || '当前歌曲'}」还有尚未保存的元数据或歌词修改。`
+              : '当前歌单还有尚未保存的名称、描述或展示设置。',
+          confirmText: '放弃并离开',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => {
+            if (dirtyNavigationBlocker.state === 'blocked') dirtyNavigationBlocker.reset();
+          },
+          onConfirm: () => {
+            if (dirtyNavigationBlocker.state !== 'blocked') return;
+            trackDraftRevisionRef.current += 1;
+            playlistDraftRevisionRef.current += 1;
+            setTrackDraftDirty(false);
+            setPlaylistDraftDirty(false);
+            dirtyNavigationBlocker.proceed();
+          },
+        };
+      default:
+        return null;
+    }
+  })();
   const headerPlaybackTracks = activeTab === 'library' ? tracks : selectedPlaylistTracks;
   const headerPlaybackLabel = activeTab === 'library' ? '播放当前曲库页' : '播放当前歌单';
 
@@ -2995,85 +3186,15 @@ export default function MusicPage() {
       </div>
 
       <ConfirmDialog
-        isOpen={Boolean(pendingDelete)}
-        title={pendingDeleteTitle}
-        message={pendingDeleteMessage}
-        confirmText="确认删除"
-        cancelText="取消"
-        variant="danger"
-        pending={deletePlaylistMutation.isPending || deleteTrackMutation.isPending}
-        onCancel={() => {
-          if (deleteWriteLockRef.current || deletePlaylistMutation.isPending || deleteTrackMutation.isPending) return;
-          setPendingDelete(null);
-        }}
-        onConfirm={() => {
-          if (!pendingDelete || deleteWriteLockRef.current) return;
-          if (pendingDelete.kind === 'playlist') {
-            if (isPlaylistWriteBusy) return;
-            deleteWriteLockRef.current = true;
-            deletePlaylistMutation.mutate(pendingDelete.playlist.id);
-          } else {
-            if (deleteTrackMutation.isPending || updateTrackMutation.isPending) return;
-            deleteWriteLockRef.current = true;
-            deleteTrackMutation.mutate({
-              id: pendingDelete.track.id,
-              deleteMedia: pendingDelete.deleteMedia,
-            });
-          }
-        }}
-      />
-      <ConfirmDialog
-        isOpen={pendingTrackNavigation != null}
-        title="放弃未保存的歌曲修改？"
-        message={pendingTrackNavigationMessage}
-        confirmText={pendingTrackNavigation?.kind === 'close' ? '放弃并关闭' : '放弃并继续'}
-        cancelText="继续编辑"
-        variant="warning"
-        onCancel={() => setPendingTrackNavigation(null)}
-        onConfirm={() => {
-          if (!pendingTrackNavigation) return;
-          performTrackNavigation(pendingTrackNavigation);
-        }}
-      />
-      <ConfirmDialog
-        isOpen={pendingPlaylistSelectionId != null}
-        title="放弃未保存的歌单修改？"
-        message={`切换到「${playlists.find((playlist) => playlist.id === pendingPlaylistSelectionId)?.name || '目标歌单'}」会丢弃当前尚未保存的名称、描述或展示设置。`}
-        confirmText="放弃并切换"
-        cancelText="继续编辑"
-        variant="warning"
-        onCancel={() => setPendingPlaylistSelectionId(null)}
-        onConfirm={() => {
-          if (pendingPlaylistSelectionId == null) return;
-          const targetId = pendingPlaylistSelectionId;
-          setPendingPlaylistSelectionId(null);
-          selectPlaylist(targetId);
-        }}
-      />
-      <ConfirmDialog
-        isOpen={dirtyNavigationBlocker.state === 'blocked'}
-        title="放弃未保存的音乐修改？"
-        message={
-          trackDraftDirty && playlistDraftDirty
-            ? '当前歌曲和歌单都有尚未保存的修改。继续前往其他页面会丢弃这些修改。'
-            : trackDraftDirty
-              ? `歌曲「${editingTrack?.title || '当前歌曲'}」还有尚未保存的元数据或歌词修改。`
-              : '当前歌单还有尚未保存的名称、描述或展示设置。'
-        }
-        confirmText="放弃并离开"
-        cancelText="继续编辑"
-        variant="warning"
-        onCancel={() => {
-          if (dirtyNavigationBlocker.state === 'blocked') dirtyNavigationBlocker.reset();
-        }}
-        onConfirm={() => {
-          if (dirtyNavigationBlocker.state !== 'blocked') return;
-          trackDraftRevisionRef.current += 1;
-          playlistDraftRevisionRef.current += 1;
-          setTrackDraftDirty(false);
-          setPlaylistDraftDirty(false);
-          dirtyNavigationBlocker.proceed();
-        }}
+        isOpen={activeConfirmationConfig != null}
+        title={activeConfirmationConfig?.title ?? ''}
+        message={activeConfirmationConfig?.message ?? ''}
+        confirmText={activeConfirmationConfig?.confirmText}
+        cancelText={activeConfirmationConfig?.cancelText}
+        variant={activeConfirmationConfig?.variant}
+        pending={activeConfirmationConfig?.pending}
+        onCancel={() => activeConfirmationConfig?.onCancel()}
+        onConfirm={() => activeConfirmationConfig?.onConfirm()}
       />
     </div>
   );

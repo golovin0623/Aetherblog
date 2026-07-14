@@ -153,6 +153,8 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLButtonElement>(null);
   const dockHandleRef = useRef<HTMLButtonElement>(null);
+  const expandedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusExpandedHeadingOnOpenRef = useRef(false);
   const playerReturnFocusRef = useRef<HTMLElement | null>(null);
   const percentRef = useRef(percent);
   const inputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
@@ -247,6 +249,15 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       window.removeEventListener('pointerdown', markPointer, true);
     };
   }, []);
+
+  useEffect(() => {
+    if (!expanded || !focusExpandedHeadingOnOpenRef.current) return;
+    focusExpandedHeadingOnOpenRef.current = false;
+    const focusFrame = window.requestAnimationFrame(() => {
+      expandedHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [expanded]);
 
   const autoCollapseDelay = resolveAdminPlayerAutoCollapseDelay({
     expanded,
@@ -1045,7 +1056,12 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                             <Disc3 className="h-3.5 w-3.5" />
                             {playlistName}
                           </div>
-                          <h2 className="mt-1 truncate text-lg font-black leading-tight" title={currentTrack.title}>
+                          <h2
+                            ref={expandedHeadingRef}
+                            tabIndex={-1}
+                            className="mt-1 truncate text-lg font-black leading-tight focus:outline-none focus-visible:rounded-none focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]"
+                            title={currentTrack.title}
+                          >
                             {currentTrack.title}
                           </h2>
                           <p className="mt-1 truncate text-xs text-[var(--ink-secondary)]">
@@ -1145,7 +1161,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                           }}
                           onDragEnd={handleTrackDragEnd}
                           onClick={() => {
-                            if (!dockDraggedRef.current) setExpanded(true);
+                            if (dockDraggedRef.current) return;
+                            focusExpandedHeadingOnOpenRef.current = inputModalityRef.current === 'keyboard';
+                            setExpanded(true);
                           }}
                           style={{ touchAction: 'pan-y' }}
                           className="grid min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 rounded-[var(--music-radius-detail)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] max-[460px]:grid-cols-[48px_minmax(0,1fr)]"

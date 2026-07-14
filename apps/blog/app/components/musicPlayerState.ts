@@ -114,6 +114,22 @@ export function resolveMusicPlayerSurface({
 }
 
 /**
+ * Pointer events originating from the compact surface must not be treated as
+ * outside clicks. During a Framer Motion layout transition the mounted node
+ * and its ref can briefly differ, so callers check both the target and the
+ * event's composed path before collapsing to the orb.
+ */
+export function shouldCollapseMusicCompactFromPointer({
+  targetInsideSurface,
+  pathInsideSurface,
+}: {
+  targetInsideSurface: boolean;
+  pathInsideSurface: boolean;
+}): boolean {
+  return !targetInsideSurface && !pathInsideSurface;
+}
+
+/**
  * Keeps the selected track stable across refreshed/reordered arrays before any
  * effect can observe a stale numeric index. If the track disappeared, the old
  * slot is clamped so the queue naturally advances to its successor or tail.

@@ -359,6 +359,12 @@ describe('admin music player state', () => {
     expect(providerSource).toContain('focusDockHandle();');
     expect(providerSource).toContain('restorePlayerReturnFocus();');
     expect(providerSource).toContain('if (target?.isConnected) target.focus({ preventScroll: true });');
+    expect(providerSource).toContain('const expandedHeadingRef = useRef<HTMLHeadingElement>(null)');
+    expect(providerSource).toContain("focusExpandedHeadingOnOpenRef.current = inputModalityRef.current === 'keyboard'");
+    expect(providerSource).toContain('expandedHeadingRef.current?.focus({ preventScroll: true });');
+    expect(providerSource).toContain(
+      'focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]',
+    );
   });
 
   it('settles an idle source change instead of suppressing the next real pause event', () => {

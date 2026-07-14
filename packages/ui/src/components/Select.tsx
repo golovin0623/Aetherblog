@@ -5,6 +5,8 @@ import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../utils';
 import { transition, variants } from '../motion';
 
+export const SELECT_OVERLAY_CLOSE_EVENT = 'aetherblog:close-select-overlays';
+
 /**
  * Select · Aether Codex 自绘下拉
  *
@@ -154,6 +156,15 @@ export function Select({
     };
   }, [isOpen]);
 
+  // A modal confirmation takes interaction priority over any portalled
+  // listbox. Closing synchronously also prevents the listbox's high portal
+  // layer from remaining clickable while the dialog is opening.
+  React.useEffect(() => {
+    const closeForOverlay = () => setIsOpen(false);
+    window.addEventListener(SELECT_OVERLAY_CLOSE_EVENT, closeForOverlay);
+    return () => window.removeEventListener(SELECT_OVERLAY_CLOSE_EVENT, closeForOverlay);
+  }, []);
+
   // 把 active 选项滚动到可视区
   React.useEffect(() => {
     if (!isOpen || activeIndex < 0) return;
@@ -217,9 +228,13 @@ export function Select({
         break;
       }
       case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        setIsOpen(false);
+        triggerRef.current?.focus();
+        break;
       case 'Tab':
         setIsOpen(false);
-        if (e.key === 'Escape') triggerRef.current?.focus();
         break;
     }
   };

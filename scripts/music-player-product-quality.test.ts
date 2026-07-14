@@ -11,6 +11,7 @@ import {
   resolveStableMusicTrackIndex,
   resolveMusicTrackPresentation,
   resolveMusicStartIndex,
+  shouldCollapseMusicCompactFromPointer,
   shouldRotateMusicPresentation,
 } from '../apps/blog/app/components/musicPlayerState';
 import { resolveDialogTabTarget } from '../apps/blog/app/hooks/useDialogLifecycle';
@@ -172,6 +173,40 @@ describe('music playback policy', () => {
     })).toBe('immersive');
   });
 
+  it('lets route and render guards hide every persistent playback surface', () => {
+    const otherwiseImmersive = {
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      compactOpen: true,
+      expanded: true,
+    };
+
+    expect(resolveMusicPlayerSurface({
+      ...otherwiseImmersive,
+      canRender: false,
+    })).toBe('hidden');
+    expect(resolveMusicPlayerSurface({
+      ...otherwiseImmersive,
+      routeBlocked: true,
+    })).toBe('hidden');
+  });
+
+  it('treats compact-pointer origins as inside even while the panel ref is unavailable', () => {
+    expect(shouldCollapseMusicCompactFromPointer({
+      targetInsideSurface: true,
+      pathInsideSurface: false,
+    })).toBe(false);
+    expect(shouldCollapseMusicCompactFromPointer({
+      targetInsideSurface: false,
+      pathInsideSurface: true,
+    })).toBe(false);
+    expect(shouldCollapseMusicCompactFromPointer({
+      targetInsideSurface: false,
+      pathInsideSurface: false,
+    })).toBe(true);
+  });
+
   it('renders the compact player on the first explicit playback frame without flashing the orb', () => {
     expect(providerSource).toContain(
       'const compactSurfaceOpen = compactOpen || (hasPlaybackSession && !previousSessionRef.current);',
@@ -224,6 +259,34 @@ describe('music playback policy', () => {
     expect(resolveMusicArtworkSource({ coverUrl: artwork.coverUrl, size: 'thumbnail' })).toBe(artwork.coverUrl);
     expect(providerSource).toContain("resolveMusicCoverSrc(track, '', size)");
     expect(sourceBetween(providerSource, 'function MusicArtwork({', 'export function NowPlayingGlyph')).toContain('unoptimized');
+  });
+
+  it('disables native image dragging so artwork swipes stay with the player gesture', () => {
+    const musicArtworkSource = sourceBetween(
+      providerSource,
+      'function MusicArtwork({',
+      'export function NowPlayingGlyph',
+    );
+
+    expect(musicArtworkSource).toContain('draggable={false}');
+    expect(musicArtworkSource).toContain('className="select-none object-cover"');
+  });
+
+  it('keeps transport previous and swipe previous as distinct navigation intents', () => {
+    const previousNavigationSource = sourceBetween(
+      providerSource,
+      'const navigateToPreviousTrack',
+      'const nextTrack',
+    );
+
+    expect(providerSource).toContain('skipToPreviousTrack: () => void;');
+    expect(previousNavigationSource).toContain('navigateToPreviousTrack(true);');
+    expect(previousNavigationSource).toContain('navigateToPreviousTrack(false);');
+    expect(providerSource).toContain('const goToPreviousTrackByGesture = useCallback');
+    expect(providerSource).toContain('skipToPreviousTrack();');
+    expect(
+      providerSource.match(/if \(action === 'previous'\) goToPreviousTrackByGesture\(\);/g),
+    ).toHaveLength(2);
   });
 
   it('keeps previous and next as presentation-only actions before playback starts', () => {
@@ -316,6 +379,40 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain('onPointerMove={handlePointerMove}');
     expect(providerSource).toContain('setPointerCapture');
     expect(providerSource).toContain('min-h-11');
+  });
+
+  it('cancels or loses pointer capture without committing a stale seek position', () => {
+    const seekBarSource = sourceBetween(providerSource, 'export function SeekBar', 'function pickRandomIndex');
+    const pointerFinishSource = sourceBetween(
+      seekBarSource,
+      'const finishPointerScrub',
+      'const handleLostPointerCapture',
+    );
+    const lostCaptureSource = sourceBetween(
+      seekBarSource,
+      'const handleLostPointerCapture',
+      'return (',
+    );
+
+    expect(pointerFinishSource).toContain('if (commit) seekFromClientX(event.clientX);');
+    expect(pointerFinishSource).toContain('activePointerRef.current = null;');
+    expect(lostCaptureSource).toContain('activePointerRef.current = null;');
+    expect(lostCaptureSource).not.toContain('seekFromClientX');
+    expect(seekBarSource).toContain('onPointerUp={(event) => finishPointerScrub(event, true)}');
+    expect(seekBarSource).toContain('onPointerCancel={(event) => finishPointerScrub(event, false)}');
+    expect(seekBarSource).toContain('onLostPointerCapture={handleLostPointerCapture}');
+  });
+
+  it('does not mistake an in-surface pointerdown for an outside click during layout transitions', () => {
+    const outsidePointerSource = sourceBetween(
+      providerSource,
+      'if (!compactOpen || expanded) return;',
+      'setLyricsFollowing(true);',
+    );
+
+    expect(outsidePointerSource).toContain("event.target.closest('[data-music-compact-player]')");
+    expect(outsidePointerSource).toContain('event.composedPath()');
+    expect(outsidePointerSource).toContain('shouldCollapseMusicCompactFromPointer({ targetInsideSurface, pathInsideSurface })');
   });
 
   it('keeps the shared seek language flat, legible, and consistent across time labels', () => {
@@ -412,6 +509,17 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain('打开沉浸播放器');
   });
 
+  it('keeps the compact collapse handle at least 44px in both axes', () => {
+    const compactHandleSource = sourceBetween(
+      providerSource,
+      'data-music-compact-drag-handle',
+      'aria-label="下滑或点击收起为灵动音乐元"',
+    );
+    expect(compactHandleSource).toContain(
+      'className="flex h-11 w-full touch-none cursor-grab items-center justify-center',
+    );
+  });
+
   it('keeps persistent players out of full-screen routes without reserving document space', () => {
     expect(providerSource).toContain("pathname.startsWith('/reader/')");
     expect(providerSource).toContain('if (routeBlocksPlayerSurface && expanded) setExpanded(false)');
@@ -432,6 +540,87 @@ describe('music modal product quality gates', () => {
     expect(providerSource).not.toContain('music-mobile-player-stage');
     expect(providerSource).not.toContain('>Now Playing<');
     expect(providerSource).not.toContain('音乐大厅\n              </Link>');
+  });
+
+  it('sizes mobile hero artwork from its pane instead of the viewport', () => {
+    const artworkSource = sourceBetween(
+      providerSource,
+      'data-now-playing-artwork',
+      'data-now-playing-track-info',
+    );
+    const artworkClassSource = sourceBetween(
+      artworkSource,
+      'className={cn(',
+      'sizes=',
+    );
+
+    expect(artworkClassSource).toContain("'flex justify-center'");
+    expect(artworkClassSource).toContain(
+      "currentCover\n                    ? 'music-mobile-player-artwork-frame",
+    );
+    expect(artworkClassSource).toContain(
+      "music-mobile-player-artwork w-[min(100cqw,100cqh,40dvh,23rem)]",
+    );
+    expect(artworkClassSource).toContain("w-[min(42%,10rem)]");
+    expect(artworkClassSource).not.toMatch(/\b[\d.]+(?:d|s|l)?vw\b/);
+    expect(globalsSource).toMatch(
+      /\.music-mobile-player-artwork-frame\s*\{[\s\S]*?container-type:\s*size;/,
+    );
+  });
+
+  it('compacts non-essential mobile player chrome on very short screens', () => {
+    const shortMobileSource = sourceBetween(
+      globalsSource,
+      '@media (max-width: 768px) and (max-height: 640px)',
+      '.music-desktop-player-artwork-frame',
+    );
+
+    expect(shortMobileSource).toMatch(
+      /\[data-mobile-player-drag-handle\][\s\S]*?height:\s*2rem;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\[data-mobile-player-header\][\s\S]*?min-height:\s*2\.75rem;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\.music-mobile-player-artwork-frame[\s\S]*?flex:\s*0 0 10rem;[\s\S]*?min-height:\s*10rem;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\[data-now-playing-active-line\][\s\S]*?display:\s*none;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\.music-mobile-player-seek[\s\S]*?margin-top:\s*0\.75rem;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\.music-mobile-player-transport,[\s\S]*?\.music-mobile-player-volume[\s\S]*?margin-top:\s*0\.25rem;/,
+    );
+    expect(shortMobileSource).toMatch(
+      /\.music-mobile-player-tools[\s\S]*?margin-top:\s*0\.25rem;[\s\S]*?padding-top:\s*0\.25rem;/,
+    );
+  });
+
+  it('keeps the mobile cover wash pinned behind the full sheet', () => {
+    expect(providerSource).toContain(
+      'music-mobile-player-backdrop pointer-events-none absolute inset-0 overflow-hidden',
+    );
+    expect(globalsSource).toMatch(
+      /\.music-mobile-player-sheet > :not\(\.music-mobile-player-backdrop\)\s*\{[\s\S]*?position:\s*relative;[\s\S]*?z-index:\s*1;/,
+    );
+    expect(globalsSource).toMatch(
+      /\.music-mobile-player-sheet > \.music-mobile-player-backdrop\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?inset:\s*0;[\s\S]*?z-index:\s*0;/,
+    );
+  });
+
+  it('lets long mobile queue names shrink and truncate before the count', () => {
+    const queueHeaderSource = sourceBetween(
+      providerSource,
+      'data-mobile-queue-pane',
+      '<MemoizedMusicQueueRows',
+    );
+
+    expect(queueHeaderSource).toContain('<div className="min-w-0">');
+    expect(queueHeaderSource).toContain('className="mt-1 truncate text-xl');
+    expect(queueHeaderSource).toContain('title={playlistName}');
+    expect(queueHeaderSource).toContain('className="shrink-0 text-xs');
   });
 
   it('uses one restrained music control language instead of glow, lift, and hard press scaling', () => {
@@ -492,7 +681,12 @@ describe('music modal product quality gates', () => {
   });
 
   it('uses system-rounded compact players and safe narrow-screen insets', () => {
-    expect(providerSource).toContain('max-[360px]:left-3');
+    expect(providerSource).toContain(
+      'max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))]',
+    );
+    expect(providerSource).toContain(
+      'max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))]',
+    );
     expect(providerSource).toContain('music-compact-player');
     expect(providerSource).toContain('overflow-hidden');
     expect(providerSource).toContain('music-desktop-player-artwork-frame');
@@ -558,6 +752,40 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toContain('@media (min-width: 769px) and (max-height: 700px)');
     expect(globalsSource).toContain('.music-desktop-player-dialog');
     expect(globalsSource).toContain('min-height: 43rem');
+  });
+
+  it('switches compact desktop landscape players to a bounded two-column composition', () => {
+    const landscapeSource = sourceBetween(
+      globalsSource,
+      '@media (min-width: 769px) and (max-width: 960px) and (max-height: 500px)',
+      '.profile-card-stack-frame',
+    );
+
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-dialog[\s\S]*?display:\s*grid;[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-layout[\s\S]*?height:\s*calc\(100dvh - 1rem\);[\s\S]*?min-height:\s*0;[\s\S]*?grid-template-columns:\s*minmax\(0, 1\.15fr\) minmax\(19rem, 0\.85fr\);/,
+    );
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-main[\s\S]*?grid-template-columns:\s*minmax\(7\.5rem, 0\.7fr\) minmax\(13rem, 1\.3fr\);[\s\S]*?overflow:\s*hidden;/,
+    );
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-header[\s\S]*?grid-column:\s*1 \/ -1;[\s\S]*?min-width:\s*0;/,
+    );
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-info[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain;/,
+    );
+    expect(landscapeSource).toMatch(
+      /\.music-desktop-player-artwork[\s\S]*?height:\s*min\(100%, 9rem\);/,
+    );
+    expect(providerSource).toContain('className="music-desktop-player-header');
+    expect(providerSource).toContain('className="flex shrink-0 items-center gap-2"');
+    expect(providerSource).toContain(
+      'w-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap',
+    );
+    expect(providerSource).toContain("cn('music-desktop-player-info space-y-2.5'");
+    expect(providerSource).toContain('className="music-desktop-player-detail');
   });
 
   it('keeps admin playback controls in the same neutral, stable transport language', () => {

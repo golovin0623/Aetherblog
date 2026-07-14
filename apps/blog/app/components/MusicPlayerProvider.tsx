@@ -69,6 +69,7 @@ import {
   resolveMusicStartIndex,
   resolveRestoredMusicPosition,
   resolveShuffleNavigation,
+  shouldCollapseMusicCompactFromPointer,
   shouldRotateMusicPresentation,
   type MusicArtworkSize,
   type LyricLine,
@@ -242,12 +243,20 @@ export function SeekBar({
     event.preventDefault();
     seekFromClientX(event.clientX);
   };
-  const finishPointerScrub = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const finishPointerScrub = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    commit: boolean,
+  ) => {
     if (activePointerRef.current !== event.pointerId) return;
-    seekFromClientX(event.clientX);
+    if (commit) seekFromClientX(event.clientX);
     activePointerRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  const handleLostPointerCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (activePointerRef.current === event.pointerId) {
+      activePointerRef.current = null;
     }
   };
   return (
@@ -262,8 +271,9 @@ export function SeekBar({
       aria-valuetext={`${formatMusicClock(progress)} / ${formatMusicClock(duration)}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onPointerUp={finishPointerScrub}
-      onPointerCancel={finishPointerScrub}
+      onPointerUp={(event) => finishPointerScrub(event, true)}
+      onPointerCancel={(event) => finishPointerScrub(event, false)}
+      onLostPointerCapture={handleLostPointerCapture}
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
           event.preventDefault();
@@ -354,6 +364,7 @@ interface MusicPlayerContextValue {
   retryPlayback: () => Promise<void>;
   nextTrack: () => void;
   previousTrack: () => void;
+  skipToPreviousTrack: () => void;
   seekToTime: (seconds: number) => void;
   seekToPercent: (percent: number) => void;
   dismissPlayer: () => void;
@@ -997,14 +1008,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     await attemptPlayback({ failureMessage: '仍然无法播放，请检查媒体文件或稍后再试。' });
   }, [attemptPlayback, audioSrc]);
 
-  const previousTrack = useCallback(() => {
+  const navigateToPreviousTrack = useCallback((restartElapsedTrack: boolean) => {
     if (tracks.length === 0) return;
     if (!hasPlaybackSession) {
       previewAdjacentTrack(-1);
       return;
     }
     const index = playbackIndexRef.current;
-    if (progressRef.current > 3) {
+    if (restartElapsedTrack && progressRef.current > 3) {
       restartCurrentPlayback();
       return;
     }
@@ -1035,6 +1046,17 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setIsBuffering(true);
     selectPlaybackIndex(result.nextIndex);
   }, [hasPlaybackSession, previewAdjacentTrack, restartCurrentPlayback, selectPlaybackIndex, shuffle, tracks.length]);
+
+  const previousTrack = useCallback(() => {
+    navigateToPreviousTrack(true);
+  }, [navigateToPreviousTrack]);
+
+  // Artwork swipes are an explicit navigation gesture. Unlike the transport
+  // button, a right swipe must always reveal the previous queue item instead
+  // of restarting the current track after its first three seconds.
+  const skipToPreviousTrack = useCallback(() => {
+    navigateToPreviousTrack(false);
+  }, [navigateToPreviousTrack]);
 
   const nextTrack = useCallback(() => {
     if (!hasPlaybackSession) {
@@ -1330,6 +1352,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     retryPlayback,
     nextTrack,
     previousTrack,
+    skipToPreviousTrack,
     seekToTime,
     seekToPercent,
     dismissPlayer,
@@ -1363,6 +1386,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     player,
     playerLoadError,
     previousTrack,
+    skipToPreviousTrack,
     seekToTime,
     seekToPercent,
     dismissPlayer,
@@ -1528,7 +1552,8 @@ function MusicArtwork({
           alt={track?.title ? `${presentation.title} 封面` : '音乐封面'}
           fill
           sizes={sizes}
-          className="object-cover"
+          draggable={false}
+          className="select-none object-cover"
           unoptimized
           priority={sizes.includes('100vw')}
         />
@@ -1713,6 +1738,7 @@ function PersistentMusicDock({
     retryPlayback,
     nextTrack,
     previousTrack,
+    skipToPreviousTrack,
     seekToTime,
     seekToPercent,
     dismissPlayer,
@@ -1801,6 +1827,10 @@ function PersistentMusicDock({
     setArtworkDirection(-1);
     previousTrack();
   }, [previousTrack]);
+  const goToPreviousTrackByGesture = useCallback(() => {
+    setArtworkDirection(-1);
+    skipToPreviousTrack();
+  }, [skipToPreviousTrack]);
   const handleTrackGesture = useCallback((info: PanInfo) => {
     registerCompactInteraction();
     const action = resolveMusicPlayerGesture({
@@ -1812,11 +1842,11 @@ function PersistentMusicDock({
       allowVertical: false,
     });
     if (action === 'next') goToNextTrack();
-    if (action === 'previous') goToPreviousTrack();
+    if (action === 'previous') goToPreviousTrackByGesture();
     window.setTimeout(() => {
       compactGestureRef.current = false;
     }, 0);
-  }, [goToNextTrack, goToPreviousTrack, registerCompactInteraction]);
+  }, [goToNextTrack, goToPreviousTrackByGesture, registerCompactInteraction]);
   const handleCompactCollapseGesture = useCallback((info: PanInfo) => {
     registerCompactInteraction();
     const action = resolveMusicPlayerGesture({
@@ -1889,11 +1919,11 @@ function PersistentMusicDock({
       allowVertical: false,
     });
     if (action === 'next') goToNextTrack();
-    if (action === 'previous') goToPreviousTrack();
+    if (action === 'previous') goToPreviousTrackByGesture();
     window.setTimeout(() => {
       compactGestureRef.current = false;
     }, 0);
-  }, [goToNextTrack, goToPreviousTrack]);
+  }, [goToNextTrack, goToPreviousTrackByGesture]);
   const focusDesktopPaneTab = useCallback((pane: 'lyrics' | 'queue') => {
     setDesktopPane(pane);
     window.requestAnimationFrame(() => {
@@ -1990,7 +2020,17 @@ function PersistentMusicDock({
   useEffect(() => {
     if (!compactOpen || expanded) return;
     const handlePointerDown = (event: PointerEvent) => {
-      if (compactPanelRef.current?.contains(event.target as Node)) return;
+      const panel = compactPanelRef.current;
+      const targetInsideSurface = event.target instanceof Element
+        && Boolean(event.target.closest('[data-music-compact-player]'));
+      const pathInsideSurface = Boolean(
+        panel
+        && (
+          event.composedPath().includes(panel)
+          || (event.target instanceof Node && panel.contains(event.target))
+        ),
+      );
+      if (!shouldCollapseMusicCompactFromPointer({ targetInsideSurface, pathInsideSurface })) return;
       collapseToOrb();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2089,7 +2129,7 @@ function PersistentMusicDock({
             key="music-orb"
             layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
             data-music-skin={skin}
-            className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[70] max-[360px]:left-3 min-[769px]:bottom-8 min-[769px]:left-8"
+            className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[70] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] min-[769px]:bottom-8 min-[769px]:left-8"
             initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.86, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 6 }}
@@ -2145,7 +2185,7 @@ function PersistentMusicDock({
             data-music-skin={skin}
             data-music-compact-player
             aria-label="迷你播放器"
-            className="music-compact-player fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] w-auto max-w-[22.5rem] overflow-hidden text-[var(--ink-primary)] max-[360px]:left-3 max-[360px]:right-3 min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto min-[769px]:w-[23rem] min-[769px]:max-w-none"
+            className="music-compact-player fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] w-auto max-w-[22.5rem] overflow-hidden text-[var(--ink-primary)] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))] min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto min-[769px]:w-[23rem] min-[769px]:max-w-none"
             style={{ y: compactDragY }}
             initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, x: -8 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -2177,7 +2217,7 @@ function PersistentMusicDock({
               onClick={(event) => {
                 if (!compactGestureRef.current) manuallyCollapseToOrb(event.detail === 0);
               }}
-              className="flex h-11 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+              className="flex h-11 w-full touch-none cursor-grab items-center justify-center active:cursor-grabbing"
               aria-label="下滑或点击收起为灵动音乐元"
             >
               <span className="h-1 w-9 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_20%,transparent)]" />
@@ -2314,7 +2354,7 @@ function PersistentMusicDock({
             className="music-mobile-player-sheet absolute bottom-0 left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {currentCover && (
-              <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+              <div className="music-mobile-player-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
                 <Image src={currentCover} alt="" fill sizes="100vw" className="scale-105 object-cover opacity-[0.14] blur-3xl saturate-125" unoptimized />
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-void)_34%,transparent),var(--bg-void)_84%)]" />
               </div>
@@ -2335,7 +2375,7 @@ function PersistentMusicDock({
               <span className="h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_24%,transparent)]" />
             </button>
 
-            <header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-2">
+            <header data-mobile-player-header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-2">
               <button
                 type="button"
                 onClick={mobilePane === 'player' ? closeExpandedPlayer : () => setMobilePane('player')}
@@ -2363,8 +2403,16 @@ function PersistentMusicDock({
               </button>
             </header>
 
+            <AnimatePresence initial={false} mode="popLayout">
             {mobilePane === 'player' ? (
-            <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col overflow-y-auto overscroll-contain px-5">
+            <motion.div
+              key="mobile-player-pane"
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+              className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col overflow-y-auto overscroll-contain px-5"
+            >
               <motion.div
                 data-now-playing-artwork
                 drag={prefersReducedMotion ? false : 'x'}
@@ -2379,7 +2427,9 @@ function PersistentMusicDock({
                 style={{ touchAction: 'pan-y pinch-zoom' }}
                 className={cn(
                   'flex justify-center',
-                  currentCover ? 'min-h-0 flex-1 items-center py-4' : 'items-start pb-6 pt-5',
+                  currentCover
+                    ? 'music-mobile-player-artwork-frame min-h-0 flex-1 items-center py-4'
+                    : 'items-start pb-6 pt-5',
                 )}
               >
                 <AnimatePresence initial={false} mode="popLayout">
@@ -2396,10 +2446,10 @@ function PersistentMusicDock({
                       size="hero"
                       className={cn(
                         currentCover
-                          ? 'w-[min(calc(100vw-3rem),40dvh,23rem)]'
-                          : 'w-[min(42vw,10rem)]',
+                          ? 'music-mobile-player-artwork w-[min(100cqw,100cqh,40dvh,23rem)]'
+                          : 'w-[min(42%,10rem)]',
                       )}
-                      sizes="(max-width: 768px) calc(100vw - 3rem), 23rem"
+                      sizes="(max-width: 768px) calc(100vw - 4rem), 23rem"
                       showFallbackLabel={!currentCover}
                     />
                   </motion.div>
@@ -2409,7 +2459,7 @@ function PersistentMusicDock({
               <div data-now-playing-track-info className="min-w-0 text-left">
                 <h2 className="truncate text-[1.35rem] font-bold leading-tight tracking-[-0.025em] text-[var(--ink-primary)]" title={currentPresentation.title}>{currentPresentation.title}</h2>
                 {artistLabel && <p className="mt-1 truncate text-[15px] font-medium text-[var(--ink-secondary)]" title={artistLabel}>{artistLabel}</p>}
-                {activeLine && <p className="mt-2 line-clamp-1 text-xs text-[var(--ink-muted)]">{activeLine}</p>}
+                {activeLine && <p data-now-playing-active-line className="mt-2 line-clamp-1 text-xs text-[var(--ink-muted)]">{activeLine}</p>}
               </div>
 
               {playbackError && (
@@ -2475,9 +2525,17 @@ function PersistentMusicDock({
                   <span className="sr-only">进入音乐大厅</span>
                 </Link>
               </div>
-            </div>
+            </motion.div>
             ) : mobilePane === 'lyrics' ? (
-              <div data-mobile-lyrics-pane className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col px-6 pt-4">
+              <motion.div
+                key="mobile-lyrics-pane"
+                data-mobile-lyrics-pane
+                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col px-6 pt-4"
+              >
                 <h2 ref={mobilePaneHeadingRef} tabIndex={-1} className="sr-only">歌词</h2>
                 <div className="flex items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-4">
                   <MusicArtwork track={currentTrack} className="h-14 w-14" sizes="56px" />
@@ -2495,7 +2553,7 @@ function PersistentMusicDock({
                   ref={mobileLyricsBoxRef}
                   onPointerDown={() => setLyricsFollowing(false)}
                   onWheel={() => setLyricsFollowing(false)}
-                  className="min-h-0 flex-1 space-y-3 overflow-y-auto py-6 pr-1"
+                  className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain py-6 pr-1"
                 >
                   {lyrics.length === 0 ? (
                     <div className="flex min-h-[16rem] flex-col items-center justify-center text-center text-[var(--ink-muted)]">
@@ -2515,18 +2573,26 @@ function PersistentMusicDock({
                   )}
                 </div>
                 {mobilePaneTransport}
-              </div>
+              </motion.div>
             ) : (
-              <div data-mobile-queue-pane className="relative z-10 mx-auto flex min-h-0 w-full max-w-[30rem] flex-1 flex-col px-5 pt-4">
+              <motion.div
+                key="mobile-queue-pane"
+                data-mobile-queue-pane
+                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+                className="relative z-10 mx-auto flex min-h-0 w-full max-w-[30rem] flex-1 flex-col px-5 pt-4"
+              >
                 <h2 ref={mobilePaneHeadingRef} tabIndex={-1} className="sr-only">播放队列</h2>
                 <div className="flex items-end justify-between gap-3 pb-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold text-[var(--ink-muted)]">接下来播放</p>
-                    <h2 className="mt-1 text-xl font-black text-[var(--ink-primary)]">{playlistName}</h2>
+                    <h2 className="mt-1 truncate text-xl font-black text-[var(--ink-primary)]" title={playlistName}>{playlistName}</h2>
                   </div>
-                  <span className="text-xs tnum text-[var(--ink-muted)]">{tracks.length} 首</span>
+                  <span className="shrink-0 text-xs tnum text-[var(--ink-muted)]">{tracks.length} 首</span>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto border-t border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)]">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-[color-mix(in_oklch,var(--ink-primary)_9%,transparent)]">
                   <MemoizedMusicQueueRows
                     tracks={tracks}
                     currentIndex={currentIndex}
@@ -2542,8 +2608,9 @@ function PersistentMusicDock({
                   />
                 </div>
                 {mobilePaneTransport}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </motion.section>
         </motion.div>
       )}
@@ -2568,16 +2635,16 @@ function PersistentMusicDock({
         >
           <div className="music-desktop-player-layout mx-auto grid min-h-[calc(100dvh-2rem)] w-full max-w-6xl grid-cols-1 gap-4 min-[769px]:h-[calc(100dvh-2rem)] min-[769px]:max-h-[48rem] min-[769px]:min-h-0 min-[769px]:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)]">
             <section className="music-desktop-player-main surface-luminous grid min-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-visible rounded-[var(--music-radius-panel)] p-5 min-[769px]:min-h-0 min-[769px]:overflow-hidden min-[769px]:p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
+              <div className="music-desktop-player-header flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <p data-eyebrow className="text-xs font-bold tracking-[0.08em] text-[var(--aurora-1)]">正在播放</p>
-                  <h2 className="mt-1 text-xl font-black tracking-normal sm:text-2xl">{playlistName}</h2>
+                  <h2 className="mt-1 text-xl font-black tracking-normal sm:text-2xl" title={playlistName}>{playlistName}</h2>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <Link
                     href="/music"
                     onClick={closeExpandedPlayer}
-                    className="music-control-button music-pill-button inline-flex h-11 w-11 items-center justify-center gap-2 bg-[var(--music-control-fill)] text-sm font-semibold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] sm:w-auto sm:px-4"
+                    className="music-control-button music-pill-button inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap bg-[var(--music-control-fill)] text-sm font-semibold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] sm:w-auto sm:px-4"
                     aria-label="前往歌单页"
                   >
                     <ListMusic className="h-4 w-4" />
@@ -2613,7 +2680,7 @@ function PersistentMusicDock({
                 />
               </div>
 
-              <div className={cn('space-y-2.5', !currentCover && 'mt-1')}>
+              <div className={cn('music-desktop-player-info space-y-2.5', !currentCover && 'mt-1')}>
                 <div>
                   <p className="text-sm font-bold text-[var(--ink-muted)]">{playlistName}</p>
                   <h3 className="mt-1 text-3xl font-black tracking-normal sm:text-h1">{currentPresentation.title}</h3>
@@ -2667,7 +2734,7 @@ function PersistentMusicDock({
               </div>
             </section>
 
-            <aside className="surface-leaf flex min-h-0 flex-col overflow-hidden rounded-[var(--music-radius-panel)] p-5">
+            <aside className="music-desktop-player-detail surface-leaf flex min-h-0 flex-col overflow-hidden rounded-[var(--music-radius-panel)] p-5">
               <div className="flex items-center justify-between gap-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-4">
                 <div>
                   <p data-eyebrow className="text-xs font-bold tracking-[0.08em] text-[var(--aurora-1)]">播放详情</p>

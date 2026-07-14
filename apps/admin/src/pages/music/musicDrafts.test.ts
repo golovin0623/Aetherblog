@@ -236,7 +236,7 @@ describe('playlist selection safety', () => {
     expect(musicPageSource).toContain('shouldApplyTrackSaveResult({');
     expect(musicPageSource).toContain('isPlaylistWriteBusy');
     expect(musicPageSource).toContain('deleteWriteLockRef.current');
-    expect(musicPageSource).toContain('pending={deletePlaylistMutation.isPending || deleteTrackMutation.isPending}');
+    expect(musicPageSource).toContain('pending: deletePlaylistMutation.isPending || deleteTrackMutation.isPending');
   });
 });
 

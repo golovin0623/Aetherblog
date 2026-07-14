@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { AlertTriangle, Copy, Info, Loader2, Trash2, X } from 'lucide-react';
+import { SELECT_OVERLAY_CLOSE_EVENT } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
+import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -65,27 +67,32 @@ export function ConfirmDialog({
   const onCancelRef = useRef(onCancel);
   const pendingRef = useRef(pending);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onCancelRef.current = onCancel;
   }, [onCancel]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     pendingRef.current = pending;
   }, [pending]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    window.dispatchEvent(new Event(SELECT_OVERLAY_CLOSE_EVENT));
+    return acquireOverlayScrollLock();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const focusFrame = window.requestAnimationFrame(() => cancelButtonRef.current?.focus());
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (pendingRef.current) return;
         event.preventDefault();
+        event.stopImmediatePropagation();
+        if (pendingRef.current) return;
         onCancelRef.current();
         return;
       }
@@ -109,11 +116,10 @@ export function ConfirmDialog({
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
       window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown, true);
       previouslyFocusedRef.current?.focus({ preventScroll: true });
     };
   }, [isOpen]);
@@ -125,7 +131,7 @@ export function ConfirmDialog({
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
           <motion.div
             aria-hidden="true"
             initial={{ opacity: 0 }}
