@@ -411,6 +411,7 @@ class NoteIndexerService:
                         WHERE c.source_uri = 'notes://' || ($1::bigint)::text
                           AND c.type = 'markdown'
                           AND c.deleted = FALSE
+                          AND c.status = 'ready'
                           AND ($3::bigint IS NULL OR c.owner_id = $3)
                         LIMIT 1
                     ) AS carrier_id

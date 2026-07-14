@@ -412,6 +412,7 @@ async def test_note_readiness_requires_current_fingerprint_active_profile_and_re
             }
         if "COUNT(*)" in sql and "note_embeddings" in sql:
             assert args == (11, 42, 9)
+            assert "c.status = 'ready'" in sql
             return {"chunk_count": 2, "carrier_id": 77}
         raise AssertionError(f"unexpected fetchrow SQL: {sql}")
 

@@ -191,6 +191,7 @@ async def selected_atlas_sources_snapshot(
                 FROM atlas_carriers
                 WHERE id = ANY($1::bigint[])
                   AND deleted = FALSE
+                  AND status = 'ready'
                   AND owner_id = $2
                 ORDER BY array_position($1::bigint[], id)
                 """,
@@ -728,6 +729,7 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int 
             JOIN atlas_carriers c ON c.id = a.carrier_id
             WHERE a.deleted = FALSE
               AND c.deleted = FALSE
+              AND c.status = 'ready'
               AND a.carrier_id = ANY($1::bigint[])
               AND ($2::bigint IS NULL OR a.author_id = $2)
               AND ($2::bigint IS NULL OR c.owner_id = $2)
@@ -748,6 +750,7 @@ async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: in
             WHERE c.id = ANY($1::bigint[])
               AND c.type = 'markdown'
               AND c.deleted = FALSE
+              AND c.status = 'ready'
               AND ($2::bigint IS NULL OR c.owner_id = $2)
               AND c.source_uri ~ '^notes://[0-9]+$'
             LIMIT 12

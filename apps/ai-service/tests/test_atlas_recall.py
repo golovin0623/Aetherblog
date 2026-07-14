@@ -101,7 +101,7 @@ async def test_selected_atlas_sources_available_requires_every_live_owned_source
             assert args == ([3, 4], 9)
             assert "deleted = FALSE" in sql
             assert "owner_id = $2" in sql
-            assert "status" not in sql
+            assert "status = 'ready'" in sql
             return [{"id": value} for value in resolved_carriers]
         raise AssertionError(f"unexpected selected Atlas source SQL: {sql}")
 
@@ -313,9 +313,11 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
 
     def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
         if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            assert "c.status = 'ready'" in sql
             return [{"kp_id": 7}]
         if "notes://" in sql and "FROM atlas_carriers c" in sql:
             assert args == ([3], 9)
+            assert "c.status = 'ready'" in sql
             return []
         if "embedding::halfvec(3072)" in sql:
             assert args[0] == semantic_embedding
