@@ -22,7 +22,6 @@ interface ProfileMusicPlayerProps {
   className?: string;
   variant?: 'card' | 'stack';
   emptyState?: ReactNode;
-  stackSwitchAction?: ReactNode;
   timelineActive?: boolean;
 }
 
@@ -145,7 +144,6 @@ export function ProfileMusicPlayer({
   className,
   variant = 'card',
   emptyState,
-  stackSwitchAction,
   timelineActive = true,
 }: ProfileMusicPlayerProps) {
   const {
@@ -174,7 +172,7 @@ export function ProfileMusicPlayer({
 
   const isStack = variant === 'stack';
   const shellClass = isStack
-    ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-3 overflow-hidden rounded-[var(--profile-card-stack-panel-radius)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-4 text-left shadow-[var(--music-shadow-float)]'
+    ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-4 overflow-hidden rounded-[var(--profile-card-stack-panel-radius)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-5 text-left shadow-[var(--music-shadow-float)]'
     : cn(
         'surface-leaf group/music-entry relative w-full overflow-hidden rounded-[var(--music-radius-panel)] text-left',
         surface === 'home' ? 'mb-8 p-4 md:p-5' : 'mb-3 p-3'
@@ -188,9 +186,6 @@ export function ProfileMusicPlayer({
         aria-live="polite"
         className={cn(shellClass, 'flex flex-col items-center justify-center text-center', className)}
       >
-        {isStack && stackSwitchAction && (
-          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
-        )}
         <RefreshCw className="h-6 w-6 animate-spin text-[var(--aurora-1)]" />
         <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">正在载入音乐</p>
         <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">歌单准备好后会在这里出现。</p>
@@ -205,9 +200,6 @@ export function ProfileMusicPlayer({
         role="alert"
         className={cn(shellClass, 'flex flex-col items-center justify-center text-center', className)}
       >
-        {isStack && stackSwitchAction && (
-          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
-        )}
         <AlertCircle className="h-6 w-6 text-[var(--signal-danger)]" />
         <p className="mt-3 text-sm font-bold text-[var(--ink-primary)]">音乐暂时没有载入</p>
         <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">检查网络后再试一次。</p>
@@ -227,9 +219,6 @@ export function ProfileMusicPlayer({
     if (!emptyState) return null;
     return (
       <div data-music-skin={skin} className={cn(shellClass, className)}>
-        {isStack && stackSwitchAction && (
-          <div className="absolute right-2 top-2 z-[2]">{stackSwitchAction}</div>
-        )}
         {emptyState}
       </div>
     );
@@ -280,38 +269,35 @@ export function ProfileMusicPlayer({
     return (
       <div data-music-skin={skin} className={cn(shellClass, className)}>
         <div className="absolute inset-x-6 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--aurora-1),transparent)] opacity-70" />
-        <div className="profile-music-stack-header grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-2.5">
-          <ProfileMusicArtwork cover={cover} title={presentation.title} size="compact" />
+        <div className="profile-music-stack-header grid grid-cols-[64px_minmax(0,1fr)_44px] items-center gap-3">
+          <ProfileMusicArtwork cover={cover} title={presentation.title} size="featured" />
 
           <div className="min-w-0">
             <Link
               href="/music"
-              className="relative flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--aurora-1)] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] focus-visible:rounded-[var(--music-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+              className="relative flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.13em] text-[var(--aurora-1)] after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] focus-visible:rounded-[var(--music-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
               aria-label="浏览歌单"
             >
               <ListMusic className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{playlistName}</span>
             </Link>
-            <p className="profile-music-stack-title mt-1 text-base font-black leading-tight tracking-normal text-[var(--ink-primary)]" title={presentation.title}>
+            <p className="profile-music-stack-title mt-1.5 text-[17px] font-bold leading-[1.28] tracking-[-0.01em] text-[var(--ink-primary)]" title={presentation.title}>
               {presentation.title}
             </p>
-            <p className="mt-1 truncate text-xs text-[var(--ink-muted)]" title={artistName || displayTrack.album || displayTrack.media?.originalName || presentation.title}>
+            <p className="mt-1 truncate text-[11px] leading-4 text-[var(--ink-muted)]" title={artistName || displayTrack.album || displayTrack.media?.originalName || presentation.title}>
               {trackMeta}
             </p>
           </div>
 
-          <div className="profile-music-stack-actions flex items-center gap-1">
-            {stackSwitchAction}
-            <button
-              type="button"
-              onClick={openPlayer}
-              className="music-control-button music-icon-button music-icon-button--tinted profile-music-expand-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-              aria-label="打开音乐播放器"
-              title="打开音乐播放器"
-            >
-              <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.9} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={openPlayer}
+            className="music-control-button music-icon-button profile-music-expand-button inline-flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-[var(--music-radius-control)] text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+            aria-label="打开音乐播放器"
+            title="打开音乐播放器"
+          >
+            <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
+          </button>
         </div>
 
         {!playbackError && (
@@ -326,19 +312,19 @@ export function ProfileMusicPlayer({
 
         <PlaybackFailure message={playbackError} onRetry={retryPlayback} compact />
 
-        <div className="profile-music-stack-footer flex items-center justify-center pt-1">
-          <div className="profile-music-stack-transport grid min-w-0 grid-cols-[44px_52px_44px] items-center gap-2.5">
+        <div className="profile-music-stack-footer flex items-center justify-center pt-2">
+          <div className="profile-music-stack-transport grid min-w-0 grid-cols-[44px_56px_44px] items-center gap-3">
             <button type="button" onClick={previousTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
               <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
             </button>
             <button
               type="button"
               onClick={handleMainAction}
-              className="music-control-button music-primary-play-button flex h-12 w-12 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+              className="music-control-button music-primary-play-button flex h-14 w-14 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
               aria-label={stackFailed ? '重新尝试播放' : stackBuffering ? '取消载入' : stackPlaying ? '暂停音乐' : '播放音乐'}
               data-playing={stackPlaying ? 'true' : 'false'}
             >
-              {stackBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.9} /> : stackPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
+              {stackBuffering ? <RefreshCw className="h-6 w-6 animate-spin" strokeWidth={1.9} /> : stackPlaying ? <Pause className="h-6 w-6 fill-current" strokeWidth={1.5} /> : <Play className="h-6 w-6 translate-x-px fill-current" strokeWidth={1.5} />}
             </button>
             <button type="button" onClick={nextTrack} className="music-control-button music-icon-button flex h-11 w-11 items-center justify-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
               <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />

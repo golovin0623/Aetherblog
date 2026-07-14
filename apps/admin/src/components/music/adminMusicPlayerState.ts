@@ -2,6 +2,8 @@ import type { MusicTrack } from '@aetherblog/types';
 
 export const ADMIN_PLAYER_AUTO_COLLAPSE_MS = 8_000;
 export const ADMIN_PLAYER_PAUSED_AUTO_COLLAPSE_MS = 14_000;
+export const ADMIN_PLAYER_COMPACT_AUTO_MINIMIZE_MS = 10_000;
+export const ADMIN_PLAYER_PAUSED_AUTO_MINIMIZE_MS = 16_000;
 
 export const ADMIN_PLAYER_GESTURE_DISTANCE_PX = 72;
 export const ADMIN_PLAYER_GESTURE_VELOCITY_PX_PER_SECOND = 650;
@@ -55,6 +57,19 @@ export type AdminPlayerGestureAction =
   | 'previous'
   | 'collapse'
   | 'expand';
+
+export type AdminPlayerDensity = 'minimized' | 'compact' | 'expanded';
+export type AdminPlayerDensityAction = 'restore' | 'toggle-detail' | 'minimize';
+
+export function resolveAdminPlayerDensityTransition(
+  density: AdminPlayerDensity,
+  action: AdminPlayerDensityAction,
+): AdminPlayerDensity {
+  if (action === 'minimize') return 'minimized';
+  if (action === 'restore') return density === 'minimized' ? 'compact' : density;
+  if (density === 'expanded') return 'compact';
+  return 'expanded';
+}
 
 type AdminPlayerGestureInput = {
   expanded: boolean;
@@ -142,6 +157,70 @@ export function resolveAdminPlayerAutoCollapseDelay({
   return isPlaying
     ? ADMIN_PLAYER_AUTO_COLLAPSE_MS
     : ADMIN_PLAYER_PAUSED_AUTO_COLLAPSE_MS;
+}
+
+export function resolveAdminPlayerAutoMinimizeDelay({
+  density,
+  isPlaying,
+  pointerInside,
+  focusWithin,
+  isDragging = false,
+  hasPlaybackError = false,
+}: {
+  density: AdminPlayerDensity;
+  isPlaying: boolean;
+  pointerInside: boolean;
+  focusWithin: boolean;
+  isDragging?: boolean;
+  hasPlaybackError?: boolean;
+}): number | null {
+  if (
+    density !== 'compact'
+    || pointerInside
+    || focusWithin
+    || isDragging
+    || hasPlaybackError
+  ) {
+    return null;
+  }
+
+  return isPlaying
+    ? ADMIN_PLAYER_COMPACT_AUTO_MINIMIZE_MS
+    : ADMIN_PLAYER_PAUSED_AUTO_MINIMIZE_MS;
+}
+
+export function resolveAdminPlayerViewportCorrection({
+  left,
+  top,
+  width,
+  height,
+  viewportWidth,
+  viewportHeight,
+  edgeMargin,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  edgeMargin: number;
+}): { x: number; y: number } {
+  const safeLeft = edgeMargin;
+  const safeTop = edgeMargin;
+  const safeRight = viewportWidth - edgeMargin;
+  const safeBottom = viewportHeight - edgeMargin;
+  const right = left + width;
+  const bottom = top + height;
+
+  let x = 0;
+  let y = 0;
+  if (left < safeLeft) x = safeLeft - left;
+  else if (right > safeRight) x = safeRight - right;
+  if (top < safeTop) y = safeTop - top;
+  else if (bottom > safeBottom) y = safeBottom - bottom;
+
+  return { x, y };
 }
 
 export function resolveAdminAudioUrl(track: MusicTrack | undefined): string {

@@ -228,15 +228,10 @@
 }
 
 .profile-music-stack-header,
-.profile-music-stack-actions,
 .profile-music-stack-progress,
 .profile-music-stack-footer,
 .profile-music-stack-transport {
   min-width: 0;
-}
-
-.profile-music-stack-shell {
-  container-type: inline-size;
 }
 
 .profile-music-stack-title {
@@ -247,10 +242,6 @@
   overflow-wrap: anywhere;
 }
 
-.profile-music-stack-actions .music-control-button {
-  flex: 0 0 auto;
-}
-
 .profile-music-stack-transport .music-control-button {
   justify-self: center;
 }
@@ -258,18 +249,7 @@
 .profile-music-expand-button {
   flex: 0 0 2.75rem;
   box-shadow: none;
-}
-
-@container (max-width: 17.5rem) {
-  .profile-music-stack-header {
-    grid-template-columns: 52px minmax(0, 1fr);
-  }
-
-  .profile-music-stack-actions {
-    grid-column: 1 / -1;
-    justify-self: end;
-    gap: 0.25rem;
-  }
+  opacity: 0.78;
 }
 
 .music-wave-mark {
@@ -483,14 +463,11 @@
 
 .profile-card-stack-frame {
   --profile-card-stack-radius: var(--radius-xl, 1.5rem);
-  --profile-card-stack-slide-gutter: clamp(0.22rem, 1.1vw, 0.45rem);
-  /* 外框内缩 1rem 后 stage 落到 0.5rem；panel 还会再内缩 slide gutter，
-     所以继续扣除该间距，保证三层弧线是真正同心而不是内层更鼓。 */
-  --profile-card-stack-stage-radius: var(--radius-sm, 0.5rem);
-  --profile-card-stack-panel-radius: max(
-    0px,
-    calc(var(--profile-card-stack-stage-radius) - var(--profile-card-stack-slide-gutter))
-  );
+  --profile-card-stack-slide-gutter: clamp(0.25rem, 1vw, 0.375rem);
+  /* 24 / 20 / 16px 三档连续曲率。视觉上保持 Apple 式柔和嵌套，
+     避免严格扣除内缩距离后把内层圆角压成近似直角。 */
+  --profile-card-stack-stage-radius: calc(var(--profile-card-stack-radius) - 0.25rem);
+  --profile-card-stack-panel-radius: var(--radius-lg, 1rem);
   border-radius: var(--profile-card-stack-radius) !important;
   isolation: isolate;
 }
@@ -511,9 +488,6 @@
     color-mix(in oklch, var(--bg-tertiary) 16%, white 84%)
   );
   --profile-stack-stage-border: color-mix(in oklch, var(--text-primary) 7%, transparent);
-  --profile-stack-control-bg: color-mix(in oklch, var(--text-primary) 5.5%, transparent);
-  --profile-stack-control-hover: color-mix(in oklch, var(--text-primary) 9.5%, transparent);
-  --profile-stack-focus-offset: var(--bg-secondary);
   --profile-stack-panel-bg: linear-gradient(
     180deg,
     color-mix(in oklch, white 94%, var(--bg-secondary) 6%),
@@ -533,13 +507,10 @@
   --profile-stack-label: color-mix(in oklch, var(--text-secondary) 78%, var(--aurora-1) 22%);
   --profile-stack-label-bg: rgba(255, 255, 255, 0.045);
   --profile-stack-dot: rgba(255, 255, 255, 0.22);
-  --profile-stack-dot-active: color-mix(in oklch, var(--aurora-1) 88%, white 12%);
+  --profile-stack-dot-active: rgba(255, 255, 255, 0.92);
   --profile-stack-shell-bg: linear-gradient(180deg, rgba(24, 25, 36, 0.72), rgba(12, 13, 20, 0.72));
   --profile-stack-stage-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.024));
   --profile-stack-stage-border: rgba(255, 255, 255, 0.06);
-  --profile-stack-control-bg: rgba(255, 255, 255, 0.075);
-  --profile-stack-control-hover: rgba(255, 255, 255, 0.12);
-  --profile-stack-focus-offset: var(--bg-void);
   --profile-stack-panel-bg: linear-gradient(180deg, rgba(30, 32, 46, 0.92), rgba(14, 15, 24, 0.94));
   --profile-stack-panel-border: rgba(255, 255, 255, 0.13);
   --profile-stack-panel-shadow:
@@ -566,30 +537,48 @@
     0 18px 38px -22px rgba(0, 0, 0, 0.82);
 }
 
-.profile-stack-dots {
-  position: absolute;
-  right: 1.45rem;
-  top: 1.25rem;
+.profile-stack-page-control {
   z-index: 4;
-  display: inline-flex;
+  display: flex;
+  flex: 0 0 2.25rem;
   align-items: center;
-  gap: 0.42rem;
-  pointer-events: none;
+  justify-content: center;
+  margin: 0.1rem auto -0.55rem;
+}
+
+.profile-stack-page-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.profile-stack-page-button:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--profile-stack-dot-active) 72%, transparent);
+  outline-offset: -0.42rem;
 }
 
 .profile-stack-dot {
   display: block;
-  height: 0.42rem;
-  width: 0.42rem;
+  height: 0.38rem;
+  width: 0.38rem;
   border-radius: 999px;
   background: var(--profile-stack-dot);
+  pointer-events: none;
   transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1), background 220ms ease, box-shadow 220ms ease;
 }
 
 .profile-stack-dot[data-active="true"] {
-  width: 1.22rem;
+  width: 1.15rem;
   background: var(--profile-stack-dot-active);
-  box-shadow: 0 0 18px color-mix(in oklch, var(--profile-stack-dot-active) 54%, transparent);
+  box-shadow: 0 0 14px color-mix(in oklch, var(--profile-stack-dot-active) 40%, transparent);
 }
 
 .profile-card-stack-stage {
