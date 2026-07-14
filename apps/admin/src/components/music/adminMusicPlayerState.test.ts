@@ -4,8 +4,10 @@ import path from 'node:path';
 import type { MusicTrack } from '@aetherblog/types';
 import {
   ADMIN_PLAYER_AUTO_COLLAPSE_MS,
+  ADMIN_PLAYER_COMPACT_AUTO_MINIMIZE_MS,
   ADMIN_PLAYER_GESTURE_DISTANCE_PX,
   ADMIN_PLAYER_GESTURE_VELOCITY_PX_PER_SECOND,
+  ADMIN_PLAYER_PAUSED_AUTO_MINIMIZE_MS,
   ADMIN_PLAYER_PAUSED_AUTO_COLLAPSE_MS,
   isAdminPlaybackRequestCurrent,
   parseAdminMusicLyric,
@@ -13,6 +15,9 @@ import {
   resolveAdminAudioUrl,
   resolveAdminPlayerGesture,
   resolveAdminPlayerAutoCollapseDelay,
+  resolveAdminPlayerAutoMinimizeDelay,
+  resolveAdminPlayerDensityTransition,
+  resolveAdminPlayerViewportCorrection,
   resolveAdminMediaErrorMessage,
   shouldCommitAdminAudioEvent,
 } from './adminMusicPlayerState';
@@ -176,7 +181,7 @@ describe('admin music player state', () => {
     expect(providerSource).toContain('[activeLyric, lyrics, resolvedDuration, seekToPercent]');
   });
 
-  it('collapses on a downward gesture and reserves session termination for an explicit close action', () => {
+  it('classifies a downward gesture without coupling free-position dragging to player density', () => {
     expect(resolveAdminPlayerGesture({
       expanded: true,
       deltaX: 0,
@@ -184,8 +189,9 @@ describe('admin music player state', () => {
       velocityX: 0,
       velocityY: 0,
     })).toBe('collapse');
-    expect(providerSource).toContain("if (action === 'collapse') setExpanded(false)");
-    expect(providerSource).toContain('下滑收起后台播放器');
+    expect(providerSource).toContain("resolveAdminPlayerDensityTransition(playerDensity, 'toggle-detail')");
+    expect(providerSource).not.toContain("if (action === 'collapse') setPlayerDensity");
+    expect(providerSource).toContain('dragConstraints={dockBoundsRef}');
     expect(providerSource).toContain('aria-label="关闭后台播放器"');
   });
 
@@ -228,9 +234,78 @@ describe('admin music player state', () => {
     }
 
     expect(providerSource).toContain('resolveAdminPlayerAutoCollapseDelay({');
-    expect(providerSource).toContain('window.setTimeout(() => setExpanded(false), autoCollapseDelay)');
+    expect(providerSource).toContain("window.setTimeout(() => setPlayerDensity('compact'), autoCollapseDelay)");
     expect(providerSource).toContain('[audioUrl, autoCollapseDelay, currentIndex, interactionVersion]');
     expect(providerSource).toMatch(/const playTracks = useCallback\([\s\S]*?setInteractionVersion\(\(version\) => version \+ 1\);/);
+  });
+
+  it('auto-minimizes an idle compact player without hiding recovery or active interaction', () => {
+    expect(ADMIN_PLAYER_COMPACT_AUTO_MINIMIZE_MS).toBe(10_000);
+    expect(ADMIN_PLAYER_PAUSED_AUTO_MINIMIZE_MS).toBe(16_000);
+    expect(resolveAdminPlayerAutoMinimizeDelay({
+      density: 'compact',
+      isPlaying: true,
+      pointerInside: false,
+      focusWithin: false,
+    })).toBe(10_000);
+    expect(resolveAdminPlayerAutoMinimizeDelay({
+      density: 'compact',
+      isPlaying: false,
+      pointerInside: false,
+      focusWithin: false,
+    })).toBe(16_000);
+
+    for (const state of [
+      { density: 'minimized' as const, isPlaying: true, pointerInside: false, focusWithin: false },
+      { density: 'expanded' as const, isPlaying: true, pointerInside: false, focusWithin: false },
+      { density: 'compact' as const, isPlaying: true, pointerInside: true, focusWithin: false },
+      { density: 'compact' as const, isPlaying: true, pointerInside: false, focusWithin: true },
+      { density: 'compact' as const, isPlaying: true, pointerInside: false, focusWithin: false, isDragging: true },
+      { density: 'compact' as const, isPlaying: true, pointerInside: false, focusWithin: false, hasPlaybackError: true },
+    ]) {
+      expect(resolveAdminPlayerAutoMinimizeDelay(state)).toBeNull();
+    }
+
+    expect(providerSource).toContain('resolveAdminPlayerAutoMinimizeDelay({');
+    expect(providerSource).toContain("setPlayerDensity('minimized')");
+  });
+
+  it('keeps density transitions explicit and predictable', () => {
+    expect(resolveAdminPlayerDensityTransition('minimized', 'restore')).toBe('compact');
+    expect(resolveAdminPlayerDensityTransition('compact', 'toggle-detail')).toBe('expanded');
+    expect(resolveAdminPlayerDensityTransition('expanded', 'toggle-detail')).toBe('compact');
+    expect(resolveAdminPlayerDensityTransition('expanded', 'minimize')).toBe('minimized');
+    expect(resolveAdminPlayerDensityTransition('compact', 'minimize')).toBe('minimized');
+  });
+
+  it('returns the smallest correction that keeps a draggable player inside the viewport margin', () => {
+    expect(resolveAdminPlayerViewportCorrection({
+      left: 4,
+      top: 8,
+      width: 200,
+      height: 120,
+      viewportWidth: 1024,
+      viewportHeight: 768,
+      edgeMargin: 16,
+    })).toEqual({ x: 12, y: 8 });
+    expect(resolveAdminPlayerViewportCorrection({
+      left: 900,
+      top: 690,
+      width: 200,
+      height: 100,
+      viewportWidth: 1024,
+      viewportHeight: 768,
+      edgeMargin: 16,
+    })).toEqual({ x: -92, y: -38 });
+    expect(resolveAdminPlayerViewportCorrection({
+      left: 200,
+      top: 120,
+      width: 320,
+      height: 220,
+      viewportWidth: 1024,
+      viewportHeight: 768,
+      edgeMargin: 16,
+    })).toEqual({ x: 0, y: 0 });
   });
 
   it('maps committed horizontal swipes to one adjacent-track action', () => {
@@ -323,20 +398,35 @@ describe('admin music player state', () => {
     })).toBe('none');
   });
 
-  it('uses mutually exclusive player densities with one symmetric expanded transport', () => {
+  it('uses minimized, compact, and expanded densities with one symmetric expanded transport', () => {
+    expect(providerSource).toContain('data-admin-player-minimized');
     expect(providerSource).toContain('data-admin-player-compact-layout');
     expect(providerSource).toContain('data-admin-player-expanded-layout');
+    expect(providerSource).toContain('data-admin-player-density-toggle');
     expect(providerSource).toContain('data-admin-player-transport');
     expect(providerSource).toContain('grid-cols-[44px_56px_44px]');
     expect(providerSource).toContain('gap-3');
     expect(providerSource).toContain('grid w-fit grid-cols-[44px_56px_44px]');
+    expect(providerSource).toContain('<Maximize2');
+    expect(providerSource).toContain('<Minimize2');
+    expect(providerSource).not.toContain('data-admin-player-drag-handle');
+    expect(providerSource).not.toContain('-top-8');
     expect(providerSource).not.toContain('紧凑常驻行');
   });
 
-  it('keeps mobile content away from the screen edge and animates without auto-height layout churn', () => {
-    expect(providerSource).toContain('pl-[max(1rem,env(safe-area-inset-left))]');
-    expect(providerSource).toContain('pr-[max(1rem,env(safe-area-inset-right))]');
+  it('keeps every density inside a safe draggable viewport and grows the card from its bottom edge', () => {
+    expect(providerSource).toContain('data-admin-player-bounds');
+    expect(providerSource).toContain('dragConstraints={dockBoundsRef}');
+    expect(providerSource).toContain('style={{ x: dockX, y: dockY');
+    expect(providerSource).toContain("transformOrigin: '50% 100%'");
+    expect(providerSource).toContain('resolveAdminPlayerViewportCorrection({');
+    expect(providerSource).toContain('ResizeObserver');
+    expect(providerSource).toContain('ADMIN_PLAYER_DOCK_POSITION_KEY');
+    expect(providerSource).toContain('data-admin-player-drag-zone');
+    expect(providerSource).toContain('dragControls.start(event);');
+    expect(providerSource).not.toContain('dragSnapToOrigin');
     expect(providerSource).toContain('max-w-[520px]');
+    expect(providerSource).toContain('layout="position"');
     expect(providerSource).toContain('layout="size"');
     expect(providerSource).toContain('mode="popLayout"');
     expect(providerSource).toContain('scaleX(${percent / 100})');
@@ -349,18 +439,32 @@ describe('admin music player state', () => {
     expect(providerSource).not.toContain('mode="wait"');
     expect(providerSource).not.toContain('whileDrag={prefersReducedMotion ? undefined : { scale:');
     expect(providerSource).toContain('dockDraggedRef.current = true');
-    expect(providerSource).toContain('if (dockDraggedRef.current) return');
+    expect(providerSource).not.toContain('initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}');
+  });
+
+  it('uses a compact desktop mini card and the same 52px ambient icon scale as the public player on mobile', () => {
+    expect(providerSource).toContain('data-admin-player-desktop-mini-card');
+    expect(providerSource).toContain('data-admin-player-mobile-orb');
+    expect(providerSource).toContain('h-[52px] w-[52px]');
+    expect(providerSource).toContain('min-[769px]:h-16');
+    expect(providerSource).toContain('min-[769px]:w-[11.5rem]');
+    expect(providerSource).toContain('data-admin-player-compact-progress');
+    expect(providerSource).not.toContain('className="col-span-full -mt-1"');
   });
 
   it('returns keyboard focus when the persistent player changes density or closes', () => {
-    expect(providerSource).toContain('const dockHandleRef = useRef<HTMLButtonElement>(null)');
+    expect(providerSource).toContain('const densityToggleRef = useRef<HTMLButtonElement>(null)');
+    expect(providerSource).toContain('const minimizedTriggerRef = useRef<HTMLButtonElement>(null)');
     expect(providerSource).toContain('const playerReturnFocusRef = useRef<HTMLElement | null>(null)');
-    expect(providerSource).toContain('ref={dockHandleRef}');
-    expect(providerSource).toContain('focusDockHandle();');
+    expect(providerSource).toContain('ref={densityToggleRef}');
+    expect(providerSource).toContain('ref={minimizedTriggerRef}');
+    expect(providerSource).toContain('focusDensityToggle();');
+    expect(providerSource).toContain('focusMinimizedTrigger();');
     expect(providerSource).toContain('restorePlayerReturnFocus();');
     expect(providerSource).toContain('if (target?.isConnected) target.focus({ preventScroll: true });');
     expect(providerSource).toContain('const expandedHeadingRef = useRef<HTMLHeadingElement>(null)');
-    expect(providerSource).toContain("focusExpandedHeadingOnOpenRef.current = inputModalityRef.current === 'keyboard'");
+    expect(providerSource).toContain("nextDensity === 'expanded'");
+    expect(providerSource).toContain("inputModalityRef.current === 'keyboard'");
     expect(providerSource).toContain('expandedHeadingRef.current?.focus({ preventScroll: true });');
     expect(providerSource).toContain(
       'focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]',

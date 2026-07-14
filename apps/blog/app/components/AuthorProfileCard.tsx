@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { animate, motion, AnimatePresence, useMotionValue, useReducedMotion } from 'framer-motion';
-import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight, Music2, UserRound } from 'lucide-react';
+import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight, Music2 } from 'lucide-react';
 import { spring, Tooltip } from '@aetherblog/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
@@ -257,7 +257,6 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   ], []);
   const activeStackCard = stackCards[activeIndex] ?? stackCards[0];
   const nextStackCard = stackCards[(activeIndex + 1) % stackCards.length] ?? stackCards[0];
-  const activeCard = activeStackCard.key;
   const stackSlots = useMemo(() => [
     { position: 'current' as const, card: activeStackCard },
     { position: adjacentStackPosition, card: nextStackCard },
@@ -309,6 +308,12 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       });
     });
   }, [commitStackSwitch, prefersReducedMotion, stageWidth, trackX]);
+
+  const goToStackCard = useCallback((index: number) => {
+    if (index === activeIndex || index < 0 || index >= stackCards.length) return;
+    const forwardIndex = (activeIndex + 1) % stackCards.length;
+    animateStackSwitch(index === forwardIndex ? 1 : -1);
+  }, [activeIndex, animateStackSwitch, stackCards.length]);
 
   const handleStackPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -414,18 +419,6 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     }
   }, [animateStackSwitch]);
 
-  const renderStackSwitchButton = (floating = false) => (
-    <button
-      type="button"
-      onClick={() => animateStackSwitch(1)}
-      className={`profile-stack-switch-button grid h-11 w-11 shrink-0 place-items-center rounded-full border-0 bg-[var(--profile-stack-control-bg)] text-[var(--ink-secondary,var(--text-secondary))] shadow-none transition-[background-color,color,opacity] duration-100 hover:bg-[var(--profile-stack-control-hover)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-stack-dot-active)] focus-visible:ring-offset-2 ${floating ? 'absolute right-2 top-2 z-[5] focus-visible:ring-offset-transparent' : 'focus-visible:ring-offset-[var(--profile-stack-focus-offset)]'}`}
-      aria-label={`切换到${nextStackCard.label}`}
-      title={`切换到${nextStackCard.label}`}
-    >
-      {activeCard === 'profile' ? <Music2 className="h-[18px] w-[18px]" /> : <UserRound className="h-[18px] w-[18px]" />}
-    </button>
-  );
-
   const renderStackPanel = (
     card: (typeof stackCards)[number],
     position: ProfileStackPosition
@@ -511,7 +504,6 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           variant="stack"
           className="h-full"
           timelineActive={isCurrent}
-          stackSwitchAction={renderStackSwitchButton()}
           emptyState={
             <div className="flex h-full flex-col items-center justify-center text-center">
               <Music2 className="h-8 w-8 text-[var(--aurora-1)]" />
@@ -543,7 +535,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         }}
       />
 
-      <div className="profile-card-stack-shell relative z-10 flex h-full min-h-[350px] flex-col p-4 lg:min-h-0">
+      <div className="profile-card-stack-shell relative z-10 flex h-full min-h-[24rem] flex-col p-4 lg:min-h-0">
         <div
           ref={stageRef}
           className="profile-card-stack-stage relative min-h-0 flex-1 outline-none [touch-action:pan-y]"
@@ -557,8 +549,6 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           onPointerUp={handleStackPointerEnd}
           onPointerCancel={handleStackPointerEnd}
         >
-          {activeCard === 'profile' && renderStackSwitchButton(true)}
-
           <motion.div
             className="profile-card-stack-track absolute inset-y-0 left-0"
             style={stageWidth > 0 ? { x: trackX } : undefined}
@@ -577,6 +567,26 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
               </div>
             ))}
           </motion.div>
+        </div>
+
+        <div className="profile-stack-page-control" role="group" aria-label="切换个人卡片">
+          {stackCards.map((item, index) => (
+            <button
+              key={item.key}
+              type="button"
+              className="profile-stack-page-button"
+              onClick={() => goToStackCard(index)}
+              aria-label={`${item.label}卡片`}
+              aria-current={index === activeIndex ? 'page' : undefined}
+              title={item.label}
+            >
+              <span
+                className="profile-stack-dot"
+                data-active={index === activeIndex ? 'true' : 'false'}
+                aria-hidden="true"
+              />
+            </button>
+          ))}
         </div>
       </div>
     </div>

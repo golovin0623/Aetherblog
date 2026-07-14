@@ -94,26 +94,23 @@ describe('profile music player stack layout gate', () => {
 
     expect(stack).toContain('profile-music-stack-footer');
     expect(stack).toContain('profile-music-stack-transport');
-    expect(stack).toContain('grid-cols-[44px_52px_44px]');
-    expect(stack).toContain('gap-2.5');
+    expect(stack).toContain('grid-cols-[44px_56px_44px]');
+    expect(stack).toContain('gap-3');
     expect(stack).toContain('profile-music-expand-button');
     expect(stack).not.toContain('profile-music-stack-utility');
-    expect(globalCss).toContain('@container (max-width: 17.5rem)');
+    expect(globalCss).not.toContain('@container (max-width: 17.5rem)');
   });
 
-  it('keeps a touch-sized profile return action in every stack loading and empty state', () => {
-    expect(profileSource.match(/isStack && stackSwitchAction/g)).toHaveLength(3);
-    expect(profileSource.match(/absolute right-2 top-2 z-\[2\]/g)).toHaveLength(3);
-  });
-
-  it('keeps stack card playback progress singular and moves utility actions into the header', () => {
+  it('keeps stack card playback progress singular and leaves only one quiet expand action in the header', () => {
     const stack = stackVariantSource();
     const headerIndex = stack.indexOf('profile-music-stack-header');
     const progressIndex = stack.indexOf('<ProfileMusicTimelineSlot');
     const footerIndex = stack.indexOf('profile-music-stack-footer');
 
-    expect(stack).toContain('profile-music-stack-actions');
-    expect(stack).toContain('grid-cols-[52px_minmax(0,1fr)_auto]');
+    expect(stack).toContain('grid-cols-[64px_minmax(0,1fr)_44px]');
+    expect(stack.match(/profile-music-expand-button/g)).toHaveLength(1);
+    expect(stack).not.toContain('profile-music-stack-actions');
+    expect(stack).not.toContain('stackSwitchAction');
     expect(headerIndex).toBeGreaterThanOrEqual(0);
     expect(progressIndex).toBeGreaterThan(headerIndex);
     expect(footerIndex).toBeGreaterThan(progressIndex);
@@ -135,23 +132,26 @@ describe('author profile stack radius gate', () => {
     expect(authorProfileSource).not.toContain('const nextIndex =');
   });
 
-  it('offers an explicit touch-sized control for switching between profile and music', () => {
-    expect(authorProfileSource).toContain('profile-stack-switch-button');
-    expect(authorProfileSource).toContain('aria-label={`切换到${nextStackCard.label}`}');
-    expect(authorProfileSource).toContain('h-11 w-11');
+  it('uses an iOS-style page control instead of icon buttons for profile and music switching', () => {
+    expect(authorProfileSource).toContain('profile-stack-page-control');
+    expect(authorProfileSource).toContain('profile-stack-page-button');
+    expect(authorProfileSource).toContain('onClick={() => goToStackCard(index)}');
+    expect(authorProfileSource).toContain("aria-current={index === activeIndex ? 'page' : undefined}");
+    expect(globalCss).toMatch(/\.profile-stack-page-button\s*{[\s\S]*width:\s*2\.75rem;[\s\S]*height:\s*2\.75rem;/);
+    expect(globalCss).toMatch(/\.profile-stack-dot\[data-active="true"\]\s*{[\s\S]*width:\s*1\.15rem;/);
+    expect(authorProfileSource).not.toContain('profile-stack-switch-button');
+    expect(authorProfileSource).not.toContain('UserRound');
+    expect(profileSource).not.toContain('stackSwitchAction');
     expect(authorProfileSource).toContain('useReducedMotion');
     expect(authorProfileSource).toContain('if (event.defaultPrevented) return;');
     expect(authorProfileSource).toContain("target?.closest('a,button,input,textarea,select,[role=\"slider\"]')");
-    expect(authorProfileSource).toContain("activeCard === 'profile'");
-    expect(authorProfileSource).toContain('stackSwitchAction={renderStackSwitchButton()}');
-    expect(profileSource).toContain('{stackSwitchAction}');
   });
 
   it('uses the shared system radius scale for outer, stage, and panel curvature', () => {
     expect(authorProfileSource).toContain('profile-card-stack-frame');
     expect(globalCss).toContain('--profile-card-stack-radius: var(--radius-xl, 1.5rem)');
-    expect(globalCss).toContain('--profile-card-stack-stage-radius: var(--radius-sm, 0.5rem)');
-    expect(globalCss).toContain('calc(var(--profile-card-stack-stage-radius) - var(--profile-card-stack-slide-gutter))');
+    expect(globalCss).toContain('--profile-card-stack-stage-radius: calc(var(--profile-card-stack-radius) - 0.25rem)');
+    expect(globalCss).toContain('--profile-card-stack-panel-radius: var(--radius-lg, 1rem)');
     expect(globalCss).toMatch(/\.profile-card-stack-stage\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-stage-radius\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(profileSource).toContain('profile-music-stack-shell');
@@ -164,6 +164,11 @@ describe('author profile stack radius gate', () => {
     expect(globalCss).not.toContain('--profile-card-stack-stage-radius: max(');
   });
 
+  it('reserves enough mobile height for profile actions plus the page control', () => {
+    expect(authorProfileSource).toContain('min-h-[24rem]');
+    expect(authorProfileSource).toContain('lg:min-h-0');
+  });
+
   it('moves the carousel with shared motion tokens and avoids permanent filtered layers', () => {
     expect(authorProfileSource).toContain('spring.precise');
     expect(authorProfileSource).not.toContain('stiffness: 560');
@@ -173,8 +178,10 @@ describe('author profile stack radius gate', () => {
     expect(globalCss).not.toMatch(/\.profile-card-stack-panel\s*\{[^}]*will-change:/);
   });
 
-  it('uses a transparent focus-ring offset only when the switch floats over dynamic content', () => {
-    expect(authorProfileSource).toContain("focus-visible:ring-offset-transparent' : 'focus-visible:ring-offset-[var(--profile-stack-focus-offset)]'");
+  it('keeps page-control focus visible without turning the visual dots into large pills', () => {
+    expect(globalCss).toMatch(/\.profile-stack-page-button:focus-visible\s*{[\s\S]*outline:\s*2px solid/);
+    expect(globalCss).toMatch(/\.profile-stack-page-button\s*{[\s\S]*background:\s*transparent;/);
+    expect(globalCss).not.toMatch(/\.profile-stack-page-control\s*{[^}]*background:/);
   });
 
   it('clips each sliding card as its own rounded paint surface with a visible transition gutter', () => {
@@ -194,20 +201,18 @@ describe('author profile stack radius gate', () => {
     expect(globalCss).not.toMatch(/\.profile-card-stack-stage\s*{[\s\S]*box-shadow:\s*inset 0 0 0 1px var\(--profile-stack-stage-border\);/);
   });
 
-  it('uses real color tokens for the stack switch material and focus offset', () => {
-    expect(globalCss).toContain('--profile-stack-control-bg:');
-    expect(globalCss).toContain('--profile-stack-control-hover:');
-    expect(globalCss).toContain('--profile-stack-focus-offset:');
-    expect(authorProfileSource).toContain('bg-[var(--profile-stack-control-bg)]');
-    expect(authorProfileSource).toContain('hover:bg-[var(--profile-stack-control-hover)]');
-    expect(authorProfileSource).toContain('focus-visible:ring-offset-[var(--profile-stack-focus-offset)]');
-    expect(authorProfileSource).not.toContain('color-mix(in_oklch,var(--profile-stack-panel-bg)');
-    expect(authorProfileSource).not.toContain('ring-offset-[var(--profile-stack-stage-bg)]');
+  it('uses restrained tokenized page dots instead of a second control material', () => {
+    expect(globalCss).toContain('--profile-stack-dot:');
+    expect(globalCss).toContain('--profile-stack-dot-active:');
+    expect(globalCss).not.toContain('--profile-stack-control-bg:');
+    expect(globalCss).not.toContain('--profile-stack-control-hover:');
+    expect(globalCss).not.toContain('--profile-stack-focus-offset:');
   });
 
   it('describes carousel cards as slides instead of orphan tab panels', () => {
-    expect(authorProfileSource.match(/role="group"/g)).toHaveLength(2);
+    expect(authorProfileSource.match(/role="group"/g)).toHaveLength(3);
     expect(authorProfileSource.match(/aria-roledescription="slide"/g)).toHaveLength(2);
+    expect(authorProfileSource).toContain('role="group" aria-label="切换个人卡片"');
     expect(authorProfileSource).not.toContain("role={isCurrent ? 'tabpanel' : undefined}");
   });
 

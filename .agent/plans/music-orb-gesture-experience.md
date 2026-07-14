@@ -73,7 +73,11 @@
 ## 后台实现
 
 - 同样拆分稳定控制与 Timeline Context，避免 2575 行管理页随播放时钟重渲染。
-- 建立 compact/expanded 手势状态机：展开态下滑只收起；横滑切歌；关闭必须显式执行。
+- 建立 minimized / compact / expanded 三档密度状态机：空闲 compact 自动最小化；展开态自动回落 compact；关闭必须显式执行。
+- 删除浮在卡片外的握柄，使用同一 44px 图标按钮在 Maximize2 / Minimize2 间做旋转缩放过渡；卡片尺寸从底边向上生长，不再以两块内容上下换场。
+- 桌面最小态为 184 × 64px 圆角卡片，移动端最小态为 52px 灵动圆形入口；compact 与 expanded 共用 520px 最大宽度和 24px 系统圆角。
+- 浮岛使用二维自由拖拽、20px 桌面 / 12px 移动安全边距、视口尺寸纠偏与位置持久化；移动端和桌面均保留 44px 以上可达控制。
+- 展开封面保留横滑切歌；进度条、歌词、播放控制与窗口拖拽互相隔离，避免手势争抢。
 - 修正音乐页圆角变量作用域，页面通用卡片直接消费系统 radius；浮层外壳与滚动容器分层。
 - 播放队列携带真实来源；编辑、删除、移除和重排后同步当前队列与索引。
 - 顶部播放动作按 Tab 决定：曲库播放当前页、歌单播放选中歌单、展示页不重复提供错误动作。
@@ -97,14 +101,14 @@
 7. 播放进度更新不再触发前台非时间线消费者和后台管理主体重渲染。
 8. 后台展开态下滑不停止播放；队列能随编辑、删除和重排同步。
 9. Blog/Admin typecheck、目标 Vitest、lint/build 的受影响面验证通过。
-10. 只提交一个 PR，并按既定评审窗口持续监听；浏览器真实尺寸截图、惯性手势和真机安全区复核需在获得自动化浏览器或设备授权后执行，并与代码级门禁分开记录。
+10. 只提交一个 PR，并按既定评审窗口持续监听；浏览器需覆盖桌面三形态、390 × 844 移动展开/最小态、二维拖拽、安全边距与形态切换锚点。
 
 ## 实施与验证记录
 
 - 前台已完成 Hidden / Compact / Ambient orb / Immersive 四级表面、显式会话可见性、独立音乐大厅入口、自动收起、双向切歌、下滑收起、歌词定位、队列与 Reduced Motion 适配。
-- 后台已完成 compact / expanded 层级、移动 Bottom Sheet、脏状态拦截、封面与歌词维护、真实来源队列同步、编辑/删除/重排协调及异步播放竞态保护。
+- 后台已完成 minimized / compact / expanded 三档层级、二维自由拖拽与位置持久化、移动 Bottom Sheet、脏状态拦截、封面与歌词维护、真实来源队列同步、编辑/删除/重排协调及异步播放竞态保护。
 - 高频时间线订阅已下沉到进度/歌词叶子；队列与歌词行使用稳定 memo 边界；个人卡片轮播只挂载当前卡与唯一相邻卡。
 - 无障碍补齐了对话框焦点闭环、背景 inert、44px 触控目标、live region，以及共享 Select 的稳定 ID、listbox ownership 与 active descendant。
-- 自动化验证：Reader 6/6 文件、121/121 测试；Admin 7/7 文件、87/87 测试；Select 3/3 测试；Blog/Admin/UI type-check、目标 ESLint、Blog/Admin production build 与 `git diff --check` 全部通过。
+- 自动化验证：Reader / Music 6/6 文件、133/133 测试；Admin 27/27 文件、312/312 测试；Blog/Admin type-check、目标 ESLint、Blog/Admin production build 与 `git diff --check` 全部通过。
 - 生产运行时冒烟：Blog `/`、`/music`、`/about`、`/posts` 均返回 200，且首页 SSR 不含可见播放器/orb/旧占位标记；Admin `/admin/`、`/admin/music`、`/admin/dashboard` 均返回 200。
-- 尚未执行 Playwright 像素截图、浏览器真实拖拽与真机触控复核，因为本轮没有获得显式浏览器自动化授权；不得把源码门禁或 HTTP 冒烟表述为该项已经完成。
+- 后台浮岛浏览器复核已覆盖 1280px 桌面和 390 × 844 移动视口：桌面 compact 520px、expanded 520 × 434.5px、minimized 184 × 64px；移动 expanded 左右各 12px、无横向溢出，orb 52px 正圆；拖拽到边缘后分别保持 20px / 12px 安全边距。
