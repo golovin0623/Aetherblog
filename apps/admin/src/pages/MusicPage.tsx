@@ -1,6 +1,8 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Link, useBlocker } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
 import {
   ArrowDown,
   ArrowUp,
@@ -34,6 +36,7 @@ import {
   X,
 } from 'lucide-react';
 import { Select, type SelectOption } from '@aetherblog/ui';
+import { useMediaQuery } from '@aetherblog/hooks';
 import { MUSIC_SKIN_PRESETS, resolveMusicSkinValue } from '@aetherblog/utils';
 import { toast } from 'sonner';
 import type {
@@ -51,10 +54,12 @@ import { AdminModuleHeader, type AdminModuleHeaderTab } from '@/components/layou
 import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/AdminSectionHeader';
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { useAdminMusicPlayer } from '@/components/music/AdminMusicPlayerProvider';
+import { useAdminMusicPlayer, useAdminMusicPlayerTimeline } from '@/components/music/AdminMusicPlayerProvider';
+import { hasSameAdminMusicQueueTrackIds } from '@/components/music/adminMusicQueueState';
+import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
-import { mediaService } from '@/services/mediaService';
+import { getMediaUrl, mediaService, type MediaItem } from '@/services/mediaService';
 import { musicService } from '@/services/musicService';
 import {
   PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
@@ -85,6 +90,25 @@ type PendingTrackNavigation =
 type PendingDelete =
   | { kind: 'track'; track: MusicTrack; deleteMedia: boolean }
   | { kind: 'playlist'; playlist: MusicPlaylist };
+type MusicConfirmationConfig = {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  variant: 'danger' | 'warning';
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+function AdminMusicTimelineSlot({
+  children,
+}: {
+  children: (timeline: ReturnType<typeof useAdminMusicPlayerTimeline>) => ReactNode;
+}) {
+  const timeline = useAdminMusicPlayerTimeline();
+  return children(timeline);
+}
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const DEFAULT_PAGE_SIZE = 10;
@@ -92,6 +116,36 @@ const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
 const MUSIC_SETTINGS_QUERY_KEY = ['music-settings'] as const;
 const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba']);
 const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba';
+const MAX_LYRIC_FILE_BYTES = 512 * 1024;
+
+function summarizeLyricDraft(raw: string): {
+  timedLines: number;
+  plainLines: number;
+  invalidTimestampLines: number;
+} {
+  let timedLines = 0;
+  let plainLines = 0;
+  let invalidTimestampLines = 0;
+  const timestampPattern = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+  const metadataPattern = /^\[(ar|ti|al|by|offset|re|ve):/i;
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || metadataPattern.test(line)) continue;
+    timestampPattern.lastIndex = 0;
+    const matches = Array.from(line.matchAll(timestampPattern));
+    const validMatches = matches.filter((match) => Number(match[2]) < 60);
+    if (validMatches.length > 0) {
+      timedLines += validMatches.length;
+      if (validMatches.length !== matches.length) invalidTimestampLines += 1;
+      continue;
+    }
+    if (/\[\d{1,3}:/.test(line)) invalidTimestampLines += 1;
+    else plainLines += 1;
+  }
+
+  return { timedLines, plainLines, invalidTimestampLines };
+}
 
 function isCommonAudioFile(file: File): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -155,12 +209,12 @@ const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
 ];
 
 const panelClass = cn(
-  'surface-leaf surface-admin-panel rounded-[1.25rem]',
+  'surface-leaf surface-admin-panel rounded-[var(--radius-lg)]',
   'p-3 sm:p-4'
 );
 
 const shellClass = cn(
-  'surface-leaf overflow-hidden rounded-[1.25rem]'
+  'surface-leaf overflow-hidden rounded-[var(--radius-lg)]'
 );
 
 function iconButtonClass(active = false, tone: 'default' | 'primary' | 'danger' = 'default') {
@@ -179,7 +233,7 @@ function iconButtonClass(active = false, tone: 'default' | 'primary' | 'danger' 
 
 function textButtonClass(tone: 'default' | 'primary' | 'danger' = 'default') {
   return cn(
-    'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-transparent px-3 text-sm font-semibold transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 min-[769px]:h-10',
+    'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-transparent px-3 text-sm font-semibold transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 min-[769px]:h-10',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
     tone === 'primary' &&
       'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
@@ -192,7 +246,7 @@ function textButtonClass(tone: 'default' | 'primary' | 'danger' = 'default') {
 
 function inputClass(extra?: string) {
   return cn(
-    'h-10 w-full rounded-lg border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-3 text-sm text-[var(--ink-primary)]',
+    'h-10 w-full rounded-[var(--radius-sm)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-3 text-sm text-[var(--ink-primary)]',
     'placeholder:text-[var(--ink-muted)] transition-[border-color,box-shadow] duration-200 focus:border-[color-mix(in_oklch,var(--aurora-1)_48%,transparent)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
     extra
   );
@@ -420,6 +474,91 @@ function TogglePill({ checked, label, onClick }: { checked: boolean; label: stri
   );
 }
 
+function CoverPicker({
+  value,
+  currentUrl,
+  items,
+  loading,
+  onChange,
+}: {
+  value?: number;
+  currentUrl?: string;
+  items: MediaItem[];
+  loading: boolean;
+  onChange: (media?: MediaItem) => void;
+}) {
+  const selectedItem = items.find((item) => item.id === value);
+  const previewUrl = selectedItem ? getMediaUrl(selectedItem) : currentUrl;
+
+  return (
+    <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-[var(--radius-md)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_2%,transparent)] p-3">
+      <div className="flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-[var(--radius-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]">
+        {previewUrl ? (
+          <img src={previewUrl} alt="当前封面" className="h-full w-full object-cover" />
+        ) : (
+          <Disc3 className="h-7 w-7 text-[var(--ink-muted)]" aria-hidden="true" />
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-bold text-[var(--ink-primary)]">从媒体库选择封面</p>
+          <Link to="/media" className="inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
+            管理图片
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        {loading ? (
+          <div className="flex min-h-12 items-center gap-2 text-xs text-[var(--ink-muted)]" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            正在载入图片
+          </div>
+        ) : items.length > 0 ? (
+          <div className="mt-1 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+            {items.slice(0, 12).map((item) => {
+              const url = getMediaUrl(item);
+              const active = value === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onChange(item)}
+                  aria-pressed={active}
+                  aria-label={`选择封面 ${item.originalName}`}
+                  title={item.originalName}
+                  className={cn(
+                    'relative h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border transition-[border-color,opacity,transform] duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                    active
+                      ? 'border-[var(--aurora-1)] ring-1 ring-[var(--aurora-1)]'
+                      : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] opacity-75 hover:opacity-100'
+                  )}
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  {active && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white" aria-hidden="true">
+                      <Check className="h-4 w-4" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">媒体库还没有图片，先前往媒体库上传封面。</p>
+        )}
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="mt-1 min-h-11 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+          >
+            清除封面
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TrackEditor({
   track,
   onClose,
@@ -433,6 +572,9 @@ function TrackEditor({
   addingToPlaylist,
   onRequestDeleteWithMedia,
   onPreview,
+  mobile = false,
+  coverImages,
+  coverImagesLoading,
 }: {
   track: MusicTrack;
   onClose: () => void;
@@ -446,39 +588,175 @@ function TrackEditor({
   addingToPlaylist: boolean;
   onRequestDeleteWithMedia: (track: MusicTrack) => void;
   onPreview: (track: MusicTrack) => void;
+  mobile?: boolean;
+  coverImages: MediaItem[];
+  coverImagesLoading: boolean;
 }) {
   const [draft, setDraft] = useState<MusicTrack>(track);
   const [addPlaylistId, setAddPlaylistId] = useState('');
+  const lyricFileInputRef = useRef<HTMLInputElement>(null);
+  const lyricImportRequestRef = useRef(0);
+  const selectedTrackRef = useRef(track);
+  const sheetPanelRef = useRef<HTMLDivElement>(null);
+  const sheetDragControls = useDragControls();
+  const sheetY = useMotionValue(0);
+  const prefersReducedMotion = useReducedMotion();
+  selectedTrackRef.current = track;
+  const mediaFileName = track.media?.originalName || '未加载媒体文件名';
+  const lyricSummary = useMemo(
+    () => summarizeLyricDraft(draft.lyric || ''),
+    [draft.lyric]
+  );
   useEffect(() => {
-    setDraft(track);
+    lyricImportRequestRef.current += 1;
+    setDraft(selectedTrackRef.current);
     setAddPlaylistId('');
-  }, [track]);
+    return () => {
+      lyricImportRequestRef.current += 1;
+    };
+  }, [track.id]);
+  useEffect(() => {
+    if (!dirty) setDraft(track);
+  }, [dirty, track]);
+  useEffect(() => {
+    sheetY.set(0);
+  }, [sheetY, track.id]);
   const updateDraft = (changes: Partial<MusicTrack>) => {
     onDraftChange();
     setDraft((current) => ({ ...current, ...changes }));
   };
+  const settleSheet = useCallback((onSettled?: () => void) => {
+    if (prefersReducedMotion) {
+      sheetY.set(0);
+      onSettled?.();
+      return;
+    }
+    const controls = animate(sheetY, 0, {
+      type: 'spring',
+      stiffness: 520,
+      damping: 42,
+      mass: 0.8,
+    });
+    if (onSettled) void controls.then(onSettled);
+  }, [prefersReducedMotion, sheetY]);
+  const exitSheet = useCallback(() => {
+    if (!mobile || dirty || prefersReducedMotion) {
+      onClose();
+      return;
+    }
+    const targetY = (sheetPanelRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.66) + 32;
+    const controls = animate(sheetY, targetY, {
+      duration: 0.22,
+      ease: [0.22, 1, 0.36, 1],
+    });
+    void controls.then(onClose);
+  }, [dirty, mobile, onClose, prefersReducedMotion, sheetY]);
+  const startSheetDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!mobile) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, input, textarea, select, [role="combobox"]')) return;
+    sheetDragControls.start(event);
+  }, [mobile, sheetDragControls]);
+  const handleSheetDragEnd = useCallback((
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo,
+  ) => {
+    const sheetHeight = sheetPanelRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.66;
+    const distanceThreshold = Math.min(132, Math.max(76, sheetHeight * 0.2));
+    const shouldDismiss = info.offset.y >= distanceThreshold
+      || (info.velocity.y >= 900 && info.offset.y >= 24);
+
+    if (!shouldDismiss) {
+      settleSheet();
+      return;
+    }
+    if (dirty) {
+      settleSheet(onClose);
+      return;
+    }
+    if (prefersReducedMotion) {
+      onClose();
+      return;
+    }
+    const controls = animate(sheetY, sheetHeight + 32, {
+      duration: 0.22,
+      ease: [0.22, 1, 0.36, 1],
+    });
+    void controls.then(onClose);
+  }, [dirty, onClose, prefersReducedMotion, settleSheet, sheetY]);
   return (
-    <div className={cn(panelClass, 'sticky top-4 space-y-4')}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <motion.div
+      ref={sheetPanelRef}
+      drag={mobile ? 'y' : false}
+      dragControls={sheetDragControls}
+      dragListener={false}
+      dragMomentum={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.55 }}
+      onDragEnd={handleSheetDragEnd}
+      style={mobile ? { y: sheetY, touchAction: 'auto' } : undefined}
+      className={cn(
+        panelClass,
+        mobile
+          ? 'flex max-h-[66dvh] w-full flex-col !rounded-b-none !rounded-t-[var(--radius-xl)] !p-0'
+          : 'sticky top-4 space-y-4'
+      )}
+    >
+      {mobile && (
+        <div
+          data-track-editor-drag-handle
+          onPointerDown={startSheetDrag}
+          className="flex h-7 shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing"
+          aria-hidden="true"
+        >
+          <span className="h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]" />
+        </div>
+      )}
+      <div
+        data-track-editor-drag-region={mobile ? true : undefined}
+        onPointerDown={mobile ? startSheetDrag : undefined}
+        className={cn(
+          'flex items-start justify-between gap-3',
+          mobile && 'shrink-0 cursor-grab touch-none select-none pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] active:cursor-grabbing'
+        )}
+      >
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-[var(--ink-primary)]">歌曲信息</p>
             {dirty && (
-              <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] px-2 py-0.5 text-[10px] font-bold text-[var(--signal-warn)]">
+              <span className="shrink-0 rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] px-2 py-0.5 text-[10px] font-bold text-[var(--signal-warn)]">
                 未保存
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-[var(--ink-muted)]">媒体文件：{track.media?.originalName || '未加载媒体文件名'}</p>
+          <p
+            className="mt-1 truncate text-xs text-[var(--ink-muted)]"
+            title={`媒体文件：${mediaFileName}`}
+          >
+            媒体文件：{mediaFileName}
+          </p>
         </div>
-        <button type="button" onClick={onClose} className={iconButtonClass()} aria-label="关闭歌曲信息">
+        <button
+          type="button"
+          onClick={exitSheet}
+          className={cn(iconButtonClass(), 'shrink-0')}
+          aria-label="关闭歌曲信息"
+          data-track-editor-initial-focus={mobile ? 'true' : undefined}
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="space-y-3">
+      <div className={cn(
+        'space-y-3',
+        mobile && 'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
+      )}>
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">标题</span>
-          <input value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} className={inputClass()} />
+          <input
+            value={draft.title}
+            onChange={(e) => updateDraft({ title: e.target.value })}
+            className={inputClass()}
+          />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">艺术家</span>
@@ -488,38 +766,84 @@ function TrackEditor({
           <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">专辑</span>
           <input value={draft.album} onChange={(e) => updateDraft({ album: e.target.value })} className={inputClass()} />
         </label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[96px_minmax(0,1fr)]">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)]">
-            {draft.coverUrl ? (
-              <img src={draft.coverUrl} alt={`${draft.title} 封面`} className="h-full w-full object-cover" />
-            ) : (
-              <Disc3 className="h-8 w-8 text-[var(--ink-muted)]" />
-            )}
-          </div>
-          <label className="block min-w-0">
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">封面媒体 ID</span>
+        <CoverPicker
+          value={draft.coverMediaFileId}
+          currentUrl={draft.coverUrl}
+          items={coverImages}
+          loading={coverImagesLoading}
+          onChange={(media) => updateDraft({
+            coverMediaFileId: media?.id,
+            coverUrl: media ? getMediaUrl(media) : undefined,
+          })}
+        />
+        <div className="block">
+          <span className="mb-1.5 flex items-center justify-between gap-3">
+            <label htmlFor={`track-${track.id}-lyric`} className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</label>
+            <button
+              type="button"
+              onClick={() => lyricFileInputRef.current?.click()}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 text-xs font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              导入歌词
+            </button>
             <input
-              type="number"
-              min={1}
-              value={draft.coverMediaFileId ?? ''}
-              onChange={(e) => updateDraft({
-                coverMediaFileId: e.target.value ? Number(e.target.value) : undefined,
-              })}
-              className={inputClass()}
-              placeholder="选择媒体库图片 ID"
+              ref={lyricFileInputRef}
+              type="file"
+              accept=".lrc,.txt,text/plain"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                if (file.size > MAX_LYRIC_FILE_BYTES) {
+                  toast.error('歌词文件不能超过 512 KB');
+                  return;
+                }
+                const extension = file.name.split('.').pop()?.toLowerCase();
+                if (extension !== 'lrc' && extension !== 'txt' && file.type !== 'text/plain') {
+                  toast.error('请选择 .lrc 或 .txt 歌词文件');
+                  return;
+                }
+                const importRequestId = lyricImportRequestRef.current + 1;
+                lyricImportRequestRef.current = importRequestId;
+                try {
+                  const lyric = await file.text();
+                  if (importRequestId !== lyricImportRequestRef.current) return;
+                  if (!lyric.trim()) {
+                    toast.error('歌词文件为空');
+                    return;
+                  }
+                  updateDraft({ lyric });
+                  toast.success(`已导入歌词：${file.name}`);
+                } catch {
+                  toast.error('无法读取歌词文件，请确认文件编码为 UTF-8');
+                }
+              }}
             />
-            <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">封面仍存储在媒体库，这里只保存歌曲到封面文件的映射。</p>
-          </label>
-        </div>
-        <label className="block">
-          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</span>
+          </span>
           <textarea
+            id={`track-${track.id}-lyric`}
             value={draft.lyric || ''}
             onChange={(e) => updateDraft({ lyric: e.target.value })}
             className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
             placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
+            aria-describedby={`track-${track.id}-lyric-summary`}
           />
-        </label>
+          <span
+            id={`track-${track.id}-lyric-summary`}
+            className={cn(
+              'mt-1.5 block text-xs leading-5',
+              lyricSummary.invalidTimestampLines > 0 ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
+            )}
+          >
+            {draft.lyric?.trim()
+              ? `${lyricSummary.timedLines} 行时间轴 · ${lyricSummary.plainLines} 行纯文本${lyricSummary.invalidTimestampLines > 0 ? ` · ${lyricSummary.invalidTimestampLines} 行时间格式需检查` : ''}`
+              : '支持标准 LRC 时间轴和纯文本；时间格式示例 [00:12.00]。'}
+          </span>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
@@ -573,16 +897,19 @@ function TrackEditor({
           <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">把这首歌加入歌单后,到「歌单编排」可调整顺序;把歌单设为公开即对外展示。</p>
         </div>
       </div>
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className={cn(
+        'flex flex-wrap justify-end gap-2',
+        mobile && 'shrink-0 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-3 max-[360px]:!grid max-[360px]:grid-cols-[1.35fr_0.8fr_0.9fr] max-[360px]:gap-1.5'
+      )}>
         <button
           type="button"
           onClick={() => onRequestDeleteWithMedia(track)}
-          className={textButtonClass('danger')}
+          className={cn(textButtonClass('danger'), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}
         >
           <Trash2 className="h-4 w-4" />
           连媒体删除
         </button>
-        <button type="button" onClick={() => onPreview(track)} className={textButtonClass()}>
+        <button type="button" onClick={() => onPreview(track)} className={cn(textButtonClass(), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}>
           <Play className="h-4 w-4" />
           试听
         </button>
@@ -598,31 +925,38 @@ function TrackEditor({
             sortOrder: draft.sortOrder,
             isFeatured: draft.isFeatured,
           }))}
-          className={textButtonClass('primary')}
+          className={cn(textButtonClass('primary'), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}
           disabled={saving || !dirty}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : dirty ? <RotateCw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
           {saving ? '保存中' : dirty ? '保存' : '已保存'}
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 export default function MusicPage() {
   const queryClient = useQueryClient();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const trackEditorSheetRef = useRef<HTMLElement>(null);
+  const trackEditorReturnFocusRef = useRef<HTMLElement | null>(null);
+  const previousMobileEditorIdRef = useRef<number | null>(null);
+  const initiallyFocusedMobileEditorIdRef = useRef<number | null>(null);
+  const lastPlaylistQueueSyncRef = useRef<{
+    playlistId: number;
+    tracks: readonly MusicTrack[];
+  } | null>(null);
   const settingsWriteLockRef = useRef(false);
   const deleteWriteLockRef = useRef(false);
   const [activeTab, setActiveTab] = useState<MusicTab>('library');
   const {
     queue,
+    queueSource,
     currentTrack,
     currentIndex,
     isPlaying,
-    progress,
-    duration,
-    percent,
     playbackError,
     playTracks,
     togglePlayback,
@@ -630,12 +964,16 @@ export default function MusicPage() {
     previousTrack,
     seekToPercent,
     retryPlayback,
+    replaceQueueTrack,
+    removeQueueTrack,
+    reconcileQueue,
+    updateQueueSourceLabel,
     setMusicSkin,
     setDockSuppressed,
   } = useAdminMusicPlayer();
 
   // 完整试听舞台只属于「展示播放」；曲库和歌单保持管理优先，继续使用紧凑全局播放器。
-  useEffect(() => {
+  useLayoutEffect(() => {
     setDockSuppressed(activeTab === 'display');
     return () => setDockSuppressed(false);
   }, [activeTab, setDockSuppressed]);
@@ -692,6 +1030,30 @@ export default function MusicPage() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [isSettingsWriteBusy, setIsSettingsWriteBusy] = useState(false);
   const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
+  const dirtyNavigationBlocker = useBlocker(trackDraftDirty || playlistDraftDirty);
+  const activeConfirmation = pendingDelete
+    ? 'delete'
+    : pendingTrackNavigation
+      ? 'track-navigation'
+      : pendingPlaylistSelectionId != null
+        ? 'playlist-selection'
+        : dirtyNavigationBlocker.state === 'blocked'
+          ? 'route-navigation'
+          : null;
+  const activeMobileEditorId = isMobile ? (editingTrack?.id ?? null) : null;
+  const mobileEditorCoveredByModal = Boolean(
+    activeMobileEditorId != null && activeConfirmation != null
+  );
+
+  useEffect(() => {
+    if (!trackDraftDirty && !playlistDraftDirty) return;
+    const protectUnsavedWork = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', protectUnsavedWork);
+    return () => window.removeEventListener('beforeunload', protectUnsavedWork);
+  }, [playlistDraftDirty, trackDraftDirty]);
 
   const selectPlaylist = useCallback((playlistId: number | null) => {
     playlistDraftRevisionRef.current += 1;
@@ -722,6 +1084,11 @@ export default function MusicPage() {
       setEditingTrack(null);
       return;
     }
+    // Leaving the library unmounts the editor sheet. Clear its state first so
+    // the scroll lock, document-level focus trap and return-focus lifecycle all
+    // run their cleanup instead of surviving as an invisible modal.
+    editingTrackIdRef.current = null;
+    setEditingTrack(null);
     setActiveTab(navigation.tab);
   }, []);
   const requestTrackNavigation = useCallback((navigation: PendingTrackNavigation) => {
@@ -738,6 +1105,73 @@ export default function MusicPage() {
     if (navigation.kind === 'select' && navigation.track.id === editingTrackIdRef.current) return;
     performTrackNavigation(navigation);
   }, [activeTab, performTrackNavigation, trackDraftDirty]);
+  useEffect(() => {
+    const editorId = isMobile ? (editingTrack?.id ?? null) : null;
+    if (editorId != null && previousMobileEditorIdRef.current == null) {
+      trackEditorReturnFocusRef.current = document.activeElement as HTMLElement | null;
+    }
+    if (editorId == null && previousMobileEditorIdRef.current != null) {
+      const target = trackEditorReturnFocusRef.current;
+      window.requestAnimationFrame(() => target?.focus({ preventScroll: true }));
+      trackEditorReturnFocusRef.current = null;
+      initiallyFocusedMobileEditorIdRef.current = null;
+    }
+    previousMobileEditorIdRef.current = editorId;
+  }, [editingTrack?.id, isMobile]);
+  useEffect(() => {
+    if (activeMobileEditorId == null) return;
+    return acquireOverlayScrollLock();
+  }, [activeMobileEditorId]);
+  useEffect(() => {
+    if (
+      !editingTrack
+      || !isMobile
+      || mobileEditorCoveredByModal
+    ) return;
+    const shouldMoveInitialFocus = initiallyFocusedMobileEditorIdRef.current !== editingTrack.id;
+    if (shouldMoveInitialFocus) initiallyFocusedMobileEditorIdRef.current = editingTrack.id;
+    const focusFrame = shouldMoveInitialFocus
+      ? window.requestAnimationFrame(() => {
+          const initialFocusTarget = trackEditorSheetRef.current?.querySelector<HTMLElement>('[data-track-editor-initial-focus]');
+          initialFocusTarget?.focus({ preventScroll: true });
+        })
+      : null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        requestTrackNavigation({ kind: 'close' });
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(trackEditorSheetRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []).filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        trackEditorSheetRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      if (focusFrame != null) window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    editingTrack,
+    isMobile,
+    mobileEditorCoveredByModal,
+    requestTrackNavigation,
+  ]);
   const requestPlaylistSelection = useCallback((playlistId: number) => {
     if (playlistId === selectedPlaylistId) return;
     if (shouldConfirmPlaylistSwitch({
@@ -791,6 +1225,17 @@ export default function MusicPage() {
   const foldersQuery = useQuery({
     queryKey: ['media-folders-tree'],
     queryFn: async () => (await folderService.getTree()).data,
+  });
+  const coverImagesQuery = useQuery({
+    queryKey: ['music-cover-images'],
+    enabled: Boolean(editingTrack) || activeTab === 'playlists',
+    queryFn: async () => (await mediaService.getList({
+      fileType: 'IMAGE',
+      sortBy: 'newest',
+      pageNum: 1,
+      pageSize: 24,
+    })).data,
+    staleTime: 60_000,
   });
 
   const settings = defaultSettings(settingsQuery.data);
@@ -861,6 +1306,25 @@ export default function MusicPage() {
     enabled: activeTab === 'playlists' && Boolean(selectedPlaylistId),
     queryFn: async () => fetchAllPlaylistTracks(selectedPlaylistId!),
   });
+  const selectedPlaylistTracks = playlistMemberTracksQuery.data
+    ?? (playlistDetailQuery.data?.id === selectedPlaylistId ? playlistDetailQuery.data.tracks : undefined)
+    ?? [];
+  useEffect(() => {
+    const refreshedTracks = playlistMemberTracksQuery.data;
+    if (selectedPlaylistId == null || !refreshedTracks) return;
+    const previousSync = lastPlaylistQueueSyncRef.current;
+    if (
+      previousSync?.playlistId === selectedPlaylistId
+      && previousSync.tracks === refreshedTracks
+    ) {
+      return;
+    }
+    lastPlaylistQueueSyncRef.current = {
+      playlistId: selectedPlaylistId,
+      tracks: refreshedTracks,
+    };
+    reconcileQueue(refreshedTracks, { type: 'playlist', playlistId: selectedPlaylistId });
+  }, [playlistMemberTracksQuery.data, reconcileQueue, selectedPlaylistId]);
   const scanItems = useMemo(() => scanQuery.data?.list ?? [], [scanQuery.data]);
   const selectedCandidateSet = useMemo(() => new Set(selectedCandidateIds), [selectedCandidateIds]);
   const currentPageCandidateIds = useMemo(
@@ -951,6 +1415,7 @@ export default function MusicPage() {
     mutationFn: ({ id, data }: { id: number; data: MusicTrackRequest; revision: number }) => musicService.updateTrack(id, data),
     onSuccess: (res, { id, revision }) => {
       toast.success('歌曲信息已更新');
+      replaceQueueTrack(res.data);
       const shouldApply = shouldApplyTrackSaveResult({
         savedTrackId: id,
         selectedTrackId: editingTrackIdRef.current,
@@ -972,6 +1437,7 @@ export default function MusicPage() {
       musicService.deleteTrack(id, { deleteMedia }),
     onSuccess: (_response, { id }) => {
       toast.success('歌曲已移除');
+      removeQueueTrack(id);
       if (editingTrackIdRef.current === id) {
         editingTrackIdRef.current = null;
         trackDraftRevisionRef.current += 1;
@@ -1066,6 +1532,10 @@ export default function MusicPage() {
         setPlaylistDraftSourceId(res.data.id);
         setPlaylistDraftDirty(false);
       }
+      updateQueueSourceLabel(
+        { type: 'playlist', playlistId: id },
+        res.data.name
+      );
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '保存歌单失败')),
@@ -1075,6 +1545,7 @@ export default function MusicPage() {
     mutationFn: musicService.deletePlaylist,
     onSuccess: (_data, deletedPlaylistId) => {
       toast.success('歌单已删除');
+      reconcileQueue([], { type: 'playlist', playlistId: deletedPlaylistId });
       setPendingDelete(null);
       const nextPlaylist = playlists.find((playlist) => playlist.id !== deletedPlaylistId);
       queryClient.setQueryData(
@@ -1101,9 +1572,17 @@ export default function MusicPage() {
   const playlistTrackMutation = useMutation({
     mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
       musicService.addTrackToPlaylist(playlistId, trackId),
-    onSuccess: (_data, { playlistId }) => {
+    onSuccess: async (_data, { playlistId }) => {
       toast.success('已加入歌单');
       if (selectedPlaylistIdRef.current === playlistId) setTrackToAdd('');
+      try {
+        const refreshedTracks = await fetchAllPlaylistTracks(playlistId);
+        queryClient.setQueryData(['music-playlist-member-tracks', playlistId], refreshedTracks);
+        reconcileQueue(refreshedTracks, { type: 'playlist', playlistId });
+      } catch {
+        // The write already succeeded. Query invalidation below remains the
+        // authoritative fallback when an immediate queue refresh is unavailable.
+      }
       queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
@@ -1114,8 +1593,9 @@ export default function MusicPage() {
   const removePlaylistTrackMutation = useMutation({
     mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
       musicService.removeTrackFromPlaylist(playlistId, trackId),
-    onSuccess: (_data, { playlistId }) => {
+    onSuccess: (_data, { playlistId, trackId }) => {
       toast.success('已从歌单移除');
+      removeQueueTrack(trackId, { type: 'playlist', playlistId });
       queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
@@ -1145,10 +1625,12 @@ export default function MusicPage() {
           tracks,
         });
       }
+      reconcileQueue(tracks, { type: 'playlist', playlistId });
       return { previousTracks, previousDetail };
     },
     onError: (error, { playlistId }, context) => {
-      if (context?.previousTracks) {
+      const rollbackTracks = context?.previousTracks ?? context?.previousDetail?.tracks;
+      if (context?.previousTracks !== undefined) {
         queryClient.setQueryData(
           ['music-playlist-member-tracks', playlistId],
           context.previousTracks
@@ -1164,6 +1646,9 @@ export default function MusicPage() {
           ['music-playlist-detail', playlistId],
           context.previousDetail
         );
+      }
+      if (rollbackTracks) {
+        reconcileQueue(rollbackTracks, { type: 'playlist', playlistId });
       }
       toast.error(extractApiErrorMessage(error, '调整排序失败，已恢复原顺序'));
     },
@@ -1269,6 +1754,13 @@ export default function MusicPage() {
   };
 
   const publishPlaylist = (playlistId: number) => {
+    if (
+      playlistId === playlistDraftSourceId
+      && playlistDraftDirty
+    ) {
+      toast.error('请先保存当前歌单的修改，再设为公开展示');
+      return;
+    }
     if (publishPlaylistMutation.isPending || deletePlaylistMutation.isPending || !settingsQuery.data || !beginSettingsWrite()) return;
     publishPlaylistMutation.mutate({ playlistId });
   };
@@ -1301,6 +1793,7 @@ export default function MusicPage() {
   };
 
   const saveSelectedPlaylist = () => {
+    if (!playlistDraftDirty) return;
     if (!canSavePlaylistDraft({
       selectedPlaylistId,
       loadedPlaylistId: playlistDraftSourceId,
@@ -1341,16 +1834,49 @@ export default function MusicPage() {
   };
 
   const playSingle = (track: MusicTrack) => {
-    if (currentTrack?.id === track.id) {
+    const isCurrentLibraryPageQueue = queueSource.type === 'library'
+      && hasSameAdminMusicQueueTrackIds(queue, tracks);
+    if (isCurrentLibraryPageQueue && currentTrack?.id === track.id) {
       void (playbackError ? retryPlayback() : togglePlayback());
       return;
     }
     const source = tracks.length > 0 ? tracks : [track];
     const index = Math.max(0, source.findIndex((item) => item.id === track.id));
-    playTracks(source, index);
+    playTracks(source, index, { type: 'library' }, '歌曲库 · 当前页');
   };
 
-  const renderHallStage = () => {
+  const renderTrackEditor = (mobile: boolean) => editingTrack ? (
+    <TrackEditor
+      track={editingTrack}
+      onClose={() => requestTrackNavigation({ kind: 'close' })}
+      onDraftChange={() => {
+        trackDraftRevisionRef.current += 1;
+        setTrackDraftDirty(true);
+      }}
+      dirty={trackDraftDirty}
+      onSave={(track, data) => updateTrackMutation.mutate({
+        id: track.id,
+        data,
+        revision: trackDraftRevisionRef.current,
+      })}
+      saving={updateTrackMutation.isPending}
+      playlistOptions={playlistOptions}
+      playlistCount={playlists.length}
+      onAddToPlaylist={(playlistId, trackId) => playlistTrackMutation.mutate({ playlistId, trackId })}
+      addingToPlaylist={playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
+      onRequestDeleteWithMedia={(track) => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
+      onPreview={playSingle}
+      mobile={mobile}
+      coverImages={coverImagesQuery.data?.list ?? []}
+      coverImagesLoading={coverImagesQuery.isLoading}
+    />
+  ) : null;
+
+  const renderHallStage = ({
+    progress,
+    duration,
+    percent,
+  }: ReturnType<typeof useAdminMusicPlayerTimeline>) => {
     const stageTrack = currentTrack ?? tracks[0];
     const featuredName = settings.featuredPlaylistId
       ? playlists.find((p) => p.id === settings.featuredPlaylistId)?.name
@@ -1368,7 +1894,12 @@ export default function MusicPage() {
         return;
       }
       if (tracks.length > 0) {
-        playTracks(tracks, Math.max(0, tracks.findIndex((t) => t.id === stageTrack.id)));
+        playTracks(
+          tracks,
+          Math.max(0, tracks.findIndex((t) => t.id === stageTrack.id)),
+          { type: 'library' },
+          '展示试听 · 当前曲库页'
+        );
       }
     };
     const fmtClock = (s: number) => {
@@ -1530,7 +2061,7 @@ export default function MusicPage() {
                   aria-label={stageIsCurrent ? '调整试听进度' : '播放后可调整进度'}
                 >
                   <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
-                    <span className="block h-full rounded-full bg-[var(--aurora-1)] transition-[width] duration-200" style={{ width: `${stageProgressPercent}%` }} />
+                    <span className="block h-full origin-left rounded-full bg-[var(--aurora-1)] transition-transform duration-200 motion-reduce:transition-none" style={{ transform: `scaleX(${stageProgressPercent / 100})` }} />
                   </span>
                 </button>
                 <div className="mt-2 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
@@ -1763,30 +2294,32 @@ export default function MusicPage() {
           />
         </div>
 
-        {editingTrack && (
-          <TrackEditor
-            track={editingTrack}
-            onClose={() => requestTrackNavigation({ kind: 'close' })}
-            onDraftChange={() => {
-              trackDraftRevisionRef.current += 1;
-              setTrackDraftDirty(true);
-            }}
-            dirty={trackDraftDirty}
-            onSave={(track, data) => updateTrackMutation.mutate({
-              id: track.id,
-              data,
-              revision: trackDraftRevisionRef.current,
-            })}
-            saving={updateTrackMutation.isPending}
-            playlistOptions={playlistOptions}
-            playlistCount={playlists.length}
-            onAddToPlaylist={(playlistId, trackId) => playlistTrackMutation.mutate({ playlistId, trackId })}
-            addingToPlaylist={playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
-            onRequestDeleteWithMedia={(track) => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
-            onPreview={playSingle}
-          />
-        )}
+        {editingTrack && !isMobile && renderTrackEditor(false)}
         </div>
+
+        {editingTrack && isMobile && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[90] flex items-end" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default bg-black/45 backdrop-blur-[2px]"
+              onClick={() => requestTrackNavigation({ kind: 'close' })}
+              aria-label="关闭歌曲编辑面板"
+            />
+            <section
+              ref={trackEditorSheetRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`编辑歌曲：${editingTrack.title}`}
+              aria-hidden={mobileEditorCoveredByModal ? true : undefined}
+              inert={mobileEditorCoveredByModal ? true : undefined}
+              tabIndex={-1}
+              className="relative z-10 w-full"
+            >
+              {renderTrackEditor(true)}
+            </section>
+          </div>,
+          document.body
+        )}
 
         <div className={shellClass}>
           <AdminSectionHeader
@@ -1900,7 +2433,7 @@ export default function MusicPage() {
     const detail = playlistDetailQuery.data?.id === selectedPlaylistId
       ? playlistDetailQuery.data
       : undefined;
-    const detailTracks = playlistMemberTracksQuery.data ?? detail?.tracks ?? [];
+    const detailTracks = selectedPlaylistTracks;
     const existingTrackIds = buildPlaylistTrackIdSet(playlistMemberTracksQuery.data ?? []);
     const playlistTrackOptions = buildPlaylistTrackOptions(playlistTrackCandidates, existingTrackIds);
     const playlistCandidateTotal = playlistTrackCandidatesQuery.data?.total ?? 0;
@@ -2009,9 +2542,18 @@ export default function MusicPage() {
                           publishPlaylist(playlist.id);
                         }}
                         className={iconButtonClass(false, 'primary')}
-                        title="设为公开展示并启用公开播放器"
+                        title={
+                          playlist.id === playlistDraftSourceId && playlistDraftDirty
+                            ? '请先保存当前歌单的修改'
+                            : '设为公开展示并启用公开播放器'
+                        }
                         aria-label={`将「${playlist.name}」设为公开展示`}
-                        disabled={isPlaylistWriteBusy || isSettingsWriteBusy || !settingsQuery.data}
+                        disabled={
+                          isPlaylistWriteBusy
+                          || isSettingsWriteBusy
+                          || !settingsQuery.data
+                          || (playlist.id === playlistDraftSourceId && playlistDraftDirty)
+                        }
                       >
                         {publishPlaylistMutation.isPending && publishPlaylistMutation.variables?.playlistId === playlist.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -2080,6 +2622,16 @@ export default function MusicPage() {
             ) : (
             <>
               <div className="space-y-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
+                <CoverPicker
+                  value={playlistDraft.coverMediaFileId}
+                  currentUrl={playlistDraft.coverMediaFileId ? (detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
+                  items={coverImagesQuery.data?.list ?? []}
+                  loading={coverImagesQuery.isLoading}
+                  onChange={(media) => updatePlaylistDraft((draft) => ({
+                    ...draft,
+                    coverMediaFileId: media?.id,
+                  }))}
+                />
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
                   <label className="block">
                     <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌单名称</span>
@@ -2141,10 +2693,10 @@ export default function MusicPage() {
                       loadedPlaylistId: playlistDraftSourceId,
                       isFetching: playlistDetailQuery.isFetching,
                       isSaving: isPlaylistWriteBusy,
-                    }) || !playlistDraft.name.trim()}
+                    }) || !playlistDraft.name.trim() || !playlistDraftDirty}
                   >
                     {updatePlaylistMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                    保存歌单
+                    {playlistDraftDirty ? '保存歌单' : '已保存'}
                   </button>
                 </div>
               </div>
@@ -2198,7 +2750,18 @@ export default function MusicPage() {
                       <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => playTracks(detailTracks, index)} className={iconButtonClass(false, 'primary')} aria-label={`从「${track.title}」开始播放歌单`} title="试听">
+                      <button
+                        type="button"
+                        onClick={() => selectedPlaylistId && playTracks(
+                          detailTracks,
+                          index,
+                          { type: 'playlist', playlistId: selectedPlaylistId },
+                          selectedPlaylist?.name || '歌单播放'
+                        )}
+                        className={iconButtonClass(false, 'primary')}
+                        aria-label={`从「${track.title}」开始播放歌单`}
+                        title="试听"
+                      >
                         <Play className="h-4 w-4" />
                       </button>
                       <div className="hidden items-center gap-2 min-[769px]:flex">
@@ -2453,9 +3016,101 @@ export default function MusicPage() {
     : pendingTrackNavigation?.kind === 'tab'
       ? `切换到「${tabs.find((tab) => tab.key === pendingTrackNavigation.tab)?.label || '目标页签'}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的修改。`
       : `关闭歌曲编辑器会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`;
+  const activeConfirmationConfig: MusicConfirmationConfig | null = (() => {
+    switch (activeConfirmation) {
+      case 'delete':
+        if (!pendingDelete) return null;
+        return {
+          title: pendingDeleteTitle,
+          message: pendingDeleteMessage,
+          confirmText: '确认删除',
+          cancelText: '取消',
+          variant: 'danger',
+          pending: deletePlaylistMutation.isPending || deleteTrackMutation.isPending,
+          onCancel: () => {
+            if (deleteWriteLockRef.current || deletePlaylistMutation.isPending || deleteTrackMutation.isPending) return;
+            setPendingDelete(null);
+          },
+          onConfirm: () => {
+            if (deleteWriteLockRef.current) return;
+            if (pendingDelete.kind === 'playlist') {
+              if (isPlaylistWriteBusy) return;
+              deleteWriteLockRef.current = true;
+              deletePlaylistMutation.mutate(pendingDelete.playlist.id);
+              return;
+            }
+            if (deleteTrackMutation.isPending || updateTrackMutation.isPending) return;
+            deleteWriteLockRef.current = true;
+            deleteTrackMutation.mutate({
+              id: pendingDelete.track.id,
+              deleteMedia: pendingDelete.deleteMedia,
+            });
+          },
+        };
+      case 'track-navigation':
+        if (!pendingTrackNavigation) return null;
+        return {
+          title: '放弃未保存的歌曲修改？',
+          message: pendingTrackNavigationMessage,
+          confirmText: pendingTrackNavigation.kind === 'close' ? '放弃并关闭' : '放弃并继续',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => setPendingTrackNavigation(null),
+          onConfirm: () => performTrackNavigation(pendingTrackNavigation),
+        };
+      case 'playlist-selection':
+        if (pendingPlaylistSelectionId == null) return null;
+        return {
+          title: '放弃未保存的歌单修改？',
+          message: `切换到「${playlists.find((playlist) => playlist.id === pendingPlaylistSelectionId)?.name || '目标歌单'}」会丢弃当前尚未保存的名称、描述或展示设置。`,
+          confirmText: '放弃并切换',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => setPendingPlaylistSelectionId(null),
+          onConfirm: () => {
+            const targetId = pendingPlaylistSelectionId;
+            setPendingPlaylistSelectionId(null);
+            selectPlaylist(targetId);
+          },
+        };
+      case 'route-navigation':
+        return {
+          title: '放弃未保存的音乐修改？',
+          message: trackDraftDirty && playlistDraftDirty
+            ? '当前歌曲和歌单都有尚未保存的修改。继续前往其他页面会丢弃这些修改。'
+            : trackDraftDirty
+              ? `歌曲「${editingTrack?.title || '当前歌曲'}」还有尚未保存的元数据或歌词修改。`
+              : '当前歌单还有尚未保存的名称、描述或展示设置。',
+          confirmText: '放弃并离开',
+          cancelText: '继续编辑',
+          variant: 'warning',
+          pending: false,
+          onCancel: () => {
+            if (dirtyNavigationBlocker.state === 'blocked') dirtyNavigationBlocker.reset();
+          },
+          onConfirm: () => {
+            if (dirtyNavigationBlocker.state !== 'blocked') return;
+            trackDraftRevisionRef.current += 1;
+            playlistDraftRevisionRef.current += 1;
+            setTrackDraftDirty(false);
+            setPlaylistDraftDirty(false);
+            dirtyNavigationBlocker.proceed();
+          },
+        };
+      default:
+        return null;
+    }
+  })();
+  const headerPlaybackTracks = activeTab === 'library' ? tracks : selectedPlaylistTracks;
+  const headerPlaybackLabel = activeTab === 'library' ? '播放当前曲库页' : '播放当前歌单';
 
   return (
-    <div className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-x-clip p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6">
+    <div
+      {...musicSkinScopeProps(settings, isDark)}
+      className="admin-grid-page -m-4 min-h-[calc(100%+2rem)] overflow-x-clip p-4 text-[var(--ink-primary)] md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6"
+    >
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
           className="music-module-header"
@@ -2469,18 +3124,32 @@ export default function MusicPage() {
           showActiveSummary={false}
           actions={
             <>
+              {activeTab !== 'display' && (
               <button
                 type="button"
-                onClick={() => tracks.length > 0 && playTracks(tracks, 0)}
+                onClick={() => {
+                  if (headerPlaybackTracks.length === 0) return;
+                  if (activeTab === 'playlists' && selectedPlaylistId) {
+                    playTracks(
+                      headerPlaybackTracks,
+                      0,
+                      { type: 'playlist', playlistId: selectedPlaylistId },
+                      selectedPlaylist?.name || '歌单播放'
+                    );
+                    return;
+                  }
+                  playTracks(headerPlaybackTracks, 0, { type: 'library' }, '歌曲库 · 当前页');
+                }}
                 className="admin-module-action-button"
-                disabled={tracks.length === 0}
-                aria-label="播放当前曲库页"
-                title="播放当前曲库页"
+                disabled={headerPlaybackTracks.length === 0}
+                aria-label={headerPlaybackLabel}
+                title={headerPlaybackLabel}
               >
                 <Play className="h-4 w-4" />
-                <span className="hidden sm:inline">播放当前页</span>
+                <span className="hidden sm:inline">{activeTab === 'library' ? '播放当前页' : '播放歌单'}</span>
                 <span className="sm:hidden">播放</span>
               </button>
+              )}
               <button
                 type="button"
                 onClick={() => saveSettingsPatch({ enabled: !settings.enabled })}
@@ -2508,67 +3177,24 @@ export default function MusicPage() {
         )}
         {activeTab === 'display' && (
           <section id="admin-module-panel-display" role="tabpanel" aria-labelledby="admin-module-tab-display" tabIndex={0} className="space-y-4">
-            {renderHallStage()}
+            <AdminMusicTimelineSlot>
+              {(timeline) => renderHallStage(timeline)}
+            </AdminMusicTimelineSlot>
             {renderDisplay()}
           </section>
         )}
       </div>
 
       <ConfirmDialog
-        isOpen={Boolean(pendingDelete)}
-        title={pendingDeleteTitle}
-        message={pendingDeleteMessage}
-        confirmText="确认删除"
-        cancelText="取消"
-        variant="danger"
-        pending={deletePlaylistMutation.isPending || deleteTrackMutation.isPending}
-        onCancel={() => {
-          if (deleteWriteLockRef.current || deletePlaylistMutation.isPending || deleteTrackMutation.isPending) return;
-          setPendingDelete(null);
-        }}
-        onConfirm={() => {
-          if (!pendingDelete || deleteWriteLockRef.current) return;
-          if (pendingDelete.kind === 'playlist') {
-            if (isPlaylistWriteBusy) return;
-            deleteWriteLockRef.current = true;
-            deletePlaylistMutation.mutate(pendingDelete.playlist.id);
-          } else {
-            if (deleteTrackMutation.isPending || updateTrackMutation.isPending) return;
-            deleteWriteLockRef.current = true;
-            deleteTrackMutation.mutate({
-              id: pendingDelete.track.id,
-              deleteMedia: pendingDelete.deleteMedia,
-            });
-          }
-        }}
-      />
-      <ConfirmDialog
-        isOpen={pendingTrackNavigation != null}
-        title="放弃未保存的歌曲修改？"
-        message={pendingTrackNavigationMessage}
-        confirmText={pendingTrackNavigation?.kind === 'close' ? '放弃并关闭' : '放弃并继续'}
-        cancelText="继续编辑"
-        variant="warning"
-        onCancel={() => setPendingTrackNavigation(null)}
-        onConfirm={() => {
-          if (!pendingTrackNavigation) return;
-          performTrackNavigation(pendingTrackNavigation);
-        }}
-      />
-      <ConfirmDialog
-        isOpen={pendingPlaylistSelectionId != null}
-        title="放弃未保存的歌单修改？"
-        message={`切换到「${playlists.find((playlist) => playlist.id === pendingPlaylistSelectionId)?.name || '目标歌单'}」会丢弃当前尚未保存的名称、描述或展示设置。`}
-        confirmText="放弃并切换"
-        cancelText="继续编辑"
-        variant="warning"
-        onCancel={() => setPendingPlaylistSelectionId(null)}
-        onConfirm={() => {
-          if (pendingPlaylistSelectionId == null) return;
-          const targetId = pendingPlaylistSelectionId;
-          setPendingPlaylistSelectionId(null);
-          selectPlaylist(targetId);
-        }}
+        isOpen={activeConfirmationConfig != null}
+        title={activeConfirmationConfig?.title ?? ''}
+        message={activeConfirmationConfig?.message ?? ''}
+        confirmText={activeConfirmationConfig?.confirmText}
+        cancelText={activeConfirmationConfig?.cancelText}
+        variant={activeConfirmationConfig?.variant}
+        pending={activeConfirmationConfig?.pending}
+        onCancel={() => activeConfirmationConfig?.onCancel()}
+        onConfirm={() => activeConfirmationConfig?.onConfirm()}
       />
     </div>
   );

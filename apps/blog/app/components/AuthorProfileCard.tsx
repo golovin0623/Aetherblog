@@ -18,6 +18,14 @@ import { ProfileMusicPlayer } from './ProfileMusicPlayer';
 const MAX_SOCIAL_LINKS_JSON_LEN = 65_536;
 const MAX_SOCIAL_LINKS = 64;
 
+type ProfileStackPosition = 'previous' | 'current' | 'next';
+
+function resolveStackGridColumn(position: ProfileStackPosition): 1 | 2 | 3 {
+  if (position === 'previous') return 1;
+  if (position === 'next') return 3;
+  return 2;
+}
+
 // 社交链接提取工具
 const extractSocialLinks = (settings: any) => {
   if (!settings) return [];
@@ -192,6 +200,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
   const [activeIndex, setActiveIndex] = useState(0);
+  const [adjacentStackPosition, setAdjacentStackPosition] = useState<'previous' | 'next'>('next');
   const prefersReducedMotion = useReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageWidth, setStageWidth] = useState(0);
@@ -249,16 +258,10 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
   const activeStackCard = stackCards[activeIndex] ?? stackCards[0];
   const nextStackCard = stackCards[(activeIndex + 1) % stackCards.length] ?? stackCards[0];
   const activeCard = activeStackCard.key;
-  const stackSlots = useMemo(() => {
-    const total = stackCards.length;
-    const previousIndex = (activeIndex - 1 + total) % total;
-    const nextIndex = (activeIndex + 1) % total;
-    return [
-      { position: 'previous' as const, card: stackCards[previousIndex] },
-      { position: 'current' as const, card: stackCards[activeIndex] ?? stackCards[0] },
-      { position: 'next' as const, card: stackCards[nextIndex] },
-    ];
-  }, [activeIndex, stackCards]);
+  const stackSlots = useMemo(() => [
+    { position: 'current' as const, card: activeStackCard },
+    { position: adjacentStackPosition, card: nextStackCard },
+  ], [activeStackCard, adjacentStackPosition, nextStackCard]);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -295,10 +298,15 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       trackX.set(-stageWidth);
       return;
     }
-    const controls = animate(trackX, step === 1 ? -stageWidth * 2 : 0, spring.precise);
-    controls.then(() => {
-      commitStackSwitch(step);
-      trackX.set(-stageWidth);
+    setAdjacentStackPosition(step === 1 ? 'next' : 'previous');
+    // The alternate card is a single keyed subtree. Give React one frame to
+    // move it to the requested side before the shared three-column track moves.
+    window.requestAnimationFrame(() => {
+      const controls = animate(trackX, step === 1 ? -stageWidth * 2 : 0, spring.precise);
+      controls.then(() => {
+        commitStackSwitch(step);
+        trackX.set(-stageWidth);
+      });
     });
   }, [commitStackSwitch, prefersReducedMotion, stageWidth, trackX]);
 
@@ -355,6 +363,12 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     }
 
     event.preventDefault();
+    if (deltaX !== 0) {
+      const nextAdjacentPosition = deltaX > 0 ? 'previous' : 'next';
+      setAdjacentStackPosition((current) => (
+        current === nextAdjacentPosition ? current : nextAdjacentPosition
+      ));
+    }
     const limit = Math.max(120, stageWidth * 0.92);
     const resistedX = Math.max(-limit, Math.min(limit, deltaX));
     trackX.set(swipe.startTrackX + resistedX);
@@ -414,7 +428,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
   const renderStackPanel = (
     card: (typeof stackCards)[number],
-    position: 'previous' | 'current' | 'next'
+    position: ProfileStackPosition
   ) => {
     const isCurrent = position === 'current';
 
@@ -496,6 +510,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         <ProfileMusicPlayer
           variant="stack"
           className="h-full"
+          timelineActive={isCurrent}
           stackSwitchAction={renderStackSwitchButton()}
           emptyState={
             <div className="flex h-full flex-col items-center justify-center text-center">
@@ -550,9 +565,13 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           >
             {stackSlots.map((slot) => (
               <div
-                key={`${slot.position}-${slot.card.key}`}
+                key={slot.card.key}
                 className="profile-card-stack-slot"
                 data-position={slot.position}
+                style={{
+                  gridColumn: resolveStackGridColumn(slot.position),
+                  gridRow: 1,
+                }}
               >
                 {renderStackPanel(slot.card, slot.position)}
               </div>

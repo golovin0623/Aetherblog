@@ -5,6 +5,7 @@ import {
   createShuffleHistory,
   parseStoredMusicPlayback,
   recordShuffleSelection,
+  resolveIdleMusicSeekPreviewPosition,
   resolveRestoredMusicPosition,
   resolveShuffleNavigation,
 } from '../apps/blog/app/components/musicPlayerState';
@@ -13,6 +14,14 @@ const providerSource = readFileSync(
   path.resolve(__dirname, '../apps/blog/app/components/MusicPlayerProvider.tsx'),
   'utf8'
 );
+
+function sourceBetween(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
 
 describe('music shuffle navigation history', () => {
   it('walks backward and forward through the exact played order', () => {
@@ -99,6 +108,14 @@ describe('music shuffle navigation history', () => {
 });
 
 describe('music playback persistence', () => {
+  it('never dereferences an absent idle seek preview when no track is available', () => {
+    expect(resolveIdleMusicSeekPreviewPosition(null, null)).toBe(0);
+    expect(resolveIdleMusicSeekPreviewPosition({ trackId: 9, position: 42 }, null)).toBe(0);
+    expect(resolveIdleMusicSeekPreviewPosition(null, 9)).toBe(0);
+    expect(resolveIdleMusicSeekPreviewPosition({ trackId: 9, position: 42 }, 8)).toBe(0);
+    expect(resolveIdleMusicSeekPreviewPosition({ trackId: 9, position: 42 }, 9)).toBe(42);
+  });
+
   it('accepts only bounded, finite snapshots', () => {
     expect(parseStoredMusicPlayback('{"trackId":9,"position":42.5,"volume":0.65}')).toEqual({
       trackId: 9,
@@ -127,6 +144,23 @@ describe('music provider semantic integration gates', () => {
     expect(providerSource).toContain('setPresentationIndex');
     expect(providerSource).toContain('playbackTrack');
     expect(providerSource).toContain('resolveMusicAudioSrc(playbackTrack)');
+  });
+
+  it('keeps an idle seek as preview state until the visitor explicitly asks to play', () => {
+    const seekSource = sourceBetween(
+      providerSource,
+      'const seekToTime = useCallback',
+      'const seekToPercent = useCallback',
+    );
+    const idleSeekSource = sourceBetween(
+      seekSource,
+      'if (!hasPlaybackSession)',
+      'if (targetTrack &&',
+    );
+    expect(seekSource).toContain('setIdleSeekPreview');
+    expect(idleSeekSource).not.toContain('setHasPlaybackSession(true)');
+    expect(idleSeekSource).not.toContain('selectPlaybackIndex(targetIndex)');
+    expect(idleSeekSource).not.toContain('persistPlaybackSnapshot');
   });
 
   it('uses explicit playback intent across source load transitions', () => {
@@ -168,7 +202,7 @@ describe('music provider semantic integration gates', () => {
     expect(providerSource).toContain('localStorage.removeItem(MUSIC_PLAYBACK_STORAGE_KEY)');
     expect(providerSource).toContain("audio.removeAttribute('src')");
     expect(providerSource).toContain('pendingRestoreRef.current = null');
-    expect(providerSource.match(/data-dismiss-music-player/g)).toHaveLength(2);
-    expect(providerSource.match(/aria-label="停止播放并关闭播放器"/g)).toHaveLength(2);
+    expect(providerSource.match(/data-dismiss-music-player/g)).toHaveLength(3);
+    expect(providerSource.match(/aria-label="停止播放并关闭播放器"/g)).toHaveLength(3);
   });
 });

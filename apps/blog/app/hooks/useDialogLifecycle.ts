@@ -79,6 +79,25 @@ function visibleFocusableElements(container: HTMLElement): HTMLElement[] {
   });
 }
 
+export function resolveDialogTabTarget({
+  shiftKey,
+  activeIsContainer,
+  activeIsFirst,
+  activeIsLast,
+  activeIsInside,
+}: {
+  shiftKey: boolean;
+  activeIsContainer: boolean;
+  activeIsFirst: boolean;
+  activeIsLast: boolean;
+  activeIsInside: boolean;
+}): 'first' | 'last' | null {
+  if (shiftKey) {
+    return activeIsContainer || activeIsFirst || !activeIsInside ? 'last' : null;
+  }
+  return activeIsContainer || activeIsLast || !activeIsInside ? 'first' : null;
+}
+
 export function useDialogLifecycle({
   open,
   onClose,
@@ -137,12 +156,16 @@ export function useDialogLifecycle({
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       const active = document.activeElement;
-      if (event.shiftKey && (active === first || !container.contains(active))) {
+      const target = resolveDialogTabTarget({
+        shiftKey: event.shiftKey,
+        activeIsContainer: active === container,
+        activeIsFirst: active === first,
+        activeIsLast: active === last,
+        activeIsInside: container.contains(active),
+      });
+      if (target) {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !container.contains(active))) {
-        event.preventDefault();
-        first.focus();
+        (target === 'first' ? first : last).focus();
       }
     };
 
