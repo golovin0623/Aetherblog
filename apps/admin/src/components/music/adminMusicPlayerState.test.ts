@@ -268,6 +268,8 @@ describe('admin music player state', () => {
 
     expect(providerSource).toContain('resolveAdminPlayerAutoMinimizeDelay({');
     expect(providerSource).toContain("setPlayerDensity('minimized')");
+    expect(providerSource).toContain('onPointerDownCapture={markPlayerActivity}');
+    expect(providerSource).not.toContain('onPointerDown={markPlayerActivity}');
   });
 
   it('keeps density transitions explicit and predictable', () => {
@@ -420,6 +422,7 @@ describe('admin music player state', () => {
     expect(providerSource).toContain('style={{ x: dockX, y: dockY');
     expect(providerSource).toContain("transformOrigin: '50% 100%'");
     expect(providerSource).toContain('resolveAdminPlayerViewportCorrection({');
+    expect(providerSource).toContain('.catch(() => undefined)');
     expect(providerSource).toContain('ResizeObserver');
     expect(providerSource).toContain('ADMIN_PLAYER_DOCK_POSITION_KEY');
     expect(providerSource).toContain('data-admin-player-drag-zone');

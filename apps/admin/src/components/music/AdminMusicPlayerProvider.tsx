@@ -215,7 +215,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     }
     const xAnimation = animate(dockX, nextX, spring.precise);
     const yAnimation = animate(dockY, nextY, spring.precise);
-    void Promise.all([xAnimation, yAnimation]).then(persistDockPosition);
+    void Promise.all([xAnimation, yAnimation])
+      .then(persistDockPosition)
+      .catch(() => undefined);
   }, [dockX, dockY, isMobile, persistDockPosition, prefersReducedMotion]);
 
   useEffect(() => {
@@ -1185,7 +1187,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                 onPointerLeave={(event) => {
                   if (event.pointerType === 'mouse') setPointerInside(false);
                 }}
-                onPointerDown={markPlayerActivity}
+                onPointerDownCapture={markPlayerActivity}
                 onFocusCapture={() => {
                   if (inputModalityRef.current === 'keyboard') setFocusWithin(true);
                 }}
