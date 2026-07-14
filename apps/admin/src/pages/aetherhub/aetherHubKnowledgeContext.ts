@@ -16,6 +16,11 @@ interface AtlasKnowledgePointSelectionLike {
   title: string;
 }
 
+export interface SessionKnowledgeHandoff {
+  sessionId: string;
+  handoff: KnowledgeWorkspaceHandoff;
+}
+
 export type AetherHubKnowledgeContextResult =
   | {
       ok: true;
@@ -77,13 +82,29 @@ export function preserveContextSelectionAfterSuccess<T, K extends PropertyKey>(
 }
 
 /**
- * Handoffs are immutable snapshots. Reference identity deliberately makes this
- * fail-safe: a newly arrived handoff is retained even when it has similar data.
+ * A one-use handoff belongs to the fresh AetherHub session created for it.
+ * Returning null for every other session prevents explicit selected/none
+ * context from leaking into an unrelated conversation.
  */
-export function preserveKnowledgeHandoffAfterSuccess(
-  current: KnowledgeWorkspaceHandoff | null,
-  sent: KnowledgeWorkspaceHandoff | null,
-): KnowledgeWorkspaceHandoff | null {
+export function getSessionKnowledgeHandoff(
+  current: SessionKnowledgeHandoff | null,
+  sessionId: string | null,
+): SessionKnowledgeHandoff | null {
+  return current && sessionId && current.sessionId === sessionId ? current : null;
+}
+
+export function clearSessionKnowledgeHandoff(
+  current: SessionKnowledgeHandoff | null,
+  sessionId: string | null,
+): SessionKnowledgeHandoff | null {
+  return getSessionKnowledgeHandoff(current, sessionId) ? null : current;
+}
+
+/** Reference identity preserves a newer session handoff created while sending. */
+export function preserveSessionKnowledgeHandoffAfterSuccess(
+  current: SessionKnowledgeHandoff | null,
+  sent: SessionKnowledgeHandoff | null,
+): SessionKnowledgeHandoff | null {
   return current === sent ? null : current;
 }
 

@@ -65,7 +65,6 @@ import { agentWorkflowService } from '@/services/agentWorkflowService';
 import {
   consumeKnowledgeWorkspaceHandoff,
   type KnowledgeContextSelection,
-  type KnowledgeWorkspaceHandoff,
 } from '@/services/knowledgeWorkspaceHandoff';
 import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
@@ -100,9 +99,12 @@ import {
   useSmoothStream,
 } from '@/services/agent';
 import {
+  clearSessionKnowledgeHandoff,
+  getSessionKnowledgeHandoff,
   preserveContextSelectionAfterSuccess,
-  preserveKnowledgeHandoffAfterSuccess,
+  preserveSessionKnowledgeHandoffAfterSuccess,
   resolveAetherHubKnowledgeContext,
+  type SessionKnowledgeHandoff,
 } from './aetherHubKnowledgeContext';
 import { RetrievalReceiptCard } from './RetrievalReceiptCard';
 
@@ -492,8 +494,18 @@ export default function AetherHubWorkspacePage() {
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
   const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
-  const [pendingKnowledgeHandoff, setPendingKnowledgeHandoff] =
-    useState<KnowledgeWorkspaceHandoff | null>(null);
+  const [pendingSessionKnowledgeHandoff, setPendingSessionKnowledgeHandoff] =
+    useState<SessionKnowledgeHandoff | null>(null);
+  const activeSessionKnowledgeHandoff = getSessionKnowledgeHandoff(
+    pendingSessionKnowledgeHandoff,
+    activeId,
+  );
+  const pendingKnowledgeHandoff = activeSessionKnowledgeHandoff?.handoff ?? null;
+  const clearActiveKnowledgeHandoff = useCallback(() => {
+    setPendingSessionKnowledgeHandoff((current) =>
+      clearSessionKnowledgeHandoff(current, activeId),
+    );
+  }, [activeId]);
   const handoffConsumedForUserRef = useRef<string | null>(null);
   useEffect(() => {
     setSelectedArticles([]);
@@ -518,7 +530,7 @@ export default function AetherHubWorkspacePage() {
     setSessions((current) => [fresh, ...current]);
     setActiveId(fresh.id);
     setComposer(result.handoff.draftPrompt ?? '');
-    setPendingKnowledgeHandoff(result.handoff);
+    setPendingSessionKnowledgeHandoff({ sessionId: fresh.id, handoff: result.handoff });
     const sourceCount =
       result.handoff.context.mode === 'selected' ? result.handoff.context.refs.length : 0;
     toast.success(
@@ -599,7 +611,6 @@ export default function AetherHubWorkspacePage() {
     setSessions((prev) => [fresh, ...prev]);
     setActiveId(fresh.id);
     setComposer('');
-    setPendingKnowledgeHandoff(null);
   }, [streaming]);
 
   const handleOpenCurrentConfig = useCallback(() => {
@@ -613,29 +624,41 @@ export default function AetherHubWorkspacePage() {
         toast.info('正在生成回答，请稍候或先停止');
         return;
       }
-      setPendingKnowledgeHandoff(null);
+      if (id === activeId) return;
       setActiveId(id);
+      setComposer(
+        getSessionKnowledgeHandoff(pendingSessionKnowledgeHandoff, id)?.handoff.draftPrompt ?? '',
+      );
     },
-    [streaming],
+    [activeId, pendingSessionKnowledgeHandoff, streaming],
   );
 
   const handleDeleteSession = useCallback(
     (id: string) => {
+      setPendingSessionKnowledgeHandoff((current) =>
+        clearSessionKnowledgeHandoff(current, id),
+      );
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== id);
         if (next.length === 0) {
           const fresh = createEmptySession('chat');
           setActiveId(fresh.id);
+          setComposer('');
           return [fresh];
         }
         if (id === activeId) {
-          setActiveId(next.sort((a, b) => b.updatedAt - a.updatedAt)[0].id);
+          const nextActiveId = next.sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
+          setActiveId(nextActiveId);
+          setComposer(
+            getSessionKnowledgeHandoff(pendingSessionKnowledgeHandoff, nextActiveId)?.handoff
+              .draftPrompt ?? '',
+          );
         }
         return next;
       });
       toast.success('对话已删除');
     },
-    [activeId],
+    [activeId, pendingSessionKnowledgeHandoff],
   );
 
   const handleSetModel = useCallback(
@@ -750,12 +773,16 @@ export default function AetherHubWorkspacePage() {
       const requestTags = override?.selectedTags ?? selectedTags;
       const requestKbs = override?.selectedKbs ?? selectedKbs;
       const requestAtlasKps = override?.selectedAtlasKps ?? selectedAtlasKps;
+      const requestSessionHandoff = getSessionKnowledgeHandoff(
+        pendingSessionKnowledgeHandoff,
+        baseSession.id,
+      );
       const requestKnowledgeContext = override
         ? override.knowledgeContext ?? null
-        : pendingKnowledgeHandoff?.context ?? null;
+        : requestSessionHandoff?.handoff.context ?? null;
       const requestHandoffSnapshot =
-        pendingKnowledgeHandoff?.context === requestKnowledgeContext
-          ? pendingKnowledgeHandoff
+        requestSessionHandoff?.handoff.context === requestKnowledgeContext
+          ? requestSessionHandoff
           : null;
       const contextPayload = resolveAetherHubKnowledgeContext(
         requestKnowledgeContext,
@@ -795,8 +822,8 @@ export default function AetherHubWorkspacePage() {
             (knowledgePoint) => knowledgePoint.id,
           ),
         );
-        setPendingKnowledgeHandoff((current) =>
-          preserveKnowledgeHandoffAfterSuccess(current, requestHandoffSnapshot),
+        setPendingSessionKnowledgeHandoff((current) =>
+          preserveSessionKnowledgeHandoffAfterSuccess(current, requestHandoffSnapshot),
         );
       };
       setStreaming(true);
@@ -940,7 +967,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState, pendingKnowledgeHandoff],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState, pendingSessionKnowledgeHandoff],
   );
 
   const handleEditMessage = useCallback(
@@ -1027,6 +1054,7 @@ export default function AetherHubWorkspacePage() {
           setSelectedTags([]);
           setSelectedKbs([]);
           setSelectedAtlasKps([]);
+          clearActiveKnowledgeHandoff();
           toast.success('已清空当前对话');
           return;
         case '/new':
@@ -1055,7 +1083,7 @@ export default function AetherHubWorkspacePage() {
           toast.info(`命令 ${cmd.command} 暂未实现`);
       }
     },
-    [activeSession, streaming, updateSession, handleNewSession, handleSend],
+    [activeSession, streaming, updateSession, clearActiveKnowledgeHandoff, handleNewSession, handleSend],
   );
 
   if (!hydrated) {
@@ -1143,7 +1171,7 @@ export default function AetherHubWorkspacePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPendingKnowledgeHandoff(null)}
+                  onClick={clearActiveKnowledgeHandoff}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                   aria-label="改用自动来源"
                   title="改用自动来源"
@@ -1186,13 +1214,13 @@ export default function AetherHubWorkspacePage() {
                 )
               }
               onPickKb={(kb) => {
-                setPendingKnowledgeHandoff(null);
+                clearActiveKnowledgeHandoff();
                 setSelectedKbs((prev) =>
                   prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
                 );
               }}
               onPickAtlasKp={(kp) => {
-                setPendingKnowledgeHandoff(null);
+                clearActiveKnowledgeHandoff();
                 setSelectedAtlasKps((prev) =>
                   prev.find((item) => item.id === kp.id) ? prev : [...prev, kp],
                 );
