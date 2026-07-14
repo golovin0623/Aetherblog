@@ -8,13 +8,23 @@
  */
 
 import type { AgentRetrievalReceipt } from './chat';
+import type { KnowledgeContextSelection } from '../knowledgeWorkspaceHandoff';
 
 export type AgentMode = 'chat' | 'cowork' | 'code';
+
+export interface AgentRequestSnapshotV1 {
+  schemaVersion: 1;
+  knowledgeContext: KnowledgeContextSelection;
+  articleIds: number[] | null;
+  tagSlugs: string[] | null;
+}
 
 export interface AgentMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Immutable request scope used to reproduce this user turn on retry. */
+  requestSnapshot?: AgentRequestSnapshotV1;
   think?: string;
   sources?: { title: string; slug: string }[];
   retrieval?: AgentRetrievalReceipt;
@@ -45,6 +55,8 @@ export interface AgentSession {
   modelId?: string | null;
   providerCode?: string | null;
   modelParams?: AgentModelParams;
+  /** Unsent composer text. Optional so sessions saved before this field remain compatible. */
+  draft?: string;
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];
@@ -90,6 +102,22 @@ export function newSessionId(): string {
 
 export function newMessageId(): string {
   return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function readAgentSessionDraft(session: AgentSession | null | undefined): string {
+  return typeof session?.draft === 'string' ? session.draft : '';
+}
+
+/** Preserve composer text without changing recency or reordering the session list. */
+export function withAgentSessionDraft(session: AgentSession, draft: string): AgentSession {
+  return session.draft === draft ? session : { ...session, draft };
+}
+
+export function resolveAgentSessionDraftAfterRequestStart(
+  session: AgentSession,
+  replayingHistory: boolean,
+): string {
+  return replayingHistory ? readAgentSessionDraft(session) : '';
 }
 
 export function deriveSessionTitle(firstMessage: string): string {
@@ -143,6 +171,7 @@ export function createEmptySession(mode: AgentMode = 'chat'): AgentSession {
     mode,
     modelId: null,
     providerCode: null,
+    draft: '',
     createdAt: now,
     updatedAt: now,
     messages: [],

@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { KnowledgeWorkspaceHandoff } from '@/services/knowledgeWorkspaceHandoff';
 import {
   clearSessionKnowledgeHandoff,
+  createAetherHubRequestSnapshot,
   getSessionKnowledgeHandoff,
   preserveContextSelectionAfterSuccess,
+  preserveContextSelectionKeysAfterSuccess,
   preserveSessionKnowledgeHandoffAfterSuccess,
+  readAetherHubRequestSnapshot,
   resolveAetherHubKnowledgeContext,
+  selectAetherHubKnowledgeContext,
 } from './aetherHubKnowledgeContext';
 
 describe('AetherHub knowledge context resolution', () => {
@@ -122,6 +126,109 @@ describe('AetherHub request context snapshots', () => {
     expect(
       preserveContextSelectionAfterSuccess(current, sent, (item) => item.slug),
     ).toBe(current);
+  });
+
+  it('consumes an unchanged failed-request selection on retry but preserves newer picker edits', () => {
+    const unchanged = [{ id: 7, name: '产品资料' }];
+    const replacement = [{ id: 8, name: '客服资料' }];
+
+    expect(
+      preserveContextSelectionKeysAfterSuccess(unchanged, [7], (item) => item.id),
+    ).toEqual([]);
+    expect(
+      preserveContextSelectionKeysAfterSuccess(replacement, [7], (item) => item.id),
+    ).toBe(replacement);
+  });
+
+  it('captures an immutable selected request scope for retries after pickers are cleared', () => {
+    const knowledgeContext = selectAetherHubKnowledgeContext(
+      null,
+      [{ id: 7, name: '产品资料' }],
+      [{ id: 9, title: 'RAG 原理' }],
+    );
+    const articleIds = [11];
+    const tagSlugs = ['release'];
+
+    const snapshot = createAetherHubRequestSnapshot(
+      knowledgeContext,
+      articleIds,
+      tagSlugs,
+    );
+    articleIds.push(12);
+    tagSlugs.push('support');
+    if (knowledgeContext.mode === 'selected') {
+      knowledgeContext.refs.push({ kind: 'knowledge-base', id: 8, label: '客服资料' });
+    }
+
+    expect(snapshot).toEqual({
+      schemaVersion: 1,
+      knowledgeContext: {
+        mode: 'selected',
+        refs: [
+          { kind: 'knowledge-base', id: 7, label: '产品资料' },
+          { kind: 'atlas-kp', id: 9, label: 'RAG 原理' },
+        ],
+      },
+      articleIds: [11],
+      tagSlugs: ['release'],
+    });
+    expect(resolveAetherHubKnowledgeContext(snapshot.knowledgeContext, [], [])).toEqual({
+      ok: true,
+      value: {
+        knowledgeContextMode: 'selected',
+        kbIds: [7],
+        atlasScope: {
+          kpIds: [9],
+          carrierIds: [],
+          neighborhoodDepth: 0,
+          includeEvidence: true,
+          semanticRecall: false,
+          semanticLimit: 8,
+        },
+      },
+    });
+  });
+
+  it.each(['auto', 'none'] as const)(
+    'round-trips an explicit %s request instead of falling back to current picker state',
+    (mode) => {
+      const snapshot = createAetherHubRequestSnapshot({ mode }, [], []);
+      const message = {
+        id: 'message-1',
+        role: 'user' as const,
+        content: '解释本轮结果',
+        createdAt: 100,
+        requestSnapshot: snapshot,
+      };
+
+      expect(readAetherHubRequestSnapshot(message)).toEqual({ status: 'valid', snapshot });
+      expect(
+        resolveAetherHubKnowledgeContext(snapshot.knowledgeContext, [{ id: 7, name: '新选择' }], []),
+      ).toMatchObject({
+        ok: true,
+        value: { knowledgeContextMode: mode },
+      });
+    },
+  );
+
+  it('distinguishes legacy messages from malformed versioned snapshots', () => {
+    const legacyMessage = {
+      id: 'legacy',
+      role: 'user' as const,
+      content: '旧消息',
+      createdAt: 100,
+    };
+    const malformedMessage = {
+      ...legacyMessage,
+      id: 'malformed',
+      requestSnapshot: { schemaVersion: 2 },
+    };
+
+    expect(readAetherHubRequestSnapshot(legacyMessage)).toEqual({ status: 'missing' });
+    expect(readAetherHubRequestSnapshot(malformedMessage)).toEqual({
+      status: 'invalid',
+      message: '历史请求的知识范围已损坏或版本不受支持，无法安全重试。',
+    });
   });
 
 });

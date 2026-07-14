@@ -64,7 +64,6 @@ import { atlasService } from '@/services/atlasService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
 import {
   consumeKnowledgeWorkspaceHandoff,
-  type KnowledgeContextSelection,
 } from '@/services/knowledgeWorkspaceHandoff';
 import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
@@ -77,6 +76,7 @@ import {
   type AgentTag,
   type AgentMessage,
   type AgentRetrievalReceipt,
+  type AgentRequestSnapshotV1,
   type AgentSession,
   type ChatStreamRequest,
   type SlashCommand,
@@ -91,19 +91,25 @@ import {
   modelLabel,
   newMessageId,
   normalizeCjkInlineMarkdown,
+  readAgentSessionDraft,
+  resolveAgentSessionDraftAfterRequestStart,
   saveSessions,
   streamAgentChat,
   useAgentModels,
   useAllTags,
   useArticleSearch,
   useSmoothStream,
+  withAgentSessionDraft,
 } from '@/services/agent';
 import {
   clearSessionKnowledgeHandoff,
+  createAetherHubRequestSnapshot,
   getSessionKnowledgeHandoff,
-  preserveContextSelectionAfterSuccess,
+  preserveContextSelectionKeysAfterSuccess,
   preserveSessionKnowledgeHandoffAfterSuccess,
+  readAetherHubRequestSnapshot,
   resolveAetherHubKnowledgeContext,
+  selectAetherHubKnowledgeContext,
   type SessionKnowledgeHandoff,
 } from './aetherHubKnowledgeContext';
 import { RetrievalReceiptCard } from './RetrievalReceiptCard';
@@ -153,9 +159,9 @@ const SEND_SHORTCUT_OPTIONS: Array<{
   },
 ];
 
-function describeAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): string {
-  if (kps.length === 0) return 'kp_ids=none';
-  return `kp_ids=${kps.map((kp) => kp.id).join(',')}`;
+function describeAetherHubAtlasScope(kpIds: readonly number[]): string {
+  if (kpIds.length === 0) return 'kp_ids=none';
+  return `kp_ids=${kpIds.join(',')}`;
 }
 
 type StandardModelParamKey =
@@ -472,6 +478,13 @@ export default function AetherHubWorkspacePage() {
     [sessions, activeId],
   );
 
+  const updateSession = useCallback(
+    (id: string, updater: (s: AgentSession) => AgentSession) => {
+      setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
+    },
+    [],
+  );
+
   // ----- Greeting tick：跨过整点时切换 -----
   const [greeting, setGreeting] = useState(() => pickGreeting(new Date().getHours()));
   useEffect(() => {
@@ -486,7 +499,14 @@ export default function AetherHubWorkspacePage() {
   const modelsState = useAgentModels(true);
 
   // ----- Composer 状态 -----
-  const [composer, setComposer] = useState('');
+  const composer = readAgentSessionDraft(activeSession);
+  const setComposer = useCallback(
+    (value: string) => {
+      if (!activeId) return;
+      updateSession(activeId, (session) => withAgentSessionDraft(session, value));
+    },
+    [activeId, updateSession],
+  );
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const [selectedArticles, setSelectedArticles] = useState<AgentArticle[]>([]);
@@ -526,10 +546,12 @@ export default function AetherHubWorkspacePage() {
     }
     if (result.status !== 'consumed') return;
 
-    const fresh = createEmptySession('chat');
+    const fresh = withAgentSessionDraft(
+      createEmptySession('chat'),
+      result.handoff.draftPrompt ?? '',
+    );
     setSessions((current) => [fresh, ...current]);
     setActiveId(fresh.id);
-    setComposer(result.handoff.draftPrompt ?? '');
     setPendingSessionKnowledgeHandoff({ sessionId: fresh.id, handoff: result.handoff });
     const sourceCount =
       result.handoff.context.mode === 'selected' ? result.handoff.context.refs.length : 0;
@@ -595,13 +617,6 @@ export default function AetherHubWorkspacePage() {
     window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
   }, [sendShortcut]);
 
-  const updateSession = useCallback(
-    (id: string, updater: (s: AgentSession) => AgentSession) => {
-      setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
-    },
-    [],
-  );
-
   const handleNewSession = useCallback(() => {
     if (streaming) {
       toast.info('请先停止当前回答再新建对话');
@@ -610,7 +625,6 @@ export default function AetherHubWorkspacePage() {
     const fresh = createEmptySession('chat');
     setSessions((prev) => [fresh, ...prev]);
     setActiveId(fresh.id);
-    setComposer('');
   }, [streaming]);
 
   const handleOpenCurrentConfig = useCallback(() => {
@@ -626,11 +640,8 @@ export default function AetherHubWorkspacePage() {
       }
       if (id === activeId) return;
       setActiveId(id);
-      setComposer(
-        getSessionKnowledgeHandoff(pendingSessionKnowledgeHandoff, id)?.handoff.draftPrompt ?? '',
-      );
     },
-    [activeId, pendingSessionKnowledgeHandoff, streaming],
+    [activeId, streaming],
   );
 
   const handleDeleteSession = useCallback(
@@ -643,22 +654,17 @@ export default function AetherHubWorkspacePage() {
         if (next.length === 0) {
           const fresh = createEmptySession('chat');
           setActiveId(fresh.id);
-          setComposer('');
           return [fresh];
         }
         if (id === activeId) {
           const nextActiveId = next.sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
           setActiveId(nextActiveId);
-          setComposer(
-            getSessionKnowledgeHandoff(pendingSessionKnowledgeHandoff, nextActiveId)?.handoff
-              .draftPrompt ?? '',
-          );
         }
         return next;
       });
       toast.success('对话已删除');
     },
-    [activeId, pendingSessionKnowledgeHandoff],
+    [activeId],
   );
 
   const handleSetModel = useCallback(
@@ -734,11 +740,8 @@ export default function AetherHubWorkspacePage() {
       override?: {
         session: AgentSession;
         messages: AgentMessage[];
-        selectedArticles?: AgentArticle[];
-        selectedTags?: AgentTag[];
-        selectedKbs?: AgentKnowledgeBase[];
-        selectedAtlasKps?: AtlasKnowledgePoint[];
-        knowledgeContext?: KnowledgeContextSelection | null;
+        requestSnapshot?: AgentRequestSnapshotV1;
+        handoffSnapshot?: SessionKnowledgeHandoff | null;
       },
     ) => {
       const text = rawText.trim();
@@ -746,11 +749,50 @@ export default function AetherHubWorkspacePage() {
       const baseMessages = override?.messages ?? baseSession?.messages ?? [];
       if (!text || streaming || !baseSession) return;
 
+      const isFirstMessage = baseMessages.length === 0;
+      const sessionId = baseSession.id;
+      const modelId = baseSession.modelId ?? null;
+      const providerCode = baseSession.providerCode ?? null;
+      const requestModel = currentModelFromSession(baseSession, modelsState);
+      const modelParams = buildModelParamsForRequest(requestModel, baseSession.modelParams);
+      const replaySnapshot = override?.requestSnapshot ?? null;
+      const requestArticles = replaySnapshot ? [] : selectedArticles;
+      const requestTags = replaySnapshot ? [] : selectedTags;
+      const requestKbs = replaySnapshot ? [] : selectedKbs;
+      const requestAtlasKps = replaySnapshot ? [] : selectedAtlasKps;
+      const requestSessionHandoff = getSessionKnowledgeHandoff(
+        pendingSessionKnowledgeHandoff,
+        baseSession.id,
+      );
+      const requestKnowledgeContext = replaySnapshot
+        ? replaySnapshot.knowledgeContext
+        : selectAetherHubKnowledgeContext(
+            requestSessionHandoff?.handoff.context ?? null,
+            requestKbs,
+            requestAtlasKps,
+          );
+      const requestHandoffSnapshot =
+        override?.handoffSnapshot ?? (replaySnapshot ? null : requestSessionHandoff);
+      const contextPayload = resolveAetherHubKnowledgeContext(
+        requestKnowledgeContext,
+        [],
+        [],
+      );
+      if (!contextPayload.ok) {
+        toast.error(contextPayload.error.message);
+        return;
+      }
+      const requestSnapshot = createAetherHubRequestSnapshot(
+        requestKnowledgeContext,
+        replaySnapshot?.articleIds ?? requestArticles.map((article) => article.id),
+        replaySnapshot?.tagSlugs ?? requestTags.map((tag) => tag.slug),
+      );
       const now = Date.now();
       const userMsg: AgentMessage = {
         id: newMessageId(),
         role: 'user',
         content: text,
+        requestSnapshot,
         createdAt: now,
       };
       const assistantId = newMessageId();
@@ -762,37 +804,6 @@ export default function AetherHubWorkspacePage() {
         startedAt: now,
         pending: true,
       };
-
-      const isFirstMessage = baseMessages.length === 0;
-      const sessionId = baseSession.id;
-      const modelId = baseSession.modelId ?? null;
-      const providerCode = baseSession.providerCode ?? null;
-      const requestModel = currentModelFromSession(baseSession, modelsState);
-      const modelParams = buildModelParamsForRequest(requestModel, baseSession.modelParams);
-      const requestArticles = override?.selectedArticles ?? selectedArticles;
-      const requestTags = override?.selectedTags ?? selectedTags;
-      const requestKbs = override?.selectedKbs ?? selectedKbs;
-      const requestAtlasKps = override?.selectedAtlasKps ?? selectedAtlasKps;
-      const requestSessionHandoff = getSessionKnowledgeHandoff(
-        pendingSessionKnowledgeHandoff,
-        baseSession.id,
-      );
-      const requestKnowledgeContext = override
-        ? override.knowledgeContext ?? null
-        : requestSessionHandoff?.handoff.context ?? null;
-      const requestHandoffSnapshot =
-        requestSessionHandoff?.handoff.context === requestKnowledgeContext
-          ? requestSessionHandoff
-          : null;
-      const contextPayload = resolveAetherHubKnowledgeContext(
-        requestKnowledgeContext,
-        requestKbs,
-        requestAtlasKps,
-      );
-      if (!contextPayload.ok) {
-        toast.error(contextPayload.error.message);
-        return;
-      }
       const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -802,23 +813,47 @@ export default function AetherHubWorkspacePage() {
         ...s,
         messages: [...baseMessages, userMsg, assistantMsg],
         title: isFirstMessage ? deriveSessionTitle(text) : s.title,
+        draft: resolveAgentSessionDraftAfterRequestStart(s, Boolean(override)),
         updatedAt: now,
       }));
-      setComposer('');
       const clearRequestContext = () => {
+        const sentKnowledgeBaseIds =
+          requestSnapshot.knowledgeContext.mode === 'selected'
+            ? requestSnapshot.knowledgeContext.refs
+                .filter((ref) => ref.kind === 'knowledge-base')
+                .map((ref) => ref.id)
+            : [];
+        const sentKnowledgePointIds =
+          requestSnapshot.knowledgeContext.mode === 'selected'
+            ? requestSnapshot.knowledgeContext.refs
+                .filter((ref) => ref.kind === 'atlas-kp')
+                .map((ref) => ref.id)
+            : [];
         setSelectedArticles((current) =>
-          preserveContextSelectionAfterSuccess(current, requestArticles, (article) => article.id),
+          preserveContextSelectionKeysAfterSuccess(
+            current,
+            requestSnapshot.articleIds ?? [],
+            (article) => article.id,
+          ),
         );
         setSelectedTags((current) =>
-          preserveContextSelectionAfterSuccess(current, requestTags, (tag) => tag.slug),
+          preserveContextSelectionKeysAfterSuccess(
+            current,
+            requestSnapshot.tagSlugs ?? [],
+            (tag) => tag.slug,
+          ),
         );
         setSelectedKbs((current) =>
-          preserveContextSelectionAfterSuccess(current, requestKbs, (knowledgeBase) => knowledgeBase.id),
+          preserveContextSelectionKeysAfterSuccess(
+            current,
+            sentKnowledgeBaseIds,
+            (knowledgeBase) => knowledgeBase.id,
+          ),
         );
         setSelectedAtlasKps((current) =>
-          preserveContextSelectionAfterSuccess(
+          preserveContextSelectionKeysAfterSuccess(
             current,
-            requestAtlasKps,
+            sentKnowledgePointIds,
             (knowledgePoint) => knowledgePoint.id,
           ),
         );
@@ -883,8 +918,8 @@ export default function AetherHubWorkspacePage() {
         modelId,
         providerCode,
         modelParams,
-        articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
-        tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
+        articleIds: requestSnapshot.articleIds,
+        tagSlugs: requestSnapshot.tagSlugs,
         ...contextPayload.value,
       };
       let retrievalReceipt: AgentRetrievalReceipt | null = null;
@@ -941,7 +976,7 @@ export default function AetherHubWorkspacePage() {
               void atlasService.recordEvent({
                 eventType: 'atlas.aetherhub_atlas_answer',
                 title: 'AetherHub Atlas answer',
-                description: `${describeAetherHubAtlasScope(requestAtlasKps)}; citation_count=${citationCount}; retrieval_status=${retrievalReceipt?.status ?? 'not_requested'}`,
+                description: `${describeAetherHubAtlasScope(contextPayload.value.atlasScope?.kpIds ?? [])}; citation_count=${citationCount}; retrieval_status=${retrievalReceipt?.status ?? 'not_requested'}`,
                 status: retrievalReceipt?.status === 'matched' ? 'SUCCESS' : 'WARNING',
               }).catch(() => undefined);
               patchAssistant({ pending: false, finishedAt: Date.now() });
@@ -978,11 +1013,29 @@ export default function AetherHubWorkspacePage() {
       updateSession(activeSession.id, (s) => ({
         ...s,
         messages: s.messages.slice(0, idx),
+        draft: message.content,
         updatedAt: Date.now(),
       }));
-      setComposer(message.content);
     },
     [activeSession, streaming, updateSession],
+  );
+
+  const retryUserTurn = useCallback(
+    (prior: AgentMessage, baseMessages: AgentMessage[], session: AgentSession) => {
+      const snapshotResult = readAetherHubRequestSnapshot(prior);
+      if (snapshotResult.status === 'invalid') {
+        toast.error(snapshotResult.message);
+        return;
+      }
+      void handleSend(prior.content, {
+        session: { ...session, messages: baseMessages },
+        messages: baseMessages,
+        requestSnapshot:
+          snapshotResult.status === 'valid' ? snapshotResult.snapshot : undefined,
+        handoffSnapshot: activeSessionKnowledgeHandoff,
+      });
+    },
+    [activeSessionKnowledgeHandoff, handleSend],
   );
 
   const handleRetryMessage = useCallback(
@@ -993,26 +1046,9 @@ export default function AetherHubWorkspacePage() {
       const prior = activeSession.messages[idx - 1];
       if (prior.role !== 'user') return;
       const baseMessages = activeSession.messages.slice(0, idx - 1);
-      void handleSend(prior.content, {
-        session: { ...activeSession, messages: baseMessages },
-        messages: baseMessages,
-        selectedArticles,
-        selectedTags,
-        selectedKbs,
-        selectedAtlasKps,
-        knowledgeContext: pendingKnowledgeHandoff?.context ?? null,
-      });
+      retryUserTurn(prior, baseMessages, activeSession);
     },
-    [
-      activeSession,
-      streaming,
-      handleSend,
-      selectedArticles,
-      selectedTags,
-      selectedKbs,
-      selectedAtlasKps,
-      pendingKnowledgeHandoff,
-    ],
+    [activeSession, retryUserTurn, streaming],
   );
 
   const handleDeleteMessage = useCallback(
@@ -1048,6 +1084,7 @@ export default function AetherHubWorkspacePage() {
             ...s,
             messages: [],
             title: '新对话',
+            draft: '',
             updatedAt: Date.now(),
           }));
           setSelectedArticles([]);
@@ -1068,22 +1105,23 @@ export default function AetherHubWorkspacePage() {
             toast.info('当前对话没有可重发的用户消息');
             return;
           }
-          // 把最后一条 user 之后的消息全部砍掉，再重新发
-          const trimmed = msgs.slice(0, msgs.findIndex((m) => m.id === lastUser.id) + 1).slice(0, -1);
-          updateSession(activeSession.id, (s) => ({
-            ...s,
-            messages: trimmed,
-            updatedAt: Date.now(),
-          }));
-          // 让下一帧再触发 send，确保 trimmed state 落地
-          window.setTimeout(() => handleSend(lastUser.content), 30);
+          const lastUserIndex = msgs.findIndex((message) => message.id === lastUser.id);
+          retryUserTurn(lastUser, msgs.slice(0, lastUserIndex), activeSession);
           return;
         }
         default:
           toast.info(`命令 ${cmd.command} 暂未实现`);
       }
     },
-    [activeSession, streaming, updateSession, clearActiveKnowledgeHandoff, handleNewSession, handleSend],
+    [
+      activeSession,
+      streaming,
+      updateSession,
+      clearActiveKnowledgeHandoff,
+      handleNewSession,
+      retryUserTurn,
+      setComposer,
+    ],
   );
 
   if (!hydrated) {
@@ -1287,12 +1325,14 @@ export default function AetherHubWorkspacePage() {
                 ...s,
                 messages: [],
                 title: '新对话',
+                draft: '',
                 updatedAt: Date.now(),
               }));
               setSelectedArticles([]);
               setSelectedTags([]);
               setSelectedKbs([]);
               setSelectedAtlasKps([]);
+              clearActiveKnowledgeHandoff();
               toast.success('已清空当前对话');
             }}
           />
