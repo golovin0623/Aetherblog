@@ -71,7 +71,11 @@
   --dur-flow:    520ms;
   --dur-ambient: 1800ms;
 
-  /* 圆角(补充) */
+  /* 圆角：全站唯一几何尺度，前台与后台共享。 */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
   --radius-bleed: 2.875rem;
 
   /* -------------------------------------------------------------

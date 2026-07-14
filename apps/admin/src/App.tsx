@@ -1,5 +1,14 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Outlet,
+  Route,
+  RouterProvider,
+  createBrowserRouter,
+  createRoutesFromElements,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
@@ -98,90 +107,102 @@ function RouteSuspenseFallback() {
   );
 }
 
-function App() {
-  // 使用 Vite 注入的 BASE_URL，开发环境为 '/'，生产环境为 '/admin/'
-  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
-  
+function AppProviders() {
   return (
-    <BrowserRouter basename={basename === '/' ? undefined : basename}>
+    <>
       <Toaster richColors position="top-center" />
       <FocusModeProvider>
-      <ErrorBoundary>
-        <Suspense fallback={<RouteSuspenseFallback />}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
-            <Route path="/aetherhub" element={<AuthGuard><AetherHubWorkspacePage /></AuthGuard>} />
-            <Route
-              path="/"
-              element={
-                <AuthGuard>
-                  <AdminLayout />
-                </AuthGuard>
-              }
-            >
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="posts" element={<PostsPage />} />
-              <Route path="posts/new" element={<CreatePostPage />} />
-              <Route path="posts/:id/edit" element={<CreatePostPage />} />
-              <Route path="notes" element={<NotesPage />} />
-              <Route path="notes/new" element={<CreateNotePage />} />
-              <Route path="notes/:id/edit" element={<CreateNotePage />} />
-              <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
-              <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
-              <Route path="media" element={<MediaPage />} />
-              <Route path="music" element={<MusicPage />} />
-              <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
-              <Route path="storage/explorer" element={<CloudExplorerPage />} />
-              <Route path="categories" element={<CategoriesPage />} />
-              <Route path="comments" element={<CommentsPage />} />
-              <Route path="friends" element={<FriendsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="ai-tools" element={<AIToolsPage />} />
-              <Route path="agent-workflows" element={<AgentWorkflowsPage />} />
-              <Route path="ai-test" element={<AiTestPage />} />
-              <Route path="ai-config" element={<AiConfigPage />} />
-              <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
-              <Route path="search-config" element={<SearchConfigPage />} />
-              <Route path={INTELLIGENCE_ROUTES.workspace.slice(1)} element={<KnowledgeWorkspacePage />} />
-              <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
-              <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
-              {/* 知识图集工作台：单一入口 + 内部 Tab（概览/读物/知识点/图谱/建议/搜索）。
-                  ref: docs/pm/atlas-redesign.md §3.2 —— 收敛原本 5 个并列侧边栏项。 */}
-              <Route path="atlas" element={<AtlasLayout />}>
-                <Route index element={<AtlasPage />} />
-                <Route path="readings" element={<AtlasReadingsPage />} />
-                <Route path="kps" element={<AtlasKnowledgePointsPage />} />
-                <Route path="graph" element={<AtlasGraphPage />} />
-                <Route path="suggestions" element={<AtlasSuggestionsPage />} />
-                <Route path="search" element={<AtlasSearchPage />} />
-              </Route>
-              {/* 沉浸式深页不挂 Tab 壳：Reader 与 KP 详情。 */}
-              <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
-              <Route path="atlas/reader/pdf/:carrierId" element={<AtlasPDFReaderPage />} />
-              <Route path="atlas/reader/web/:carrierId" element={<AtlasWebReaderPage />} />
-              <Route path="atlas/reader/blog-post/:carrierId" element={<AtlasBlogPostReaderPage />} />
-              <Route path="atlas/reader/transcript/:carrierId" element={<AtlasTranscriptReaderPage />} />
-              <Route path="atlas/reader/image/:carrierId" element={<AtlasImageReaderPage />} />
-              <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
-              <Route path="analytics" element={<AnalyticsPage />} />
-              <Route path="monitor" element={<MonitorPage />} />
-              <Route path="activities" element={<ActivitiesPage />} />
-              <Route path="access" element={<AccessControlPage />} />
-              <Route path="security" element={<SystemSecurityPage />} />
-              {/* 试卷拆题 QA Document Workflow — ref: docs/features/qa-document-workflow.md §7 */}
-              <Route path="qa" element={<QaDocumentsPage />} />
-              <Route path="qa/:id" element={<QaDocumentDetailPage />} />
-              <Route path="qa/:id/proofread" element={<QaProofreadPage />} />
-              <Route path="qa/:id/diff/:diffId" element={<QaDiffReviewPage />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </ErrorBoundary>
+        <ErrorBoundary>
+          <Suspense fallback={<RouteSuspenseFallback />}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </FocusModeProvider>
-    </BrowserRouter>
+    </>
   );
+}
+
+// Data Router is required for route-level blockers. Keep the existing route
+// tree and basename semantics while allowing editors to protect dirty drafts
+// from links, programmatic navigation, and browser history POP actions.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<AppProviders />}>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
+      <Route path="/aetherhub" element={<AuthGuard><AetherHubWorkspacePage /></AuthGuard>} />
+      <Route
+        path="/"
+        element={
+          <AuthGuard>
+            <AdminLayout />
+          </AuthGuard>
+        }
+      >
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="posts" element={<PostsPage />} />
+        <Route path="posts/new" element={<CreatePostPage />} />
+        <Route path="posts/:id/edit" element={<CreatePostPage />} />
+        <Route path="notes" element={<NotesPage />} />
+        <Route path="notes/new" element={<CreateNotePage />} />
+        <Route path="notes/:id/edit" element={<CreateNotePage />} />
+        <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
+        <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
+        <Route path="media" element={<MediaPage />} />
+        <Route path="music" element={<MusicPage />} />
+        <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
+        <Route path="storage/explorer" element={<CloudExplorerPage />} />
+        <Route path="categories" element={<CategoriesPage />} />
+        <Route path="comments" element={<CommentsPage />} />
+        <Route path="friends" element={<FriendsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="ai-tools" element={<AIToolsPage />} />
+        <Route path="agent-workflows" element={<AgentWorkflowsPage />} />
+        <Route path="ai-test" element={<AiTestPage />} />
+        <Route path="ai-config" element={<AiConfigPage />} />
+        <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
+        <Route path="search-config" element={<SearchConfigPage />} />
+        <Route path={INTELLIGENCE_ROUTES.workspace.slice(1)} element={<KnowledgeWorkspacePage />} />
+        <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
+        <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
+        {/* 知识图集工作台：单一入口 + 内部 Tab（概览/读物/知识点/图谱/建议/搜索）。
+            ref: docs/pm/atlas-redesign.md §3.2 —— 收敛原本 5 个并列侧边栏项。 */}
+        <Route path="atlas" element={<AtlasLayout />}>
+          <Route index element={<AtlasPage />} />
+          <Route path="readings" element={<AtlasReadingsPage />} />
+          <Route path="kps" element={<AtlasKnowledgePointsPage />} />
+          <Route path="graph" element={<AtlasGraphPage />} />
+          <Route path="suggestions" element={<AtlasSuggestionsPage />} />
+          <Route path="search" element={<AtlasSearchPage />} />
+        </Route>
+        {/* 沉浸式深页不挂 Tab 壳：Reader 与 KP 详情。 */}
+        <Route path="atlas/reader/note/:noteId" element={<AtlasMarkdownReaderPage />} />
+        <Route path="atlas/reader/pdf/:carrierId" element={<AtlasPDFReaderPage />} />
+        <Route path="atlas/reader/web/:carrierId" element={<AtlasWebReaderPage />} />
+        <Route path="atlas/reader/blog-post/:carrierId" element={<AtlasBlogPostReaderPage />} />
+        <Route path="atlas/reader/transcript/:carrierId" element={<AtlasTranscriptReaderPage />} />
+        <Route path="atlas/reader/image/:carrierId" element={<AtlasImageReaderPage />} />
+        <Route path="atlas/kp/:id" element={<AtlasKnowledgePointPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="monitor" element={<MonitorPage />} />
+        <Route path="activities" element={<ActivitiesPage />} />
+        <Route path="access" element={<AccessControlPage />} />
+        <Route path="security" element={<SystemSecurityPage />} />
+        {/* 试卷拆题 QA Document Workflow — ref: docs/features/qa-document-workflow.md §7 */}
+        <Route path="qa" element={<QaDocumentsPage />} />
+        <Route path="qa/:id" element={<QaDocumentDetailPage />} />
+        <Route path="qa/:id/proofread" element={<QaProofreadPage />} />
+        <Route path="qa/:id/diff/:diffId" element={<QaDiffReviewPage />} />
+      </Route>
+    </Route>
+  ),
+  { basename: basename === '/' ? undefined : basename }
+);
+
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;

@@ -27,6 +27,7 @@
   --music-radius-control: var(--radius-md, 0.75rem);
   --music-radius-detail: var(--radius-lg, 1rem);
   --music-radius-panel: var(--radius-lg, 1rem);
+  --music-radius-floating: var(--radius-xl, 1.5rem);
   --music-radius-capsule: 999px;
   --music-stroke: rgb(28 26 20 / 0.08);
   --music-control-fill: rgb(28 26 20 / 0.055);

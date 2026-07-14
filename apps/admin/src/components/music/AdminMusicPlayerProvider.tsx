@@ -20,11 +20,22 @@ import {
   resolveAdminPlayerAutoCollapseDelay,
   resolveAdminAdjacentTrack,
   resolveAdminAudioUrl,
+  isAdminPlaybackRequestCurrent,
+  parseAdminMusicLyric,
+  shouldCommitAdminAudioEvent,
+  type AdminMusicLyricLine,
+  resolveAdminPlayerGesture,
   resolveAdminMediaErrorMessage,
 } from './adminMusicPlayerState';
-
-const DISMISS_DRAG_DISTANCE = 86;
-const DISMISS_DRAG_VELOCITY = 720;
+import {
+  createAdminMusicQueueState,
+  isSameAdminMusicQueueSource,
+  reconcileAdminMusicQueue,
+  removeAdminMusicQueueTrack,
+  replaceAdminMusicQueueTrack,
+  type AdminMusicQueueState,
+  type AdminMusicQueueSource,
+} from './adminMusicQueueState';
 
 function formatClock(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
@@ -32,33 +43,16 @@ function formatClock(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
-// ---- 紧凑 LRC 解析(后台试听用,与前台 parseMusicLyric 行为一致) ----
-interface LyricLine {
-  time: number | null;
-  text: string;
-}
-
-function parseLyric(raw: string | undefined | null): LyricLine[] {
-  if (!raw || !raw.trim()) return [];
-  const out: LyricLine[] = [];
-  const re = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
-  for (const line of raw.split(/\r?\n/)) {
-    const text = line.replace(re, '').trim();
-    re.lastIndex = 0;
-    const matches = Array.from(line.matchAll(re));
-    if (matches.length === 0) {
-      if (text) out.push({ time: null, text });
-      continue;
-    }
-    for (const m of matches) {
-      const frac = m[3] ? Number(m[3].padEnd(3, '0').slice(0, 3)) / 1000 : 0;
-      out.push({ time: Number(m[1]) * 60 + Number(m[2]) + frac, text: text || '♪' });
-    }
+function normalizeAdminPlaybackUrl(rawUrl: string): string {
+  if (!rawUrl) return '';
+  try {
+    return new URL(rawUrl, document.baseURI).href;
+  } catch {
+    return rawUrl;
   }
-  return out.sort((a, b) => (a.time ?? Number.MAX_SAFE_INTEGER) - (b.time ?? Number.MAX_SAFE_INTEGER));
 }
 
-function activeLyricIndex(lines: LyricLine[], progress: number): number {
+function activeLyricIndex(lines: AdminMusicLyricLine[], progress: number): number {
   let idx = -1;
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].time;
@@ -70,27 +64,36 @@ function activeLyricIndex(lines: LyricLine[], progress: number): number {
 }
 
 interface AdminMusicPlayerContextValue {
-  queue: MusicTrack[];
+  queue: readonly MusicTrack[];
+  queueSource: AdminMusicQueueSource;
   currentTrack?: MusicTrack;
   currentIndex: number;
   isPlaying: boolean;
-  progress: number;
-  duration: number;
-  percent: number;
   playbackError: string | null;
-  playTracks: (tracks: MusicTrack[], index: number) => void;
+  playTracks: (tracks: MusicTrack[], index: number, source?: AdminMusicQueueSource, label?: string) => void;
   togglePlayback: () => Promise<void>;
   nextTrack: () => void;
   previousTrack: () => void;
   seekToPercent: (percent: number) => void;
   retryPlayback: () => Promise<void>;
   closePlayer: () => void;
+  replaceQueueTrack: (track: MusicTrack) => void;
+  removeQueueTrack: (trackId: number, expectedSource?: AdminMusicQueueSource) => void;
+  reconcileQueue: (tracks: readonly MusicTrack[], source: AdminMusicQueueSource) => void;
+  updateQueueSourceLabel: (source: AdminMusicQueueSource, label: string) => void;
   setMusicSkin: (value: string, seed?: string) => void;
   /** 页面级抑制浮层(如音乐管理页已有内嵌播放卡,避免重复 + 遮挡) */
   setDockSuppressed: (suppressed: boolean) => void;
 }
 
+interface AdminMusicPlayerTimelineValue {
+  progress: number;
+  duration: number;
+  percent: number;
+}
+
 const AdminMusicPlayerContext = createContext<AdminMusicPlayerContextValue | null>(null);
+const AdminMusicPlayerTimelineContext = createContext<AdminMusicPlayerTimelineValue | null>(null);
 
 export function useAdminMusicPlayer() {
   const context = useContext(AdminMusicPlayerContext);
@@ -100,17 +103,31 @@ export function useAdminMusicPlayer() {
   return context;
 }
 
+export function useAdminMusicPlayerTimeline() {
+  const context = useContext(AdminMusicPlayerTimelineContext);
+  if (!context) {
+    throw new Error('useAdminMusicPlayerTimeline must be used within AdminMusicPlayerProvider');
+  }
+  return context;
+}
+
 export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playingRef = useRef(false);
+  const playbackRequestRef = useRef(0);
+  const desiredTrackIdRef = useRef<number | null>(null);
+  const desiredUrlRef = useRef('');
+  const desiredPlayingRef = useRef(false);
+  const sourceTransitionRef = useRef(false);
   const dragControls = useDragControls();
   const prefersReducedMotion = useReducedMotion();
   const dockDraggedRef = useRef(false);
   // 记录当前已 load 进 <audio> 的 URL —— 用来判断「重新点同一首」与「切到新一首」,
   // 替代用 currentIndex 比对(换队列后旧 index 的语义已失效,会抢播旧 src)。
   const loadedUrlRef = useRef('');
-  const [queue, setQueue] = useState<MusicTrack[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const loadedTrackIdRef = useRef<number | null>(null);
+  const [queueState, setQueueState] = useState(() => createAdminMusicQueueState([], 0, { type: 'library' }));
+  const [queueLabel, setQueueLabel] = useState('歌曲库 · 当前页');
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -118,22 +135,101 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const [expanded, setExpanded] = useState(false);
   const [pointerInside, setPointerInside] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [lyricsFollowing, setLyricsFollowing] = useState(true);
   const [interactionVersion, setInteractionVersion] = useState(0);
-  const [dockSuppressed, setDockSuppressed] = useState(false);
+  const [dockSuppressed, setDockSuppressedState] = useState(false);
   const [musicSkin, setMusicSkinState] = useState<{ value: string; seed?: string }>({ value: 'crimson' });
-  const currentTrack = queue[currentIndex];
+  const queue = queueState.queue;
+  const currentIndex = queueState.currentIndex;
+  const currentTrack = queueState.currentTrack;
   const audioUrl = resolveAdminAudioUrl(currentTrack);
   const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
   const cover = currentTrack?.coverUrl || currentTrack?.media?.thumbnailUrl || '';
 
-  const lyrics = useMemo(() => parseLyric(currentTrack?.lyric), [currentTrack?.lyric]);
+  const lyrics = useMemo(() => parseAdminMusicLyric(currentTrack?.lyric), [currentTrack?.lyric]);
   const activeLyric = useMemo(() => activeLyricIndex(lyrics, progress), [lyrics, progress]);
 
   const lyricsBoxRef = useRef<HTMLDivElement>(null);
-  const activeLineRef = useRef<HTMLParagraphElement>(null);
+  const activeLineRef = useRef<HTMLButtonElement>(null);
+  const dockHandleRef = useRef<HTMLButtonElement>(null);
+  const expandedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusExpandedHeadingOnOpenRef = useRef(false);
+  const playerReturnFocusRef = useRef<HTMLElement | null>(null);
   const percentRef = useRef(percent);
   const inputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
   percentRef.current = percent;
+
+  const reservePlaybackRequest = useCallback((
+    track: MusicTrack | undefined,
+    shouldPlay: boolean,
+    transitioning: boolean,
+  ) => {
+    const expectedUrl = normalizeAdminPlaybackUrl(resolveAdminAudioUrl(track));
+    const requestId = playbackRequestRef.current + 1;
+    playbackRequestRef.current = requestId;
+    desiredTrackIdRef.current = track?.id ?? null;
+    desiredUrlRef.current = expectedUrl;
+    desiredPlayingRef.current = Boolean(expectedUrl && shouldPlay);
+    sourceTransitionRef.current = Boolean(expectedUrl && transitioning);
+    return { requestId, expectedUrl };
+  }, []);
+
+  const isCurrentPlaybackRequest = useCallback((requestId: number, expectedUrl: string) => (
+    isAdminPlaybackRequestCurrent({
+      requestId,
+      latestRequestId: playbackRequestRef.current,
+      expectedUrl,
+      loadedUrl: loadedUrlRef.current,
+    })
+  ), []);
+
+  const commitPlaybackFailure = useCallback((
+    requestId: number,
+    expectedUrl: string,
+    message: string,
+  ) => {
+    if (
+      !isCurrentPlaybackRequest(requestId, expectedUrl)
+      || desiredUrlRef.current !== expectedUrl
+      || !desiredPlayingRef.current
+    ) return;
+    playbackRequestRef.current += 1;
+    desiredPlayingRef.current = false;
+    sourceTransitionRef.current = false;
+    playingRef.current = false;
+    setIsPlaying(false);
+    setPlaybackError(message);
+  }, [isCurrentPlaybackRequest]);
+
+  const commitPlaybackStarted = useCallback((requestId: number, expectedUrl: string) => {
+    if (
+      !isCurrentPlaybackRequest(requestId, expectedUrl)
+      || desiredUrlRef.current !== expectedUrl
+      || !desiredPlayingRef.current
+    ) return;
+    sourceTransitionRef.current = false;
+    playingRef.current = true;
+    setIsPlaying(true);
+    setPlaybackError(null);
+  }, [isCurrentPlaybackRequest]);
+
+  const isCurrentAudioEvent = useCallback((
+    audio: HTMLAudioElement,
+    kind: Parameters<typeof shouldCommitAdminAudioEvent>[0]['kind'],
+  ) => (
+    loadedTrackIdRef.current === desiredTrackIdRef.current
+    && shouldCommitAdminAudioEvent({
+      kind,
+      actualUrl: normalizeAdminPlaybackUrl(audio.currentSrc || audio.src),
+      desiredUrl: desiredUrlRef.current,
+      desiredPlaying: desiredPlayingRef.current,
+      transitioning: sourceTransitionRef.current,
+      paused: audio.paused,
+      ended: audio.ended,
+      hasError: audio.error != null,
+    })
+  ), []);
 
   useEffect(() => {
     playingRef.current = isPlaying;
@@ -154,11 +250,22 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     };
   }, []);
 
+  useEffect(() => {
+    if (!expanded || !focusExpandedHeadingOnOpenRef.current) return;
+    focusExpandedHeadingOnOpenRef.current = false;
+    const focusFrame = window.requestAnimationFrame(() => {
+      expandedHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [expanded]);
+
   const autoCollapseDelay = resolveAdminPlayerAutoCollapseDelay({
     expanded,
     isPlaying,
     pointerInside,
     focusWithin,
+    isDragging,
+    hasPlaybackError: Boolean(playbackError),
   });
 
   useEffect(() => {
@@ -171,10 +278,13 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     const audio = audioRef.current;
     if (!audio) return;
     if (!audioUrl) {
+      reservePlaybackRequest(currentTrack, false, false);
+      loadedUrlRef.current = '';
+      loadedTrackIdRef.current = null;
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
-      loadedUrlRef.current = '';
+      sourceTransitionRef.current = false;
       playingRef.current = false;
       setIsPlaying(false);
       setProgress(0);
@@ -182,75 +292,187 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       setPlaybackError(currentTrack ? '找不到可播放的媒体文件。' : null);
       return;
     }
+    const normalizedAudioUrl = normalizeAdminPlaybackUrl(audioUrl);
+    let requestId = playbackRequestRef.current;
+    if (
+      desiredTrackIdRef.current !== currentTrack?.id
+      || desiredUrlRef.current !== normalizedAudioUrl
+    ) {
+      const reservation = reservePlaybackRequest(
+        currentTrack,
+        desiredPlayingRef.current || playingRef.current,
+        true,
+      );
+      requestId = reservation.requestId;
+    }
     // playTracks may already have started this URL inside the user's click task.
     // Reloading the same source here would interrupt it and lose user activation.
-    if (loadedUrlRef.current === audioUrl) {
+    if (
+      loadedUrlRef.current === normalizedAudioUrl
+      && loadedTrackIdRef.current === currentTrack?.id
+    ) {
       setDuration(currentTrack?.durationSeconds ?? 0);
       return;
     }
-    const shouldContinuePlaying = playingRef.current;
+    const shouldContinuePlaying = desiredPlayingRef.current;
+    sourceTransitionRef.current = true;
     audio.src = audioUrl;
+    const expectedUrl = audio.src || normalizedAudioUrl;
+    loadedUrlRef.current = expectedUrl;
+    loadedTrackIdRef.current = currentTrack?.id ?? null;
+    desiredUrlRef.current = expectedUrl;
     audio.load();
     setPlaybackError(null);
-    loadedUrlRef.current = audioUrl;
     setProgress(0);
     setDuration(currentTrack?.durationSeconds ?? 0);
     if (shouldContinuePlaying) {
-      audio.play().catch(() => {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setPlaybackError('这首歌暂时无法播放。');
-      });
+      audio.play()
+        .then(() => commitPlaybackStarted(requestId, expectedUrl))
+        .catch(() => {
+          commitPlaybackFailure(requestId, expectedUrl, '这首歌暂时无法播放。');
+        });
+    } else {
+      // No playback intent is crossing this source change. Keeping the
+      // transition flag set would cause a later real pause event to be ignored.
+      sourceTransitionRef.current = false;
     }
-  }, [audioUrl, currentTrack?.durationSeconds]);
+  }, [audioUrl, commitPlaybackFailure, commitPlaybackStarted, currentTrack, reservePlaybackRequest]);
 
-  // 歌词跟随:把高亮行滚到容器中央(只滚容器,不动页面)
+  useEffect(() => {
+    setLyricsFollowing(true);
+  }, [currentTrack?.id]);
+
+  // 歌词跟随:把高亮行滚到容器中央(只滚容器,不动页面)。用户手动
+  // 浏览后暂停跟随，避免每次换行都抢走滚动位置。
   useEffect(() => {
     const box = lyricsBoxRef.current;
     const line = activeLineRef.current;
-    if (!expanded || !box || !line) return;
+    if (!expanded || !lyricsFollowing || !box || !line) return;
     box.scrollTo({
       top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
     });
-  }, [activeLyric, expanded, prefersReducedMotion]);
+  }, [activeLyric, expanded, lyricsFollowing, prefersReducedMotion]);
 
-  const playTracks = useCallback((tracks: MusicTrack[], index: number) => {
+  const playTracks = useCallback((
+    tracks: MusicTrack[],
+    index: number,
+    source: AdminMusicQueueSource = { type: 'library' },
+    label = source.type === 'playlist' ? '歌单播放' : '歌曲库 · 当前页'
+  ) => {
     if (tracks.length === 0) return;
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement
+      && activeElement !== document.body
+      && !activeElement.closest('[data-admin-music-player-root]')
+    ) {
+      playerReturnFocusRef.current = activeElement;
+    }
     // A new queue can begin at the same numeric index (or even replay the same
     // URL), so index/audio identity alone cannot reliably restart idle timing.
     setInteractionVersion((version) => version + 1);
     const safeIndex = Math.max(0, Math.min(index, tracks.length - 1));
-    const nextUrl = resolveAdminAudioUrl(tracks[safeIndex]);
-    setQueue(tracks);
-    setCurrentIndex(safeIndex);
+    const nextTrack = tracks[safeIndex];
+    const nextUrl = resolveAdminAudioUrl(nextTrack);
+    const normalizedNextUrl = normalizeAdminPlaybackUrl(nextUrl);
+    const reservation = reservePlaybackRequest(
+      nextTrack,
+      true,
+      true,
+    );
+    setQueueState(createAdminMusicQueueState(tracks, safeIndex, source));
+    setQueueLabel(label);
     setPlaybackError(null);
     if (!nextUrl) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
+      loadedUrlRef.current = '';
+      loadedTrackIdRef.current = null;
+      sourceTransitionRef.current = false;
+      desiredPlayingRef.current = false;
       playingRef.current = false;
       setIsPlaying(false);
       setPlaybackError('找不到可播放的媒体文件。');
       return;
     }
-    playingRef.current = true;
-    setIsPlaying(true);
     // Start every click-selected track inside the same user gesture. The source
     // effect recognizes loadedUrlRef and will not reload this exact URL.
     const audio = audioRef.current;
     if (audio) {
-      if (nextUrl !== loadedUrlRef.current) {
+      if (normalizedNextUrl !== loadedUrlRef.current) {
         audio.src = nextUrl;
-        loadedUrlRef.current = nextUrl;
+        loadedUrlRef.current = audio.src || normalizedNextUrl;
+        desiredUrlRef.current = loadedUrlRef.current;
         audio.load();
       } else {
-        audio.currentTime = 0;
+        try {
+          audio.currentTime = 0;
+        } catch {
+          /* Metadata may still be pending for a same-source replay. */
+        }
       }
-      audio.play().catch(() => {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setPlaybackError('这首歌暂时无法播放。');
-      });
+      loadedTrackIdRef.current = nextTrack.id;
+      const expectedUrl = loadedUrlRef.current;
+      audio.play()
+        .then(() => commitPlaybackStarted(reservation.requestId, expectedUrl))
+        .catch(() => {
+          commitPlaybackFailure(reservation.requestId, expectedUrl, '这首歌暂时无法播放。');
+        });
     }
-  }, []);
+  }, [commitPlaybackFailure, commitPlaybackStarted, reservePlaybackRequest]);
+
+  const restartRequestedTrack = useCallback((track: MusicTrack | undefined) => {
+    const nextUrl = resolveAdminAudioUrl(track);
+    const normalizedNextUrl = normalizeAdminPlaybackUrl(nextUrl);
+    const reservation = reservePlaybackRequest(
+      track,
+      true,
+      true,
+    );
+    setPlaybackError(null);
+    if (!nextUrl) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      }
+      loadedUrlRef.current = '';
+      loadedTrackIdRef.current = null;
+      desiredPlayingRef.current = false;
+      sourceTransitionRef.current = false;
+      playingRef.current = false;
+      setIsPlaying(false);
+      setPlaybackError('找不到可播放的媒体文件。');
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (normalizedNextUrl !== loadedUrlRef.current) {
+      audio.src = nextUrl;
+      loadedUrlRef.current = audio.src || normalizedNextUrl;
+      desiredUrlRef.current = loadedUrlRef.current;
+      audio.load();
+    }
+    loadedTrackIdRef.current = track?.id ?? null;
+    try {
+      audio.currentTime = 0;
+    } catch {
+      /* Some WebKit builds defer seeking until metadata becomes available. */
+    }
+    setProgress(0);
+    const expectedUrl = loadedUrlRef.current;
+    audio.play()
+      .then(() => commitPlaybackStarted(reservation.requestId, expectedUrl))
+      .catch(() => {
+        commitPlaybackFailure(reservation.requestId, expectedUrl, '这首歌暂时无法播放。');
+      });
+  }, [commitPlaybackFailure, commitPlaybackStarted, reservePlaybackRequest]);
 
   const nextTrack = useCallback(() => {
     if (queue.length === 0) return;
@@ -259,30 +481,18 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       direction: 1,
       trackCount: queue.length,
     });
-    playingRef.current = true;
-    setPlaybackError(null);
     if (restartCurrent) {
-      if (!audioUrl) {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setPlaybackError('找不到可播放的媒体文件。');
-        return;
-      }
-      const audio = audioRef.current;
-      if (audio) {
-        audio.currentTime = 0;
-        setProgress(0);
-        audio.play().catch(() => {
-          playingRef.current = false;
-          setIsPlaying(false);
-          setPlaybackError('这首歌暂时无法播放。');
-        });
-      }
+      restartRequestedTrack(currentTrack);
       return;
     }
-    setCurrentIndex(nextIndex);
-    setIsPlaying(true);
-  }, [audioUrl, currentIndex, queue.length]);
+    const nextQueueTrack = queue[nextIndex];
+    restartRequestedTrack(nextQueueTrack);
+    setQueueState((state) => ({
+      ...state,
+      currentIndex: nextIndex,
+      currentTrack: state.queue[nextIndex],
+    }));
+  }, [currentIndex, currentTrack, queue, restartRequestedTrack]);
 
   const previousTrack = useCallback(() => {
     if (queue.length === 0) return;
@@ -291,30 +501,18 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       direction: -1,
       trackCount: queue.length,
     });
-    playingRef.current = true;
-    setPlaybackError(null);
     if (restartCurrent) {
-      if (!audioUrl) {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setPlaybackError('找不到可播放的媒体文件。');
-        return;
-      }
-      const audio = audioRef.current;
-      if (audio) {
-        audio.currentTime = 0;
-        setProgress(0);
-        audio.play().catch(() => {
-          playingRef.current = false;
-          setIsPlaying(false);
-          setPlaybackError('这首歌暂时无法播放。');
-        });
-      }
+      restartRequestedTrack(currentTrack);
       return;
     }
-    setCurrentIndex(nextIndex);
-    setIsPlaying(true);
-  }, [audioUrl, currentIndex, queue.length]);
+    const nextQueueTrack = queue[nextIndex];
+    restartRequestedTrack(nextQueueTrack);
+    setQueueState((state) => ({
+      ...state,
+      currentIndex: nextIndex,
+      currentTrack: state.queue[nextIndex],
+    }));
+  }, [currentIndex, currentTrack, queue, restartRequestedTrack]);
 
   const togglePlayback = useCallback(async () => {
     const audio = audioRef.current;
@@ -323,20 +521,38 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       setPlaybackError('找不到可播放的媒体文件。');
       return;
     }
-    if (audio.paused) {
-      try {
-        if (!audio.src) audio.src = audioUrl;
-        setPlaybackError(null);
-        await audio.play();
-      } catch {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setPlaybackError('这首歌暂时无法播放。');
-      }
-    } else {
+    if (desiredPlayingRef.current || !audio.paused) {
+      reservePlaybackRequest(currentTrack, false, false);
+      sourceTransitionRef.current = false;
+      desiredPlayingRef.current = false;
+      playingRef.current = false;
       audio.pause();
+      setIsPlaying(false);
+      return;
     }
-  }, [audioUrl]);
+
+    const normalizedAudioUrl = normalizeAdminPlaybackUrl(audioUrl);
+    const reservation = reservePlaybackRequest(
+      currentTrack,
+      true,
+      true,
+    );
+    if (loadedUrlRef.current !== normalizedAudioUrl) {
+      audio.src = audioUrl;
+      loadedUrlRef.current = audio.src || normalizedAudioUrl;
+      desiredUrlRef.current = loadedUrlRef.current;
+      audio.load();
+    }
+    loadedTrackIdRef.current = currentTrack?.id ?? null;
+    const expectedUrl = loadedUrlRef.current;
+    try {
+      setPlaybackError(null);
+      await audio.play();
+      commitPlaybackStarted(reservation.requestId, expectedUrl);
+    } catch {
+      commitPlaybackFailure(reservation.requestId, expectedUrl, '这首歌暂时无法播放。');
+    }
+  }, [audioUrl, commitPlaybackFailure, commitPlaybackStarted, currentTrack, reservePlaybackRequest]);
 
   const retryPlayback = useCallback(async () => {
     const audio = audioRef.current;
@@ -345,17 +561,28 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       setPlaybackError('找不到可播放的媒体文件。');
       return;
     }
+    const normalizedAudioUrl = normalizeAdminPlaybackUrl(audioUrl);
+    const reservation = reservePlaybackRequest(currentTrack, true, true);
+    if (loadedUrlRef.current !== normalizedAudioUrl) {
+      audio.src = audioUrl;
+      loadedUrlRef.current = audio.src || normalizedAudioUrl;
+      desiredUrlRef.current = loadedUrlRef.current;
+    }
+    loadedTrackIdRef.current = currentTrack?.id ?? null;
+    const expectedUrl = loadedUrlRef.current;
     try {
       setPlaybackError(null);
-      playingRef.current = true;
       audio.load();
       await audio.play();
+      commitPlaybackStarted(reservation.requestId, expectedUrl);
     } catch {
-      playingRef.current = false;
-      setIsPlaying(false);
-      setPlaybackError('仍然无法播放，请检查媒体文件或稍后再试。');
+      commitPlaybackFailure(
+        reservation.requestId,
+        expectedUrl,
+        '仍然无法播放，请检查媒体文件或稍后再试。'
+      );
     }
-  }, [audioUrl]);
+  }, [audioUrl, commitPlaybackFailure, commitPlaybackStarted, currentTrack, reservePlaybackRequest]);
 
   const seekToClientX = useCallback((clientX: number, rect: DOMRect) => {
     const audio = audioRef.current;
@@ -395,23 +622,95 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     setProgress(next);
   }, [duration]);
 
+  const restorePlayerReturnFocus = useCallback(() => {
+    const target = playerReturnFocusRef.current;
+    playerReturnFocusRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (target?.isConnected) target.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const focusDockHandle = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      dockHandleRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
   const closePlayer = useCallback(() => {
     const audio = audioRef.current;
+    reservePlaybackRequest(undefined, false, false);
+    loadedUrlRef.current = '';
+    loadedTrackIdRef.current = null;
     if (audio) {
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
     }
+    sourceTransitionRef.current = false;
     playingRef.current = false;
-    loadedUrlRef.current = '';
     setIsPlaying(false);
     setExpanded(false);
-    setQueue([]);
-    setCurrentIndex(0);
+    setQueueState(createAdminMusicQueueState([], 0, { type: 'library' }));
+    setQueueLabel('歌曲库 · 当前页');
     setProgress(0);
     setDuration(0);
     setPlaybackError(null);
-  }, []);
+    restorePlayerReturnFocus();
+  }, [reservePlaybackRequest, restorePlayerReturnFocus]);
+
+  const reserveQueueStateTransition = useCallback((nextState: AdminMusicQueueState) => {
+    const nextTrack = nextState.currentTrack;
+    const nextUrl = normalizeAdminPlaybackUrl(resolveAdminAudioUrl(nextTrack));
+    if (
+      desiredTrackIdRef.current === (nextTrack?.id ?? null)
+      && desiredUrlRef.current === nextUrl
+    ) return;
+    reservePlaybackRequest(
+      nextTrack,
+      desiredPlayingRef.current || playingRef.current,
+      Boolean(nextUrl && (
+        nextUrl !== loadedUrlRef.current
+        || (nextTrack?.id ?? null) !== loadedTrackIdRef.current
+      )),
+    );
+  }, [reservePlaybackRequest]);
+
+  const replaceQueueTrack = useCallback((track: MusicTrack) => {
+    const nextState = replaceAdminMusicQueueTrack(queueState, track);
+    if (nextState === queueState) return;
+    reserveQueueStateTransition(nextState);
+    setQueueState(nextState);
+  }, [queueState, reserveQueueStateTransition]);
+
+  const removeQueueTrack = useCallback((trackId: number, expectedSource?: AdminMusicQueueSource) => {
+    const nextState = removeAdminMusicQueueTrack(queueState, trackId, expectedSource);
+    if (nextState === queueState) return;
+    if (!nextState.currentTrack) {
+      closePlayer();
+      return;
+    }
+    reserveQueueStateTransition(nextState);
+    setQueueState(nextState);
+  }, [closePlayer, queueState, reserveQueueStateTransition]);
+
+  const reconcileQueue = useCallback((tracks: readonly MusicTrack[], source: AdminMusicQueueSource) => {
+    if (queueState.queue.length === 0) return;
+    const nextState = reconcileAdminMusicQueue(queueState, tracks, source);
+    if (nextState === queueState) return;
+    if (!nextState.currentTrack) {
+      closePlayer();
+      return;
+    }
+    reserveQueueStateTransition(nextState);
+    setQueueState(nextState);
+  }, [closePlayer, queueState, reserveQueueStateTransition]);
+
+  const updateQueueSourceLabel = useCallback((source: AdminMusicQueueSource, label: string) => {
+    const nextLabel = label.trim();
+    if (!nextLabel || queueState.queue.length === 0) return;
+    if (!isSameAdminMusicQueueSource(queueState.source, source)) return;
+    setQueueLabel(nextLabel);
+  }, [queueState.queue.length, queueState.source]);
 
   const setMusicSkin = useCallback((value: string, seed?: string) => {
     setMusicSkinState((current) => (
@@ -419,18 +718,17 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     ));
   }, []);
 
-  const dismissDock = useCallback(() => {
-    closePlayer();
-  }, [closePlayer]);
+  const setDockSuppressed = useCallback((suppressed: boolean) => {
+    setDockSuppressedState(suppressed);
+    if (suppressed) setExpanded(false);
+  }, []);
 
   const value = useMemo<AdminMusicPlayerContextValue>(() => ({
     queue,
+    queueSource: queueState.source,
     currentTrack,
     currentIndex,
     isPlaying,
-    progress,
-    duration,
-    percent,
     playbackError,
     playTracks,
     togglePlayback,
@@ -439,11 +737,21 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     seekToPercent,
     retryPlayback,
     closePlayer,
+    replaceQueueTrack,
+    removeQueueTrack,
+    reconcileQueue,
+    updateQueueSourceLabel,
     setMusicSkin,
     setDockSuppressed,
-  }), [closePlayer, currentIndex, currentTrack, duration, isPlaying, nextTrack, percent, playTracks, playbackError, previousTrack, progress, queue, retryPlayback, seekToPercent, setMusicSkin, togglePlayback]);
+  }), [closePlayer, currentIndex, currentTrack, isPlaying, nextTrack, playTracks, playbackError, previousTrack, queue, queueState.source, reconcileQueue, removeQueueTrack, replaceQueueTrack, retryPlayback, seekToPercent, setDockSuppressed, setMusicSkin, togglePlayback, updateQueueSourceLabel]);
 
-  const playlistName = '后台播放';
+  const timelineValue = useMemo<AdminMusicPlayerTimelineValue>(() => ({
+    progress,
+    duration,
+    percent,
+  }), [duration, percent, progress]);
+
+  const playlistName = queueLabel;
   const coverNode = cover ? (
     <img src={cover} alt="" className="h-full w-full object-cover" />
   ) : (
@@ -453,19 +761,47 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   );
 
   const handleDockDragEnd = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (info.offset.y > DISMISS_DRAG_DISTANCE || info.velocity.y > DISMISS_DRAG_VELOCITY) {
-      dismissDock();
-    }
+    const action = resolveAdminPlayerGesture({
+      expanded,
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+    });
+    if (action === 'collapse') setExpanded(false);
+    if (action === 'expand') setExpanded(true);
+    setIsDragging(false);
     window.setTimeout(() => {
       dockDraggedRef.current = false;
     }, 0);
-  }, [dismissDock]);
+  }, [expanded]);
+
+  const handleTrackDragEnd = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const action = resolveAdminPlayerGesture({
+      expanded,
+      deltaX: info.offset.x,
+      deltaY: info.offset.y,
+      velocityX: info.velocity.x,
+      velocityY: info.velocity.y,
+    });
+    if (action === 'next') nextTrack();
+    if (action === 'previous') previousTrack();
+    setIsDragging(false);
+    window.setTimeout(() => {
+      dockDraggedRef.current = false;
+    }, 0);
+  }, [expanded, nextTrack, previousTrack]);
 
   const handleDockKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape') return;
     event.preventDefault();
-    dismissDock();
-  }, [dismissDock]);
+    if (expanded) {
+      setExpanded(false);
+      focusDockHandle();
+    } else {
+      closePlayer();
+    }
+  }, [closePlayer, expanded, focusDockHandle]);
 
   const markPlayerActivity = useCallback(() => {
     setInteractionVersion((version) => version + 1);
@@ -494,6 +830,40 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   }, [seekToPercent]);
 
   const resolvedDuration = duration || currentTrack?.durationSeconds || 0;
+  const renderedLyricLines = useMemo(() => lyrics.map((line, index) => {
+    const active = index === activeLyric;
+    if (line.time == null || resolvedDuration <= 0) {
+      return (
+        <p
+          key={`plain-${index}`}
+          className={cn(
+            'mx-auto flex min-h-11 w-full items-center justify-center rounded-[var(--music-radius-detail)] px-1 text-center',
+            active ? 'font-black text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]'
+          )}
+        >
+          <span className="line-clamp-2">{line.text}</span>
+        </p>
+      );
+    }
+    return (
+      <button
+        type="button"
+        key={`${line.time}-${index}`}
+        ref={active ? activeLineRef : undefined}
+        onClick={() => {
+          setLyricsFollowing(true);
+          seekToPercent((line.time! / resolvedDuration) * 100);
+        }}
+        className={cn(
+          'mx-auto flex min-h-11 w-full items-center justify-center rounded-[var(--music-radius-detail)] px-1 text-center transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]',
+          active ? 'font-black text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]'
+        )}
+        aria-label={`跳转到 ${formatClock(line.time)}：${line.text}`}
+      >
+        <span className="line-clamp-2">{line.text}</span>
+      </button>
+    );
+  }), [activeLyric, lyrics, resolvedDuration, seekToPercent]);
   const renderSeekBar = (showTimes: boolean) => (
     <div>
       <div
@@ -550,33 +920,54 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   return (
     <AdminMusicPlayerContext.Provider value={value}>
-      {children}
-      <audio
+      <AdminMusicPlayerTimelineContext.Provider value={timelineValue}>
+        {children}
+        <audio
         ref={audioRef}
         preload="metadata"
-        onPlay={() => {
+        onPlay={(event) => {
+          if (!isCurrentAudioEvent(event.currentTarget, 'play')) return;
+          sourceTransitionRef.current = false;
           playingRef.current = true;
           setIsPlaying(true);
+          setPlaybackError(null);
         }}
-        onPause={() => {
+        onPause={(event) => {
+          if (!isCurrentAudioEvent(event.currentTarget, 'pause')) return;
+          desiredPlayingRef.current = false;
+          sourceTransitionRef.current = false;
           playingRef.current = false;
           setIsPlaying(false);
         }}
-        onError={() => {
-          const audio = audioRef.current;
-          if (!audio?.getAttribute('src')) return;
+        onError={(event) => {
+          const audio = event.currentTarget;
+          if (!isCurrentAudioEvent(audio, 'error')) return;
+          // MediaError is the authoritative failure for this generation. Move
+          // the request id forward so a later rejection from the same play()
+          // cannot replace its specific diagnosis with a generic message.
+          playbackRequestRef.current += 1;
+          desiredPlayingRef.current = false;
+          sourceTransitionRef.current = false;
           playingRef.current = false;
           setIsPlaying(false);
           setPlaybackError(resolveAdminMediaErrorMessage(audio.error?.code));
         }}
-        onEnded={nextTrack}
+        onEnded={(event) => {
+          if (!isCurrentAudioEvent(event.currentTarget, 'ended')) return;
+          nextTrack();
+        }}
         onLoadedMetadata={(event) => {
+          if (!isCurrentAudioEvent(event.currentTarget, 'metadata')) return;
+          if (!desiredPlayingRef.current) sourceTransitionRef.current = false;
           const nextDuration = event.currentTarget.duration;
           setDuration(Number.isFinite(nextDuration) ? nextDuration : (currentTrack?.durationSeconds ?? 0));
         }}
-        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime || 0)}
-      />
-      <AnimatePresence>
+        onTimeUpdate={(event) => {
+          if (!isCurrentAudioEvent(event.currentTarget, 'timeupdate')) return;
+          setProgress(event.currentTarget.currentTime || 0);
+        }}
+        />
+        <AnimatePresence>
         {currentTrack && !dockSuppressed && (
           <motion.div
             data-music-skin={musicSkin.value}
@@ -585,19 +976,21 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
             animate={{ opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
             transition={prefersReducedMotion ? transition.instant : transition.quick}
-            className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4 max-[360px]:px-3"
+            className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] max-[360px]:pl-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
             <motion.div
+              data-admin-music-player-root
               drag="y"
               dragControls={dragControls}
               dragListener={false}
               dragDirectionLock
               dragSnapToOrigin
               dragMomentum={false}
-              dragConstraints={{ top: 0, bottom: 180 }}
-              dragElastic={{ top: 0, bottom: 0.18 }}
+              dragConstraints={{ top: -140, bottom: 140 }}
+              dragElastic={{ top: 0.16, bottom: 0.18 }}
               onDragStart={() => {
                 dockDraggedRef.current = true;
+                setIsDragging(true);
               }}
               onDragEnd={handleDockDragEnd}
               onPointerEnter={(event) => {
@@ -622,6 +1015,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
             >
               <div className="relative">
                 <button
+                  ref={dockHandleRef}
                   type="button"
                   onPointerDown={(event) => dragControls.start(event)}
                   onClick={() => {
@@ -630,19 +1024,20 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                   }}
                   data-admin-player-drag-handle
                   className="absolute left-1/2 -top-8 z-20 flex h-11 w-24 -translate-x-1/2 cursor-grab touch-none items-end justify-center rounded-full pb-2 text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:text-[var(--ink-secondary)] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                  aria-label={expanded ? '下拖关闭后台播放器,点击收起' : '下拖关闭后台播放器,点击展开'}
+                  aria-label={expanded ? '下滑收起后台播放器,点击切换' : '上滑展开后台播放器,点击切换'}
                   aria-keyshortcuts="Escape"
                   aria-expanded={expanded}
                   aria-controls="admin-music-player-expanded"
-                  title={expanded ? '下拖关闭,点击收起' : '下拖关闭,点击展开'}
+                  title={expanded ? '下滑收起,点击切换' : '上滑展开,点击切换'}
                 >
                   <span className="h-1 w-10 rounded-full bg-current opacity-30" />
                 </button>
                 <motion.div
                   layout="size"
                   transition={prefersReducedMotion ? transition.instant : transition.quick}
-                  className="surface-raised relative max-h-[calc(100dvh_-_5rem_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain rounded-[var(--music-radius-panel)] p-3 text-[var(--ink-primary)]"
+                  className="surface-raised relative overflow-hidden rounded-[var(--music-radius-floating)] text-[var(--ink-primary)]"
                 >
+                  <div className="max-h-[calc(100dvh_-_5rem_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable]">
                   <AnimatePresence initial={false} mode="popLayout">
                     {expanded ? (
                     <motion.div
@@ -661,7 +1056,12 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                             <Disc3 className="h-3.5 w-3.5" />
                             {playlistName}
                           </div>
-                          <h2 className="mt-1 truncate text-lg font-black leading-tight" title={currentTrack.title}>
+                          <h2
+                            ref={expandedHeadingRef}
+                            tabIndex={-1}
+                            className="mt-1 truncate text-lg font-black leading-tight focus:outline-none focus-visible:rounded-none focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]"
+                            title={currentTrack.title}
+                          >
                             {currentTrack.title}
                           </h2>
                           <p className="mt-1 truncate text-xs text-[var(--ink-secondary)]">
@@ -680,36 +1080,46 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       </div>
 
                       <div className="mt-3 grid grid-cols-[104px_minmax(0,1fr)] items-stretch gap-4 max-[380px]:grid-cols-[88px_minmax(0,1fr)] max-[380px]:gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
-                        <div className="relative aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]">
-                          {coverNode}
-                        </div>
-                        <div
-                          ref={lyricsBoxRef}
-                          className="relative h-[104px] overflow-y-auto overscroll-contain pr-1 text-center text-sm leading-7 [scrollbar-width:none] max-[380px]:h-[88px] sm:h-[120px]"
-                          aria-label="歌词"
+                        <motion.div
+                          drag={prefersReducedMotion ? false : 'x'}
+                          dragConstraints={{ left: 0, right: 0 }}
+                          dragElastic={0.18}
+                          onDragStart={() => {
+                            dockDraggedRef.current = true;
+                            setIsDragging(true);
+                          }}
+                          onDragEnd={handleTrackDragEnd}
+                          style={{ touchAction: 'pan-y' }}
+                          className="relative aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]"
+                          role="group"
+                          aria-label="左右滑动切换歌曲"
                         >
-                          {lyrics.length === 0 ? (
-                            <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)]">
-                              <Music2 className="h-5 w-5" />
-                              暂无歌词
-                            </div>
-                          ) : (
-                            lyrics.map((line, index) => {
-                              const active = index === activeLyric;
-                              return (
-                                <p
-                                  key={`${line.time ?? 'plain'}-${index}`}
-                                  ref={active ? activeLineRef : undefined}
-                                  className={cn(
-                                    'truncate transition-colors duration-300',
-                                    active ? 'font-black text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]'
-                                  )}
-                                >
-                                  {line.text}
-                                </p>
-                              );
-                            })
+                          {coverNode}
+                        </motion.div>
+                        <div className="relative h-[104px] min-w-0 max-[380px]:h-[88px] sm:h-[120px]">
+                          {!lyricsFollowing && lyrics.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setLyricsFollowing(true)}
+                              className="absolute right-1 top-1 z-10 inline-flex min-h-11 items-center rounded-[var(--music-radius-control)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] px-3 text-[11px] font-bold text-[var(--ink-primary)] shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                            >
+                              回到当前歌词
+                            </button>
                           )}
+                          <div
+                            ref={lyricsBoxRef}
+                            onPointerDown={() => setLyricsFollowing(false)}
+                            onWheel={() => setLyricsFollowing(false)}
+                            className="relative h-full overflow-y-auto overscroll-contain pr-1 text-center text-sm leading-7 [scrollbar-width:none]"
+                            aria-label="歌词"
+                          >
+                            {lyrics.length === 0 ? (
+                              <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)]">
+                                <Music2 className="h-5 w-5" />
+                                暂无歌词
+                              </div>
+                            ) : renderedLyricLines}
+                          </div>
                         </div>
                       </div>
 
@@ -738,30 +1148,50 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                         animate={{ opacity: 1, y: 0 }}
                         exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
                         transition={prefersReducedMotion ? transition.instant : transition.quick}
-                        className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 max-[460px]:grid-cols-[48px_minmax(0,1fr)] max-[360px]:gap-2.5"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 max-[460px]:grid-cols-1 max-[360px]:gap-2.5"
                       >
-                        <div
-                          className="relative h-[3.25rem] w-[3.25rem] overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] max-[460px]:h-12 max-[460px]:w-12"
-                          aria-hidden="true"
+                        <motion.button
+                          type="button"
+                          drag={prefersReducedMotion ? false : 'x'}
+                          dragConstraints={{ left: 0, right: 0 }}
+                          dragElastic={0.18}
+                          onDragStart={() => {
+                            dockDraggedRef.current = true;
+                            setIsDragging(true);
+                          }}
+                          onDragEnd={handleTrackDragEnd}
+                          onClick={() => {
+                            if (dockDraggedRef.current) return;
+                            focusExpandedHeadingOnOpenRef.current = inputModalityRef.current === 'keyboard';
+                            setExpanded(true);
+                          }}
+                          style={{ touchAction: 'pan-y' }}
+                          className="grid min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 rounded-[var(--music-radius-detail)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] max-[460px]:grid-cols-[48px_minmax(0,1fr)]"
+                          aria-label="展开后台播放器；左右滑动切换歌曲"
                         >
-                          {coverNode}
-                        </div>
+                          <span
+                            className="relative h-[3.25rem] w-[3.25rem] overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] max-[460px]:h-12 max-[460px]:w-12"
+                            aria-hidden="true"
+                          >
+                            {coverNode}
+                          </span>
 
-                        <div className="min-w-0">
-                          <div data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
-                            <Disc3 className="h-3.5 w-3.5" />
-                            {playlistName}
-                          </div>
-                          <p className="mt-1 truncate text-sm font-black" title={currentTrack.title}>{currentTrack.title}</p>
-                          <p className="mt-0.5 truncate text-xs text-[var(--ink-secondary)]">
-                            {currentTrack.artist || '未知艺术家'} · {currentIndex + 1}/{queue.length}
-                          </p>
-                          <div className="mt-0.5">
-                            {renderSeekBar(false)}
-                          </div>
-                        </div>
+                          <span className="min-w-0">
+                            <span data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
+                              <Disc3 className="h-3.5 w-3.5" />
+                              {playlistName}
+                            </span>
+                            <span className="mt-1 block truncate text-sm font-black" title={currentTrack.title}>{currentTrack.title}</span>
+                            <span className="mt-0.5 block truncate text-xs text-[var(--ink-secondary)]">
+                              {currentTrack.artist || '未知艺术家'} · {currentIndex + 1}/{queue.length}
+                            </span>
+                          </span>
+                        </motion.button>
 
-                        <div className="grid grid-cols-[48px_44px_44px] items-center gap-1 max-[460px]:col-span-2 max-[460px]:mt-1 max-[460px]:justify-self-center">
+                        <div className="grid grid-cols-[44px_48px_44px_44px] items-center gap-2 max-[460px]:justify-self-center">
+                          <button type="button" onClick={previousTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="上一首" title="上一首">
+                            <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                          </button>
                           {renderPlayButton(false)}
                           <button type="button" onClick={nextTrack} className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent" aria-label="下一首" title="下一首">
                             <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
@@ -775,6 +1205,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                           >
                             <X className="h-4 w-4" />
                           </button>
+                        </div>
+                        <div className="col-span-full -mt-1">
+                          {renderSeekBar(false)}
                         </div>
                       </motion.div>
                     )}
@@ -790,12 +1223,14 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       </button>
                     </div>
                   )}
+                  </div>
                 </motion.div>
               </div>
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+      </AdminMusicPlayerTimelineContext.Provider>
     </AdminMusicPlayerContext.Provider>
   );
 }

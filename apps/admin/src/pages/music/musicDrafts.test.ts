@@ -16,6 +16,7 @@ import {
 } from './musicDrafts';
 
 const musicPageSource = readFileSync(path.resolve(__dirname, '../MusicPage.tsx'), 'utf8');
+const appSource = readFileSync(path.resolve(__dirname, '../../App.tsx'), 'utf8');
 
 describe('music editing payloads', () => {
   it('preserves duration and cover when saving unrelated track metadata', () => {
@@ -168,6 +169,24 @@ describe('playlist ordering safety', () => {
     expect(musicPageSource).toContain("['music-playlist-member-tracks', playlistId]");
     expect(musicPageSource).toContain('reorderPlaylistMutation.isPending');
   });
+
+  it('restores the active queue from the detail fallback when member cache was unavailable', () => {
+    expect(musicPageSource).toContain(
+      'const rollbackTracks = context?.previousTracks ?? context?.previousDetail?.tracks;'
+    );
+    expect(musicPageSource).toContain(
+      "reconcileQueue(rollbackTracks, { type: 'playlist', playlistId });"
+    );
+  });
+
+  it('keeps the active queue aligned with its exact library page or refreshed playlist source', () => {
+    expect(musicPageSource).toContain("queueSource.type === 'library'");
+    expect(musicPageSource).toContain('hasSameAdminMusicQueueTrackIds(queue, tracks)');
+    expect(musicPageSource).toContain('lastPlaylistQueueSyncRef.current');
+    expect(musicPageSource).toContain(
+      "reconcileQueue(refreshedTracks, { type: 'playlist', playlistId: selectedPlaylistId });"
+    );
+  });
 });
 
 describe('playlist selection safety', () => {
@@ -217,7 +236,7 @@ describe('playlist selection safety', () => {
     expect(musicPageSource).toContain('shouldApplyTrackSaveResult({');
     expect(musicPageSource).toContain('isPlaylistWriteBusy');
     expect(musicPageSource).toContain('deleteWriteLockRef.current');
-    expect(musicPageSource).toContain('pending={deletePlaylistMutation.isPending || deleteTrackMutation.isPending}');
+    expect(musicPageSource).toContain('pending: deletePlaylistMutation.isPending || deleteTrackMutation.isPending');
   });
 });
 
@@ -273,8 +292,53 @@ describe('track draft safety', () => {
     expect(musicPageSource).toContain('放弃未保存的歌曲修改？');
   });
 
+  it('closes the track editor before leaving the library tab', () => {
+    const navigationStart = musicPageSource.indexOf('const performTrackNavigation = useCallback');
+    const navigationEnd = musicPageSource.indexOf('const requestTrackNavigation = useCallback', navigationStart);
+    const navigationSource = musicPageSource.slice(navigationStart, navigationEnd);
+
+    expect(navigationStart).toBeGreaterThanOrEqual(0);
+    expect(navigationEnd).toBeGreaterThan(navigationStart);
+    expect(navigationSource).toMatch(
+      /if \(navigation\.kind === 'close'\) \{[\s\S]*?return;\s*\}[\s\S]*?editingTrackIdRef\.current = null;\s*setEditingTrack\(null\);\s*setActiveTab\(navigation\.tab\);/
+    );
+  });
+
   it('does not discard the active draft when another track is deleted', () => {
     expect(musicPageSource).toContain('onSuccess: (_response, { id }) =>');
     expect(musicPageSource).toContain('if (editingTrackIdRef.current === id) {');
+  });
+
+  it('cancels stale lyric imports and keeps the hidden file input out of focus order', () => {
+    expect(musicPageSource).toMatch(
+      /return \(\) => \{\s*lyricImportRequestRef\.current \+= 1;\s*\};\s*\}, \[track\.id\]\);/
+    );
+    expect(musicPageSource).toContain('if (importRequestId !== lyricImportRequestRef.current) return;');
+    expect(musicPageSource).toContain('tabIndex={-1}');
+    expect(musicPageSource).toContain('aria-hidden="true"');
+  });
+
+  it('protects dirty drafts across links, programmatic navigation, and browser history', () => {
+    expect(appSource).toContain('createBrowserRouter(');
+    expect(appSource).toContain('<RouterProvider router={router} />');
+    expect(musicPageSource).toContain('useBlocker(trackDraftDirty || playlistDraftDirty)');
+    expect(musicPageSource).toContain("dirtyNavigationBlocker.state === 'blocked'");
+    expect(musicPageSource).toContain('dirtyNavigationBlocker.proceed();');
+    expect(musicPageSource).not.toContain('protectSpaNavigation');
+  });
+
+  it('uses mobile safe areas without refocusing the title after nested confirmation', () => {
+    expect(musicPageSource).toContain('pl-[max(1rem,env(safe-area-inset-left))]');
+    expect(musicPageSource).toContain('pr-[max(1rem,env(safe-area-inset-right))]');
+    expect(musicPageSource).toContain('initiallyFocusedMobileEditorIdRef.current !== editingTrack.id');
+    expect(musicPageSource).toContain("dirtyNavigationBlocker.state === 'blocked'");
+    expect(musicPageSource).not.toContain('autoFocus={mobile}');
+    expect(musicPageSource).toContain('[data-track-editor-initial-focus]');
+  });
+
+  it('removes the mobile editor from the accessibility tree while a confirmation modal is above it', () => {
+    expect(musicPageSource).toContain('const mobileEditorCoveredByModal = Boolean(');
+    expect(musicPageSource).toContain('aria-hidden={mobileEditorCoveredByModal ? true : undefined}');
+    expect(musicPageSource).toContain('inert={mobileEditorCoveredByModal ? true : undefined}');
   });
 });
