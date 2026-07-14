@@ -49,6 +49,7 @@ import type { ManagedUser, Role, Team } from '@aetherblog/types';
 import {
   DEFAULT_KNOWLEDGE_BASE_RETRIEVAL_LIMIT,
   MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH,
+  canContinueKnowledgeBaseRetrievalInAetherHub,
   formatKnowledgeBaseRetrievalScore,
   getKnowledgeBaseRetrievalGuidance,
   validateKnowledgeBaseRetrievalQuery,
@@ -385,6 +386,8 @@ function Tabs({
 function VerifyTab({ kb }: { kb: KnowledgeBase }) {
   const navigate = useNavigate();
   const userId = useAuthStore((state) => state.user?.id);
+  const formRef = useRef<HTMLFormElement>(null);
+  const queryInputRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState('');
   const [queryError, setQueryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -422,6 +425,10 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
   };
 
   const continueInAetherHub = () => {
+    if (!canContinueKnowledgeBaseRetrievalInAetherHub(outcome)) {
+      setQueryError('只有检索到相关资料后，才能带着已验证的知识继续提问。');
+      return;
+    }
     const checked = validateKnowledgeBaseRetrievalQuery(outcome?.query || query);
     if (!checked.ok) {
       setQueryError(checked.message);
@@ -448,9 +455,23 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
     navigate('/aetherhub');
   };
 
-  const guidance = outcome?.status === 'empty' || outcome?.status === 'unavailable'
-    ? getKnowledgeBaseRetrievalGuidance(outcome.status)
+  const canContinueInAetherHub = canContinueKnowledgeBaseRetrievalInAetherHub(outcome);
+  const guidanceStatus = outcome?.status === 'empty' || outcome?.status === 'unavailable'
+    ? outcome.status
+    : outcome?.status === 'matched' && outcome.hits.length === 0
+      ? 'empty'
+      : null;
+  const guidance = guidanceStatus
+    ? getKnowledgeBaseRetrievalGuidance(guidanceStatus)
     : null;
+
+  const handleGuidanceAction = () => {
+    if (guidance?.action.kind === 'retry') {
+      formRef.current?.requestSubmit();
+      return;
+    }
+    queryInputRef.current?.focus();
+  };
 
   return (
     <div className="mt-4 grid items-start gap-4 pb-12 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
@@ -465,11 +486,12 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
             当前权限只能查看资料清单；需要“可使用”或更高权限才能检索资料内容。
           </div>
         )}
-        <form onSubmit={submit} className="space-y-3">
+        <form ref={formRef} onSubmit={submit} className="space-y-3">
           <label htmlFor="kb-retrieval-query" className="block text-sm font-medium text-[var(--text-primary)]">
             你希望从这批资料中确认什么？
           </label>
           <textarea
+            ref={queryInputRef}
             id="kb-retrieval-query"
             value={query}
             maxLength={MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH}
@@ -508,7 +530,7 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
       </IntelligencePanel>
 
       <IntelligencePanel
-        title={outcome?.status === 'matched' ? `找到 ${outcome.hits.length} 个相关片段` : '检索结果'}
+        title={canContinueInAetherHub && outcome ? `找到 ${outcome.hits.length} 个相关片段` : '检索结果'}
         description={outcome ? `问题：${outcome.query}` : '提交问题后，这里会按相关度展示真实召回结果。'}
         icon={FileText}
         bodyClassName="space-y-3"
@@ -519,7 +541,7 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
               <div key={item} className="h-24 animate-pulse rounded-xl bg-[var(--intelligence-control)]" />
             ))}
           </div>
-        ) : outcome?.status === 'matched' ? (
+        ) : canContinueInAetherHub && outcome ? (
           <div className="space-y-3" aria-live="polite">
             {outcome.hits.map((hit, index) => (
               <article
@@ -564,10 +586,10 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
             </ul>
             <button
               type="button"
-              onClick={continueInAetherHub}
+              onClick={handleGuidanceAction}
               className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 md:min-h-9"
             >
-              带这个问题去灵境
+              {guidance.action.label}
             </button>
           </div>
         ) : (

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH,
+  canContinueKnowledgeBaseRetrievalInAetherHub,
   formatKnowledgeBaseRetrievalScore,
   getKnowledgeBaseRetrievalGuidance,
   validateKnowledgeBaseRetrievalQuery,
@@ -35,8 +36,40 @@ describe('knowledge base retrieval model', () => {
 
     expect(empty.title).toContain('没有找到');
     expect(empty.nextSteps.join(' ')).toContain('换一种问法');
+    expect(empty.action).toEqual({ kind: 'revise-query', label: '修改问题' });
     expect(unavailable.title).toContain('暂时不可用');
     expect(unavailable.nextSteps.join(' ')).toContain('稍后重试');
+    expect(unavailable.action).toEqual({ kind: 'retry', label: '重新验证' });
     expect(empty).not.toEqual(unavailable);
+  });
+
+  it('only offers an AetherHub handoff after retrieval produced grounded hits', () => {
+    expect(canContinueKnowledgeBaseRetrievalInAetherHub(null)).toBe(false);
+    expect(canContinueKnowledgeBaseRetrievalInAetherHub({
+      status: 'empty',
+      query: '退款条件是什么？',
+      hits: [],
+    })).toBe(false);
+    expect(canContinueKnowledgeBaseRetrievalInAetherHub({
+      status: 'unavailable',
+      query: '退款条件是什么？',
+      hits: [],
+    })).toBe(false);
+    expect(canContinueKnowledgeBaseRetrievalInAetherHub({
+      status: 'matched',
+      query: '退款条件是什么？',
+      hits: [],
+    })).toBe(false);
+    expect(canContinueKnowledgeBaseRetrievalInAetherHub({
+      status: 'matched',
+      query: '退款条件是什么？',
+      hits: [{
+        title: '退款规则',
+        snippet: '到账前可申请全额退款。',
+        score: 0.91,
+        fileId: 7,
+        chunkIndex: 2,
+      }],
+    })).toBe(true);
   });
 });
