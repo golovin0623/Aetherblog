@@ -9,6 +9,7 @@ from app.services.atlas_recall import (
     AtlasRecallContext,
     recall_atlas_context,
     render_atlas_context,
+    selected_atlas_sources_available,
     upsert_knowledge_point_embedding,
 )
 from app.services.vector_store import SearchProfile
@@ -38,6 +39,45 @@ def _profile(**overrides: Any) -> SearchProfile:
         status="active",
     )
     return replace(base, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("resolved_kps", "resolved_carriers", "expected"),
+    [
+        ([7, 8], [3, 4], True),
+        ([7], [3, 4], False),
+        ([7, 8], [3], False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_selected_atlas_sources_available_requires_every_live_owned_source(
+    resolved_kps: list[int],
+    resolved_carriers: list[int],
+    expected: bool,
+) -> None:
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, int]]:
+        if "FROM atlas_knowledge_points" in sql:
+            assert args == ([7, 8], 9)
+            assert "deleted = FALSE" in sql
+            assert "author_id = $2" in sql
+            assert "archived" not in sql
+            return [{"id": value} for value in resolved_kps]
+        if "FROM atlas_carriers" in sql:
+            assert args == ([3, 4], 9)
+            assert "deleted = FALSE" in sql
+            assert "owner_id = $2" in sql
+            assert "status" not in sql
+            return [{"id": value} for value in resolved_carriers]
+        raise AssertionError(f"unexpected selected Atlas source SQL: {sql}")
+
+    available = await selected_atlas_sources_available(
+        FakePool(FakeConn(fetch=fetch)),
+        user_id=9,
+        kp_ids=[7, 7, 8],
+        carrier_ids=[3, 3, 4],
+    )
+
+    assert available is expected
 
 
 @pytest.mark.asyncio

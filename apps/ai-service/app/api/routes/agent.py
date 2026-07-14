@@ -1064,6 +1064,7 @@ async def _build_atlas_retrieval_for_chat(
     user_id: int | None,
     llm_router=None,
     messages: list[AgentChatMessage] | None = None,
+    strict: bool = False,
 ) -> _AgentRetrievalPart:
     if atlas_scope is None:
         return _AgentRetrievalPart()
@@ -1086,7 +1087,27 @@ async def _build_atlas_retrieval_for_chat(
         return part
 
     try:
-        from app.services.atlas_recall import recall_atlas_context, render_atlas_context
+        from app.services.atlas_recall import (
+            recall_atlas_context,
+            render_atlas_context,
+            selected_atlas_sources_available,
+        )
+
+        if strict and not await selected_atlas_sources_available(
+            pool,
+            user_id=user_id,
+            kp_ids=kp_ids,
+            carrier_ids=carrier_ids,
+        ):
+            part.outcome = "unavailable"
+            part.warnings.append(
+                _retrieval_warning(
+                    "atlas",
+                    "部分所选 Atlas 来源不存在或无权访问，本次回答未使用所选知识。",
+                    "selected_source_unavailable",
+                )
+            )
+            return part
 
         context = await recall_atlas_context(
             pool,
@@ -1706,6 +1727,7 @@ async def agent_chat(
             user_id=user_id,
             llm_router=llm_router,
             messages=payload.messages,
+            strict=knowledge_context_mode == "selected",
         )
     kb_context = kb_retrieval.context
     atlas_context = atlas_retrieval.context

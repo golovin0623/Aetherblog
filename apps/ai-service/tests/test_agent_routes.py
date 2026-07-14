@@ -592,6 +592,76 @@ async def test_build_atlas_context_uses_empty_scope_for_semantic_recall(
 
 
 @pytest.mark.asyncio
+async def test_build_atlas_retrieval_selected_valid_empty_scope_stays_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    async def selected_atlas_sources_available(*_args: Any, **_kwargs: Any) -> bool:
+        return True
+
+    async def fake_recall_atlas_context(*_args: Any, **_kwargs: Any):
+        return atlas_recall_module.AtlasRecallContext()
+
+    monkeypatch.setattr(
+        atlas_recall_module,
+        "selected_atlas_sources_available",
+        selected_atlas_sources_available,
+    )
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: None)
+
+    part = await agent_module._build_atlas_retrieval_for_chat(
+        object(),
+        atlas_scope=agent_module.AgentAtlasScope(kpIds=[3], semanticRecall=False),
+        user_id=7,
+        llm_router=object(),
+        messages=[AgentChatMessage(role="user", content="合法来源暂时没有相关内容")],
+        strict=True,
+    )
+
+    assert part.requested is True
+    assert part.outcome == "empty"
+    assert part.context is None
+    assert part.hits == []
+    assert part.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_build_atlas_retrieval_auto_skips_selected_source_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    async def forbidden_selected_atlas_validation(*_args: Any, **_kwargs: Any) -> bool:
+        raise AssertionError("auto Atlas recall must remain best-effort")
+
+    async def fake_recall_atlas_context(*_args: Any, **_kwargs: Any):
+        return atlas_recall_module.AtlasRecallContext()
+
+    monkeypatch.setattr(
+        atlas_recall_module,
+        "selected_atlas_sources_available",
+        forbidden_selected_atlas_validation,
+    )
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: None)
+
+    part = await agent_module._build_atlas_retrieval_for_chat(
+        object(),
+        atlas_scope=agent_module.AgentAtlasScope(kpIds=[3], semanticRecall=False),
+        user_id=7,
+        llm_router=object(),
+        messages=[AgentChatMessage(role="user", content="自动召回保持兼容")],
+        strict=False,
+    )
+
+    assert part.requested is True
+    assert part.outcome == "empty"
+    assert part.warnings == []
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_selected_empty_scope_emits_receipt_and_recoverable_error_without_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -718,6 +788,94 @@ async def test_agent_chat_selected_multiple_kbs_blocks_when_any_recall_is_unavai
     assert [event["type"] for event in events] == ["retrieval", "error"]
     assert events[0]["status"] == "partial"
     assert [hit["key"] for hit in events[0]["hits"]] == ["atlas:kp:3"]
+    assert events[1]["code"] == "selected_context_not_grounded"
+
+
+@pytest.mark.asyncio
+async def test_agent_chat_selected_atlas_blocks_when_any_requested_source_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import atlas_recall as atlas_recall_module
+
+    async def fake_resolve_for_agent(_llm_router: Any, **_kwargs: Any) -> LlmRouter._ResolvedRoute:
+        return _resolved_route()
+
+    async def forbidden_acompletion(**_kwargs: Any):
+        raise AssertionError("an incomplete selected Atlas scope must not reach the model provider")
+
+    recall_calls: list[dict[str, Any]] = []
+
+    async def fake_recall_atlas_context(*_args: Any, **kwargs: Any):
+        recall_calls.append(kwargs)
+        return atlas_recall_module.AtlasRecallContext(
+            knowledge_points=[
+                atlas_recall_module.AtlasKnowledgePointHit(
+                    id=3,
+                    title="仍然可用的知识点",
+                    body_markdown="不能掩盖另一个显式来源不可用。",
+                    type="claim",
+                    status="evergreen",
+                    confidence=0.9,
+                    provenance="user",
+                    recall_source="selected",
+                )
+            ]
+        )
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, int]]:
+        if "FROM atlas_knowledge_points" in sql:
+            assert args == ([3, 99], 7)
+            assert "deleted = FALSE" in sql
+            assert "author_id = $2" in sql
+            return [{"id": 3}]
+        if "FROM atlas_carriers" in sql:
+            assert args == ([4, 100], 7)
+            assert "deleted = FALSE" in sql
+            assert "owner_id = $2" in sql
+            return [{"id": 4}]
+        raise AssertionError(f"unexpected Atlas scope SQL: {sql}")
+
+    monkeypatch.setattr(agent_module, "_resolve_for_agent", fake_resolve_for_agent)
+    monkeypatch.setattr(agent_module, "acompletion", forbidden_acompletion)
+    monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
+    monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: "partial atlas")
+
+    response = await agent_module.agent_chat(
+        request=_request(),
+        payload=_chat_request(
+            knowledgeContextMode="selected",
+            atlasScope=agent_module.AgentAtlasScope(
+                kpIds=[3, 99],
+                carrierIds=[4, 100],
+                semanticRecall=False,
+            ),
+        ),
+        user=SimpleNamespace(user_id="system", role="admin"),
+        forwarded_user_id="7",
+        llm_router=FakeAgentRouter(),
+        pool=FakePool(FakeConn(fetch=fetch)),
+        metrics=FakeMetrics(),
+        usage_logger=FakeUsageLogger(),
+    )
+
+    events = await _collect_sse_events(response)
+
+    assert recall_calls == []
+    assert [event["type"] for event in events] == ["retrieval", "error"]
+    assert events[0]["status"] == "unavailable"
+    assert events[0]["requested"] == {
+        "knowledgeBaseIds": [],
+        "atlasKnowledgePointIds": [3, 99],
+        "atlasCarrierIds": [4, 100],
+    }
+    assert events[0]["hits"] == []
+    assert events[0]["warnings"] == [
+        {
+            "scope": "atlas",
+            "code": "selected_source_unavailable",
+            "message": "部分所选 Atlas 来源不存在或无权访问，本次回答未使用所选知识。",
+        }
+    ]
     assert events[1]["code"] == "selected_context_not_grounded"
 
 
@@ -973,8 +1131,16 @@ async def test_agent_chat_emits_versioned_retrieval_before_first_content_event(
             ],
         )
 
+    async def selected_atlas_sources_available(*_args: Any, **_kwargs: Any) -> bool:
+        return True
+
     monkeypatch.setattr(kb_recall_module, "recall_kbs", fake_recall_kbs)
     monkeypatch.setattr(kb_recall_module, "render_kb_context", lambda _hits: "rendered kb")
+    monkeypatch.setattr(
+        atlas_recall_module,
+        "selected_atlas_sources_available",
+        selected_atlas_sources_available,
+    )
     monkeypatch.setattr(atlas_recall_module, "recall_atlas_context", fake_recall_atlas_context)
     monkeypatch.setattr(atlas_recall_module, "render_atlas_context", lambda _context: "rendered atlas")
 

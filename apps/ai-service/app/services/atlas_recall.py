@@ -105,6 +105,61 @@ def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
     return out
 
 
+async def selected_atlas_sources_available(
+    pool,
+    *,
+    user_id: int,
+    kp_ids: list[int] | None,
+    carrier_ids: list[int] | None,
+) -> bool:
+    """Return whether every explicitly selected Atlas source is live and owned.
+
+    This validates source identity, not whether the sources currently contain
+    enough text to answer a question. A valid but empty scope is handled by the
+    normal retrieval outcome instead of being misreported as unavailable.
+    """
+    requested_kp_ids = _dedupe_positive_ints(kp_ids, 12)
+    requested_carrier_ids = _dedupe_positive_ints(carrier_ids, 6)
+
+    async with pool.acquire() as conn:
+        resolved_kp_ids: list[int] = []
+        if requested_kp_ids:
+            rows = await conn.fetch(
+                """
+                SELECT id
+                FROM atlas_knowledge_points
+                WHERE id = ANY($1::bigint[])
+                  AND deleted = FALSE
+                  AND author_id = $2
+                ORDER BY array_position($1::bigint[], id)
+                """,
+                requested_kp_ids,
+                user_id,
+            )
+            resolved_kp_ids = [int(row["id"]) for row in rows]
+
+        resolved_carrier_ids: list[int] = []
+        if requested_carrier_ids:
+            rows = await conn.fetch(
+                """
+                SELECT id
+                FROM atlas_carriers
+                WHERE id = ANY($1::bigint[])
+                  AND deleted = FALSE
+                  AND owner_id = $2
+                ORDER BY array_position($1::bigint[], id)
+                """,
+                requested_carrier_ids,
+                user_id,
+            )
+            resolved_carrier_ids = [int(row["id"]) for row in rows]
+
+    return (
+        set(resolved_kp_ids) == set(requested_kp_ids)
+        and set(resolved_carrier_ids) == set(requested_carrier_ids)
+    )
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     if isinstance(row, dict):
         return row
