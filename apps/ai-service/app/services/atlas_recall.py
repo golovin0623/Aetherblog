@@ -173,6 +173,8 @@ async def selected_atlas_sources_snapshot(
                 FROM atlas_knowledge_points
                 WHERE id = ANY($1::bigint[])
                   AND deleted = FALSE
+                  AND archived = FALSE
+                  AND status <> 'archived'
                   AND author_id = $2
                 ORDER BY array_position($1::bigint[], id)
                 """,
@@ -781,6 +783,8 @@ async def _fetch_kps_by_ids(
                 $3::text AS recall_source
             FROM atlas_knowledge_points
             WHERE deleted = FALSE
+              AND archived = FALSE
+              AND status <> 'archived'
               AND id = ANY($1::bigint[])
               AND ($2::bigint IS NULL OR author_id = $2)
             ORDER BY array_position($1::bigint[], id)
@@ -853,6 +857,7 @@ async def _semantic_recall_with_vector(
                   AND embedding IS NOT NULL
                   AND deleted = FALSE
                   AND archived = FALSE
+                  AND status <> 'archived'
                   AND ($6::bigint IS NULL OR author_id = $6)
                 ORDER BY embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4

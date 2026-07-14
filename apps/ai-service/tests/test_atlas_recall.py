@@ -94,7 +94,8 @@ async def test_selected_atlas_sources_available_requires_every_live_owned_source
             assert args == ([7, 8], 9)
             assert "deleted = FALSE" in sql
             assert "author_id = $2" in sql
-            assert "archived" not in sql
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
             return [{"id": value} for value in resolved_kps]
         if "FROM atlas_carriers" in sql:
             assert args == ([3, 4], 9)
@@ -321,6 +322,8 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
             assert args[1] == 42
             assert args[2] == 3072
             assert args[5] == 9
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
             return [
                 {
                     "id": 8,
@@ -336,6 +339,8 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
             ]
         if "id = ANY($1::bigint[])" in sql and "FROM atlas_knowledge_points" in sql:
             assert set(args[0]) == {7}
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
             return [
                 {
                     "id": 7,
