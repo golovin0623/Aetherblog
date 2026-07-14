@@ -9,6 +9,25 @@ export type BuildNoteQuestionHandoffResult =
   | { ok: true; input: KnowledgeWorkspaceHandoffInput }
   | { ok: false; message: string };
 
+export async function resolveKnowledgePreparationNote({
+  routeNoteId,
+  hasUnsavedChanges,
+  save,
+  persistCreatedRoute,
+}: {
+  routeNoteId: number | null;
+  hasUnsavedChanges: boolean;
+  save: () => Promise<{ id: number } | null>;
+  persistCreatedRoute: (noteId: number) => void;
+}): Promise<number | null> {
+  if (routeNoteId && !hasUnsavedChanges) return routeNoteId;
+
+  const saved = await save();
+  if (!saved) return null;
+  if (!routeNoteId) persistCreatedRoute(saved.id);
+  return saved.id;
+}
+
 interface BuildNoteQuestionHandoffInput {
   userId: string | null | undefined;
   noteTitle: string;

@@ -6,7 +6,10 @@ import {
   type KnowledgeHandoffStorage,
 } from '@/services/knowledgeWorkspaceHandoff';
 import type { NoteKnowledgeReadiness } from '@/types/note';
-import { buildNoteQuestionHandoff } from './noteKnowledgeHandoff';
+import {
+  buildNoteQuestionHandoff,
+  resolveKnowledgePreparationNote,
+} from './noteKnowledgeHandoff';
 
 const NOW = 1_800_000_000_000;
 
@@ -43,6 +46,66 @@ function ready(overrides: Partial<NoteKnowledgeReadiness> = {}): NoteKnowledgeRe
     ...overrides,
   };
 }
+
+describe('note knowledge preparation identity', () => {
+  it('persists a newly created note route before returning its preparation id', async () => {
+    const calls: string[] = [];
+
+    const noteId = await resolveKnowledgePreparationNote({
+      routeNoteId: null,
+      hasUnsavedChanges: false,
+      save: async () => {
+        calls.push('save');
+        return { id: 91 };
+      },
+      persistCreatedRoute: (id) => calls.push(`route:${id}`),
+    });
+
+    expect(noteId).toBe(91);
+    expect(calls).toEqual(['save', 'route:91']);
+  });
+
+  it('does not change routes when saving a new note fails', async () => {
+    const persisted: number[] = [];
+
+    await expect(resolveKnowledgePreparationNote({
+      routeNoteId: null,
+      hasUnsavedChanges: true,
+      save: async () => null,
+      persistCreatedRoute: (id) => persisted.push(id),
+    })).resolves.toBeNull();
+    expect(persisted).toEqual([]);
+  });
+
+  it('reuses a clean existing note without saving or replacing its route', async () => {
+    const noteId = await resolveKnowledgePreparationNote({
+      routeNoteId: 17,
+      hasUnsavedChanges: false,
+      save: async () => {
+        throw new Error('save should not run');
+      },
+      persistCreatedRoute: () => {
+        throw new Error('route should not change');
+      },
+    });
+
+    expect(noteId).toBe(17);
+  });
+
+  it('saves dirty existing notes without treating them as newly created', async () => {
+    const persisted: number[] = [];
+
+    const noteId = await resolveKnowledgePreparationNote({
+      routeNoteId: 17,
+      hasUnsavedChanges: true,
+      save: async () => ({ id: 17 }),
+      persistCreatedRoute: (id) => persisted.push(id),
+    });
+
+    expect(noteId).toBe(17);
+    expect(persisted).toEqual([]);
+  });
+});
 
 describe('note question handoff', () => {
   it('builds a selected Atlas-carrier handoff with an editable suggested question', () => {

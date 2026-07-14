@@ -65,7 +65,10 @@ import { ConfirmDialog } from '@/components/common';
 import { CreateFolderDialog } from './components/CreateFolderDialog';
 import { AlertBlockDropdownButton } from '../posts/components/AlertBlockDropdownButton';
 import { getNoteKnowledgePresentation, type NoteKnowledgeTone } from './noteKnowledgeReadiness';
-import { buildNoteQuestionHandoff } from './noteKnowledgeHandoff';
+import {
+  buildNoteQuestionHandoff,
+  resolveKnowledgePreparationNote,
+} from './noteKnowledgeHandoff';
 
 function parseTags(input: string) {
   return input.split(',').map((tag) => tag.trim()).filter(Boolean);
@@ -307,14 +310,18 @@ export default function CreateNotePage() {
 
   const handlePrepareKnowledgeSource = async () => {
     if (knowledgePreparing) return;
-    let targetNoteId = noteId;
+    let targetNoteId: number | null = null;
     setKnowledgePreparing(true);
     try {
-      if (!targetNoteId || dirty) {
-        const saved = await handleSave({ redirectNew: false });
-        if (!saved) return;
-        targetNoteId = saved.id;
-      }
+      targetNoteId = await resolveKnowledgePreparationNote({
+        routeNoteId: noteId,
+        hasUnsavedChanges: dirty,
+        save: () => handleSave({ redirectNew: false }),
+        persistCreatedRoute: (createdNoteId) => {
+          navigate(`/notes/${createdNoteId}/edit`, { replace: true });
+        },
+      });
+      if (!targetNoteId) return;
 
       const res = await noteService.prepareKnowledgeSource(targetNoteId);
       setKnowledgeReadiness(res.data);
@@ -322,9 +329,6 @@ export default function CreateNotePage() {
         toast.success(`已准备 ${res.data.chunkCount} 个可检索分块`);
       } else {
         toast.warning(res.data.message || '知识来源尚未准备完成');
-      }
-      if (!noteId) {
-        navigate(`/notes/${targetNoteId}/edit`, { replace: true });
       }
     } catch (error) {
       toast.error(extractApiErrorMessage(error, '准备知识来源失败'));
