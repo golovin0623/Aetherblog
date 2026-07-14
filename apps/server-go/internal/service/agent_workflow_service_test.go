@@ -119,8 +119,11 @@ func TestCapabilitiesDefaultToSimulationModeButDisableUnwiredRuntime(t *testing.
 	if caps.RealLLM.Enabled || caps.RealTools.Enabled || caps.Sandbox.Enabled || caps.Autonomous.Enabled {
 		t.Fatalf("runtime capabilities requiring ai-service should be disabled by default: %#v", caps)
 	}
-	if !caps.Scheduler.Enabled || caps.Scheduler.State != "available" {
-		t.Fatalf("scheduler capability should be available after CRUD/daemon API wiring: %#v", caps.Scheduler)
+	if caps.Scheduler.Enabled || caps.Scheduler.State != "coming_soon" {
+		t.Fatalf("scheduler capability must remain unavailable until a daemon executes persisted plans: %#v", caps.Scheduler)
+	}
+	if !strings.Contains(caps.Scheduler.Detail, "仅可持久化周期配置") || !strings.Contains(caps.Scheduler.Detail, "daemon") {
+		t.Fatalf("scheduler detail must distinguish persisted plans from automatic execution: %q", caps.Scheduler.Detail)
 	}
 	if caps.RealLLM.State != "not_connected" || caps.RealTools.State != "not_connected" {
 		t.Fatalf("real runtime states = LLM:%q tools:%q, want not_connected", caps.RealLLM.State, caps.RealTools.State)
@@ -207,6 +210,36 @@ func TestClassifyWorkflowError(t *testing.T) {
 				t.Fatalf("classifyWorkflowError = category:%q retryable:%v, want %q/%v", category, retryable, tt.category, tt.retryable)
 			}
 		})
+	}
+}
+
+func TestCanRetryWorkflowRunRequiresRetryableFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		retryable bool
+		want      bool
+	}{
+		{name: "retryable failure", status: "failed", retryable: true, want: true},
+		{name: "non-retryable failure", status: "failed", retryable: false, want: false},
+		{name: "successful run", status: "success", retryable: true, want: false},
+		{name: "legacy cancellation without flag", status: "cancelled", retryable: false, want: true},
+		{name: "non-retryable budget failure", status: "budget_exceeded", retryable: false, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canRetryWorkflowRun(tt.status, tt.retryable); got != tt.want {
+				t.Fatalf("canRetryWorkflowRun(%q, %v) = %v, want %v", tt.status, tt.retryable, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToRunSummaryTreatsCancellationAsRetryable(t *testing.T) {
+	summary := toRunSummary(model.AgentWorkflowRun{Status: "cancelled", Retryable: false})
+	if !summary.Retryable {
+		t.Fatal("cancelled run summary must remain retryable for legacy and newly cancelled runs")
 	}
 }
 

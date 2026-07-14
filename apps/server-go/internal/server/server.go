@@ -286,6 +286,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	atlasCarrierRepo := atlasrepo.NewCarrierRepo(atlasRepo)
 	atlasAnnoRepo := atlasrepo.NewAnnotationRepo(atlasRepo)
 	atlasMarkdown := atlassvc.NewMarkdownCarrierService(atlasCarrierRepo, atlassvc.NewNoteRepoReader(noteRepo, noteSvc))
+	noteSvc.AttachKnowledgeCarrierPreparer(atlasMarkdown)
 	atlasBlogPosts := atlassvc.NewBlogPostCarrierService(atlasCarrierRepo, atlassvc.NewPostRepoReader(postRepo))
 	atlasWebClips := atlassvc.NewWebClipCarrierService(atlasCarrierRepo)
 	atlasVersioning := atlassvc.NewCarrierVersioningService(atlasCarrierRepo, atlasAnnoRepo)
@@ -535,9 +536,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	kbMemberRepo := repository.NewKBMemberRepo(s.DB)
 	kbFileRepo := repository.NewKBFileRepo(s.DB)
 	kbIndexer := service.NewKBIndexerClient(s.Config.AI)
+	kbRetriever := service.NewKBRetrieverClient(s.Config.AI)
 	kbSvc := service.NewKBService(s.DB, kbRepo, kbProfileRepo, kbMemberRepo, kbFileRepo,
 		mediaSvc, folderSvc, kbIndexer, "")
-	kbHandler := handler.NewKBHandler(kbSvc, activitySvc)
+	kbHandler := handler.NewKBHandler(kbSvc, activitySvc, kbRetriever)
 	// KB admin 组：写路径每用户 60/min（上传 / 重建 / 创建 / 删除 / profile 切换 / 成员变更）。
 	// 读路径（GET）不计入此桶 —— 列表/详情/统计/Profile/Member 拉取在 admin UI
 	// 中高频且来自轮询，被同一个桶吞会导致 UI 错误 429。

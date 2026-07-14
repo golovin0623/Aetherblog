@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDebounce } from '@aetherblog/hooks';
+import { ConfirmModal, Select } from '@aetherblog/ui';
 import {
   Archive,
   ArchiveRestore,
@@ -69,6 +70,7 @@ const noteViews = [
 ] as const;
 
 type NoteView = typeof noteViews[number]['id'];
+type NoteConfirmAction = { kind: 'delete' | 'archive'; note: NoteListItem };
 
 function formatDate(value?: string | null) {
   if (!value) return '-';
@@ -116,6 +118,7 @@ export default function NotesPage() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<NoteConfirmAction | null>(null);
   const hasLoadedNotesRef = useRef(false);
 
   const pageNum = Math.max(1, Number(searchParams.get('pageNum') || '1'));
@@ -192,8 +195,7 @@ export default function NotesPage() {
 
   const currentViewLabel = useMemo(() => noteViews.find((item) => item.id === view)?.label || '全部', [view]);
 
-  const handleDelete = async (note: NoteListItem) => {
-    if (!window.confirm(`确定要删除笔记「${note.title}」吗？`)) return;
+  const performDelete = async (note: NoteListItem) => {
     setActionId(note.id);
     try {
       await noteService.delete(note.id);
@@ -206,9 +208,7 @@ export default function NotesPage() {
     }
   };
 
-  const handleArchive = async (note: NoteListItem, archived: boolean) => {
-    if (archived && !window.confirm(`确定要归档笔记「${note.title}」吗？`)) return;
-
+  const performArchive = async (note: NoteListItem, archived: boolean) => {
     setActionId(note.id);
     try {
       await noteService.updateProperties(note.id, { archived });
@@ -219,6 +219,18 @@ export default function NotesPage() {
     } finally {
       setActionId(null);
     }
+  };
+
+  const handleDelete = (note: NoteListItem) => {
+    setConfirmAction({ kind: 'delete', note });
+  };
+
+  const handleArchive = (note: NoteListItem, archived: boolean) => {
+    if (archived) {
+      setConfirmAction({ kind: 'archive', note });
+      return;
+    }
+    void performArchive(note, false);
   };
 
   const handleDuplicate = async (note: NoteListItem) => {
@@ -295,35 +307,44 @@ export default function NotesPage() {
                 className={cn(notesControlClass, 'w-full pl-9 pr-3')}
               />
             </label>
-            <select
+            <Select
               value={folderId}
-              onChange={(event) => updateParams({ folderId: event.target.value, pageNum: 1 })}
-              className={notesControlClass}
-            >
-              <option value="">全部文件夹</option>
-              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-            </select>
-            <select
+              onValueChange={(next) => updateParams({ folderId: next, pageNum: 1 })}
+              options={[
+                { value: '', label: '全部文件夹' },
+                ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+              ]}
+              placeholder="全部文件夹"
+              ariaLabel="按文件夹筛选"
+              className="h-11 sm:h-10"
+            />
+            <Select
               value={tag}
-              onChange={(event) => updateParams({ tag: event.target.value, pageNum: 1 })}
-              className={notesControlClass}
-            >
-              <option value="">全部标签</option>
-              {tags.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-            </select>
-            <select
+              onValueChange={(next) => updateParams({ tag: next, pageNum: 1 })}
+              options={[
+                { value: '', label: '全部标签' },
+                ...tags.map((item) => ({ value: item.name, label: item.name })),
+              ]}
+              placeholder="全部标签"
+              ariaLabel="按标签筛选"
+              className="h-11 sm:h-10"
+            />
+            <Select
               value={sourceType}
-              onChange={(event) => updateParams({ sourceType: event.target.value, pageNum: 1 })}
-              className={notesControlClass}
-            >
-              <option value="">全部来源</option>
-              <option value="manual">手动</option>
-              <option value="web">网页</option>
-              <option value="article">文章</option>
-              <option value="chat">对话</option>
-              <option value="import">导入</option>
-              <option value="api">API</option>
-            </select>
+              onValueChange={(next) => updateParams({ sourceType: next, pageNum: 1 })}
+              options={[
+                { value: '', label: '全部来源' },
+                { value: 'manual', label: '手动' },
+                { value: 'web', label: '网页' },
+                { value: 'article', label: '文章' },
+                { value: 'chat', label: '对话' },
+                { value: 'import', label: '导入' },
+                { value: 'api', label: 'API' },
+              ]}
+              placeholder="全部来源"
+              ariaLabel="按来源筛选"
+              className="h-11 sm:h-10"
+            />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex min-w-[52px] items-center gap-1.5 text-[11px] font-semibold text-[var(--ink-muted)]">
@@ -512,6 +533,25 @@ export default function NotesPage() {
         onCreated={(folder) => {
           setFolders((prev) => [...prev, folder]);
           updateParams({ folderId: folder.id, pageNum: 1 });
+        }}
+      />
+      <ConfirmModal
+        isOpen={confirmAction !== null}
+        title={confirmAction?.kind === 'delete' ? '删除这条笔记？' : '归档这条笔记？'}
+        message={
+          confirmAction?.kind === 'delete'
+            ? `「${confirmAction.note.title}」删除后无法恢复。`
+            : `「${confirmAction?.note.title ?? ''}」会从默认视图移到“已归档”。`
+        }
+        confirmText={confirmAction?.kind === 'delete' ? '确认删除' : '确认归档'}
+        variant={confirmAction?.kind === 'delete' ? 'danger' : 'warning'}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (!action) return;
+          if (action.kind === 'delete') void performDelete(action.note);
+          else void performArchive(action.note, true);
         }}
       />
     </div>

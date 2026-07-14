@@ -110,3 +110,17 @@ func TestValidateSSELineAllowsReindexChunkProgress(t *testing.T) {
 		t.Fatal("expected reindex chunk progress SSE line to be forwarded")
 	}
 }
+
+func TestValidateSSELineAllowsAgentRetrievalReceipt(t *testing.T) {
+	line := `data: {"type":"retrieval","version":1,"status":"matched","requested":{"knowledgeBaseIds":[3],"atlasKnowledgePointIds":[],"atlasCarrierIds":[]},"hits":[],"warnings":[]}`
+	if !validateSSELine(line) {
+		t.Fatal("expected agent retrieval receipt SSE line to be forwarded")
+	}
+}
+
+func TestValidateSSELineRejectsUnknownAgentEvent(t *testing.T) {
+	line := `data: {"type":"retrieval_debug","content":"must not pass"}`
+	if validateSSELine(line) {
+		t.Fatal("expected unknown agent event SSE line to be rejected")
+	}
+}

@@ -32,7 +32,10 @@ export interface AgentWorkflowBundle {
   variables: AgentVariableSpec[];
   trace: AgentRunTraceItem[];
   runHistory: AgentWorkflowRunSummary[];
+  activeWorkflowId: string | number;
   activeDefinition: AgentWorkflowDefinition;
+  localDefinitions: Record<string, AgentWorkflowDefinition>;
+  entryDraftSourceKeys: Record<string, string>;
 }
 
 export const defaultAgentWorkflowCapabilities: AgentWorkflowCapabilities = {
@@ -56,16 +59,50 @@ export const defaultAgentWorkflowCapabilities: AgentWorkflowCapabilities = {
     detail: '等待 ai-service / sandbox-worker。',
   },
   scheduler: {
-    enabled: true,
-    state: 'available',
+    enabled: false,
+    state: 'coming_soon',
     label: '调度器',
-    detail: '支持 schedule CRUD 与 missed-run 策略。',
+    detail: '当前仅可持久化周期配置；scheduler daemon 尚未实现，不会自动运行。',
   },
   autonomous: {
     enabled: false,
     state: 'coming_soon',
     label: 'Autonomous',
     detail: '等待 ReAct/tool-calling loop。',
+  },
+};
+
+export const unknownAgentWorkflowCapabilities: AgentWorkflowCapabilities = {
+  defaultRunMode: 'simulate',
+  realLLM: {
+    enabled: false,
+    state: 'unknown',
+    label: '真实 LLM',
+    detail: '能力状态读取失败，请刷新后再决定是否真实运行。',
+  },
+  realTools: {
+    enabled: false,
+    state: 'unknown',
+    label: '真实内置工具',
+    detail: '能力状态读取失败，请刷新后再决定是否真实运行。',
+  },
+  sandbox: {
+    enabled: false,
+    state: 'unknown',
+    label: '受限代码沙盒',
+    detail: '能力状态读取失败，请刷新后再决定是否真实运行。',
+  },
+  scheduler: {
+    enabled: false,
+    state: 'unknown',
+    label: '调度器',
+    detail: '能力状态读取失败，不能确认调度器是否可用。',
+  },
+  autonomous: {
+    enabled: false,
+    state: 'unknown',
+    label: 'Autonomous',
+    detail: '能力状态读取失败，不能确认自主执行能力。',
   },
 };
 
@@ -247,28 +284,161 @@ export const defaultAgentWorkflowBundle: AgentWorkflowBundle = {
     { id: 't5', nodeId: 'quality_gate', nodeLabel: '质量分支', nodeType: 'branch', status: 'pending' },
   ],
   runHistory: [],
+  activeWorkflowId: 'wf_article_audit',
   activeDefinition: defaultAgentWorkflowDefinition,
+  localDefinitions: {
+    wf_article_audit: defaultAgentWorkflowDefinition,
+  },
+  entryDraftSourceKeys: {},
 };
+
+function hasBackendWorkflowId(id: string | number) {
+  return typeof id === 'number' || /^\d+$/.test(String(id));
+}
+
+function isWorkflowDefinition(value: unknown): value is AgentWorkflowDefinition {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && 'nodes' in value
+      && Array.isArray((value as { nodes?: unknown }).nodes)
+      && (value as { nodes: unknown[] }).nodes.length > 0,
+  );
+}
+
+function definitionRecord(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {} as Record<string, AgentWorkflowDefinition>;
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, AgentWorkflowDefinition] =>
+      isWorkflowDefinition(entry[1]),
+    ),
+  );
+}
+
+function sourceKeyRecord(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+
+export function getLocalAgentWorkflowDefinition(
+  bundle: AgentWorkflowBundle,
+  workflowId: string | number,
+) {
+  if (hasBackendWorkflowId(workflowId)) return undefined;
+  return bundle.localDefinitions[String(workflowId)];
+}
+
+export function storeLocalAgentWorkflowDefinition(
+  bundle: AgentWorkflowBundle,
+  workflowId: string | number,
+  definition: AgentWorkflowDefinition,
+): AgentWorkflowBundle {
+  if (hasBackendWorkflowId(workflowId)) return bundle;
+  return {
+    ...bundle,
+    localDefinitions: {
+      ...bundle.localDefinitions,
+      [String(workflowId)]: definition,
+    },
+  };
+}
+
+export function removeLocalAgentWorkflowDraft(
+  bundle: AgentWorkflowBundle,
+  workflowId: string | number,
+): AgentWorkflowBundle {
+  const localDefinitions = { ...bundle.localDefinitions };
+  const entryDraftSourceKeys = { ...bundle.entryDraftSourceKeys };
+  delete localDefinitions[String(workflowId)];
+  delete entryDraftSourceKeys[String(workflowId)];
+  return { ...bundle, localDefinitions, entryDraftSourceKeys };
+}
+
+export function mergeBackendAndLocalWorkflowSummaries(
+  backendWorkflows: AgentWorkflowSummary[],
+  currentWorkflows: AgentWorkflowSummary[],
+) {
+  const backendIds = new Set(backendWorkflows.map((workflow) => String(workflow.id)));
+  const localWorkflows = currentWorkflows.filter((workflow) =>
+    !hasBackendWorkflowId(workflow.id) && !backendIds.has(String(workflow.id)),
+  );
+  return [...backendWorkflows, ...localWorkflows];
+}
+
+export function normalizeLocalAgentWorkflowBundle(value: unknown): AgentWorkflowBundle {
+  const parsed = value && typeof value === 'object'
+    ? value as Partial<AgentWorkflowBundle>
+    : {};
+  const activeDefinition = isWorkflowDefinition(parsed.activeDefinition)
+    ? parsed.activeDefinition
+    : defaultAgentWorkflowDefinition;
+  const workflows = parsed.workflows?.length
+    ? parsed.workflows
+    : defaultAgentWorkflowBundle.workflows;
+  const localDefinitions = definitionRecord(parsed.localDefinitions);
+
+  const legacyActiveWorkflow = workflows.find((workflow) =>
+    !hasBackendWorkflowId(workflow.id)
+      && workflow.name === activeDefinition.name
+      && workflow.mode === activeDefinition.mode,
+  ) ?? workflows.find((workflow) => !hasBackendWorkflowId(workflow.id));
+  if (legacyActiveWorkflow && !localDefinitions[String(legacyActiveWorkflow.id)]) {
+    localDefinitions[String(legacyActiveWorkflow.id)] = activeDefinition;
+  }
+  if (
+    workflows.some((workflow) => String(workflow.id) === 'wf_article_audit')
+      && !localDefinitions.wf_article_audit
+  ) {
+    localDefinitions.wf_article_audit = defaultAgentWorkflowDefinition;
+  }
+
+  const requestedActiveWorkflow = workflows.find((workflow) =>
+    parsed.activeWorkflowId != null
+      && String(workflow.id) === String(parsed.activeWorkflowId),
+  );
+  const activeWorkflowId = requestedActiveWorkflow?.id
+    ?? legacyActiveWorkflow?.id
+    ?? workflows[0]?.id
+    ?? defaultAgentWorkflowBundle.activeWorkflowId;
+  const restoredLocalDefinition = !hasBackendWorkflowId(activeWorkflowId)
+    ? localDefinitions[String(activeWorkflowId)]
+    : undefined;
+
+  return {
+    ...defaultAgentWorkflowBundle,
+    ...parsed,
+    workflows,
+    tools: parsed.tools?.length ? parsed.tools : defaultAgentWorkflowBundle.tools,
+    agents: parsed.agents?.length ? parsed.agents : defaultAgentWorkflowBundle.agents,
+    schedules: parsed.schedules || defaultAgentWorkflowBundle.schedules,
+    variables: parsed.variables?.length ? parsed.variables : defaultAgentWorkflowBundle.variables,
+    trace: defaultAgentWorkflowBundle.trace,
+    runHistory: [],
+    activeWorkflowId,
+    activeDefinition: restoredLocalDefinition ?? activeDefinition,
+    localDefinitions,
+    entryDraftSourceKeys: sourceKeyRecord(parsed.entryDraftSourceKeys),
+  };
+}
+
+export function toPersistedAgentWorkflowBundle(bundle: AgentWorkflowBundle): AgentWorkflowBundle {
+  return {
+    ...bundle,
+    trace: defaultAgentWorkflowBundle.trace,
+    runHistory: [],
+  };
+}
 
 export function loadLocalAgentWorkflowBundle(): AgentWorkflowBundle {
   if (typeof window === 'undefined') return defaultAgentWorkflowBundle;
   try {
     const raw = window.localStorage.getItem(DRAFT_KEY);
     if (!raw) return defaultAgentWorkflowBundle;
-    const parsed = JSON.parse(raw) as AgentWorkflowBundle;
-    if (!parsed?.activeDefinition?.nodes?.length) return defaultAgentWorkflowBundle;
-    return {
-      ...defaultAgentWorkflowBundle,
-      ...parsed,
-      workflows: parsed.workflows?.length ? parsed.workflows : defaultAgentWorkflowBundle.workflows,
-      tools: parsed.tools?.length ? parsed.tools : defaultAgentWorkflowBundle.tools,
-      agents: parsed.agents?.length ? parsed.agents : defaultAgentWorkflowBundle.agents,
-      schedules: parsed.schedules || defaultAgentWorkflowBundle.schedules,
-      variables: parsed.variables?.length ? parsed.variables : defaultAgentWorkflowBundle.variables,
-      trace: parsed.trace?.length ? parsed.trace : defaultAgentWorkflowBundle.trace,
-      runHistory: parsed.runHistory || defaultAgentWorkflowBundle.runHistory,
-      activeDefinition: parsed.activeDefinition,
-    };
+    return normalizeLocalAgentWorkflowBundle(JSON.parse(raw));
   } catch {
     return defaultAgentWorkflowBundle;
   }
@@ -276,7 +446,7 @@ export function loadLocalAgentWorkflowBundle(): AgentWorkflowBundle {
 
 export function saveLocalAgentWorkflowBundle(bundle: AgentWorkflowBundle) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(DRAFT_KEY, JSON.stringify(bundle));
+  window.localStorage.setItem(DRAFT_KEY, JSON.stringify(toPersistedAgentWorkflowBundle(bundle)));
 }
 
 export const agentWorkflowService = {

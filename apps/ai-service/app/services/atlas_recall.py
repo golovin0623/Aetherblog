@@ -72,18 +72,51 @@ class AtlasNoteHit:
     source_uri: str | None = None
 
 
+@dataclass(frozen=True)
+class AtlasNoteSourceRevision:
+    note_id: int
+    status: str
+    fingerprint: str
+    profile_id: int
+    model_id: str
+    embedding_dims: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class AtlasSelectedSourceSnapshot:
+    kp_versions: tuple[tuple[int, str], ...]
+    carrier_versions: tuple[tuple[int, str, str], ...]
+    note_revisions: tuple[AtlasNoteSourceRevision, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kp_versions", tuple(sorted(self.kp_versions)))
+        object.__setattr__(self, "carrier_versions", tuple(sorted(self.carrier_versions)))
+        object.__setattr__(
+            self,
+            "note_revisions",
+            tuple(sorted(self.note_revisions, key=lambda revision: revision.note_id)),
+        )
+
+
 @dataclass
 class AtlasRecallContext:
     knowledge_points: list[AtlasKnowledgePointHit | dict[str, Any]] = field(default_factory=list)
     relations: list[AtlasRelationHit | dict[str, Any]] = field(default_factory=list)
     evidence: list[AtlasEvidenceHit | dict[str, Any]] = field(default_factory=list)
     note_hits: list[AtlasNoteHit | dict[str, Any]] = field(default_factory=list)
+    selected_note_revisions: tuple[AtlasNoteSourceRevision, ...] = field(
+        default_factory=tuple,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self.knowledge_points = [_coerce_kp(row) for row in self.knowledge_points]
         self.relations = [_coerce_relation(row) for row in self.relations]
         self.evidence = [_coerce_evidence(row) for row in self.evidence]
         self.note_hits = [_coerce_note_hit(row) for row in self.note_hits]
+        self.selected_note_revisions = tuple(
+            sorted(self.selected_note_revisions, key=lambda revision: revision.note_id)
+        )
 
 
 def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
@@ -103,6 +136,144 @@ def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
         if len(out) >= limit:
             break
     return out
+
+
+def _snapshot_token(value: Any) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return str(value.isoformat())
+    return str(value)
+
+
+async def selected_atlas_sources_snapshot(
+    pool,
+    *,
+    llm: LlmRouter | None = None,
+    user_id: int,
+    kp_ids: list[int] | None,
+    carrier_ids: list[int] | None,
+) -> AtlasSelectedSourceSnapshot | None:
+    """Capture the exact live, owned revisions behind a selected Atlas scope.
+
+    Note-backed carriers also have a revision contract: an old indexed chunk
+    must not remain selectable after the note entered PENDING/FAILED or the
+    active profile changed. A successfully indexed blank note (SKIPPED) is
+    still a valid empty source and is handled by the normal retrieval outcome.
+    """
+    requested_kp_ids = _dedupe_positive_ints(kp_ids, 12)
+    requested_carrier_ids = _dedupe_positive_ints(carrier_ids, 6)
+
+    async with pool.acquire() as conn:
+        resolved_kp_rows: list[dict[str, Any]] = []
+        if requested_kp_ids:
+            rows = await conn.fetch(
+                """
+                SELECT id, updated_at
+                FROM atlas_knowledge_points
+                WHERE id = ANY($1::bigint[])
+                  AND deleted = FALSE
+                  AND archived = FALSE
+                  AND status <> 'archived'
+                  AND author_id = $2
+                ORDER BY array_position($1::bigint[], id)
+                """,
+                requested_kp_ids,
+                user_id,
+            )
+            resolved_kp_rows = [_row_to_dict(row) for row in rows]
+
+        resolved_carrier_rows: list[dict[str, Any]] = []
+        if requested_carrier_ids:
+            rows = await conn.fetch(
+                """
+                SELECT id, type, source_uri, content_hash, updated_at
+                FROM atlas_carriers
+                WHERE id = ANY($1::bigint[])
+                  AND deleted = FALSE
+                  AND status = 'ready'
+                  AND owner_id = $2
+                ORDER BY array_position($1::bigint[], id)
+                """,
+                requested_carrier_ids,
+                user_id,
+            )
+            resolved_carrier_rows = [_row_to_dict(row) for row in rows]
+
+    resolved_kp_ids = [int(row["id"]) for row in resolved_kp_rows]
+    resolved_carrier_ids = [int(row["id"]) for row in resolved_carrier_rows]
+    sources_match = (
+        set(resolved_kp_ids) == set(requested_kp_ids)
+        and set(resolved_carrier_ids) == set(requested_carrier_ids)
+    )
+    if not sources_match:
+        return None
+
+    note_ids: list[int] = []
+    for row in resolved_carrier_rows:
+        if str(row.get("type") or "") != "markdown":
+            continue
+        source_uri = str(row.get("source_uri") or "")
+        raw_note_id = source_uri.removeprefix("notes://")
+        if not source_uri.startswith("notes://") or not raw_note_id.isdigit():
+            return None
+        note_id = int(raw_note_id)
+        if note_id <= 0:
+            return None
+        note_ids.append(note_id)
+    note_ids = _dedupe_positive_ints(note_ids, 12)
+    note_sources: dict[int, AtlasNoteSourceRevision] = {}
+    if note_ids:
+        if llm is None:
+            return None
+        profile = await _get_active_search_profile(pool, llm)
+        note_sources = await _resolve_current_note_sources(
+            pool,
+            note_ids=note_ids,
+            user_id=user_id,
+            profile=profile,
+        )
+        if set(note_sources) != set(note_ids):
+            return None
+
+    kp_rows_by_id = {int(row["id"]): row for row in resolved_kp_rows}
+    carrier_rows_by_id = {int(row["id"]): row for row in resolved_carrier_rows}
+    return AtlasSelectedSourceSnapshot(
+        kp_versions=tuple(
+            (kp_id, _snapshot_token(kp_rows_by_id[kp_id].get("updated_at")))
+            for kp_id in requested_kp_ids
+        ),
+        carrier_versions=tuple(
+            (
+                carrier_id,
+                _snapshot_token(carrier_rows_by_id[carrier_id].get("updated_at")),
+                _snapshot_token(carrier_rows_by_id[carrier_id].get("content_hash")),
+            )
+            for carrier_id in requested_carrier_ids
+        ),
+        note_revisions=tuple(note_sources[note_id] for note_id in note_ids),
+    )
+
+
+async def selected_atlas_sources_available(
+    pool,
+    *,
+    llm: LlmRouter | None = None,
+    user_id: int,
+    kp_ids: list[int] | None,
+    carrier_ids: list[int] | None,
+) -> bool:
+    """Return whether every selected Atlas source has a valid snapshot."""
+    return (
+        await selected_atlas_sources_snapshot(
+            pool,
+            llm=llm,
+            user_id=user_id,
+            kp_ids=kp_ids,
+            carrier_ids=carrier_ids,
+        )
+        is not None
+    )
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -209,6 +380,89 @@ async def _get_active_search_profile(pool, llm: LlmRouter) -> SearchProfile:
     return await VectorStoreService(pool, llm).get_active_profile()
 
 
+async def _resolve_current_note_sources(
+    pool,
+    *,
+    note_ids: list[int],
+    user_id: int | None,
+    profile: SearchProfile,
+) -> dict[int, AtlasNoteSourceRevision]:
+    """Classify current note revisions as indexed or intentionally empty.
+
+    Fingerprints are recalculated with the NoteIndexer helpers so Atlas cannot
+    drift from the indexing/readiness identity contract. The chunk existence
+    check is batched to keep selected-carrier validation bounded and avoid an
+    N+1 readiness call per source.
+    """
+    from app.services.note_indexer import _build_note_embedding_text, _note_fingerprint
+
+    note_ids = _dedupe_positive_ints(note_ids, 12)
+    if not note_ids:
+        return {}
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                n.id,
+                n.title,
+                n.summary,
+                n.content_markdown,
+                n.embedding_status,
+                n.embedding_fingerprint,
+                n.embedding_profile_id,
+                ARRAY(
+                    SELECT DISTINCT ne.embedding_dim
+                    FROM note_embeddings ne
+                    WHERE ne.note_id = n.id
+                      AND ne.profile_id = $2
+                      AND ne.model_id = $3
+                      AND ne.status = 'INDEXED'
+                      AND ne.embedding IS NOT NULL
+                      AND ne.embedding_dim IS NOT NULL
+                    ORDER BY ne.embedding_dim
+                ) AS indexed_dims
+            FROM notes n
+            WHERE n.id = ANY($1::bigint[])
+              AND n.deleted = FALSE
+              AND n.author_id = $4
+            """,
+            note_ids,
+            profile.id,
+            profile.model_id,
+            user_id,
+        )
+
+    current_sources: dict[int, AtlasNoteSourceRevision] = {}
+    for raw_row in rows:
+        row = _row_to_dict(raw_row)
+        current_fingerprint = _note_fingerprint(_build_note_embedding_text(row))
+        if row.get("embedding_fingerprint") != current_fingerprint:
+            continue
+        if row.get("embedding_profile_id") != profile.id:
+            continue
+
+        note_id = int(row["id"])
+        status = str(row.get("embedding_status") or "").upper()
+        indexed_dims = tuple(sorted({int(dim) for dim in (row.get("indexed_dims") or []) if dim}))
+        if status == "INDEXED" and not indexed_dims:
+            continue
+        if status == "SKIPPED" and indexed_dims:
+            continue
+        if status not in {"INDEXED", "SKIPPED"}:
+            continue
+        current_sources[note_id] = AtlasNoteSourceRevision(
+            note_id=note_id,
+            status=status,
+            fingerprint=current_fingerprint,
+            profile_id=profile.id,
+            model_id=profile.model_id,
+            embedding_dims=indexed_dims,
+        )
+
+    return current_sources
+
+
 async def upsert_knowledge_point_embedding(
     pool,
     llm: LlmRouter,
@@ -311,6 +565,7 @@ async def recall_atlas_context(
     semantic_limit: int = 8,
     neighborhood_depth: int = 1,
     include_evidence: bool = True,
+    strict: bool = False,
 ) -> AtlasRecallContext:
     """Combine selected Atlas scope, semantic recall, graph neighborhood, evidence."""
     selected_kp_ids = _dedupe_positive_ints(kp_ids, 12)
@@ -334,20 +589,57 @@ async def recall_atlas_context(
     semantic_rows: list[AtlasKnowledgePointHit] = []
     note_rows: list[AtlasNoteHit] = []
     query = (query or "").strip()
+    requested_note_ids = list(carrier_note_ids)
+    selected_note_revisions: tuple[AtlasNoteSourceRevision, ...] = ()
     query_profile: SearchProfile | None = None
     query_embedding: list[float] | None = None
     query_dim = 0
     if llm is not None and query and (semantic_limit > 0 or carrier_note_ids):
         try:
             query_profile = await _get_active_search_profile(pool, llm)
-            query_embedding = await llm.embed(
-                query,
-                user_id=user_id,
-                embedding_model_id=query_profile.model_id,
-                strict_embedding_model_id=True,
-            )
-            query_dim = len(query_embedding) if query_embedding else 0
+            if carrier_note_ids:
+                note_sources = await _resolve_current_note_sources(
+                    pool,
+                    note_ids=carrier_note_ids,
+                    user_id=user_id,
+                    profile=query_profile,
+                )
+                if strict and set(note_sources) != set(carrier_note_ids):
+                    raise RuntimeError("selected note carrier revision is not current")
+                selected_note_revisions = tuple(
+                    note_sources[note_id]
+                    for note_id in requested_note_ids
+                    if note_id in note_sources
+                )
+                carrier_note_ids = [
+                    note_id
+                    for note_id in carrier_note_ids
+                    if note_id in note_sources and note_sources[note_id].status == "INDEXED"
+                ]
+
+            if semantic_limit > 0 or carrier_note_ids:
+                query_embedding = await llm.embed(
+                    query,
+                    user_id=user_id,
+                    embedding_model_id=query_profile.model_id,
+                    strict_embedding_model_id=True,
+                )
+                query_dim = len(query_embedding) if query_embedding else 0
+                if query_dim <= 0:
+                    raise RuntimeError("Atlas query embedding is empty")
+                dimension_mismatches = [
+                    note_id
+                    for note_id in carrier_note_ids
+                    if query_dim not in note_sources[note_id].embedding_dims
+                ]
+                if strict and dimension_mismatches:
+                    raise RuntimeError("selected note carrier embedding dimension is not current")
+                carrier_note_ids = [
+                    note_id for note_id in carrier_note_ids if note_id not in dimension_mismatches
+                ]
         except Exception as exc:
+            if strict and requested_note_ids:
+                raise
             logger.warning(
                 "atlas_recall.query_embedding_failed",
                 extra={"data": {"user_id": user_id, "error": f"{type(exc).__name__}: {exc}"[:240]}},
@@ -377,10 +669,12 @@ async def recall_atlas_context(
                 embedding=query_embedding,
                 dim=query_dim,
                 user_id=user_id,
-                note_ids=carrier_note_ids,
+                note_revisions=[note_sources[note_id] for note_id in carrier_note_ids],
                 limit=semantic_limit or 4,
             )
         except Exception as exc:
+            if strict and requested_note_ids:
+                raise
             logger.warning(
                 "atlas_recall.note_semantic_failed",
                 extra={"data": {"user_id": user_id, "error": f"{type(exc).__name__}: {exc}"[:240]}},
@@ -421,6 +715,7 @@ async def recall_atlas_context(
         relations=relation_rows,
         evidence=evidence_rows,
         note_hits=note_rows,
+        selected_note_revisions=selected_note_revisions,
     )
 
 
@@ -434,6 +729,7 @@ async def _fetch_kp_ids_for_carriers(pool, carrier_ids: list[int], user_id: int 
             JOIN atlas_carriers c ON c.id = a.carrier_id
             WHERE a.deleted = FALSE
               AND c.deleted = FALSE
+              AND c.status = 'ready'
               AND a.carrier_id = ANY($1::bigint[])
               AND ($2::bigint IS NULL OR a.author_id = $2)
               AND ($2::bigint IS NULL OR c.owner_id = $2)
@@ -454,6 +750,7 @@ async def _fetch_note_ids_for_carriers(pool, carrier_ids: list[int], user_id: in
             WHERE c.id = ANY($1::bigint[])
               AND c.type = 'markdown'
               AND c.deleted = FALSE
+              AND c.status = 'ready'
               AND ($2::bigint IS NULL OR c.owner_id = $2)
               AND c.source_uri ~ '^notes://[0-9]+$'
             LIMIT 12
@@ -489,6 +786,8 @@ async def _fetch_kps_by_ids(
                 $3::text AS recall_source
             FROM atlas_knowledge_points
             WHERE deleted = FALSE
+              AND archived = FALSE
+              AND status <> 'archived'
               AND id = ANY($1::bigint[])
               AND ($2::bigint IS NULL OR author_id = $2)
             ORDER BY array_position($1::bigint[], id)
@@ -561,6 +860,7 @@ async def _semantic_recall_with_vector(
                   AND embedding IS NOT NULL
                   AND deleted = FALSE
                   AND archived = FALSE
+                  AND status <> 'archived'
                   AND ($6::bigint IS NULL OR author_id = $6)
                 ORDER BY embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
@@ -589,12 +889,23 @@ async def _semantic_note_recall_with_vector(
     embedding: list[float],
     dim: int,
     user_id: int | None,
-    note_ids: list[int],
+    note_revisions: list[AtlasNoteSourceRevision],
     limit: int,
 ) -> list[AtlasNoteHit]:
-    note_ids = _dedupe_positive_ints(note_ids, 12)
-    if not note_ids or limit <= 0:
+    revisions_by_id = {
+        revision.note_id: revision
+        for revision in note_revisions
+        if revision.note_id > 0
+        and revision.status == "INDEXED"
+        and revision.profile_id == profile.id
+        and revision.model_id == profile.model_id
+        and dim in revision.embedding_dims
+    }
+    revisions = sorted(revisions_by_id.values(), key=lambda revision: revision.note_id)[:12]
+    if not revisions or limit <= 0:
         return []
+    note_ids = [revision.note_id for revision in revisions]
+    expected_fingerprints = [revision.fingerprint for revision in revisions]
 
     cast_type = _cast_type_for_dim(dim)
     candidate_limit = min(max(limit * 4, 24), 120)
@@ -612,16 +923,23 @@ async def _semantic_note_recall_with_vector(
                     COALESCE(c.source_uri, 'notes://' || ne.note_id::text) AS source_uri
                 FROM note_embeddings ne
                 JOIN notes n ON n.id = ne.note_id
+                JOIN unnest($8::bigint[], $10::text[]) AS expected(note_id, fingerprint)
+                  ON expected.note_id = ne.note_id
+                 AND n.embedding_fingerprint = expected.fingerprint
                 LEFT JOIN atlas_carriers c
                   ON c.source_uri = 'notes://' || ne.note_id::text
+                 AND c.type = 'markdown'
                  AND c.deleted = FALSE
+                 AND ($6::bigint IS NULL OR c.owner_id = $6)
                 WHERE ne.profile_id = $2
                   AND ne.embedding_dim = $3
+                  AND ne.model_id = $9
                   AND ne.status = 'INDEXED'
                   AND ne.embedding IS NOT NULL
                   AND n.deleted = FALSE
+                  AND n.embedding_status = 'INDEXED'
+                  AND n.embedding_profile_id = $2
                   AND ($6::bigint IS NULL OR n.author_id = $6)
-                  AND ne.note_id = ANY($8::bigint[])
                 ORDER BY ne.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $4
             )
@@ -639,6 +957,8 @@ async def _semantic_note_recall_with_vector(
             user_id,
             limit,
             note_ids,
+            profile.model_id,
+            expected_fingerprints,
         )
     return [_coerce_note_hit(_row_to_dict(row)) for row in rows]
 

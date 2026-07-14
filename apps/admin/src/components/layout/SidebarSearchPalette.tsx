@@ -1,13 +1,19 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, BookOpen, CornerDownLeft, FileText, FolderTree, Hash, Image as ImageIcon, Plus } from 'lucide-react';
+import { ArrowRight, CornerDownLeft, FileText, FolderTree, Hash, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { postService, PostListItem } from '@/services/postService';
 import { mediaService, MediaItem } from '@/services/mediaService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { logger } from '@/lib/logger';
+import {
+  findIntelligenceDestinations,
+  findIntelligenceQuickActions,
+  getIntelligenceHomeHref,
+} from '@/navigation/intelligenceNavigation';
+import { getIntelligenceNavigationIcon } from '@/navigation/intelligenceNavigationIcons';
 
 interface SidebarSearchPaletteProps {
   query: string;
@@ -250,24 +256,26 @@ export function SidebarSearchPalette({
         path: '/categories',
       })
     );
-    if ('智能笔记 notes note 笔记'.toLowerCase().includes(q.toLowerCase())) {
+    findIntelligenceDestinations(q, 'sidebar-search').forEach((destination) => {
       out.push({
-        key: 'nav-notes',
-        label: '前往 · 智能笔记',
-        meta: '后台笔记',
-        icon: BookOpen,
+        key: `nav-${destination.id}`,
+        label: `前往 · ${destination.label}`,
+        meta: destination.description,
+        icon: getIntelligenceNavigationIcon(destination.iconKey),
         group: 'all',
-        path: '/notes',
+        path: getIntelligenceHomeHref(destination),
       });
+    });
+    findIntelligenceQuickActions(q, 'sidebar-search').forEach((action) => {
       out.push({
-        key: 'new-note',
-        label: '新建 · 智能笔记',
-        meta: '快速创建',
-        icon: Plus,
+        key: action.id,
+        label: action.label,
+        meta: action.description,
+        icon: getIntelligenceNavigationIcon(action.iconKey),
         group: 'all',
-        path: '/notes/new',
+        path: action.route,
       });
-    }
+    });
     out.push({
       key: 'all',
       label: `查看 "${q}" 的全部文章`,

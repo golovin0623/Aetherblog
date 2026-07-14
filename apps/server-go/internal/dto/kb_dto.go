@@ -190,6 +190,27 @@ type KBStatsVO struct {
 	TimelineBuckets []KBTimelineBucket `json:"timelineBuckets,omitempty"`
 }
 
+// KBRetrieveRequest is the bounded admin-side retrieval verification input.
+// The AI service applies the same limits as a second line of defense.
+type KBRetrieveRequest struct {
+	Query string `json:"query" validate:"required,min=2,max=500"`
+	Limit int    `json:"limit" validate:"omitempty,min=1,max=10"`
+}
+
+type KBRetrieveHit struct {
+	Title      string  `json:"title"`
+	Snippet    string  `json:"snippet"`
+	Score      float64 `json:"score"`
+	FileID     int64   `json:"fileId"`
+	ChunkIndex int     `json:"chunkIndex"`
+}
+
+type KBRetrieveResponse struct {
+	Status string          `json:"status"` // matched | empty | unavailable
+	Query  string          `json:"query"`
+	Hits   []KBRetrieveHit `json:"hits"`
+}
+
 type KBTimelineBucket struct {
 	Year  int `json:"year"`
 	Month int `json:"month"`

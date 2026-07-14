@@ -7,10 +7,14 @@ import pytest
 
 from app.services.atlas_recall import (
     AtlasRecallContext,
+    AtlasNoteSourceRevision,
+    AtlasSelectedSourceSnapshot,
     recall_atlas_context,
     render_atlas_context,
+    selected_atlas_sources_available,
     upsert_knowledge_point_embedding,
 )
+from app.services.note_indexer import _build_note_embedding_text, _note_fingerprint
 from app.services.vector_store import SearchProfile
 from tests.support import FakeConn, FakePool
 
@@ -38,6 +42,175 @@ def _profile(**overrides: Any) -> SearchProfile:
         status="active",
     )
     return replace(base, **overrides)
+
+
+def test_selected_source_snapshots_canonicalize_multi_note_order() -> None:
+    revision_11 = AtlasNoteSourceRevision(
+        note_id=11,
+        status="INDEXED",
+        fingerprint="fingerprint-11",
+        profile_id=42,
+        model_id="embed-model",
+        embedding_dims=(3,),
+    )
+    revision_12 = AtlasNoteSourceRevision(
+        note_id=12,
+        status="INDEXED",
+        fingerprint="fingerprint-12",
+        profile_id=42,
+        model_id="embed-model",
+        embedding_dims=(3,),
+    )
+
+    snapshot = AtlasSelectedSourceSnapshot(
+        kp_versions=((8, "v8"), (7, "v7")),
+        carrier_versions=((4, "v4", "h4"), (3, "v3", "h3")),
+        note_revisions=(revision_12, revision_11),
+    )
+    context = AtlasRecallContext(selected_note_revisions=(revision_12, revision_11))
+
+    assert [revision.note_id for revision in snapshot.note_revisions] == [11, 12]
+    assert [revision.note_id for revision in context.selected_note_revisions] == [11, 12]
+    assert snapshot.kp_versions == ((7, "v7"), (8, "v8"))
+    assert snapshot.carrier_versions == ((3, "v3", "h3"), (4, "v4", "h4"))
+
+
+@pytest.mark.parametrize(
+    ("resolved_kps", "resolved_carriers", "expected"),
+    [
+        ([7, 8], [3, 4], True),
+        ([7], [3, 4], False),
+        ([7, 8], [3], False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_selected_atlas_sources_available_requires_every_live_owned_source(
+    resolved_kps: list[int],
+    resolved_carriers: list[int],
+    expected: bool,
+) -> None:
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, int]]:
+        if "FROM atlas_knowledge_points" in sql:
+            assert args == ([7, 8], 9)
+            assert "deleted = FALSE" in sql
+            assert "author_id = $2" in sql
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
+            return [{"id": value} for value in resolved_kps]
+        if "FROM atlas_carriers" in sql:
+            assert args == ([3, 4], 9)
+            assert "deleted = FALSE" in sql
+            assert "owner_id = $2" in sql
+            assert "status = 'ready'" in sql
+            return [{"id": value} for value in resolved_carriers]
+        raise AssertionError(f"unexpected selected Atlas source SQL: {sql}")
+
+    available = await selected_atlas_sources_available(
+        FakePool(FakeConn(fetch=fetch)),
+        user_id=9,
+        kp_ids=[7, 7, 8],
+        carrier_ids=[3, 3, 4],
+    )
+
+    assert available is expected
+
+
+@pytest.mark.parametrize(
+    (
+        "embedding_status",
+        "fingerprint_kind",
+        "embedding_profile_id",
+        "has_indexed_chunks",
+        "expected",
+    ),
+    [
+        ("INDEXED", "current", 42, True, True),
+        ("PENDING", "current", 42, True, False),
+        ("FAILED", "current", 42, True, False),
+        ("INDEXED", "stale", 42, True, False),
+        ("INDEXED", "current", 41, True, False),
+        ("INDEXED", "current", 42, False, False),
+        ("SKIPPED", "current", 42, False, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_selected_atlas_sources_available_requires_current_note_revision(
+    embedding_status: str,
+    fingerprint_kind: str,
+    embedding_profile_id: int,
+    has_indexed_chunks: bool,
+    expected: bool,
+) -> None:
+    profile = _profile()
+    note = {
+        "id": 11,
+        "title": "Current title",
+        "summary": "Current summary",
+        "content_markdown": "Current body",
+    }
+    current_fingerprint = _note_fingerprint(_build_note_embedding_text(note))
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "search.active_profile_code" in sql:
+            return {"setting_value": profile.code}
+        if "FROM search_profiles WHERE code" in sql:
+            return profile.__dict__
+        raise AssertionError(f"unexpected selected Atlas fetchrow SQL: {sql}")
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "FROM atlas_carriers" in sql:
+            assert args == ([3], 9)
+            return [{"id": 3, "type": "markdown", "source_uri": "notes://11"}]
+        if "FROM notes n" in sql:
+            assert args == ([11], 42, profile.model_id, 9)
+            assert "ne.profile_id = $2" in sql
+            assert "ne.model_id = $3" in sql
+            assert "ne.status = 'INDEXED'" in sql
+            assert "ne.embedding IS NOT NULL" in sql
+            return [
+                {
+                    **note,
+                    "embedding_status": embedding_status,
+                    "embedding_fingerprint": (
+                        current_fingerprint if fingerprint_kind == "current" else "stale-fingerprint"
+                    ),
+                    "embedding_profile_id": embedding_profile_id,
+                    "indexed_dims": [1536] if has_indexed_chunks else [],
+                }
+            ]
+        raise AssertionError(f"unexpected selected Atlas fetch SQL: {sql}")
+
+    available = await selected_atlas_sources_available(
+        FakePool(FakeConn(fetch=fetch, fetchrow=fetchrow)),
+        llm=FakeEmbedLLM(),
+        user_id=9,
+        kp_ids=[],
+        carrier_ids=[3],
+    )
+
+    assert available is expected
+
+
+@pytest.mark.parametrize("source_uri", ["notes://abc", "notes://0", "markdown://11"])
+@pytest.mark.asyncio
+async def test_selected_atlas_sources_available_rejects_unmapped_markdown_carrier(
+    source_uri: str,
+) -> None:
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "FROM atlas_carriers" in sql:
+            assert args == ([3], 9)
+            return [{"id": 3, "type": "markdown", "source_uri": source_uri}]
+        raise AssertionError(f"unexpected selected Atlas fetch SQL: {sql}")
+
+    available = await selected_atlas_sources_available(
+        FakePool(FakeConn(fetch=fetch)),
+        llm=FakeEmbedLLM(),
+        user_id=9,
+        kp_ids=[],
+        carrier_ids=[3],
+    )
+
+    assert available is False
 
 
 @pytest.mark.asyncio
@@ -140,15 +313,19 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
 
     def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
         if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            assert "c.status = 'ready'" in sql
             return [{"kp_id": 7}]
         if "notes://" in sql and "FROM atlas_carriers c" in sql:
             assert args == ([3], 9)
+            assert "c.status = 'ready'" in sql
             return []
         if "embedding::halfvec(3072)" in sql:
             assert args[0] == semantic_embedding
             assert args[1] == 42
             assert args[2] == 3072
             assert args[5] == 9
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
             return [
                 {
                     "id": 8,
@@ -164,6 +341,8 @@ async def test_recall_atlas_context_uses_semantic_profile_filter_and_graph_neigh
             ]
         if "id = ANY($1::bigint[])" in sql and "FROM atlas_knowledge_points" in sql:
             assert set(args[0]) == {7}
+            assert "archived = FALSE" in sql
+            assert "status <> 'archived'" in sql
             return [
                 {
                     "id": 7,
@@ -400,6 +579,13 @@ def test_render_atlas_context_includes_recall_source_relations_and_evidence() ->
 async def test_recall_atlas_context_recalls_note_chunks_for_markdown_carriers() -> None:
     profile = _profile()
     embedding = [0.2, 0.3, 0.4]
+    note = {
+        "id": 11,
+        "title": "Carrier note",
+        "summary": None,
+        "content_markdown": "Markdown carrier chunk",
+    }
+    fingerprint = _note_fingerprint(_build_note_embedding_text(note))
 
     def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
         if "search.active_profile_code" in sql:
@@ -414,6 +600,17 @@ async def test_recall_atlas_context_recalls_note_chunks_for_markdown_carriers() 
         if "notes://" in sql and "FROM atlas_carriers c" in sql:
             assert args == ([3], 9)
             return [{"note_id": 11}]
+        if "FROM notes n" in sql:
+            assert args == ([11], 42, profile.model_id, 9)
+            return [
+                {
+                    **note,
+                    "embedding_status": "INDEXED",
+                    "embedding_fingerprint": fingerprint,
+                    "embedding_profile_id": 42,
+                    "indexed_dims": [3],
+                }
+            ]
         if "FROM atlas_knowledge_points" in sql and "embedding::vector(3)" in sql:
             return []
         if "FROM note_embeddings ne" in sql and "embedding::vector(3)" in sql:
@@ -422,6 +619,15 @@ async def test_recall_atlas_context_recalls_note_chunks_for_markdown_carriers() 
             assert args[2] == 3
             assert args[5] == 9
             assert args[7] == [11]
+            assert args[8] == profile.model_id
+            assert args[9] == [fingerprint]
+            assert "n.embedding_status = 'INDEXED'" in sql
+            assert "n.embedding_profile_id = $2" in sql
+            assert "ne.model_id = $9" in sql
+            assert "unnest($8::bigint[], $10::text[])" in sql
+            assert "n.embedding_fingerprint = expected.fingerprint" in sql
+            assert "c.type = 'markdown'" in sql
+            assert "c.owner_id = $6" in sql
             return [
                 {
                     "note_id": 11,
@@ -458,3 +664,156 @@ async def test_recall_atlas_context_recalls_note_chunks_for_markdown_carriers() 
     assert "## Note Carrier Chunks" in rendered
     assert "[Note #11 chunk 0] Carrier note" in rendered
     assert "score=0.88" in rendered
+
+
+@pytest.mark.parametrize(
+    ("embedding_status", "fingerprint_kind", "embedding_profile_id", "has_chunks"),
+    [
+        ("PENDING", "current", 42, True),
+        ("FAILED", "current", 42, True),
+        ("INDEXED", "stale", 42, True),
+        ("INDEXED", "current", 41, True),
+        ("INDEXED", "current", 42, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_recall_atlas_context_filters_non_current_note_revisions_in_auto_mode(
+    embedding_status: str,
+    fingerprint_kind: str,
+    embedding_profile_id: int,
+    has_chunks: bool,
+) -> None:
+    profile = _profile()
+    note = {
+        "id": 11,
+        "title": "Edited title",
+        "summary": None,
+        "content_markdown": "Current body",
+    }
+    current_fingerprint = _note_fingerprint(_build_note_embedding_text(note))
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "search.active_profile_code" in sql:
+            return {"setting_value": profile.code}
+        if "FROM search_profiles WHERE code" in sql:
+            return profile.__dict__
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            return []
+        if "notes://" in sql and "FROM atlas_carriers c" in sql:
+            assert args == ([3], 9)
+            return [{"note_id": 11}]
+        if "FROM notes n" in sql:
+            return [
+                {
+                    **note,
+                    "embedding_status": embedding_status,
+                    "embedding_fingerprint": (
+                        current_fingerprint if fingerprint_kind == "current" else "stale-fingerprint"
+                    ),
+                    "embedding_profile_id": embedding_profile_id,
+                    "indexed_dims": [3] if has_chunks else [],
+                }
+            ]
+        if "FROM note_embeddings ne" in sql:
+            raise AssertionError("a non-current note revision must not reach semantic note recall")
+        raise AssertionError(f"unexpected fetch SQL: {sql}")
+
+    llm = FakeEmbedLLM([0.2, 0.3, 0.4])
+    context = await recall_atlas_context(
+        FakePool(FakeConn(fetchrow=fetchrow, fetch=fetch)),
+        llm,
+        user_id=9,
+        query="must not recall old chunks",
+        carrier_ids=[3],
+        semantic_limit=0,
+        neighborhood_depth=0,
+        include_evidence=False,
+    )
+
+    assert context.note_hits == []
+    assert llm.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure_mode", "indexed_dims", "expected_error"),
+    [
+        ("provider", [3], "embedding provider unavailable"),
+        ("dimension", [4], "embedding dimension is not current"),
+    ],
+)
+async def test_recall_atlas_context_strict_note_source_propagates_embedding_failure(
+    failure_mode: str,
+    indexed_dims: list[int],
+    expected_error: str,
+) -> None:
+    profile = _profile()
+    note = {
+        "id": 11,
+        "title": "Current note",
+        "summary": None,
+        "content_markdown": "Current body",
+    }
+    fingerprint = _note_fingerprint(_build_note_embedding_text(note))
+
+    class FailingEmbedLLM(FakeEmbedLLM):
+        async def embed(self, text: str, **kwargs: Any) -> list[float]:
+            self.calls.append((text, kwargs))
+            if failure_mode == "provider":
+                raise RuntimeError("embedding provider unavailable")
+            return [0.1, 0.2, 0.3]
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "search.active_profile_code" in sql:
+            return {"setting_value": profile.code}
+        if "FROM search_profiles WHERE code" in sql:
+            return profile.__dict__
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    def fetch(sql: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if "FROM atlas_annotation_kp_links l" in sql and "a.carrier_id = ANY" in sql:
+            return []
+        if "notes://" in sql and "FROM atlas_carriers c" in sql:
+            return [{"note_id": 11}]
+        if "FROM atlas_knowledge_points" in sql and "id = ANY" in sql:
+            return [
+                {
+                    "id": 7,
+                    "title": "Other selected KP",
+                    "body_markdown": "Must not mask note retrieval failure.",
+                    "type": "claim",
+                    "status": "evergreen",
+                    "confidence": 0.9,
+                    "provenance": "user",
+                    "similarity": None,
+                    "recall_source": "selected",
+                }
+            ]
+        if "FROM notes n" in sql:
+            return [
+                {
+                    **note,
+                    "embedding_status": "INDEXED",
+                    "embedding_fingerprint": fingerprint,
+                    "embedding_profile_id": 42,
+                    "indexed_dims": indexed_dims,
+                }
+            ]
+        raise AssertionError(f"unexpected fetch SQL: {sql}; args={args}")
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        await recall_atlas_context(
+            FakePool(FakeConn(fetchrow=fetchrow, fetch=fetch)),
+            FailingEmbedLLM(),
+            user_id=9,
+            query="strict selected note question",
+            kp_ids=[7],
+            carrier_ids=[3],
+            semantic_limit=0,
+            neighborhood_depth=0,
+            include_evidence=False,
+            strict=True,
+        )

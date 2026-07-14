@@ -2942,6 +2942,20 @@
   padding: 1rem;
 }
 
+.intelligence-header.intelligence-context-header {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.65rem 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .intelligence-header.intelligence-context-header {
+    padding: 0.75rem;
+  }
+}
+
 .intelligence-header-copy {
   display: flex;
   min-width: 0;
@@ -3030,7 +3044,6 @@
 .intelligence-action-button,
 .intelligence-action-button-primary {
   display: inline-flex;
-  min-height: 2.5rem;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
@@ -3047,6 +3060,7 @@
 }
 
 .intelligence-action-button {
+  min-height: 2.25rem;
   border: 1px solid var(--intelligence-border);
   background: var(--intelligence-control);
   color: var(--ink-secondary);
@@ -3059,6 +3073,7 @@
 }
 
 .intelligence-action-button-primary {
+  min-height: 2.5rem;
   border: 1px solid transparent;
   background: linear-gradient(135deg, var(--aurora-1), var(--aurora-3));
   color: var(--bg-void);
@@ -3325,9 +3340,13 @@
 
   .intelligence-action-button,
   .intelligence-action-button-primary {
-    min-height: 2.35rem;
+    min-height: 2.75rem;
     padding: 0 0.72rem;
     font-size: 0.82rem;
+  }
+
+  .intelligence-segmented-button {
+    min-height: 2.75rem;
   }
 
   .intelligence-panel,

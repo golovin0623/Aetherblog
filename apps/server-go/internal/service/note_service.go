@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +21,10 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-const noteDraftKeyPrefix = "note:draft:"
+const (
+	noteDraftKeyPrefix                    = "note:draft:"
+	noteKnowledgePreparationFailedMessage = "知识来源准备失败，请稍后重试。"
+)
 
 var allowedNoteSourceTypes = map[string]bool{
 	"manual":  true,
@@ -40,24 +45,41 @@ type ParsedNoteLink = repository.ParsedNoteLink
 
 // NoteService 管理后台私有智能笔记。
 type NoteService struct {
-	repo    *repository.NoteRepo
-	rdb     *redis.Client
-	indexer NoteEmbeddingIndexer
+	repo                  *repository.NoteRepo
+	rdb                   *redis.Client
+	indexer               NoteEmbeddingIndexer
+	carrier               NoteKnowledgeCarrierPreparer
+	newEmbeddingAttemptID func() (string, error)
 }
 
 // NewNoteService 创建 NoteService。
 func NewNoteService(repo *repository.NoteRepo, rdb *redis.Client) *NoteService {
-	return &NoteService{repo: repo, rdb: rdb}
+	return &NoteService{
+		repo:                  repo,
+		rdb:                   rdb,
+		newEmbeddingAttemptID: generateNoteEmbeddingAttemptID,
+	}
 }
 
 // NoteEmbeddingIndexer 是 ai-service note embedding 写入器的最小接口。
 type NoteEmbeddingIndexer interface {
-	IndexNote(ctx context.Context, noteID int64, userID *int64) (*NoteIndexResult, error)
+	IndexNote(ctx context.Context, noteID int64, userID *int64, attemptID *string) (*NoteIndexResult, error)
+	GetReadiness(ctx context.Context, noteID int64, userID *int64) (*NoteKnowledgeReadinessResult, error)
+}
+
+// NoteKnowledgeCarrierPreparer keeps the core Notes service decoupled from the Atlas package.
+type NoteKnowledgeCarrierPreparer interface {
+	PrepareNoteCarrier(ctx context.Context, noteID int64) (int64, error)
 }
 
 // AttachEmbeddingIndexer 注入异步 note embedding 写入器。
 func (s *NoteService) AttachEmbeddingIndexer(indexer NoteEmbeddingIndexer) {
 	s.indexer = indexer
+}
+
+// AttachKnowledgeCarrierPreparer injects the idempotent Atlas markdown carrier adapter.
+func (s *NoteService) AttachKnowledgeCarrierPreparer(carrier NoteKnowledgeCarrierPreparer) {
+	s.carrier = carrier
 }
 
 // ScheduleEmbedding 异步触发 note embedding 重写。
@@ -69,21 +91,39 @@ func (s *NoteService) ScheduleEmbedding(ctx context.Context, noteID int64, userI
 	if ctx != nil {
 		base = context.WithoutCancel(ctx)
 	}
+	claimCtx, cancelClaim := context.WithTimeout(base, 5*time.Second)
+	attemptID, err := s.beginEmbeddingAttempt(claimCtx, noteID)
+	cancelClaim()
+	if err != nil {
+		log.Warn().Err(err).Int64("note_id", noteID).Str("reason", reason).Msg("start note embedding attempt failed")
+		return
+	}
 	go func() {
 		bg, cancel := context.WithTimeout(base, 3*time.Minute)
 		defer cancel()
-		result, err := s.indexer.IndexNote(bg, noteID, userID)
+		result, err := s.indexer.IndexNote(bg, noteID, userID, &attemptID)
 		if err != nil {
+			s.persistEmbeddingAttemptFailure(bg, noteID, attemptID)
 			log.Warn().Err(err).Int64("note_id", noteID).Str("reason", reason).Msg("note embedding index failed")
 			return
 		}
+		if result == nil {
+			s.persistEmbeddingAttemptFailure(bg, noteID, attemptID)
+			log.Warn().Int64("note_id", noteID).Str("reason", reason).Msg("note embedding index returned no result")
+			return
+		}
 		if strings.EqualFold(result.Status, "FAILED") {
+			s.persistEmbeddingAttemptFailure(bg, noteID, attemptID)
 			log.Warn().
 				Int64("note_id", noteID).
 				Int64("profile_id", result.ProfileID).
 				Str("error", result.Error).
 				Str("reason", reason).
 				Msg("note embedding index failed")
+			return
+		}
+		if strings.EqualFold(result.Status, "STALE") {
+			log.Info().Int64("note_id", noteID).Str("reason", reason).Msg("note embedding attempt superseded")
 			return
 		}
 		log.Info().
@@ -97,9 +137,126 @@ func (s *NoteService) ScheduleEmbedding(ctx context.Context, noteID int64, userI
 	}()
 }
 
+func generateNoteEmbeddingAttemptID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate note embedding attempt ID: %w", err)
+	}
+	return hex.EncodeToString(raw[:]), nil
+}
+
+func (s *NoteService) beginEmbeddingAttempt(ctx context.Context, noteID int64) (string, error) {
+	attemptID, err := s.newEmbeddingAttemptID()
+	if err != nil {
+		return "", err
+	}
+	if err := s.repo.MarkEmbeddingPending(ctx, noteID, attemptID); err != nil {
+		return "", err
+	}
+	return attemptID, nil
+}
+
+func (s *NoteService) persistEmbeddingAttemptFailure(ctx context.Context, noteID int64, attemptID string) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	cleanupCtx, cancel := context.WithTimeout(base, 5*time.Second)
+	defer cancel()
+	if _, err := s.repo.MarkEmbeddingFailedIfAttempt(
+		cleanupCtx,
+		noteID,
+		attemptID,
+		noteKnowledgePreparationFailedMessage,
+	); err != nil {
+		log.Warn().Err(err).Int64("note_id", noteID).Msg("persist note knowledge source failure failed")
+	}
+}
+
 // GetOwnership 返回笔记存在标志与作者 ID。
 func (s *NoteService) GetOwnership(ctx context.Context, id int64) (bool, *int64, error) {
 	return s.repo.FindOwnership(ctx, id)
+}
+
+// GetKnowledgeReadiness reports whether the current note revision has real chunks under the active profile.
+func (s *NoteService) GetKnowledgeReadiness(ctx context.Context, id int64) (*dto.NoteKnowledgeReadiness, error) {
+	note, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if note == nil {
+		return nil, errors.New("笔记不存在")
+	}
+	if s.indexer == nil {
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	result, err := s.indexer.GetReadiness(ctx, id, note.AuthorID)
+	if err != nil {
+		log.Warn().Err(err).Int64("note_id", id).Msg("note knowledge readiness unavailable")
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	return toNoteKnowledgeReadiness(result), nil
+}
+
+// PrepareKnowledgeSource synchronously refreshes the current revision, then returns a readiness receipt.
+// IndexNote is idempotent for the same fingerprint/profile and the AI writer rejects stale fingerprints.
+func (s *NoteService) PrepareKnowledgeSource(ctx context.Context, id int64) (*dto.NoteKnowledgeReadiness, error) {
+	note, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if note == nil {
+		return nil, errors.New("笔记不存在")
+	}
+	if s.indexer == nil || s.carrier == nil {
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	if _, err := s.carrier.PrepareNoteCarrier(ctx, id); err != nil {
+		return nil, fmt.Errorf("prepare note carrier: %w", err)
+	}
+	attemptID, err := s.beginEmbeddingAttempt(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.indexer.IndexNote(ctx, id, note.AuthorID, &attemptID)
+	if err != nil {
+		log.Warn().Err(err).Int64("note_id", id).Msg("prepare note knowledge source failed")
+		s.persistEmbeddingAttemptFailure(ctx, id, attemptID)
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	if result == nil || strings.EqualFold(result.Status, "FAILED") {
+		s.persistEmbeddingAttemptFailure(ctx, id, attemptID)
+	}
+	return s.GetKnowledgeReadiness(ctx, id)
+}
+
+func toNoteKnowledgeReadiness(result *NoteKnowledgeReadinessResult) *dto.NoteKnowledgeReadiness {
+	if result == nil {
+		return unavailableNoteKnowledgeReadiness(0)
+	}
+	return &dto.NoteKnowledgeReadiness{
+		NoteID:             result.NoteID,
+		Status:             result.Status,
+		Queryable:          result.Queryable,
+		ProfileID:          result.ProfileID,
+		ProfileName:        result.ProfileName,
+		ModelID:            result.ModelID,
+		ChunkCount:         result.ChunkCount,
+		CarrierID:          result.CarrierID,
+		SourceFingerprint:  result.SourceFingerprint,
+		IndexedFingerprint: result.IndexedFingerprint,
+		IndexedAt:          result.IndexedAt,
+		Message:            result.Message,
+	}
+}
+
+func unavailableNoteKnowledgeReadiness(noteID int64) *dto.NoteKnowledgeReadiness {
+	return &dto.NoteKnowledgeReadiness{
+		NoteID:    noteID,
+		Status:    "unavailable",
+		Queryable: false,
+		Message:   "知识来源服务暂不可用，请稍后重试。",
+	}
 }
 
 // GetForAdmin 返回后台笔记分页列表。
@@ -271,6 +428,7 @@ func (s *NoteService) UpdateProperties(ctx context.Context, id int64, req dto.Up
 	shouldReindex := notePropertiesNeedEmbedding(req)
 	if shouldReindex {
 		fields["embedding_status"] = "PENDING"
+		fields["embedding_attempt_id"] = nil
 	}
 	if req.TagNames != nil {
 		n, err := s.repo.UpdatePropertiesWithTags(ctx, id, fields, normalizeNoteTags(req.TagNames, ""))

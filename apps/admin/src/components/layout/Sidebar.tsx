@@ -1,15 +1,13 @@
-import { NavLink, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
-  BookOpen,
   FileText,
   Image,
   FolderTree,
   MessageSquare,
   Link2,
   Settings,
-  Sparkles,
   Activity,
   ClipboardList,
   Home,
@@ -24,17 +22,13 @@ import {
   PanelLeftClose,
   Cloud,
   Coins,
-  Workflow,
   UsersRound,
   ShieldCheck,
-  Library,
-  Compass,
-  Highlighter,
   Music2,
-  ScanText,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
+import type { User as AuthUser } from '@/stores/authStore';
 import { usePrefersReducedMotion, useTheme } from '@/hooks';
 import { useSiteBranding } from '@/hooks/useSiteBranding';
 import { cn } from '@/lib/utils';
@@ -46,16 +40,36 @@ import { UserProfileModal } from './UserProfileModal';
 import { SidebarSearchPalette } from './SidebarSearchPalette';
 import { getMediaUrl } from '@/services/mediaService';
 import { authService } from '@/services/authService';
+import {
+  getIntelligenceDestinationsForPlacement,
+  getIntelligenceHomeHref,
+  getIntelligenceSidebarDestination,
+  type IntelligenceDestinationId,
+} from '@/navigation/intelligenceNavigation';
+import { getIntelligenceNavigationIcon } from '@/navigation/intelligenceNavigationIcons';
 
 // 分组结构 —— Control Room 风格导航(OVERVIEW / CONTENT / INTELLIGENCE / PLATFORM / SYSTEM)
 //
 // ref: docs/pm/atlas-redesign.md §3.2 信息架构 Before/After
-// INTELLIGENCE 从 14 项扁平菜单收敛为 6 项「知识工作」：知识图集 5 个并列子项折叠为
-// 单一入口（内部用 Tab，见 pages/atlas/AtlasLayout.tsx）；AI 平台配置（模型中心/全局价格/
-// 搜索配置）下沉到独立 PLATFORM 组；数据分析归 OVERVIEW。
+// Intelligence 的能力仍保留深链，但主导航只呈现「知识工作台 + 灵境」两条用户任务路径。
+// 命令面板与搜索面板继续暴露全部能力，避免收敛导航等于删除可发现性。
+const intelligenceSidebarItems = getIntelligenceDestinationsForPlacement('sidebar').map(
+  (destination) => ({
+    path: getIntelligenceHomeHref(destination),
+    icon: getIntelligenceNavigationIcon(destination.iconKey),
+    label: destination.label,
+    destinationId: destination.id,
+  }),
+);
+
 const navSections: Array<{
   label: string;
-  items: Array<{ path: string; icon: typeof LayoutDashboard; label: string }>;
+  items: Array<{
+    path: string;
+    icon: typeof LayoutDashboard;
+    label: string;
+    destinationId?: IntelligenceDestinationId;
+  }>;
 }> = [
   {
     label: 'OVERVIEW',
@@ -78,16 +92,7 @@ const navSections: Array<{
   },
   {
     label: 'INTELLIGENCE',
-    items: [
-      { path: '/aetherhub', icon: Sparkles, label: '灵境' },
-      { path: '/notes', icon: BookOpen, label: '智能笔记' },
-      { path: '/atlas', icon: Compass, label: '知识图集' },
-      { path: '/intelligence/knowledge', icon: Library, label: '知识库' },
-      { path: '/agent-workflows', icon: Workflow, label: '智能编排' },
-      { path: '/ai-tools', icon: Highlighter, label: '写作助手' },
-      // 试卷智能拆题 — ref: docs/features/qa-document-workflow.md
-      { path: '/qa', icon: ScanText, label: '试卷拆题' },
-    ],
+    items: intelligenceSidebarItems,
   },
   {
     label: 'PLATFORM',
@@ -119,8 +124,6 @@ export function Sidebar() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
-
-  const openProfile = () => setShowProfileModal(true);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +195,6 @@ export function Sidebar() {
     handleSearch,
     toggle,
     handleNavClick,
-    isProfileOpen: showProfileModal,
     paletteOpen,
     setPaletteOpen,
     handleSelectPaletteItem,
@@ -266,7 +268,7 @@ export function Sidebar() {
 
 interface SidebarContentProps {
   effectiveCollapsed: boolean;
-  user: any;
+  user: AuthUser | null;
   logout: () => void;
   openProfile: () => void;
   searchValue: string;
@@ -276,11 +278,20 @@ interface SidebarContentProps {
   isMobile?: boolean;
   handleNavClick: (e: React.MouseEvent<HTMLAnchorElement>, path: string) => void;
   closeMobile?: () => void;
-  isProfileOpen: boolean;
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
   handleSelectPaletteItem: (path: string) => void;
   closePalette: () => void;
+}
+
+function sidebarNavItemClass(isCollapsed: boolean, isActive: boolean): string {
+  return cn(
+    'flex items-center rounded-lg transition-all duration-200',
+    isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
+    isActive
+      ? 'bg-primary text-white'
+      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+  );
 }
 
 function SidebarContent({
@@ -295,7 +306,6 @@ function SidebarContent({
   isMobile,
   handleNavClick,
   closeMobile,
-  isProfileOpen,
   paletteOpen,
   setPaletteOpen,
   handleSelectPaletteItem,
@@ -304,6 +314,10 @@ function SidebarContent({
   const { isDark, toggleThemeWithAnimation } = useTheme();
   const { siteName, siteLogo } = useSiteBranding();
   const searchAnchorRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const activeIntelligenceSidebarDestination = getIntelligenceSidebarDestination(
+    location.pathname,
+  );
 
   return (
     <>
@@ -446,31 +460,48 @@ function SidebarContent({
                   const hasNestedNavItem = section.items.some(
                     (other) => other.path !== item.path && other.path.startsWith(`${item.path}/`)
                   );
+                  const isIntelligenceAreaActive = item.destinationId
+                    ? activeIntelligenceSidebarDestination?.id === item.destinationId
+                    : false;
+                  const Icon = item.icon;
+                  const content = (
+                    <>
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className={cn(
+                        'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
+                        effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
+                      )}>
+                        {item.label}
+                      </span>
+                    </>
+                  );
 
                   return (
                     <li key={item.path}>
-                      <NavLink
-                        to={item.path}
-                        end={hasNestedNavItem}
-                        onClick={(e) => handleNavClick(e, item.path)}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center rounded-lg transition-all duration-200',
-                            effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
-                            isActive
-                              ? 'bg-primary text-white'
-                              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                          )
-                        }
-                      >
-                        <item.icon className="w-5 h-5 flex-shrink-0" />
-                        <span className={cn(
-                          'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
-                          effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
-                        )}>
-                          {item.label}
-                        </span>
-                      </NavLink>
+                      {item.destinationId ? (
+                        <Link
+                          to={item.path}
+                          onClick={(e) => handleNavClick(e, item.path)}
+                          aria-current={isIntelligenceAreaActive ? 'page' : undefined}
+                          className={sidebarNavItemClass(
+                            effectiveCollapsed,
+                            isIntelligenceAreaActive,
+                          )}
+                        >
+                          {content}
+                        </Link>
+                      ) : (
+                        <NavLink
+                          to={item.path}
+                          end={hasNestedNavItem}
+                          onClick={(e) => handleNavClick(e, item.path)}
+                          className={({ isActive }) =>
+                            sidebarNavItemClass(effectiveCollapsed, isActive)
+                          }
+                        >
+                          {content}
+                        </NavLink>
+                      )}
                     </li>
                   );
                 })}

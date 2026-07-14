@@ -4,13 +4,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Search,
   LayoutDashboard,
-  BookOpen,
   FileText,
   Image,
   FolderTree,
   MessageSquare,
   Link2,
-  Sparkles,
   Bot,
   Activity,
   Settings,
@@ -20,13 +18,18 @@ import {
   Moon,
   CornerDownLeft,
   Coins,
-  Workflow,
   ShieldCheck,
 } from 'lucide-react';
 import { useTheme } from '@/hooks';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
+import {
+  getIntelligenceDestinationsForPlacement,
+  getIntelligenceHomeHref,
+  getIntelligenceQuickActionsForPlacement,
+} from '@/navigation/intelligenceNavigation';
+import { getIntelligenceNavigationIcon } from '@/navigation/intelligenceNavigationIcons';
 
 interface CommandItem {
   id: string;
@@ -34,7 +37,7 @@ interface CommandItem {
   hint?: string;
   group: 'NAVIGATE' | 'CREATE' | 'SYSTEM';
   icon: React.ComponentType<{ className?: string }>;
-  keywords?: string[];
+  keywords?: readonly string[];
   run: () => void | Promise<void>;
 }
 
@@ -60,48 +63,68 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     });
   }, [navigate, onClose]);
 
-  const items = useMemo<CommandItem[]>(() => [
-    { id: 'nav-dashboard', label: '前往 · 仪表盘', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['dashboard', 'home', '首页'], run: () => go('/dashboard') },
-    { id: 'nav-posts', label: '前往 · 文章管理', group: 'NAVIGATE', icon: FileText, keywords: ['posts', 'articles'], run: () => go('/posts') },
-    { id: 'nav-media', label: '前往 · 媒体库', group: 'NAVIGATE', icon: Image, keywords: ['media', 'images'], run: () => go('/media') },
-    { id: 'nav-categories', label: '前往 · 分类标签', group: 'NAVIGATE', icon: FolderTree, keywords: ['categories', 'tags'], run: () => go('/categories') },
-    { id: 'nav-comments', label: '前往 · 评论管理', group: 'NAVIGATE', icon: MessageSquare, keywords: ['comments'], run: () => go('/comments') },
-    { id: 'nav-friends', label: '前往 · 友情链接', group: 'NAVIGATE', icon: Link2, keywords: ['friends', 'links'], run: () => go('/friends') },
-    { id: 'nav-aetherhub', label: '前往 · 灵境', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['aetherhub', 'chat', 'agent'], run: () => go('/aetherhub') },
-    { id: 'nav-notes', label: '前往 · 智能笔记', group: 'NAVIGATE', icon: BookOpen, keywords: ['notes', 'note', '智能笔记', '笔记'], run: () => go('/notes') },
-    { id: 'nav-agent-workflows', label: '前往 · 智能编排', group: 'NAVIGATE', icon: Workflow, keywords: ['agent', 'workflow'], run: () => go('/agent-workflows') },
-    { id: 'nav-ai-tools', label: '前往 · 写作助手', group: 'NAVIGATE', icon: Sparkles, keywords: ['ai', 'tools', 'writing'], run: () => go('/ai-tools') },
-    { id: 'nav-global-pricing', label: '前往 · 全局价格', group: 'NAVIGATE', icon: Coins, keywords: ['pricing', 'price', 'model'], run: () => go('/ai-config/pricing') },
-    { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats', 'ai'], run: () => go('/analytics') },
-    { id: 'nav-search', label: '前往 · 搜索配置', group: 'NAVIGATE', icon: Search, keywords: ['search'], run: () => go('/search-config') },
-    { id: 'nav-ai-config', label: '前往 · 模型中心', group: 'NAVIGATE', icon: Bot, keywords: ['ai', 'config', 'model'], run: () => go('/ai-config') },
-    { id: 'nav-monitor', label: '前往 · 系统监控', group: 'NAVIGATE', icon: Activity, keywords: ['monitor'], run: () => go('/monitor') },
-    { id: 'nav-security', label: '前往 · 系统安全', group: 'NAVIGATE', icon: ShieldCheck, keywords: ['security', 'jwt', '安全'], run: () => go('/security') },
-    { id: 'nav-settings', label: '前往 · 系统设置', group: 'NAVIGATE', icon: Settings, keywords: ['settings'], run: () => go('/settings') },
-    { id: 'create-post', label: '新建文章', hint: 'New Post', group: 'CREATE', icon: PenLine, keywords: ['new', 'create', 'write'], run: () => go('/posts/new') },
-    { id: 'create-note', label: '新建笔记', hint: 'New Note', group: 'CREATE', icon: BookOpen, keywords: ['new', 'create', 'note', '笔记'], run: () => go('/notes/new') },
-    {
-      id: 'sys-theme',
-      label: isDark ? '切换到亮色模式' : '切换到暗色模式',
-      group: 'SYSTEM',
-      icon: isDark ? Sun : Moon,
-      keywords: ['theme', 'dark', 'light'],
-      run: () => {
-        toggleThemeWithAnimation(window.innerWidth / 2, window.innerHeight / 2);
-        onClose();
+  const items = useMemo<CommandItem[]>(() => {
+    const intelligenceNavigationItems: CommandItem[] =
+      getIntelligenceDestinationsForPlacement('command-palette').map((destination) => ({
+        id: `nav-${destination.id}`,
+        label: `前往 · ${destination.label}`,
+        hint: destination.description,
+        group: 'NAVIGATE',
+        icon: getIntelligenceNavigationIcon(destination.iconKey),
+        keywords: destination.keywords,
+        run: () => go(getIntelligenceHomeHref(destination)),
+      }));
+    const intelligenceCreateItems: CommandItem[] =
+      getIntelligenceQuickActionsForPlacement('command-palette').map((action) => ({
+        id: action.id,
+        label: action.label,
+        hint: action.description,
+        group: 'CREATE',
+        icon: getIntelligenceNavigationIcon(action.iconKey),
+        keywords: action.keywords,
+        run: () => go(action.route),
+      }));
+
+    return [
+      { id: 'nav-dashboard', label: '前往 · 仪表盘', group: 'NAVIGATE', icon: LayoutDashboard, keywords: ['dashboard', 'home', '首页'], run: () => go('/dashboard') },
+      { id: 'nav-posts', label: '前往 · 文章管理', group: 'NAVIGATE', icon: FileText, keywords: ['posts', 'articles'], run: () => go('/posts') },
+      { id: 'nav-media', label: '前往 · 媒体库', group: 'NAVIGATE', icon: Image, keywords: ['media', 'images'], run: () => go('/media') },
+      { id: 'nav-categories', label: '前往 · 分类标签', group: 'NAVIGATE', icon: FolderTree, keywords: ['categories', 'tags'], run: () => go('/categories') },
+      { id: 'nav-comments', label: '前往 · 评论管理', group: 'NAVIGATE', icon: MessageSquare, keywords: ['comments'], run: () => go('/comments') },
+      { id: 'nav-friends', label: '前往 · 友情链接', group: 'NAVIGATE', icon: Link2, keywords: ['friends', 'links'], run: () => go('/friends') },
+      ...intelligenceNavigationItems,
+      { id: 'nav-global-pricing', label: '前往 · 全局价格', group: 'NAVIGATE', icon: Coins, keywords: ['pricing', 'price', 'model'], run: () => go('/ai-config/pricing') },
+      { id: 'nav-analytics', label: '前往 · 数据分析', group: 'NAVIGATE', icon: Activity, keywords: ['analytics', 'stats', 'ai'], run: () => go('/analytics') },
+      { id: 'nav-search', label: '前往 · 搜索配置', group: 'NAVIGATE', icon: Search, keywords: ['search'], run: () => go('/search-config') },
+      { id: 'nav-ai-config', label: '前往 · 模型中心', group: 'NAVIGATE', icon: Bot, keywords: ['ai', 'config', 'model'], run: () => go('/ai-config') },
+      { id: 'nav-monitor', label: '前往 · 系统监控', group: 'NAVIGATE', icon: Activity, keywords: ['monitor'], run: () => go('/monitor') },
+      { id: 'nav-security', label: '前往 · 系统安全', group: 'NAVIGATE', icon: ShieldCheck, keywords: ['security', 'jwt', '安全'], run: () => go('/security') },
+      { id: 'nav-settings', label: '前往 · 系统设置', group: 'NAVIGATE', icon: Settings, keywords: ['settings'], run: () => go('/settings') },
+      { id: 'create-post', label: '新建文章', hint: 'New Post', group: 'CREATE', icon: PenLine, keywords: ['new', 'create', 'write'], run: () => go('/posts/new') },
+      ...intelligenceCreateItems,
+      {
+        id: 'sys-theme',
+        label: isDark ? '切换到亮色模式' : '切换到暗色模式',
+        group: 'SYSTEM',
+        icon: isDark ? Sun : Moon,
+        keywords: ['theme', 'dark', 'light'],
+        run: () => {
+          toggleThemeWithAnimation(window.innerWidth / 2, window.innerHeight / 2);
+          onClose();
+        },
       },
-    },
-    {
-      id: 'sys-logout',
-      label: '退出登录',
-      group: 'SYSTEM',
-      icon: LogOut,
-      keywords: ['logout', 'signout'],
-      run: async () => {
-        try { await authService.logout(); } finally { logout(); navigate('/login'); onClose(); }
+      {
+        id: 'sys-logout',
+        label: '退出登录',
+        group: 'SYSTEM',
+        icon: LogOut,
+        keywords: ['logout', 'signout'],
+        run: async () => {
+          try { await authService.logout(); } finally { logout(); navigate('/login'); onClose(); }
+        },
       },
-    },
-  ], [go, isDark, toggleThemeWithAnimation, logout, navigate, onClose]);
+    ];
+  }, [go, isDark, toggleThemeWithAnimation, logout, navigate, onClose]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

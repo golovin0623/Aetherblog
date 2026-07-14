@@ -1123,6 +1123,7 @@ UPDATE agent_workflow_runs r
 SET
     cancel_requested = TRUE,
     status = CASE WHEN r.status IN ('pending', 'running', 'paused') THEN 'cancelled' ELSE r.status END,
+    retryable = CASE WHEN r.status IN ('pending', 'running', 'paused') THEN TRUE ELSE r.retryable END,
     finished_at = CASE WHEN r.status IN ('pending', 'running', 'paused') THEN CURRENT_TIMESTAMP ELSE r.finished_at END,
     duration_ms = CASE
         WHEN r.status IN ('pending', 'running', 'paused')

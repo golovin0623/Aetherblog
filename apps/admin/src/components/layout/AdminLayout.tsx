@@ -1,15 +1,17 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-import { useSidebarStore } from '@/stores';
 import { MobileHeader } from './MobileHeader';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CommandPalette } from '@/components/common/CommandPalette';
 import { IntelligenceShell } from '@/components/intelligence';
 import { GlobalPricingSkeletonContent } from '@/pages/global-pricing/GlobalPricingSkeleton';
 
-import { useMediaQuery } from '@/hooks';
 import { cn } from '@/lib/utils';
+import {
+  getIntelligenceShell,
+  normalizeIntelligencePath,
+} from '@/navigation/intelligenceNavigation';
 
 function AdminRouteFallback({ pathname }: { pathname: string }) {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
@@ -25,9 +27,10 @@ function AdminRouteFallback({ pathname }: { pathname: string }) {
   );
 }
 
-const INTELLIGENCE_LAYOUT_PATHS = new Set([
-  '/agent-workflows',
-  '/ai-tools',
+// These pages reuse the roomy canvas treatment, but are analytics/platform
+// surfaces rather than Intelligence destinations. Keep visual layout separate
+// from product-domain membership.
+const NON_INTELLIGENCE_CANVAS_PATHS = new Set([
   '/ai-config',
   '/ai-config/pricing',
   '/analytics',
@@ -35,13 +38,12 @@ const INTELLIGENCE_LAYOUT_PATHS = new Set([
 ]);
 
 export function AdminLayout() {
-  const { isCollapsed, isAutoCollapsed } = useSidebarStore();
-  const effectiveCollapsed = isCollapsed || isAutoCollapsed;
-  const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
-  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+  const normalizedPath = normalizeIntelligencePath(location.pathname);
   const isGlobalPricingRoute = normalizedPath === '/ai-config/pricing';
-  const isIntelligenceRoute = INTELLIGENCE_LAYOUT_PATHS.has(normalizedPath);
+  const usesAdminCanvas =
+    getIntelligenceShell(normalizedPath) === 'admin-canvas' ||
+    NON_INTELLIGENCE_CANVAS_PATHS.has(normalizedPath);
   // 自管布局/滚动的页面：媒体库 + AI 协同写作
   const isAppPage =
     location.pathname.startsWith('/media') ||
@@ -73,7 +75,7 @@ export function AdminLayout() {
         {/* 页面内容 */}
         <main className={cn(
           "flex-1 relative overflow-auto overscroll-contain",
-          isIntelligenceRoute && "admin-intelligence-canvas",
+          usesAdminCanvas && "admin-intelligence-canvas",
           isAppPage ? "p-0" : "p-4 md:p-6"
         )}>
           {isGlobalPricingRoute ? (

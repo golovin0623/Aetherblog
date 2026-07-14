@@ -16,6 +16,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { FocusModeProvider } from './contexts/FocusModeContext';
 import { AetherHubSkeleton } from './pages/aetherhub/AetherHubSkeleton';
 import { Toaster } from 'sonner';
+import { INTELLIGENCE_ROUTES } from './navigation/intelligenceNavigation';
 
 // 懒加载页面组件
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
@@ -46,6 +47,7 @@ const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage')
 const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
+const KnowledgeWorkspacePage = lazy(() => import('./pages/intelligence/KnowledgeWorkspacePage'));
 const AtlasLayout = lazy(() => import('./pages/atlas/AtlasLayout'));
 const AtlasPage = lazy(() => import('./pages/atlas/AtlasPage'));
 const AtlasReadingsPage = lazy(() => import('./pages/atlas/ReadingsPage'));
@@ -162,6 +164,7 @@ const router = createBrowserRouter(
         <Route path="ai-config" element={<AiConfigPage />} />
         <Route path="ai-config/pricing" element={<GlobalPricingPage />} />
         <Route path="search-config" element={<SearchConfigPage />} />
+        <Route path={INTELLIGENCE_ROUTES.workspace.slice(1)} element={<KnowledgeWorkspacePage />} />
         <Route path="intelligence/knowledge" element={<KnowledgeBasePage />} />
         <Route path="intelligence/knowledge/:slug" element={<KnowledgeBaseDetailPage />} />
         {/* 知识图集工作台：单一入口 + 内部 Tab（概览/读物/知识点/图谱/建议/搜索）。

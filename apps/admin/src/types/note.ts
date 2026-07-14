@@ -1,5 +1,6 @@
 export type NoteSourceType = 'manual' | 'web' | 'article' | 'chat' | 'import' | 'api';
 export type NoteEmbeddingStatus = 'PENDING' | 'INDEXED' | 'FAILED' | 'SKIPPED';
+export type NoteKnowledgeStatus = 'ready' | 'not_ready' | 'needs_update' | 'processing' | 'failed' | 'unavailable';
 
 export interface NoteListItem {
   id: number;
@@ -38,6 +39,21 @@ export interface NoteDetail extends NoteListItem {
   outLinks: NoteLinkItem[];
   backLinks: NoteLinkItem[];
   draft?: CreateNoteRequest;
+}
+
+export interface NoteKnowledgeReadiness {
+  noteId: number;
+  status: NoteKnowledgeStatus;
+  queryable: boolean;
+  profileId?: number | null;
+  profileName?: string | null;
+  modelId?: string | null;
+  chunkCount: number;
+  carrierId?: number | null;
+  sourceFingerprint: string;
+  indexedFingerprint?: string | null;
+  indexedAt?: string | null;
+  message: string;
 }
 
 export interface CreateNoteRequest {
@@ -88,4 +104,3 @@ export interface NoteTagItem {
   name: string;
   color: string;
 }
-

@@ -14,9 +14,11 @@
 //	DELETE /v1/admin/kbs/:id/files/:fid               删除文件
 //	POST   /v1/admin/kbs/:id/files/:fid/reindex       单文件重建
 //	POST   /v1/admin/kbs/:id/reindex                  全库重建
+//	POST   /v1/admin/kbs/:id/retrieve                 验证真实召回（权限 >= USE）
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -36,12 +38,30 @@ import (
 
 // KBHandler 处理知识库 admin 路由。
 type KBHandler struct {
-	svc         *service.KBService
-	activitySvc activityRecorder
+	svc            *service.KBService
+	activitySvc    activityRecorder
+	retrieveAccess kbRetrieveAccess
+	retriever      kbRetriever
 }
 
-func NewKBHandler(svc *service.KBService, activitySvc activityRecorder) *KBHandler {
-	return &KBHandler{svc: svc, activitySvc: activitySvc}
+type kbRetrieveAccess interface {
+	BuildUserContext(context.Context, int64, string) (*service.KBUserContext, error)
+	GetByIDForUser(context.Context, int64, *service.KBUserContext) (*dto.KnowledgeBaseVO, error)
+}
+
+type kbRetriever interface {
+	Retrieve(context.Context, int64, service.KBRetrievePayload) (*dto.KBRetrieveResponse, error)
+}
+
+func NewKBHandler(
+	svc *service.KBService,
+	activitySvc activityRecorder,
+	retriever *service.KBRetrieverClient,
+) *KBHandler {
+	return &KBHandler{
+		svc: svc, activitySvc: activitySvc,
+		retrieveAccess: svc, retriever: retriever,
+	}
 }
 
 // recordKBEvent 写一条 KB 模块审计事件。activitySvc 为空时静默跳过（兼容旧调用方）。
@@ -106,6 +126,7 @@ func (h *KBHandler) Mount(g *echo.Group) {
 	g.DELETE("/:id/files/:fid", h.DeleteFile)
 	g.POST("/:id/files/:fid/reindex", h.ReindexFile)
 	g.POST("/:id/reindex", h.ReindexAll)
+	g.POST("/:id/retrieve", h.Retrieve)
 }
 
 // ---------- helpers ----------
@@ -394,6 +415,71 @@ func (h *KBHandler) ReindexAll(c echo.Context) error {
 	}
 	h.recordKBEvent(c, "kb.reindex", fmt.Sprintf("全库重建 KB #%d", id), "", "success")
 	return response.OKEmpty(c)
+}
+
+// Retrieve verifies the actual retrieval result for exactly one KB. Missing and
+// unauthorized KBs intentionally share the same 403 response so callers cannot
+// probe private KB existence. VIEW is read-only metadata access and is not enough;
+// USE, EDIT, and MANAGE may retrieve content.
+func (h *KBHandler) Retrieve(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	id, err := parseInt64Param(c, "id")
+	if err != nil || id <= 0 {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	var req dto.KBRetrieveRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return nil
+	}
+	req.Query = strings.TrimSpace(req.Query)
+	if len([]rune(req.Query)) < 2 || len([]rune(req.Query)) > 500 {
+		return response.FailWith(c, response.BadRequest, "问题长度必须为 2 到 500 个字符")
+	}
+	if req.Limit == 0 {
+		req.Limit = 5
+	}
+
+	if h.retrieveAccess == nil {
+		return response.OK(c, dto.KBRetrieveResponse{
+			Status: "unavailable", Query: req.Query, Hits: []dto.KBRetrieveHit{},
+		})
+	}
+	uc, err := h.retrieveAccess.BuildUserContext(c.Request().Context(), lu.UserID, lu.Role)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	kb, err := h.retrieveAccess.GetByIDForUser(c.Request().Context(), id, uc)
+	if err != nil {
+		if errors.Is(err, service.ErrKBNotFound) || errors.Is(err, service.ErrKBPermission) {
+			return response.FailWith(c, response.Forbidden, "无权使用该知识库进行检索")
+		}
+		return response.Error(c, err)
+	}
+	switch kb.EffectivePermission {
+	case model.KBPermissionUse, model.KBPermissionEdit, model.KBPermissionManage:
+	default:
+		return response.FailWith(c, response.Forbidden, "无权使用该知识库进行检索")
+	}
+
+	if h.retriever == nil {
+		return response.OK(c, dto.KBRetrieveResponse{
+			Status: "unavailable", Query: req.Query, Hits: []dto.KBRetrieveHit{},
+		})
+	}
+	result, err := h.retriever.Retrieve(c.Request().Context(), id, service.KBRetrievePayload{
+		Query: req.Query,
+		Limit: req.Limit,
+	})
+	if err != nil {
+		log.Warn().Err(err).Int64("kb_id", id).Str("trace_id", ctxutil.TraceID(c)).Msg("kb retrieve unavailable")
+		return response.OK(c, dto.KBRetrieveResponse{
+			Status: "unavailable", Query: req.Query, Hits: []dto.KBRetrieveHit{},
+		})
+	}
+	return response.OK(c, result)
 }
 
 func max1(n int) int {

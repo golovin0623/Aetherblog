@@ -549,8 +549,9 @@ func (h *AiHandler) DeleteTask(c echo.Context) error {
 var allowedSSETypes = map[string]bool{
 	"delta": true, "result": true, "done": true, "error": true,
 	"start": true, "progress": true, "chunk_progress": true, "heartbeat": true,
-	// agent 多轮对话：think 段折叠展示，sources RAG 引用，与 search.qa 对齐。
-	"think": true, "sources": true,
+	// agent 多轮对话：think 段折叠展示；sources 为旧文章引用；retrieval 是
+	// 带版本、命中与退化状态的结构化知识检索回执。
+	"think": true, "sources": true, "retrieval": true,
 }
 
 // sseEvent 用于解析 SSE data 行中的 JSON 负载以提取 type 字段。

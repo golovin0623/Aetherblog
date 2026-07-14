@@ -18,8 +18,9 @@
 
 ::
 
-  data: {"type":"delta","content":"…"}\\n\\n
+  data: {"type":"retrieval","version":1,"status":"matched",...}\\n\\n
   data: {"type":"think","content":"…"}\\n\\n
+  data: {"type":"delta","content":"…"}\\n\\n
   data: {"type":"done"}\\n\\n
   data: {"type":"error","code":"…","message":"…"}\\n\\n
 """
@@ -29,12 +30,15 @@ from __future__ import annotations
 import json
 import logging
 import asyncio
+import math
 import time
+from dataclasses import dataclass, field
 from typing import Any, Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from litellm import acompletion
 
 from app.api.deps import (
@@ -93,6 +97,10 @@ class AgentChatRequest(BaseModel):
     # # picker 选中的标签 slug 列表 —— 注入对应标签下最近 5 篇文章标题，给 Agent
     # 一个"该话题下站点写过哪些文章"的概览。
     tagSlugs: list[str] | None = Field(default=None, max_length=8)
+    # Trusted three-state execution contract. Optional at the schema boundary
+    # only for rolling compatibility; the after-validator always resolves it
+    # to auto / selected / none before the route runs.
+    knowledgeContextMode: Literal["auto", "selected", "none"] | None = None
     # KB picker 选中的知识库 ID 列表。后端会用最后一条 user 消息当 query，
     # 在选中的 KB 内做语义召回（每 KB 的 active profile 决定 model + top_k + threshold），
     # 把命中的 chunk 拼成额外 system 段注入给 LLM。
@@ -104,6 +112,78 @@ class AgentChatRequest(BaseModel):
     # 本轮模型参数覆盖。只允许少量兼容字段进入 LiteLLM 请求，避免把任意 JSON
     # 直接透传给上游。
     modelParams: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def normalize_knowledge_context_contract(self) -> "AgentChatRequest":
+        fields_set = self.model_fields_set
+        mode_was_explicit = "knowledgeContextMode" in fields_set
+        if mode_was_explicit and self.knowledgeContextMode is None:
+            raise ValueError("knowledgeContextMode cannot be null")
+
+        kb_ids = self.kbIds or []
+        atlas_scope = self.atlasScope
+        kp_ids = (atlas_scope.kpIds or []) if atlas_scope else []
+        carrier_ids = (atlas_scope.carrierIds or []) if atlas_scope else []
+        all_ids = [*kb_ids, *kp_ids, *carrier_ids]
+        if any(value <= 0 for value in all_ids):
+            raise ValueError("knowledge context IDs must be positive")
+        has_kb_refs = bool(kb_ids)
+        has_atlas_refs = bool(kp_ids or carrier_ids)
+
+        mode = self.knowledgeContextMode
+        if mode is None:
+            # Legacy AetherHub wire shapes are intentionally inferred in the
+            # least-privilege direction. Non-empty IDs are explicit selection;
+            # an explicit null/empty opt-out is none; an empty semantic Atlas
+            # scope is automatic discovery; fully omitted context is auto.
+            kb_was_sent = "kbIds" in fields_set
+            atlas_was_sent = "atlasScope" in fields_set
+            atlas_explicitly_requests_semantic_recall = bool(
+                atlas_scope is not None
+                and atlas_scope.semanticRecall
+                and "semanticRecall" in atlas_scope.model_fields_set
+            )
+            if has_kb_refs or has_atlas_refs:
+                mode = "selected"
+            elif kb_was_sent and not kb_ids:
+                mode = "none"
+            elif atlas_was_sent and not atlas_explicitly_requests_semantic_recall:
+                mode = "none"
+            else:
+                mode = "auto"
+            self.knowledgeContextMode = mode
+
+        if mode == "none":
+            if has_kb_refs or has_atlas_refs:
+                raise ValueError("none mode cannot carry private source context")
+            self.kbIds = None
+            self.atlasScope = None
+        elif mode == "selected":
+            if not has_kb_refs and not has_atlas_refs:
+                raise ValueError("selected mode requires explicit source IDs")
+            if any(message.role == "system" for message in self.messages):
+                raise ValueError("selected mode does not accept client system messages")
+            # A selected KP/carrier must neither expand its graph neighborhood
+            # nor trigger global semantic discovery. If only KBs were selected,
+            # remove an empty Atlas scope entirely to prevent fallback.
+            if atlas_scope is not None:
+                if has_atlas_refs:
+                    atlas_scope.semanticRecall = False
+                    atlas_scope.neighborhoodDepth = 0
+                else:
+                    self.atlasScope = None
+        return self
+
+
+@dataclass
+class _AgentRetrievalPart:
+    """One requested retrieval scope and the context actually injected for it."""
+
+    requested: bool = False
+    outcome: Literal["matched", "empty", "unavailable"] | None = None
+    context: str | None = None
+    hits: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[dict[str, str]] = field(default_factory=list)
 
 
 class AgentModelItem(BaseModel):
@@ -262,6 +342,16 @@ _MODE_SYSTEM_PROMPTS = {
         "代码块用三重反引号且声明语言。修改前后差异要点用 — 列出。"
     ),
 }
+
+_SELECTED_CONTEXT_POLICY = (
+    "# 所选来源约束\n"
+    "只能依据本轮已注入的所选来源作答。不得用常识、记忆或未提供的站点资料补齐事实；"
+    "所选来源没有覆盖的内容必须明确说明缺少依据。回答中的事实与结论应能回到这些来源。"
+)
+_SELECTED_CONTEXT_NOT_GROUNDED_CODE = "selected_context_not_grounded"
+_SELECTED_CONTEXT_NOT_GROUNDED_MESSAGE = (
+    "未能从所选来源找到足够依据。请调整问题或重新选择来源后再试。"
+)
 
 # 当 'agent' 任务未配置 routing 时，按这个顺序回退到已有任务的路由。
 # qa / summary 在生产环境通常都有配置，能保证开箱可用；任一命中即停止。
@@ -579,7 +669,7 @@ def _coerce_content_events(value: Any) -> list[dict[str, str]]:
 def _extract_reasoning_content(delta: Any) -> str:
     # 不同 OpenAI-compatible provider / LiteLLM 版本对 reasoning 增量字段命名
     # 不完全一致。只抽取显式文本，不把结构化 usage / token 计数误当思考正文。
-    for field in (
+    for reasoning_field in (
         "reasoning_content",
         "reasoning",
         "thinking",
@@ -587,7 +677,7 @@ def _extract_reasoning_content(delta: Any) -> str:
         "thinking_blocks",
         "reasoning_items",
     ):
-        text = _coerce_delta_text(_get_delta_field(delta, field))
+        text = _coerce_delta_text(_get_delta_field(delta, reasoning_field))
         if text:
             return text
     provider_specific = _get_delta_field(delta, "provider_specific_fields")
@@ -695,42 +785,6 @@ _ARTICLE_EXCERPT_MAX_CHARS = 1800
 _TAG_POST_LIMIT = 5
 
 
-async def _build_kb_context_for_chat(
-    pool,
-    llm_router,
-    *,
-    kb_ids: list[int] | None,
-    messages: list[AgentChatMessage],
-) -> str | None:
-    """对灵境对话注入 KB 召回上下文。
-
-    步骤：
-      1. 取最后一条 user 消息当 query（多轮时这通常是最新提问）。
-      2. 调 kb_recall.recall_kbs 在 kb_ids 内做语义召回。
-      3. 渲染为 system message 文本，外层负责与 picker_context 拼接。
-
-    任一步骤失败都 swallow exception（不让对话失败），但会 warn 日志便于排查。
-    """
-    if not kb_ids:
-        return None
-    # 取最后一条 user 消息
-    query = ""
-    for m in reversed(messages):
-        if m.role == "user":
-            query = (m.content or "").strip()
-            break
-    if not query:
-        return None
-    try:
-        # 局部导入避免顶部循环依赖
-        from app.services.kb_recall import recall_kbs, render_kb_context
-        hits = await recall_kbs(pool, llm_router, kb_ids=kb_ids, query=query, top_k_total=12)
-    except Exception:
-        logger.warning("agent.kb_recall_failed", extra={"data": {"kb_ids": kb_ids}})
-        return None
-    return render_kb_context(hits)
-
-
 def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
     out: list[int] = []
     seen: set[int] = set()
@@ -750,35 +804,314 @@ def _dedupe_positive_ints(values: list[int] | None, limit: int) -> list[int]:
     return out
 
 
-async def _build_atlas_context_for_chat(
+_RETRIEVAL_SNIPPET_MAX_CHARS = 800
+_RETRIEVAL_TITLE_MAX_CHARS = 240
+
+
+def _last_user_query(messages: list[AgentChatMessage] | None) -> str:
+    for message in reversed(messages or []):
+        if message.role == "user":
+            return (message.content or "").strip()
+    return ""
+
+
+def _receipt_value(row: Any, name: str, default: Any = None) -> Any:
+    if isinstance(row, dict):
+        return row.get(name, default)
+    return getattr(row, name, default)
+
+
+def _receipt_text(value: Any, max_chars: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _receipt_score(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    return score if math.isfinite(score) else None
+
+
+def _receipt_href(value: Any) -> str | None:
+    href = _receipt_text(value, 1000)
+    if not href:
+        return None
+    if href == "/admin" or href.startswith("/admin/"):
+        return href
+    if href.startswith("/") and not href.startswith("//"):
+        return f"/admin{href}"
+    return None
+
+
+def _receipt_int(value: Any, *, allow_zero: bool = False) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < 0 or (parsed == 0 and not allow_zero):
+        return None
+    return parsed
+
+
+def _add_optional_hit_field(hit: dict[str, Any], name: str, value: Any) -> None:
+    if value is not None and value != "":
+        hit[name] = value
+
+
+def _kb_hits_to_receipt_hits(hits: list[Any]) -> list[dict[str, Any]]:
+    receipt_hits: list[dict[str, Any]] = []
+    for raw in hits:
+        kb_id = _receipt_int(_receipt_value(raw, "kb_id"))
+        file_id = _receipt_int(_receipt_value(raw, "kb_file_id"))
+        chunk_index = _receipt_int(_receipt_value(raw, "chunk_index"), allow_zero=True)
+        if kb_id is None or file_id is None or chunk_index is None:
+            continue
+
+        kb_name = _receipt_text(_receipt_value(raw, "kb_name"), _RETRIEVAL_TITLE_MAX_CHARS)
+        file_title = _receipt_text(_receipt_value(raw, "file_title"), _RETRIEVAL_TITLE_MAX_CHARS)
+        hit: dict[str, Any] = {
+            "key": f"kb:{kb_id}:file:{file_id}:chunk:{chunk_index}",
+            "kind": "knowledge_base_chunk",
+            "title": file_title or kb_name or f"知识库片段 #{chunk_index}",
+        }
+        _add_optional_hit_field(hit, "sourceTitle", kb_name)
+        _add_optional_hit_field(
+            hit,
+            "snippet",
+            _receipt_text(_receipt_value(raw, "snippet"), _RETRIEVAL_SNIPPET_MAX_CHARS),
+        )
+        _add_optional_hit_field(hit, "score", _receipt_score(_receipt_value(raw, "similarity")))
+        slug = _receipt_text(_receipt_value(raw, "kb_slug"), _RETRIEVAL_TITLE_MAX_CHARS)
+        if slug:
+            hit["href"] = f"/admin/intelligence/knowledge/{quote(slug, safe='')}"
+        receipt_hits.append(hit)
+    return receipt_hits
+
+
+def _atlas_context_to_receipt_hits(context: Any) -> list[dict[str, Any]]:
+    receipt_hits: list[dict[str, Any]] = []
+    kp_titles: dict[int, str] = {}
+
+    for raw in _receipt_value(context, "knowledge_points", []) or []:
+        kp_id = _receipt_int(_receipt_value(raw, "id"))
+        if kp_id is None:
+            continue
+        title = _receipt_text(_receipt_value(raw, "title"), _RETRIEVAL_TITLE_MAX_CHARS) or f"知识点 #{kp_id}"
+        kp_titles[kp_id] = title
+        hit: dict[str, Any] = {
+            "key": f"atlas:kp:{kp_id}",
+            "kind": "atlas_knowledge_point",
+            "title": title,
+            "href": f"/admin/atlas/kp/{kp_id}",
+        }
+        _add_optional_hit_field(
+            hit,
+            "snippet",
+            _receipt_text(_receipt_value(raw, "body_markdown"), _RETRIEVAL_SNIPPET_MAX_CHARS),
+        )
+        _add_optional_hit_field(hit, "score", _receipt_score(_receipt_value(raw, "similarity")))
+        receipt_hits.append(hit)
+
+    for raw in _receipt_value(context, "note_hits", []) or []:
+        note_id = _receipt_int(_receipt_value(raw, "note_id"))
+        chunk_index = _receipt_int(_receipt_value(raw, "chunk_index"), allow_zero=True)
+        if note_id is None or chunk_index is None:
+            continue
+        title = _receipt_text(_receipt_value(raw, "title"), _RETRIEVAL_TITLE_MAX_CHARS) or f"笔记 #{note_id}"
+        hit = {
+            "key": f"atlas:note:{note_id}:chunk:{chunk_index}",
+            "kind": "atlas_note",
+            "title": title,
+        }
+        _add_optional_hit_field(
+            hit,
+            "snippet",
+            _receipt_text(_receipt_value(raw, "chunk_text"), _RETRIEVAL_SNIPPET_MAX_CHARS),
+        )
+        _add_optional_hit_field(hit, "score", _receipt_score(_receipt_value(raw, "similarity")))
+        _add_optional_hit_field(hit, "href", _receipt_href(_receipt_value(raw, "source_uri")))
+        receipt_hits.append(hit)
+
+    for raw in _receipt_value(context, "evidence", []) or []:
+        annotation_id = _receipt_int(_receipt_value(raw, "annotation_id"))
+        if annotation_id is None:
+            continue
+        kp_id = _receipt_int(_receipt_value(raw, "kp_id"))
+        carrier_title = _receipt_text(
+            _receipt_value(raw, "carrier_title"),
+            _RETRIEVAL_TITLE_MAX_CHARS,
+        )
+        hit = {
+            "key": f"atlas:evidence:{annotation_id}",
+            "kind": "atlas_evidence",
+            "title": carrier_title or f"证据 #{annotation_id}",
+        }
+        if kp_id is not None:
+            _add_optional_hit_field(hit, "sourceTitle", kp_titles.get(kp_id) or f"知识点 #{kp_id}")
+        _add_optional_hit_field(
+            hit,
+            "snippet",
+            _receipt_text(_receipt_value(raw, "body_text"), _RETRIEVAL_SNIPPET_MAX_CHARS),
+        )
+        _add_optional_hit_field(hit, "href", _receipt_href(_receipt_value(raw, "source_uri")))
+        receipt_hits.append(hit)
+
+    return receipt_hits
+
+
+def _rank_retrieval_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in hits:
+        key = str(raw.get("key") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ranked.append({**raw, "rank": len(ranked) + 1})
+    return ranked
+
+
+def _retrieval_warning(scope: str, message: str, code: str = "retrieval_unavailable") -> dict[str, str]:
+    return {"scope": scope, "code": code, "message": message}
+
+
+async def _build_kb_retrieval_for_chat(
+    pool,
+    llm_router,
+    *,
+    kb_ids: list[int] | None,
+    messages: list[AgentChatMessage],
+    strict: bool = False,
+) -> _AgentRetrievalPart:
+    ids = _dedupe_positive_ints(kb_ids, 10)
+    if not ids:
+        return _AgentRetrievalPart()
+
+    part = _AgentRetrievalPart(requested=True)
+    query = _last_user_query(messages)
+    if not query:
+        part.outcome = "unavailable"
+        part.warnings.append(
+            _retrieval_warning(
+                "knowledge_base",
+                "缺少可用于知识库检索的问题，本次回答未使用所选资料。",
+                "query_unavailable",
+            )
+        )
+        return part
+
+    try:
+        # 局部导入避免顶部循环依赖。
+        from app.services.kb_recall import recall_kbs, render_kb_context
+
+        hits = await recall_kbs(
+            pool,
+            llm_router,
+            kb_ids=ids,
+            query=query,
+            top_k_total=12,
+            strict=strict,
+        )
+        part.context = render_kb_context(hits)
+        part.hits = _kb_hits_to_receipt_hits(hits)
+        part.outcome = "matched" if part.hits else "empty"
+    except Exception:
+        logger.warning("agent.kb_recall_failed", extra={"data": {"kb_ids": ids}})
+        part.outcome = "unavailable"
+        part.warnings.append(
+            _retrieval_warning(
+                "knowledge_base",
+                "知识库检索暂不可用，本次回答可能未使用所选资料。",
+            )
+        )
+    return part
+
+
+async def _build_kb_context_for_chat(
+    pool,
+    llm_router,
+    *,
+    kb_ids: list[int] | None,
+    messages: list[AgentChatMessage],
+) -> str | None:
+    """Backward-compatible context-only facade for focused callers/tests."""
+    return (
+        await _build_kb_retrieval_for_chat(
+            pool,
+            llm_router,
+            kb_ids=kb_ids,
+            messages=messages,
+        )
+    ).context
+
+
+async def _build_atlas_retrieval_for_chat(
     pool,
     *,
     atlas_scope: AgentAtlasScope | None,
     user_id: int | None,
     llm_router=None,
     messages: list[AgentChatMessage] | None = None,
-) -> str | None:
-    """Build an Aether Atlas context block for Agent chat.
-
-    It reads selected KPs/carriers, optionally expands with semantic KP recall
-    from the last user message, then adds relation-neighborhood and evidence
-    context. All reads remain scoped by the forwarded user id.
-    """
-    if atlas_scope is None or user_id is None:
-        return None
+    strict: bool = False,
+) -> _AgentRetrievalPart:
+    if atlas_scope is None:
+        return _AgentRetrievalPart()
 
     kp_ids = _dedupe_positive_ints(atlas_scope.kpIds, 12)
     carrier_ids = _dedupe_positive_ints(atlas_scope.carrierIds, 6)
-    query = ""
-    for message in reversed(messages or []):
-        if message.role == "user":
-            query = (message.content or "").strip()
-            break
+    query = _last_user_query(messages)
     if not kp_ids and not carrier_ids and (not atlas_scope.semanticRecall or not query):
-        return None
+        return _AgentRetrievalPart()
+
+    part = _AgentRetrievalPart(requested=True)
+    if user_id is None:
+        part.outcome = "unavailable"
+        part.warnings.append(
+            _retrieval_warning(
+                "atlas",
+                "Atlas 检索暂不可用，本次回答可能未使用所选知识。",
+            )
+        )
+        return part
 
     try:
-        from app.services.atlas_recall import recall_atlas_context, render_atlas_context
+        from app.services.atlas_recall import (
+            recall_atlas_context,
+            render_atlas_context,
+            selected_atlas_sources_snapshot,
+        )
+
+        selected_snapshot = None
+        if strict:
+            selected_snapshot = await selected_atlas_sources_snapshot(
+                pool,
+                llm=llm_router,
+                user_id=user_id,
+                kp_ids=kp_ids,
+                carrier_ids=carrier_ids,
+            )
+        if strict and selected_snapshot is None:
+            part.outcome = "unavailable"
+            part.warnings.append(
+                _retrieval_warning(
+                    "atlas",
+                    "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
+                    "selected_source_unavailable",
+                )
+            )
+            return part
 
         context = await recall_atlas_context(
             pool,
@@ -790,11 +1123,103 @@ async def _build_atlas_context_for_chat(
             semantic_limit=atlas_scope.semanticLimit if atlas_scope.semanticRecall else 0,
             neighborhood_depth=atlas_scope.neighborhoodDepth,
             include_evidence=atlas_scope.includeEvidence,
+            strict=strict,
         )
-        return render_atlas_context(context)
+        post_snapshot = None
+        if strict:
+            post_snapshot = await selected_atlas_sources_snapshot(
+                pool,
+                llm=llm_router,
+                user_id=user_id,
+                kp_ids=kp_ids,
+                carrier_ids=carrier_ids,
+            )
+        if strict and (
+            post_snapshot is None
+            or post_snapshot != selected_snapshot
+            or context.selected_note_revisions != selected_snapshot.note_revisions
+        ):
+            part.outcome = "unavailable"
+            part.warnings.append(
+                _retrieval_warning(
+                    "atlas",
+                    "部分所选 Atlas 来源不存在、无权访问或尚未准备完成，本次回答未使用所选知识。",
+                    "selected_source_unavailable",
+                )
+            )
+            return part
+        part.context = render_atlas_context(context)
+        part.hits = _atlas_context_to_receipt_hits(context)
+        part.outcome = "matched" if part.hits else "empty"
     except Exception:
         logger.warning("agent.atlas_context_failed", extra={"data": {"kp_ids": kp_ids}})
+        part.outcome = "unavailable"
+        part.warnings.append(
+            _retrieval_warning(
+                "atlas",
+                "Atlas 检索暂不可用，本次回答可能未使用所选知识。",
+            )
+        )
+    return part
+
+
+async def _build_atlas_context_for_chat(
+    pool,
+    *,
+    atlas_scope: AgentAtlasScope | None,
+    user_id: int | None,
+    llm_router=None,
+    messages: list[AgentChatMessage] | None = None,
+) -> str | None:
+    """Backward-compatible context-only facade for focused callers/tests."""
+    return (
+        await _build_atlas_retrieval_for_chat(
+            pool,
+            atlas_scope=atlas_scope,
+            user_id=user_id,
+            llm_router=llm_router,
+            messages=messages,
+        )
+    ).context
+
+
+def _build_retrieval_event(
+    payload: AgentChatRequest,
+    kb_part: _AgentRetrievalPart,
+    atlas_part: _AgentRetrievalPart,
+) -> dict[str, Any] | None:
+    parts = [part for part in (kb_part, atlas_part) if part.requested]
+    if not parts:
         return None
+
+    atlas_scope = payload.atlasScope
+    hits = _rank_retrieval_hits([hit for part in parts for hit in part.hits])
+    outcomes = [part.outcome for part in parts]
+    if hits:
+        retrieval_status = "matched" if all(outcome == "matched" for outcome in outcomes) else "partial"
+    elif any(outcome == "unavailable" for outcome in outcomes):
+        retrieval_status = "unavailable"
+    else:
+        retrieval_status = "empty"
+
+    return {
+        "type": "retrieval",
+        "version": 1,
+        "status": retrieval_status,
+        "requested": {
+            "knowledgeBaseIds": _dedupe_positive_ints(payload.kbIds, 10),
+            "atlasKnowledgePointIds": _dedupe_positive_ints(
+                atlas_scope.kpIds if atlas_scope else None,
+                12,
+            ),
+            "atlasCarrierIds": _dedupe_positive_ints(
+                atlas_scope.carrierIds if atlas_scope else None,
+                6,
+            ),
+        },
+        "hits": hits,
+        "warnings": [warning for part in parts for warning in part.warnings],
+    }
 
 
 async def _build_picker_context(
@@ -1310,18 +1735,31 @@ async def agent_chat(
     )
     # KB picker 选中后，按最后一条 user 消息做语义召回并拼一段 system 提示。
     # 与 picker_context 各占独立 system message，便于 prompt 调试 + 不互相覆盖。
-    kb_context = await _build_kb_context_for_chat(
-        pool, llm_router,
-        kb_ids=payload.kbIds,
-        messages=payload.messages,
-    )
-    atlas_context = await _build_atlas_context_for_chat(
-        pool,
-        atlas_scope=payload.atlasScope,
-        user_id=user_id,
-        llm_router=llm_router,
-        messages=payload.messages,
-    )
+    knowledge_context_mode = payload.knowledgeContextMode or "auto"
+    if knowledge_context_mode == "none":
+        # Defense in depth: the schema and Go proxy both normalize none to null
+        # sentinels, but the route still avoids invoking either private recall
+        # implementation based on the mode itself.
+        kb_retrieval = _AgentRetrievalPart()
+        atlas_retrieval = _AgentRetrievalPart()
+    else:
+        kb_retrieval = await _build_kb_retrieval_for_chat(
+            pool, llm_router,
+            kb_ids=payload.kbIds,
+            messages=payload.messages,
+            strict=knowledge_context_mode == "selected",
+        )
+        atlas_retrieval = await _build_atlas_retrieval_for_chat(
+            pool,
+            atlas_scope=payload.atlasScope,
+            user_id=user_id,
+            llm_router=llm_router,
+            messages=payload.messages,
+            strict=knowledge_context_mode == "selected",
+        )
+    kb_context = kb_retrieval.context
+    atlas_context = atlas_retrieval.context
+    retrieval_event = _build_retrieval_event(payload, kb_retrieval, atlas_retrieval)
     if kb_context:
         if context_block:
             context_block = context_block + "\n\n---\n\n" + kb_context
@@ -1332,10 +1770,31 @@ async def agent_chat(
             context_block = context_block + "\n\n---\n\n" + atlas_context
         else:
             context_block = atlas_context
+    selected_context_blocked = (
+        knowledge_context_mode == "selected"
+        and (
+            retrieval_event is None
+            or any(
+                part.requested and part.outcome == "unavailable"
+                for part in (kb_retrieval, atlas_retrieval)
+            )
+            or not retrieval_event.get("hits")
+            or not (kb_context or atlas_context)
+        )
+    )
+    if knowledge_context_mode == "selected" and not selected_context_blocked:
+        context_block = (
+            _SELECTED_CONTEXT_POLICY
+            if not context_block
+            else _SELECTED_CONTEXT_POLICY + "\n\n---\n\n" + context_block
+        )
     chat_messages = _build_chat_messages(payload, context_block=context_block)
 
-    # SSRF 守卫
-    await llm_router._guard_api_base(resolved.api_base)  # noqa: SLF001
+    # A blocked selected-context turn never contacts the model endpoint, so it
+    # must not depend on provider DNS/SSRF validation to return its recoverable
+    # receipt. Every path that can call the provider still runs the guard.
+    if not selected_context_blocked:
+        await llm_router._guard_api_base(resolved.api_base)  # noqa: SLF001
 
     async def generate():
         start_time = time.perf_counter()
@@ -1343,6 +1802,32 @@ async def agent_chat(
         response_parts: list[str] = []
         think_parts: list[str] = []
         error_code: str | None = None
+        # The receipt is emitted before provider output in both real and mock
+        # modes, so clients can render grounding state before any answer text.
+        if retrieval_event is not None:
+            data = json.dumps(retrieval_event, ensure_ascii=False)
+            yield f"data: {data}\n\n"
+        if selected_context_blocked:
+            error_event = {
+                "type": "error",
+                "code": _SELECTED_CONTEXT_NOT_GROUNDED_CODE,
+                "message": _SELECTED_CONTEXT_NOT_GROUNDED_MESSAGE,
+                "retryable": True,
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            await _record_agent_usage(
+                request=request,
+                metrics=metrics,
+                usage_logger=usage_logger,
+                user_id=user_id,
+                resolved=resolved,
+                request_text=request_text,
+                response_text="",
+                start_time=start_time,
+                success=False,
+                error_code=_SELECTED_CONTEXT_NOT_GROUNDED_CODE,
+            )
+            return
         if settings.mock_mode and not resolved.override:
             for chunk in [
                 "[mock:", resolved.model, "] ", "你好,",
