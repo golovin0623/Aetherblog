@@ -669,7 +669,7 @@ def _coerce_content_events(value: Any) -> list[dict[str, str]]:
 def _extract_reasoning_content(delta: Any) -> str:
     # 不同 OpenAI-compatible provider / LiteLLM 版本对 reasoning 增量字段命名
     # 不完全一致。只抽取显式文本，不把结构化 usage / token 计数误当思考正文。
-    for field in (
+    for reasoning_field in (
         "reasoning_content",
         "reasoning",
         "thinking",
@@ -677,7 +677,7 @@ def _extract_reasoning_content(delta: Any) -> str:
         "thinking_blocks",
         "reasoning_items",
     ):
-        text = _coerce_delta_text(_get_delta_field(delta, field))
+        text = _coerce_delta_text(_get_delta_field(delta, reasoning_field))
         if text:
             return text
     provider_specific = _get_delta_field(delta, "provider_specific_fields")
