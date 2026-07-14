@@ -993,6 +993,7 @@ async def _build_kb_retrieval_for_chat(
     *,
     kb_ids: list[int] | None,
     messages: list[AgentChatMessage],
+    strict: bool = False,
 ) -> _AgentRetrievalPart:
     ids = _dedupe_positive_ints(kb_ids, 10)
     if not ids:
@@ -1015,7 +1016,14 @@ async def _build_kb_retrieval_for_chat(
         # 局部导入避免顶部循环依赖。
         from app.services.kb_recall import recall_kbs, render_kb_context
 
-        hits = await recall_kbs(pool, llm_router, kb_ids=ids, query=query, top_k_total=12)
+        hits = await recall_kbs(
+            pool,
+            llm_router,
+            kb_ids=ids,
+            query=query,
+            top_k_total=12,
+            strict=strict,
+        )
         part.context = render_kb_context(hits)
         part.hits = _kb_hits_to_receipt_hits(hits)
         part.outcome = "matched" if part.hits else "empty"
@@ -1690,6 +1698,7 @@ async def agent_chat(
             pool, llm_router,
             kb_ids=payload.kbIds,
             messages=payload.messages,
+            strict=knowledge_context_mode == "selected",
         )
         atlas_retrieval = await _build_atlas_retrieval_for_chat(
             pool,
@@ -1715,6 +1724,10 @@ async def agent_chat(
         knowledge_context_mode == "selected"
         and (
             retrieval_event is None
+            or any(
+                part.requested and part.outcome == "unavailable"
+                for part in (kb_retrieval, atlas_retrieval)
+            )
             or not retrieval_event.get("hits")
             or not (kb_context or atlas_context)
         )

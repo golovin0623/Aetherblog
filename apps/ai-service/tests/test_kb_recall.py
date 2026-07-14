@@ -90,6 +90,25 @@ async def test_recall_strict_reports_unavailable_instead_of_empty(active_profile
 
 
 @pytest.mark.asyncio
+async def test_recall_strict_rejects_partial_multi_kb_success(monkeypatch):
+    async def profile(_pool, kb_id):
+        if kb_id == 8:
+            raise RuntimeError("second selected knowledge base is temporarily unavailable")
+        return SimpleNamespace(id=8, model_id="embedding-test", top_k=5, score_threshold=0.2)
+
+    monkeypatch.setattr(kb_recall, "fetch_kb_active_profile", profile)
+
+    with pytest.raises(kb_recall.KBRecallUnavailable):
+        await kb_recall.recall_kbs(
+            _Pool(_Conn(rows=[])),
+            _LLM(),
+            kb_ids=[7, 8],
+            query="两个指定知识库都必须完成检索",
+            strict=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_recall_strict_returns_true_empty_after_successful_search(active_profile):
     result = await kb_recall.recall_kbs(
         _Pool(_Conn(rows=[])),

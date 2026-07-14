@@ -641,6 +641,87 @@ async def test_agent_chat_selected_empty_scope_emits_receipt_and_recoverable_err
 
 
 @pytest.mark.asyncio
+async def test_agent_chat_selected_multiple_kbs_blocks_when_any_recall_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import kb_recall as kb_recall_module
+
+    async def fake_resolve_for_agent(_llm_router: Any, **_kwargs: Any) -> LlmRouter._ResolvedRoute:
+        return _resolved_route()
+
+    async def forbidden_acompletion(**_kwargs: Any):
+        raise AssertionError("partial selected knowledge must not reach the model provider")
+
+    recall_calls: list[dict[str, Any]] = []
+
+    async def fake_recall_kbs(*_args: Any, **kwargs: Any):
+        recall_calls.append(kwargs)
+        if kwargs.get("strict"):
+            raise kb_recall_module.KBRecallUnavailable("one selected knowledge base failed")
+        return [
+            kb_recall_module.KBHit(
+                kb_id=9,
+                kb_slug="available-source",
+                kb_name="可用资料",
+                kb_file_id=12,
+                file_title="局部结果",
+                chunk_index=1,
+                snippet="另一个显式选择的知识库暂不可用",
+                similarity=0.92,
+            )
+        ]
+
+    async def fake_build_atlas_retrieval_for_chat(*_args: Any, **_kwargs: Any):
+        return agent_module._AgentRetrievalPart(
+            requested=True,
+            outcome="matched",
+            context="仍然可用的 Atlas 上下文",
+            hits=[
+                {
+                    "key": "atlas:kp:3",
+                    "kind": "atlas_knowledge_point",
+                    "title": "仍然可用的知识点",
+                    "snippet": "不能用它掩盖另一个显式来源不可用的事实",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(agent_module, "_resolve_for_agent", fake_resolve_for_agent)
+    monkeypatch.setattr(agent_module, "acompletion", forbidden_acompletion)
+    monkeypatch.setattr(
+        agent_module,
+        "_build_atlas_retrieval_for_chat",
+        fake_build_atlas_retrieval_for_chat,
+    )
+    monkeypatch.setattr(kb_recall_module, "recall_kbs", fake_recall_kbs)
+    monkeypatch.setattr(kb_recall_module, "render_kb_context", lambda _hits: "partial context")
+
+    response = await agent_module.agent_chat(
+        request=_request(),
+        payload=_chat_request(
+            knowledgeContextMode="selected",
+            kbIds=[9, 10],
+            atlasScope=agent_module.AgentAtlasScope(kpIds=[3], semanticRecall=False),
+        ),
+        user=SimpleNamespace(user_id="system", role="admin"),
+        forwarded_user_id="7",
+        llm_router=FakeAgentRouter(),
+        pool=object(),
+        metrics=FakeMetrics(),
+        usage_logger=FakeUsageLogger(),
+    )
+
+    events = await _collect_sse_events(response)
+
+    assert recall_calls[0]["kb_ids"] == [9, 10]
+    assert recall_calls[0]["strict"] is True
+    assert [event["type"] for event in events] == ["retrieval", "error"]
+    assert events[0]["status"] == "partial"
+    assert [hit["key"] for hit in events[0]["hits"]] == ["atlas:kp:3"]
+    assert events[1]["code"] == "selected_context_not_grounded"
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_selected_receipt_hit_without_injected_text_still_blocks_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -704,7 +785,10 @@ async def test_agent_chat_auto_mode_keeps_generating_when_automatic_retrieval_is
         provider_calls.append(kwargs)
         return _aiter([_stream_part(SimpleNamespace(content="自动模式继续回答"))])
 
-    async def fake_recall_kbs(*_args: Any, **_kwargs: Any):
+    recall_calls: list[dict[str, Any]] = []
+
+    async def fake_recall_kbs(*_args: Any, **kwargs: Any):
+        recall_calls.append(kwargs)
         return []
 
     monkeypatch.setattr(agent_module, "_resolve_for_agent", fake_resolve_for_agent)
@@ -727,6 +811,7 @@ async def test_agent_chat_auto_mode_keeps_generating_when_automatic_retrieval_is
 
     assert [event["type"] for event in events] == ["retrieval", "delta", "done"]
     assert events[0]["status"] == "empty"
+    assert recall_calls[0]["strict"] is False
     assert len(provider_calls) == 1
 
 
