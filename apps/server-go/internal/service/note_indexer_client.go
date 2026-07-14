@@ -56,7 +56,7 @@ func NewNoteIndexerClient(client noteIndexAIClient, internalToken string) *NoteI
 	return &NoteIndexerClient{client: client, internalToken: internalToken}
 }
 
-func (c *NoteIndexerClient) IndexNote(ctx context.Context, noteID int64, userID *int64) (*NoteIndexResult, error) {
+func (c *NoteIndexerClient) IndexNote(ctx context.Context, noteID int64, userID *int64, attemptID *string) (*NoteIndexResult, error) {
 	if c == nil || c.client == nil {
 		return nil, errors.New("note indexer client not configured")
 	}
@@ -64,8 +64,9 @@ func (c *NoteIndexerClient) IndexNote(ctx context.Context, noteID int64, userID 
 		return nil, errors.New("AI internal service token not configured")
 	}
 	body, err := json.Marshal(struct {
-		UserID *int64 `json:"user_id,omitempty"`
-	}{UserID: userID})
+		UserID    *int64  `json:"user_id,omitempty"`
+		AttemptID *string `json:"attempt_id,omitempty"`
+	}{UserID: userID, AttemptID: attemptID})
 	if err != nil {
 		return nil, fmt.Errorf("marshal note index request: %w", err)
 	}

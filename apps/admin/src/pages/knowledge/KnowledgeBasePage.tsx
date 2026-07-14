@@ -31,11 +31,25 @@ import {
 import { storeKnowledgeWorkspaceHandoff } from '@/services/knowledgeWorkspaceHandoff';
 import { useAuthStore } from '@/stores';
 import {
+  canUseKnowledgeBase,
   getKnowledgeBaseNextAction,
   getKnowledgeBaseReadiness,
+  type KnowledgeBasePermission,
   type KnowledgeBaseReadiness,
   type KnowledgeBaseReadinessInput,
 } from './knowledgeBaseReadiness';
+
+const VIEW_ONLY_PRESENTATION = {
+  label: '仅可查看',
+  icon: ShieldCheck,
+  className:
+    'border-[var(--intelligence-border)] bg-[var(--intelligence-control)] text-[var(--ink-secondary)]',
+};
+
+const VIEW_ONLY_ACTION = {
+  label: '查看资料',
+  description: '当前权限只能查看资料清单；需要“可使用”或更高权限才能验证。',
+};
 
 const READINESS_PRESENTATION: Record<
   KnowledgeBaseReadiness,
@@ -85,6 +99,14 @@ function toKnowledgeBaseReadinessInput(kb: KnowledgeBase): KnowledgeBaseReadines
   };
 }
 
+export function getKnowledgeBaseDetailPath(
+  slug: string,
+  permission: KnowledgeBasePermission,
+) {
+  const basePath = `/intelligence/knowledge/${encodeURIComponent(slug)}`;
+  return canUseKnowledgeBase(permission) ? basePath : `${basePath}?tab=files`;
+}
+
 export default function KnowledgeBasePage() {
   const navigate = useNavigate();
   const userId = useAuthStore((state) => state.user?.id);
@@ -110,22 +132,30 @@ export default function KnowledgeBasePage() {
   }, [load]);
 
   const readinessSummary = useMemo(() => {
-    const summary: Record<KnowledgeBaseReadiness, number> = {
+    const summary: Record<KnowledgeBaseReadiness, number> & { viewOnly: number } = {
       empty: 0,
       processing: 0,
       attention: 0,
       ready: 0,
+      viewOnly: 0,
     };
 
     items.forEach((item) => {
-      summary[
-        getKnowledgeBaseReadiness(toKnowledgeBaseReadinessInput(item))
-      ] += 1;
+      const readiness = getKnowledgeBaseReadiness(toKnowledgeBaseReadinessInput(item));
+      if (readiness === 'ready' && !canUseKnowledgeBase(item.effectivePermission)) {
+        summary.viewOnly += 1;
+        return;
+      }
+      summary[readiness] += 1;
     });
     return summary;
   }, [items]);
 
   const verifyWithKnowledgeBase = (kb: KnowledgeBase) => {
+    if (!canUseKnowledgeBase(kb.effectivePermission)) {
+      toast.error('当前权限只能查看资料清单，需要“可使用”或更高权限才能验证。');
+      return;
+    }
     if (!userId) {
       toast.error('无法确认当前用户，请重新登录后再试。');
       return;
@@ -155,7 +185,7 @@ export default function KnowledgeBasePage() {
       ? '还没有资料库，从添加第一份资料开始。'
       : `${readinessSummary.ready} 个可以验证 · ${readinessSummary.processing} 个正在准备${
           readinessSummary.attention > 0 ? ` · ${readinessSummary.attention} 个需要处理` : ''
-        }`;
+        }${readinessSummary.viewOnly > 0 ? ` · ${readinessSummary.viewOnly} 个仅可查看` : ''}`;
 
   return (
     <IntelligenceShell mode="standard">
@@ -203,7 +233,7 @@ export default function KnowledgeBasePage() {
               <KnowledgeBaseRow
                 key={kb.id}
                 kb={kb}
-                onOpen={() => navigate(`/intelligence/knowledge/${kb.slug}`)}
+                onOpen={() => navigate(getKnowledgeBaseDetailPath(kb.slug, kb.effectivePermission))}
                 onVerify={() => verifyWithKnowledgeBase(kb)}
               />
             ))}
@@ -301,8 +331,13 @@ function KnowledgeBaseRow({
 }) {
   const readinessInput = toKnowledgeBaseReadinessInput(kb);
   const readiness = getKnowledgeBaseReadiness(readinessInput);
-  const nextAction = getKnowledgeBaseNextAction(readinessInput);
-  const presentation = READINESS_PRESENTATION[readiness];
+  const canVerify = readiness === 'ready' && canUseKnowledgeBase(kb.effectivePermission);
+  const nextAction = readiness === 'ready' && !canVerify
+    ? VIEW_ONLY_ACTION
+    : getKnowledgeBaseNextAction(readinessInput);
+  const presentation = readiness === 'ready' && !canVerify
+    ? VIEW_ONLY_PRESENTATION
+    : READINESS_PRESENTATION[readiness];
   const StatusIcon = presentation.icon;
   const isSystem = kb.kind === 'SYSTEM_POSTS';
   const unavailableCount = Math.max(0, kb.fileCount - kb.vectorizedCount);
@@ -365,10 +400,10 @@ function KnowledgeBaseRow({
 
       <button
         type="button"
-        onClick={readiness === 'ready' ? onVerify : onOpen}
+        onClick={canVerify ? onVerify : onOpen}
         className={cn(
           '!min-h-11 whitespace-nowrap sm:!min-h-10',
-          readiness === 'ready'
+          canVerify
             ? 'intelligence-action-button-primary'
             : 'intelligence-action-button',
         )}

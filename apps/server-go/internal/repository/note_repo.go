@@ -135,6 +135,7 @@ func (r *NoteRepo) Update(ctx context.Context, id int64, n *model.Note) (*model.
 			title=$1, content_markdown=$2, summary=$3, folder_id=$4,
 			source_type=$5, source_url=$6, source_title=$7, source_meta=$8,
 			is_pinned=$9, is_favorite=$10, word_count=$11, embedding_status=$12,
+			embedding_attempt_id=NULL,
 			updated_at=CURRENT_TIMESTAMP
 		WHERE id=$13 AND deleted=false
 		RETURNING *`,
@@ -159,6 +160,7 @@ func (r *NoteRepo) UpdateWithRelations(ctx context.Context, id int64, n *model.N
 			title=$1, content_markdown=$2, summary=$3, folder_id=$4,
 			source_type=$5, source_url=$6, source_title=$7, source_meta=$8,
 			is_pinned=$9, is_favorite=$10, word_count=$11, embedding_status=$12,
+			embedding_attempt_id=NULL,
 			updated_at=CURRENT_TIMESTAMP
 		WHERE id=$13 AND deleted=false
 		RETURNING *`,
@@ -184,7 +186,7 @@ var allowedNoteColumns = map[string]bool{
 	"title": true, "summary": true, "folder_id": true, "source_type": true,
 	"source_url": true, "source_title": true, "source_meta": true,
 	"is_pinned": true, "is_favorite": true, "archived": true,
-	"embedding_status": true, "last_opened_at": true, "updated_at": true,
+	"embedding_status": true, "embedding_attempt_id": true, "last_opened_at": true, "updated_at": true,
 }
 
 // UpdateProperties 按白名单局部更新笔记属性。
@@ -270,13 +272,40 @@ func (r *NoteRepo) MarkOpened(ctx context.Context, id int64, openedAt time.Time)
 	return err
 }
 
-// MarkEmbeddingPending exposes an honest in-progress state without changing the note content timestamp.
-func (r *NoteRepo) MarkEmbeddingPending(ctx context.Context, id int64) error {
+// MarkEmbeddingPending starts one fenced indexing attempt without changing the
+// note content timestamp. A later attempt replaces the token and supersedes it.
+func (r *NoteRepo) MarkEmbeddingPending(ctx context.Context, id int64, attemptID string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE notes
-		SET embedding_status='PENDING', embedding_error=NULL
-		WHERE id=$1 AND deleted=false`, id)
+		SET embedding_status='PENDING', embedding_error=NULL, embedding_attempt_id=$1
+		WHERE id=$2 AND deleted=false`, attemptID, id)
 	return err
+}
+
+// MarkEmbeddingFailedIfAttempt records a transport failure only while this
+// exact attempt remains pending. The token is intentionally retained so a
+// timed-out AI request may still commit a late success for the same attempt.
+func (r *NoteRepo) MarkEmbeddingFailedIfAttempt(
+	ctx context.Context,
+	id int64,
+	attemptID string,
+	errMsg string,
+) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE notes
+		SET embedding_status='FAILED', embedding_error=$1
+		WHERE id=$2
+			AND deleted=false
+			AND embedding_status='PENDING'
+			AND embedding_attempt_id=$3`, errMsg, id, attemptID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 // Duplicate 从现有笔记复制一份新笔记。

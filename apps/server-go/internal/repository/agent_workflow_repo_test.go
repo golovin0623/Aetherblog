@@ -215,6 +215,33 @@ func TestAgentWorkflowRepoFindRunByIDReturnsNilWhenMissing(t *testing.T) {
 	}
 }
 
+func TestAgentWorkflowRepoCancelRunPersistsRetryableCancellation(t *testing.T) {
+	repo, mock, cleanup := newAgentWorkflowRepoMock(t)
+	defer cleanup()
+
+	now := time.Now()
+	mock.ExpectQuery(`(?s)UPDATE agent_workflow_runs r.*status = CASE.*THEN 'cancelled'.*retryable = CASE.*THEN TRUE.*RETURNING`).
+		WithArgs(int64(101), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "workflow_id", "version", "user_id", "status", "simulated",
+			"inputs", "total_node_count", "retryable", "created_at",
+		}).AddRow(
+			int64(101), int64(11), 3, int64(7), "cancelled", false,
+			`{}`, 2, true, now,
+		))
+
+	run, err := repo.CancelRun(t.Context(), 7, 101)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+	if run == nil || run.Status != "cancelled" || !run.Retryable {
+		t.Fatalf("unexpected cancelled run: %#v", run)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestAgentWorkflowRepoListRunLogsChecksRunOwnershipAndReturnsLogs(t *testing.T) {
 	repo, mock, cleanup := newAgentWorkflowRepoMock(t)
 	defer cleanup()

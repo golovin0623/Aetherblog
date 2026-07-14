@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canUseKnowledgeBase,
   getKnowledgeBaseNextAction,
   getKnowledgeBaseReadiness,
   type KnowledgeBaseReadinessInput,
 } from './knowledgeBaseReadiness';
+
+describe('knowledge base use permission', () => {
+  it('matches the server retrieval gate instead of treating VIEW as usable', () => {
+    expect(canUseKnowledgeBase('')).toBe(false);
+    expect(canUseKnowledgeBase('VIEW')).toBe(false);
+    expect(canUseKnowledgeBase('USE')).toBe(true);
+    expect(canUseKnowledgeBase('EDIT')).toBe(true);
+    expect(canUseKnowledgeBase('MANAGE')).toBe(true);
+  });
+});
 
 const readyCustomKnowledgeBase: KnowledgeBaseReadinessInput = {
   kind: 'CUSTOM',

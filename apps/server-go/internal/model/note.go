@@ -24,6 +24,7 @@ type Note struct {
 	EmbeddingProfileID   *int64     `db:"embedding_profile_id"`
 	EmbeddingIndexedAt   *time.Time `db:"embedding_indexed_at"`
 	EmbeddingError       *string    `db:"embedding_error"`
+	EmbeddingAttemptID   *string    `db:"embedding_attempt_id"`
 	LastOpenedAt         *time.Time `db:"last_opened_at"`
 	CreatedAt            time.Time  `db:"created_at"`
 	UpdatedAt            time.Time  `db:"updated_at"`

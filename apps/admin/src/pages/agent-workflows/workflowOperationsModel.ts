@@ -111,7 +111,8 @@ export function buildWorkflowRunActions(
   const retryStatus = selectedRun.status === 'failed'
     || selectedRun.status === 'cancelled'
     || selectedRun.status === 'budget_exceeded';
-  const canRetry = retryStatus && selectedRun.retryable === true;
+  const canRetry = selectedRun.status === 'cancelled'
+    || (retryStatus && selectedRun.retryable === true);
   const canCancel = selectedRun.status === 'pending'
     || selectedRun.status === 'running'
     || selectedRun.status === 'paused';

@@ -3,7 +3,7 @@
 // 路由：/intelligence/knowledge/:slug
 // 默认从“验证效果”进入；资料、高级设置与权限按任务分层，避免把索引术语放在首屏。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -53,10 +53,23 @@ import {
   getKnowledgeBaseRetrievalGuidance,
   validateKnowledgeBaseRetrievalQuery,
 } from './knowledgeBaseRetrievalModel';
+import { canUseKnowledgeBase } from './knowledgeBaseReadiness';
 
 type Tab = 'verify' | 'files' | 'profiles' | 'members';
 
 export const DEFAULT_KNOWLEDGE_DETAIL_TAB: Tab = 'verify';
+
+export function parseKnowledgeDetailTab(value: string | null): Tab {
+  switch (value) {
+    case 'verify':
+    case 'files':
+    case 'profiles':
+    case 'members':
+      return value;
+    default:
+      return DEFAULT_KNOWLEDGE_DETAIL_TAB;
+  }
+}
 
 export function getKnowledgeDetailTabs(hideMembers: boolean) {
   const items = [
@@ -162,11 +175,12 @@ function KnowledgeDetailConfirmDialog({
 export default function KnowledgeBaseDetailPage() {
   const { slug = '' } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>(DEFAULT_KNOWLEDGE_DETAIL_TAB);
+  const tab = parseKnowledgeDetailTab(searchParams.get('tab'));
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -197,9 +211,15 @@ export default function KnowledgeBaseDetailPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    setTab(DEFAULT_KNOWLEDGE_DETAIL_TAB);
-  }, [slug]);
+  const changeTab = useCallback((nextTab: Tab) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === DEFAULT_KNOWLEDGE_DETAIL_TAB) {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const canManage = kb?.effectivePermission === 'MANAGE';
   const canEdit = canManage || kb?.effectivePermission === 'EDIT';
@@ -264,7 +284,7 @@ export default function KnowledgeBaseDetailPage() {
         <DetailSkeleton />
       ) : (
         <>
-          <Tabs value={tab} onChange={setTab} hideMembers={isSystem} />
+          <Tabs value={tab} onChange={changeTab} hideMembers={isSystem} />
           <AnimatePresence mode="wait">
             <motion.div
               key={tab}
@@ -370,7 +390,7 @@ function VerifyTab({ kb }: { kb: KnowledgeBase }) {
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<KnowledgeBaseRetrievalResponse | null>(null);
 
-  const canUse = ['USE', 'EDIT', 'MANAGE'].includes(kb.effectivePermission);
+  const canUse = canUseKnowledgeBase(kb.effectivePermission);
   const validation = validateKnowledgeBaseRetrievalQuery(query);
 
   const submit = async (event: React.FormEvent) => {

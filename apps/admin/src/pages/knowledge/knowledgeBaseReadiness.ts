@@ -1,5 +1,16 @@
 export type KnowledgeBaseReadiness = 'empty' | 'processing' | 'attention' | 'ready';
 export type KnowledgeBaseKind = 'CUSTOM' | 'SYSTEM_POSTS';
+export type KnowledgeBasePermission = '' | 'VIEW' | 'USE' | 'EDIT' | 'MANAGE';
+
+const KNOWLEDGE_BASE_USE_PERMISSIONS = new Set<KnowledgeBasePermission>([
+  'USE',
+  'EDIT',
+  'MANAGE',
+]);
+
+export function canUseKnowledgeBase(permission: KnowledgeBasePermission | null | undefined) {
+  return permission != null && KNOWLEDGE_BASE_USE_PERMISSIONS.has(permission);
+}
 
 export interface KnowledgeBaseReadinessInput {
   kind: KnowledgeBaseKind;

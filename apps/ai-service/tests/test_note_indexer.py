@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from app.services import note_indexer as note_indexer_module
 from app.services.note_indexer import NoteIndexerService, _note_fingerprint
 from app.services.vector_store import SearchProfile
 from tests.support import FakeConn, FakePool
@@ -41,7 +42,49 @@ def _profile(**overrides: Any) -> SearchProfile:
 
 
 @pytest.mark.asyncio
-async def test_note_indexer_writes_profile_bound_note_chunks() -> None:
+async def test_note_indexer_begin_attempt_claims_fenced_pending_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(note_indexer_module.secrets, "token_hex", lambda _size: "attempt-a")
+
+    def fetchrow(sql: str, args: tuple[Any, ...]) -> dict[str, Any] | None:
+        assert "UPDATE notes" in sql
+        assert "embedding_status = 'PENDING'" in sql
+        assert "embedding_attempt_id = $1" in sql
+        assert "RETURNING id" in sql
+        assert args == ("attempt-a", 11, 9)
+        return {"id": 11}
+
+    attempt_id = await NoteIndexerService(
+        FakePool(FakeConn(fetchrow=fetchrow)),
+        FakeEmbedLLM(),
+    ).begin_attempt(note_id=11, user_id=9)
+
+    assert attempt_id == "attempt-a"
+
+
+@pytest.mark.asyncio
+async def test_note_indexer_fail_attempt_closes_only_matching_pending_token() -> None:
+    def execute(sql: str, args: tuple[Any, ...]) -> str:
+        assert "embedding_status = 'FAILED'" in sql
+        assert "embedding_attempt_id = NULL" in sql
+        assert "embedding_status = 'PENDING'" in sql
+        assert "embedding_attempt_id = $3" in sql
+        assert args == ("safe failure", 11, "attempt-a")
+        return "UPDATE 1"
+
+    await NoteIndexerService(
+        FakePool(FakeConn(execute=execute)),
+        FakeEmbedLLM(),
+    ).fail_attempt(
+        note_id=11,
+        attempt_id="attempt-a",
+        error="safe failure",
+    )
+
+
+@pytest.mark.asyncio
+async def test_matching_late_success_commits_profile_bound_note_chunks() -> None:
     profile = _profile()
 
     def fetchrow(sql: str, args: tuple[Any, ...]) -> dict[str, Any] | None:
@@ -57,6 +100,8 @@ async def test_note_indexer_writes_profile_bound_note_chunks() -> None:
                 "summary": "Short summary",
                 "content_markdown": "Body paragraph with [[links]]",
                 "author_id": 9,
+                "embedding_status": "FAILED",
+                "embedding_attempt_id": "attempt-a",
             }
         raise AssertionError(f"unexpected fetchrow SQL: {sql}")
 
@@ -66,6 +111,7 @@ async def test_note_indexer_writes_profile_bound_note_chunks() -> None:
     outcome = await NoteIndexerService(FakePool(conn), llm).index_note(
         note_id=11,
         user_id=9,
+        attempt_id="attempt-a",
     )
 
     assert outcome is not None
@@ -116,10 +162,148 @@ async def test_note_indexer_writes_profile_bound_note_chunks() -> None:
     indexed_sql, indexed_args = indexed_updates[0]
     assert "embedding_fingerprint" in indexed_sql
     assert "embedding_profile_id" in indexed_sql
+    assert "embedding_attempt_id = NULL" in indexed_sql
     assert indexed_args[0] == _note_fingerprint(
         "Title: Evidence note\n\nSummary:\nShort summary\n\nContent:\nBody paragraph with [[links]]"
     )
     assert indexed_args[1:] == (42, 11)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_attempt_id", ["attempt-b", None])
+async def test_note_indexer_rejects_replaced_or_cleared_attempt_before_embedding(
+    stored_attempt_id: str | None,
+) -> None:
+    profile = _profile()
+
+    def fetchrow(sql: str, args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "FROM notes" in sql:
+            assert "FOR UPDATE" not in sql
+            assert args == (11, 9)
+            return {
+                "id": 11,
+                "title": "Evidence note",
+                "summary": None,
+                "content_markdown": "Same revision",
+                "author_id": 9,
+                "embedding_attempt_id": stored_attempt_id,
+            }
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    conn = FakeConn(fetchrow=fetchrow)
+    llm = FakeEmbedLLM()
+
+    outcome = await NoteIndexerService(FakePool(conn), llm).index_note(
+        note_id=11,
+        user_id=9,
+        profile=profile,
+        attempt_id="attempt-a",
+    )
+
+    assert outcome is not None
+    assert outcome.status == "STALE"
+    assert "newer indexing attempt" in outcome.error
+    assert llm.calls == []
+    assert conn.execute_calls == []
+
+
+@pytest.mark.asyncio
+async def test_successful_embedding_cannot_commit_after_attempt_is_replaced() -> None:
+    profile = _profile()
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "FROM notes" not in sql:
+            raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+        return {
+            "id": 11,
+            "title": "Same revision",
+            "summary": None,
+            "content_markdown": "Grounded material",
+            "author_id": 9,
+            "embedding_attempt_id": "attempt-b" if "FOR UPDATE" in sql else "attempt-a",
+        }
+
+    conn = FakeConn(fetchrow=fetchrow)
+    outcome = await NoteIndexerService(FakePool(conn), FakeEmbedLLM()).index_note(
+        note_id=11,
+        user_id=9,
+        profile=profile,
+        attempt_id="attempt-a",
+    )
+
+    assert outcome is not None
+    assert outcome.status == "STALE"
+    assert conn.executemany_calls == []
+    assert not any("DELETE FROM note_embeddings" in sql for sql, _ in conn.execute_calls)
+    assert not any("embedding_status = 'INDEXED'" in sql for sql, _ in conn.execute_calls)
+
+
+@pytest.mark.asyncio
+async def test_failed_attempt_cannot_overwrite_new_attempt_for_same_revision() -> None:
+    profile = _profile()
+    locked = False
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        nonlocal locked
+        if "FROM notes" not in sql:
+            raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+        if "FOR UPDATE" in sql:
+            locked = True
+        return {
+            "id": 11,
+            "title": "Same revision",
+            "summary": None,
+            "content_markdown": "Grounded material",
+            "author_id": 9,
+            "embedding_attempt_id": "attempt-b" if locked else "attempt-a",
+        }
+
+    conn = FakeConn(fetchrow=fetchrow)
+    outcome = await NoteIndexerService(FakePool(conn), FailingEmbedLLM()).index_note(
+        note_id=11,
+        user_id=9,
+        profile=profile,
+        attempt_id="attempt-a",
+    )
+
+    assert outcome is not None
+    assert outcome.status == "FAILED"
+    assert not any("embedding_status = 'FAILED'" in sql for sql, _ in conn.execute_calls)
+
+
+@pytest.mark.asyncio
+async def test_matching_attempt_failure_clears_attempt_token() -> None:
+    profile = _profile()
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "FROM notes" in sql:
+            return {
+                "id": 11,
+                "title": "Same revision",
+                "summary": None,
+                "content_markdown": "Grounded material",
+                "author_id": 9,
+                "embedding_attempt_id": "attempt-a",
+            }
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    conn = FakeConn(fetchrow=fetchrow)
+    outcome = await NoteIndexerService(FakePool(conn), FailingEmbedLLM()).index_note(
+        note_id=11,
+        user_id=9,
+        profile=profile,
+        attempt_id="attempt-a",
+    )
+
+    assert outcome is not None
+    assert outcome.status == "FAILED"
+    failed_updates = [
+        (sql, args)
+        for sql, args in conn.execute_calls
+        if "embedding_status = 'FAILED'" in sql
+    ]
+    assert len(failed_updates) == 1
+    assert "embedding_attempt_id = NULL" in failed_updates[0][0]
 
 
 @pytest.mark.asyncio
@@ -356,3 +540,34 @@ async def test_note_indexer_marks_blank_note_skipped_without_embedding() -> None
     assert any("FOR UPDATE" in sql for sql, _ in conn.fetchrow_calls)
     assert any("DELETE FROM note_embeddings" in sql for sql, _ in conn.execute_calls)
     assert any("embedding_status = 'SKIPPED'" in sql for sql, _ in conn.execute_calls)
+
+
+@pytest.mark.asyncio
+async def test_blank_note_cannot_commit_after_attempt_is_replaced() -> None:
+    profile = _profile()
+
+    def fetchrow(sql: str, _args: tuple[Any, ...]) -> dict[str, Any] | None:
+        if "FROM notes" in sql:
+            return {
+                "id": 12,
+                "title": "",
+                "summary": None,
+                "content_markdown": "",
+                "author_id": 9,
+                "embedding_attempt_id": "attempt-b" if "FOR UPDATE" in sql else "attempt-a",
+            }
+        raise AssertionError(f"unexpected fetchrow SQL: {sql}")
+
+    conn = FakeConn(fetchrow=fetchrow)
+    outcome = await NoteIndexerService(FakePool(conn), FakeEmbedLLM()).index_note(
+        note_id=12,
+        user_id=9,
+        profile=profile,
+        attempt_id="attempt-a",
+    )
+
+    assert outcome is not None
+    assert outcome.status == "STALE"
+    assert conn.executemany_calls == []
+    assert not any("DELETE FROM note_embeddings" in sql for sql, _ in conn.execute_calls)
+    assert not any("embedding_status = 'SKIPPED'" in sql for sql, _ in conn.execute_calls)

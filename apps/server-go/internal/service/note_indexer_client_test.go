@@ -62,7 +62,8 @@ func TestNoteIndexerClientIndexNote(t *testing.T) {
 	client := NewNoteIndexerClient(ai, "internal-token")
 	userID := int64(9)
 
-	result, err := client.IndexNote(context.Background(), 11, &userID)
+	attemptID := "attempt-a"
+	result, err := client.IndexNote(context.Background(), 11, &userID, &attemptID)
 	if err != nil {
 		t.Fatalf("IndexNote returned error: %v", err)
 	}
@@ -75,6 +76,9 @@ func TestNoteIndexerClientIndexNote(t *testing.T) {
 	if !strings.Contains(ai.body, `"user_id":9`) {
 		t.Fatalf("body = %s, want user_id", ai.body)
 	}
+	if !strings.Contains(ai.body, `"attempt_id":"attempt-a"`) {
+		t.Fatalf("body = %s, want attempt_id", ai.body)
+	}
 	if result.NoteID != 11 || result.ProfileID != 42 || result.EmbeddingDim != 1536 || result.ChunkCount != 2 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
@@ -82,7 +86,7 @@ func TestNoteIndexerClientIndexNote(t *testing.T) {
 
 func TestNoteIndexerClientRequiresInternalToken(t *testing.T) {
 	client := NewNoteIndexerClient(&fakeNoteIndexAIClient{}, "")
-	_, err := client.IndexNote(context.Background(), 11, nil)
+	_, err := client.IndexNote(context.Background(), 11, nil, nil)
 	if err == nil {
 		t.Fatal("expected missing token error")
 	}

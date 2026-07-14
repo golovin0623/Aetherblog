@@ -20,6 +20,12 @@ router = APIRouter(
 
 class IndexNoteRequest(BaseModel):
     user_id: int | None = Field(default=None, ge=1)
+    attempt_id: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
 
 
 class IndexNoteResponse(BaseModel):
@@ -92,20 +98,38 @@ async def reindex_notes(
     not_found = 0
     errors: list[ReindexNoteError] = []
     for note_id in note_ids:
+        attempt_id: str | None = None
         try:
+            attempt_id = await service.begin_attempt(note_id=note_id, user_id=req.user_id)
+            if attempt_id is None:
+                not_found += 1
+                continue
             outcome = await service.index_note(
                 note_id=note_id,
                 user_id=req.user_id,
                 profile=profile,
+                attempt_id=attempt_id,
             )
             if outcome is None:
                 not_found += 1
-            elif outcome.status == "FAILED":
+            elif outcome.status in {"FAILED", "STALE"}:
+                if outcome.status == "FAILED":
+                    await service.fail_attempt(
+                        note_id=note_id,
+                        attempt_id=attempt_id,
+                        error="note batch indexing failed",
+                    )
                 failed += 1
                 errors.append(ReindexNoteError(id=note_id, error=outcome.error or "index failed"))
             else:
                 succeeded += 1
         except Exception as exc:
+            if attempt_id is not None:
+                await service.fail_attempt(
+                    note_id=note_id,
+                    attempt_id=attempt_id,
+                    error="note batch indexing request failed",
+                )
             failed += 1
             errors.append(ReindexNoteError(id=note_id, error=f"{type(exc).__name__}: {str(exc)[:300]}"))
 
@@ -171,12 +195,33 @@ async def index_note(
 ) -> IndexNoteResponse:
     if note_id <= 0:
         raise HTTPException(status_code=400, detail="note_id 必须为正整数")
-    outcome = await NoteIndexerService(pool, llm).index_note(
-        note_id=note_id,
-        user_id=req.user_id,
-    )
+    service = NoteIndexerService(pool, llm)
+    attempt_id = req.attempt_id
+    if attempt_id is None:
+        attempt_id = await service.begin_attempt(note_id=note_id, user_id=req.user_id)
+        if attempt_id is None:
+            raise HTTPException(status_code=404, detail="笔记不存在或无权索引")
+    try:
+        outcome = await service.index_note(
+            note_id=note_id,
+            user_id=req.user_id,
+            attempt_id=attempt_id,
+        )
+    except Exception:
+        await service.fail_attempt(
+            note_id=note_id,
+            attempt_id=attempt_id,
+            error="note indexing request failed",
+        )
+        raise
     if outcome is None:
         raise HTTPException(status_code=404, detail="笔记不存在或无权索引")
+    if outcome.status == "FAILED":
+        await service.fail_attempt(
+            note_id=note_id,
+            attempt_id=attempt_id,
+            error="note indexing failed",
+        )
     return IndexNoteResponse(
         note_id=outcome.note_id,
         profile_id=outcome.profile_id,

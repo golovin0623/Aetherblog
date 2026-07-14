@@ -10,7 +10,8 @@ ALTER TABLE notes
     ADD COLUMN IF NOT EXISTS embedding_fingerprint VARCHAR(64),
     ADD COLUMN IF NOT EXISTS embedding_profile_id BIGINT REFERENCES search_profiles(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS embedding_indexed_at TIMESTAMP WITH TIME ZONE,
-    ADD COLUMN IF NOT EXISTS embedding_error TEXT;
+    ADD COLUMN IF NOT EXISTS embedding_error TEXT,
+    ADD COLUMN IF NOT EXISTS embedding_attempt_id VARCHAR(64);
 
 CREATE INDEX IF NOT EXISTS idx_notes_embedding_readiness
     ON notes (embedding_profile_id, embedding_status, embedding_indexed_at DESC)
@@ -24,3 +25,5 @@ COMMENT ON COLUMN notes.embedding_indexed_at IS
     'Successful or skipped index commit time for the recorded fingerprint/profile.';
 COMMENT ON COLUMN notes.embedding_error IS
     'Last indexing failure for the current note revision; user-facing APIs expose only a safe product message.';
+COMMENT ON COLUMN notes.embedding_attempt_id IS
+    'Opaque token fencing one indexing attempt; only the current token may commit a terminal status.';

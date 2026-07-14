@@ -223,7 +223,7 @@ func TestCanRetryWorkflowRunRequiresRetryableFailure(t *testing.T) {
 		{name: "retryable failure", status: "failed", retryable: true, want: true},
 		{name: "non-retryable failure", status: "failed", retryable: false, want: false},
 		{name: "successful run", status: "success", retryable: true, want: false},
-		{name: "retryable cancellation", status: "cancelled", retryable: true, want: true},
+		{name: "legacy cancellation without flag", status: "cancelled", retryable: false, want: true},
 		{name: "non-retryable budget failure", status: "budget_exceeded", retryable: false, want: false},
 	}
 
@@ -233,6 +233,13 @@ func TestCanRetryWorkflowRunRequiresRetryableFailure(t *testing.T) {
 				t.Fatalf("canRetryWorkflowRun(%q, %v) = %v, want %v", tt.status, tt.retryable, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestToRunSummaryTreatsCancellationAsRetryable(t *testing.T) {
+	summary := toRunSummary(model.AgentWorkflowRun{Status: "cancelled", Retryable: false})
+	if !summary.Retryable {
+		t.Fatal("cancelled run summary must remain retryable for legacy and newly cancelled runs")
 	}
 }
 

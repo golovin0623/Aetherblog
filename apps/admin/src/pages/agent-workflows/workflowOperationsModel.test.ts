@@ -73,6 +73,16 @@ describe('workflow selected-run operations', () => {
     expect(actions.some((action) => action.action === 'retry' && action.visible)).toBe(false);
   });
 
+  it('keeps a user-cancelled run retryable even when its legacy flag is false', () => {
+    const actions = buildWorkflowRunActions(run(20, 'cancelled', { retryable: false }));
+
+    expect(actions.find((action) => action.action === 'retry')).toMatchObject({
+      visible: true,
+      disabled: false,
+      targetRunId: 20,
+    });
+  });
+
   it('offers an explicit approval action only for paused runs', () => {
     const pausedActions = buildWorkflowRunActions(run(20, 'paused'));
     const failedActions = buildWorkflowRunActions(run(21, 'failed', { retryable: true }));

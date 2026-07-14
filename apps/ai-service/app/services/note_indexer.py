@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -85,12 +86,63 @@ class NoteIndexerService:
         self.llm = llm
         self._chunk_concurrency = chunk_concurrency
 
+    async def begin_attempt(self, *, note_id: int, user_id: int | None = None) -> str | None:
+        """Atomically claim a fresh token for callers that do not bring one."""
+
+        if note_id <= 0:
+            raise ValueError("note_id must be positive")
+        attempt_id = secrets.token_hex(16)
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE notes
+                SET embedding_status = 'PENDING',
+                    embedding_error = NULL,
+                    embedding_attempt_id = $1
+                WHERE id = $2
+                  AND deleted = FALSE
+                  AND ($3::bigint IS NULL OR author_id = $3 OR author_id IS NULL)
+                RETURNING id
+                """,
+                attempt_id,
+                note_id,
+                user_id,
+            )
+        return attempt_id if row is not None else None
+
+    async def fail_attempt(self, *, note_id: int, attempt_id: str, error: str) -> None:
+        """Close an unhandled request only if its token is still current."""
+
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE notes
+                    SET embedding_status = 'FAILED',
+                        embedding_error = $1,
+                        embedding_attempt_id = NULL
+                    WHERE id = $2
+                      AND deleted = FALSE
+                      AND embedding_status = 'PENDING'
+                      AND embedding_attempt_id = $3
+                    """,
+                    error[:1000],
+                    note_id,
+                    attempt_id,
+                )
+        except Exception as exc:
+            logger.warning(
+                "note_indexer.fail_attempt",
+                extra={"data": {"note_id": note_id, "error": str(exc)[:200]}},
+            )
+
     async def index_note(
         self,
         *,
         note_id: int,
         user_id: int | None = None,
         profile: SearchProfile | None = None,
+        attempt_id: str | None = None,
     ) -> NoteIndexOutcome | None:
         if note_id <= 0:
             raise ValueError("note_id must be positive")
@@ -100,11 +152,24 @@ class NoteIndexerService:
         if not row:
             return None
 
-        text = _build_note_embedding_text(_row_to_dict(row))
+        note = _row_to_dict(row)
+        text = _build_note_embedding_text(note)
         source_fingerprint = _note_fingerprint(text)
         doc_chars = len(text)
+        if note.get("embedding_attempt_id") != attempt_id:
+            return NoteIndexOutcome(
+                note_id=note_id,
+                profile_id=profile.id,
+                model_id=profile.model_id,
+                embedding_dim=0,
+                chunk_count=0,
+                doc_chars=doc_chars,
+                doc_tokens=0,
+                status="STALE",
+                error="newer indexing attempt superseded this request",
+            )
         if doc_chars == 0:
-            return await self._write_empty(note_id, profile, source_fingerprint)
+            return await self._write_empty(note_id, profile, source_fingerprint, attempt_id)
 
         chunks: list[Chunk] = chunk_split(
             text,
@@ -113,7 +178,7 @@ class NoteIndexerService:
             chunk_overlap_tokens=profile.chunk_overlap_tokens,
         )
         if not chunks:
-            return await self._write_empty(note_id, profile, source_fingerprint)
+            return await self._write_empty(note_id, profile, source_fingerprint, attempt_id)
 
         embed_start = time.perf_counter()
         semaphore = asyncio.Semaphore(self._chunk_concurrency)
@@ -132,7 +197,7 @@ class NoteIndexerService:
             embed_results = await asyncio.gather(*(embed_chunk(chunk) for chunk in chunks))
         except Exception as exc:
             error = f"embedding failed: {type(exc).__name__}: {str(exc)[:300]}"
-            await self._mark_failed_if_current(note_id, source_fingerprint, error)
+            await self._mark_failed_if_current(note_id, source_fingerprint, attempt_id, error)
             return NoteIndexOutcome(
                 note_id=note_id,
                 profile_id=profile.id,
@@ -148,7 +213,7 @@ class NoteIndexerService:
         embedding_dim = len(embed_results[0][1]) if embed_results else 0
         if embedding_dim <= 0:
             error = "embedding returned an empty vector"
-            await self._mark_failed_if_current(note_id, source_fingerprint, error)
+            await self._mark_failed_if_current(note_id, source_fingerprint, attempt_id, error)
             return NoteIndexOutcome(
                 note_id,
                 profile.id,
@@ -163,7 +228,7 @@ class NoteIndexerService:
         for chunk, vec in embed_results:
             if len(vec) != embedding_dim:
                 error = f"chunk #{chunk.index} dim={len(vec)} differs from first dim={embedding_dim}"
-                await self._mark_failed_if_current(note_id, source_fingerprint, error)
+                await self._mark_failed_if_current(note_id, source_fingerprint, attempt_id, error)
                 return NoteIndexOutcome(
                     note_id,
                     profile.id,
@@ -183,7 +248,8 @@ class NoteIndexerService:
                 async with conn.transaction():
                     locked_row = await conn.fetchrow(
                         """
-                        SELECT id, title, summary, content_markdown, author_id
+                        SELECT id, title, summary, content_markdown, author_id,
+                               embedding_attempt_id
                         FROM notes
                         WHERE id = $1 AND deleted = FALSE
                         FOR UPDATE
@@ -204,6 +270,18 @@ class NoteIndexerService:
                             doc_tokens=doc_tokens,
                             status="STALE",
                             error="note changed while indexing; stale result discarded",
+                        )
+                    if locked_row.get("embedding_attempt_id") != attempt_id:
+                        return NoteIndexOutcome(
+                            note_id=note_id,
+                            profile_id=profile.id,
+                            model_id=profile.model_id,
+                            embedding_dim=embedding_dim,
+                            chunk_count=0,
+                            doc_chars=doc_chars,
+                            doc_tokens=doc_tokens,
+                            status="STALE",
+                            error="newer indexing attempt superseded this request",
                         )
                     await conn.execute(
                         "DELETE FROM note_embeddings WHERE note_id = $1 AND profile_id = $2",
@@ -241,7 +319,8 @@ class NoteIndexerService:
                             embedding_fingerprint = $1,
                             embedding_profile_id = $2,
                             embedding_indexed_at = CURRENT_TIMESTAMP,
-                            embedding_error = NULL
+                            embedding_error = NULL,
+                            embedding_attempt_id = NULL
                         WHERE id = $3 AND deleted = FALSE
                         """,
                         source_fingerprint,
@@ -250,7 +329,7 @@ class NoteIndexerService:
                     )
         except Exception as exc:
             error = f"write failed: {type(exc).__name__}: {str(exc)[:300]}"
-            await self._mark_failed_if_current(note_id, source_fingerprint, error)
+            await self._mark_failed_if_current(note_id, source_fingerprint, attempt_id, error)
             return NoteIndexOutcome(
                 note_id,
                 profile.id,
@@ -416,14 +495,12 @@ class NoteIndexerService:
         *,
         include_index_metadata: bool = False,
     ) -> Any | None:
-        metadata_columns = (
-            """
+        metadata_columns = ", embedding_attempt_id"
+        if include_index_metadata:
+            metadata_columns += """
                 , embedding_status, embedding_fingerprint, embedding_profile_id,
                   embedding_indexed_at, embedding_error
             """
-            if include_index_metadata
-            else ""
-        )
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(
                 f"""
@@ -443,12 +520,14 @@ class NoteIndexerService:
         note_id: int,
         profile: SearchProfile,
         source_fingerprint: str,
+        attempt_id: str | None,
     ) -> NoteIndexOutcome:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 locked_row = await conn.fetchrow(
                     """
-                    SELECT id, title, summary, content_markdown, author_id
+                    SELECT id, title, summary, content_markdown, author_id,
+                           embedding_attempt_id
                     FROM notes
                     WHERE id = $1 AND deleted = FALSE
                     FOR UPDATE
@@ -480,6 +559,18 @@ class NoteIndexerService:
                         status="STALE",
                         error="note changed while indexing; stale result discarded",
                     )
+                if locked_row.get("embedding_attempt_id") != attempt_id:
+                    return NoteIndexOutcome(
+                        note_id=note_id,
+                        profile_id=profile.id,
+                        model_id=profile.model_id,
+                        embedding_dim=0,
+                        chunk_count=0,
+                        doc_chars=0,
+                        doc_tokens=0,
+                        status="STALE",
+                        error="newer indexing attempt superseded this request",
+                    )
                 await conn.execute(
                     "DELETE FROM note_embeddings WHERE note_id = $1 AND profile_id = $2",
                     note_id,
@@ -492,7 +583,8 @@ class NoteIndexerService:
                         embedding_fingerprint = $1,
                         embedding_profile_id = $2,
                         embedding_indexed_at = CURRENT_TIMESTAMP,
-                        embedding_error = NULL
+                        embedding_error = NULL,
+                        embedding_attempt_id = NULL
                     WHERE id = $3 AND deleted = FALSE
                     """,
                     source_fingerprint,
@@ -514,6 +606,7 @@ class NoteIndexerService:
         self,
         note_id: int,
         expected_fingerprint: str,
+        attempt_id: str | None,
         error: str,
     ) -> None:
         try:
@@ -521,7 +614,8 @@ class NoteIndexerService:
                 async with conn.transaction():
                     locked_row = await conn.fetchrow(
                         """
-                        SELECT id, title, summary, content_markdown, author_id
+                        SELECT id, title, summary, content_markdown, author_id,
+                               embedding_attempt_id
                         FROM notes
                         WHERE id = $1 AND deleted = FALSE
                         FOR UPDATE
@@ -533,11 +627,14 @@ class NoteIndexerService:
                     current_text = _build_note_embedding_text(_row_to_dict(locked_row))
                     if _note_fingerprint(current_text) != expected_fingerprint:
                         return
+                    if locked_row.get("embedding_attempt_id") != attempt_id:
+                        return
                     await conn.execute(
                         """
                         UPDATE notes
                         SET embedding_status = 'FAILED',
-                            embedding_error = $1
+                            embedding_error = $1,
+                            embedding_attempt_id = NULL
                         WHERE id = $2 AND deleted = FALSE
                         """,
                         error[:1000],

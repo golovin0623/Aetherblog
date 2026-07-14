@@ -1288,12 +1288,11 @@ func normalizeRunStatus(status string) string {
 }
 
 func canRetryWorkflowRun(status string, retryable bool) bool {
-	if !retryable {
-		return false
-	}
 	switch status {
-	case "failed", "cancelled", "budget_exceeded":
+	case "cancelled":
 		return true
+	case "failed", "budget_exceeded":
+		return retryable
 	default:
 		return false
 	}
@@ -2467,7 +2466,7 @@ func toRunSummary(run model.AgentWorkflowRun) dto.AgentWorkflowRunSummary {
 		MaxNodes:                run.MaxNodes,
 		ErrorCode:               errorCode,
 		ErrorCategory:           errorCategory,
-		Retryable:               run.Retryable,
+		Retryable:               run.Retryable || run.Status == "cancelled",
 		CanonicalizedWorkflowID: run.CanonicalizedWorkflowID,
 		CreatedAt:               run.CreatedAt,
 		StartedAt:               run.StartedAt,

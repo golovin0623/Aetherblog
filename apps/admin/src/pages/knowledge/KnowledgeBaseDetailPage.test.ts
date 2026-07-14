@@ -4,7 +4,9 @@ import {
   DEFAULT_KNOWLEDGE_DETAIL_TAB,
   getKnowledgeDetailConfirmationCopy,
   getKnowledgeDetailTabs,
+  parseKnowledgeDetailTab,
 } from './KnowledgeBaseDetailPage';
+import { getKnowledgeBaseDetailPath } from './KnowledgeBasePage';
 
 describe('knowledge base detail product navigation', () => {
   it('opens on verification and uses task language instead of implementation terms', () => {
@@ -20,6 +22,17 @@ describe('knowledge base detail product navigation', () => {
       '资料',
       '高级设置',
     ]);
+  });
+
+  it('deep-links view-only users to files while keeping usable libraries task-first', () => {
+    expect(getKnowledgeBaseDetailPath('team-handbook', 'VIEW')).toBe(
+      '/intelligence/knowledge/team-handbook?tab=files',
+    );
+    expect(getKnowledgeBaseDetailPath('team-handbook', 'USE')).toBe(
+      '/intelligence/knowledge/team-handbook',
+    );
+    expect(parseKnowledgeDetailTab('files')).toBe('files');
+    expect(parseKnowledgeDetailTab('unknown')).toBe(DEFAULT_KNOWLEDGE_DETAIL_TAB);
   });
 });
 
