@@ -62,6 +62,11 @@ import {
 } from '@/services/knowledgeBaseService';
 import { atlasService } from '@/services/atlasService';
 import { agentWorkflowService } from '@/services/agentWorkflowService';
+import {
+  consumeKnowledgeWorkspaceHandoff,
+  type KnowledgeContextSelection,
+  type KnowledgeWorkspaceHandoff,
+} from '@/services/knowledgeWorkspaceHandoff';
 import type { AtlasKnowledgePoint } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
 import { CachedAvatar } from '@/components/common/CachedAvatar';
@@ -72,6 +77,7 @@ import {
   type AgentModelParams,
   type AgentTag,
   type AgentMessage,
+  type AgentRetrievalReceipt,
   type AgentSession,
   type ChatStreamRequest,
   type SlashCommand,
@@ -93,6 +99,12 @@ import {
   useArticleSearch,
   useSmoothStream,
 } from '@/services/agent';
+import {
+  preserveContextSelectionAfterSuccess,
+  preserveKnowledgeHandoffAfterSuccess,
+  resolveAetherHubKnowledgeContext,
+} from './aetherHubKnowledgeContext';
+import { RetrievalReceiptCard } from './RetrievalReceiptCard';
 
 function workflowErrorMessage(error: unknown, fallback: string) {
   const candidate = error as { response?: { data?: { message?: unknown } }; message?: unknown };
@@ -117,7 +129,6 @@ type SpacePreviewTarget =
   | { kind: 'kb'; kb: AgentKnowledgeBase }
   | { kind: 'atlas'; kp: AtlasKnowledgePoint }
   | { kind: 'tag'; tag: AgentTag };
-type AetherHubAtlasScope = NonNullable<ChatStreamRequest['atlasScope']>;
 
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
 const SEND_SHORTCUT_OPTIONS: Array<{
@@ -140,27 +151,9 @@ const SEND_SHORTCUT_OPTIONS: Array<{
   },
 ];
 
-function buildAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): AetherHubAtlasScope | undefined {
-  if (kps.length === 0) return undefined;
-  return {
-    kpIds: kps.map((kp) => kp.id),
-    neighborhoodDepth: 1,
-    includeEvidence: true,
-    semanticRecall: true,
-    semanticLimit: 8,
-  };
-}
-
 function describeAetherHubAtlasScope(kps: AtlasKnowledgePoint[]): string {
   if (kps.length === 0) return 'kp_ids=none';
   return `kp_ids=${kps.map((kp) => kp.id).join(',')}`;
-}
-
-function countAtlasCitations(text: string): number {
-  return (
-    text.match(/\[(?:(?:KP|Evidence|Annotation)\s*#\d+|Note\s*#\d+\s+chunk\s+\d+)\]/gi)
-      ?.length ?? 0
-  );
 }
 
 type StandardModelParamKey =
@@ -499,12 +492,43 @@ export default function AetherHubWorkspacePage() {
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
   const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
+  const [pendingKnowledgeHandoff, setPendingKnowledgeHandoff] =
+    useState<KnowledgeWorkspaceHandoff | null>(null);
+  const handoffConsumedForUserRef = useRef<string | null>(null);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
     setSelectedKbs([]);
     setSelectedAtlasKps([]);
   }, [activeId]);
+
+  useEffect(() => {
+    if (!hydrated || currentUser.id === 'anon') return;
+    if (handoffConsumedForUserRef.current === currentUser.id) return;
+    handoffConsumedForUserRef.current = currentUser.id;
+
+    const result = consumeKnowledgeWorkspaceHandoff(currentUser.id);
+    if (!result.ok) {
+      toast.warning(result.error.message);
+      return;
+    }
+    if (result.status !== 'consumed') return;
+
+    const fresh = createEmptySession('chat');
+    setSessions((current) => [fresh, ...current]);
+    setActiveId(fresh.id);
+    setComposer(result.handoff.draftPrompt ?? '');
+    setPendingKnowledgeHandoff(result.handoff);
+    const sourceCount =
+      result.handoff.context.mode === 'selected' ? result.handoff.context.refs.length : 0;
+    toast.success(
+      result.handoff.context.mode === 'selected'
+        ? `已带入工作台任务与 ${sourceCount} 个指定来源`
+        : result.handoff.context.mode === 'none'
+          ? '已带入工作台任务，本次不使用知识来源'
+          : '已带入工作台任务，将自动检索有权限的知识库与知识点',
+    );
+  }, [currentUser.id, hydrated]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
@@ -575,6 +599,7 @@ export default function AetherHubWorkspacePage() {
     setSessions((prev) => [fresh, ...prev]);
     setActiveId(fresh.id);
     setComposer('');
+    setPendingKnowledgeHandoff(null);
   }, [streaming]);
 
   const handleOpenCurrentConfig = useCallback(() => {
@@ -588,6 +613,7 @@ export default function AetherHubWorkspacePage() {
         toast.info('正在生成回答，请稍候或先停止');
         return;
       }
+      setPendingKnowledgeHandoff(null);
       setActiveId(id);
     },
     [streaming],
@@ -689,6 +715,7 @@ export default function AetherHubWorkspacePage() {
         selectedTags?: AgentTag[];
         selectedKbs?: AgentKnowledgeBase[];
         selectedAtlasKps?: AtlasKnowledgePoint[];
+        knowledgeContext?: KnowledgeContextSelection | null;
       },
     ) => {
       const text = rawText.trim();
@@ -723,6 +750,22 @@ export default function AetherHubWorkspacePage() {
       const requestTags = override?.selectedTags ?? selectedTags;
       const requestKbs = override?.selectedKbs ?? selectedKbs;
       const requestAtlasKps = override?.selectedAtlasKps ?? selectedAtlasKps;
+      const requestKnowledgeContext = override
+        ? override.knowledgeContext ?? null
+        : pendingKnowledgeHandoff?.context ?? null;
+      const requestHandoffSnapshot =
+        pendingKnowledgeHandoff?.context === requestKnowledgeContext
+          ? pendingKnowledgeHandoff
+          : null;
+      const contextPayload = resolveAetherHubKnowledgeContext(
+        requestKnowledgeContext,
+        requestKbs,
+        requestAtlasKps,
+      );
+      if (!contextPayload.ok) {
+        toast.error(contextPayload.error.message);
+        return;
+      }
       const historyForRequest = [...baseMessages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -735,12 +778,27 @@ export default function AetherHubWorkspacePage() {
         updatedAt: now,
       }));
       setComposer('');
-      if (!override) {
-        setSelectedArticles([]);
-        setSelectedTags([]);
-        setSelectedKbs([]);
-        setSelectedAtlasKps([]);
-      }
+      const clearRequestContext = () => {
+        setSelectedArticles((current) =>
+          preserveContextSelectionAfterSuccess(current, requestArticles, (article) => article.id),
+        );
+        setSelectedTags((current) =>
+          preserveContextSelectionAfterSuccess(current, requestTags, (tag) => tag.slug),
+        );
+        setSelectedKbs((current) =>
+          preserveContextSelectionAfterSuccess(current, requestKbs, (knowledgeBase) => knowledgeBase.id),
+        );
+        setSelectedAtlasKps((current) =>
+          preserveContextSelectionAfterSuccess(
+            current,
+            requestAtlasKps,
+            (knowledgePoint) => knowledgePoint.id,
+          ),
+        );
+        setPendingKnowledgeHandoff((current) =>
+          preserveKnowledgeHandoffAfterSuccess(current, requestHandoffSnapshot),
+        );
+      };
       setStreaming(true);
 
       const controller = new AbortController();
@@ -776,6 +834,7 @@ export default function AetherHubWorkspacePage() {
             pending: false,
             finishedAt: Date.now(),
           });
+          clearRequestContext();
         } catch (error: unknown) {
           patchAssistant({
             content: workflowErrorMessage(error, 'Article Audit 启动失败'),
@@ -799,17 +858,15 @@ export default function AetherHubWorkspacePage() {
         modelParams,
         articleIds: requestArticles.length > 0 ? requestArticles.map((a) => a.id) : null,
         tagSlugs: requestTags.length > 0 ? requestTags.map((t) => t.slug) : null,
-        kbIds: requestKbs.length > 0 ? requestKbs.map((k) => k.id) : null,
-        atlasScope: buildAetherHubAtlasScope(requestAtlasKps),
+        ...contextPayload.value,
       };
-      let assistantContent = '';
+      let retrievalReceipt: AgentRetrievalReceipt | null = null;
 
       try {
         await streamAgentChat(
           req,
           {
             onDelta: (chunk) => {
-              assistantContent += chunk;
               setSessions((prev) =>
                 prev.map((s) =>
                   s.id !== sessionId
@@ -846,15 +903,22 @@ export default function AetherHubWorkspacePage() {
               );
             },
             onSources: (sources) => patchAssistant({ sources }),
+            onRetrieval: (receipt) => {
+              retrievalReceipt = receipt;
+              patchAssistant({ retrieval: receipt });
+            },
             onDone: () => {
-              const citationCount = countAtlasCitations(assistantContent);
+              const citationCount =
+                retrievalReceipt?.hits.filter((hit) => hit.kind !== 'knowledge_base_chunk').length ??
+                0;
               void atlasService.recordEvent({
                 eventType: 'atlas.aetherhub_atlas_answer',
                 title: 'AetherHub Atlas answer',
-                description: `${describeAetherHubAtlasScope(requestAtlasKps)}; citation_count=${citationCount}`,
-                status: citationCount > 0 ? 'SUCCESS' : 'WARNING',
+                description: `${describeAetherHubAtlasScope(requestAtlasKps)}; citation_count=${citationCount}; retrieval_status=${retrievalReceipt?.status ?? 'not_requested'}`,
+                status: retrievalReceipt?.status === 'matched' ? 'SUCCESS' : 'WARNING',
               }).catch(() => undefined);
               patchAssistant({ pending: false, finishedAt: Date.now() });
+              clearRequestContext();
             },
             onError: (message) =>
               patchAssistant({ pending: false, error: message, finishedAt: Date.now() }),
@@ -876,7 +940,7 @@ export default function AetherHubWorkspacePage() {
         setStreaming(false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState],
+    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState, pendingKnowledgeHandoff],
   );
 
   const handleEditMessage = useCallback(
@@ -905,13 +969,23 @@ export default function AetherHubWorkspacePage() {
       void handleSend(prior.content, {
         session: { ...activeSession, messages: baseMessages },
         messages: baseMessages,
-        selectedArticles: [],
-        selectedTags: [],
-        selectedKbs: [],
-        selectedAtlasKps: [],
+        selectedArticles,
+        selectedTags,
+        selectedKbs,
+        selectedAtlasKps,
+        knowledgeContext: pendingKnowledgeHandoff?.context ?? null,
       });
     },
-    [activeSession, streaming, handleSend],
+    [
+      activeSession,
+      streaming,
+      handleSend,
+      selectedArticles,
+      selectedTags,
+      selectedKbs,
+      selectedAtlasKps,
+      pendingKnowledgeHandoff,
+    ],
   );
 
   const handleDeleteMessage = useCallback(
@@ -1048,6 +1122,37 @@ export default function AetherHubWorkspacePage() {
               onToggleCapabilityPanel={() => setPanelCollapsed((v) => !v)}
             />
 
+            {pendingKnowledgeHandoff && (
+              <div className="relative z-20 flex min-h-10 items-center gap-2 border-b border-[var(--hub-border)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,var(--bg-substrate))] px-3 text-xs text-[var(--ink-secondary)] sm:px-4">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-1)]" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-semibold text-[var(--ink-primary)]">已带入知识工作台任务</span>
+                  {' · '}
+                  {pendingKnowledgeHandoff.context.mode === 'selected'
+                    ? `${pendingKnowledgeHandoff.context.refs.length} 个指定来源`
+                    : pendingKnowledgeHandoff.context.mode === 'none'
+                      ? '本次不使用来源'
+                      : '自动检索有权限的知识库与知识点'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/intelligence')}
+                  className="hidden min-h-8 rounded-lg px-2.5 text-[11px] font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[var(--hub-control-hover)] sm:inline-flex sm:items-center"
+                >
+                  返回调整
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingKnowledgeHandoff(null)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+                  aria-label="改用自动来源"
+                  title="改用自动来源"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             <WorkspaceCanvas
               greeting={greeting}
               nickname={currentUser.nickname}
@@ -1080,16 +1185,18 @@ export default function AetherHubWorkspacePage() {
                   prev.find((t) => t.slug === tag.slug) ? prev : [...prev, tag],
                 )
               }
-              onPickKb={(kb) =>
+              onPickKb={(kb) => {
+                setPendingKnowledgeHandoff(null);
                 setSelectedKbs((prev) =>
                   prev.find((k) => k.id === kb.id) ? prev : [...prev, kb],
-                )
-              }
-              onPickAtlasKp={(kp) =>
+                );
+              }}
+              onPickAtlasKp={(kp) => {
+                setPendingKnowledgeHandoff(null);
                 setSelectedAtlasKps((prev) =>
                   prev.find((item) => item.id === kp.id) ? prev : [...prev, kp],
-                )
-              }
+                );
+              }}
               onRemoveArticle={(id) =>
                 setSelectedArticles((prev) => prev.filter((a) => a.id !== id))
               }
@@ -2331,6 +2438,7 @@ function MessageRow({
       <div className={cn(displayMode === 'bubble' && (isUser ? 'flex justify-end' : 'flex justify-start'))}>
         {body}
       </div>
+      {!isUser && message.retrieval && <RetrievalReceiptCard receipt={message.retrieval} />}
       {message.sources && message.sources.length > 0 && (
         <div className="mt-3 max-w-full">
           <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]">

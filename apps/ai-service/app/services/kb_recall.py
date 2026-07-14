@@ -32,6 +32,15 @@ class KBHit:
     similarity: float
 
 
+class KBRecallUnavailable(RuntimeError):
+    """Strict recall could not complete.
+
+    The default Agent path intentionally keeps its historical best-effort behaviour.
+    Product surfaces that must distinguish a true empty result from an infrastructure
+    failure opt into ``strict=True`` and translate this exception to a safe outcome.
+    """
+
+
 async def recall_kbs(
     pool,
     llm: LlmRouter,
@@ -39,6 +48,7 @@ async def recall_kbs(
     kb_ids: list[int],
     query: str,
     top_k_total: int = 12,
+    strict: bool = False,
 ) -> list[KBHit]:
     """对若干 KB 做语义召回，返回合并后的 top_k。
 
@@ -62,16 +72,18 @@ async def recall_kbs(
                 kb_id,
             )
         if not kb_row:
+            if strict:
+                raise KBRecallUnavailable("knowledge base metadata unavailable")
             return []
         if kb_row["kind"] == "SYSTEM_POSTS":
-            return await _recall_system_posts(pool, llm, kb_id, kb_row, query)
-        return await _recall_custom_kb(pool, llm, kb_id, kb_row, query)
+            return await _recall_system_posts(pool, llm, kb_id, kb_row, query, strict=strict)
+        return await _recall_custom_kb(pool, llm, kb_id, kb_row, query, strict=strict)
 
     # review gemini medium：单个 KB 召回失败（DB 抖动 / profile 缺失）不应让整个
     # RAG 流程崩；用 return_exceptions=True 收集，过滤掉异常分支。
     chunks_of_hits = await asyncio.gather(
         *(recall_one(k) for k in kb_ids),
-        return_exceptions=True,
+        return_exceptions=not strict,
     )
     for kb_id, item in zip(kb_ids, chunks_of_hits):
         if isinstance(item, BaseException):
@@ -94,12 +106,25 @@ def _cast_type_for_dim(dim: int) -> str:
     return "vector"
 
 
-async def _recall_custom_kb(pool, llm: LlmRouter, kb_id: int, kb_row, query: str) -> list[KBHit]:
+async def _recall_custom_kb(
+    pool,
+    llm: LlmRouter,
+    kb_id: int,
+    kb_row,
+    query: str,
+    *,
+    strict: bool = False,
+) -> list[KBHit]:
     """CUSTOM 库召回：走 kb_embeddings + kb_profiles。"""
     try:
         profile = await fetch_kb_active_profile(pool, kb_id)
     except Exception as exc:
-        logger.warning("kb_recall.profile_missing", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        logger.warning("kb_recall.profile_missing", extra={"data": {
+            "kb_id": kb_id,
+            "error": type(exc).__name__ if strict else str(exc)[:200],
+        }})
+        if strict:
+            raise KBRecallUnavailable("active profile unavailable") from exc
         return []
     try:
         embedding = await llm.embed(
@@ -108,10 +133,17 @@ async def _recall_custom_kb(pool, llm: LlmRouter, kb_id: int, kb_row, query: str
             strict_embedding_model_id=True,
         )
     except Exception as exc:
-        logger.warning("kb_recall.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        logger.warning("kb_recall.embed_failed", extra={"data": {
+            "kb_id": kb_id,
+            "error": type(exc).__name__ if strict else str(exc)[:200],
+        }})
+        if strict:
+            raise KBRecallUnavailable("query embedding unavailable") from exc
         return []
     dim = len(embedding) if embedding else 0
     if dim <= 0:
+        if strict:
+            raise KBRecallUnavailable("query embedding was empty")
         return []
     cast_type = _cast_type_for_dim(dim)
     candidate_limit = min(max(profile.top_k * 3, 20), 100)
@@ -158,7 +190,15 @@ async def _recall_custom_kb(pool, llm: LlmRouter, kb_id: int, kb_row, query: str
     ]
 
 
-async def _recall_system_posts(pool, llm: LlmRouter, kb_id: int, kb_row, query: str) -> list[KBHit]:
+async def _recall_system_posts(
+    pool,
+    llm: LlmRouter,
+    kb_id: int,
+    kb_row,
+    query: str,
+    *,
+    strict: bool = False,
+) -> list[KBHit]:
     """SYSTEM_POSTS 库召回：走 post_embeddings + search_profiles。
 
     与博客文章语义搜索同源（migration 000034 / 000041）。这里只取召回结果而不
@@ -175,6 +215,8 @@ async def _recall_system_posts(pool, llm: LlmRouter, kb_id: int, kb_row, query: 
         )
     if not prof:
         logger.warning("kb_recall.system_posts.no_search_profile", extra={"data": {"kb_id": kb_id}})
+        if strict:
+            raise KBRecallUnavailable("active search profile unavailable")
         return []
     try:
         embedding = await llm.embed(
@@ -183,10 +225,17 @@ async def _recall_system_posts(pool, llm: LlmRouter, kb_id: int, kb_row, query: 
             strict_embedding_model_id=True,
         )
     except Exception as exc:
-        logger.warning("kb_recall.system_posts.embed_failed", extra={"data": {"kb_id": kb_id, "error": str(exc)[:200]}})
+        logger.warning("kb_recall.system_posts.embed_failed", extra={"data": {
+            "kb_id": kb_id,
+            "error": type(exc).__name__ if strict else str(exc)[:200],
+        }})
+        if strict:
+            raise KBRecallUnavailable("query embedding unavailable") from exc
         return []
     dim = len(embedding) if embedding else 0
     if dim <= 0:
+        if strict:
+            raise KBRecallUnavailable("query embedding was empty")
         return []
     cast_type = _cast_type_for_dim(dim)
     # SYSTEM_POSTS 召回沿用 search 模块的全局配置默认值：top_k=6, threshold=0.20。

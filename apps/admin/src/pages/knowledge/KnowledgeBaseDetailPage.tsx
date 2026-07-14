@@ -1,10 +1,7 @@
 // pages/knowledge/KnowledgeBaseDetailPage.tsx — 知识库详情
 //
 // 路由：/intelligence/knowledge/:slug
-// 三 Tab：
-//   - files     文件列表 + 上传（CUSTOM）/ 仅查看（SYSTEM_POSTS）
-//   - profiles  Profile 列表 + 创建 + 激活（仅 CUSTOM；SYSTEM 库只展示默认 profile）
-//   - members   成员授权（仅 CUSTOM；SYSTEM 库不显示该 tab）
+// 默认从“验证效果”进入；资料、高级设置与权限按任务分层，避免把索引术语放在首屏。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -17,15 +14,22 @@ import {
   Loader2,
   Plus,
   RefreshCcw,
+  Search,
   ShieldCheck,
   Trash2,
   Users,
   Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Select } from '@aetherblog/ui';
 
-import { IntelligenceHeader, IntelligenceShell } from '@/components/intelligence';
-import { cn } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/common';
+import {
+  IntelligenceHeader,
+  IntelligencePanel,
+  IntelligenceShell,
+} from '@/components/intelligence';
+import { cn, extractApiErrorMessage } from '@/lib/utils';
 import {
   knowledgeBaseService,
   type CreateKbProfileRequest,
@@ -34,13 +38,126 @@ import {
   type KnowledgeBaseFile,
   type KnowledgeBaseMember,
   type KnowledgeBaseProfile,
+  type KnowledgeBaseRetrievalResponse,
   type KnowledgeBaseStats,
   type KbVectorStatus,
 } from '@/services/knowledgeBaseService';
+import { storeKnowledgeWorkspaceHandoff } from '@/services/knowledgeWorkspaceHandoff';
+import { useAuthStore } from '@/stores';
 import { accessService } from '@/services/accessService';
 import type { ManagedUser, Role, Team } from '@aetherblog/types';
+import {
+  DEFAULT_KNOWLEDGE_BASE_RETRIEVAL_LIMIT,
+  MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH,
+  formatKnowledgeBaseRetrievalScore,
+  getKnowledgeBaseRetrievalGuidance,
+  validateKnowledgeBaseRetrievalQuery,
+} from './knowledgeBaseRetrievalModel';
 
-type Tab = 'files' | 'profiles' | 'members';
+type Tab = 'verify' | 'files' | 'profiles' | 'members';
+
+export const DEFAULT_KNOWLEDGE_DETAIL_TAB: Tab = 'verify';
+
+export function getKnowledgeDetailTabs(hideMembers: boolean) {
+  const items = [
+    { key: 'verify' as const, label: '验证效果', icon: Search },
+    { key: 'files' as const, label: '资料', icon: FileText },
+    { key: 'profiles' as const, label: '高级设置', icon: Wrench },
+  ];
+  return hideMembers
+    ? items
+    : [...items, { key: 'members' as const, label: '权限', icon: Users }];
+}
+
+type KnowledgeDetailConfirmationKind =
+  | 'delete-file'
+  | 'restore-profile'
+  | 'migrate-profile'
+  | 'delete-profile'
+  | 'revoke-member';
+
+interface KnowledgeDetailConfirmationInput {
+  kind: KnowledgeDetailConfirmationKind;
+  targetName: string;
+}
+
+interface KnowledgeDetailConfirmationCopy {
+  title: string;
+  message: string;
+  confirmText: string;
+  variant: 'danger' | 'warning';
+}
+
+export function getKnowledgeDetailConfirmationCopy({
+  kind,
+  targetName,
+}: KnowledgeDetailConfirmationInput): KnowledgeDetailConfirmationCopy {
+  switch (kind) {
+    case 'delete-file':
+      return {
+        title: '永久删除资料文件？',
+        message: `将永久删除「${targetName}」及其索引内容，操作后无法恢复。`,
+        confirmText: '永久删除',
+        variant: 'danger',
+      };
+    case 'restore-profile':
+      return {
+        title: '切回旧索引档案？',
+        message: `系统会把当前 active 档案降级，并将「${targetName}」保留的索引恢复为 active。`,
+        confirmText: '确认切回',
+        variant: 'warning',
+      };
+    case 'migrate-profile':
+      return {
+        title: '开始蓝绿迁移？',
+        message: `系统会在后台用「${targetName}」重建整库索引。迁移期间仍使用旧档案检索，全部完成后才会切换 active。`,
+        confirmText: '开始迁移',
+        variant: 'warning',
+      };
+    case 'delete-profile':
+      return {
+        title: '永久删除索引档案？',
+        message: `索引档案「${targetName}」删除后无法恢复。`,
+        confirmText: '确认删除',
+        variant: 'danger',
+      };
+    case 'revoke-member':
+      return {
+        title: '撤销知识库权限？',
+        message: `将撤销「${targetName}」访问此知识库的权限；不会删除对应的用户、团队或角色。`,
+        confirmText: '撤销权限',
+        variant: 'warning',
+      };
+  }
+}
+
+function KnowledgeDetailConfirmDialog({
+  confirmation,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  confirmation: KnowledgeDetailConfirmationInput | null;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!confirmation) return null;
+  const copy = getKnowledgeDetailConfirmationCopy(confirmation);
+
+  return (
+    <ConfirmDialog
+      isOpen
+      title={copy.title}
+      message={copy.message}
+      confirmText={copy.confirmText}
+      variant={copy.variant}
+      pending={pending}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
+}
 
 export default function KnowledgeBaseDetailPage() {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -49,7 +166,7 @@ export default function KnowledgeBaseDetailPage() {
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [stats, setStats] = useState<KnowledgeBaseStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('files');
+  const [tab, setTab] = useState<Tab>(DEFAULT_KNOWLEDGE_DETAIL_TAB);
 
   const load = useCallback(async () => {
     if (!slug) return;
@@ -69,8 +186,8 @@ export default function KnowledgeBaseDetailPage() {
       ]);
       setKb(detail.data);
       setStats(st.data);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || '加载知识库失败');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '加载知识库失败'));
     } finally {
       setLoading(false);
     }
@@ -79,6 +196,10 @@ export default function KnowledgeBaseDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setTab(DEFAULT_KNOWLEDGE_DETAIL_TAB);
+  }, [slug]);
 
   const canManage = kb?.effectivePermission === 'MANAGE';
   const canEdit = canManage || kb?.effectivePermission === 'EDIT';
@@ -91,7 +212,7 @@ export default function KnowledgeBaseDetailPage() {
         title={kb?.name || '加载中…'}
         description={kb?.description || ''}
         icon={isSystem ? ShieldCheck : FileText}
-        currentLabel={kb?.slug ? `slug: ${kb.slug}` : undefined}
+        currentLabel={kb ? (isSystem ? '系统知识库' : '自建知识库') : undefined}
         activeSummary={
           stats
             ? `${stats.fileCount} 文件 · ${stats.chunkCount} 分块 · ${stats.vectorizedCount} 已索引${
@@ -104,7 +225,7 @@ export default function KnowledgeBaseDetailPage() {
             <button
               type="button"
               onClick={() => navigate('/intelligence/knowledge')}
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] md:min-h-9"
             >
               <ArrowLeft className="h-4 w-4" /> 返回
             </button>
@@ -116,11 +237,11 @@ export default function KnowledgeBaseDetailPage() {
                   try {
                     await knowledgeBaseService.reindexAll(kb.id);
                     toast.success('已请求全库重建（请稍后刷新）');
-                  } catch (err: any) {
-                    toast.error(err?.response?.data?.message || '重建失败');
+                  } catch (error) {
+                    toast.error(extractApiErrorMessage(error, '重建失败'));
                   }
                 }}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] md:min-h-9"
               >
                 <RefreshCcw className="h-4 w-4" /> 重建索引
               </button>
@@ -130,7 +251,7 @@ export default function KnowledgeBaseDetailPage() {
                 type="button"
                 onClick={() => navigate('/search-config')}
                 title="文章索引库的向量由搜索配置模块管理"
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] md:min-h-9"
               >
                 <RefreshCcw className="h-4 w-4" /> 到搜索配置重建
               </button>
@@ -147,11 +268,15 @@ export default function KnowledgeBaseDetailPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={tab}
+              id={`knowledge-panel-${tab}`}
+              role="tabpanel"
+              aria-labelledby={`knowledge-tab-${tab}`}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18 }}
             >
+              {tab === 'verify' && <VerifyTab kb={kb} />}
               {tab === 'files' && (
                 <FilesTab kb={kb} canEdit={!!canEdit && !isSystem} onChanged={load} />
               )}
@@ -182,29 +307,263 @@ function Tabs({
   onChange: (t: Tab) => void;
   hideMembers: boolean;
 }) {
-  const items: Array<{ key: Tab; label: string; icon: React.ComponentType<any> }> = [
-    { key: 'files', label: '资料文件', icon: FileText },
-    { key: 'profiles', label: '索引档案', icon: Wrench },
-  ];
-  if (!hideMembers) items.push({ key: 'members', label: '成员授权', icon: Users });
+  const items = getKnowledgeDetailTabs(hideMembers);
+  const focusTab = (nextIndex: number) => {
+    const next = items[(nextIndex + items.length) % items.length];
+    onChange(next.key);
+    requestAnimationFrame(() => document.getElementById(`knowledge-tab-${next.key}`)?.focus());
+  };
 
   return (
-    <div className="flex w-fit items-center gap-1 rounded-lg border border-border bg-[var(--bg-card)] p-1">
-      {items.map((it) => (
-        <button
-          key={it.key}
-          type="button"
-          onClick={() => onChange(it.key)}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-            value === it.key
-              ? 'bg-primary/10 text-primary'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-          )}
-        >
-          <it.icon className="h-4 w-4" /> {it.label}
-        </button>
-      ))}
+    <div className="overflow-x-auto pb-1">
+      <div role="tablist" aria-label="知识库详情" className="flex w-max items-center gap-1 rounded-lg border border-border bg-[var(--bg-card)] p-1">
+        {items.map((it) => (
+          <button
+            key={it.key}
+            id={`knowledge-tab-${it.key}`}
+            role="tab"
+            aria-selected={value === it.key}
+            aria-controls={`knowledge-panel-${it.key}`}
+            tabIndex={value === it.key ? 0 : -1}
+            type="button"
+            onClick={() => onChange(it.key)}
+            onKeyDown={(event) => {
+              const index = items.findIndex((item) => item.key === it.key);
+              if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                focusTab(index + 1);
+              } else if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                focusTab(index - 1);
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                focusTab(0);
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                focusTab(items.length - 1);
+              }
+            }}
+            className={cn(
+              'inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors md:min-h-9',
+              value === it.key
+                ? 'bg-primary/10 text-primary'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            )}
+          >
+            <it.icon className="h-4 w-4" /> {it.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab: Verify retrieval
+// ============================================================
+
+function VerifyTab({ kb }: { kb: KnowledgeBase }) {
+  const navigate = useNavigate();
+  const userId = useAuthStore((state) => state.user?.id);
+  const [query, setQuery] = useState('');
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [outcome, setOutcome] = useState<KnowledgeBaseRetrievalResponse | null>(null);
+
+  const canUse = ['USE', 'EDIT', 'MANAGE'].includes(kb.effectivePermission);
+  const validation = validateKnowledgeBaseRetrievalQuery(query);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const checked = validateKnowledgeBaseRetrievalQuery(query);
+    if (!checked.ok) {
+      setQueryError(checked.message);
+      return;
+    }
+    if (!canUse) {
+      setQueryError('当前权限只能查看资料清单，无法检索资料内容。');
+      return;
+    }
+
+    setLoading(true);
+    setQueryError(null);
+    try {
+      const response = await knowledgeBaseService.retrieve(kb.id, {
+        query: checked.query,
+        limit: DEFAULT_KNOWLEDGE_BASE_RETRIEVAL_LIMIT,
+      });
+      setQuery(checked.query);
+      setOutcome(response.data);
+    } catch {
+      setOutcome({ status: 'unavailable', query: checked.query, hits: [] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const continueInAetherHub = () => {
+    const checked = validateKnowledgeBaseRetrievalQuery(outcome?.query || query);
+    if (!checked.ok) {
+      setQueryError(checked.message);
+      return;
+    }
+    if (!userId) {
+      toast.error('无法确认当前用户，请重新登录后再试。');
+      return;
+    }
+    const result = storeKnowledgeWorkspaceHandoff({
+      userId,
+      origin: 'knowledge-base',
+      intent: 'ask',
+      context: {
+        mode: 'selected',
+        refs: [{ kind: 'knowledge-base', id: kb.id, label: kb.name }],
+      },
+      draftPrompt: checked.query,
+    });
+    if (!result.ok) {
+      toast.error(result.error.message);
+      return;
+    }
+    navigate('/aetherhub');
+  };
+
+  const guidance = outcome?.status === 'empty' || outcome?.status === 'unavailable'
+    ? getKnowledgeBaseRetrievalGuidance(outcome.status)
+    : null;
+
+  return (
+    <div className="mt-4 grid items-start gap-4 pb-12 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+      <IntelligencePanel
+        title="用一个真实问题验证"
+        description="这里直接运行知识库检索，只展示实际命中的资料片段，不会生成答案。"
+        icon={Search}
+        bodyClassName="space-y-4"
+      >
+        {!canUse && (
+          <div className="rounded-xl border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
+            当前权限只能查看资料清单；需要“可使用”或更高权限才能检索资料内容。
+          </div>
+        )}
+        <form onSubmit={submit} className="space-y-3">
+          <label htmlFor="kb-retrieval-query" className="block text-sm font-medium text-[var(--text-primary)]">
+            你希望从这批资料中确认什么？
+          </label>
+          <textarea
+            id="kb-retrieval-query"
+            value={query}
+            maxLength={MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH}
+            rows={5}
+            disabled={!canUse || loading}
+            aria-invalid={Boolean(queryError)}
+            aria-describedby="kb-retrieval-query-help"
+            placeholder="例如：客户在什么情况下可以申请全额退款？"
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setQueryError(null);
+              setOutcome(null);
+            }}
+            className="w-full resize-y rounded-xl border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] px-3 py-2.5 text-sm leading-6 text-[var(--text-primary)] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div id="kb-retrieval-query-help" className="min-h-5 text-xs">
+              {queryError ? (
+                <span className="text-status-danger">{queryError}</span>
+              ) : (
+                <span className="text-[var(--text-tertiary)]">
+                  {query.length}/{MAX_KNOWLEDGE_BASE_RETRIEVAL_QUERY_LENGTH}
+                </span>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={!canUse || loading || !validation.ok}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-medium text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-9"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {loading ? '正在检索' : '验证检索'}
+            </button>
+          </div>
+        </form>
+      </IntelligencePanel>
+
+      <IntelligencePanel
+        title={outcome?.status === 'matched' ? `找到 ${outcome.hits.length} 个相关片段` : '检索结果'}
+        description={outcome ? `问题：${outcome.query}` : '提交问题后，这里会按相关度展示真实召回结果。'}
+        icon={FileText}
+        bodyClassName="space-y-3"
+      >
+        {loading ? (
+          <div className="space-y-3" aria-live="polite">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="h-24 animate-pulse rounded-xl bg-[var(--intelligence-control)]" />
+            ))}
+          </div>
+        ) : outcome?.status === 'matched' ? (
+          <div className="space-y-3" aria-live="polite">
+            {outcome.hits.map((hit, index) => (
+              <article
+                key={`${hit.fileId}-${hit.chunkIndex}-${index}`}
+                className="rounded-xl border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] p-3.5"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 font-mono text-xs font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="truncate text-sm font-semibold text-[var(--text-primary)]">{hit.title}</h3>
+                      <span className="rounded-md border border-status-success/25 bg-status-success/10 px-2 py-0.5 font-mono text-xs text-status-success">
+                        相关度 {formatKnowledgeBaseRetrievalScore(hit.score)}
+                      </span>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text-secondary)]">{hit.snippet}</p>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                      资料 #{hit.fileId} · 片段 {hit.chunkIndex + 1}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={continueInAetherHub}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 md:min-h-9"
+              >
+                带这个问题去灵境
+              </button>
+            </div>
+          </div>
+        ) : guidance ? (
+          <div className="rounded-xl border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] p-4" aria-live="polite">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">{guidance.title}</h3>
+            <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{guidance.description}</p>
+            <ul className="mt-3 space-y-1.5 text-sm text-[var(--text-secondary)]">
+              {guidance.nextSteps.map((step) => <li key={step}>· {step}</li>)}
+            </ul>
+            <button
+              type="button"
+              onClick={continueInAetherHub}
+              className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 md:min-h-9"
+            >
+              带这个问题去灵境
+            </button>
+          </div>
+        ) : (
+          <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--intelligence-border)] px-6 text-center">
+            <Search className="h-7 w-7 text-[var(--text-tertiary)]" />
+            <p className="mt-3 text-sm font-medium text-[var(--text-primary)]">
+              {kb.chunkCount > 0 ? '等待你的问题' : '还没有可检索的片段'}
+            </p>
+            <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--text-tertiary)]">
+              {kb.chunkCount > 0
+                ? '建议使用你在真实工作中会问的问题，结果更容易判断资料是否够用。'
+                : '先到「资料」添加内容并等待索引完成，再回来验证效果。'}
+            </p>
+          </div>
+        )}
+      </IntelligencePanel>
     </div>
   );
 }
@@ -225,6 +584,8 @@ function FilesTab({
   const [files, setFiles] = useState<KnowledgeBaseFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorDialog, setErrorDialog] = useState<KnowledgeBaseFile | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<KnowledgeBaseFile | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<KbVectorStatus | ''>('');
   const [bucket, setBucket] = useState<{ year: number; month: number } | null>(null);
@@ -249,7 +610,7 @@ function FilesTab({
       ]);
       setFiles(res.data.items || []);
       setStats(st.data);
-    } catch (err: any) {
+    } catch {
       toast.error('加载文件失败');
     } finally {
       setLoading(false);
@@ -278,9 +639,9 @@ function FilesTab({
         try {
           await knowledgeBaseService.uploadFile(kb.id, file);
           succeeded += 1;
-        } catch (err: any) {
+        } catch (error) {
           failed += 1;
-          if (!errMsg) errMsg = err?.response?.data?.message || `${file.name} 上传失败`;
+          if (!errMsg) errMsg = extractApiErrorMessage(error, `${file.name} 上传失败`);
         }
       }
     });
@@ -298,6 +659,23 @@ function FilesTab({
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const confirmFileDeletion = async () => {
+    if (!deleteConfirmation || deletePending) return;
+    const file = deleteConfirmation;
+    setDeletePending(true);
+    try {
+      await knowledgeBaseService.deleteFile(kb.id, file.id);
+      setDeleteConfirmation(null);
+      toast.success('资料文件已永久删除');
+      await load();
+      onChanged();
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '删除失败'));
+    } finally {
+      setDeletePending(false);
     }
   };
 
@@ -444,24 +822,14 @@ function FilesTab({
                   file={f}
                   kb={kb}
                   canEdit={canEdit}
-                  onDelete={async () => {
-                    if (!confirm(`确定删除「${f.title || f.filename}」？`)) return;
-                    try {
-                      await knowledgeBaseService.deleteFile(kb.id, f.id);
-                      toast.success('已删除');
-                      await load();
-                      onChanged();
-                    } catch (err: any) {
-                      toast.error(err?.response?.data?.message || '删除失败');
-                    }
-                  }}
+                  onDelete={() => setDeleteConfirmation(f)}
                   onReindex={async () => {
                     try {
                       await knowledgeBaseService.reindexFile(kb.id, f.id);
                       toast.success('已触发重建');
                       await load();
-                    } catch (err: any) {
-                      toast.error(err?.response?.data?.message || '重建失败');
+                    } catch (error) {
+                      toast.error(extractApiErrorMessage(error, '重建失败'));
                     }
                   }}
                   onShowError={() => setErrorDialog(f)}
@@ -475,6 +843,15 @@ function FilesTab({
       {errorDialog && (
         <ErrorDialog file={errorDialog} onClose={() => setErrorDialog(null)} />
       )}
+      <KnowledgeDetailConfirmDialog
+        confirmation={deleteConfirmation ? {
+          kind: 'delete-file',
+          targetName: deleteConfirmation.title || deleteConfirmation.filename || `#${deleteConfirmation.id}`,
+        } : null}
+        pending={deletePending}
+        onCancel={() => setDeleteConfirmation(null)}
+        onConfirm={() => void confirmFileDeletion()}
+      />
     </div>
   );
 }
@@ -555,7 +932,7 @@ function StatusBadge({
   status: KbVectorStatus;
   onClick?: () => void;
 }) {
-  const map: Record<KbVectorStatus, { label: string; tone: string; icon: React.ComponentType<any> }> = {
+  const map: Record<KbVectorStatus, { label: string; tone: string; icon: React.ComponentType<{ className?: string }> }> = {
     PENDING: { label: '排队', tone: 'info', icon: Loader2 },
     RUNNING: { label: '处理中', tone: 'info', icon: Loader2 },
     SUCCEEDED: { label: '已索引', tone: 'success', icon: CheckCircle2 },
@@ -666,6 +1043,11 @@ function DetailSkeleton() {
 // Tab: Profiles
 // ============================================================
 
+type ProfileConfirmationAction = {
+  kind: 'restore-profile' | 'migrate-profile' | 'delete-profile';
+  profile: KnowledgeBaseProfile;
+};
+
 function ProfilesTab({
   kb,
   canManage,
@@ -678,6 +1060,8 @@ function ProfilesTab({
   const [profiles, setProfiles] = useState<KnowledgeBaseProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<ProfileConfirmationAction | null>(null);
+  const [confirmationPending, setConfirmationPending] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -694,6 +1078,50 @@ function ProfilesTab({
   useEffect(() => {
     load();
   }, [load]);
+
+  const confirmProfileAction = async () => {
+    if (!confirmation || confirmationPending) return;
+    const action = confirmation;
+    setConfirmationPending(true);
+    try {
+      switch (action.kind) {
+        case 'restore-profile':
+          await knowledgeBaseService.activateProfile(kb.id, action.profile.id);
+          toast.success(`已切回档案「${action.profile.name}」`);
+          await load();
+          onChanged();
+          break;
+        case 'migrate-profile':
+          await knowledgeBaseService.migrateProfile(kb.id, action.profile.id);
+          toast.success(
+            `已开始迁移到「${action.profile.name}」（后台 reindex 中）。请稍后在「索引档案」与文件列表观察 active 状态切换与文件向量化进度。`,
+            { id: `mig-${action.profile.id}`, duration: 6000 },
+          );
+          await load();
+          onChanged();
+          break;
+        case 'delete-profile':
+          await knowledgeBaseService.deleteProfile(kb.id, action.profile.id);
+          toast.success('索引档案已永久删除');
+          await load();
+          break;
+      }
+      setConfirmation(null);
+    } catch (error) {
+      const fallback = action.kind === 'restore-profile'
+        ? '切回失败'
+        : action.kind === 'migrate-profile'
+          ? '迁移启动失败'
+          : '删除失败';
+      if (action.kind === 'migrate-profile') {
+        toast.error(extractApiErrorMessage(error, fallback), { id: `mig-${action.profile.id}` });
+      } else {
+        toast.error(extractApiErrorMessage(error, fallback));
+      }
+    } finally {
+      setConfirmationPending(false);
+    }
+  };
 
   return (
     <div className="mt-4 space-y-4">
@@ -729,50 +1157,9 @@ function ProfilesTab({
               key={p.id}
               profile={p}
               canManage={canManage}
-              onRestore={async () => {
-                if (!confirm(
-                  `确定切回「${p.name}」吗？\n\n` +
-                  `系统会把当前 active 档案降级，并把该旧档案保留的 embeddings 恢复为 active。`,
-                )) return;
-                try {
-                  await knowledgeBaseService.activateProfile(kb.id, p.id);
-                  toast.success(`已切回档案「${p.name}」`);
-                  await load();
-                  onChanged();
-                } catch (err: any) {
-                  toast.error(err?.response?.data?.message || '切回失败');
-                }
-              }}
-              onMigrate={async () => {
-                if (!confirm(
-                  `蓝绿迁移会用「${p.name}」全量重建当前知识库的索引，整库文件较多时需要数十秒到几分钟。\n` +
-                  `期间用户仍走旧 profile 检索；全部 shadow 写入完成后原子切换 active。\n\n继续吗？`,
-                )) return;
-                try {
-                  // 后端 MigrateProfile 已改为异步 goroutine 调度，HTTP 立即返回 ack。
-                  // review chatgpt-codex P2 修复：toast 文案必须反映异步语义，不再写"已迁移并激活"
-                  // 否则 admin 看到该提示会误以为已完成，实际可能正在 reindex 或失败回滚。
-                  await knowledgeBaseService.migrateProfile(kb.id, p.id);
-                  toast.success(
-                    `已开始迁移到「${p.name}」（后台 reindex 中）。请稍后在「索引档案」与文件列表观察 active 状态切换与文件向量化进度。`,
-                    { id: `mig-${p.id}`, duration: 6000 },
-                  );
-                  await load();
-                  onChanged();
-                } catch (err: any) {
-                  toast.error(err?.response?.data?.message || '迁移启动失败', { id: `mig-${p.id}` });
-                }
-              }}
-              onDelete={async () => {
-                if (!confirm(`确定删除档案「${p.name}」？`)) return;
-                try {
-                  await knowledgeBaseService.deleteProfile(kb.id, p.id);
-                  toast.success('已删除');
-                  await load();
-                } catch (err: any) {
-                  toast.error(err?.response?.data?.message || '删除失败');
-                }
-              }}
+              onRestore={() => setConfirmation({ kind: 'restore-profile', profile: p })}
+              onMigrate={() => setConfirmation({ kind: 'migrate-profile', profile: p })}
+              onDelete={() => setConfirmation({ kind: 'delete-profile', profile: p })}
             />
           ))}
         </div>
@@ -789,6 +1176,15 @@ function ProfilesTab({
           }}
         />
       )}
+      <KnowledgeDetailConfirmDialog
+        confirmation={confirmation ? {
+          kind: confirmation.kind,
+          targetName: confirmation.profile.name,
+        } : null}
+        pending={confirmationPending}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => void confirmProfileAction()}
+      />
     </div>
   );
 }
@@ -912,8 +1308,8 @@ function CreateProfileModal({
     try {
       await knowledgeBaseService.createProfile(kbId, form);
       onCreated();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || '创建失败');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '创建失败'));
     } finally {
       setSubmitting(false);
     }
@@ -1019,14 +1415,16 @@ function FieldSelect({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
-        {options.map((o) => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
-    </label>
+      <Select
+        value={value}
+        onValueChange={onChange}
+        options={options.map((option) => ({ value: option, label: option }))}
+        ariaLabel={label}
+        size="md"
+      />
+    </div>
   );
 }
 
@@ -1034,10 +1432,14 @@ function FieldSelect({
 // Tab: Members
 // ============================================================
 
+type KnowledgePermissionLevel = 'VIEW' | 'USE' | 'EDIT' | 'MANAGE';
+
 function MembersTab({ kb, canManage }: { kb: KnowledgeBase; canManage: boolean }) {
   const [members, setMembers] = useState<KnowledgeBaseMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [revokeConfirmation, setRevokeConfirmation] = useState<KnowledgeBaseMember | null>(null);
+  const [revokePending, setRevokePending] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1054,6 +1456,22 @@ function MembersTab({ kb, canManage }: { kb: KnowledgeBase; canManage: boolean }
   useEffect(() => {
     load();
   }, [load]);
+
+  const confirmMemberRevoke = async () => {
+    if (!revokeConfirmation || revokePending) return;
+    const member = revokeConfirmation;
+    setRevokePending(true);
+    try {
+      await knowledgeBaseService.deleteMember(kb.id, member.id);
+      setRevokeConfirmation(null);
+      toast.success('知识库权限已撤销');
+      await load();
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '撤销失败'));
+    } finally {
+      setRevokePending(false);
+    }
+  };
 
   const ownerLabel = useMemo(() => {
     if (kb.ownerId) return `User #${kb.ownerId}（隐式 MANAGE）`;
@@ -1116,17 +1534,9 @@ function MembersTab({ kb, canManage }: { kb: KnowledgeBase; canManage: boolean }
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!confirm('确定撤销该成员？')) return;
-                          try {
-                            await knowledgeBaseService.deleteMember(kb.id, m.id);
-                            toast.success('已撤销');
-                            await load();
-                          } catch (err: any) {
-                            toast.error(err?.response?.data?.message || '撤销失败');
-                          }
-                        }}
+                        onClick={() => setRevokeConfirmation(m)}
                         className="rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-status-danger"
+                        aria-label={`撤销 ${m.principalName || `${m.principalType} #${m.principalId}`} 的知识库权限`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1150,6 +1560,16 @@ function MembersTab({ kb, canManage }: { kb: KnowledgeBase; canManage: boolean }
           }}
         />
       )}
+      <KnowledgeDetailConfirmDialog
+        confirmation={revokeConfirmation ? {
+          kind: 'revoke-member',
+          targetName: revokeConfirmation.principalName
+            || `${revokeConfirmation.principalType} #${revokeConfirmation.principalId}`,
+        } : null}
+        pending={revokePending}
+        onCancel={() => setRevokeConfirmation(null)}
+        onConfirm={() => void confirmMemberRevoke()}
+      />
     </div>
   );
 }
@@ -1165,7 +1585,7 @@ function AddMemberModal({
 }) {
   const [type, setType] = useState<'USER' | 'TEAM' | 'ROLE'>('USER');
   const [principal, setPrincipal] = useState<{ id: number; label: string } | null>(null);
-  const [level, setLevel] = useState<'VIEW' | 'USE' | 'EDIT' | 'MANAGE'>('USE');
+  const [level, setLevel] = useState<KnowledgePermissionLevel>('USE');
   const [submitting, setSubmitting] = useState(false);
 
   const [users, setUsers] = useState<ManagedUser[] | null>(null);
@@ -1210,8 +1630,8 @@ function AddMemberModal({
         permissionLevel: level,
       });
       onAdded();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || '添加失败');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '添加失败'));
     } finally {
       setSubmitting(false);
     }
@@ -1322,12 +1742,18 @@ function AddMemberModal({
 
           <div>
             <span className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">权限等级</span>
-            <select value={level} onChange={(e) => setLevel(e.target.value as any)} className={inputClass}>
-              <option value="VIEW">VIEW · 只看清单</option>
-              <option value="USE">USE · 灵境对话可用</option>
-              <option value="EDIT">EDIT · 上传/删除文件</option>
-              <option value="MANAGE">MANAGE · 完全控制</option>
-            </select>
+            <Select
+              value={level}
+              onValueChange={(value) => setLevel(value as KnowledgePermissionLevel)}
+              options={[
+                { value: 'VIEW', label: 'VIEW · 只看清单' },
+                { value: 'USE', label: 'USE · 灵境对话可用' },
+                { value: 'EDIT', label: 'EDIT · 上传/删除文件' },
+                { value: 'MANAGE', label: 'MANAGE · 完全控制' },
+              ]}
+              ariaLabel="权限等级"
+              size="md"
+            />
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]">

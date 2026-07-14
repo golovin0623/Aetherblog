@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import base64
 import logging
+import math
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
 from app.schemas.common import ApiResponse
 from app.services.kb_indexer import KBIndexerService
+from app.services.kb_recall import KBRecallUnavailable, recall_kbs
 
 router = APIRouter()
 logger = logging.getLogger("ai-service")
@@ -44,6 +47,27 @@ class KBIndexResponseData(BaseModel):
     docTokens: int
     status: str
     error: str = ""
+
+
+class KBRetrieveRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    query: str = Field(min_length=2, max_length=500)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class KBRetrieveHit(BaseModel):
+    title: str
+    snippet: str
+    score: float = Field(ge=0, le=1)
+    fileId: int
+    chunkIndex: int
+
+
+class KBRetrieveResponseData(BaseModel):
+    status: Literal["matched", "empty", "unavailable"]
+    query: str
+    hits: list[KBRetrieveHit]
 
 
 @router.post(
@@ -116,4 +140,71 @@ async def reindex_all(
     })
 
 
-__all__ = ["router", "KBIndexRequest", "KBIndexResponseData"]
+@router.post(
+    "/api/v1/kb/{kb_id}/retrieve",
+    response_model=ApiResponse[KBRetrieveResponseData],
+)
+async def retrieve_kb(
+    kb_id: int,
+    req: KBRetrieveRequest,
+    _user=Depends(require_admin_or_internal),
+    pool=Depends(get_pg_pool),
+    llm=Depends(get_llm_router),
+) -> ApiResponse[KBRetrieveResponseData]:
+    """Run a strict, single-KB retrieval used by the admin verification surface.
+
+    Authorization to USE this KB is enforced by Go before this internal-token call.
+    This endpoint deliberately returns ``unavailable`` for failed retrieval rather
+    than disguising it as a legitimate zero-hit search.
+    """
+    try:
+        hits = await recall_kbs(
+            pool,
+            llm,
+            kb_ids=[kb_id],
+            query=req.query,
+            top_k_total=req.limit,
+            strict=True,
+        )
+    except Exception as exc:
+        # Full details stay in server logs. The response is intentionally stable and
+        # contains no database/provider host, credentials, or exception text.
+        if isinstance(exc, KBRecallUnavailable):
+            logger.warning("kb_retrieve.unavailable", extra={"data": {"kb_id": kb_id}})
+        else:
+            logger.error("kb_retrieve.failed", extra={"data": {
+                "kb_id": kb_id,
+                "error_type": type(exc).__name__,
+            }})
+        return ApiResponse(data=KBRetrieveResponseData(
+            status="unavailable",
+            query=req.query,
+            hits=[],
+        ))
+
+    response_hits: list[KBRetrieveHit] = []
+    for hit in hits:
+        if not math.isfinite(hit.similarity):
+            continue
+        response_hits.append(KBRetrieveHit(
+            title=(hit.file_title or "未命名资料")[:240],
+            snippet=hit.snippet.strip()[:2000],
+            score=min(1.0, max(0.0, hit.similarity)),
+            fileId=hit.kb_file_id,
+            chunkIndex=hit.chunk_index,
+        ))
+
+    return ApiResponse(data=KBRetrieveResponseData(
+        status="matched" if response_hits else "empty",
+        query=req.query,
+        hits=response_hits,
+    ))
+
+
+__all__ = [
+    "router",
+    "KBIndexRequest",
+    "KBIndexResponseData",
+    "KBRetrieveRequest",
+    "KBRetrieveResponseData",
+]

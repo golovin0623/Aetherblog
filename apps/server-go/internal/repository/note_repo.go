@@ -270,6 +270,15 @@ func (r *NoteRepo) MarkOpened(ctx context.Context, id int64, openedAt time.Time)
 	return err
 }
 
+// MarkEmbeddingPending exposes an honest in-progress state without changing the note content timestamp.
+func (r *NoteRepo) MarkEmbeddingPending(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE notes
+		SET embedding_status='PENDING', embedding_error=NULL
+		WHERE id=$1 AND deleted=false`, id)
+	return err
+}
+
 // Duplicate 从现有笔记复制一份新笔记。
 func (r *NoteRepo) Duplicate(ctx context.Context, id int64, title string, authorID *int64) (*model.Note, error) {
 	var out model.Note

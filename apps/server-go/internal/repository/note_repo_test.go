@@ -182,3 +182,30 @@ func TestNoteFulltextMigrationRebuildsIndexWithCappedDocument(t *testing.T) {
 		t.Fatalf("migration must not recreate the unsafe full-body notes tsvector expression:\n%s", sql)
 	}
 }
+
+func TestNoteKnowledgeReadinessMigrationPersistsFingerprintProfileAndFailure(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	migrationPath := filepath.Join(filepath.Dir(filename), "..", "..", "migrations", "000085_note_knowledge_readiness.up.sql")
+
+	raw, err := os.ReadFile(migrationPath)
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(raw)
+	for _, column := range []string{
+		"embedding_fingerprint",
+		"embedding_profile_id",
+		"embedding_indexed_at",
+		"embedding_error",
+	} {
+		if !strings.Contains(sql, column) {
+			t.Fatalf("migration must add %s:\n%s", column, sql)
+		}
+	}
+	if !strings.Contains(sql, "REFERENCES search_profiles(id)") {
+		t.Fatalf("embedding_profile_id must be constrained to search_profiles:\n%s", sql)
+	}
+}

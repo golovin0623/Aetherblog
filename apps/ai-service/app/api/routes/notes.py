@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_llm_router, get_pg_pool, require_admin_or_internal
@@ -30,6 +32,21 @@ class IndexNoteResponse(BaseModel):
     doc_tokens: int
     status: str
     error: str = ""
+
+
+class NoteReadinessResponse(BaseModel):
+    note_id: int
+    status: str
+    queryable: bool
+    profile_id: int | None = None
+    profile_name: str | None = None
+    model_id: str | None = None
+    chunk_count: int
+    carrier_id: int | None = None
+    source_fingerprint: str
+    indexed_fingerprint: str | None = None
+    indexed_at: datetime | None = None
+    message: str
 
 
 class ReindexNotesRequest(BaseModel):
@@ -173,10 +190,42 @@ async def index_note(
     )
 
 
+@router.get("/{note_id}/readiness")
+async def note_readiness(
+    note_id: int,
+    user_id: int | None = Query(default=None, ge=1),
+    llm=Depends(get_llm_router),
+    pool=Depends(get_pg_pool),
+) -> NoteReadinessResponse:
+    if note_id <= 0:
+        raise HTTPException(status_code=400, detail="note_id 必须为正整数")
+    outcome = await NoteIndexerService(pool, llm).get_readiness(
+        note_id=note_id,
+        user_id=user_id,
+    )
+    if outcome is None:
+        raise HTTPException(status_code=404, detail="笔记不存在或无权查看索引状态")
+    return NoteReadinessResponse(
+        note_id=outcome.note_id,
+        status=outcome.status,
+        queryable=outcome.queryable,
+        profile_id=outcome.profile_id,
+        profile_name=outcome.profile_name,
+        model_id=outcome.model_id,
+        chunk_count=outcome.chunk_count,
+        carrier_id=outcome.carrier_id,
+        source_fingerprint=outcome.source_fingerprint,
+        indexed_fingerprint=outcome.indexed_fingerprint,
+        indexed_at=outcome.indexed_at,
+        message=outcome.message,
+    )
+
+
 __all__ = [
     "router",
     "IndexNoteRequest",
     "IndexNoteResponse",
+    "NoteReadinessResponse",
     "ReindexNotesRequest",
     "ReindexNotesResponse",
 ]

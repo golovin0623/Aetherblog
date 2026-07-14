@@ -4,6 +4,7 @@ import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { noteService } from '@/services/noteService';
 import type { NoteFolderItem, NoteDetail } from '@/types/note';
 import { toast } from 'sonner';
+import { Select } from '@aetherblog/ui';
 
 interface QuickNoteDialogProps {
   isOpen: boolean;
@@ -120,16 +121,17 @@ export function QuickNoteDialog({ isOpen, folders, onClose, onCreated }: QuickNo
             className="min-h-36 w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-3 text-sm leading-6 text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-muted)] focus:border-[color-mix(in_oklch,var(--color-primary)_48%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-primary)_16%,transparent)]"
           />
           <div className="grid gap-3 md:grid-cols-2">
-            <select
-              value={folderId}
-              onChange={(event) => setFolderId(event.target.value)}
-              className="h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-sm text-[var(--text-primary)] outline-none transition-[border-color,box-shadow] focus:border-[color-mix(in_oklch,var(--color-primary)_48%,transparent)] focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-primary)_16%,transparent)]"
-            >
-              <option value="">未整理</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
-              ))}
-            </select>
+            <Select
+              value={folderId || '__unfiled__'}
+              onValueChange={(value) => setFolderId(value === '__unfiled__' ? '' : value)}
+              options={[
+                { value: '__unfiled__', label: '未整理' },
+                ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+              ]}
+              ariaLabel="快速记录文件夹"
+              size="md"
+              className="h-11"
+            />
             <input
               value={tags}
               onChange={(event) => setTags(event.target.value)}

@@ -15,6 +15,21 @@ export type KbVectorStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'S
 export type KbProfileStatus = 'active' | 'shadow' | 'deprecated';
 export type KbChunkerKind = 'recursive' | 'fixed' | 'markdown' | 'qa' | 'parent_child';
 export type KbPrincipalType = 'USER' | 'TEAM' | 'ROLE';
+export type KbRetrieveStatus = 'matched' | 'empty' | 'unavailable';
+
+export interface KnowledgeBaseRetrievalHit {
+  title: string;
+  snippet: string;
+  score: number;
+  fileId: number;
+  chunkIndex: number;
+}
+
+export interface KnowledgeBaseRetrievalResponse {
+  status: KbRetrieveStatus;
+  query: string;
+  hits: KnowledgeBaseRetrievalHit[];
+}
 
 export interface KnowledgeBaseProfile {
   id: number;
@@ -187,6 +202,11 @@ export const knowledgeBaseService = {
   delete: (id: number): Promise<R<unknown>> => api.delete(`${base}/${id}`),
 
   stats: (id: number): Promise<R<KnowledgeBaseStats>> => api.get(`${base}/${id}/stats`),
+
+  retrieve: (
+    id: number,
+    req: { query: string; limit?: number }
+  ): Promise<R<KnowledgeBaseRetrievalResponse>> => api.post(`${base}/${id}/retrieve`, req),
 
   // ----- 文件 -----
   listFiles: (

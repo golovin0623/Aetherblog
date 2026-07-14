@@ -1,249 +1,442 @@
-// pages/knowledge/KnowledgeBasePage.tsx — 知识库列表（卡片网格）
-//
-// 路由：/intelligence/knowledge
-// 设计：
-//   - IntelligenceShell + IntelligenceHeader 复用 INTELLIGENCE 板块统一外壳
-//   - 系统库（文章索引库）固定置顶并带 mono uppercase "系统" 徽章；不可删
-//   - 用户库按 created_at DESC 排列，点卡片进详情
-//   - Phase1 移动端 = 单列；桌面 ≥ lg 双列；超大屏 ≥ xl 三列
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { BookOpen, Library, Plus, ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpenCheck,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  FilePlus2,
+  FolderOpen,
+  Library,
+  MessageSquareText,
+  Plus,
+  ShieldCheck,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Modal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 
-import { IntelligenceHeader, IntelligenceShell } from '@/components/intelligence';
-import { cn } from '@/lib/utils';
+import {
+  IntelligenceHeader,
+  IntelligencePanel,
+  IntelligenceShell,
+} from '@/components/intelligence';
+import { cn, extractApiErrorMessage } from '@/lib/utils';
 import {
   knowledgeBaseService,
-  type KnowledgeBase,
   type CreateKnowledgeBaseRequest,
+  type KnowledgeBase,
 } from '@/services/knowledgeBaseService';
+import { storeKnowledgeWorkspaceHandoff } from '@/services/knowledgeWorkspaceHandoff';
+import { useAuthStore } from '@/stores';
+import {
+  getKnowledgeBaseNextAction,
+  getKnowledgeBaseReadiness,
+  type KnowledgeBaseReadiness,
+  type KnowledgeBaseReadinessInput,
+} from './knowledgeBaseReadiness';
+
+const READINESS_PRESENTATION: Record<
+  KnowledgeBaseReadiness,
+  { label: string; icon: LucideIcon; className: string }
+> = {
+  empty: {
+    label: '等待添加资料',
+    icon: FilePlus2,
+    className:
+      'border-[var(--intelligence-border)] bg-[var(--intelligence-control)] text-[var(--ink-secondary)]',
+  },
+  processing: {
+    label: '正在准备',
+    icon: Clock3,
+    className: 'border-status-warning/30 bg-status-warning/10 text-status-warning',
+  },
+  attention: {
+    label: '需要处理',
+    icon: CircleAlert,
+    className: 'border-status-danger/30 bg-status-danger/10 text-status-danger',
+  },
+  ready: {
+    label: '可以验证',
+    icon: CheckCircle2,
+    className: 'border-status-success/30 bg-status-success/10 text-status-success',
+  },
+};
+
+const VISIBILITY_OPTIONS: Array<{
+  value: NonNullable<CreateKnowledgeBaseRequest['visibility']>;
+  label: string;
+  description: string;
+}> = [
+  { value: 'PRIVATE', label: '仅自己', description: '只有你可以使用' },
+  { value: 'TEAM', label: '团队', description: '团队成员可按权限使用' },
+  { value: 'PUBLIC', label: '所有成员', description: '所有登录成员都可以使用' },
+];
+
+function toKnowledgeBaseReadinessInput(kb: KnowledgeBase): KnowledgeBaseReadinessInput {
+  return {
+    kind: kb.kind,
+    fileCount: kb.fileCount,
+    vectorizedCount: kb.vectorizedCount,
+    failedCount: kb.failedCount,
+    chunkCount: kb.chunkCount,
+    hasActiveProfile: kb.activeProfile != null,
+  };
+}
 
 export default function KnowledgeBasePage() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<KnowledgeBase[] | null>(null);
+  const userId = useAuthStore((state) => state.user?.id);
+  const [items, setItems] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await knowledgeBaseService.list();
-      setItems(res.data || []);
-    } catch (err) {
-      toast.error('加载知识库失败');
+      const response = await knowledgeBaseService.list();
+      setItems(response.data || []);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '暂时无法读取资料库，请稍后重试。'));
       setItems([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
+
+  const readinessSummary = useMemo(() => {
+    const summary: Record<KnowledgeBaseReadiness, number> = {
+      empty: 0,
+      processing: 0,
+      attention: 0,
+      ready: 0,
+    };
+
+    items.forEach((item) => {
+      summary[
+        getKnowledgeBaseReadiness(toKnowledgeBaseReadinessInput(item))
+      ] += 1;
+    });
+    return summary;
+  }, [items]);
+
+  const verifyWithKnowledgeBase = (kb: KnowledgeBase) => {
+    if (!userId) {
+      toast.error('无法确认当前用户，请重新登录后再试。');
+      return;
+    }
+
+    const result = storeKnowledgeWorkspaceHandoff({
+      userId,
+      origin: 'knowledge-base',
+      intent: 'ask',
+      context: {
+        mode: 'selected',
+        refs: [{ kind: 'knowledge-base', id: kb.id, label: kb.name }],
+      },
+      draftPrompt: '请基于这个知识库回答我的问题，并为关键结论提供引用。',
+    });
+
+    if (!result.ok) {
+      toast.error(result.error.message);
+      return;
+    }
+    navigate('/aetherhub');
+  };
+
+  const summaryText = loading
+    ? undefined
+    : items.length === 0
+      ? '还没有资料库，从添加第一份资料开始。'
+      : `${readinessSummary.ready} 个可以验证 · ${readinessSummary.processing} 个正在准备${
+          readinessSummary.attention > 0 ? ` · ${readinessSummary.attention} 个需要处理` : ''
+        }`;
 
   return (
     <IntelligenceShell mode="standard">
       <IntelligenceHeader
-        eyebrow="INTELLIGENCE · KNOWLEDGE"
-        title="知识库"
-        description="管理面向灵境对话的资源库：上传文档、维护向量索引、配置成员权限。"
+        eyebrow="INTELLIGENCE · SOURCES"
+        currentLabel="3 步流程"
+        title="让资料真正可用于回答"
+        description="添加可信资料，等系统准备完成，再用一个真实问题检查回答与引用。"
+        activeSummary={summaryText}
         icon={Library}
-        actions={
+        actions={!loading && items.length > 0 ? (
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+            className="intelligence-action-button-primary !min-h-11 sm:!min-h-10"
           >
-            <Plus className="h-4 w-4" /> 新建知识库
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            新建资料库
           </button>
-        }
+        ) : undefined}
       />
 
-      {loading && <ListSkeleton />}
+      <KnowledgeJourney />
 
-      {!loading && items && items.length === 0 && (
-        <div className="surface-leaf rounded-xl p-12 text-center">
-          <Library className="mx-auto mb-3 h-12 w-12 text-[var(--text-muted)]" />
-          <p className="text-base font-medium text-[var(--text-primary)]">尚无知识库</p>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            创建第一个知识库，灵境对话即可基于你的资料作答。
-          </p>
-        </div>
-      )}
+      <IntelligencePanel
+        title="你的资料库"
+        description="每个资料库都显示当前是否可用，以及此刻最应该做什么。"
+        icon={FolderOpen}
+        actions={
+          !loading && items.length > 0 ? (
+            <span className="font-mono text-xs text-[var(--intelligence-muted)]">
+              {items.length} 个资料库
+            </span>
+          ) : undefined
+        }
+        bodyClassName="p-0"
+      >
+        {loading ? (
+          <ListSkeleton />
+        ) : items.length === 0 ? (
+          <EmptyState onCreate={() => setCreateOpen(true)} />
+        ) : (
+          <div className="divide-y divide-[var(--intelligence-border)]">
+            {items.map((kb) => (
+              <KnowledgeBaseRow
+                key={kb.id}
+                kb={kb}
+                onOpen={() => navigate(`/intelligence/knowledge/${kb.slug}`)}
+                onVerify={() => verifyWithKnowledgeBase(kb)}
+              />
+            ))}
+          </div>
+        )}
+      </IntelligencePanel>
 
-      {!loading && items && items.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2 xl:grid-cols-3">
-          {items.map((kb, i) => (
-            <KBCard
-              key={kb.id}
-              kb={kb}
-              index={i}
-              onOpen={() => navigate(`/intelligence/knowledge/${kb.slug}`)}
-            />
-          ))}
-        </div>
-      )}
-
-      {createOpen && (
-        <CreateKBModal
-          onClose={() => setCreateOpen(false)}
-          onCreated={async (kb) => {
-            setCreateOpen(false);
-            toast.success(`知识库「${kb.name}」已创建`);
-            await load();
-            navigate(`/intelligence/knowledge/${kb.slug}`);
-          }}
-        />
-      )}
+      <CreateKnowledgeBaseModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(kb) => {
+          setCreateOpen(false);
+          toast.success(`资料库「${kb.name}」已创建，接下来添加第一份资料。`);
+          navigate(`/intelligence/knowledge/${kb.slug}`);
+        }}
+      />
     </IntelligenceShell>
   );
 }
 
-// ============================================================
-// 卡片
-// ============================================================
-
-function KBCard({ kb, index, onOpen }: { kb: KnowledgeBase; index: number; onOpen: () => void }) {
-  const isSystem = kb.kind === 'SYSTEM_POSTS';
-  const statusTone =
-    kb.failedCount > 0
-      ? 'danger'
-      : kb.vectorizedCount === kb.fileCount && kb.fileCount > 0
-      ? 'success'
-      : 'info';
+function KnowledgeJourney() {
+  const steps = [
+    {
+      icon: FilePlus2,
+      title: '添加资料',
+      description: '放入文档或已有内容',
+    },
+    {
+      icon: Clock3,
+      title: '等待可用',
+      description: '系统会自动准备内容',
+    },
+    {
+      icon: MessageSquareText,
+      title: '真实问题验证',
+      description: '检查结论是否有可靠引用',
+    },
+  ];
 
   return (
-    <motion.button
-      type="button"
-      onClick={onOpen}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.18) }}
-      className={cn(
-        'group surface-leaf relative flex flex-col gap-3 rounded-2xl p-5 text-left transition-all',
-        'hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-      )}
+    <IntelligencePanel
+      title="从资料到可信回答"
+      description="不需要先理解复杂配置，按这条路径完成第一次验证。"
+      icon={BookOpenCheck}
+      bodyClassName="p-0"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
-            style={{ background: kb.color || '#6366f1' }}
-          >
-            {isSystem ? <BookOpen className="h-5 w-5" /> : <Library className="h-5 w-5" />}
-          </span>
-          <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold text-[var(--text-primary)]">{kb.name}</h3>
-            <p className="mt-0.5 line-clamp-2 text-xs text-[var(--text-secondary)]">
-              {kb.description || '（暂无描述）'}
-            </p>
-          </div>
-        </div>
-        {isSystem && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-status-success/30 bg-status-success/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-status-success">
-            <ShieldCheck className="h-3 w-3" /> 系统
-          </span>
-        )}
-      </div>
-
-      <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-        <Stat label="文件" value={kb.fileCount} />
-        <Stat label="分块" value={kb.chunkCount} />
-        <Stat
-          label="失败"
-          value={kb.failedCount}
-          tone={kb.failedCount > 0 ? 'danger' : 'muted'}
-        />
-      </div>
-
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <span
-          className={cn(
-            'inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium',
-            statusTone === 'success' && 'bg-status-success/10 text-status-success',
-            statusTone === 'danger' && 'bg-status-danger/10 text-status-danger',
-            statusTone === 'info' && 'bg-[var(--bg-card-hover)] text-[var(--text-secondary)]'
-          )}
-        >
-          {statusTone === 'success'
-            ? '已索引'
-            : statusTone === 'danger'
-            ? '部分失败'
-            : kb.fileCount === 0
-            ? '空库'
-            : '处理中'}
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-          {kb.activeProfile?.code || 'default'}
-        </span>
-      </div>
-    </motion.button>
+      <ol className="grid grid-cols-1 md:grid-cols-3">
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <li
+              key={step.title}
+              className={cn(
+                'relative flex min-w-0 items-center gap-3 px-4 py-3.5',
+                index > 0 &&
+                  'border-t border-[var(--intelligence-border)] md:border-l md:border-t-0',
+              )}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--intelligence-border-strong)] bg-[var(--intelligence-control)] text-[var(--intelligence-accent)]">
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--ink-primary)]">
+                  <span className="mr-1.5 font-mono text-[11px] text-[var(--intelligence-muted)]">
+                    0{index + 1}
+                  </span>
+                  {step.title}
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-[var(--intelligence-muted)]">
+                  {step.description}
+                </p>
+              </div>
+              {index < steps.length - 1 && (
+                <ArrowRight
+                  className="absolute -right-2.5 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-[var(--intelligence-panel-strong)] p-1 text-[var(--intelligence-muted)] md:block"
+                  aria-hidden="true"
+                />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </IntelligencePanel>
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone = 'default',
+function KnowledgeBaseRow({
+  kb,
+  onOpen,
+  onVerify,
 }: {
-  label: string;
-  value: number;
-  tone?: 'default' | 'muted' | 'danger';
+  kb: KnowledgeBase;
+  onOpen: () => void;
+  onVerify: () => void;
 }) {
+  const readinessInput = toKnowledgeBaseReadinessInput(kb);
+  const readiness = getKnowledgeBaseReadiness(readinessInput);
+  const nextAction = getKnowledgeBaseNextAction(readinessInput);
+  const presentation = READINESS_PRESENTATION[readiness];
+  const StatusIcon = presentation.icon;
+  const isSystem = kb.kind === 'SYSTEM_POSTS';
+  const unavailableCount = Math.max(0, kb.fileCount - kb.vectorizedCount);
+
   return (
-    <div className="rounded-lg bg-[var(--bg-card-hover)] px-2 py-1.5 text-center">
-      <div
+    <article className="grid min-w-0 gap-4 p-4 transition-colors hover:bg-[var(--intelligence-control)] sm:grid-cols-[minmax(0,1fr)_minmax(15rem,0.72fr)_auto] sm:items-center sm:px-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] text-[var(--intelligence-accent)]">
+          {isSystem ? (
+            <BookOpenCheck className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Library className="h-4 w-4" aria-hidden="true" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpen}
+              className="inline-flex min-h-11 max-w-full items-center text-left text-sm font-semibold text-[var(--ink-primary)] underline-offset-4 transition-colors hover:text-[var(--intelligence-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-0"
+            >
+              <span className="truncate">{kb.name}</span>
+            </button>
+            {isSystem && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-status-success/25 bg-status-success/10 px-2 py-0.5 text-[10px] font-medium text-status-success">
+                <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                站内文章
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--intelligence-muted)]">
+            {kb.description || (isSystem ? '随站内文章更新的可信内容来源。' : '尚未填写用途说明。')}
+          </p>
+          <p className="mt-1.5 font-mono text-[10px] tracking-wide text-[var(--intelligence-muted)]">
+            {kb.fileCount} 份资料 · {kb.vectorizedCount} 份已处理
+            {readiness === 'processing' && unavailableCount > 0
+              ? ` · ${unavailableCount} 份准备中`
+              : ''}
+            {kb.failedCount > 0 ? ` · ${kb.failedCount} 份未完成` : ''}
+          </p>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+            presentation.className,
+          )}
+        >
+          <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          {presentation.label}
+        </span>
+        <p className="mt-1.5 text-xs leading-5 text-[var(--intelligence-muted)]">
+          {isSystem && readiness === 'empty'
+            ? '发布文章后，这里会自动出现可用内容。'
+            : nextAction.description}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={readiness === 'ready' ? onVerify : onOpen}
         className={cn(
-          'text-sm font-semibold tabular-nums',
-          tone === 'danger' ? 'text-status-danger' : 'text-[var(--text-primary)]'
+          '!min-h-11 whitespace-nowrap sm:!min-h-10',
+          readiness === 'ready'
+            ? 'intelligence-action-button-primary'
+            : 'intelligence-action-button',
         )}
       >
-        {value}
-      </div>
-      <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-        {label}
-      </div>
+        {isSystem && readiness === 'empty' ? '查看内容来源' : nextAction.label}
+        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </article>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-col items-center px-5 py-12 text-center sm:py-14">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--intelligence-border-strong)] bg-[var(--intelligence-control)] text-[var(--intelligence-accent)]">
+        <FilePlus2 className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <h2 className="mt-4 text-base font-semibold text-[var(--ink-primary)]">
+        先创建一个资料库
+      </h2>
+      <p className="mt-1.5 max-w-md text-sm leading-6 text-[var(--intelligence-muted)]">
+        按主题放入一组可信资料。创建后会直接进入添加资料的下一步。
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="intelligence-action-button-primary mt-5 !min-h-11 sm:!min-h-10"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        创建第一个资料库
+      </button>
     </div>
   );
 }
 
-// ============================================================
-// Skeleton
-// ============================================================
-
 function ListSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2 xl:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="surface-leaf animate-pulse space-y-3 rounded-2xl p-5">
-          <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-xl bg-[var(--bg-card-hover)]" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-3/4 rounded bg-[var(--bg-card-hover)]" />
-              <div className="h-3 w-1/2 rounded bg-[var(--bg-card-hover)]" />
+    <div className="divide-y divide-[var(--intelligence-border)]" aria-label="正在读取资料库">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="grid animate-pulse gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,0.72fr)_7rem] sm:items-center sm:px-5"
+        >
+          <div className="flex gap-3">
+            <div className="h-9 w-9 shrink-0 rounded-xl bg-[var(--intelligence-control-hover)]" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-3.5 w-2/5 rounded bg-[var(--intelligence-control-hover)]" />
+              <div className="h-3 w-4/5 rounded bg-[var(--intelligence-control)]" />
+              <div className="h-2.5 w-1/2 rounded bg-[var(--intelligence-control)]" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[0, 1, 2].map((j) => (
-              <div key={j} className="h-12 rounded-lg bg-[var(--bg-card-hover)]" />
-            ))}
+          <div className="space-y-2">
+            <div className="h-6 w-20 rounded-full bg-[var(--intelligence-control-hover)]" />
+            <div className="h-3 w-full rounded bg-[var(--intelligence-control)]" />
           </div>
+          <div className="h-10 rounded-xl bg-[var(--intelligence-control-hover)]" />
         </div>
       ))}
     </div>
   );
 }
 
-// ============================================================
-// 新建知识库弹窗
-// ============================================================
-
-function CreateKBModal({
+function CreateKnowledgeBaseModal({
+  isOpen,
   onClose,
   onCreated,
 }: {
+  isOpen: boolean;
   onClose: () => void;
   onCreated: (kb: KnowledgeBase) => void;
 }) {
@@ -254,112 +447,141 @@ function CreateKBModal({
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error('请填写名称');
+  const close = () => {
+    if (submitting) return;
+    setForm({ name: '', description: '', visibility: 'PRIVATE' });
+    onClose();
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = form.name.trim();
+    if (!name) {
+      toast.error('请先给资料库起一个名称。');
       return;
     }
+
     setSubmitting(true);
     try {
-      const res = await knowledgeBaseService.create(form);
-      onCreated(res.data);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || '创建失败');
+      const response = await knowledgeBaseService.create({
+        name,
+        description: form.description?.trim() || undefined,
+        visibility: form.visibility,
+      });
+      onCreated(response.data);
+      setForm({ name: '', description: '', visibility: 'PRIVATE' });
+    } catch (error) {
+      const message = extractApiErrorMessage(error, '创建资料库失败，请稍后重试。');
+      toast.error(
+        message.toLowerCase().includes('slug')
+          ? '已有同名资料库，请换一个更容易区分的名称。'
+          : message,
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm"
-      onClick={onClose}
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      title="创建资料库"
+      size="lg"
+      showCloseButton={false}
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-        className="surface-overlay w-full max-w-lg rounded-2xl p-6"
-        onClick={(e) => e.stopPropagation()}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="创建资料库"
+        aria-describedby="create-knowledge-description"
       >
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">新建知识库</h2>
-        <p className="mt-1 text-xs text-[var(--text-secondary)]">
-          创建后会自动在媒体库的受控目录下分配归档空间，并生成默认索引档案。
+        <p
+          id="create-knowledge-description"
+          className="text-sm leading-6 text-[var(--ink-secondary)]"
+        >
+          先按用途建一个容器，下一步再添加资料。名称和用途会帮助你以后快速选择正确来源。
         </p>
-        <form onSubmit={submit} className="mt-5 space-y-4">
-          <Field label="名称" required>
+
+        <form onSubmit={submit} className="mt-5 space-y-5">
+          <Field label="资料库名称" required>
             <input
               type="text"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="例如：技术参考"
-              className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="例如：产品规范与决策"
+              maxLength={120}
+              className="intelligence-input !min-h-11 w-full px-3 text-sm outline-none sm:!min-h-10"
               autoFocus
             />
           </Field>
-          <Field label="标识 (slug)" hint="留空则从名称自动派生；仅小写字母数字和短横线">
-            <input
-              type="text"
-              value={form.slug || ''}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              placeholder="可选"
-              className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
-            />
-          </Field>
-          <Field label="描述">
+
+          <Field label="用途说明" hint="可选；说明这组资料适合回答什么问题。">
             <textarea
               value={form.description || ''}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
+              placeholder="例如：用于核对产品规则、历史决策与发布边界"
               rows={3}
-              className="w-full resize-none rounded-lg border border-[var(--border-default)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
-              placeholder="这个知识库的用途与范围"
+              maxLength={500}
+              className="intelligence-input w-full resize-none px-3 py-2.5 text-sm leading-6 outline-none"
             />
           </Field>
-          <Field label="可见性">
-            <div className="flex gap-2">
-              {(['PRIVATE', 'TEAM', 'PUBLIC'] as const).map((v) => (
+
+          <fieldset>
+            <legend className="text-xs font-semibold text-[var(--ink-secondary)]">谁可以使用</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {VISIBILITY_OPTIONS.map((option) => (
                 <label
-                  key={v}
+                  key={option.value}
                   className={cn(
-                    'cursor-pointer rounded-lg border px-3 py-1.5 text-sm transition-colors',
-                    form.visibility === v
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-[var(--text-secondary)] hover:border-primary/40'
+                    'flex min-h-11 cursor-pointer flex-col justify-center rounded-xl border px-3 py-2 transition-colors',
+                    form.visibility === option.value
+                      ? 'border-[var(--intelligence-border-strong)] bg-primary/10 text-[var(--ink-primary)]'
+                      : 'border-[var(--intelligence-border)] bg-[var(--intelligence-control)] text-[var(--ink-secondary)] hover:bg-[var(--intelligence-control-hover)]',
                   )}
                 >
                   <input
                     type="radio"
                     name="visibility"
-                    value={v}
-                    checked={form.visibility === v}
-                    onChange={() => setForm({ ...form, visibility: v })}
+                    value={option.value}
+                    checked={form.visibility === option.value}
+                    onChange={() =>
+                      setForm((current) => ({ ...current, visibility: option.value }))
+                    }
                     className="sr-only"
                   />
-                  {v === 'PRIVATE' ? '仅自己' : v === 'TEAM' ? '团队' : '公开'}
+                  <span className="text-xs font-semibold">{option.label}</span>
+                  <span className="mt-0.5 text-[10px] leading-4 text-[var(--intelligence-muted)]">
+                    {option.description}
+                  </span>
                 </label>
               ))}
             </div>
-          </Field>
-          <div className="flex justify-end gap-2 pt-2">
+          </fieldset>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-[var(--intelligence-border)] pt-4 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+              onClick={close}
+              disabled={submitting}
+              className="intelligence-action-button !min-h-11 sm:!min-h-9"
             >
               取消
             </button>
             <button
               type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 disabled:opacity-60"
+              disabled={submitting || !form.name.trim()}
+              className="intelligence-action-button-primary !min-h-11 sm:!min-h-10"
             >
-              {submitting ? '创建中…' : '创建'}
+              {submitting ? '正在创建…' : '创建并添加资料'}
+              {!submitting && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
             </button>
           </div>
         </form>
-      </motion.div>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -370,18 +592,22 @@ function Field({
   required,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   hint?: string;
   required?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
+      <span className="mb-1.5 block text-xs font-semibold text-[var(--ink-secondary)]">
         {label}
         {required && <span className="ml-0.5 text-status-danger">*</span>}
       </span>
       {children}
-      {hint && <span className="mt-1 block text-[11px] text-[var(--text-muted)]">{hint}</span>}
+      {hint && (
+        <span className="mt-1.5 block text-[11px] leading-5 text-[var(--intelligence-muted)]">
+          {hint}
+        </span>
+      )}
     </label>
   );
 }

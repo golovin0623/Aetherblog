@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type noteIndexAIClient interface {
@@ -26,6 +27,22 @@ type NoteIndexResult struct {
 	DocTokens    int    `json:"doc_tokens"`
 	Status       string `json:"status"`
 	Error        string `json:"error,omitempty"`
+}
+
+// NoteKnowledgeReadinessResult mirrors ai-service /v1/notes/{id}/readiness.
+type NoteKnowledgeReadinessResult struct {
+	NoteID             int64      `json:"note_id"`
+	Status             string     `json:"status"`
+	Queryable          bool       `json:"queryable"`
+	ProfileID          *int64     `json:"profile_id"`
+	ProfileName        *string    `json:"profile_name"`
+	ModelID            *string    `json:"model_id"`
+	ChunkCount         int        `json:"chunk_count"`
+	CarrierID          *int64     `json:"carrier_id"`
+	SourceFingerprint  string     `json:"source_fingerprint"`
+	IndexedFingerprint *string    `json:"indexed_fingerprint"`
+	IndexedAt          *time.Time `json:"indexed_at"`
+	Message            string     `json:"message"`
 }
 
 // NoteIndexerClient triggers note embedding writes through the internal
@@ -71,6 +88,40 @@ func (c *NoteIndexerClient) IndexNote(ctx context.Context, noteID int64, userID 
 	var out NoteIndexResult
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("parse AI note index response: %w", err)
+	}
+	return &out, nil
+}
+
+// GetReadiness returns the fail-closed queryability receipt for one note.
+func (c *NoteIndexerClient) GetReadiness(ctx context.Context, noteID int64, userID *int64) (*NoteKnowledgeReadinessResult, error) {
+	if c == nil || c.client == nil {
+		return nil, errors.New("note indexer client not configured")
+	}
+	if strings.TrimSpace(c.internalToken) == "" {
+		return nil, errors.New("AI internal service token not configured")
+	}
+	path := fmt.Sprintf("/v1/notes/%d/readiness", noteID)
+	if userID != nil && *userID > 0 {
+		path += fmt.Sprintf("?user_id=%d", *userID)
+	}
+	respBody, statusCode, err := c.client.DoSync(ctx, http.MethodGet, path, bytes.NewReader(nil), map[string]string{
+		"X-Internal-Service": c.internalToken,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("AI note readiness request failed: %w", err)
+	}
+	defer respBody.Close()
+
+	raw, err := io.ReadAll(respBody)
+	if err != nil {
+		return nil, fmt.Errorf("read AI note readiness response: %w", err)
+	}
+	if statusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("AI note readiness returned %d: %s", statusCode, truncate(string(raw), 240))
+	}
+	var out NoteKnowledgeReadinessResult
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("parse AI note readiness response: %w", err)
 	}
 	return &out, nil
 }

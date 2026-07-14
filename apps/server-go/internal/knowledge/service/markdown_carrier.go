@@ -70,6 +70,15 @@ func (s *MarkdownCarrierService) GetOrCreateForNote(ctx context.Context, noteID 
 	return s.getOrCreateForNote(ctx, noteID, 0, true)
 }
 
+// PrepareNoteCarrier implements service.NoteKnowledgeCarrierPreparer without creating a package cycle.
+func (s *MarkdownCarrierService) PrepareNoteCarrier(ctx context.Context, noteID int64) (int64, error) {
+	carrier, err := s.GetOrCreateForNote(ctx, noteID)
+	if err != nil {
+		return 0, err
+	}
+	return carrier.ID, nil
+}
+
 // GetOrCreateForNoteAs 懒创建/返回当前调用者可访问的 Markdown carrier。
 func (s *MarkdownCarrierService) GetOrCreateForNoteAs(ctx context.Context, noteID int64, userID int64, canAdmin bool) (*model.Carrier, error) {
 	return s.getOrCreateForNote(ctx, noteID, userID, canAdmin)

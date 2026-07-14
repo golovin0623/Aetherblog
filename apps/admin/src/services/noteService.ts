@@ -5,6 +5,7 @@ import type {
   CreateNoteRequest,
   NoteDetail,
   NoteFolderItem,
+  NoteKnowledgeReadiness,
   NoteListItem,
   NoteTagItem,
   UpdateNotePropertiesRequest,
@@ -57,5 +58,10 @@ export const noteService = {
 
   getBackLinks: (id: number): Promise<R<NoteDetail['backLinks']>> =>
     apiClient.get<R<NoteDetail['backLinks']>>(`/v1/admin/notes/${id}/backlinks`),
-};
 
+  getKnowledgeReadiness: (id: number): Promise<R<NoteKnowledgeReadiness>> =>
+    apiClient.get<R<NoteKnowledgeReadiness>>(`/v1/admin/notes/${id}/knowledge-readiness`),
+
+  prepareKnowledgeSource: (id: number): Promise<R<NoteKnowledgeReadiness>> =>
+    apiClient.post<R<NoteKnowledgeReadiness>>(`/v1/admin/notes/${id}/knowledge-source`),
+};

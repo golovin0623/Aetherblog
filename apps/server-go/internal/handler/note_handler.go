@@ -32,6 +32,34 @@ func (h *NoteHandler) MountAdmin(g *echo.Group) {
 	g.DELETE("/:id", h.Delete)
 	g.POST("/:id/duplicate", h.Duplicate)
 	g.GET("/:id/backlinks", h.BackLinks)
+	g.GET("/:id/knowledge-readiness", h.KnowledgeReadiness)
+	g.POST("/:id/knowledge-source", h.PrepareKnowledgeSource)
+}
+
+// KnowledgeReadiness 返回当前笔记是否满足 active profile + current fingerprint + chunks。
+func (h *NoteHandler) KnowledgeReadiness(c echo.Context) error {
+	id, err := h.checkNoteOwnership(c)
+	if err != nil {
+		return err
+	}
+	readiness, err := h.svc.GetKnowledgeReadiness(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, readiness)
+}
+
+// PrepareKnowledgeSource 显式且幂等地准备当前笔记版本用于提问。
+func (h *NoteHandler) PrepareKnowledgeSource(c echo.Context) error {
+	id, err := h.checkNoteOwnership(c)
+	if err != nil {
+		return err
+	}
+	readiness, err := h.svc.PrepareKnowledgeSource(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, readiness)
 }
 
 // MountFolders 注册 /v1/admin/note-folders 路由。

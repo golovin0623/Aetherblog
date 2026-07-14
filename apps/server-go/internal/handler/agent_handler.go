@@ -49,7 +49,10 @@ import (
 // 同时给 articleIds / tagSlugs context 留缓冲。
 const agentChatBodyLimit = 96 * 1024
 
-var errAgentAtlasReadDenied = errors.New("agent atlas scope requires content.atlas.read")
+var (
+	errAgentAtlasReadDenied   = errors.New("agent atlas scope requires content.atlas.read")
+	errAgentKBSelectionDenied = errors.New("agent selected knowledge bases are not usable")
+)
 
 type agentAtlasPermissionChecker interface {
 	UserHasPermission(ctx context.Context, userID int64, legacyRole string, permissionCode string) (bool, error)
@@ -150,9 +153,25 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "请求体过大或无法读取")
 	}
 
+	contextContract, err := normalizeAgentKnowledgeContextBody(bodyBytes)
+	if err != nil {
+		log.Warn().Err(err).Int64("user_id", lu.UserID).Msg("agent: invalid knowledge context contract")
+		h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "知识上下文契约无效")
+		return response.FailWith(c, response.BadRequest, "知识上下文模式或来源格式无效")
+	}
+	bodyBytes = contextContract.Body
+	// Explicit selections are authorization-sensitive. If the permission service
+	// is not wired, fail closed instead of forwarding unchecked IDs to Python.
+	if contextContract.Mode == dto.AgentKnowledgeContextModeSelected &&
+		contextContract.HasKnowledgeBaseRefs && h.kbSvc == nil {
+		log.Warn().Int64("user_id", lu.UserID).Msg("agent: selected kb rejected because permission service is unavailable")
+		h.recordChatActivity(c, len(bodyBytes), http.StatusForbidden, "所选知识库不可用")
+		return response.FailWith(c, response.Forbidden, "无法使用所选知识库")
+	}
+
 	// SECURITY (review chatgpt-codex P1)：客户端可能塞任意 kbIds 绕过 picker 限制
-	// 把未授权库内容注入 prompt。在转发到 ai-service 前先把 kbIds 按当前用户
-	// 权限（≥ USE）过滤。
+	// 把未授权库内容注入 prompt。在转发到 ai-service 前校验所有显式 kbIds
+	// 仍具备权限（≥ USE）且可用于检索；任一失败都拒绝整个选择。
 	//
 	// SECURITY · fail-closed（review chatgpt-codex 第二轮）：filterBodyKBIDs 解析
 	// 失败时**绝不**透传原 body（否则攻击者可故意构造畸形 kbIds 让解析失败、
@@ -160,6 +179,13 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 	if h.kbSvc != nil {
 		filtered, ferr := h.filterBodyKBIDs(c.Request().Context(), bodyBytes, lu.UserID, lu.Role)
 		if ferr != nil {
+			if errors.Is(ferr, errAgentKBSelectionDenied) {
+				// Do not distinguish missing, revoked, unreadable, or not-yet-ready KBs in
+				// the response: all explicit-selection failures share one opaque contract.
+				log.Warn().Int64("user_id", lu.UserID).Msg("agent: explicit kb selection rejected")
+				h.recordChatActivity(c, len(bodyBytes), http.StatusForbidden, "所选知识库不可用")
+				return response.FailWith(c, response.Forbidden, "无法使用所选知识库")
+			}
 			log.Warn().Err(ferr).Int64("user_id", lu.UserID).Msg("agent: kbIds permission filter failed, rejecting request")
 			h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "kbIds 解析或权限过滤失败")
 			return response.FailWith(c, response.BadRequest, "kbIds 字段格式无效或权限解析失败")
@@ -562,13 +588,179 @@ func formatTimePtr(t *time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
-// filterBodyKBIDs 在转发到 ai-service 前，按当前用户权限过滤 chat 请求 body 里的 kbIds。
+type agentKnowledgeContextContract struct {
+	Mode                 dto.AgentKnowledgeContextMode
+	Body                 []byte
+	HasKnowledgeBaseRefs bool
+	HasAtlasRefs         bool
+	LegacyInferred       bool
+}
+
+type agentAtlasContextSelection struct {
+	KPIDs          []int64 `json:"kpIds"`
+	CarrierIDs     []int64 `json:"carrierIds"`
+	SemanticRecall *bool   `json:"semanticRecall"`
+}
+
+// normalizeAgentKnowledgeContextBody turns the UI's three-state selector into
+// an unambiguous wire contract before any source injection happens. Legacy
+// requests are inferred only from shapes emitted by the previous UI:
+//   - omitted fields -> auto
+//   - explicit null/empty opt-out -> none
+//   - explicit positive IDs -> selected
+//   - empty semantic Atlas scope -> auto
+//
+// Selected mode also writes null sentinels for every unselected source family,
+// preventing the downstream filters from treating an omitted family as auto.
+func normalizeAgentKnowledgeContextBody(body []byte) (agentKnowledgeContextContract, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return agentKnowledgeContextContract{}, fmt.Errorf("parse chat body: %w", err)
+	}
+	if raw == nil {
+		return agentKnowledgeContextContract{}, errors.New("parse chat body: expected JSON object")
+	}
+
+	kbField, kbExists := raw["kbIds"]
+	kbIsNull := kbExists && strings.TrimSpace(string(kbField)) == "null"
+	var kbIDs []int64
+	if kbExists && !kbIsNull {
+		if err := json.Unmarshal(kbField, &kbIDs); err != nil {
+			return agentKnowledgeContextContract{}, fmt.Errorf("parse kbIds: %w", err)
+		}
+		if err := validateAgentContextIDs(kbIDs, 10, "kbIds"); err != nil {
+			return agentKnowledgeContextContract{}, err
+		}
+	}
+	hasKBRefs := len(kbIDs) > 0
+
+	atlasField, atlasExists := raw["atlasScope"]
+	atlasIsNull := atlasExists && strings.TrimSpace(string(atlasField)) == "null"
+	var atlasSelection agentAtlasContextSelection
+	if atlasExists && !atlasIsNull {
+		if err := json.Unmarshal(atlasField, &atlasSelection); err != nil {
+			return agentKnowledgeContextContract{}, fmt.Errorf("parse atlasScope: %w", err)
+		}
+		if err := validateAgentContextIDs(atlasSelection.KPIDs, 12, "atlasScope.kpIds"); err != nil {
+			return agentKnowledgeContextContract{}, err
+		}
+		if err := validateAgentContextIDs(atlasSelection.CarrierIDs, 6, "atlasScope.carrierIds"); err != nil {
+			return agentKnowledgeContextContract{}, err
+		}
+	}
+	hasAtlasRefs := len(atlasSelection.KPIDs) > 0 || len(atlasSelection.CarrierIDs) > 0
+
+	modeField, modeExists := raw["knowledgeContextMode"]
+	legacyInferred := !modeExists
+	var mode dto.AgentKnowledgeContextMode
+	if modeExists {
+		if err := json.Unmarshal(modeField, &mode); err != nil || !mode.Valid() {
+			return agentKnowledgeContextContract{}, errors.New("invalid knowledgeContextMode")
+		}
+	} else {
+		switch {
+		case hasKBRefs || hasAtlasRefs:
+			mode = dto.AgentKnowledgeContextModeSelected
+		case kbExists && (kbIsNull || len(kbIDs) == 0):
+			// The old AetherHub opt-out always sent both null fields. Treating the
+			// one-sided or mixed shape as none is the conservative no-private-data
+			// fallback; an explicit empty KB sentinel must never enable auto KBs.
+			mode = dto.AgentKnowledgeContextModeNone
+		case atlasExists && (atlasIsNull ||
+			(atlasSelection.SemanticRecall == nil || !*atlasSelection.SemanticRecall)):
+			mode = dto.AgentKnowledgeContextModeNone
+		default:
+			mode = dto.AgentKnowledgeContextModeAuto
+		}
+	}
+
+	switch mode {
+	case dto.AgentKnowledgeContextModeAuto:
+		if modeExists && (hasKBRefs || hasAtlasRefs) {
+			return agentKnowledgeContextContract{}, errors.New("auto mode cannot carry explicit source IDs")
+		}
+		// Mode is authoritative: an empty/null kbIds sentinel must not disable
+		// automatic permission-scoped injection.
+		delete(raw, "kbIds")
+	case dto.AgentKnowledgeContextModeNone:
+		if hasKBRefs || hasAtlasRefs {
+			return agentKnowledgeContextContract{}, errors.New("none mode cannot carry source IDs")
+		}
+		raw["kbIds"] = json.RawMessage("null")
+		raw["atlasScope"] = json.RawMessage("null")
+	case dto.AgentKnowledgeContextModeSelected:
+		if !hasKBRefs && !hasAtlasRefs {
+			return agentKnowledgeContextContract{}, errors.New("selected mode requires explicit source IDs")
+		}
+		if !hasKBRefs {
+			raw["kbIds"] = json.RawMessage("null")
+		}
+		if !hasAtlasRefs {
+			raw["atlasScope"] = json.RawMessage("null")
+		} else {
+			selectedScope, err := forceSelectedAtlasSemanticRecallOff(atlasField)
+			if err != nil {
+				return agentKnowledgeContextContract{}, err
+			}
+			raw["atlasScope"] = selectedScope
+		}
+	default:
+		return agentKnowledgeContextContract{}, errors.New("invalid knowledgeContextMode")
+	}
+
+	modeJSON, err := json.Marshal(mode)
+	if err != nil {
+		return agentKnowledgeContextContract{}, fmt.Errorf("marshal knowledgeContextMode: %w", err)
+	}
+	raw["knowledgeContextMode"] = modeJSON
+	normalized, err := json.Marshal(raw)
+	if err != nil {
+		return agentKnowledgeContextContract{}, fmt.Errorf("re-encode chat body: %w", err)
+	}
+	return agentKnowledgeContextContract{
+		Mode:                 mode,
+		Body:                 normalized,
+		HasKnowledgeBaseRefs: hasKBRefs,
+		HasAtlasRefs:         hasAtlasRefs,
+		LegacyInferred:       legacyInferred,
+	}, nil
+}
+
+func validateAgentContextIDs(ids []int64, limit int, field string) error {
+	if len(ids) > limit {
+		return fmt.Errorf("%s exceeds limit", field)
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("%s contains invalid ID", field)
+		}
+	}
+	return nil
+}
+
+func forceSelectedAtlasSemanticRecallOff(scope json.RawMessage) (json.RawMessage, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(scope, &raw); err != nil || raw == nil {
+		return nil, errors.New("parse selected atlasScope")
+	}
+	raw["semanticRecall"] = json.RawMessage("false")
+	raw["neighborhoodDepth"] = json.RawMessage("0")
+	normalized, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode selected atlasScope: %w", err)
+	}
+	return normalized, nil
+}
+
+// filterBodyKBIDs 在转发到 ai-service 前，校验 chat 请求 body 里的 kbIds。
 // 如果客户端没有显式传 kbIds，自动注入当前用户可用的 KB，
 // 让 Agent 默认具备“读可见知识库”的能力，而不是必须先经过 KB picker。
 // 显式 null / [] 表示用户选择不使用任何知识库，不做自动注入。
+// 显式非空数组表示用户要求使用这些 KB：必须全部仍有 USE 以上权限且已可用；
+// 任一项不存在、权限被撤销或尚未就绪时，整体拒绝，绝不降级成部分选择继续回答。
 //
 // 返回值约定：
-//   - (newBody, nil)：body 已被过滤或自动注入 kbIds
+//   - (newBody, nil)：body 已自动注入 kbIds
 //   - (nil, nil)：无可注入/无需重写
 //   - (nil, err)：JSON/权限解析/编码失败；调用方应拒绝请求，避免绕过过滤
 //
@@ -610,31 +802,46 @@ func (h *AgentHandler) filterBodyKBIDs(ctx context.Context, body []byte, userID 
 		return nil, fmt.Errorf("build user context: %w", err)
 	}
 
-	allowed := h.kbSvc.FilterAuthorizedKBIDs(ctx, ids, uc)
-	if len(allowed) == len(ids) {
-		// 全部授权，不重写
-		return nil, nil
-	}
-	// 替换 kbIds 字段
-	if len(allowed) == 0 {
-		raw["kbIds"] = json.RawMessage("null")
-	} else {
-		buf, mErr := json.Marshal(allowed)
-		if mErr != nil {
-			return nil, fmt.Errorf("marshal allowed kbIds: %w", mErr)
+	requested := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, errAgentKBSelectionDenied
 		}
-		raw["kbIds"] = json.RawMessage(buf)
+		requested[id] = struct{}{}
 	}
-	rewrote, err := json.Marshal(raw)
+
+	allowed := h.kbSvc.FilterAuthorizedKBIDs(ctx, ids, uc)
+	allowedSet := make(map[int64]struct{}, len(allowed))
+	for _, id := range allowed {
+		allowedSet[id] = struct{}{}
+	}
+	for id := range requested {
+		if _, ok := allowedSet[id]; !ok {
+			return nil, errAgentKBSelectionDenied
+		}
+	}
+
+	// Authorization alone is insufficient for an explicit handoff. A custom KB
+	// without an active profile/chunks cannot answer the promised scoped query.
+	// Reuse the picker projection because it carries both current permission and
+	// readiness facts; missing rows intentionally collapse into the same denial.
+	rows, err := h.kbSvc.ListForPicker(ctx, uc, "")
 	if err != nil {
-		return nil, fmt.Errorf("re-encode body: %w", err)
+		return nil, fmt.Errorf("list agent kb picker for explicit selection: %w", err)
 	}
-	log.Info().
-		Int("client_kb_count", len(ids)).
-		Int("allowed_kb_count", len(allowed)).
-		Int64("user_id", userID).
-		Msg("agent: kbIds filtered by permission")
-	return rewrote, nil
+	usable := make(map[int64]struct{}, len(rows))
+	for _, kb := range rows {
+		if agentKBUsable(kb) {
+			usable[kb.ID] = struct{}{}
+		}
+	}
+	for id := range requested {
+		if _, ok := usable[id]; !ok {
+			return nil, errAgentKBSelectionDenied
+		}
+	}
+
+	return nil, nil
 }
 
 func (h *AgentHandler) rewriteBodyWithAutoKBIDs(
@@ -702,7 +909,26 @@ func (h *AgentHandler) filterBodyAtlasScope(ctx context.Context, body []byte, us
 	if !exists || string(scope) == "null" {
 		return nil, nil
 	}
+	var selection struct {
+		KPIDs      []int64 `json:"kpIds"`
+		CarrierIDs []int64 `json:"carrierIds"`
+	}
+	if err := json.Unmarshal(scope, &selection); err != nil {
+		return nil, fmt.Errorf("parse atlasScope: %w", err)
+	}
+	hasExplicitSelection := len(selection.KPIDs) > 0 || len(selection.CarrierIDs) > 0
+	stripAutomaticScope := func() ([]byte, error) {
+		delete(raw, "atlasScope")
+		filtered, err := json.Marshal(raw)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite chat body without atlasScope: %w", err)
+		}
+		return filtered, nil
+	}
 	if h.atlasPerm == nil {
+		if !hasExplicitSelection {
+			return stripAutomaticScope()
+		}
 		return nil, errAgentAtlasReadDenied
 	}
 	ok, err := h.atlasPerm.UserHasPermission(ctx, userID, legacyRole, "content.atlas.read")
@@ -710,6 +936,13 @@ func (h *AgentHandler) filterBodyAtlasScope(ctx context.Context, body []byte, us
 		return nil, fmt.Errorf("check atlas read permission: %w", err)
 	}
 	if !ok {
+		// An empty scope is the UI's automatic-discovery request. Atlas is not an
+		// available source for this user, so remove only that optional scope and
+		// keep the rest of the chat request (including automatic KB injection).
+		// Explicit KP/carrier selections still fail closed below.
+		if !hasExplicitSelection {
+			return stripAutomaticScope()
+		}
 		return nil, errAgentAtlasReadDenied
 	}
 	return nil, nil

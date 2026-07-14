@@ -43,6 +43,7 @@ type NoteService struct {
 	repo    *repository.NoteRepo
 	rdb     *redis.Client
 	indexer NoteEmbeddingIndexer
+	carrier NoteKnowledgeCarrierPreparer
 }
 
 // NewNoteService 创建 NoteService。
@@ -53,11 +54,22 @@ func NewNoteService(repo *repository.NoteRepo, rdb *redis.Client) *NoteService {
 // NoteEmbeddingIndexer 是 ai-service note embedding 写入器的最小接口。
 type NoteEmbeddingIndexer interface {
 	IndexNote(ctx context.Context, noteID int64, userID *int64) (*NoteIndexResult, error)
+	GetReadiness(ctx context.Context, noteID int64, userID *int64) (*NoteKnowledgeReadinessResult, error)
+}
+
+// NoteKnowledgeCarrierPreparer keeps the core Notes service decoupled from the Atlas package.
+type NoteKnowledgeCarrierPreparer interface {
+	PrepareNoteCarrier(ctx context.Context, noteID int64) (int64, error)
 }
 
 // AttachEmbeddingIndexer 注入异步 note embedding 写入器。
 func (s *NoteService) AttachEmbeddingIndexer(indexer NoteEmbeddingIndexer) {
 	s.indexer = indexer
+}
+
+// AttachKnowledgeCarrierPreparer injects the idempotent Atlas markdown carrier adapter.
+func (s *NoteService) AttachKnowledgeCarrierPreparer(carrier NoteKnowledgeCarrierPreparer) {
+	s.carrier = carrier
 }
 
 // ScheduleEmbedding 异步触发 note embedding 重写。
@@ -100,6 +112,81 @@ func (s *NoteService) ScheduleEmbedding(ctx context.Context, noteID int64, userI
 // GetOwnership 返回笔记存在标志与作者 ID。
 func (s *NoteService) GetOwnership(ctx context.Context, id int64) (bool, *int64, error) {
 	return s.repo.FindOwnership(ctx, id)
+}
+
+// GetKnowledgeReadiness reports whether the current note revision has real chunks under the active profile.
+func (s *NoteService) GetKnowledgeReadiness(ctx context.Context, id int64) (*dto.NoteKnowledgeReadiness, error) {
+	note, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if note == nil {
+		return nil, errors.New("笔记不存在")
+	}
+	if s.indexer == nil {
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	result, err := s.indexer.GetReadiness(ctx, id, note.AuthorID)
+	if err != nil {
+		log.Warn().Err(err).Int64("note_id", id).Msg("note knowledge readiness unavailable")
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	return toNoteKnowledgeReadiness(result), nil
+}
+
+// PrepareKnowledgeSource synchronously refreshes the current revision, then returns a readiness receipt.
+// IndexNote is idempotent for the same fingerprint/profile and the AI writer rejects stale fingerprints.
+func (s *NoteService) PrepareKnowledgeSource(ctx context.Context, id int64) (*dto.NoteKnowledgeReadiness, error) {
+	note, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if note == nil {
+		return nil, errors.New("笔记不存在")
+	}
+	if s.indexer == nil || s.carrier == nil {
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	if _, err := s.carrier.PrepareNoteCarrier(ctx, id); err != nil {
+		return nil, fmt.Errorf("prepare note carrier: %w", err)
+	}
+	if err := s.repo.MarkEmbeddingPending(ctx, id); err != nil {
+		return nil, err
+	}
+	if _, err := s.indexer.IndexNote(ctx, id, note.AuthorID); err != nil {
+		log.Warn().Err(err).Int64("note_id", id).Msg("prepare note knowledge source failed")
+		return unavailableNoteKnowledgeReadiness(id), nil
+	}
+	return s.GetKnowledgeReadiness(ctx, id)
+}
+
+func toNoteKnowledgeReadiness(result *NoteKnowledgeReadinessResult) *dto.NoteKnowledgeReadiness {
+	if result == nil {
+		return unavailableNoteKnowledgeReadiness(0)
+	}
+	return &dto.NoteKnowledgeReadiness{
+		NoteID:             result.NoteID,
+		Status:             result.Status,
+		Queryable:          result.Queryable,
+		ProfileID:          result.ProfileID,
+		ProfileName:        result.ProfileName,
+		ModelID:            result.ModelID,
+		ChunkCount:         result.ChunkCount,
+		CarrierID:          result.CarrierID,
+		SourceFingerprint:  result.SourceFingerprint,
+		IndexedFingerprint: result.IndexedFingerprint,
+		IndexedAt:          result.IndexedAt,
+		Message:            result.Message,
+	}
+}
+
+func unavailableNoteKnowledgeReadiness(noteID int64) *dto.NoteKnowledgeReadiness {
+	return &dto.NoteKnowledgeReadiness{
+		NoteID:    noteID,
+		Status:    "unavailable",
+		Queryable: false,
+		Message:   "知识来源服务暂不可用，请稍后重试。",
+	}
 }
 
 // GetForAdmin 返回后台笔记分页列表。

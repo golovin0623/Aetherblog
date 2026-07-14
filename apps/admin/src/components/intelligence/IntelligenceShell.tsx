@@ -79,7 +79,7 @@ export function IntelligenceHeader({
             <span className="intelligence-eyebrow">{eyebrow}</span>
             {currentLabel && <span className="intelligence-current">{currentLabel}</span>}
           </div>
-          <h1 className="intelligence-title">{title}</h1>
+          <h1 className="intelligence-title font-display">{title}</h1>
           <p className="intelligence-description">{description}</p>
           {activeSummary && <p className="intelligence-summary">{activeSummary}</p>}
         </div>

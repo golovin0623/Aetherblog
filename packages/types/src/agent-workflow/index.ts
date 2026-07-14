@@ -39,7 +39,7 @@ export type AgentRunStatus =
 
 export type AgentWorkflowRunMode = 'real' | 'simulate';
 
-export type AgentWorkflowCapabilityState = 'available' | 'not_connected' | 'coming_soon' | 'disabled';
+export type AgentWorkflowCapabilityState = 'available' | 'not_connected' | 'coming_soon' | 'disabled' | 'unknown';
 
 export interface AgentWorkflowCapabilityStatus {
   enabled: boolean;

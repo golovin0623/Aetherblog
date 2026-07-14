@@ -240,10 +240,10 @@ func (s *AgentWorkflowService) Capabilities(_ context.Context, _ int64) dto.Agen
 			Detail:  "Code 节点仅接入受限表达式沙盒；任意 JS/Python 文件隔离仍需独立 sandbox-worker。",
 		},
 		Scheduler: dto.AgentWorkflowCapabilityStatus{
-			Enabled: true,
-			State:   "available",
+			Enabled: false,
+			State:   "coming_soon",
 			Label:   "调度器",
-			Detail:  "支持 schedule CRUD、nextRunAt 与 missed-run 策略；daemon 扫描入口已开放给仓库启动脚本/后台任务挂接。",
+			Detail:  "当前仅可持久化周期配置；尚未实现扫描并触发运行的 scheduler daemon，因此不会自动运行。",
 		},
 		Autonomous: dto.AgentWorkflowCapabilityStatus{
 			Enabled: connected,
@@ -746,7 +746,7 @@ func (s *AgentWorkflowService) RetryRun(ctx context.Context, userID, runID int64
 	if err != nil || run == nil {
 		return nil, err
 	}
-	if !isRetryableRunStatus(run.Status) {
+	if !canRetryWorkflowRun(run.Status, run.Retryable) {
 		return nil, fmt.Errorf("run status %s is not retryable", run.Status)
 	}
 	// Reproduce the definition the original run executed: a retry is linked to that
@@ -1287,7 +1287,10 @@ func normalizeRunStatus(status string) string {
 	}
 }
 
-func isRetryableRunStatus(status string) bool {
+func canRetryWorkflowRun(status string, retryable bool) bool {
+	if !retryable {
+		return false
+	}
 	switch status {
 	case "failed", "cancelled", "budget_exceeded":
 		return true

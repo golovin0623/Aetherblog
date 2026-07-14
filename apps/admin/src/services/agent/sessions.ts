@@ -7,6 +7,8 @@
  * namespace 与 blog 端隔离：admin 在自己的 storage key 下写，避免两边混读。
  */
 
+import type { AgentRetrievalReceipt } from './chat';
+
 export type AgentMode = 'chat' | 'cowork' | 'code';
 
 export interface AgentMessage {
@@ -15,6 +17,7 @@ export interface AgentMessage {
   content: string;
   think?: string;
   sources?: { title: string; slug: string }[];
+  retrieval?: AgentRetrievalReceipt;
   createdAt: number;
   pending?: boolean;
   error?: string;

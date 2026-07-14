@@ -84,6 +84,22 @@ type NoteDetail struct {
 	Draft           *CreateNoteRequest `json:"draft,omitempty"`
 }
 
+// NoteKnowledgeReadiness 是笔记作为可提问来源的真实可用性回执。
+type NoteKnowledgeReadiness struct {
+	NoteID             int64      `json:"noteId"`
+	Status             string     `json:"status"`
+	Queryable          bool       `json:"queryable"`
+	ProfileID          *int64     `json:"profileId"`
+	ProfileName        *string    `json:"profileName"`
+	ModelID            *string    `json:"modelId"`
+	ChunkCount         int        `json:"chunkCount"`
+	CarrierID          *int64     `json:"carrierId"`
+	SourceFingerprint  string     `json:"sourceFingerprint"`
+	IndexedFingerprint *string    `json:"indexedFingerprint"`
+	IndexedAt          *time.Time `json:"indexedAt"`
+	Message            string     `json:"message"`
+}
+
 // NoteFolderItem 是笔记文件夹响应 DTO。
 type NoteFolderItem struct {
 	ID        int64     `json:"id"`

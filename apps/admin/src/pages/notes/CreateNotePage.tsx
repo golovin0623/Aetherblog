@@ -10,6 +10,7 @@ import {
   BookOpen,
   Bold,
   Check,
+  CircleCheck,
   CheckSquare,
   ChevronDown,
   Clock3,
@@ -29,18 +30,22 @@ import {
   List,
   ListOrdered,
   Loader2,
+  MessageSquareText,
   Minus,
   PanelRight,
   Pencil,
   Pin,
   Quote,
   Redo2,
+  RefreshCw,
   Save,
   Star,
   Strikethrough,
   Sigma,
+  Sparkles,
   Tag,
   Table2,
+  TriangleAlert,
   Underline,
   Undo2,
   X,
@@ -51,11 +56,16 @@ import { toast } from 'sonner';
 import { Select, Tooltip } from '@aetherblog/ui';
 
 import { noteService } from '@/services/noteService';
-import type { CreateNoteRequest, NoteDetail, NoteFolderItem, NoteTagItem } from '@/types/note';
+import { storeKnowledgeWorkspaceHandoff } from '@/services/knowledgeWorkspaceHandoff';
+import type { CreateNoteRequest, NoteDetail, NoteFolderItem, NoteKnowledgeReadiness, NoteTagItem } from '@/types/note';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks';
+import { useAuthStore } from '@/stores';
+import { ConfirmDialog } from '@/components/common';
 import { CreateFolderDialog } from './components/CreateFolderDialog';
 import { AlertBlockDropdownButton } from '../posts/components/AlertBlockDropdownButton';
+import { getNoteKnowledgePresentation, type NoteKnowledgeTone } from './noteKnowledgeReadiness';
+import { buildNoteQuestionHandoff } from './noteKnowledgeHandoff';
 
 function parseTags(input: string) {
   return input.split(',').map((tag) => tag.trim()).filter(Boolean);
@@ -89,6 +99,7 @@ export default function CreateNotePage() {
   const isMobile = useMediaQuery('(max-width: 768px)');
   const { resolvedTheme } = useTheme();
   const editorViewRef = useRef<EditorView | null>(null);
+  const userId = useAuthStore((state) => state.user?.id);
 
   const [folders, setFolders] = useState<NoteFolderItem[]>([]);
   const [tags, setTags] = useState<NoteTagItem[]>([]);
@@ -106,6 +117,11 @@ export default function CreateNotePage() {
   const [archived, setArchived] = useState(false);
   const [loading, setLoading] = useState(Boolean(isEditMode));
   const [saving, setSaving] = useState(false);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archivePending, setArchivePending] = useState(false);
+  const [knowledgeReadiness, setKnowledgeReadiness] = useState<NoteKnowledgeReadiness | null>(null);
+  const [knowledgeReadinessLoading, setKnowledgeReadinessLoading] = useState(Boolean(noteId));
+  const [knowledgePreparing, setKnowledgePreparing] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'autosaved' | 'failed'>('idle');
   const [dirty, setDirty] = useState(false);
   const [panelOpen, setPanelOpen] = useState(!isMobile);
@@ -163,6 +179,36 @@ export default function CreateNotePage() {
     }
   }, [navigate, noteId]);
 
+  const loadKnowledgeReadiness = useCallback(async () => {
+    if (!noteId) {
+      setKnowledgeReadiness(null);
+      setKnowledgeReadinessLoading(false);
+      return;
+    }
+    setKnowledgeReadinessLoading(true);
+    try {
+      const res = await noteService.getKnowledgeReadiness(noteId);
+      setKnowledgeReadiness(res.data);
+    } catch (error) {
+      setKnowledgeReadiness({
+        noteId,
+        status: 'unavailable',
+        queryable: false,
+        profileId: null,
+        profileName: null,
+        modelId: null,
+        chunkCount: 0,
+        carrierId: null,
+        sourceFingerprint: '',
+        indexedFingerprint: null,
+        indexedAt: null,
+        message: extractApiErrorMessage(error, '知识来源状态暂时不可用。'),
+      });
+    } finally {
+      setKnowledgeReadinessLoading(false);
+    }
+  }, [noteId]);
+
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
@@ -170,6 +216,10 @@ export default function CreateNotePage() {
   useEffect(() => {
     void loadNote();
   }, [loadNote]);
+
+  useEffect(() => {
+    void loadKnowledgeReadiness();
+  }, [loadKnowledgeReadiness]);
 
   useEffect(() => {
     setPanelOpen(!isMobile);
@@ -241,6 +291,7 @@ export default function CreateNotePage() {
       setSaveState('saved');
       toast.success('笔记已保存');
       void loadMeta();
+      if (noteId) void loadKnowledgeReadiness();
       if (!noteId && options.redirectNew !== false) {
         navigate(`/notes/${res.data.id}/edit`, { replace: true });
       }
@@ -252,6 +303,62 @@ export default function CreateNotePage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handlePrepareKnowledgeSource = async () => {
+    if (knowledgePreparing) return;
+    let targetNoteId = noteId;
+    setKnowledgePreparing(true);
+    try {
+      if (!targetNoteId || dirty) {
+        const saved = await handleSave({ redirectNew: false });
+        if (!saved) return;
+        targetNoteId = saved.id;
+      }
+
+      const res = await noteService.prepareKnowledgeSource(targetNoteId);
+      setKnowledgeReadiness(res.data);
+      if (res.data.queryable) {
+        toast.success(`已准备 ${res.data.chunkCount} 个可检索分块`);
+      } else {
+        toast.warning(res.data.message || '知识来源尚未准备完成');
+      }
+      if (!noteId) {
+        navigate(`/notes/${targetNoteId}/edit`, { replace: true });
+      }
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '准备知识来源失败'));
+      if (targetNoteId) {
+        try {
+          const res = await noteService.getKnowledgeReadiness(targetNoteId);
+          setKnowledgeReadiness(res.data);
+        } catch {
+          // Keep the last truthful receipt visible; the toast already exposes the retry path.
+        }
+      }
+    } finally {
+      setKnowledgePreparing(false);
+    }
+  };
+
+  const handleAskWithNote = () => {
+    const built = buildNoteQuestionHandoff({
+      userId,
+      noteTitle: title,
+      readiness: knowledgeReadiness,
+      hasUnsavedChanges: dirty,
+    });
+    if (!built.ok) {
+      toast.error(built.message);
+      return;
+    }
+
+    const stored = storeKnowledgeWorkspaceHandoff(built.input);
+    if (!stored.ok) {
+      toast.error(stored.error.message);
+      return;
+    }
+    navigate('/aetherhub');
   };
 
   const handleOpenAtlasReader = async () => {
@@ -310,22 +417,34 @@ export default function CreateNotePage() {
     return () => window.removeEventListener('keydown', handleFormatShortcut);
   }, [handleSave, insertMarkdown]);
 
-  const handleArchiveToggle = async () => {
+  const updateArchiveState = async (nextArchived: boolean) => {
+    if (!noteId || archivePending) return;
+    setArchivePending(true);
+    try {
+      const res = await noteService.updateProperties(noteId, { archived: nextArchived });
+      setArchived(res.data.archived);
+      setNote(res.data);
+      setArchiveConfirmOpen(false);
+      toast.success(res.data.archived ? '笔记已归档' : '笔记已恢复');
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '更新归档状态失败'));
+    } finally {
+      setArchivePending(false);
+    }
+  };
+
+  const handleArchiveToggle = () => {
     if (!noteId) {
       setArchived((value) => !value);
       markDirty();
       return;
     }
-    if (!archived && !window.confirm('确定要归档当前笔记吗？')) return;
-
-    try {
-      const res = await noteService.updateProperties(noteId, { archived: !archived });
-      setArchived(res.data.archived);
-      setNote(res.data);
-      toast.success(res.data.archived ? '笔记已归档' : '笔记已恢复');
-    } catch (error) {
-      toast.error(extractApiErrorMessage(error, '更新归档状态失败'));
+    if (!archived) {
+      setArchiveConfirmOpen(true);
+      return;
     }
+
+    void updateArchiveState(false);
   };
 
   const saveText = {
@@ -479,6 +598,13 @@ export default function CreateNotePage() {
             setIsFavorite={(value) => { setIsFavorite(value); markDirty(); }}
             archived={archived}
             onArchiveToggle={() => void handleArchiveToggle()}
+            knowledgeReadiness={knowledgeReadiness}
+            knowledgeBusy={knowledgeReadinessLoading || knowledgePreparing}
+            knowledgeDirty={dirty}
+            canPrepareKnowledge={Boolean(noteId || note)}
+            onPrepareKnowledge={() => void handlePrepareKnowledgeSource()}
+            onRefreshKnowledge={() => void loadKnowledgeReadiness()}
+            onAskKnowledge={handleAskWithNote}
             onClose={() => setPanelOpen(false)}
           />
         )}
@@ -492,6 +618,16 @@ export default function CreateNotePage() {
           }}
         />
       </main>
+      <ConfirmDialog
+        isOpen={archiveConfirmOpen}
+        title="归档当前笔记？"
+        message="归档后会从默认列表移到“已归档”，内容不会被删除，可以随时恢复。"
+        confirmText="确认归档"
+        variant="warning"
+        pending={archivePending}
+        onCancel={() => setArchiveConfirmOpen(false)}
+        onConfirm={() => void updateArchiveState(true)}
+      />
     </div>
   );
 }
@@ -689,6 +825,13 @@ function NoteInfoPanel({
   setIsFavorite,
   archived,
   onArchiveToggle,
+  knowledgeReadiness,
+  knowledgeBusy,
+  knowledgeDirty,
+  canPrepareKnowledge,
+  onPrepareKnowledge,
+  onRefreshKnowledge,
+  onAskKnowledge,
   onClose,
 }: {
   isMobile: boolean;
@@ -714,6 +857,13 @@ function NoteInfoPanel({
   setIsFavorite: (value: boolean) => void;
   archived: boolean;
   onArchiveToggle: () => void;
+  knowledgeReadiness: NoteKnowledgeReadiness | null;
+  knowledgeBusy: boolean;
+  knowledgeDirty: boolean;
+  canPrepareKnowledge: boolean;
+  onPrepareKnowledge: () => void;
+  onRefreshKnowledge: () => void;
+  onAskKnowledge: () => void;
   onClose: () => void;
 }) {
   const currentFolder = folders.find((folder) => String(folder.id) === folderId);
@@ -841,16 +991,16 @@ function NoteInfoPanel({
           )}
         </PanelGroup>
 
-        <PanelGroup title="AI">
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 text-xs">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[var(--text-muted)]">索引状态</span>
-              <span className="rounded-md bg-[var(--bg-secondary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)]">{note?.embeddingStatus || 'PENDING'}</span>
-            </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--bg-secondary)]">
-              <span className="block h-full w-1/3 rounded-full bg-[var(--color-primary)]" />
-            </div>
-          </div>
+        <PanelGroup title="用于提问">
+          <NoteKnowledgeSourceCard
+            readiness={knowledgeReadiness}
+            busy={knowledgeBusy}
+            dirty={knowledgeDirty}
+            canPrepare={canPrepareKnowledge}
+            onPrepare={onPrepareKnowledge}
+            onRefresh={onRefreshKnowledge}
+            onAsk={onAskKnowledge}
+          />
         </PanelGroup>
       </div>
       <style>{`
@@ -891,6 +1041,115 @@ function InfoPill({ children }: { children: ReactNode }) {
     <span className="inline-flex max-w-full items-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-1 text-[11px] text-[var(--text-muted)]">
       <span className="truncate">{children}</span>
     </span>
+  );
+}
+
+const knowledgeToneClasses: Record<NoteKnowledgeTone, string> = {
+  success: 'border-status-success/25 bg-status-success/5',
+  warning: 'border-status-warning/25 bg-status-warning/5',
+  danger: 'border-status-danger/25 bg-status-danger/5',
+  neutral: 'border-[var(--border-subtle)] bg-[var(--bg-card)]',
+};
+
+function NoteKnowledgeSourceCard({
+  readiness,
+  busy,
+  dirty,
+  canPrepare,
+  onPrepare,
+  onRefresh,
+  onAsk,
+}: {
+  readiness: NoteKnowledgeReadiness | null;
+  busy: boolean;
+  dirty: boolean;
+  canPrepare: boolean;
+  onPrepare: () => void;
+  onRefresh: () => void;
+  onAsk: () => void;
+}) {
+  const presentation = getNoteKnowledgePresentation(readiness, busy, dirty);
+  const title = canPrepare ? presentation.title : '保存后可用于提问';
+  const description = canPrepare
+    ? presentation.description
+    : '先保存这条笔记，再准备 Atlas 载体与当前检索配置下的可检索分块。';
+  const disabled = !canPrepare || presentation.actionDisabled;
+  const handlePrimaryAction = () => {
+    if (presentation.action === 'ask') {
+      onAsk();
+      return;
+    }
+    if (presentation.action === 'refresh') {
+      onRefresh();
+      return;
+    }
+    onPrepare();
+  };
+
+  const icon = busy
+    ? <Loader2 className="h-4 w-4 animate-spin" />
+    : presentation.tone === 'success'
+      ? <CircleCheck className="h-4 w-4" />
+      : presentation.tone === 'danger'
+        ? <TriangleAlert className="h-4 w-4" />
+        : <Sparkles className="h-4 w-4" />;
+
+  return (
+    <div
+      className={cn('rounded-xl border p-3', knowledgeToneClasses[presentation.tone])}
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className={cn(
+          'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-card)]',
+          presentation.tone === 'success' && 'text-status-success',
+          presentation.tone === 'warning' && 'text-status-warning',
+          presentation.tone === 'danger' && 'text-status-danger',
+          presentation.tone === 'neutral' && 'text-[var(--text-muted)]',
+        )}>
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">{description}</p>
+          {canPrepare && presentation.detail && (
+            <p className="mt-1.5 truncate text-[11px] text-[var(--text-secondary)]" title={presentation.detail}>
+              {presentation.detail}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={handlePrimaryAction}
+          className={cn(
+            'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors sm:h-9 sm:min-h-0',
+            presentation.action === 'ask'
+              ? 'border-transparent bg-[var(--color-primary)] text-white shadow-[0_3px_10px_-4px_color-mix(in_oklch,var(--color-primary)_55%,transparent)] hover:brightness-105'
+              : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+            'disabled:cursor-not-allowed disabled:opacity-55',
+          )}
+        >
+          {presentation.action === 'ask' && !busy && <MessageSquareText className="h-3.5 w-3.5" />}
+          {presentation.action === 'refresh' && !busy && <RefreshCw className="h-3.5 w-3.5" />}
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {canPrepare ? presentation.actionLabel : '先保存笔记'}
+        </button>
+        {canPrepare && presentation.secondaryAction === 'prepare' && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onPrepare}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-xs font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-55 sm:h-9 sm:min-h-0"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {presentation.secondaryActionLabel}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
