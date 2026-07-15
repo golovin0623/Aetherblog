@@ -1,0 +1,4 @@
+## 2025-02-18 - Prevent Wildcard Injection in ILIKE queries using dbutil.EscapeLike
+**Vulnerability:** PostgreSQL `ILIKE` clauses dynamically constructed with user input that was properly escaped using `dbutil.EscapeLike()` but missing the `ESCAPE '\'` specifier in the SQL query string. This could allow wildcard injection if the default escape character changes or is misconfigured.
+**Learning:** Even when using `dbutil.EscapeLike()` (which escapes `%` and `_` with `\`), the SQL query must explicitly declare `ESCAPE '\'` at the end of the `ILIKE` or `LIKE` clause (e.g., `ILIKE $1 ESCAPE '\'`). Without this explicit declaration, the database might not interpret the backslash as an escape character, rendering the escaping ineffective.
+**Prevention:** Always append ` ESCAPE '\'` to `LIKE` and `ILIKE` queries when interpolating user input that has been processed with `dbutil.EscapeLike()`.
