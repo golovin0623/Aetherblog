@@ -8,10 +8,16 @@ export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, error, helperText, ...props }, ref) => {
+    const defaultHelperId = React.useId();
+    const helperId = helperText ? defaultHelperId : undefined;
+    const describedBy = [props['aria-describedby'], helperId].filter(Boolean).join(' ') || undefined;
+
     return (
       <div className="w-full">
         <textarea
           ref={ref}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
           className={cn(
             'w-full px-4 py-2.5 rounded-lg min-h-[100px] resize-y',
             'bg-[var(--bg-card)] border border-[var(--border-default)]',
@@ -24,7 +30,10 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           {...props}
         />
         {helperText && (
-          <p className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}>
+          <p
+            id={helperId}
+            className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}
+          >
             {helperText}
           </p>
         )}
