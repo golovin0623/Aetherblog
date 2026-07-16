@@ -105,7 +105,8 @@ describe('profile music player stack layout gate', () => {
   it('registers only the visible playback card and waits until it fully leaves before showing a floater', () => {
     expect(profileSource).toContain('reportPlaybackSurfaceVisibility');
     expect(profileSource).toContain('new IntersectionObserver');
-    expect(profileSource).toContain("rootMargin: '24px 0px 24px 0px'");
+    expect(profileSource).toContain('const visibilityMargin = 24');
+    expect(profileSource).toContain('rootMargin: `${visibilityMargin}px`');
     expect(profileSource).toContain('window.setTimeout');
     expect(profileSource).toContain('160');
     expect(profileSource).toContain('ref={playbackSurfaceRef}');

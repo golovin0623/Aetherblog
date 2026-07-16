@@ -180,14 +180,14 @@ function usePlaybackSurfaceRegistration({
     }
 
     const rect = node.getBoundingClientRect();
-    const margin = 24;
+    const visibilityMargin = 24;
     report(
       rect.width > 0
       && rect.height > 0
-      && rect.right > -margin
-      && rect.left < window.innerWidth + margin
-      && rect.bottom > -margin
-      && rect.top < window.innerHeight + margin,
+      && rect.right > -visibilityMargin
+      && rect.left < window.innerWidth + visibilityMargin
+      && rect.bottom > -visibilityMargin
+      && rect.top < window.innerHeight + visibilityMargin,
     );
 
     observerRef.current = new IntersectionObserver(([entry]) => {
@@ -204,7 +204,7 @@ function usePlaybackSurfaceRegistration({
       }, 160);
     }, {
       root: null,
-      rootMargin: '24px 0px 24px 0px',
+      rootMargin: `${visibilityMargin}px`,
       threshold: [0, 0.001],
     });
     observerRef.current.observe(node);
