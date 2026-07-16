@@ -1,0 +1,3 @@
+## 2024-07-16 - Reusable Form Components Accessibility
+**Learning:** When creating or modifying reusable form components (like Input or Textarea), automatically generated unique IDs and explicit ARIA properties (`aria-describedby` and `aria-invalid`) are strictly required to ensure error states and helper texts are correctly communicated to screen readers.
+**Action:** Automatically generate a unique ID using `React.useId()` for the helper or error text, and link it to the input field's `aria-describedby` attribute (concatenating with any externally provided IDs). Always set `aria-invalid={error ? true : undefined}` to communicate the error state.
