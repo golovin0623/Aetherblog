@@ -56,6 +56,16 @@ const confirmDialogSource = readFileSync(
   path.resolve(__dirname, '../apps/admin/src/components/common/ConfirmDialog.tsx'),
   'utf8'
 );
+const motionVerifierSource = readFileSync(
+  path.resolve(__dirname, './verify-music-player-motion.mjs'),
+  'utf8'
+);
+const rootPackage = JSON.parse(readFileSync(
+  path.resolve(__dirname, '../package.json'),
+  'utf8'
+)) as {
+  devDependencies?: Record<string, string>;
+};
 
 function sourceBetween(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -173,6 +183,33 @@ describe('music playback policy', () => {
     })).toBe('immersive');
   });
 
+  it('suppresses non-modal floating controls while an in-page playback surface is visible', () => {
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      playbackSurfaceVisible: true,
+      compactOpen: false,
+      expanded: false,
+    })).toBe('hidden');
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      playbackSurfaceVisible: true,
+      compactOpen: true,
+      expanded: false,
+    })).toBe('hidden');
+    expect(resolveMusicPlayerSurface({
+      canRender: true,
+      hasPlaybackSession: true,
+      routeBlocked: false,
+      playbackSurfaceVisible: true,
+      compactOpen: false,
+      expanded: true,
+    })).toBe('immersive');
+  });
+
   it('lets route and render guards hide every persistent playback surface', () => {
     const otherwiseImmersive = {
       canRender: true,
@@ -207,11 +244,14 @@ describe('music playback policy', () => {
     })).toBe(true);
   });
 
-  it('renders the compact player on the first explicit playback frame without flashing the orb', () => {
-    expect(providerSource).toContain(
+  it('starts card playback without forcing a duplicate compact player', () => {
+    expect(providerSource).not.toContain(
       'const compactSurfaceOpen = compactOpen || (hasPlaybackSession && !previousSessionRef.current);',
     );
-    expect(providerSource).toContain('compactOpen: compactSurfaceOpen,');
+    expect(providerSource).toContain('playbackSurfaceVisible,');
+    expect(providerSource).toContain('compactOpen,');
+    expect(providerSource).toContain('if (hasPlaybackSession && !previousSessionRef.current)');
+    expect(providerSource).toContain('setCompactOpen(false);');
   });
 
   it('locks swipe intent and only commits deliberate navigation or collapse gestures', () => {
@@ -375,10 +415,20 @@ describe('music modal product quality gates', () => {
   });
 
   it('supports continuous pointer scrubbing with a 44px hit target', () => {
-    expect(providerSource).toContain('onPointerDown={handlePointerDown}');
-    expect(providerSource).toContain('onPointerMove={handlePointerMove}');
+    expect(providerSource).toContain('onPointerDown={interactive ? handlePointerDown : undefined}');
+    expect(providerSource).toContain('onPointerMove={interactive ? handlePointerMove : undefined}');
     expect(providerSource).toContain('setPointerCapture');
     expect(providerSource).toContain('min-h-11');
+  });
+
+  it('lets a read-only progress rail pass horizontal gestures through to its parent carousel', () => {
+    const seekBarSource = sourceBetween(providerSource, 'export function SeekBar', 'function pickRandomIndex');
+
+    expect(seekBarSource).toContain('interactive = true');
+    expect(seekBarSource).toContain("role={interactive ? 'slider' : 'progressbar'}");
+    expect(seekBarSource).toContain('tabIndex={interactive ? 0 : undefined}');
+    expect(seekBarSource).toContain('onPointerDown={interactive ? handlePointerDown : undefined}');
+    expect(seekBarSource).toContain("!interactive && 'pointer-events-none touch-auto cursor-default'");
   });
 
   it('cancels or loses pointer capture without committing a stale seek position', () => {
@@ -398,9 +448,9 @@ describe('music modal product quality gates', () => {
     expect(pointerFinishSource).toContain('activePointerRef.current = null;');
     expect(lostCaptureSource).toContain('activePointerRef.current = null;');
     expect(lostCaptureSource).not.toContain('seekFromClientX');
-    expect(seekBarSource).toContain('onPointerUp={(event) => finishPointerScrub(event, true)}');
-    expect(seekBarSource).toContain('onPointerCancel={(event) => finishPointerScrub(event, false)}');
-    expect(seekBarSource).toContain('onLostPointerCapture={handleLostPointerCapture}');
+    expect(seekBarSource).toContain('onPointerUp={interactive ? (event) => finishPointerScrub(event, true) : undefined}');
+    expect(seekBarSource).toContain('onPointerCancel={interactive ? (event) => finishPointerScrub(event, false) : undefined}');
+    expect(seekBarSource).toContain('onLostPointerCapture={interactive ? handleLostPointerCapture : undefined}');
   });
 
   it('does not mistake an in-surface pointerdown for an outside click during layout transitions', () => {
@@ -436,8 +486,14 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain("surface === 'immersive' && isMobile");
     expect(providerSource).toContain("surface === 'immersive' && !isMobile");
     expect(providerSource).toContain('initialFocusRef: isMobile ? mobileDialogRef : desktopDialogRef');
-    expect(providerSource).toContain('returnFocusRef: surfaceTriggerRef');
+    expect(providerSource).toContain('returnFocusRef: compactIdentityTriggerRef');
+    expect(providerSource).not.toContain('returnFocusRef: surfaceTriggerRef');
     expect(providerSource).toContain('ref={surfaceTriggerRef}');
+    expect(providerSource).toContain('ref={compactIdentityTriggerRef}');
+    expect(providerSource).toContain('data-music-compact-focus-target');
+    expect(providerSource).toContain("pendingTarget === 'compact'");
+    expect(providerSource).toContain('? compactIdentityTriggerRef.current');
+    expect(providerSource).toContain(': surfaceTriggerRef.current');
     expect(dialogLifecycleSource).toContain('previouslyFocused?.isConnected');
     expect(dialogLifecycleSource).toContain('latestReturnFocusRef.current?.current');
     expect(skinSource).toContain('min-[769px]:hidden');
@@ -460,15 +516,15 @@ describe('music modal product quality gates', () => {
 
   it('only lets keyboard focus pause compact-player auto collapse', () => {
     expect(providerSource).toContain("const compactInputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');");
-    expect(providerSource).toContain("if (compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);");
+    expect(providerSource).toContain("if (surface === 'compact' && compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);");
     expect(providerSource).toContain("compactInputModalityRef.current = 'pointer';");
     expect(providerSource).toContain('setCompactFocusWithin(false);');
   });
 
-  it('reopens actionable compact recovery when a collapsed session fails', () => {
+  it('opens actionable compact recovery only when no in-page playback surface is available', () => {
     expect(providerSource).toContain('const previousPlaybackErrorRef = useRef<string | null>(null);');
-    expect(providerSource).toContain('if (playbackError && !previousPlaybackErrorRef.current)');
-    expect(providerSource).toContain("playbackError ? `播放失败，打开迷你播放器重试：${currentPresentation.title}`");
+    expect(providerSource).toContain('if (playbackError && !previousPlaybackErrorRef.current && !playbackSurfaceVisible)');
+    expect(providerSource).toContain('`播放失败，打开迷你播放器重试：${currentPresentation.title}`');
   });
 
   it('uses one continuous surface transition instead of serial exit-then-enter animations', () => {
@@ -509,14 +565,104 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain('打开沉浸播放器');
   });
 
-  it('keeps the compact collapse handle at least 44px in both axes', () => {
-    const compactHandleSource = sourceBetween(
+  it('uses one continuous floating shell, a synchronized cover anchor, and no visual grabber', () => {
+    const floatingSource = sourceBetween(
       providerSource,
-      'data-music-compact-drag-handle',
-      'aria-label="下滑或点击收起为灵动音乐元"',
+      '<AnimatePresence initial={false} onExitComplete={focusPendingSurface}>',
+      '<AnimatePresence initial={false}>\n      {surface === \'immersive\'',
     );
-    expect(compactHandleSource).toContain(
-      'className="flex h-11 w-full touch-none cursor-grab items-center justify-center',
+    const artworkCss = sourceBetween(
+      globalsSource,
+      '.music-playback-orb__artwork {',
+      '[data-music-floating-density="compact"] .music-floating-artwork-button',
+    );
+    const shellSource = sourceBetween(
+      floatingSource,
+      'data-music-floating-shell',
+      '<AnimatePresence initial={false} mode="popLayout"',
+    );
+
+    expect(providerSource).toContain('data-music-floating-shell');
+    expect(providerSource).toContain('data-music-floating-root');
+    expect(providerSource).toContain('data-music-floating-density={surface}');
+    expect(floatingSource).toContain("if (surface === 'orb') {\n                  compactGestureRef.current = false;");
+    expect(floatingSource).toMatch(/<motion\.div[\s\S]*?\blayout(?:\s|=)[\s\S]*?data-music-floating-shell/);
+    expect(floatingSource).toContain('music-floating-player-root pointer-events-none fixed');
+    expect(floatingSource).toContain("surface === 'orb'\n                  ? 'h-[52px] w-[52px] min-[769px]:h-12 min-[769px]:w-12'\n                  : 'music-compact-player h-full w-full'");
+    expect(floatingSource).not.toContain('layout="size"');
+    expect(floatingSource.match(/data-music-floating-artwork/g)).toHaveLength(1);
+    expect(floatingSource).toContain("data-music-playback-orb={surface === 'orb' ? '' : undefined}");
+    expect(floatingSource).toMatch(/<motion\.button[\s\S]*?\blayout(?:=|\s)[\s\S]*?data-music-floating-artwork/);
+    expect(floatingSource).not.toContain('layout="position"\n              data-music-floating-artwork');
+    expect(floatingSource).toContain("'bottom-0 left-0 h-[52px] w-[52px] min-[769px]:h-12 min-[769px]:w-12'");
+    expect(floatingSource).not.toContain("'left-0 top-0 h-full w-full'");
+    expect(floatingSource).toContain('originX: 0');
+    expect(floatingSource).toContain('originY: 1');
+    expect(floatingSource).not.toContain('transformOrigin:');
+    expect(floatingSource).toContain("'-bottom-[6px] -left-[6px] h-16 w-16 min-[769px]:-bottom-2 min-[769px]:-left-2'");
+    expect(floatingSource).toContain('music-playback-orb music-floating-artwork-button pointer-events-auto absolute');
+    expect(floatingSource).not.toContain('z-[70] overflow-hidden text-[var(--ink-primary)]');
+    expect(providerSource).toContain('const FLOATING_ORB_RADIUS = 999;');
+    expect(providerSource).toContain('const FLOATING_COMPACT_RADIUS = 24;');
+    expect(providerSource).toContain("const floatingShellRadius = surface === 'orb'");
+    expect(providerSource).toContain('? FLOATING_ORB_RADIUS');
+    expect(providerSource).toContain(': FLOATING_COMPACT_RADIUS;');
+    expect(shellSource).toContain('initial={{ borderRadius: floatingShellRadius }}');
+    expect(shellSource).toContain('animate={{ borderRadius: floatingShellRadius }}');
+    expect(shellSource).not.toContain('initial={false}');
+    expect(shellSource).not.toContain('rounded-full');
+    expect(shellSource).toContain('borderRadius: FLOATING_MORPH_TRANSITION');
+    expect(floatingSource).toContain('className="music-floating-player-root pointer-events-none fixed');
+    expect(floatingSource).toContain('right-[max(1rem,env(safe-area-inset-right))]');
+    expect(floatingSource).toContain('h-[16.5rem] w-auto');
+    expect(floatingSource).not.toContain('min-h-[15.25rem]');
+    expect(floatingSource).not.toContain('persistent-music-artwork');
+    expect(floatingSource).toContain('mode="popLayout"');
+    expect(floatingSource).toContain('onExitComplete={completeCompactCollapse}');
+    expect(floatingSource).toContain('data-music-compact-content');
+    expect(floatingSource).toContain('grid-cols-[64px_minmax(0,1fr)_44px_44px]');
+    expect(floatingSource).toContain('className="flex h-full flex-col p-4"');
+    const utilitiesIndex = floatingSource.indexOf('data-music-compact-utilities');
+    const transportIndex = floatingSource.indexOf('data-music-compact-transport');
+    const seekIndex = floatingSource.indexOf('data-music-compact-seek');
+    const identityIndex = floatingSource.indexOf('data-music-compact-identity');
+    expect(utilitiesIndex).toBeGreaterThanOrEqual(0);
+    expect(transportIndex).toBeGreaterThan(utilitiesIndex);
+    expect(seekIndex).toBeGreaterThan(transportIndex);
+    expect(identityIndex).toBeGreaterThan(seekIndex);
+    expect(floatingSource).not.toMatch(/\border-[1-4]\b/);
+    expect(floatingSource).toContain("tabIndex={surface === 'compact' ? -1 : undefined}");
+    expect(floatingSource).toContain("aria-hidden={surface === 'compact' ? true : undefined}");
+    expect(providerSource).toContain('compactCollapsing');
+    expect(providerSource).toContain('const FLOATING_MORPH_TRANSITION = motionSpring.soft;');
+    expect(floatingSource.match(/layout: FLOATING_MORPH_TRANSITION/g)).toHaveLength(2);
+    expect(floatingSource).toMatch(/<motion\.span[\s\S]*?className="music-playback-orb__artwork"[\s\S]*?top: surface === 'compact' \? 0 : 5[\s\S]*?right: surface === 'compact' \? 0 : 5[\s\S]*?bottom: surface === 'compact' \? 0 : 5[\s\S]*?left: surface === 'compact' \? 0 : 5[\s\S]*?FLOATING_MORPH_TRANSITION/);
+    expect(floatingSource).not.toContain("animate={{ inset: surface === 'compact' ? 0 : 5 }}");
+    expect(providerSource).not.toContain('COMPACT_CONTENT_EXIT_MS');
+    expect(providerSource).not.toContain('compactCollapseTimerRef');
+    expect(globalsSource).toContain('.music-floating-artwork-button');
+    expect(artworkCss).not.toContain('inset:');
+    expect(artworkCss).not.toMatch(/transition:\s*[\s\S]*?inset/);
+    expect(globalsSource).not.toContain('[data-music-floating-density="compact"] .music-playback-orb__artwork');
+    expect(providerSource).toContain('data-music-density-toggle');
+    expect(providerSource).toContain('h-11 w-11');
+    expect(providerSource).not.toContain('data-music-compact-drag-handle');
+    expect(providerSource).not.toContain('data-music-player-grabber');
+    expect(providerSource).not.toContain('<span className="h-1 w-9 rounded-full');
+    expect(floatingSource).not.toMatch(/className="[^"]*\bh-1\b[^"]*\bw-(?:8|9|10|12)\b[^"]*rounded-full/);
+  });
+
+  it('keeps the browser motion gate reproducible from a clean checkout', () => {
+    expect(rootPackage.devDependencies?.playwright).toBeTruthy();
+    expect(motionVerifierSource).toContain(
+      "const FIXTURE_COVER_PATH = path.join(REPO_ROOT, '.agent/rules/assets/dark-theme-preview.png');",
+    );
+    expect(motionVerifierSource).toContain("requestPath.endsWith('/__music-player-fixture__/cover.png')");
+    expect(motionVerifierSource).toContain('body: await readFile(FIXTURE_COVER_PATH)');
+    expect(motionVerifierSource).not.toContain('/api/uploads/thumbnails/audio/');
+    expect(motionVerifierSource).toContain("const rootSelector = '[data-music-floating-root]';");
+    expect(motionVerifierSource).toContain(
+      "density: root?.getAttribute('data-music-floating-density') || ''",
     );
   });
 
@@ -575,9 +721,8 @@ describe('music modal product quality gates', () => {
       '.music-desktop-player-artwork-frame',
     );
 
-    expect(shortMobileSource).toMatch(
-      /\[data-mobile-player-drag-handle\][\s\S]*?height:\s*2rem;/,
-    );
+    expect(providerSource).toContain('data-mobile-player-density-toggle');
+    expect(providerSource).not.toContain('data-mobile-player-drag-handle');
     expect(shortMobileSource).toMatch(
       /\[data-mobile-player-header\][\s\S]*?min-height:\s*2\.75rem;/,
     );
@@ -791,8 +936,8 @@ describe('music modal product quality gates', () => {
   it('keeps admin playback controls in the same neutral, stable transport language', () => {
     expect(adminMusicPageSource).toContain('<SkipBack className="h-5 w-5 fill-current"');
     expect(adminMusicPageSource).toContain('<SkipForward className="h-5 w-5 fill-current"');
-    expect(adminPlayerSource).toContain('<SkipBack className="h-5 w-5 fill-current"');
-    expect(adminPlayerSource).toContain('<SkipForward className="h-5 w-5 fill-current"');
+    expect(adminPlayerSource).toContain("playerDensity === 'compact' ? 'h-[18px] w-[18px]' : 'h-5 w-5'");
+    expect(adminPlayerSource.match(/className=\{cn\('fill-current'/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(adminMusicPageSource).not.toContain('stageIsCurrent && playbackError ? <RefreshCw');
     expect(adminPlayerSource).not.toContain('playbackError ? <RefreshCw');
     expect(adminMusicPageSource).not.toContain('active:scale-[0.97]');
@@ -801,6 +946,7 @@ describe('music modal product quality gates', () => {
     expect(adminPlayerSource).not.toContain('hover:scale-[1.03]');
     expect(adminMusicPageSource).toContain('bg-[var(--ink-primary)] text-[var(--bg-void)]');
     expect(adminPlayerSource).toContain('bg-[var(--ink-primary)] text-[var(--bg-void)]');
+    expect(adminPlayerSource).toContain("bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]");
     expect(adminMusicPageSource).toContain('<ArrowUp className="h-4 w-4"');
     expect(adminMusicPageSource).toContain('<ArrowDown className="h-4 w-4"');
   });
@@ -839,8 +985,22 @@ describe('music modal product quality gates', () => {
   });
 
   it('keeps the admin floating player compact, tokenized, and synchronized with its selected skin', () => {
-    expect(adminPlayerSource).toContain('rounded-[var(--music-radius-floating)]');
-    expect(adminPlayerSource).toContain('rounded-[var(--music-radius-artwork-lg)]');
+    const adminSurfaceSource = sourceBetween(
+      adminPlayerSource,
+      'data-admin-player-surface',
+      'data-admin-player-morph-content',
+    );
+
+    expect(adminPlayerSource).toContain('const ADMIN_PLAYER_MINIMIZED_RADIUS = 30;');
+    expect(adminPlayerSource).toContain('const ADMIN_PLAYER_MOBILE_MINIMIZED_RADIUS = 26;');
+    expect(adminPlayerSource).toContain('const ADMIN_PLAYER_PANEL_RADIUS = 24;');
+    expect(adminSurfaceSource).toContain('initial={{ borderRadius: playerSurfaceRadius }}');
+    expect(adminSurfaceSource).toContain('animate={{ borderRadius: playerSurfaceRadius }}');
+    expect(adminSurfaceSource).toContain('borderRadius: spring.soft');
+    expect(adminSurfaceSource).not.toContain('rounded-full');
+    expect(adminSurfaceSource).not.toContain('rounded-[var(--music-radius-floating)]');
+    expect(adminSurfaceSource).not.toContain('rounded-[var(--music-radius-capsule)]');
+    expect(adminPlayerSource).toContain('className="admin-player-core-cover"');
     expect(adminPlayerSource).toContain('data-music-skin={musicSkin.value}');
     expect(adminPlayerSource).toContain('data-admin-player-density-toggle');
     expect(adminPlayerSource).toContain('data-admin-player-minimized');
@@ -848,16 +1008,84 @@ describe('music modal product quality gates', () => {
     expect(adminPlayerSource).toContain('data-admin-player-mobile-orb');
     expect(adminPlayerSource).toContain('data-admin-player-drag-zone');
     expect(adminPlayerSource).not.toContain('data-admin-player-drag-handle');
+    expect(adminPlayerSource).not.toContain('data-admin-player-grabber');
     expect(adminPlayerSource).toContain('z-30');
     expect(adminPlayerSource).not.toContain('-top-8');
     expect(adminPlayerSource).toContain('data-admin-player-compact-layout');
     expect(adminPlayerSource).toContain('data-admin-player-expanded-layout');
-    expect(adminPlayerSource).toContain('grid-cols-[44px_56px_44px]');
+    expect(adminPlayerSource).toContain('data-admin-player-density={playerDensity}');
+    expect(adminPlayerSource).toContain('data-admin-player-morph-content');
+    expect(adminPlayerSource.match(/data-admin-player-core-cover/g)).toHaveLength(1);
+    expect(adminPlayerSource.match(/data-admin-player-core-identity/g)).toHaveLength(1);
+    expect(adminPlayerSource.match(/data-admin-player-core-transport/g)).toHaveLength(1);
+    expect(adminPlayerSource.match(/data-admin-player-core-play/g)).toHaveLength(1);
+    expect(adminPlayerSource.match(/data-admin-player-core-progress/g)).toHaveLength(1);
+    expect(adminPlayerSource).not.toContain('key="minimized"');
+    expect(adminPlayerSource).not.toContain('key="compact"');
+    expect(adminPlayerSource).not.toContain('key="expanded"');
+    expect(adminPlayerSource).toContain('const secondaryMorphTransition = (visible: boolean, enterDelay = 0)');
+    expect(adminPlayerSource).toContain('duration: motionDuration.instant / 2');
+    expect(adminPlayerSource).toContain('ADMIN_PLAYER_COMPACT_MINIMIZED_ACTION_ENTER_DELAY');
+    expect(adminPlayerSource).toContain('ADMIN_PLAYER_EXPANDED_MINIMIZED_ACTION_ENTER_DELAY');
+    expect(adminPlayerSource).toContain("const minimizeSourceDensityRef = useRef<AdminPlayerDensity>('compact')");
+    expect(adminPlayerSource).toContain("minimizeSourceDensityRef.current === 'expanded'");
+    expect(adminPlayerSource).toContain('enterMinimizedDensity(playerDensity)');
+    expect(adminPlayerSource).toContain('? { ...transition.quick, delay: enterDelay }');
+    expect(adminPlayerSource).toContain(': ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION');
+    expect(adminPlayerSource).toContain('const topActionControlClass =');
+    expect(adminPlayerSource).not.toMatch(/const topActionControlClass = '[^']*hover:bg/);
+    expect(adminIndexSource).toMatch(
+      /data-admin-player-density='expanded'] \.admin-player-action-close\s*{\s*right: 5\.5rem;/,
+    );
+    expect(adminPlayerSource).toContain('<X className="h-[18px] w-[18px]"');
+    expect(adminPlayerSource).not.toContain('<ArrowLeft className="h-[18px] w-[18px]"');
+    expect(motionVerifierSource).toContain('没有在外壳收拢前及时退场');
+    expect(motionVerifierSource).toContain('淡出后再次闪现');
+    expect(motionVerifierSource).toContain('与退场控件发生交叉叠加');
+    expect(motionVerifierSource).toContain("first.density === 'expanded'");
+    expect(adminIndexSource).toContain('grid-template-columns: 2.75rem 3.5rem 2.75rem;');
     expect(adminPlayerSource).toContain('dragConstraints={dockBoundsRef}');
-    expect(adminPlayerSource).toContain("transformOrigin: '50% 100%'");
+    expect(adminPlayerSource).toContain('originX: 0.5');
+    expect(adminPlayerSource).toContain('originY: 1');
     expect(adminPlayerSource).not.toContain('bottom-[max(1rem,env(safe-area-inset-bottom))] z-50');
     expect(adminPlayerSource).not.toContain('data-music-skin="crimson"');
     expect(adminPlayerSource).not.toContain("isPlaying && 'animate-spin");
+  });
+
+  it('keeps admin player spacing symmetric without reintroducing a top handle', () => {
+    expect(adminPlayerSource).toContain('data-admin-player-compact-transport');
+    expect(adminPlayerSource).toContain('data-admin-player-compact-actions');
+    expect(adminIndexSource).toContain(".admin-music-player-root[data-admin-player-density='compact'] .admin-player-core-cover");
+    expect(adminIndexSource).toContain(".admin-music-player-root[data-admin-player-density='compact'] .admin-player-core-progress");
+    expect(adminIndexSource).toContain(".admin-music-player-root[data-admin-player-density='expanded'] .admin-player-core-cover");
+    expect(adminIndexSource).toContain(".admin-music-player-root[data-admin-player-density='expanded'] .admin-player-expanded-detail");
+    expect(adminIndexSource).toContain('width: 22.5rem;');
+    expect(adminIndexSource).toContain('padding: 0.125rem 0.25rem;');
+    expect(adminPlayerSource).toContain('data-admin-player-surface');
+    expect(adminPlayerSource).toContain('data-admin-player-mini-cover');
+    expect(adminPlayerSource).toContain('data-admin-player-mini-title');
+    expect(adminPlayerSource).toContain('data-admin-player-mini-play');
+    expect(adminPlayerSource).toContain('data-admin-player-compact-identity');
+    expect(adminPlayerSource).not.toContain('layout="size"');
+    expect(adminPlayerSource).not.toContain('<span className="h-1 w-9 rounded-full');
+  });
+
+  it('contains the admin minimized artwork inside a symmetric capsule', () => {
+    const adminSurfaceSource = sourceBetween(
+      adminPlayerSource,
+      'data-admin-player-surface',
+      'data-admin-player-morph-content',
+    );
+
+    expect(adminIndexSource).toContain('padding: 0.125rem 0.25rem;');
+    expect(adminSurfaceSource).toContain(
+      'surface-raised relative h-full w-full overflow-hidden text-[var(--ink-primary)]',
+    );
+    expect(adminIndexSource).toContain('top: 0.375rem;');
+    expect(adminIndexSource).toContain('left: 0.5rem;');
+    expect(adminIndexSource).toContain('width: 2.75rem;');
+    expect(adminIndexSource).toContain('height: 2.75rem;');
+    expect(adminIndexSource).not.toContain('left: -0.');
   });
 
   it('makes shared admin header tabs semantic and touchable on mobile', () => {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
 import { AlertCircle, Disc3, ListMusic, Maximize2, Pause, Play, RefreshCw, Shuffle, SkipBack, SkipForward, Volume2 } from 'lucide-react';
 import {
   formatMusicClock,
@@ -65,6 +65,7 @@ function ProfileMusicArtwork({
 interface ProfileMusicTimelineProps {
   fallbackDuration: number;
   isCurrentTrack: boolean;
+  interactive: boolean;
   layout: 'card' | 'stack';
   onSeek: (percent: number) => void;
 }
@@ -79,6 +80,7 @@ function ProfileMusicTimelineView({
   duration,
   fallbackDuration,
   isCurrentTrack,
+  interactive,
   layout,
   onSeek,
   percent,
@@ -101,6 +103,7 @@ function ProfileMusicTimelineView({
         onSeek={onSeek}
         size="sm"
         label="调整个人卡片音乐进度"
+        interactive={interactive}
       />
       <div className={timeClassName}>
         <span>{formatMusicClock(shownProgress)}</span>
@@ -139,6 +142,82 @@ function ProfileMusicTimelineSlot({
   );
 }
 
+function usePlaybackSurfaceRegistration({
+  enabled,
+  reportPlaybackSurfaceVisibility,
+}: {
+  enabled: boolean;
+  reportPlaybackSurfaceVisibility: (surfaceId: string, visible: boolean) => void;
+}) {
+  const surfaceId = useId();
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const leaveTimerRef = useRef<number | null>(null);
+  const lastReportedRef = useRef(false);
+
+  const clearLeaveTimer = useCallback(() => {
+    if (leaveTimerRef.current == null) return;
+    window.clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = null;
+  }, []);
+
+  const report = useCallback((visible: boolean) => {
+    if (lastReportedRef.current === visible) return;
+    lastReportedRef.current = visible;
+    reportPlaybackSurfaceVisibility(surfaceId, visible);
+  }, [reportPlaybackSurfaceVisibility, surfaceId]);
+
+  const disconnect = useCallback(() => {
+    clearLeaveTimer();
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+  }, [clearLeaveTimer]);
+
+  const playbackSurfaceRef = useCallback((node: HTMLDivElement | null) => {
+    disconnect();
+    if (!node || !enabled) {
+      report(false);
+      return;
+    }
+
+    const rect = node.getBoundingClientRect();
+    const margin = 24;
+    report(
+      rect.width > 0
+      && rect.height > 0
+      && rect.right > -margin
+      && rect.left < window.innerWidth + margin
+      && rect.bottom > -margin
+      && rect.top < window.innerHeight + margin,
+    );
+
+    observerRef.current = new IntersectionObserver(([entry]) => {
+      const visible = Boolean(entry?.isIntersecting && entry.intersectionRatio > 0);
+      if (visible) {
+        clearLeaveTimer();
+        report(true);
+        return;
+      }
+      clearLeaveTimer();
+      leaveTimerRef.current = window.setTimeout(() => {
+        leaveTimerRef.current = null;
+        report(false);
+      }, 160);
+    }, {
+      root: null,
+      rootMargin: '24px 0px 24px 0px',
+      threshold: [0, 0.001],
+    });
+    observerRef.current.observe(node);
+  }, [clearLeaveTimer, disconnect, enabled, report]);
+
+  useEffect(() => () => {
+    disconnect();
+    report(false);
+  }, [disconnect, report]);
+
+  return playbackSurfaceRef;
+}
+
 export function ProfileMusicPlayer({
   surface = 'profile',
   className,
@@ -160,17 +239,22 @@ export function ProfileMusicPlayer({
     shuffle,
     skin,
     canUseSurface,
+    reportPlaybackSurfaceVisibility,
     playIndex,
     togglePlayback,
     retryPlayback,
     nextTrack,
     previousTrack,
-    seekToPercent,
     setShuffle,
     setExpanded,
   } = useMusicPlayer();
 
   const isStack = variant === 'stack';
+  const playbackSurfaceEnabled = timelineActive && canUseSurface(surface);
+  const playbackSurfaceRef = usePlaybackSurfaceRegistration({
+    enabled: playbackSurfaceEnabled,
+    reportPlaybackSurfaceVisibility,
+  });
   const shellClass = isStack
     ? 'profile-music-stack-shell relative flex h-full min-h-[168px] w-full flex-col justify-center gap-4 overflow-hidden rounded-[var(--profile-card-stack-panel-radius)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_72%,transparent)] p-5 text-left shadow-[var(--music-shadow-float)]'
     : cn(
@@ -248,14 +332,6 @@ export function ProfileMusicPlayer({
     await togglePlayback();
   };
 
-  const handleSeek = (nextPercent: number) => {
-    if (!isCurrentTrack) {
-      playIndex(0);
-      return;
-    }
-    seekToPercent(nextPercent);
-  };
-
   const openPlayer = () => {
     // Surface navigation must never be a disguised playback command. The
     // dedicated play control remains the only action that starts audio.
@@ -267,7 +343,7 @@ export function ProfileMusicPlayer({
     const stackBuffering = isCurrentTrack && isBuffering;
     const stackFailed = isCurrentTrack && Boolean(playbackError);
     return (
-      <div data-music-skin={skin} className={cn(shellClass, className)}>
+      <div ref={playbackSurfaceRef} data-music-skin={skin} className={cn(shellClass, className)}>
         <div className="absolute inset-x-6 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--aurora-1),transparent)] opacity-70" />
         <div className="profile-music-stack-header grid grid-cols-[64px_minmax(0,1fr)_44px] items-center gap-3">
           <ProfileMusicArtwork cover={cover} title={presentation.title} size="featured" />
@@ -305,8 +381,9 @@ export function ProfileMusicPlayer({
             live={timelineActive}
             fallbackDuration={displayTrack.durationSeconds || 0}
             isCurrentTrack={isCurrentTrack}
+            interactive={false}
             layout="stack"
-            onSeek={handleSeek}
+            onSeek={() => {}}
           />
         )}
 
@@ -337,6 +414,7 @@ export function ProfileMusicPlayer({
 
   return (
     <div
+      ref={playbackSurfaceRef}
       data-music-skin={skin}
       className={cn(shellClass, className)}
     >
@@ -405,8 +483,9 @@ export function ProfileMusicPlayer({
         live={timelineActive}
         fallbackDuration={displayTrack.durationSeconds || 0}
         isCurrentTrack={isCurrentTrack}
+        interactive={false}
         layout="card"
-        onSeek={handleSeek}
+        onSeek={() => {}}
       />
 
       <PlaybackFailure message={playbackError} onRetry={retryPlayback} />

@@ -109,6 +109,16 @@
   transform-origin: left bottom;
 }
 
+.music-floating-player-shell {
+  isolation: isolate;
+  background: color-mix(in oklch, var(--bg-raised) 95%, transparent);
+  box-shadow:
+    inset 0 0 0 0.5px var(--music-stroke),
+    var(--music-shadow-float);
+  backdrop-filter: blur(18px) saturate(132%);
+  -webkit-backdrop-filter: blur(18px) saturate(132%);
+}
+
 .music-playback-orb {
   isolation: isolate;
   border: 1px solid color-mix(in oklch, white 24%, transparent);
@@ -117,6 +127,14 @@
     0 12px 30px -18px rgb(0 0 0 / 0.55),
     inset 0 0 0 0.5px color-mix(in oklch, white 20%, transparent);
   -webkit-tap-highlight-color: transparent;
+}
+
+.music-floating-artwork-button {
+  will-change: transform, border-radius;
+  transition:
+    border-color var(--dur-instant) var(--ease-out),
+    background-color var(--dur-instant) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out);
 }
 
 .music-playback-orb::before {
@@ -135,6 +153,7 @@
       var(--aurora-1)
     );
   opacity: 0.88;
+  transition: opacity var(--dur-instant) var(--ease-out);
 }
 
 .music-playback-orb[data-playing="true"]::before {
@@ -151,6 +170,7 @@
     radial-gradient(circle at 35% 28%, color-mix(in oklch, white 25%, transparent), transparent 42%),
     color-mix(in oklch, var(--bg-void) 62%, var(--aurora-1));
   box-shadow: inset 0 0 12px color-mix(in oklch, var(--aurora-3) 24%, transparent);
+  transition: opacity var(--dur-instant) var(--ease-out);
 }
 
 .music-playback-orb__progress {
@@ -163,18 +183,49 @@
   pointer-events: none;
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0);
   mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0);
+  transition: opacity var(--dur-instant) var(--ease-out);
 }
 
-.music-playback-orb__core {
-  position: relative;
+.music-playback-orb__artwork {
+  position: absolute;
   z-index: 2;
   display: grid;
-  width: 2rem;
-  height: 2rem;
   place-items: center;
-  border-radius: 999px;
+  overflow: hidden;
+  border-radius: inherit;
+  background: color-mix(in oklch, var(--bg-void) 62%, var(--aurora-1));
   color: white;
+  box-shadow:
+    inset 0 0 0 0.5px color-mix(in oklch, white 20%, transparent),
+    0 3px 12px -6px rgb(0 0 0 / 0.72);
   filter: drop-shadow(0 1px 4px rgb(0 0 0 / 0.32));
+  transition:
+    box-shadow var(--dur-quick) var(--ease-out),
+    filter var(--dur-quick) var(--ease-out);
+}
+
+[data-music-floating-density="compact"] .music-floating-artwork-button {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-music-floating-density="compact"] .music-playback-orb::before,
+[data-music-floating-density="compact"] .music-playback-orb::after,
+[data-music-floating-density="compact"] .music-playback-orb__progress {
+  opacity: 0;
+}
+
+.music-playback-orb__status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: color-mix(in oklch, var(--bg-void) 54%, transparent);
+  color: white;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -328,10 +379,6 @@
 }
 
 @media (max-width: 768px) and (max-height: 640px) {
-  .music-mobile-player-sheet [data-mobile-player-drag-handle] {
-    height: 2rem;
-  }
-
   .music-mobile-player-sheet [data-mobile-player-header] {
     min-height: 2.75rem;
   }
@@ -373,6 +420,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .music-floating-artwork-button,
+  .music-playback-orb::before,
+  .music-playback-orb::after,
+  .music-playback-orb__progress,
+  .music-playback-orb__artwork {
+    transition: none;
+  }
+
   .music-playback-orb::before,
   .music-playback-orb[data-playing="true"]::before,
   .music-wave-mark > span,
@@ -586,22 +641,26 @@
   border-radius: var(--profile-card-stack-stage-radius);
   background: var(--profile-stack-stage-bg);
   isolation: isolate;
-  perspective: 900px;
-  transform-style: preserve-3d;
 }
 
 .profile-card-stack-track {
   display: grid;
   width: 300%;
   height: 100%;
+  min-height: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* iOS Safari 会把 auto 网格行按当前资料卡的社交区最小高度撑大，
+     但外层 stage 仍保持固定高度，导致当前卡与滑入卡的底边先被裁切，
+     等切页提交、社交区卸载后才重新收回。把唯一行锁在舞台高度内，
+     让两张卡从手势首帧到落位都使用同一几何边界。 */
+  grid-template-rows: minmax(0, 1fr);
   transform: translate3d(-33.333333%, 0, 0);
-  transform-style: preserve-3d;
 }
 
 .profile-card-stack-slot {
   box-sizing: border-box;
   min-width: 0;
+  min-height: 0;
   height: 100%;
   padding: var(--profile-card-stack-slide-gutter);
   border-radius: var(--profile-card-stack-panel-radius);
@@ -620,6 +679,7 @@
 
 .profile-card-stack-panel {
   position: relative;
+  min-height: 0;
   overflow: hidden;
   border-radius: var(--profile-card-stack-panel-radius);
   background: var(--profile-stack-panel-bg);
@@ -627,7 +687,6 @@
   background-clip: padding-box;
   isolation: isolate;
   box-shadow: var(--profile-stack-panel-shadow);
-  transform-style: preserve-3d;
 }
 
 .profile-card-stack-panel::before {

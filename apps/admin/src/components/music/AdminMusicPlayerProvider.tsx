@@ -12,8 +12,8 @@ import {
   type ReactNode,
 } from 'react';
 import { animate, AnimatePresence, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
-import { AlertCircle, Disc3, Maximize2, Minimize2, Minus, Music2, Pause, Play, RefreshCw, SkipBack, SkipForward, X } from 'lucide-react';
-import { duration as motionDuration, spring, transition } from '@aetherblog/ui';
+import { Disc3, ListMusic, Maximize2, Minimize2, Minus, Music2, Pause, Play, RefreshCw, SkipBack, SkipForward, X } from 'lucide-react';
+import { duration as motionDuration, ease, spring, transition } from '@aetherblog/ui';
 import { useMediaQuery } from '@aetherblog/hooks';
 import type { MusicTrack } from '@aetherblog/types';
 import { cn } from '@/lib/utils';
@@ -71,6 +71,17 @@ function activeLyricIndex(lines: AdminMusicLyricLine[], progress: number): numbe
 const ADMIN_PLAYER_DOCK_POSITION_KEY = 'aetherblog.admin.music-player.position';
 const ADMIN_PLAYER_DESKTOP_EDGE_MARGIN = 20;
 const ADMIN_PLAYER_MOBILE_EDGE_MARGIN = 12;
+const ADMIN_PLAYER_MINIMIZED_RADIUS = 30;
+const ADMIN_PLAYER_MOBILE_MINIMIZED_RADIUS = 26;
+const ADMIN_PLAYER_PANEL_RADIUS = 24;
+const ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION = {
+  duration: motionDuration.instant / 2,
+  ease: ease.out,
+} as const;
+const ADMIN_PLAYER_COMPACT_MINIMIZED_ACTION_ENTER_DELAY = motionDuration.instant;
+const ADMIN_PLAYER_EXPANDED_MINIMIZED_ACTION_ENTER_DELAY = (
+  motionDuration.instant + motionDuration.quick
+) / 2;
 
 interface AdminMusicPlayerContextValue {
   queue: readonly MusicTrack[];
@@ -156,6 +167,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const currentIndex = queueState.currentIndex;
   const currentTrack = queueState.currentTrack;
   const expanded = playerDensity === 'expanded';
+  const playerSurfaceRadius = playerDensity === 'minimized'
+    ? (isMobile ? ADMIN_PLAYER_MOBILE_MINIMIZED_RADIUS : ADMIN_PLAYER_MINIMIZED_RADIUS)
+    : ADMIN_PLAYER_PANEL_RADIUS;
   const audioUrl = resolveAdminAudioUrl(currentTrack);
   const percent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
   const cover = currentTrack?.coverUrl || currentTrack?.media?.thumbnailUrl || '';
@@ -172,9 +186,19 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   const expandedHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusExpandedHeadingOnOpenRef = useRef(false);
   const playerReturnFocusRef = useRef<HTMLElement | null>(null);
+  const minimizeSourceDensityRef = useRef<AdminPlayerDensity>('compact');
   const percentRef = useRef(percent);
   const inputModalityRef = useRef<'keyboard' | 'pointer'>('keyboard');
   percentRef.current = percent;
+  const minimizedActionEnterDelay = minimizeSourceDensityRef.current === 'expanded'
+    ? ADMIN_PLAYER_EXPANDED_MINIMIZED_ACTION_ENTER_DELAY
+    : ADMIN_PLAYER_COMPACT_MINIMIZED_ACTION_ENTER_DELAY;
+
+  const enterMinimizedDensity = useCallback((sourceDensity: AdminPlayerDensity) => {
+    if (sourceDensity === 'minimized') return;
+    minimizeSourceDensityRef.current = sourceDensity;
+    setPlayerDensity('minimized');
+  }, []);
 
   const persistDockPosition = useCallback(() => {
     try {
@@ -377,9 +401,12 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (autoMinimizeDelay == null) return;
-    const timeout = window.setTimeout(() => setPlayerDensity('minimized'), autoMinimizeDelay);
+    const timeout = window.setTimeout(
+      () => enterMinimizedDensity('compact'),
+      autoMinimizeDelay,
+    );
     return () => window.clearTimeout(timeout);
-  }, [audioUrl, autoMinimizeDelay, currentIndex, interactionVersion]);
+  }, [audioUrl, autoMinimizeDelay, currentIndex, enterMinimizedDensity, interactionVersion]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -912,9 +939,9 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
   }, [focusDensityToggle, playerDensity]);
 
   const minimizePlayer = useCallback(() => {
-    setPlayerDensity(resolveAdminPlayerDensityTransition(playerDensity, 'minimize'));
+    enterMinimizedDensity(playerDensity);
     if (inputModalityRef.current === 'keyboard') focusMinimizedTrigger();
-  }, [focusMinimizedTrigger, playerDensity]);
+  }, [enterMinimizedDensity, focusMinimizedTrigger, playerDensity]);
 
   const restoreCompactPlayer = useCallback(() => {
     if (dockDraggedRef.current) return;
@@ -940,12 +967,12 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
       return;
     }
     if (playerDensity === 'compact') {
-      setPlayerDensity('minimized');
+      enterMinimizedDensity(playerDensity);
       focusMinimizedTrigger();
       return;
     }
     closePlayer();
-  }, [closePlayer, focusDensityToggle, focusMinimizedTrigger, playerDensity]);
+  }, [closePlayer, enterMinimizedDensity, focusDensityToggle, focusMinimizedTrigger, playerDensity]);
 
   const markPlayerActivity = useCallback(() => {
     setInteractionVersion((version) => version + 1);
@@ -1012,7 +1039,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     <div>
       <div
         role="slider"
-        tabIndex={0}
+        tabIndex={playerDensity === 'minimized' ? -1 : 0}
         onPointerDown={handleSeekPointer}
         onPointerMove={handleSeekPointer}
         onPointerUp={handleSeekPointer}
@@ -1044,65 +1071,116 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
     </div>
   );
 
-  const renderPlayButton = (large: boolean) => (
-    <button
+  const renderPlayButton = () => (
+    <motion.button
+      layout
+      layoutDependency={playerDensity}
       type="button"
+      data-admin-player-core-play
+      data-admin-player-mini-play
       onClick={playbackError ? () => void retryPlayback() : togglePlayback}
       className={cn(
-        'relative flex items-center justify-center rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)] transition-opacity duration-100 hover:opacity-90 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
-        large ? 'h-14 w-14' : 'h-12 w-12'
+        'relative flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+        playerDensity === 'expanded'
+          ? 'h-14 w-14 bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)]'
+          : playerDensity === 'compact'
+            ? 'h-11 w-11 border border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-primary)] shadow-none'
+            : 'h-11 w-11 bg-transparent text-[var(--ink-secondary)] shadow-none'
       )}
+      animate={{
+        opacity: playerDensity === 'minimized' && isMobile ? 0 : 1,
+        scale: playerDensity === 'minimized' && isMobile ? 0.82 : 1,
+      }}
+      transition={prefersReducedMotion ? transition.instant : spring.soft}
+      style={{
+        pointerEvents: playerDensity === 'minimized' && isMobile ? 'none' : 'auto',
+      }}
+      tabIndex={playerDensity === 'minimized' && isMobile ? -1 : 0}
+      aria-hidden={playerDensity === 'minimized' && isMobile}
       aria-label={playbackError ? '重新尝试后台播放' : isPlaying ? '暂停后台播放' : '继续后台播放'}
       title={playbackError ? '重新尝试' : isPlaying ? '暂停' : '播放'}
     >
-      {playbackError ? (
-        <RefreshCw className="h-5 w-5" strokeWidth={1.9} />
-      ) : isPlaying ? (
-        <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} />
-      ) : (
-        <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />
-      )}
-    </button>
+      <span
+        data-admin-player-mini-play-visual
+        className={cn(
+          'grid place-items-center rounded-full',
+          playerDensity === 'minimized'
+            ? 'h-8 w-8 border border-[color-mix(in_oklch,var(--ink-primary)_32%,transparent)] bg-transparent'
+            : 'h-full w-full border border-transparent',
+        )}
+        aria-hidden="true"
+      >
+        {playbackError ? (
+          <RefreshCw className={playerDensity === 'minimized' ? 'h-4 w-4' : 'h-5 w-5'} strokeWidth={1.9} />
+        ) : isPlaying ? (
+          <Pause className={cn('fill-current', playerDensity === 'minimized' ? 'h-4 w-4' : 'h-5 w-5')} strokeWidth={1.5} />
+        ) : (
+          <Play className={cn('translate-x-px fill-current', playerDensity === 'minimized' ? 'h-4 w-4' : 'h-5 w-5')} strokeWidth={1.5} />
+        )}
+      </span>
+    </motion.button>
   );
 
   const quietControlClass = 'flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[background-color,color,opacity] duration-100 hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent';
+  const topActionControlClass = 'flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-[var(--ink-secondary)] transition-[color,opacity] duration-100 hover:text-[var(--ink-primary)] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent';
+  const secondaryMorphTransition = (visible: boolean, enterDelay = 0) => (
+    prefersReducedMotion
+      ? transition.instant
+      : {
+          layout: spring.soft,
+          opacity: visible
+            ? { ...transition.quick, delay: enterDelay }
+            : ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION,
+          scale: visible
+            ? { ...spring.precise, delay: enterDelay }
+            : ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION,
+          y: visible
+            ? { ...transition.quick, delay: enterDelay }
+            : ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION,
+        }
+  );
 
   const renderDensityToggle = () => (
-    <button
+    <motion.button
+      layout
+      layoutDependency={playerDensity}
       ref={densityToggleRef}
       type="button"
       data-admin-player-density-toggle
       onClick={togglePlayerDetail}
-      className={quietControlClass}
+      className={topActionControlClass}
       aria-label={expanded ? '收起播放器详情' : '展开播放器详情'}
       aria-expanded={expanded}
       aria-controls="admin-music-player-expanded"
+      aria-hidden={playerDensity === 'minimized'}
+      tabIndex={playerDensity === 'minimized' ? -1 : 0}
       title={expanded ? '收起详情' : '展开详情'}
     >
-      <AnimatePresence initial={false} mode="popLayout">
-        {expanded ? (
-          <motion.span
-            key="collapse"
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, rotate: 24, scale: 0.82 }}
-            animate={{ opacity: 1, rotate: 0, scale: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, rotate: -20, scale: 0.82 }}
-            transition={prefersReducedMotion ? transition.instant : spring.precise}
-          >
-            <Minimize2 className="h-[18px] w-[18px]" strokeWidth={1.7} />
-          </motion.span>
-        ) : (
-          <motion.span
-            key="expand"
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, rotate: -24, scale: 0.82 }}
-            animate={{ opacity: 1, rotate: 0, scale: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, rotate: 20, scale: 0.82 }}
-            transition={prefersReducedMotion ? transition.instant : spring.precise}
-          >
-            <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.7} />
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </button>
+      <span className="relative grid h-5 w-5 place-items-center" aria-hidden="true">
+        <motion.span
+          className="absolute inset-0 grid place-items-center"
+          animate={{
+            opacity: expanded ? 1 : 0,
+            rotate: expanded ? 0 : -24,
+            scale: expanded ? 1 : 0.82,
+          }}
+          transition={prefersReducedMotion ? transition.instant : spring.precise}
+        >
+          <Minimize2 className="h-4 w-4" strokeWidth={1.7} />
+        </motion.span>
+        <motion.span
+          className="absolute inset-0 grid place-items-center"
+          animate={{
+            opacity: expanded ? 0 : 1,
+            rotate: expanded ? 24 : 0,
+            scale: expanded ? 0.82 : 1,
+          }}
+          transition={prefersReducedMotion ? transition.instant : spring.precise}
+        >
+          <Maximize2 className="h-4 w-4" strokeWidth={1.7} />
+        </motion.span>
+      </span>
+    </motion.button>
   );
 
   return (
@@ -1169,7 +1247,10 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
             >
               <motion.div
                 data-admin-music-player-root
+                data-admin-player-density={playerDensity}
                 data-music-skin={musicSkin.value}
+                layout
+                layoutDependency={playerDensity}
                 drag
                 dragControls={dragControls}
                 dragListener={false}
@@ -1199,280 +1280,380 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                 role="region"
                 aria-label="后台音乐播放器"
                 aria-keyshortcuts="Escape"
-                style={{ x: dockX, y: dockY, transformOrigin: '50% 100%', ...(musicSkin.seed ? ({ ['--music-seed']: musicSkin.seed } as CSSProperties) : {}) }}
-                className={cn(
-                  'pointer-events-auto',
-                  playerDensity === 'minimized'
-                    ? 'h-[52px] w-[52px] min-[769px]:h-16 min-[769px]:w-[11.5rem]'
-                    : 'w-full max-w-[520px]'
-                )}
+                transition={prefersReducedMotion ? transition.instant : spring.soft}
+                style={{
+                  x: dockX,
+                  y: dockY,
+                  originX: 0.5,
+                  originY: 1,
+                  ...(musicSkin.seed ? ({ ['--music-seed']: musicSkin.seed } as CSSProperties) : {}),
+                }}
+                className="admin-music-player-root pointer-events-auto"
               >
                 <motion.div
                   ref={dockSurfaceRef}
-                  layout="size"
-                  transition={prefersReducedMotion ? transition.instant : spring.soft}
-                  style={{ transformOrigin: '50% 100%' }}
+                  data-admin-player-surface
+                  layout
+                  layoutDependency={playerDensity}
+                  initial={{ borderRadius: playerSurfaceRadius }}
+                  animate={{ borderRadius: playerSurfaceRadius }}
+                  transition={prefersReducedMotion
+                    ? transition.instant
+                    : { layout: spring.soft, borderRadius: spring.soft }}
+                  style={{ originX: 0.5, originY: 1 }}
                   className={cn(
-                    'surface-raised relative w-full overflow-hidden text-[var(--ink-primary)]',
-                    playerDensity === 'minimized'
-                      ? 'rounded-full min-[769px]:rounded-[var(--music-radius-floating)]'
-                      : 'rounded-[var(--music-radius-floating)]'
+                    'admin-music-player-surface surface-raised relative h-full w-full overflow-hidden text-[var(--ink-primary)]',
+                    playerDensity === 'minimized' && 'max-[768px]:!border-0',
                   )}
                 >
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {playerDensity === 'minimized' ? (
+                  <motion.div
+                    id={expanded ? 'admin-music-player-expanded' : undefined}
+                    data-admin-player-morph-content
+                    data-admin-player-minimized={playerDensity === 'minimized' ? '' : undefined}
+                    data-admin-player-compact-layout={playerDensity === 'compact' ? '' : undefined}
+                    data-admin-player-expanded-layout={playerDensity === 'expanded' ? '' : undefined}
+                    data-admin-player-drag-zone
+                    layout="position"
+                    layoutDependency={playerDensity}
+                    onPointerDown={startDockDrag}
+                    transition={prefersReducedMotion ? transition.instant : spring.soft}
+                    className="admin-player-morph-content"
+                  >
+                    <motion.div
+                      data-admin-player-core-cover
+                      data-admin-player-mini-cover
+                      data-admin-player-compact-cover
+                      data-admin-player-mobile-orb
+                      layout="preserve-aspect"
+                      layoutDependency={playerDensity}
+                      drag={expanded && !prefersReducedMotion ? 'x' : false}
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={0.18}
+                      dragMomentum={false}
+                      onDragStart={() => {
+                        dockDraggedRef.current = true;
+                        setIsDragging(true);
+                      }}
+                      onPointerDown={(event) => {
+                        if (expanded) event.stopPropagation();
+                      }}
+                      onDragEnd={handleTrackDragEnd}
+                      role={expanded ? 'group' : undefined}
+                      aria-label={expanded ? '左右滑动切换歌曲' : undefined}
+                      animate={{
+                        borderRadius: playerDensity === 'minimized'
+                          ? (isMobile ? 26 : 22)
+                          : playerDensity === 'expanded'
+                            ? 18
+                            : 14,
+                      }}
+                      transition={prefersReducedMotion
+                        ? transition.instant
+                        : { layout: spring.soft, borderRadius: spring.soft }}
+                      style={{ touchAction: expanded ? 'pan-y' : 'none' }}
+                      className="admin-player-core-cover"
+                    >
+                      <motion.span
+                        className="admin-player-core-cover-ring"
+                        aria-hidden="true"
+                        animate={isPlaying && !prefersReducedMotion ? { rotate: 360 } : { rotate: 0 }}
+                        transition={isPlaying
+                          ? { duration: motionDuration.ambient * 4, ease: 'linear', repeat: Infinity }
+                          : transition.quick}
+                      />
+                      <span className="admin-player-core-cover-image">
+                        {coverNode}
+                      </span>
+                    </motion.div>
+
+                    <button
+                      ref={minimizedTriggerRef}
+                      type="button"
+                      data-admin-player-minimized-trigger
+                      data-admin-player-desktop-mini-card
+                      onPointerDown={startDockDragFromTrigger}
+                      onClick={restoreCompactPlayer}
+                      className="admin-player-minimized-trigger cursor-grab touch-none rounded-[var(--music-radius-capsule)] text-left active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                      aria-label="展开后台播放器；拖动可移动"
+                      aria-hidden={playerDensity !== 'minimized'}
+                      tabIndex={playerDensity === 'minimized' ? 0 : -1}
+                      title="展开播放器"
+                    />
+
+                    <motion.div
+                      data-admin-player-core-identity
+                      data-admin-player-compact-identity
+                      layout
+                      layoutDependency={playerDensity}
+                      animate={{
+                        opacity: playerDensity === 'minimized' && isMobile ? 0 : 1,
+                      }}
+                      transition={prefersReducedMotion ? transition.instant : spring.soft}
+                      className="admin-player-core-identity"
+                    >
                       <motion.div
-                        key="minimized"
-                        data-admin-player-minimized
-                        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-                        transition={prefersReducedMotion ? transition.instant : spring.precise}
-                        className="flex h-[52px] w-full items-center gap-1 overflow-hidden p-0 min-[769px]:h-16 min-[769px]:gap-1.5 min-[769px]:p-1.5"
+                        data-eyebrow
+                        animate={{
+                          opacity: playerDensity === 'expanded' ? 1 : 0,
+                          y: playerDensity === 'expanded' ? 0 : 3,
+                        }}
+                        transition={prefersReducedMotion ? transition.instant : transition.quick}
+                        className="admin-player-core-eyebrow"
                       >
+                        <Disc3 className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{playlistName}</span>
+                      </motion.div>
+                      <h2
+                        ref={expandedHeadingRef}
+                        data-admin-player-mini-title
+                        tabIndex={expanded ? -1 : undefined}
+                        className="admin-player-core-title focus:outline-none focus-visible:rounded-none focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]"
+                        title={currentTrack.title}
+                      >
+                        {currentTrack.title}
+                      </h2>
+                      <p
+                        className={cn(
+                          'admin-player-core-meta',
+                          playbackError && 'font-semibold text-[var(--signal-danger)]',
+                        )}
+                      >
+                        {playbackError ? (
+                          playbackError
+                        ) : (
+                          <>
+                            <span>{currentTrack.artist || '未知艺术家'}</span>
+                            <span className="admin-player-core-queue">
+                              {' '}· 队列 {currentIndex + 1}/{queue.length}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </motion.div>
+
+                    <motion.div
+                      data-admin-player-expanded-detail
+                      layout
+                      layoutDependency={playerDensity}
+                      animate={{
+                        opacity: expanded ? 1 : 0,
+                        clipPath: expanded
+                          ? 'inset(0% 0% 0% 0% round 14px)'
+                          : 'inset(0% 0% 100% 0% round 14px)',
+                      }}
+                      transition={prefersReducedMotion
+                        ? transition.instant
+                        : {
+                            layout: spring.soft,
+                            opacity: expanded
+                              ? transition.quick
+                              : ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION,
+                            clipPath: expanded
+                              ? spring.soft
+                              : ADMIN_PLAYER_SECONDARY_EXIT_TRANSITION,
+                          }}
+                      aria-hidden={!expanded}
+                      inert={!expanded ? true : undefined}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      className="admin-player-expanded-detail"
+                    >
+                      {!lyricsFollowing && lyrics.length > 0 && (
                         <button
-                          ref={minimizedTriggerRef}
                           type="button"
-                          onPointerDown={startDockDragFromTrigger}
-                          onClick={restoreCompactPlayer}
-                          data-admin-player-drag-zone
-                          className="group relative flex h-[52px] w-[52px] shrink-0 cursor-grab touch-none items-center overflow-hidden rounded-full text-left active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] min-[769px]:min-w-0 min-[769px]:flex-1 min-[769px]:rounded-[var(--music-radius-detail)]"
-                          aria-label="展开后台播放器；拖动可移动"
-                          title="展开播放器"
+                          onClick={() => setLyricsFollowing(true)}
+                          className="absolute right-1 top-1 z-10 inline-flex min-h-11 items-center rounded-[var(--music-radius-control)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] px-3 text-[11px] font-bold text-[var(--ink-primary)] shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
                         >
-                          <span
-                            data-admin-player-mobile-orb
-                            className="relative block h-[52px] w-[52px] shrink-0 min-[769px]:hidden"
-                            aria-hidden="true"
-                          >
-                            <motion.span
-                              className="absolute inset-0 rounded-full bg-[conic-gradient(from_90deg,var(--aurora-1),var(--aurora-2),var(--aurora-3),var(--aurora-1))]"
-                              animate={isPlaying && !prefersReducedMotion ? { rotate: 360 } : { rotate: 0 }}
-                              transition={isPlaying ? { duration: motionDuration.ambient * 4, ease: 'linear', repeat: Infinity } : transition.quick}
-                            />
-                            <span className="absolute inset-[2px] overflow-hidden rounded-full bg-[var(--bg-raised)]">
-                              {coverNode}
-                            </span>
-                            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--bg-void)_32%,transparent)] text-white opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100">
-                              <Maximize2 className="h-4 w-4" strokeWidth={1.8} />
-                            </span>
-                          </span>
-
-                          <span
-                            data-admin-player-desktop-mini-card
-                            className="hidden min-w-0 flex-1 items-center gap-2 min-[769px]:flex"
-                          >
-                            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]" aria-hidden="true">
-                              {coverNode}
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block truncate text-xs font-black leading-tight" title={currentTrack.title}>
-                                {currentTrack.title}
-                              </span>
-                              <span className="mt-1 block truncate text-[10px] text-[var(--ink-muted)]">
-                                {isPlaying ? '正在播放' : '已暂停'} · {currentIndex + 1}/{queue.length}
-                              </span>
-                            </span>
-                          </span>
+                          回到当前歌词
                         </button>
-
-                        <div className="hidden min-[769px]:block">
-                          {renderPlayButton(false)}
-                        </div>
-                      </motion.div>
-                    ) : playerDensity === 'expanded' ? (
-                      <motion.div
-                        id="admin-music-player-expanded"
-                        key="expanded"
-                        data-admin-player-expanded-layout
-                        data-admin-player-drag-zone
-                        onPointerDown={startDockDrag}
-                        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.992 }}
-                        transition={prefersReducedMotion ? transition.instant : transition.quick}
-                        className="max-h-[calc(100dvh_-_2.5rem_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] max-[380px]:p-3"
+                      )}
+                      <div
+                        ref={lyricsBoxRef}
+                        onPointerDown={() => setLyricsFollowing(false)}
+                        onWheel={() => setLyricsFollowing(false)}
+                        className="relative h-full overflow-y-auto overscroll-contain pr-1 text-center text-sm leading-7 [scrollbar-width:none]"
+                        aria-label="歌词"
                       >
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                          <div className="min-w-0 cursor-grab touch-none py-1 active:cursor-grabbing">
-                            <div data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
-                              <Disc3 className="h-3.5 w-3.5" />
-                              {playlistName}
-                            </div>
-                            <h2
-                              ref={expandedHeadingRef}
-                              tabIndex={-1}
-                              className="mt-1 truncate text-lg font-black leading-tight focus:outline-none focus-visible:rounded-none focus-visible:shadow-[inset_0_-2px_0_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]"
-                              title={currentTrack.title}
-                            >
-                              {currentTrack.title}
-                            </h2>
-                            <p className="mt-1 truncate text-xs text-[var(--ink-secondary)]">
-                              {currentTrack.artist || '未知艺术家'} · 队列 {currentIndex + 1}/{queue.length}
-                            </p>
+                        {lyrics.length === 0 ? (
+                          <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)]">
+                            <Music2 className="h-5 w-5" />
+                            暂无歌词
                           </div>
+                        ) : renderedLyricLines}
+                      </div>
+                    </motion.div>
 
-                          <div onPointerDown={(event) => event.stopPropagation()} className="grid grid-cols-[44px_44px_44px] items-center gap-0.5">
-                            <button
-                              type="button"
-                              onClick={minimizePlayer}
-                              className={quietControlClass}
-                              aria-label="最小化后台播放器"
-                              title="最小化"
-                            >
-                              <Minus className="h-5 w-5" strokeWidth={1.7} />
-                            </button>
-                            {renderDensityToggle()}
-                            <button
-                              type="button"
-                              onClick={closePlayer}
-                              className={quietControlClass}
-                              aria-label="关闭后台播放器"
-                              title="关闭后台播放器"
-                            >
-                              <X className="h-[18px] w-[18px]" strokeWidth={1.7} />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-[104px_minmax(0,1fr)] items-stretch gap-4 max-[380px]:grid-cols-[88px_minmax(0,1fr)] max-[380px]:gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
-                          <motion.div
-                            drag={prefersReducedMotion ? false : 'x'}
-                            dragConstraints={{ left: 0, right: 0 }}
-                            dragElastic={0.18}
-                            onDragStart={() => {
-                              dockDraggedRef.current = true;
-                              setIsDragging(true);
-                            }}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onDragEnd={handleTrackDragEnd}
-                            style={{ touchAction: 'pan-y' }}
-                            className="relative aspect-square overflow-hidden rounded-[var(--music-radius-artwork-lg)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]"
-                            role="group"
-                            aria-label="左右滑动切换歌曲"
-                          >
-                            {coverNode}
-                          </motion.div>
-
-                          <div onPointerDown={(event) => event.stopPropagation()} className="relative h-[104px] min-w-0 max-[380px]:h-[88px] sm:h-[120px]">
-                            {!lyricsFollowing && lyrics.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setLyricsFollowing(true)}
-                                className="absolute right-1 top-1 z-10 inline-flex min-h-11 items-center rounded-[var(--music-radius-control)] border border-[var(--music-stroke)] bg-[color-mix(in_oklch,var(--bg-raised)_94%,transparent)] px-3 text-[11px] font-bold text-[var(--ink-primary)] shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                              >
-                                回到当前歌词
-                              </button>
-                            )}
-                            <div
-                              ref={lyricsBoxRef}
-                              onPointerDown={() => setLyricsFollowing(false)}
-                              onWheel={() => setLyricsFollowing(false)}
-                              className="relative h-full overflow-y-auto overscroll-contain pr-1 text-center text-sm leading-7 [scrollbar-width:none]"
-                              aria-label="歌词"
-                            >
-                              {lyrics.length === 0 ? (
-                                <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-[var(--ink-muted)]">
-                                  <Music2 className="h-5 w-5" />
-                                  暂无歌词
-                                </div>
-                              ) : renderedLyricLines}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div onPointerDown={(event) => event.stopPropagation()} className="mt-2">
-                          {renderSeekBar(true)}
-                        </div>
-
-                        <div
-                          data-admin-player-transport
-                          onPointerDown={(event) => event.stopPropagation()}
-                          className="mx-auto mt-2 grid w-fit grid-cols-[44px_56px_44px] items-center gap-3"
-                        >
-                          <button type="button" onClick={previousTrack} className={quietControlClass} aria-label="上一首" title="上一首">
-                            <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                          </button>
-                          {renderPlayButton(true)}
-                          <button type="button" onClick={nextTrack} className={quietControlClass} aria-label="下一首" title="下一首">
-                            <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="compact"
-                        data-admin-player-compact-layout
-                        data-admin-player-drag-zone
-                        onPointerDown={startDockDrag}
-                        initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.992 }}
-                        transition={prefersReducedMotion ? transition.instant : transition.quick}
-                        className="grid cursor-grab touch-none grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 p-3 active:cursor-grabbing max-[460px]:grid-cols-1"
-                      >
-                        <div className="grid min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 max-[460px]:grid-cols-[48px_minmax(0,1fr)]">
-                          <span
-                            className="relative h-[3.25rem] w-[3.25rem] overflow-hidden rounded-[var(--music-radius-artwork-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] max-[460px]:h-12 max-[460px]:w-12"
-                            aria-hidden="true"
-                          >
-                            {coverNode}
-                          </span>
-                          <span className="min-w-0">
-                            <span data-eyebrow className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--aurora-1)]">
-                              <Disc3 className="h-3.5 w-3.5" />
-                              {playlistName}
-                            </span>
-                            <span className="mt-1 block truncate text-sm font-black" title={currentTrack.title}>
-                              {currentTrack.title}
-                            </span>
-                            <span className="mt-0.5 block truncate text-xs text-[var(--ink-secondary)]">
-                              {currentTrack.artist || '未知艺术家'} · {currentIndex + 1}/{queue.length}
-                            </span>
-                          </span>
-                        </div>
-
-                        <div onPointerDown={(event) => event.stopPropagation()} className="grid grid-cols-[44px_48px_44px_44px_44px] items-center gap-1 max-[460px]:justify-self-center">
-                          <button type="button" onClick={previousTrack} className={quietControlClass} aria-label="上一首" title="上一首">
-                            <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                          </button>
-                          {renderPlayButton(false)}
-                          <button type="button" onClick={nextTrack} className={quietControlClass} aria-label="下一首" title="下一首">
-                            <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-                          </button>
-                          {renderDensityToggle()}
-                          <button
-                            type="button"
-                            onClick={minimizePlayer}
-                            className={quietControlClass}
-                            aria-label="最小化后台播放器"
-                            title="最小化"
-                          >
-                            <Minus className="h-5 w-5" strokeWidth={1.7} />
-                          </button>
-                        </div>
-
-                        <div data-admin-player-compact-progress onPointerDown={(event) => event.stopPropagation()} className="col-span-full">
-                          {renderSeekBar(false, true)}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {playbackError && playerDensity !== 'minimized' && (
-                    <div role="alert" className="mx-3 mb-3 flex items-center gap-2 rounded-[var(--music-radius-detail)] bg-[color-mix(in_oklch,var(--signal-danger)_9%,transparent)] px-3 py-2 text-xs text-[var(--ink-primary)]">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-[var(--signal-danger)]" />
-                      <span className="min-w-0 flex-1">{playbackError}</span>
-                      <button
+                    <motion.div
+                      data-admin-player-core-transport
+                      data-admin-player-transport
+                      data-admin-player-compact-transport
+                      layout
+                      layoutDependency={playerDensity}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      transition={prefersReducedMotion ? transition.instant : spring.soft}
+                      className="admin-player-core-transport"
+                    >
+                      <motion.button
+                        layout
+                        layoutDependency={playerDensity}
                         type="button"
-                        onClick={() => void retryPlayback()}
-                        className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-[var(--music-radius-control)] bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] px-3 font-bold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                        onClick={previousTrack}
+                        className={quietControlClass}
+                        animate={{
+                          opacity: playerDensity === 'minimized' ? 0 : 1,
+                          scale: playerDensity === 'minimized' ? 0.82 : 1,
+                        }}
+                        transition={secondaryMorphTransition(playerDensity !== 'minimized')}
+                        style={{ pointerEvents: playerDensity === 'minimized' ? 'none' : 'auto' }}
+                        tabIndex={playerDensity === 'minimized' ? -1 : 0}
+                        aria-hidden={playerDensity === 'minimized'}
+                        aria-label="上一首"
+                        title="上一首"
                       >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        重新尝试
-                      </button>
-                    </div>
-                  )}
+                        <SkipBack
+                          className={cn('fill-current', playerDensity === 'compact' ? 'h-[18px] w-[18px]' : 'h-5 w-5')}
+                          strokeWidth={1.55}
+                        />
+                      </motion.button>
+                      {renderPlayButton()}
+                      <motion.button
+                        layout
+                        layoutDependency={playerDensity}
+                        type="button"
+                        onClick={nextTrack}
+                        className={quietControlClass}
+                        animate={{
+                          opacity: playerDensity === 'minimized' ? 0 : 1,
+                          scale: playerDensity === 'minimized' ? 0.82 : 1,
+                        }}
+                        transition={secondaryMorphTransition(playerDensity !== 'minimized')}
+                        style={{ pointerEvents: playerDensity === 'minimized' ? 'none' : 'auto' }}
+                        tabIndex={playerDensity === 'minimized' ? -1 : 0}
+                        aria-hidden={playerDensity === 'minimized'}
+                        aria-label="下一首"
+                        title="下一首"
+                      >
+                        <SkipForward
+                          className={cn('fill-current', playerDensity === 'compact' ? 'h-[18px] w-[18px]' : 'h-5 w-5')}
+                          strokeWidth={1.55}
+                        />
+                      </motion.button>
+                    </motion.div>
+
+                    <motion.div
+                      data-admin-player-core-actions
+                      data-admin-player-compact-actions
+                      data-admin-player-compact-mobile-controls
+                      layout
+                      layoutDependency={playerDensity}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      transition={prefersReducedMotion ? transition.instant : spring.soft}
+                      className="admin-player-core-actions"
+                    >
+                      <motion.button
+                        layout
+                        layoutDependency={playerDensity}
+                        type="button"
+                        data-admin-player-mini-restore
+                        onClick={restoreCompactPlayer}
+                        className={cn(topActionControlClass, 'admin-player-action-restore')}
+                        animate={{
+                          opacity: playerDensity === 'minimized' && !isMobile ? 1 : 0,
+                          scale: playerDensity === 'minimized' && !isMobile ? 1 : 0.82,
+                        }}
+                        transition={secondaryMorphTransition(
+                          playerDensity === 'minimized' && !isMobile,
+                          playerDensity === 'minimized'
+                            ? minimizedActionEnterDelay
+                            : 0,
+                        )}
+                        style={{
+                          pointerEvents: playerDensity === 'minimized' && !isMobile ? 'auto' : 'none',
+                        }}
+                        tabIndex={playerDensity === 'minimized' && !isMobile ? 0 : -1}
+                        aria-hidden={playerDensity !== 'minimized' || isMobile}
+                        aria-label="展开后台播放器"
+                        title="展开播放器"
+                      >
+                        <ListMusic className="h-5 w-5" strokeWidth={1.7} />
+                      </motion.button>
+                      <motion.button
+                        layout
+                        layoutDependency={playerDensity}
+                        type="button"
+                        onClick={minimizePlayer}
+                        className={cn(topActionControlClass, 'admin-player-action-minimize')}
+                        animate={{
+                          opacity: playerDensity === 'minimized' ? 0 : 1,
+                          scale: playerDensity === 'minimized' ? 0.82 : 1,
+                        }}
+                        transition={secondaryMorphTransition(playerDensity !== 'minimized')}
+                        style={{ pointerEvents: playerDensity === 'minimized' ? 'none' : 'auto' }}
+                        tabIndex={playerDensity === 'minimized' ? -1 : 0}
+                        aria-hidden={playerDensity === 'minimized'}
+                        aria-label="最小化后台播放器"
+                        title="最小化"
+                      >
+                        <Minus className="h-4 w-4" strokeWidth={1.7} />
+                      </motion.button>
+                      <motion.div
+                        layout
+                        layoutDependency={playerDensity}
+                        className="admin-player-action-density"
+                        animate={{
+                          opacity: playerDensity === 'minimized' ? 0 : 1,
+                          scale: playerDensity === 'minimized' ? 0.82 : 1,
+                        }}
+                        transition={secondaryMorphTransition(playerDensity !== 'minimized')}
+                        style={{ pointerEvents: playerDensity === 'minimized' ? 'none' : 'auto' }}
+                        aria-hidden={playerDensity === 'minimized'}
+                      >
+                        {renderDensityToggle()}
+                      </motion.div>
+                      <motion.button
+                        layout
+                        layoutDependency={playerDensity}
+                        type="button"
+                        onClick={closePlayer}
+                        className={cn(topActionControlClass, 'admin-player-action-close')}
+                        animate={{
+                          opacity: expanded ? 1 : 0,
+                          scale: expanded ? 1 : 0.82,
+                        }}
+                        transition={secondaryMorphTransition(expanded)}
+                        style={{ pointerEvents: expanded ? 'auto' : 'none' }}
+                        tabIndex={expanded ? 0 : -1}
+                        aria-hidden={!expanded}
+                        aria-label="关闭后台播放器"
+                        title="关闭后台播放器"
+                      >
+                        <X className="h-[18px] w-[18px]" strokeWidth={1.7} />
+                      </motion.button>
+                    </motion.div>
+
+                    <motion.div
+                      data-admin-player-core-progress
+                      data-admin-player-compact-progress
+                      layout
+                      layoutDependency={playerDensity}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      animate={{
+                        opacity: playerDensity === 'minimized' ? 0 : 1,
+                        y: playerDensity === 'minimized' ? 4 : 0,
+                      }}
+                      transition={secondaryMorphTransition(playerDensity !== 'minimized')}
+                      style={{ pointerEvents: playerDensity === 'minimized' ? 'none' : 'auto' }}
+                      aria-hidden={playerDensity === 'minimized'}
+                      className="admin-player-core-progress"
+                    >
+                      {renderSeekBar(expanded, !expanded)}
+                    </motion.div>
+
+                    {playbackError && (
+                      <span role="alert" className="sr-only">
+                        {playbackError} 请选择播放按钮重新尝试。
+                      </span>
+                    )}
+                  </motion.div>
                 </motion.div>
               </motion.div>
             </motion.div>
