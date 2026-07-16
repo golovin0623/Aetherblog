@@ -95,12 +95,14 @@ export function resolveMusicPlayerSurface({
   canRender,
   hasPlaybackSession,
   routeBlocked,
+  playbackSurfaceVisible = false,
   compactOpen,
   expanded,
 }: {
   canRender: boolean;
   hasPlaybackSession: boolean;
   routeBlocked: boolean;
+  playbackSurfaceVisible?: boolean;
   compactOpen: boolean;
   expanded: boolean;
 }): MusicPlayerSurface {
@@ -110,6 +112,10 @@ export function resolveMusicPlayerSurface({
   // starting audio, while restored history still stays completely hidden.
   if (expanded) return 'immersive';
   if (!hasPlaybackSession) return 'hidden';
+  // A visible in-page player is already the closest and most contextual
+  // control surface. Suppress only the redundant floating layers; an explicit
+  // immersive intent above still wins.
+  if (playbackSurfaceVisible) return 'hidden';
   return compactOpen ? 'compact' : 'orb';
 }
 

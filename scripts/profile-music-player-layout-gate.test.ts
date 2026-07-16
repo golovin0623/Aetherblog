@@ -25,7 +25,7 @@ const globalCss = readFileSync(
 
 function stackVariantSource() {
   const start = profileSource.indexOf('if (isStack) {');
-  const end = profileSource.indexOf('\n  return (\n    <div\n      data-music-skin={skin}', start);
+  const end = profileSource.indexOf('\n  return (\n    <div\n      ref={playbackSurfaceRef}', start);
 
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
@@ -63,6 +63,16 @@ function mobileSheetSource() {
   return providerSource.slice(start, end);
 }
 
+function cssRule(selector: string) {
+  const start = globalCss.indexOf(`${selector} {`);
+  const end = globalCss.indexOf('\n}', start);
+
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+
+  return globalCss.slice(start, end + 2);
+}
+
 describe('profile music player stack layout gate', () => {
   it('subscribes to the high-frequency timeline only inside the progress leaf', () => {
     const player = profilePlayerSource();
@@ -79,6 +89,28 @@ describe('profile music player stack layout gate', () => {
     expect(profileSource).toContain('timelineActive = true');
     expect(profileSource).toContain('live={timelineActive}');
     expect(authorProfileSource).toContain('timelineActive={isCurrent}');
+  });
+
+  it('keeps the carousel progress rail read-only in every playback state so swipe always wins', () => {
+    const stack = stackVariantSource();
+
+    expect(stack).toContain('interactive={false}');
+    expect(stack).toContain('onSeek={() => {}}');
+    expect(profileSource.match(/interactive=\{false\}/g)).toHaveLength(2);
+    expect(profileSource).not.toContain('hasPlaybackSession');
+    expect(profileSource).not.toContain('seekToPercent');
+    expect(authorProfileSource).toContain('[role="slider"]');
+  });
+
+  it('registers only the visible playback card and waits until it fully leaves before showing a floater', () => {
+    expect(profileSource).toContain('reportPlaybackSurfaceVisibility');
+    expect(profileSource).toContain('new IntersectionObserver');
+    expect(profileSource).toContain('const visibilityMargin = 24');
+    expect(profileSource).toContain('rootMargin: `${visibilityMargin}px`');
+    expect(profileSource).toContain('window.setTimeout');
+    expect(profileSource).toContain('160');
+    expect(profileSource).toContain('ref={playbackSurfaceRef}');
+    expect(profileSource).toContain('timelineActive && canUseSurface(surface)');
   });
 
   it('keeps the narrow card expand action icon-only to prevent right-edge text squeeze', () => {
@@ -191,6 +223,22 @@ describe('author profile stack radius gate', () => {
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*overflow:\s*hidden;/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel\s*{[\s\S]*border-radius:\s*var\(--profile-card-stack-panel-radius\);/);
     expect(globalCss).toMatch(/\.profile-card-stack-panel::before\s*{[\s\S]*border-radius:\s*inherit;/);
+  });
+
+  it('pins the mobile carousel row to the stage so adjacent cards never grow past the clipping boundary', () => {
+    const stage = cssRule('.profile-card-stack-stage');
+    const track = cssRule('.profile-card-stack-track');
+    const slot = cssRule('.profile-card-stack-slot');
+    const panel = cssRule('.profile-card-stack-panel');
+
+    expect(track).toContain('grid-template-rows: minmax(0, 1fr);');
+    expect(track).toContain('min-height: 0;');
+    expect(slot).toContain('min-height: 0;');
+    expect(panel).toContain('min-height: 0;');
+    expect(stage).not.toContain('perspective:');
+    expect(stage).not.toContain('transform-style: preserve-3d;');
+    expect(track).not.toContain('transform-style: preserve-3d;');
+    expect(panel).not.toContain('transform-style: preserve-3d;');
   });
 
   it('lets the panel own the visible boundary while the stage remains a clean clipping surface', () => {

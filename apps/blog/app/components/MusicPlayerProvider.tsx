@@ -20,7 +20,13 @@ import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useIsMobile } from '@aetherblog/hooks';
 import {
+  duration as motionDuration,
+  spring as motionSpring,
+  transition as motionTransition,
+} from '@aetherblog/ui';
+import {
   AnimatePresence,
+  LayoutGroup,
   animate,
   motion,
   useDragControls,
@@ -37,6 +43,7 @@ import {
   ListMusic,
   LibraryBig,
   Maximize2,
+  Minimize2,
   Music2,
   Pause,
   Play,
@@ -94,6 +101,9 @@ function meaningfulMusicText(value: string | null | undefined): string {
 // ============================================================
 const MUSIC_SKIN_STORAGE_KEY = 'aetherblog-music-skin';
 const MUSIC_PLAYBACK_STORAGE_KEY = 'aetherblog-music-playback-v1';
+const FLOATING_MORPH_TRANSITION = motionSpring.soft;
+const FLOATING_ORB_RADIUS = 999;
+const FLOATING_COMPACT_RADIUS = 24;
 
 type StoredMusicSkin =
   | { mode: 'preset'; preset: string }
@@ -201,7 +211,8 @@ export function formatMusicClock(seconds: number): string {
 
 /**
  * 共享进度条 —— 指针点击 + 键盘(←/→ ±5%、Home/End)均可拖动,
- * 带 role="slider" 与 aria-value*。三处播放面(大厅 / dock / 沉浸层)统一复用,
+ * 交互态带 role="slider" 与 aria-value*；只读态退为 progressbar 并让指针
+ * 穿透给外层手势。三处播放面(大厅 / dock / 沉浸层)统一复用,
  * 杜绝各自手写一遍 onClick 取 clientX 又漏键盘可达性。
  */
 export function SeekBar({
@@ -212,6 +223,7 @@ export function SeekBar({
   size = 'md',
   className,
   label = '调整播放进度',
+  interactive = true,
 }: {
   percent: number;
   progress: number;
@@ -220,6 +232,7 @@ export function SeekBar({
   size?: 'sm' | 'md' | 'lg';
   className?: string;
   label?: string;
+  interactive?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const activePointerRef = useRef<number | null>(null);
@@ -262,19 +275,20 @@ export function SeekBar({
   return (
     <div
       ref={trackRef}
-      role="slider"
-      tabIndex={0}
+      role={interactive ? 'slider' : 'progressbar'}
+      tabIndex={interactive ? 0 : undefined}
       aria-label={label}
+      aria-disabled={interactive ? undefined : true}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clampedPercent)}
       aria-valuetext={`${formatMusicClock(progress)} / ${formatMusicClock(duration)}`}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={(event) => finishPointerScrub(event, true)}
-      onPointerCancel={(event) => finishPointerScrub(event, false)}
-      onLostPointerCapture={handleLostPointerCapture}
-      onKeyDown={(event) => {
+      onPointerDown={interactive ? handlePointerDown : undefined}
+      onPointerMove={interactive ? handlePointerMove : undefined}
+      onPointerUp={interactive ? (event) => finishPointerScrub(event, true) : undefined}
+      onPointerCancel={interactive ? (event) => finishPointerScrub(event, false) : undefined}
+      onLostPointerCapture={interactive ? handleLostPointerCapture : undefined}
+      onKeyDown={interactive ? (event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
           event.preventDefault();
           onSeek(Math.min(100, percent + 5));
@@ -288,9 +302,11 @@ export function SeekBar({
           event.preventDefault();
           onSeek(100);
         }
-      }}
+      } : undefined}
       className={cn(
-        'group/music-seek flex min-h-11 w-full touch-none cursor-pointer items-center py-3 focus-visible:outline-none',
+        'group/music-seek flex min-h-11 w-full items-center py-3 focus-visible:outline-none',
+        interactive && 'touch-none cursor-pointer',
+        !interactive && 'pointer-events-none touch-auto cursor-default',
         className
       )}
       style={{ ['--music-progress' as string]: `${clampedPercent}%` }}
@@ -307,7 +323,8 @@ export function SeekBar({
         />
         <span
           className={cn(
-            'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--ink-primary)] opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/music-seek:opacity-100 group-focus-visible/music-seek:opacity-100 group-focus-visible/music-seek:ring-2 group-focus-visible/music-seek:ring-[var(--aurora-1)] group-active/music-seek:opacity-100',
+            'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--ink-primary)] opacity-0 transition-opacity duration-150 motion-reduce:transition-none',
+            interactive && 'group-hover/music-seek:opacity-100 group-focus-visible/music-seek:opacity-100 group-focus-visible/music-seek:ring-2 group-focus-visible/music-seek:ring-[var(--aurora-1)] group-active/music-seek:opacity-100',
             knobClass
           )}
           style={{ left: 'var(--music-progress)' }}
@@ -353,9 +370,11 @@ interface MusicPlayerContextValue {
   volume: number;
   expanded: boolean;
   hasPlaybackSession: boolean;
+  playbackSurfaceVisible: boolean;
   lyrics: LyricLine[];
   canRender: boolean;
   canUseSurface: (surface: 'home' | 'profile') => boolean;
+  reportPlaybackSurfaceVisibility: (surfaceId: string, visible: boolean) => void;
   playIndex: (index: number, options?: { expand?: boolean }) => void;
   playTrack: (trackId: number, options?: { expand?: boolean }) => void;
   playAll: (options?: { expand?: boolean }) => void;
@@ -426,6 +445,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const shuffleHistoryRef = useRef(createShuffleHistory(0));
   const storedPlaybackRef = useRef<ReturnType<typeof parseStoredMusicPlayback>>(null);
   const pendingRestoreRef = useRef<{ trackId: number; position: number } | null>(null);
+  const visiblePlaybackSurfacesRef = useRef(new Set<string>());
   const didRestorePlaybackRef = useRef(false);
   const lastPersistAtRef = useRef(0);
   const {
@@ -453,6 +473,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(0.86);
   const [expanded, setExpanded] = useState(false);
   const [hasPlaybackSession, setHasPlaybackSession] = useState(false);
+  const [playbackSurfaceVisible, setPlaybackSurfaceVisible] = useState(false);
   const [idleSeekPreview, setIdleSeekPreview] = useState<{ trackId: number; position: number } | null>(null);
   const [playbackPreferencesHydrated, setPlaybackPreferencesHydrated] = useState(false);
 
@@ -511,6 +532,13 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     },
     [canRender, player]
   );
+
+  const reportPlaybackSurfaceVisibility = useCallback((surfaceId: string, visible: boolean) => {
+    if (visible) visiblePlaybackSurfacesRef.current.add(surfaceId);
+    else visiblePlaybackSurfacesRef.current.delete(surfaceId);
+    const nextVisible = visiblePlaybackSurfacesRef.current.size > 0;
+    setPlaybackSurfaceVisible((current) => current === nextVisible ? current : nextVisible);
+  }, []);
 
   const persistPlaybackSnapshot = useCallback((position = progressRef.current) => {
     if (!playbackPreferencesHydrated) return;
@@ -1341,9 +1369,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     volume,
     expanded,
     hasPlaybackSession,
+    playbackSurfaceVisible,
     lyrics,
     canRender,
     canUseSurface,
+    reportPlaybackSurfaceVisibility,
     playIndex,
     playTrack,
     playAll,
@@ -1374,6 +1404,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     currentTrack,
     expanded,
     hasPlaybackSession,
+    playbackSurfaceVisible,
     isPlaying,
     isBuffering,
     isPlayerLoading,
@@ -1385,6 +1416,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     playTrack,
     player,
     playerLoadError,
+    reportPlaybackSurfaceVisibility,
     previousTrack,
     skipToPreviousTrack,
     seekToTime,
@@ -1730,6 +1762,7 @@ function PersistentMusicDock({
     volume,
     expanded,
     hasPlaybackSession,
+    playbackSurfaceVisible,
     lyrics,
     canRender,
     skin,
@@ -1753,6 +1786,7 @@ function PersistentMusicDock({
   const mobileDialogRef = useRef<HTMLDivElement>(null);
   const desktopDialogRef = useRef<HTMLDivElement>(null);
   const surfaceTriggerRef = useRef<HTMLButtonElement>(null);
+  const compactIdentityTriggerRef = useRef<HTMLButtonElement>(null);
   const compactPanelRef = useRef<HTMLElement>(null);
   const compactGestureRef = useRef(false);
   const immersiveGestureRef = useRef(false);
@@ -1766,6 +1800,7 @@ function PersistentMusicDock({
   const [mobilePane, setMobilePane] = useState<'player' | 'lyrics' | 'queue'>('player');
   const [desktopPane, setDesktopPane] = useState<'lyrics' | 'queue'>('lyrics');
   const [compactOpen, setCompactOpen] = useState(false);
+  const [compactCollapsing, setCompactCollapsing] = useState(false);
   const [compactInteractionVersion, setCompactInteractionVersion] = useState(0);
   const [compactPointerInside, setCompactPointerInside] = useState(false);
   const [compactFocusWithin, setCompactFocusWithin] = useState(false);
@@ -1785,11 +1820,26 @@ function PersistentMusicDock({
   const resumeLyricsFollowing = useCallback(() => {
     setLyricsFollowing(true);
   }, []);
+  const openCompactSurface = useCallback(() => {
+    setCompactCollapsing(false);
+    setCompactOpen(true);
+  }, []);
   const collapseToOrb = useCallback(() => {
     setCompactPointerInside(false);
     setCompactFocusWithin(false);
+    if (!compactOpen || prefersReducedMotion) {
+      setCompactCollapsing(false);
+      setCompactOpen(false);
+      return;
+    }
+    if (compactCollapsing) return;
+    setCompactCollapsing(true);
+  }, [compactCollapsing, compactOpen, prefersReducedMotion]);
+  const completeCompactCollapse = useCallback(() => {
+    if (!compactCollapsing) return;
     setCompactOpen(false);
-  }, []);
+    setCompactCollapsing(false);
+  }, [compactCollapsing]);
   const manuallyCollapseToOrb = useCallback((restoreKeyboardFocus = true) => {
     if (restoreKeyboardFocus) pendingSurfaceFocusRef.current = 'orb';
     collapseToOrb();
@@ -1798,7 +1848,9 @@ function PersistentMusicDock({
     const pendingTarget = pendingSurfaceFocusRef.current;
     if (!pendingTarget) return;
     window.requestAnimationFrame(() => {
-      const target = surfaceTriggerRef.current;
+      const target = pendingTarget === 'compact'
+        ? compactIdentityTriggerRef.current
+        : surfaceTriggerRef.current;
       if (!target?.isConnected) return;
       target.focus({ preventScroll: true });
       pendingSurfaceFocusRef.current = null;
@@ -1809,13 +1861,14 @@ function PersistentMusicDock({
     setExpanded(false);
     setCompactPointerInside(false);
     setCompactFocusWithin(false);
-    setCompactOpen(true);
+    openCompactSurface();
     registerCompactInteraction();
-  }, [compactDragY, registerCompactInteraction, setExpanded]);
+  }, [compactDragY, openCompactSurface, registerCompactInteraction, setExpanded]);
   const openImmersivePlayer = useCallback(() => {
     immersiveDragY.set(0);
     setCompactPointerInside(false);
     setCompactFocusWithin(false);
+    setCompactCollapsing(false);
     setCompactOpen(false);
     setExpanded(true);
   }, [immersiveDragY, setExpanded]);
@@ -1861,11 +1914,17 @@ function PersistentMusicDock({
       if (prefersReducedMotion) {
         collapseToOrb();
       } else {
-        const destination = Math.max(compactPanelRef.current?.offsetHeight ?? 0, 280);
-        void animate(compactDragY, destination, {
-          duration: 0.2,
-          ease: [0.32, 0.72, 0, 1],
-        }).then(collapseToOrb);
+        // Preserve the finger's current vertical displacement and let the
+        // same bottom-left anchored shell morph back into the orb while the
+        // displacement settles. Sliding the whole card off-screen first made
+        // the orb re-enter on a second, visibly disconnected trajectory.
+        collapseToOrb();
+        animate(compactDragY, 0, {
+          type: 'spring',
+          stiffness: 460,
+          damping: 40,
+          mass: 0.68,
+        });
       }
     } else {
       animate(compactDragY, 0, {
@@ -1945,7 +2004,7 @@ function PersistentMusicDock({
     onClose: closeExpandedPlayer,
     containerRef: isMobile ? mobileDialogRef : desktopDialogRef,
     initialFocusRef: isMobile ? mobileDialogRef : desktopDialogRef,
-    returnFocusRef: surfaceTriggerRef,
+    returnFocusRef: compactIdentityTriggerRef,
     modal: true,
     trapFocus: true,
   });
@@ -1972,21 +2031,35 @@ function PersistentMusicDock({
   useEffect(() => {
     if (hasPlaybackSession && !previousSessionRef.current) {
       compactDragY.set(0);
-      setCompactOpen(true);
-      registerCompactInteraction();
+      // Playing from an in-page card should update that card, not spawn a
+      // second control surface over it. Once the card leaves the viewport the
+      // density resolver starts from the ambient orb.
+      setCompactCollapsing(false);
+      setCompactOpen(false);
     }
-    if (!hasPlaybackSession) setCompactOpen(false);
+    if (!hasPlaybackSession) {
+      setCompactCollapsing(false);
+      setCompactOpen(false);
+    }
     previousSessionRef.current = hasPlaybackSession;
-  }, [compactDragY, hasPlaybackSession, registerCompactInteraction]);
+  }, [compactDragY, hasPlaybackSession]);
 
   useEffect(() => {
-    if (playbackError && !previousPlaybackErrorRef.current) {
+    if (playbackError && !previousPlaybackErrorRef.current && !playbackSurfaceVisible) {
       compactDragY.set(0);
-      setCompactOpen(true);
+      openCompactSurface();
       registerCompactInteraction();
     }
     previousPlaybackErrorRef.current = playbackError;
-  }, [compactDragY, playbackError, registerCompactInteraction]);
+  }, [compactDragY, openCompactSurface, playbackError, playbackSurfaceVisible, registerCompactInteraction]);
+
+  useEffect(() => {
+    if (!playbackSurfaceVisible || expanded) return;
+    setCompactPointerInside(false);
+    setCompactFocusWithin(false);
+    setCompactCollapsing(false);
+    setCompactOpen(false);
+  }, [expanded, playbackSurfaceVisible]);
 
   useEffect(() => {
     if (compactOpen) compactDragY.set(0);
@@ -2088,25 +2161,30 @@ function PersistentMusicDock({
     if (routeBlocksPlayerSurface && expanded) setExpanded(false);
   }, [expanded, routeBlocksPlayerSurface, setExpanded]);
 
-  // A new explicit playback session must land directly on the useful compact
-  // controls. Waiting for the effect below would render an orb for one frame
-  // (and AnimatePresence would then delay compact mounting until its exit).
-  const compactSurfaceOpen = compactOpen || (hasPlaybackSession && !previousSessionRef.current);
   const surface = resolveMusicPlayerSurface({
     canRender: canRender && Boolean(currentTrack),
     hasPlaybackSession,
     routeBlocked: routeBlocksPlayerSurface,
-    compactOpen: compactSurfaceOpen,
+    playbackSurfaceVisible,
+    compactOpen,
     expanded,
   });
+  const floatingShellRadius = surface === 'orb'
+    ? FLOATING_ORB_RADIUS
+    : FLOATING_COMPACT_RADIUS;
 
-  if (surface === 'hidden' || !currentTrack) return null;
+  useEffect(() => {
+    if (surface === 'orb' || surface === 'compact') focusPendingSurface();
+  }, [focusPendingSurface, surface]);
+
+  if (!currentTrack) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
   const currentPresentation = resolveMusicTrackPresentation(currentTrack);
   const artistLabel = currentPresentation.artist || meaningfulMusicText(currentTrack.album);
   const compactArtistLabel = artistLabel || playlistName;
   const currentCover = resolveMusicCoverSrc(currentTrack);
+  const currentThumbnail = resolveMusicCoverSrc(currentTrack, '', 'thumbnail');
   const mobilePaneTransport = (
     <div className="grid grid-cols-3 items-center justify-items-center border-t border-[var(--music-stroke)] py-3">
       <button type="button" onClick={goToPreviousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
@@ -2122,56 +2200,14 @@ function PersistentMusicDock({
   );
 
   return (
-    <>
-      <AnimatePresence initial={false} mode="popLayout" onExitComplete={focusPendingSurface}>
-        {surface === 'orb' && (
-          <motion.div
-            key="music-orb"
-            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
-            data-music-skin={skin}
-            className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[70] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] min-[769px]:bottom-8 min-[769px]:left-8"
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.86, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 6 }}
-            transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <button
-              ref={surfaceTriggerRef}
-              type="button"
-              data-music-playback-orb
-              data-playing={isPlaying ? 'true' : 'false'}
-              data-buffering={isBuffering ? 'true' : 'false'}
-              onClick={(event) => {
-                if (event.detail === 0) pendingSurfaceFocusRef.current = 'compact';
-                compactDragY.set(0);
-                setCompactOpen(true);
-                registerCompactInteraction();
-              }}
-              className="music-playback-orb pointer-events-auto relative grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent min-[769px]:h-12 min-[769px]:w-12"
-              aria-label={playbackError ? `播放失败，打开迷你播放器重试：${currentPresentation.title}` : `打开迷你播放器：${currentPresentation.title}`}
-              title="打开迷你播放器"
-              style={{ ['--music-orb-progress' as string]: `${percent * 3.6}deg` }}
-            >
-              <span className="music-playback-orb__progress" aria-hidden="true" />
-              <span className="music-playback-orb__core" aria-hidden="true">
-                {playbackError ? (
-                  <AlertCircle className="h-5 w-5" />
-                ) : isBuffering ? (
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Music2 className="h-5 w-5" strokeWidth={2} />
-                )}
-              </span>
-            </button>
-          </motion.div>
-        )}
-
-        {surface === 'compact' && (
+    <LayoutGroup id="persistent-music-player">
+      <>
+      <AnimatePresence initial={false} onExitComplete={focusPendingSurface}>
+        {(surface === 'orb' || surface === 'compact') && (
           <motion.section
-            key="music-compact"
-            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
+            key="music-floating-shell"
             ref={compactPanelRef}
-            drag={prefersReducedMotion ? false : 'y'}
+            drag={surface === 'compact' && !prefersReducedMotion ? 'y' : false}
             dragControls={compactDragControls}
             dragListener={false}
             dragMomentum={false}
@@ -2183,23 +2219,29 @@ function PersistentMusicDock({
             }}
             onDragEnd={(_, info) => handleCompactCollapseGesture(info)}
             data-music-skin={skin}
-            data-music-compact-player
-            aria-label="迷你播放器"
-            className="music-compact-player fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] w-auto max-w-[22.5rem] overflow-hidden text-[var(--ink-primary)] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))] min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto min-[769px]:w-[23rem] min-[769px]:max-w-none"
-            style={{ y: compactDragY }}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, x: -8 }}
-            animate={{ opacity: 1, scale: 1, x: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, x: -6 }}
-            transition={{ duration: prefersReducedMotion ? 0.08 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-            onPointerEnter={() => setCompactPointerInside(true)}
+            data-music-floating-root
+            data-music-floating-density={surface}
+            data-music-compact-player={surface === 'compact' ? '' : undefined}
+            aria-label={surface === 'compact' ? '迷你播放器' : '灵动音乐元'}
+            className="music-floating-player-root pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] h-[16.5rem] w-auto max-w-[22.5rem] overflow-visible text-[var(--ink-primary)] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))] min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto min-[769px]:w-[23rem] min-[769px]:max-w-none"
+            style={{ y: compactDragY, originX: 0, originY: 1 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={prefersReducedMotion
+              ? motionTransition.instant
+              : { opacity: motionTransition.quick }}
+            onPointerEnter={() => {
+              if (surface === 'compact') setCompactPointerInside(true);
+            }}
             onPointerLeave={() => setCompactPointerInside(false)}
             onPointerDown={() => {
               compactInputModalityRef.current = 'pointer';
               setCompactFocusWithin(false);
-              registerCompactInteraction();
+              if (surface === 'compact') registerCompactInteraction();
             }}
             onFocusCapture={() => {
-              if (compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);
+              if (surface === 'compact' && compactInputModalityRef.current === 'keyboard') setCompactFocusWithin(true);
             }}
             onBlurCapture={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -2207,109 +2249,230 @@ function PersistentMusicDock({
               }
             }}
           >
-            <button
+            <motion.button
+              ref={surfaceTriggerRef}
               type="button"
-              data-music-compact-drag-handle
-              onPointerDown={(event) => {
-                if (!prefersReducedMotion) compactDragControls.start(event);
+              layout
+              layoutDependency={surface}
+              data-music-floating-artwork
+              data-music-playback-orb={surface === 'orb' ? '' : undefined}
+              data-playing={isPlaying ? 'true' : 'false'}
+              data-buffering={isBuffering ? 'true' : 'false'}
+              drag={surface === 'compact' && !prefersReducedMotion ? 'x' : false}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              dragMomentum={false}
+              onDragStart={() => {
+                compactGestureRef.current = true;
                 registerCompactInteraction();
               }}
+              onDragEnd={(_, info) => handleTrackGesture(info)}
               onClick={(event) => {
-                if (!compactGestureRef.current) manuallyCollapseToOrb(event.detail === 0);
-              }}
-              className="flex h-11 w-full touch-none cursor-grab items-center justify-center active:cursor-grabbing"
-              aria-label="下滑或点击收起为灵动音乐元"
-            >
-              <span className="h-1 w-9 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_20%,transparent)]" />
-            </button>
-
-            <div className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-1 px-3">
-              <motion.button
-                ref={surfaceTriggerRef}
-                type="button"
-                drag={prefersReducedMotion ? false : 'x'}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.2}
-                dragMomentum={false}
-                onDragStart={() => {
-                  compactGestureRef.current = true;
+                if (surface === 'orb') {
+                  compactGestureRef.current = false;
+                  if (event.detail === 0) pendingSurfaceFocusRef.current = 'compact';
+                  compactDragY.set(0);
+                  openCompactSurface();
                   registerCompactInteraction();
+                  return;
+                }
+                if (compactGestureRef.current) return;
+                openImmersivePlayer();
+              }}
+              className={cn(
+                'music-playback-orb music-floating-artwork-button pointer-events-auto absolute z-20 grid place-items-center overflow-hidden rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80',
+                surface === 'orb'
+                  ? 'bottom-0 left-0 h-[52px] w-[52px] min-[769px]:h-12 min-[769px]:w-12'
+                  : '-bottom-[6px] -left-[6px] h-16 w-16 min-[769px]:-bottom-2 min-[769px]:-left-2',
+              )}
+              aria-label={surface === 'orb'
+                ? playbackError
+                  ? `播放失败，打开迷你播放器重试：${currentPresentation.title}`
+                  : `打开迷你播放器：${currentPresentation.title}`
+                : `打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`}
+              tabIndex={surface === 'compact' ? -1 : undefined}
+              aria-hidden={surface === 'compact' ? true : undefined}
+              title={surface === 'orb' ? '打开迷你播放器' : '打开沉浸播放器'}
+              transition={prefersReducedMotion
+                ? motionTransition.instant
+                : { layout: FLOATING_MORPH_TRANSITION }}
+              style={{
+                ['--music-orb-progress' as string]: `${percent * 3.6}deg`,
+                touchAction: surface === 'compact' ? 'pan-y pinch-zoom' : 'manipulation',
+              }}
+            >
+              <span className="music-playback-orb__progress" aria-hidden="true" />
+              <motion.span
+                className="music-playback-orb__artwork"
+                aria-hidden="true"
+                initial={false}
+                animate={{
+                  top: surface === 'compact' ? 0 : 5,
+                  right: surface === 'compact' ? 0 : 5,
+                  bottom: surface === 'compact' ? 0 : 5,
+                  left: surface === 'compact' ? 0 : 5,
                 }}
-                onDragEnd={(_, info) => handleTrackGesture(info)}
-                onClick={() => {
-                  if (!compactGestureRef.current) openImmersivePlayer();
-                }}
-                style={{ touchAction: 'pan-y pinch-zoom' }}
-                className="grid h-14 min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-3 rounded-[var(--music-radius-detail)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                aria-label={`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`}
+                transition={prefersReducedMotion ? motionTransition.instant : FLOATING_MORPH_TRANSITION}
               >
-                <AnimatePresence initial={false} mode="popLayout">
-                  <motion.span
-                    key={currentTrack.id}
-                    initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * 14, scale: 0.96 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * -10, scale: 0.96 }}
-                    transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
-                    className="block h-[52px] w-[52px]"
-                  >
-                    <MusicArtwork track={currentTrack} className="h-[52px] w-[52px]" sizes="52px" />
-                  </motion.span>
-                </AnimatePresence>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
-                  <span className={cn('mt-0.5 block truncate text-xs leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
-                    {playbackError ? playbackError : isBuffering ? '正在载入…' : `${compactArtistLabel} · ${currentIndex + 1}/${tracks.length}`}
+                {currentThumbnail ? (
+                  <Image src={currentThumbnail} alt="" fill sizes={surface === 'compact' ? '64px' : '52px'} className="object-cover" unoptimized />
+                ) : (
+                  <Music2 className="h-5 w-5" strokeWidth={2} />
+                )}
+                {(playbackError || isBuffering) && (
+                  <span className="music-playback-orb__status">
+                    {playbackError
+                      ? <AlertCircle className="h-[18px] w-[18px]" />
+                      : <RefreshCw className="h-[18px] w-[18px] animate-spin" />}
                   </span>
-                  {activeLine && <span className="mt-0.5 block truncate text-[10px] leading-4 text-[var(--ink-muted)]">{activeLine}</span>}
-                </span>
-              </motion.button>
-              <button
-                type="button"
-                data-dismiss-music-player
-                onClick={dismissPlayer}
-                className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                aria-label="停止播放并关闭播放器"
-              >
-                <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
-              </button>
-            </div>
+                )}
+              </motion.span>
+            </motion.button>
 
-            <div className="px-3">
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
-            </div>
+            <motion.div
+              layout
+              layoutDependency={surface}
+              layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
+              data-music-floating-shell
+              className={cn(
+                'music-floating-player-shell pointer-events-auto absolute bottom-0 left-0 z-10 overflow-hidden',
+                surface === 'orb'
+                  ? 'h-[52px] w-[52px] min-[769px]:h-12 min-[769px]:w-12'
+                  : 'music-compact-player h-full w-full',
+              )}
+              initial={{ borderRadius: floatingShellRadius }}
+              animate={{ borderRadius: floatingShellRadius }}
+              transition={prefersReducedMotion
+                ? motionTransition.instant
+                : {
+                    layout: FLOATING_MORPH_TRANSITION,
+                    borderRadius: FLOATING_MORPH_TRANSITION,
+                  }}
+              style={{ originX: 0, originY: 1 }}
+            >
+              <AnimatePresence initial={false} mode="popLayout" onExitComplete={completeCompactCollapse}>
+                {surface === 'compact' && !compactCollapsing && (
+                  <motion.div
+                  key="compact-content"
+                  data-music-compact-content
+                  initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={prefersReducedMotion
+                    ? { opacity: 0 }
+                    : {
+                        opacity: 0,
+                        y: 3,
+                        scale: 0.99,
+                        transition: motionTransition.instant,
+                      }}
+                  transition={prefersReducedMotion
+                    ? motionTransition.instant
+                    : { ...motionTransition.quick, delay: motionDuration.instant }}
+                  className="flex h-full flex-col p-4"
+                >
+                  <div data-music-compact-utilities className="mt-2 grid grid-cols-3 border-t border-[var(--music-stroke)] pt-2">
+                    <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
+                      <Shuffle className="h-[18px] w-[18px]" />
+                    </button>
+                    <button type="button" onClick={openImmersivePlayer} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
+                      <Maximize2 className="h-[18px] w-[18px]" />
+                    </button>
+                    <Link href="/music" onClick={collapseToOrb} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅" title="进入音乐大厅">
+                      <LibraryBig className="h-[19px] w-[19px]" />
+                    </Link>
+                  </div>
 
-            <div data-music-compact-transport className="mx-auto grid w-fit grid-cols-[44px_48px_44px] items-center gap-3">
-              <button type="button" onClick={goToPreviousTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
-                <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
-              </button>
-              <button
-                type="button"
-                onClick={playbackError ? () => void retryPlayback() : togglePlayback}
-                className="music-control-button music-icon-button music-icon-button--tinted grid h-12 w-12 place-items-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
-              >
-                {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
-              </button>
-              <button type="button" onClick={goToNextTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
-                <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
-              </button>
-            </div>
+                  <div data-music-compact-transport className="mx-auto mt-1 grid w-fit grid-cols-[44px_48px_44px] items-center gap-3">
+                    <button type="button" onClick={goToPreviousTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
+                      <SkipBack className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={playbackError ? () => void retryPlayback() : togglePlayback}
+                      className="music-control-button music-icon-button music-icon-button--tinted grid h-12 w-12 place-items-center rounded-full text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                      aria-label={playbackError ? '重新尝试播放' : isBuffering ? '取消载入' : isPlaying ? '暂停音乐' : '播放音乐'}
+                    >
+                      {isBuffering ? <RefreshCw className="h-5 w-5 animate-spin" strokeWidth={1.8} /> : isPlaying ? <Pause className="h-5 w-5 fill-current" strokeWidth={1.5} /> : <Play className="h-5 w-5 translate-x-px fill-current" strokeWidth={1.5} />}
+                    </button>
+                    <button type="button" onClick={goToNextTrack} className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="下一首">
+                      <SkipForward className="h-5 w-5 fill-current" strokeWidth={1.5} />
+                    </button>
+                  </div>
 
-            <div className="mt-1 grid grid-cols-4 border-t border-[var(--music-stroke)] px-2 pb-1">
-              <button type="button" onClick={(event) => manuallyCollapseToOrb(event.detail === 0)} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="收起为灵动音乐元">
-                <ChevronDown className="h-[18px] w-[18px]" />
-              </button>
-              <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
-                <Shuffle className="h-[18px] w-[18px]" />
-              </button>
-              <button type="button" onClick={openImmersivePlayer} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
-                <Maximize2 className="h-[18px] w-[18px]" />
-              </button>
-              <Link href="/music" onClick={collapseToOrb} className="music-control-button music-icon-button mx-auto grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅" title="进入音乐大厅">
-                <LibraryBig className="h-[19px] w-[19px]" />
-              </Link>
-            </div>
-            {playbackError && <span role="alert" className="sr-only">音乐播放失败，请打开播放器重试。</span>}
+                  <div data-music-compact-seek className="mt-3">
+                    <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
+                  </div>
+
+                  <div
+                    data-music-compact-identity
+                    className="grid grid-cols-[64px_minmax(0,1fr)_44px_44px] items-center gap-1"
+                  >
+                    <span className="h-16 w-16" aria-hidden="true" />
+                    <motion.button
+                      ref={compactIdentityTriggerRef}
+                      data-music-compact-focus-target
+                      type="button"
+                      drag={prefersReducedMotion ? false : 'x'}
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={0.2}
+                      dragMomentum={false}
+                      onDragStart={() => {
+                        compactGestureRef.current = true;
+                        registerCompactInteraction();
+                      }}
+                      onDragEnd={(_, info) => handleTrackGesture(info)}
+                      onClick={() => {
+                        if (!compactGestureRef.current) openImmersivePlayer();
+                      }}
+                      style={{ touchAction: 'pan-y pinch-zoom' }}
+                      className="h-16 min-w-0 rounded-[var(--music-radius-detail)] pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                      aria-label={`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`}
+                    >
+                      <span className="block min-w-0">
+                        <span className="flex items-center gap-1.5 truncate text-[10px] font-bold uppercase tracking-[0.13em] text-[var(--aurora-1)]">
+                          <Disc3 className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{playlistName}</span>
+                        </span>
+                        <span className="mt-1 block truncate text-sm font-black leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
+                        <span className={cn('mt-0.5 block truncate text-[11px] leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
+                          {playbackError ? playbackError : isBuffering ? '正在载入…' : `${compactArtistLabel} · ${currentIndex + 1}/${tracks.length}`}
+                        </span>
+                      </span>
+                    </motion.button>
+                    <button
+                      type="button"
+                      data-music-density-toggle
+                      onPointerDown={(event) => {
+                        if (!prefersReducedMotion) compactDragControls.start(event);
+                        registerCompactInteraction();
+                      }}
+                      onClick={(event) => {
+                        if (!compactGestureRef.current) manuallyCollapseToOrb(event.detail === 0);
+                      }}
+                      className="music-control-button music-icon-button grid h-11 w-11 touch-none place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                      aria-label="收起为灵动音乐元；下滑也可收起"
+                      title="收起播放器"
+                    >
+                      <motion.span animate={{ rotate: 0, scale: 1 }} transition={{ duration: prefersReducedMotion ? 0.01 : 0.16 }}>
+                        <Minimize2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                      </motion.span>
+                    </button>
+                    <button
+                      type="button"
+                      data-dismiss-music-player
+                      onClick={dismissPlayer}
+                      className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                      aria-label="停止播放并关闭播放器"
+                    >
+                      <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                    </button>
+                  </div>
+                  {activeLine && <span className="sr-only" aria-live="polite">{activeLine}</span>}
+                  {playbackError && <span role="alert" className="sr-only">音乐播放失败，请打开播放器重试。</span>}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           </motion.section>
         )}
       </AnimatePresence>
@@ -2336,6 +2499,7 @@ function PersistentMusicDock({
             style={{ opacity: mobileBackdropOpacity }}
           />
           <motion.section
+            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
             drag={prefersReducedMotion ? false : 'y'}
             dragControls={immersiveDragControls}
             dragListener={false}
@@ -2349,7 +2513,9 @@ function PersistentMusicDock({
             initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
-            transition={{ duration: prefersReducedMotion ? 0.08 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            transition={prefersReducedMotion
+              ? { duration: 0.08 }
+              : { layout: { type: 'spring', stiffness: 360, damping: 36, mass: 0.82 }, opacity: { duration: 0.18 }, scale: { duration: 0.22 } }}
             style={{ y: immersiveDragY }}
             className="music-mobile-player-sheet absolute bottom-0 left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
@@ -2360,29 +2526,22 @@ function PersistentMusicDock({
               </div>
             )}
 
-            <button
-              type="button"
-              data-mobile-player-drag-handle
-              onPointerDown={(event) => {
-                if (!prefersReducedMotion) immersiveDragControls.start(event);
-              }}
-              onClick={() => {
-                if (!immersiveGestureRef.current) closeExpandedPlayer();
-              }}
-              className="relative z-20 flex h-11 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
-              aria-label="下滑或点击收起音乐播放器"
-            >
-              <span className="h-1 w-10 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_24%,transparent)]" />
-            </button>
-
-            <header data-mobile-player-header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-2">
+            <header data-mobile-player-header className="relative z-10 grid min-h-12 grid-cols-[44px_minmax(0,1fr)_44px] items-center px-2 pt-1">
               <button
                 type="button"
-                onClick={mobilePane === 'player' ? closeExpandedPlayer : () => setMobilePane('player')}
-                className="music-control-button music-icon-button grid h-11 w-11 place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
-                aria-label={mobilePane === 'player' ? '收起音乐播放器' : '返回正在播放'}
+                data-mobile-player-density-toggle={mobilePane === 'player' ? '' : undefined}
+                onPointerDown={(event) => {
+                  if (mobilePane === 'player' && !prefersReducedMotion) immersiveDragControls.start(event);
+                }}
+                onClick={() => {
+                  if (immersiveGestureRef.current) return;
+                  if (mobilePane === 'player') closeExpandedPlayer();
+                  else setMobilePane('player');
+                }}
+                className="music-control-button music-icon-button grid h-11 w-11 touch-none place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
+                aria-label={mobilePane === 'player' ? '收起为迷你播放器；下滑也可收起' : '返回正在播放'}
               >
-                {mobilePane === 'player' ? <ChevronDown className="h-6 w-6" /> : <ChevronLeft className="h-6 w-6" />}
+                {mobilePane === 'player' ? <Minimize2 className="h-5 w-5" strokeWidth={1.8} /> : <ChevronLeft className="h-6 w-6" />}
               </button>
               <div className="min-w-0 text-center" aria-live="polite" aria-atomic="true">
                 <p className="truncate text-[11px] font-semibold text-[var(--ink-secondary)]">
@@ -2833,6 +2992,7 @@ function PersistentMusicDock({
         </motion.div>
       )}
       </AnimatePresence>
-    </>
+      </>
+    </LayoutGroup>
   );
 }
