@@ -229,6 +229,25 @@ def _tail(text: str, lines: int = 20) -> str:
     return "\n".join(text.strip().splitlines()[-lines:])
 
 
+def _deployment_failure_summary(stdout: str, stderr: str) -> str:
+    """Keep both diagnostic streams in the webhook/CI failure response.
+
+    deploy.sh writes its structured progress and post-deploy preflight details
+    to stdout. Returning only stderr hid the useful compose status and service
+    logs whenever Docker also emitted a short stderr line.
+    """
+    sections = []
+    stdout_tail = _tail(stdout or "")
+    stderr_tail = _tail(stderr or "")
+    if stdout_tail:
+        sections.append("stdout:\n%s" % stdout_tail)
+    if stderr_tail:
+        sections.append("stderr:\n%s" % stderr_tail)
+    if not sections:
+        return "deploy failed without process output"
+    return "\n\n".join(sections)
+
+
 def _read_request_body(handler) -> Tuple[bytes, Optional[Tuple[int, str]]]:
     raw_length = handler.headers.get("Content-Length", "0")
     try:
@@ -413,11 +432,8 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 logging.error("deploy stdout:\n%s", stdout_tail)
             if stderr_tail:
                 logging.error("deploy stderr:\n%s", stderr_tail)
-            summary = stderr_tail or stdout_tail
-            if summary:
-                self._send(500, f"{message}\n{summary}")
-                return
-            self._send(500, message)
+            summary = _deployment_failure_summary(exc.stdout or "", exc.stderr or "")
+            self._send(500, f"{message}\n{summary}")
         except Exception:  # pragma: no cover - 兜底防御
             logging.exception("Webhook server internal error")
             self._send(500, "Internal error")

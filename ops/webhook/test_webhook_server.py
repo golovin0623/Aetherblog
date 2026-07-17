@@ -166,5 +166,22 @@ class DeployHTTPServerTests(unittest.TestCase):
             server.server_close()
 
 
+class DeploymentFailureSummaryTests(unittest.TestCase):
+    def test_preserves_stdout_diagnostics_when_stderr_is_present(self):
+        summary = webhook_server._deployment_failure_summary(
+            "compose ps output\nadmin exited",
+            "deploy command failed",
+        )
+
+        self.assertIn("stdout:\ncompose ps output\nadmin exited", summary)
+        self.assertIn("stderr:\ndeploy command failed", summary)
+
+    def test_reports_missing_process_output(self):
+        self.assertEqual(
+            webhook_server._deployment_failure_summary("", ""),
+            "deploy failed without process output",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

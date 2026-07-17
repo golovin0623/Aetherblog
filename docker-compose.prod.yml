@@ -30,7 +30,10 @@ services:
   # ---------------------------------------------------------------------------
   
   gateway:
-    image: nginx:alpine
+    # Debian userspace stays compatible with the production CentOS 7
+    # kernel/libseccomp fallback path. The digest pins the tested multi-arch
+    # security-patched Nginx build instead of following a mutable alpine tag.
+    image: nginx:1.30.4-trixie@sha256:5cf90903deda2c5981b8ad05e7617ac010e389f0dde0ac83487c02c509281de6
     container_name: aetherblog-gateway
     restart: unless-stopped
     ports:
@@ -62,7 +65,9 @@ services:
       - /var/cache/nginx:rw,size=16M,mode=0755
       - /var/run:rw,size=4M,mode=0755
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      # The pinned Debian image ships curl, not BusyBox wget. Use IPv4
+      # explicitly so health does not depend on localhost/IPv6 resolution.
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -438,6 +443,15 @@ services:
         condition: service_healthy
     networks:
       - aetherblog-network
+    # The image already runs as uid 101. Keep the runtime immutable and remove
+    # every Linux capability; nginx-unprivileged writes PID/temp files to /tmp.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=16M,mode=1777
     deploy:
       resources:
         limits:

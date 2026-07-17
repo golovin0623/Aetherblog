@@ -132,12 +132,12 @@ curl -X POST --max-time 900 --retry 2 --retry-delay 2 \
    - migrate up
 9. case DEPLOY_MODE in:
    - full        → docker compose pull && up -d
-   - incremental → docker compose pull <SERVICES> && up -d --no-deps <SERVICES>
+   - incremental → docker compose pull <SERVICES> && up -d --no-deps <SERVICES>；应用上游变化后重启现有 gateway 刷新 Docker DNS，但不隐式 pull gateway
    - canary      → 仅指定 services
    - rollback    → VERSION=$ROLLBACK_VERSION + full deploy
 10. docker compose ps
 11. trap _post_deploy_hooks EXIT  ← 注册退出 hook
-12. preflight (post-deploy, 完整运行时检查 + webhook freshness 守门)
+12. preflight (post-deploy, 完整运行时检查 + blog/admin/gateway 健康等待 + 失败日志 + webhook freshness 守门)
 13. docker image prune -f
 14. echo "Deployment completed"
 15. bash 退出 → trap EXIT 触发:

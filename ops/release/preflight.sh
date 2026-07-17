@@ -62,6 +62,11 @@ version_ge() {
   [[ "$(printf '%s\n%s\n' "$actual" "$expected" | sort -V | head -n1)" == "$expected" ]]
 }
 
+compose_container_id() {
+  local service="$1"
+  docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null | head -n 1
+}
+
 main() {
   echo "[INFO] preflight started at $(date -Iseconds)"
   cd "$PROJECT_DIR"
@@ -90,6 +95,51 @@ main() {
         pass "runtime" "service running: $service"
       else
         fail "runtime" "service not running: $service"
+      fi
+    done
+
+    # Frontend containers can be "running" while Docker already marks them
+    # unhealthy (or while restart=unless-stopped is hiding a crash loop). Wait
+    # for their healthchecks as one concurrent group so a deploy cannot return
+    # 200 with a dead admin/blog upstream. The ~75s ceiling covers the blog's
+    # 30s start period plus its next 30s probe and 5s timeout, with margin for
+    # scheduler drift, without serially waiting once per service.
+    local frontend_services=(blog admin gateway)
+    local frontend_attempt=0 frontend_attempts=25 frontend_pending=true
+    local container_id service_status health_status
+    while (( frontend_attempt < frontend_attempts )); do
+      frontend_attempt=$((frontend_attempt + 1))
+      frontend_pending=false
+      for service in "${frontend_services[@]}"; do
+        container_id=$(compose_container_id "$service" || true)
+        if [[ -z "$container_id" ]]; then
+          frontend_pending=true
+          continue
+        fi
+        service_status=$(docker inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null || echo missing)
+        health_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || echo missing)
+        if [[ "$service_status" != "running" || "$health_status" != "healthy" ]]; then
+          frontend_pending=true
+        fi
+      done
+      if [[ "$frontend_pending" == "false" ]]; then
+        break
+      fi
+      sleep 3
+    done
+
+    for service in "${frontend_services[@]}"; do
+      container_id=$(compose_container_id "$service" || true)
+      if [[ -z "$container_id" ]]; then
+        fail "runtime" "frontend service missing after deploy: $service"
+        continue
+      fi
+      service_status=$(docker inspect --format '{{.State.Status}}' "$container_id" 2>/dev/null || echo missing)
+      health_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || echo missing)
+      if [[ "$service_status" == "running" && "$health_status" == "healthy" ]]; then
+        pass "runtime" "frontend healthy: $service (attempt $frontend_attempt/$frontend_attempts)"
+      else
+        fail "runtime" "frontend unhealthy: $service (state=$service_status, health=$health_status)"
       fi
     done
 
@@ -246,6 +296,11 @@ main() {
   echo "[INFO] preflight summary: pass=$passed fail=$failed skip=$skipped"
 
   if (( failed > 0 )); then
+    if [[ "$RUNTIME_CHECKS" == "true" ]]; then
+      echo "[INFO] frontend runtime diagnostics (compose status + recent logs)"
+      docker compose -f "$COMPOSE_FILE" ps -a || true
+      docker compose -f "$COMPOSE_FILE" logs --tail 80 gateway admin blog || true
+    fi
     echo "[ERROR] preflight failed"
     exit 1
   fi
