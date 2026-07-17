@@ -248,6 +248,8 @@ REDIS_PORT=6999  # 你的 Redis 端口
 | 严格 `.env` 解析器 | `deploy.sh:95-117` | **VULN-133** 不 `source` 防命令注入；**同时**用 `${line%%=*}` / `${line#*=}` 而非 `IFS='='`，避免 bash IFS 机制吞掉尾随 `=`（对 `AI_CREDENTIAL_ENCRYPTION_KEYS=...k=` 这类 base64 padding 值是致命的） |
 | pre-deploy migration | `deploy.sh:155-195` | 旧版 backend 启动后再 migrate 会 SELECT 不存在的表 (FTL)；改为一次性容器 |
 | preflight 冷启动重试 | `preflight.sh:125-144` | ai-service 首次拉起 litellm/asyncpg/pgvector + asyncpg.create_pool + jwt_keys 首拉 DB，慢机可超过 60s — 24 次 × 5s = ~120s，允许 docker inspect health=healthy 或容器内 curl 任一成立 |
+| 前端健康与失败诊断 | `preflight.sh` | 同时等待 blog/admin/gateway 健康；失败时输出 compose 状态与三者最近日志，避免只看到 webhook 500 |
+| Nginx 运行时锁定 | `docker-compose.prod.yml`, `apps/admin/Dockerfile` | 固定安全修复版 `1.30.4-trixie` manifest digest，兼容生产 CentOS 7 的旧 kernel/libseccomp；禁止跟随 `:alpine` 浮动标签 |
 | `unset MIN_AI_*` | `deploy.sh:126` | 历史 `.env` 残留过紧阈值卡发布；仓库 `preflight.sh` 是单一真源 |
 
 ### 部署模式
@@ -260,6 +262,9 @@ REDIS_PORT=6999  # 你的 Redis 端口
 | `rollback` | `DEPLOY_MODE=rollback ROLLBACK_VERSION=v1.1.0` | 紧急回滚到指定版本 |
 
 前端-only 的 incremental 部署会跳过 migration，节省 20~40s。
+应用服务变更时，部署脚本会重启现有 gateway 以刷新 Docker DNS，但 CI 不会
+把 gateway 加入 pull 列表；只有 `nginx/**` 或生产 compose 发生变化时才拉取
+并重建 gateway，避免无关前端发布悄悄升级基础镜像。
 
 ### 手动触发 deploy.sh
 

@@ -32,11 +32,15 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm --filter @aetherblog/admin build
 
 # Stage 2: Production with Nginx (unprivileged)
-# SECURITY (VULN-124): use nginxinc/nginx-unprivileged so the master process
-# does NOT run as root. Image listens on 8080 instead of 80 by default; gateway
-# / admin container mapping must target 8080. docker-compose.prod.yml already
-# uses `"${ADMIN_PORT:-7894}:80"` — update that to :8080 when this image lands.
-FROM nginxinc/nginx-unprivileged:alpine AS runner
+# SECURITY (VULN-124): keep the master process non-root and listen on 8080.
+#
+# The Debian variant is deliberate. Alpine 3.24's userspace issues pwritev2 on
+# startup; CentOS 7's 3.10 kernel + libseccomp 2.3.1 turns the unknown syscall
+# into EPERM instead of ENOSYS, so nginx cannot fall back and exits while
+# writing its PID file. The Trixie build was verified on the production host
+# with Docker's default seccomp profile. Pin the multi-arch manifest digest so
+# a mutable registry tag cannot silently reintroduce the outage.
+FROM nginxinc/nginx-unprivileged:1.30.4-trixie@sha256:ed5de4a59d636ea196825a0b7cee5f4819999e4d56672e4e12df5cf686bdd0c5 AS runner
 
 USER root
 # Security: Remove default nginx config
@@ -57,6 +61,6 @@ EXPOSE 8080
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+    CMD curl --fail --silent --show-error http://127.0.0.1:8080/ > /dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

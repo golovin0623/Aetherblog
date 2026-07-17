@@ -64,10 +64,20 @@ webhook 路径**不受此限制**：
 
 | 模式 | 触发方式 | 行为 |
 |------|---------|------|
-| **incremental** | CI 检测到部分模块变更 | 只 pull + restart 变更的服务, `--no-deps` 跳过中间件 |
+| **incremental** | CI 检测到部分模块变更 | 只 pull + restart 变更的服务, `--no-deps` 跳过中间件；上游应用变化后仅重启现有 gateway 以刷新 Docker DNS，不额外 pull gateway 镜像 |
 | **full** | CI 未传 services / 手动触发 | 全量 pull + up -d (含中间件健康检查等待) |
 | **canary** | 手动设置 `DEPLOY_MODE=canary` | 指定服务灰度部署 |
 | **rollback** | 手动设置 `DEPLOY_MODE=rollback` | 回滚到指定版本 |
+
+### Nginx 镜像兼容性约束
+
+生产宿主机仍是 CentOS 7（Linux 3.10 + libseccomp 2.3.1）。Alpine 3.24
+用户态在 Nginx 启动写 PID 时会经过旧内核不认识的新 syscall，默认 seccomp
+把它返回为 `EPERM`，导致容器退出。生产镜像因此固定为经过真机验证的
+`1.30.4-trixie` 多架构 manifest digest；不要改回 `nginx:alpine` 或
+`nginxinc/nginx-unprivileged:alpine` 浮动标签。CI 的
+`ops/webhook/test_deploy_contract.py` 会守住这条约束。宿主机完成受支持系统升级后，
+仍应先做默认 seccomp A/B 验证，再调整镜像发行版。
 
 ## 服务器安装步骤
 

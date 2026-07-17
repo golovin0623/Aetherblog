@@ -51,6 +51,7 @@ jobs:
       ai-service: ${{ steps.filter.outputs.ai-service }}
       blog: ${{ steps.filter.outputs.blog }}
       admin: ${{ steps.filter.outputs.admin }}
+      gateway: ${{ steps.filter.outputs.gateway }}
       ops_webhook: ${{ steps.filter.outputs.ops_webhook }}
       frontend: ${{ steps.check.outputs.frontend }}
       any_changed: ${{ steps.check.outputs.any_changed }}
@@ -87,6 +88,9 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'docker-compose*.yml'
               - '.github/workflows/ci-cd.yml'
+            gateway:
+              - 'nginx/**'
+              - 'docker-compose.prod.yml'
             ops_webhook:
               - 'ops/webhook/**'
 
@@ -109,6 +113,7 @@ jobs:
                 "${{ steps.filter.outputs.ai-service }}" == "true" || \
                 "${{ steps.filter.outputs.blog }}" == "true" || \
                 "${{ steps.filter.outputs.admin }}" == "true" || \
+                "${{ steps.filter.outputs.gateway }}" == "true" || \
                 "${{ steps.filter.outputs.ops_webhook }}" == "true" ]]; then
             echo "any_changed=true" >> $GITHUB_OUTPUT
           else
@@ -123,6 +128,7 @@ jobs:
           echo "  ai-service:  ${{ steps.filter.outputs.ai-service }}"
           echo "  blog:        ${{ steps.filter.outputs.blog }}"
           echo "  admin:       ${{ steps.filter.outputs.admin }}"
+          echo "  gateway:     ${{ steps.filter.outputs.gateway }}"
           echo "  ops_webhook: ${{ steps.filter.outputs.ops_webhook }}"
           echo "  frontend:    ${{ steps.check.outputs.frontend }}"
           echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
@@ -255,6 +261,9 @@ jobs:
 
           print("✅ Go migration versions are unique")
           PY
+
+      - name: Validate deployment runtime contracts
+        run: python3 -m unittest discover -s ops/webhook -p 'test_*.py'
 
       - name: Validate Docker Compose files
         env:
@@ -636,6 +645,7 @@ jobs:
           [[ "${{ needs.detect-changes.outputs.ai-service }}" == "true" ]] && SERVICES="$SERVICES ai-service"
           [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && SERVICES="$SERVICES blog"
           [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && SERVICES="$SERVICES admin"
+          [[ "${{ needs.detect-changes.outputs.gateway }}" == "true" ]] && SERVICES="$SERVICES gateway"
 
           # 仅 ops/webhook/** 变更 (没有应用镜像需要重建): 退化成 gateway-only 增量
           # 部署. webhook_server.py / deploy.sh 的更新通过 deploy.sh 末尾的
@@ -646,11 +656,6 @@ jobs:
           if [ -z "$SERVICES" ] && \
              [[ "${{ needs.detect-changes.outputs.ops_webhook }}" == "true" ]]; then
             SERVICES="gateway"
-          fi
-
-          # 任何应用变更都要重启 gateway（nginx 路由可能受影响）
-          if [ -n "$SERVICES" ] && [[ "$SERVICES" != *gateway* ]]; then
-            SERVICES="$SERVICES gateway"
           fi
 
           echo "services=$(echo $SERVICES | xargs)" >> $GITHUB_OUTPUT
