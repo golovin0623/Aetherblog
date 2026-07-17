@@ -43,14 +43,14 @@
 
 | 服务 | 镜像 | 容器名 | 端口暴露 | 健康检查 |
 | --- | --- | --- | --- | --- |
-| `gateway` | nginx:alpine | aetherblog-gateway | `7899:80` | `wget /health` 30s |
+| `gateway` | nginx:1.30.4-trixie（digest 固定） | aetherblog-gateway | `7899:80` | `curl 127.0.0.1/health` 30s |
 | `postgres` | pgvector/pgvector:pg17 | aetherblog-postgres | `7895:5432` | `pg_isready` 3s |
 | `redis` | redis:7.2-alpine(profile: with-redis) | aetherblog-redis | `6379:6379` | `redis-cli ping` 10s |
 | `docker-socket-proxy` | tecnativa/docker-socket-proxy:0.3.0(profile: with-monitor) | aetherblog-docker-socket-proxy | 仅 `expose: 2375` | — |
 | `backend` | `${REGISTRY}/aetherblog-backend:${VERSION}` | aetherblog-backend | 仅 `expose: 8080` | `/app/server -health` 3s,start_period 30s |
 | `ai-service` | `${REGISTRY}/aetherblog-ai-service:${VERSION}` | aetherblog-ai-service | 仅 `expose: 8000` | `curl /health` 10s,start_period 45s |
 | `blog` | `${REGISTRY}/aetherblog-blog:${VERSION}` | aetherblog-blog | `7893:3000` | image 内 `wget` 30s |
-| `admin` | `${REGISTRY}/aetherblog-admin:${VERSION}` | aetherblog-admin | `7894:8080` | image 内 `wget` 30s |
+| `admin` | `${REGISTRY}/aetherblog-admin:${VERSION}` | aetherblog-admin | `7894:8080` | image 内 `curl 127.0.0.1` 30s |
 
 **Profile 机制**:
 - `--profile with-redis`(`docker-compose.prod.yml:123-124`) 启用内置 Redis;不带 profile 时假定外部 Redis(由 `.env` 中 `REDIS_HOST` 指向)
@@ -200,7 +200,7 @@ Stage 1: builder (node:20-alpine)
   ENV NODE_OPTIONS="--max-old-space-size=4096"
   pnpm --filter @aetherblog/admin build
 
-Stage 2: runner (nginxinc/nginx-unprivileged:alpine)
+Stage 2: runner (nginxinc/nginx-unprivileged:1.30.4-trixie,digest 固定)
   USER root  (临时切换以删除默认 conf 与 chown)
   rm /etc/nginx/conf.d/default.conf
   COPY apps/admin/nginx.conf
@@ -208,7 +208,7 @@ Stage 2: runner (nginxinc/nginx-unprivileged:alpine)
   chown -R nginx:nginx /usr/share/nginx/html
   USER nginx
   EXPOSE 8080            ← 非特权,所以是 8080 不是 80
-  HEALTHCHECK wget :8080
+  HEALTHCHECK curl 127.0.0.1:8080
   CMD ["nginx", "-g", "daemon off;"]
 ```
 
@@ -284,11 +284,11 @@ GitHub Actions(`.github/workflows/ci-cd.yml:451-457` 等)双缓存:
 | --- | --- | --- | --- |
 | postgres | `pg_isready -U aetherblog -d aetherblog` 3s | `docker-compose.prod.yml:99-102` | `start_period` 默认 |
 | redis | `REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping` 10s | `docker-compose.prod.yml:135` | VULN-147 用 env 而非 `-a` 防 ps 泄露 |
-| gateway | `wget --spider /health` 30s | `docker-compose.prod.yml:65-68` | nginx 自身 location /health |
+| gateway | `curl 127.0.0.1/health` 30s | `docker-compose.prod.yml:67-72` | 固定 Debian 镜像自带 curl,不带 wget |
 | backend | `/app/server -health` 3s,start_period 30s | `docker-compose.prod.yml:285-291` | -health flag 是 Go 二进制内部模式 |
 | ai-service | `curl /health` 10s,start_period 45s | `docker-compose.prod.yml:365-374` | start_period 反复调过(VULN-150 教训) |
 | blog | image HEALTHCHECK `wget` 30s | `apps/blog/Dockerfile:77-78` | compose 不再覆盖 |
-| admin | image HEALTHCHECK `wget` 30s | `apps/admin/Dockerfile:57-58` | 同上 |
+| admin | image HEALTHCHECK `curl 127.0.0.1` 30s | `apps/admin/Dockerfile` | 固定 unprivileged Debian 镜像自带 curl |
 
 ---
 

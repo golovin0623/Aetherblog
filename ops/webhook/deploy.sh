@@ -524,8 +524,12 @@ run_incremental_deploy() {
 
   ensure_monitor_proxy
 
-  echo "[$(date -Iseconds)] Recreating containers (--no-deps): ${services[*]}"
-  docker compose -f "$COMPOSE_FILE" up -d --no-deps "${services[@]}"
+  # Incremental deployment means the selected services must actually pick up
+  # the synchronized commit. This matters for bind-mounted nginx config: the
+  # file changes immediately, but the existing master process will not reload
+  # it merely because `docker compose up` sees an unchanged image/config.
+  echo "[$(date -Iseconds)] Recreating containers (--no-deps --force-recreate): ${services[*]}"
+  docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${services[@]}"
   restart_gateway_if_upstreams_changed "${services[@]}"
 }
 

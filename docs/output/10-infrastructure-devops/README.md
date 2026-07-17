@@ -46,7 +46,8 @@
                        │     └─ trap EXIT → sync_webhook + restart │
                        │                                            │
                        │  ┌───── docker network: aetherblog ─────┐ │
-                       │  │ gateway (nginx:alpine) :7899 → 80    │ │
+                       │  │ gateway (nginx:1.30.4-trixie)        │ │
+                       │  │   :7899 → 80 (digest fixed)          │ │
                        │  │   ├─ /            → blog:3000        │ │
                        │  │   ├─ /admin/      → admin:8080       │ │
                        │  │   ├─ /api/v1/ai/  → ai-service:8000  │ │
@@ -72,7 +73,7 @@
 | --- | --- | --- | --- |
 | Compose 文件 | `docker-compose.yml`(中间件 only) | `docker-compose.dev.yml`(中间件 + nginx) | `docker-compose.prod.yml`(全部) |
 | backend / ai / blog / admin | 宿主机进程(`go run`/`uvicorn`/`pnpm dev`) | 宿主机进程 | 容器,镜像走 Docker Hub `golovin0623/aetherblog-*` |
-| nginx | 不启 | nginx:alpine 容器 + `nginx.dev.conf`(走 `host.docker.internal`) | nginx:alpine 容器 + `nginx.conf`(走 docker network 服务名) |
+| nginx | 不启 | nginx:alpine 容器 + `nginx.dev.conf`(走 `host.docker.internal`) | nginx:1.30.4-trixie 固定 digest + `nginx.conf`(走 docker network 服务名) |
 | postgres / redis | docker-compose.yml 中间件容器 | 同左 | 同左,且 redis 需 `--profile with-redis` 显式启用 |
 | 端口暴露 | 各服务直接暴露(3000/5173/8080/8000/5432/6379) | 同左 + 7899(gateway) | 仅 7899(gateway) + 可选 7893(blog) / 7894(admin) / 7895(pg) / 6379(redis) |
 | 环境变量来源 | `.env`(根) + `apps/{blog,admin}/.env.local` | 同左 | `.env`(根),容器侧由 compose interpolation 注入 |

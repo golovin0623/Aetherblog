@@ -37,6 +37,17 @@ class DeploymentRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("http://localhost:3000/", blog_dockerfile)
         self.assertNotIn("http://localhost:8080/", admin_dockerfile)
 
+    def test_gateway_healthcheck_uses_the_installed_ipv4_client(self):
+        compose = read_repo_file("docker-compose.prod.yml")
+        gateway = compose.split("  gateway:", 1)[1].split("  postgres:", 1)[0]
+
+        self.assertIn(
+            'test: ["CMD", "curl", "--fail", "--silent", "--show-error", '
+            '"http://127.0.0.1/health"]',
+            gateway,
+        )
+        self.assertNotIn('test: ["CMD", "wget"', gateway)
+
     def test_admin_image_enforces_its_read_only_runtime_contract_at_build_time(self):
         admin_dockerfile = read_repo_file("apps/admin/Dockerfile")
 
@@ -61,6 +72,10 @@ class DeploymentRuntimeContractTests(unittest.TestCase):
         self.assertNotIn('if [ -n "$SERVICES" ] && [[ "$SERVICES" != *gateway* ]]', compute_block)
         self.assertIn('SERVICES="gateway"', compute_block)
         self.assertIn("restart_gateway_if_upstreams_changed", deploy_script)
+        self.assertIn(
+            'up -d --no-deps --force-recreate "${services[@]}"',
+            deploy_script,
+        )
 
     def test_post_deploy_preflight_checks_frontend_health_and_emits_logs(self):
         preflight = read_repo_file("ops/release/preflight.sh")

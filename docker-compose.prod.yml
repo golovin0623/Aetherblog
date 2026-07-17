@@ -65,7 +65,9 @@ services:
       - /var/cache/nginx:rw,size=16M,mode=0755
       - /var/run:rw,size=4M,mode=0755
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      # The pinned Debian image ships curl, not BusyBox wget. Use IPv4
+      # explicitly so health does not depend on localhost/IPv6 resolution.
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
