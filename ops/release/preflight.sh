@@ -101,10 +101,11 @@ main() {
     # Frontend containers can be "running" while Docker already marks them
     # unhealthy (or while restart=unless-stopped is hiding a crash loop). Wait
     # for their healthchecks as one concurrent group so a deploy cannot return
-    # 200 with a dead admin/blog upstream. The 60s ceiling covers the blog's
-    # 30s healthcheck start period without serially waiting once per service.
+    # 200 with a dead admin/blog upstream. The ~75s ceiling covers the blog's
+    # 30s start period plus its next 30s probe and 5s timeout, with margin for
+    # scheduler drift, without serially waiting once per service.
     local frontend_services=(blog admin gateway)
-    local frontend_attempt=0 frontend_attempts=20 frontend_pending=true
+    local frontend_attempt=0 frontend_attempts=25 frontend_pending=true
     local container_id service_status health_status
     while (( frontend_attempt < frontend_attempts )); do
       frontend_attempt=$((frontend_attempt + 1))

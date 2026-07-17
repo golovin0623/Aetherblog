@@ -81,6 +81,7 @@ class DeploymentRuntimeContractTests(unittest.TestCase):
         preflight = read_repo_file("ops/release/preflight.sh")
 
         self.assertIn("local frontend_services=(blog admin gateway)", preflight)
+        self.assertIn("frontend_attempts=25", preflight)
         self.assertIn("compose_container_id()", preflight)
         self.assertIn("ps -q \"$service\" 2>/dev/null | head -n 1", preflight)
         self.assertEqual(preflight.count('compose_container_id "$service"'), 2)
