@@ -37,6 +37,14 @@ class DeploymentRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("http://localhost:3000/", blog_dockerfile)
         self.assertNotIn("http://localhost:8080/", admin_dockerfile)
 
+    def test_admin_image_enforces_its_read_only_runtime_contract_at_build_time(self):
+        admin_dockerfile = read_repo_file("apps/admin/Dockerfile")
+
+        self.assertIn("command -v curl", admin_dockerfile)
+        self.assertIn("/tmp/nginx\\.pid", admin_dockerfile)
+        self.assertIn("client_body_temp_path", admin_dockerfile)
+        self.assertNotIn("apt-get install", admin_dockerfile)
+
     def test_app_deploys_restart_but_do_not_pull_the_gateway_image(self):
         workflow = read_repo_file(".github/workflows/ci-cd.yml")
         deploy_script = read_repo_file("ops/webhook/deploy.sh")
@@ -58,6 +66,9 @@ class DeploymentRuntimeContractTests(unittest.TestCase):
         preflight = read_repo_file("ops/release/preflight.sh")
 
         self.assertIn("local frontend_services=(blog admin gateway)", preflight)
+        self.assertIn("compose_container_id()", preflight)
+        self.assertIn("ps -q \"$service\" 2>/dev/null | head -n 1", preflight)
+        self.assertEqual(preflight.count('compose_container_id "$service"'), 2)
         self.assertIn('logs --tail 80 gateway admin blog', preflight)
 
     def test_ci_runs_webhook_and_deployment_contract_tests(self):

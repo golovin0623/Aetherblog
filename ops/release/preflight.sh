@@ -62,6 +62,11 @@ version_ge() {
   [[ "$(printf '%s\n%s\n' "$actual" "$expected" | sort -V | head -n1)" == "$expected" ]]
 }
 
+compose_container_id() {
+  local service="$1"
+  docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null | head -n 1
+}
+
 main() {
   echo "[INFO] preflight started at $(date -Iseconds)"
   cd "$PROJECT_DIR"
@@ -105,7 +110,7 @@ main() {
       frontend_attempt=$((frontend_attempt + 1))
       frontend_pending=false
       for service in "${frontend_services[@]}"; do
-        container_id=$(docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || true)
+        container_id=$(compose_container_id "$service" || true)
         if [[ -z "$container_id" ]]; then
           frontend_pending=true
           continue
@@ -123,7 +128,7 @@ main() {
     done
 
     for service in "${frontend_services[@]}"; do
-      container_id=$(docker compose -f "$COMPOSE_FILE" ps -q "$service" 2>/dev/null || true)
+      container_id=$(compose_container_id "$service" || true)
       if [[ -z "$container_id" ]]; then
         fail "runtime" "frontend service missing after deploy: $service"
         continue

@@ -43,8 +43,14 @@ RUN pnpm --filter @aetherblog/admin build
 FROM nginxinc/nginx-unprivileged:1.30.4-trixie@sha256:ed5de4a59d636ea196825a0b7cee5f4819999e4d56672e4e12df5cf686bdd0c5 AS runner
 
 USER root
-# Security: Remove default nginx config
-RUN rm -rf /etc/nginx/conf.d/default.conf
+# The pinned unprivileged image already ships curl and redirects its PID plus
+# all request/proxy temp paths into /tmp. Enforce those assumptions while the
+# image is built: the production container deliberately exposes only /tmp as a
+# writable tmpfs instead of reopening /var/cache/nginx or /var/run.
+RUN command -v curl >/dev/null && \
+    grep -Eq '^[[:space:]]*pid[[:space:]]+/tmp/nginx\.pid;' /etc/nginx/nginx.conf && \
+    grep -Eq '^[[:space:]]*client_body_temp_path[[:space:]]+/tmp/' /etc/nginx/nginx.conf && \
+    rm -rf /etc/nginx/conf.d/default.conf
 
 # Copy nginx configuration
 COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
