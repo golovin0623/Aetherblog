@@ -2270,7 +2270,7 @@ function PersistentMusicDock({
                   togglePlayback();
                 }
               }}
-              className="music-playback-orb music-floating-artwork-button music-island-cover pointer-events-auto absolute z-20 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-raised)]"
+              className="music-playback-orb music-floating-artwork-button music-island-cover pointer-events-auto absolute z-20 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
               aria-label={floatingDensity === 'minimized'
                 ? playbackError
                   ? `播放失败，打开迷你播放器重试：${currentPresentation.title}`
@@ -2373,7 +2373,7 @@ function PersistentMusicDock({
               <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
               <div className="music-island-progress-time mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
                 <span>{formatMusicClock(progress)}</span>
-                <span>{formatMusicClock(duration || currentTrack.durationSeconds || 0)}</span>
+                <span>{formatMusicClock(duration || currentTrack?.durationSeconds || 0)}</span>
               </div>
             </div>
 
