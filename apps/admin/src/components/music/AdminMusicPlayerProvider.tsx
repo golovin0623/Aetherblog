@@ -894,7 +894,13 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const playlistName = queueLabel;
   const coverNode = cover ? (
-    <img src={cover} alt="" draggable={false} className="h-full w-full select-none object-cover" />
+    <img
+      src={cover}
+      alt=""
+      draggable={false}
+      data-admin-player-cover-pixels
+      className="admin-player-core-cover-pixels select-none object-cover"
+    />
   ) : (
     <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,color-mix(in_oklch,var(--aurora-1)_30%,var(--bg-raised)),var(--bg-void))]">
       <Disc3 className="h-1/3 w-1/3 text-[var(--ink-secondary)]" />
@@ -1249,7 +1255,7 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                 data-admin-music-player-root
                 data-admin-player-density={playerDensity}
                 data-music-skin={musicSkin.value}
-                layout
+                layout="position"
                 layoutDependency={playerDensity}
                 drag
                 dragControls={dragControls}
@@ -1293,13 +1299,11 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                 <motion.div
                   ref={dockSurfaceRef}
                   data-admin-player-surface
-                  layout
-                  layoutDependency={playerDensity}
                   initial={{ borderRadius: playerSurfaceRadius }}
                   animate={{ borderRadius: playerSurfaceRadius }}
                   transition={prefersReducedMotion
                     ? transition.instant
-                    : { layout: spring.soft, borderRadius: spring.soft }}
+                    : { borderRadius: spring.soft }}
                   style={{ originX: 0.5, originY: 1 }}
                   className={cn(
                     'admin-music-player-surface surface-raised relative h-full w-full overflow-hidden text-[var(--ink-primary)]',
@@ -1324,8 +1328,6 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       data-admin-player-mini-cover
                       data-admin-player-compact-cover
                       data-admin-player-mobile-orb
-                      layout="preserve-aspect"
-                      layoutDependency={playerDensity}
                       drag={expanded && !prefersReducedMotion ? 'x' : false}
                       dragConstraints={{ left: 0, right: 0 }}
                       dragElastic={0.18}
@@ -1340,16 +1342,6 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       onDragEnd={handleTrackDragEnd}
                       role={expanded ? 'group' : undefined}
                       aria-label={expanded ? '左右滑动切换歌曲' : undefined}
-                      animate={{
-                        borderRadius: playerDensity === 'minimized'
-                          ? (isMobile ? 26 : 22)
-                          : playerDensity === 'expanded'
-                            ? 18
-                            : 14,
-                      }}
-                      transition={prefersReducedMotion
-                        ? transition.instant
-                        : { layout: spring.soft, borderRadius: spring.soft }}
                       style={{ touchAction: expanded ? 'pan-y' : 'none' }}
                       className="admin-player-core-cover"
                     >
