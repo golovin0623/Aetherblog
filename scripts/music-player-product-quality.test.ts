@@ -659,11 +659,25 @@ describe('music modal product quality gates', () => {
       "[data-music-floating-density='minimized'] .music-island-cover-ring {",
       "[data-music-floating-density='minimized'] .music-playback-orb[data-playing='true']",
     );
+    const persistentIdentityFocusSource = sourceBetween(
+      providerSource,
+      'const focusPersistentIdentityAfterDensityChange = useCallback',
+      'const closeExpandedPlayer = useCallback',
+    );
+    const islandActionsSource = sourceBetween(
+      providerSource,
+      '<div data-music-island-actions',
+      '<section\n              data-music-island-expanded-detail',
+    );
 
     expect(manualCollapseSource).toContain('setExpanded(false);');
     expect(providerSource).toContain('if (!expanded || isMobile) return;');
     expect(providerSource).toContain("if (event.key !== 'Escape') return;");
     expect(providerSource).toContain('closeExpandedPlayer();');
+    expect(persistentIdentityFocusSource).toContain('window.requestAnimationFrame');
+    expect(persistentIdentityFocusSource).toContain('compactIdentityTriggerRef.current?.focus({ preventScroll: true });');
+    expect(islandActionsSource.match(/focusPersistentIdentityAfterDensityChange\(\);/g)).toHaveLength(2);
+    expect(islandActionsSource.match(/!isMobile && event\.detail === 0/g)).toHaveLength(2);
     expect(providerSource).toContain('const persistentCover = currentThumbnail || currentCover;');
     expect(providerSource).toContain('src={persistentCover}');
     expect(providerSource).toContain("floatingDensity !== 'minimized' && activeLine");
@@ -685,6 +699,8 @@ describe('music modal product quality gates', () => {
     expect(motionVerifierSource).toContain(
       "density: root?.getAttribute('data-music-floating-density') || ''",
     );
+    expect(motionVerifierSource).toContain('front-desktop-density-focus-${browserName}.json');
+    expect(motionVerifierSource).toContain('document.activeElement?.matches');
   });
 
   it('keeps persistent players out of full-screen routes without reserving document space', () => {

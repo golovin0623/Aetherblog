@@ -1420,6 +1420,33 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
   );
   await page.screenshot({ path: path.join(OUTPUT_DIR, `front-desktop-minimized-returned-${browserName}.png`) });
 
+  const densityFocusFailures = [];
+  await page.locator('[data-music-floating-artwork]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="compact"]');
+  await page.locator('[data-music-density-toggle]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="expanded"]');
+  const expandedFocusTransferred = await page.evaluate(() => (
+    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
+  ));
+  if (!expandedFocusTransferred) {
+    densityFocusFailures.push('前台桌面 compact → expanded 后键盘焦点未交给持久歌曲信息按钮');
+  }
+  await page.locator('button[aria-label="收起播放器"]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="compact"]');
+  const compactFocusTransferred = await page.evaluate(() => (
+    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
+  ));
+  if (!compactFocusTransferred) {
+    densityFocusFailures.push('前台桌面 expanded → compact 后键盘焦点未交给持久歌曲信息按钮');
+  }
+  await writeFile(
+    path.join(OUTPUT_DIR, `front-desktop-density-focus-${browserName}.json`),
+    `${JSON.stringify({ expandedFocusTransferred, compactFocusTransferred }, null, 2)}\n`,
+  );
+
   const traces = {
     minimizedToCompact,
     compactToExpanded,
@@ -1432,6 +1459,7 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
   );
 
   return [
+    ...densityFocusFailures,
     ...assertMorphTrace('前台桌面 minimized → compact', minimizedToCompact, {
       expectedArtworkSize: 52,
       expectedImageSize: 52,

@@ -1836,6 +1836,11 @@ function PersistentMusicDock({
       pendingSurfaceFocusRef.current = null;
     });
   }, []);
+  const focusPersistentIdentityAfterDensityChange = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      compactIdentityTriggerRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
   const closeExpandedPlayer = useCallback(() => {
     compactDragY.set(0);
     setExpanded(false);
@@ -1995,13 +2000,11 @@ function PersistentMusicDock({
       if (event.key !== 'Escape') return;
       event.preventDefault();
       closeExpandedPlayer();
-      window.requestAnimationFrame(() => {
-        compactIdentityTriggerRef.current?.focus({ preventScroll: true });
-      });
+      focusPersistentIdentityAfterDensityChange();
     };
     document.addEventListener('keydown', handleDesktopExpandedKeyDown);
     return () => document.removeEventListener('keydown', handleDesktopExpandedKeyDown);
-  }, [closeExpandedPlayer, expanded, isMobile]);
+  }, [closeExpandedPlayer, expanded, focusPersistentIdentityAfterDensityChange, isMobile]);
 
   useEffect(() => {
     const markKeyboard = () => {
@@ -2394,10 +2397,16 @@ function PersistentMusicDock({
             </div>
 
             <div data-music-island-actions className="music-island-actions pointer-events-auto absolute z-20 flex items-center gap-1">
-              <button type="button" data-music-density-toggle onClick={openImmersivePlayer} tabIndex={floatingDensity === 'compact' ? 0 : -1} aria-hidden={floatingDensity === 'compact' ? undefined : true} className="music-control-button music-icon-button music-island-action music-island-action--expand grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
+              <button type="button" data-music-density-toggle onClick={(event) => {
+                openImmersivePlayer();
+                if (!isMobile && event.detail === 0) focusPersistentIdentityAfterDensityChange();
+              }} tabIndex={floatingDensity === 'compact' ? 0 : -1} aria-hidden={floatingDensity === 'compact' ? undefined : true} className="music-control-button music-icon-button music-island-action music-island-action--expand grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
                 <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
               </button>
-              <button type="button" onClick={closeExpandedPlayer} tabIndex={floatingDensity === 'expanded' ? 0 : -1} aria-hidden={floatingDensity === 'expanded' ? undefined : true} className="music-control-button music-icon-button music-island-action music-island-action--collapse grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="收起播放器">
+              <button type="button" onClick={(event) => {
+                closeExpandedPlayer();
+                if (!isMobile && event.detail === 0) focusPersistentIdentityAfterDensityChange();
+              }} tabIndex={floatingDensity === 'expanded' ? 0 : -1} aria-hidden={floatingDensity === 'expanded' ? undefined : true} className="music-control-button music-icon-button music-island-action music-island-action--collapse grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="收起播放器">
                 <ChevronDown className="h-[19px] w-[19px]" strokeWidth={1.8} />
               </button>
               <button
