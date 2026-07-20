@@ -1079,14 +1079,14 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
 
   const renderPlayButton = () => (
     <motion.button
-      layout
-      layoutDependency={playerDensity}
+      layout={isMobile}
+      layoutDependency={isMobile ? playerDensity : undefined}
       type="button"
       data-admin-player-core-play
       data-admin-player-mini-play
       onClick={playbackError ? () => void retryPlayback() : togglePlayback}
       className={cn(
-        'relative flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+        'admin-player-core-play relative flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
         playerDensity === 'expanded'
           ? 'h-14 w-14 bg-[var(--ink-primary)] text-[var(--bg-void)] shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--bg-void)_16%,transparent)]'
           : playerDensity === 'compact'
@@ -1478,15 +1478,14 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       data-admin-player-core-transport
                       data-admin-player-transport
                       data-admin-player-compact-transport
-                      layout
-                      layoutDependency={playerDensity}
+                      layout={isMobile}
+                      layoutDependency={isMobile ? playerDensity : undefined}
                       onPointerDown={(event) => event.stopPropagation()}
-                      transition={prefersReducedMotion ? transition.instant : spring.soft}
                       className="admin-player-core-transport"
                     >
                       <motion.button
-                        layout
-                        layoutDependency={playerDensity}
+                        layout={isMobile}
+                        layoutDependency={isMobile ? playerDensity : undefined}
                         type="button"
                         onClick={previousTrack}
                         className={quietControlClass}
@@ -1508,8 +1507,8 @@ export function AdminMusicPlayerProvider({ children }: { children: ReactNode }) 
                       </motion.button>
                       {renderPlayButton()}
                       <motion.button
-                        layout
-                        layoutDependency={playerDensity}
+                        layout={isMobile}
+                        layoutDependency={isMobile ? playerDensity : undefined}
                         type="button"
                         onClick={nextTrack}
                         className={quietControlClass}

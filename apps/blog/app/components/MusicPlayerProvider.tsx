@@ -1821,8 +1821,9 @@ function PersistentMusicDock({
   }, []);
   const manuallyCollapseToOrb = useCallback((restoreKeyboardFocus = true) => {
     if (restoreKeyboardFocus) pendingSurfaceFocusRef.current = 'orb';
+    setExpanded(false);
     collapseToOrb();
-  }, [collapseToOrb]);
+  }, [collapseToOrb, setExpanded]);
   const focusPendingSurface = useCallback(() => {
     const pendingTarget = pendingSurfaceFocusRef.current;
     if (!pendingTarget) return;
@@ -1987,6 +1988,20 @@ function PersistentMusicDock({
     modal: true,
     trapFocus: true,
   });
+
+  useEffect(() => {
+    if (!expanded || isMobile) return;
+    const handleDesktopExpandedKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeExpandedPlayer();
+      window.requestAnimationFrame(() => {
+        compactIdentityTriggerRef.current?.focus({ preventScroll: true });
+      });
+    };
+    document.addEventListener('keydown', handleDesktopExpandedKeyDown);
+    return () => document.removeEventListener('keydown', handleDesktopExpandedKeyDown);
+  }, [closeExpandedPlayer, expanded, isMobile]);
 
   useEffect(() => {
     const markKeyboard = () => {
@@ -2163,6 +2178,7 @@ function PersistentMusicDock({
   const compactArtistLabel = artistLabel || playlistName;
   const currentCover = resolveMusicCoverSrc(currentTrack);
   const currentThumbnail = resolveMusicCoverSrc(currentTrack, '', 'thumbnail');
+  const persistentCover = currentThumbnail || currentCover;
   const mobilePaneTransport = (
     <div className="grid grid-cols-3 items-center justify-items-center border-t border-[var(--music-stroke)] py-3">
       <button type="button" onClick={goToPreviousTrack} className="music-control-button music-transport-button grid h-14 w-14 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]" aria-label="上一首">
@@ -2292,10 +2308,10 @@ function PersistentMusicDock({
             >
               <span className="music-playback-orb__progress music-island-cover-ring" aria-hidden="true" />
               <span className="music-playback-orb__artwork music-island-cover-image" aria-hidden="true">
-                {currentCover || currentThumbnail ? (
+                {persistentCover ? (
                   <Image
                     data-music-island-cover-pixels
-                    src={currentCover || currentThumbnail}
+                    src={persistentCover}
                     alt=""
                     width={120}
                     height={120}
@@ -2458,7 +2474,9 @@ function PersistentMusicDock({
               </div>
             </section>
 
-            {activeLine && <span className="sr-only" aria-live="polite">{activeLine}</span>}
+            {floatingDensity !== 'minimized' && activeLine && (
+              <span className="sr-only" aria-live="polite">{activeLine}</span>
+            )}
             {playbackError && <span role="alert" className="sr-only">音乐播放失败，请打开播放器重试。</span>}
           </motion.section>
         )}

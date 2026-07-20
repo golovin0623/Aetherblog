@@ -475,9 +475,9 @@ describe('music modal product quality gates', () => {
     expect(providerSource).not.toContain('formatMusicClock(Math.max(0, duration - progress))');
   });
 
-  it('keeps the immersive dialog lifecycle mobile-only while desktop stays a non-modal island', () => {
+  it('keeps modal lifecycle mobile-only while desktop handles Escape without modal locking', () => {
     expect(providerSource).toContain('useDialogLifecycle');
-    expect(providerSource).not.toContain('if (!expanded || isMobile) return;');
+    expect(providerSource).toContain('if (!expanded || isMobile) return;');
     expect(providerSource).toContain('h-[100dvh]');
     expect(dialogLifecycleSource).toContain("document.documentElement.style.overflow = 'hidden'");
     expect(dialogLifecycleSource).toContain("document.body.style.position = 'fixed'");
@@ -635,7 +635,10 @@ describe('music modal product quality gates', () => {
     expect(islandClipCss).not.toContain('transform: translateZ(0);');
     expect(islandPixelsCss).toContain('width: 7.5rem;');
     expect(islandPixelsCss).toContain('height: 7.5rem;');
-    expect(islandPixelsCss).toContain('transition: transform var(--dur-flow) var(--ease-out);');
+    expect(islandRootCss).toContain('--music-island-cover-scale var(--dur-flow) var(--ease-out)');
+    expect(islandRootCss).toContain('--music-island-cover-size var(--dur-flow) var(--ease-out)');
+    expect(islandRootCss).toContain('--music-island-cover-inset var(--dur-flow) var(--ease-out)');
+    expect(islandPixelsCss).not.toContain('transition: transform');
     expect(islandPixelsCss).toContain('will-change: transform;');
     expect(providerSource).toContain('data-music-density-toggle');
     expect(providerSource).toContain('h-11 w-11');
@@ -643,6 +646,31 @@ describe('music modal product quality gates', () => {
     expect(providerSource).not.toContain('data-music-player-grabber');
     expect(providerSource).not.toContain('<span className="h-1 w-9 rounded-full');
     expect(floatingSource).not.toMatch(/className="[^"]*\bh-1\b[^"]*\bw-(?:8|9|10|12)\b[^"]*rounded-full/);
+  });
+
+  it('preserves persistent-island progress, keyboard, artwork, and announcement contracts', () => {
+    const manualCollapseSource = sourceBetween(
+      providerSource,
+      'const manuallyCollapseToOrb = useCallback',
+      'const focusPendingSurface = useCallback',
+    );
+    const minimizedRingCss = sourceBetween(
+      globalsSource,
+      "[data-music-floating-density='minimized'] .music-island-cover-ring {",
+      "[data-music-floating-density='minimized'] .music-playback-orb[data-playing='true']",
+    );
+
+    expect(manualCollapseSource).toContain('setExpanded(false);');
+    expect(providerSource).toContain('if (!expanded || isMobile) return;');
+    expect(providerSource).toContain("if (event.key !== 'Escape') return;");
+    expect(providerSource).toContain('closeExpandedPlayer();');
+    expect(providerSource).toContain('const persistentCover = currentThumbnail || currentCover;');
+    expect(providerSource).toContain('src={persistentCover}');
+    expect(providerSource).toContain("floatingDensity !== 'minimized' && activeLine");
+    expect(minimizedRingCss).toContain('var(--music-orb-progress, 0deg)');
+    expect(globalsSource).toMatch(
+      /\.music-island-cover-fallback\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*50%;[\s\S]*?left:\s*50%;[\s\S]*?transform:\s*translate\(-50%, -50%\);/,
+    );
   });
 
   it('keeps the browser motion gate reproducible from a clean checkout', () => {
@@ -965,6 +993,16 @@ describe('music modal product quality gates', () => {
       'data-admin-player-surface',
       'data-admin-player-morph-content',
     );
+    const adminPlayButtonSource = sourceBetween(
+      adminPlayerSource,
+      'const renderPlayButton = () => (',
+      'const renderDensityToggle = () => (',
+    );
+    const adminTransportSource = sourceBetween(
+      adminPlayerSource,
+      '<motion.div\n                      data-admin-player-core-transport',
+      '<motion.div\n                      data-admin-player-core-actions',
+    );
 
     expect(adminPlayerSource).toContain('const ADMIN_PLAYER_MINIMIZED_RADIUS = 30;');
     expect(adminPlayerSource).toContain('const ADMIN_PLAYER_MOBILE_MINIMIZED_RADIUS = 26;');
@@ -994,6 +1032,16 @@ describe('music modal product quality gates', () => {
     expect(adminPlayerSource.match(/data-admin-player-core-identity/g)).toHaveLength(1);
     expect(adminPlayerSource.match(/data-admin-player-core-transport/g)).toHaveLength(1);
     expect(adminPlayerSource.match(/data-admin-player-core-play/g)).toHaveLength(1);
+    expect(adminPlayButtonSource).toContain('admin-player-core-play');
+    expect(adminPlayButtonSource).not.toContain('layoutDependency={playerDensity}');
+    expect(adminTransportSource).not.toContain('layoutDependency={playerDensity}');
+    expect(adminTransportSource).toContain('layoutDependency={isMobile ? playerDensity : undefined}');
+    expect(adminIndexSource).toMatch(
+      /\.admin-player-core-play\s*\{[\s\S]*?width var\(--dur-flow\)[\s\S]*?height var\(--dur-flow\)/,
+    );
+    expect(adminIndexSource).toMatch(
+      /\.admin-player-core-transport\s*\{[\s\S]*?right var\(--dur-flow\)[\s\S]*?bottom var\(--dur-flow\)[\s\S]*?grid-template-columns var\(--dur-flow\)/,
+    );
     expect(adminPlayerSource.match(/data-admin-player-core-progress/g)).toHaveLength(1);
     expect(adminPlayerSource).not.toContain('key="minimized"');
     expect(adminPlayerSource).not.toContain('key="compact"');

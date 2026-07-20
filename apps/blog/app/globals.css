@@ -36,6 +36,24 @@
   }
 }
 
+@property --music-island-cover-scale {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.433333;
+}
+
+@property --music-island-cover-size {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 52px;
+}
+
+@property --music-island-cover-inset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 [data-music-skin] .music-control-button {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -106,6 +124,9 @@
   height: 8.5rem;
   transform-origin: left bottom;
   transition:
+    --music-island-cover-scale var(--dur-flow) var(--ease-out),
+    --music-island-cover-size var(--dur-flow) var(--ease-out),
+    --music-island-cover-inset var(--dur-flow) var(--ease-out),
     width var(--dur-flow) var(--ease-out),
     height var(--dur-flow) var(--ease-out);
 }
@@ -138,8 +159,6 @@
   transition:
     top var(--dur-flow) var(--ease-out),
     left var(--dur-flow) var(--ease-out),
-    width var(--dur-flow) var(--ease-out),
-    height var(--dur-flow) var(--ease-out),
     border-radius var(--dur-flow) var(--ease-out);
 }
 
@@ -190,7 +209,6 @@
     inset 0 0 0 0.5px color-mix(in oklch, white 20%, transparent),
     0 8px 24px -14px rgb(0 0 0 / 0.7);
   transition:
-    inset var(--dur-flow) var(--ease-out),
     border-radius var(--dur-flow) var(--ease-out),
     box-shadow var(--dur-quick) var(--ease-out);
 }
@@ -202,13 +220,16 @@
   max-width: none;
   transform: scale(var(--music-island-cover-scale));
   transform-origin: left top;
-  transition: transform var(--dur-flow) var(--ease-out);
   will-change: transform;
 }
 
 .music-island-cover-fallback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: 42%;
   height: 42%;
+  transform: translate(-50%, -50%);
 }
 
 .music-playback-orb__status {
@@ -335,7 +356,16 @@
 }
 
 [data-music-floating-density='minimized'] .music-island-cover-ring {
+  background: conic-gradient(
+    from -90deg,
+    var(--aurora-1) 0 var(--music-orb-progress, 0deg),
+    color-mix(in oklch, var(--ink-primary) 14%, transparent) var(--music-orb-progress, 0deg) 1turn
+  );
   opacity: 0.9;
+}
+
+[data-music-floating-density='minimized'] .music-playback-orb[data-playing='true'] .music-island-cover-ring {
+  animation: none;
 }
 
 [data-music-floating-density='minimized'] .music-island-identity,
