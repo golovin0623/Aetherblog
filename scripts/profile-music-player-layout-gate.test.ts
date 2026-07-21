@@ -55,7 +55,7 @@ function liveTimelineLeafSource() {
 
 function mobileSheetSource() {
   const start = providerSource.indexOf('className="music-mobile-player-sheet');
-  const end = providerSource.indexOf("\n      {surface === 'immersive' && !isMobile && (", start);
+  const end = providerSource.indexOf('\n      </AnimatePresence>', start);
 
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);

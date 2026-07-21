@@ -7021,19 +7021,34 @@ html[data-theme-transition] .codex-ambient-blob {
    Minimized, compact and expanded are three geometries of one component tree:
    artwork, identity, transport and progress never unmount between densities. */
 .admin-music-player-root {
+  --admin-player-cover-raster-size: 6rem;
+  --admin-player-cover-raster-scale: 0.5;
+  --admin-player-cover-radius: 0.875rem;
+  --admin-player-cover-clip-radius: 0.875rem;
   position: relative;
   width: min(100%, 32.5rem);
   height: 11.5rem;
+  min-height: 0;
   transform-origin: 50% 100%;
+  transition:
+    width var(--dur-flow) var(--ease-out),
+    height var(--dur-flow) var(--ease-out),
+    min-height var(--dur-flow) var(--ease-out),
+    padding var(--dur-flow) var(--ease-out);
   will-change: width, height, transform;
 }
 
 .admin-music-player-root[data-admin-player-density='minimized'] {
+  --admin-player-cover-radius: 1.625rem;
+  --admin-player-cover-clip-radius: 1.5rem;
   width: 3.25rem;
   height: 3.25rem;
 }
 
 .admin-music-player-root[data-admin-player-density='expanded'] {
+  --admin-player-cover-raster-scale: 1;
+  --admin-player-cover-radius: 1.125rem;
+  --admin-player-cover-clip-radius: 1.125rem;
   height: min(24.5rem, calc(100dvh - 2.5rem - env(safe-area-inset-bottom)));
   min-height: 22rem;
 }
@@ -7062,18 +7077,26 @@ html[data-theme-transition] .codex-ambient-blob {
   top: 1.25rem;
   width: 3rem;
   height: 3rem;
-  overflow: hidden;
+  overflow: visible;
   isolation: isolate;
+  border-radius: var(--admin-player-cover-radius);
   background: var(--bg-raised);
   box-shadow:
     inset 0 0 0 1px color-mix(in oklch, var(--ink-primary) 9%, transparent),
     0 12px 30px -24px color-mix(in oklch, black 52%, transparent);
-  will-change: width, height, transform, border-radius;
+  transition:
+    top var(--dur-flow) var(--ease-out),
+    left var(--dur-flow) var(--ease-out),
+    width var(--dur-flow) var(--ease-out),
+    height var(--dur-flow) var(--ease-out),
+    border-radius var(--dur-flow) var(--ease-out),
+    box-shadow var(--dur-flow) var(--ease-out);
 }
 
 .admin-player-core-cover-ring {
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   opacity: 0;
   background: conic-gradient(
     from 90deg,
@@ -7088,9 +7111,41 @@ html[data-theme-transition] .codex-ambient-blob {
   position: absolute;
   inset: 0;
   display: block;
-  overflow: hidden;
-  border-radius: inherit;
+  overflow: clip;
+  border-radius: var(--admin-player-cover-clip-radius);
   background: var(--bg-raised);
+  /* This is the only rounded clipping owner. Keeping it in the cover's paint
+     layer avoids reallocating a second GPU texture while the box grows. */
+  transition:
+    inset var(--dur-flow) var(--ease-out),
+    border-radius var(--dur-flow) var(--ease-out);
+}
+
+.admin-player-core-cover-pixels {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: var(--admin-player-cover-raster-size);
+  max-width: none;
+  height: var(--admin-player-cover-raster-size);
+  transform: translateZ(0) scale(var(--admin-player-cover-raster-scale));
+  transform-origin: 0 0;
+  transition: transform var(--dur-flow) var(--ease-out);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-music-player-root,
+  .admin-player-core-cover,
+  .admin-player-core-cover-image,
+  .admin-player-core-cover-pixels,
+  .admin-player-core-transport,
+  .admin-player-core-play {
+    transition: none;
+  }
 }
 
 .admin-player-core-identity {
@@ -7313,11 +7368,38 @@ html[data-theme-transition] .codex-ambient-blob {
 }
 
 @media (min-width: 769px) {
+  .admin-player-core-transport {
+    transition:
+      right var(--dur-flow) var(--ease-out),
+      bottom var(--dur-flow) var(--ease-out),
+      left var(--dur-flow) var(--ease-out),
+      grid-template-columns var(--dur-flow) var(--ease-out),
+      gap var(--dur-flow) var(--ease-out);
+  }
+
+  .admin-player-core-play {
+    transition:
+      width var(--dur-flow) var(--ease-out),
+      height var(--dur-flow) var(--ease-out),
+      border-color var(--dur-quick) var(--ease-out),
+      background-color var(--dur-quick) var(--ease-out),
+      color var(--dur-quick) var(--ease-out),
+      box-shadow var(--dur-quick) var(--ease-out);
+  }
+
+  .admin-music-player-root {
+    --admin-player-cover-raster-size: 7.5rem;
+  }
+
   .admin-music-player-root[data-admin-player-density='compact'] {
+    --admin-player-cover-raster-scale: 0.4333333333;
     height: 8.5rem;
   }
 
   .admin-music-player-root[data-admin-player-density='minimized'] {
+    --admin-player-cover-raster-scale: 0.3666666667;
+    --admin-player-cover-radius: 1.375rem;
+    --admin-player-cover-clip-radius: 1.375rem;
     width: 22.5rem;
     height: 4rem;
     padding: 0.125rem 0.25rem;
@@ -7344,9 +7426,9 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .admin-music-player-root[data-admin-player-density='compact'] .admin-player-core-transport {
-    top: 3.625rem;
+    top: auto;
     right: 0.5rem;
-    bottom: auto;
+    bottom: 2rem;
     left: auto;
     grid-template-columns: 2.75rem 2.75rem 2.75rem;
   }
@@ -7393,6 +7475,13 @@ html[data-theme-transition] .codex-ambient-blob {
     left: 1.5rem;
   }
 
+  .admin-music-player-root[data-admin-player-density='expanded'] .admin-player-core-transport {
+    top: auto;
+    right: calc(50% - 5.25rem);
+    bottom: 1.5rem;
+    left: auto;
+  }
+
   .admin-music-player-root[data-admin-player-density='minimized'] .admin-player-core-cover {
     top: 0.4375rem;
     left: 0.5rem;
@@ -7436,9 +7525,10 @@ html[data-theme-transition] .codex-ambient-blob {
   }
 
   .admin-music-player-root[data-admin-player-density='minimized'] .admin-player-core-transport {
-    top: 0.375rem;
+    top: auto;
     right: 0.5rem;
-    bottom: auto;
+    bottom: 0.4375rem;
+    left: auto;
     grid-template-columns: 2.75rem 2.75rem 2.75rem;
     gap: 0.5rem;
   }

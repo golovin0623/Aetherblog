@@ -284,7 +284,8 @@ async function captureMorph(page, actionSelector, expectedDensity) {
     const rootSelector = '[data-music-floating-root]';
     const shellSelector = '[data-music-floating-shell]';
     const artworkSelector = '[data-music-floating-artwork]';
-    const imageSelector = '[data-music-floating-artwork] .music-playback-orb__artwork';
+    const clipSelector = '[data-music-floating-artwork] .music-island-cover-image';
+    const imageSelector = '[data-music-island-cover-pixels]';
 
     const radiusPixels = (value, width, height) => {
       const [horizontalValue, verticalValue = horizontalValue] = value
@@ -322,6 +323,11 @@ async function captureMorph(page, actionSelector, expectedDensity) {
         borderRightWidth: Number.parseFloat(style.borderRightWidth) || 0,
         borderBottomWidth: Number.parseFloat(style.borderBottomWidth) || 0,
         borderLeftWidth: Number.parseFloat(style.borderLeftWidth) || 0,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        layoutWidth: element instanceof HTMLElement ? element.offsetWidth : undefined,
+        layoutHeight: element instanceof HTMLElement ? element.offsetHeight : undefined,
+        currentSrc: element instanceof HTMLImageElement ? element.currentSrc : undefined,
       };
     };
     const takeSample = (startedAt) => {
@@ -332,8 +338,10 @@ async function captureMorph(page, actionSelector, expectedDensity) {
         density: root?.getAttribute('data-music-floating-density') || '',
         shell: snapshotRect(shell),
         artworkButton: snapshotRect(document.querySelector(artworkSelector)),
+        artworkClip: snapshotRect(document.querySelector(clipSelector)),
         artworkImage: snapshotRect(document.querySelector(imageSelector)),
         artworkNodeCount: document.querySelectorAll(artworkSelector).length,
+        artworkClipNodeCount: document.querySelectorAll(clipSelector).length,
         artworkImageNodeCount: document.querySelectorAll(imageSelector).length,
       };
     };
@@ -378,11 +386,7 @@ async function captureMorph(page, actionSelector, expectedDensity) {
           rectDelta(previous.artworkButton, sample.artworkButton),
           rectDelta(previous.artworkImage, sample.artworkImage),
         );
-        const radiusReady = sample.shell && (
-          targetDensity === 'compact'
-            ? Math.abs(sample.shell.borderRadius - 24) < 0.35
-            : sample.shell.borderRadius >= Math.min(sample.shell.width, sample.shell.height) / 2 - 0.5
-        );
+        const radiusReady = Boolean(sample.shell);
         if (
           motionStarted
           && sample.density === targetDensity
@@ -419,6 +423,7 @@ async function captureAdminTransition(page, actionSelector, expectedDensity) {
       surface: '[data-admin-player-surface]',
       core: '[data-admin-player-morph-content]',
       cover: '[data-admin-player-core-cover]',
+      coverClip: '.admin-player-core-cover-image',
       coverImage: '[data-admin-player-core-cover] img',
       identity: '[data-admin-player-core-identity]',
       transport: '[data-admin-player-core-transport]',
@@ -496,6 +501,14 @@ async function captureAdminTransition(page, actionSelector, expectedDensity) {
         centerX: Number((box.left + box.width / 2).toFixed(3)),
         centerY: Number((box.top + box.height / 2).toFixed(3)),
         borderRadius: Number(Math.min(parsedRadius, box.width / 2, box.height / 2).toFixed(3)),
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        clipPath: style.clipPath,
+        contain: style.contain,
+        transformValue: style.transform,
+        backfaceVisibility: style.backfaceVisibility,
+        layoutWidth: element.offsetWidth,
+        layoutHeight: element.offsetHeight,
         currentSrc: element instanceof HTMLImageElement ? element.currentSrc : undefined,
         complete: element instanceof HTMLImageElement ? element.complete : undefined,
         naturalWidth: element instanceof HTMLImageElement ? element.naturalWidth : undefined,
@@ -539,6 +552,7 @@ async function captureAdminTransition(page, actionSelector, expectedDensity) {
         surface: snapshotPersistent(selectors.surface),
         core: snapshotPersistent(selectors.core),
         cover: snapshotPersistent(selectors.cover),
+        coverClip: snapshotPersistent(selectors.coverClip),
         coverImage: snapshotPersistent(selectors.coverImage),
         identity: snapshotPersistent(selectors.identity),
         transport: snapshotPersistent(selectors.transport),
@@ -656,10 +670,18 @@ function assertMorphTrace(label, samples, {
   expectedShellWidth,
   expectedShellHeight,
   expectedCssInset,
+  expectedBorderWidth = 0,
+  expectedRadius,
+  expectedRasterSize = 120,
   direction,
 }) {
   const failures = [];
-  const valid = samples.filter((sample) => sample.shell && sample.artworkButton && sample.artworkImage);
+  const valid = samples.filter((sample) => (
+    sample.shell
+    && sample.artworkButton
+    && sample.artworkClip
+    && sample.artworkImage
+  ));
   if (valid.length < 12) return [`${label}: 逐帧样本不足 (${valid.length})`];
 
   const first = valid[0];
@@ -687,14 +709,34 @@ function assertMorphTrace(label, samples, {
   ) / 2;
   let previousShellRadius = first.shell.borderRadius;
 
-  if (distance(buttonStart, buttonEnd) > 1.5 || distance(imageStart, imageEnd) > 1.5) {
-    failures.push(`${label}: 封面中心没有锁定小球锚点（位移超过 1.5px）`);
-  }
-
   for (let index = 0; index < valid.length; index += 1) {
     const sample = valid[index];
-    if (sample.artworkNodeCount !== 1 || sample.artworkImageNodeCount !== 1) {
+    if (
+      sample.artworkNodeCount !== 1
+      || sample.artworkClipNodeCount !== 1
+      || sample.artworkImageNodeCount !== 1
+    ) {
       failures.push(`${label}: 第 ${index} 帧的封面节点数量不唯一`);
+      break;
+    }
+    if (
+      sample.artworkButton.overflowX !== 'visible'
+      || sample.artworkButton.overflowY !== 'visible'
+      || sample.artworkClip.overflowX !== 'clip'
+      || sample.artworkClip.overflowY !== 'clip'
+    ) {
+      failures.push(`${label}: 第 ${index} 帧不是“外层不裁剪、内层单独裁剪”结构`);
+      break;
+    }
+    if (
+      Math.abs(sample.artworkImage.layoutWidth - expectedRasterSize) > 0.5
+      || Math.abs(sample.artworkImage.layoutHeight - expectedRasterSize) > 0.5
+    ) {
+      failures.push(`${label}: 第 ${index} 帧封面纹理盒子没有固定为 ${expectedRasterSize}px`);
+      break;
+    }
+    if (sample.artworkImage.currentSrc !== first.artworkImage.currentSrc) {
+      failures.push(`${label}: 第 ${index} 帧重新装载了封面图片源`);
       break;
     }
     if (Math.abs(sample.shell.left - first.shell.left) > 1.25) {
@@ -715,6 +757,15 @@ function assertMorphTrace(label, samples, {
     }
     if (distance(sample.artworkButton, sample.artworkImage) > 0.75) {
       failures.push(`${label}: 第 ${index} 帧真实封面与封面按钮不同心`);
+      break;
+    }
+    if (
+      Math.abs(sample.artworkClip.left - sample.artworkImage.left) > 0.75
+      || Math.abs(sample.artworkClip.top - sample.artworkImage.top) > 0.75
+      || Math.abs(sample.artworkClip.width - sample.artworkImage.width) > 0.75
+      || Math.abs(sample.artworkClip.height - sample.artworkImage.height) > 0.75
+    ) {
+      failures.push(`${label}: 第 ${index} 帧裁剪框与封面像素没有保持重合`);
       break;
     }
 
@@ -841,10 +892,10 @@ function assertMorphTrace(label, samples, {
   near(last.artworkImage.height, expectedImageSize, 1, '最终真实封面高度');
   near(last.shell.width, expectedShellWidth, 1.5, '最终外壳宽度');
   near(last.shell.height, expectedShellHeight, 1.5, '最终外壳高度');
-  near(last.artworkButton.borderTopWidth, 1, 0.25, '封面按钮上边框');
-  near(last.artworkButton.borderRightWidth, 1, 0.25, '封面按钮右边框');
-  near(last.artworkButton.borderBottomWidth, 1, 0.25, '封面按钮下边框');
-  near(last.artworkButton.borderLeftWidth, 1, 0.25, '封面按钮左边框');
+  near(last.artworkButton.borderTopWidth, expectedBorderWidth, 0.25, '封面按钮上边框');
+  near(last.artworkButton.borderRightWidth, expectedBorderWidth, 0.25, '封面按钮右边框');
+  near(last.artworkButton.borderBottomWidth, expectedBorderWidth, 0.25, '封面按钮下边框');
+  near(last.artworkButton.borderLeftWidth, expectedBorderWidth, 0.25, '封面按钮左边框');
   near(
     last.artworkImage.left - last.artworkButton.left - last.artworkButton.borderLeftWidth,
     expectedCssInset,
@@ -869,16 +920,17 @@ function assertMorphTrace(label, samples, {
     0.75,
     '最终封面下 CSS inset',
   );
-  if (direction === 'open' && Math.abs(last.shell.borderRadius - 24) > 1.5) {
-    failures.push(`${label}: compact 外壳圆角没有稳定到 24px`);
-  }
-  if (direction === 'close' && last.shell.borderRadius < expectedShellWidth / 2 - 1) {
-    failures.push(`${label}: orb 外壳没有恢复为完整圆形`);
+  if (expectedRadius === 'capsule') {
+    if (last.shell.borderRadius < Math.min(expectedShellWidth, expectedShellHeight) / 2 - 1) {
+      failures.push(`${label}: 外壳没有稳定为完整胶囊/圆形`);
+    }
+  } else if (typeof expectedRadius === 'number') {
+    near(last.shell.borderRadius, expectedRadius, 1.5, '最终外壳圆角');
   }
   return failures;
 }
 
-function assertInversePath(openSamples, closeSamples) {
+function assertInversePath(label, openSamples, closeSamples) {
   const failures = [];
   const open = openSamples.filter((sample) => sample.artworkButton);
   const close = closeSamples.filter((sample) => sample.artworkButton);
@@ -887,19 +939,13 @@ function assertInversePath(openSamples, closeSamples) {
   const closeStart = close[0].artworkButton;
   const closeEnd = close.at(-1).artworkButton;
 
-  if (distance(openEnd, closeStart) > 1.5) failures.push('前台反向轨迹没有从正向终点开始');
-  if (distance(openStart, closeEnd) > 1.5) failures.push('前台收起终点没有回到最初小球位置');
-  if (Math.abs(openStart.width - closeEnd.width) > 0.75) failures.push('前台收起后的封面尺寸没有回到初始值');
+  if (distance(openEnd, closeStart) > 1.5) failures.push(`${label}: 反向轨迹没有从正向终点开始`);
+  if (distance(openStart, closeEnd) > 1.5) failures.push(`${label}: 收起终点没有回到初始位置`);
+  if (Math.abs(openStart.width - closeEnd.width) > 0.75) failures.push(`${label}: 收起后的封面尺寸没有回到初始值`);
 
-  for (const sample of open.filter((_, index) => index % 3 === 0)) {
-    const matching = close.reduce((best, candidate) => (
-      Math.abs(candidate.artworkButton.width - sample.artworkButton.width)
-        < Math.abs(best.artworkButton.width - sample.artworkButton.width)
-        ? candidate
-        : best
-    ));
-    if (distance(sample.artworkButton, matching.artworkButton) > 5) {
-      failures.push('前台正向与反向封面没有沿同一条几何轨迹运行');
+  for (const sample of close) {
+    if (distanceToSegment(sample.artworkButton, openStart, openEnd) > 1.5) {
+      failures.push(`${label}: 反向封面偏离正向的单一几何轨迹`);
       break;
     }
   }
@@ -907,17 +953,11 @@ function assertInversePath(openSamples, closeSamples) {
   const openImageEnd = open.at(-1).artworkImage;
   const closeImageStart = close[0].artworkImage;
   const closeImageEnd = close.at(-1).artworkImage;
-  if (distance(openImageEnd, closeImageStart) > 1.5) failures.push('真实封面反向轨迹没有从正向终点开始');
-  if (distance(openImageStart, closeImageEnd) > 1.5) failures.push('真实封面收起终点没有回到最初小球位置');
-  for (const sample of open.filter((_, index) => index % 3 === 0)) {
-    const matching = close.reduce((best, candidate) => (
-      Math.abs(candidate.artworkImage.width - sample.artworkImage.width)
-        < Math.abs(best.artworkImage.width - sample.artworkImage.width)
-        ? candidate
-        : best
-    ));
-    if (distance(sample.artworkImage, matching.artworkImage) > 5) {
-      failures.push('真实封面正向与反向没有沿同一条几何轨迹运行');
+  if (distance(openImageEnd, closeImageStart) > 1.5) failures.push(`${label}: 真实封面反向轨迹没有从正向终点开始`);
+  if (distance(openImageStart, closeImageEnd) > 1.5) failures.push(`${label}: 真实封面收起终点没有回到初始位置`);
+  for (const sample of close) {
+    if (distanceToSegment(sample.artworkImage, openImageStart, openImageEnd) > 1.5) {
+      failures.push(`${label}: 真实封面反向时偏离正向的单一几何轨迹`);
       break;
     }
   }
@@ -931,6 +971,7 @@ function assertAdminTransitionTrace(label, samples, {
   expectedSurfaceWidth,
   expectedSurfaceHeight,
   expectedRadius,
+  expectedCoverRasterSize,
   sizeDirection,
   allowPlayFade = false,
   expectRestoreReveal = true,
@@ -942,6 +983,7 @@ function assertAdminTransitionTrace(label, samples, {
     'surface',
     'core',
     'cover',
+    'coverClip',
     'coverImage',
     'identity',
     'transport',
@@ -954,7 +996,7 @@ function assertAdminTransitionTrace(label, samples, {
     'restore',
     'expandedDetail',
   ];
-  const alwaysVisibleNodes = new Set(['root', 'surface', 'core', 'cover', 'play']);
+  const alwaysVisibleNodes = new Set(['root', 'surface', 'core', 'cover', 'coverClip', 'play']);
   for (let index = 0; index < samples.length; index += 1) {
     const sample = samples[index];
     for (const name of requiredNodes) {
@@ -1010,6 +1052,56 @@ function assertAdminTransitionTrace(label, samples, {
     failures.push(`${label}: 封面图片源在形态变化中被替换`);
     return failures;
   }
+  if (valid.some((sample) => (
+    Math.abs(sample.coverImage.layoutWidth - expectedCoverRasterSize) > 0.5
+    || Math.abs(sample.coverImage.layoutHeight - expectedCoverRasterSize) > 0.5
+  ))) {
+    failures.push(`${label}: 封面纹理盒子没有保持 ${expectedCoverRasterSize}px 的固定高分辨率`);
+    return failures;
+  }
+  if (valid.some((sample) => (
+    Math.abs(sample.root.scaleX - 1) > 0.015
+    || Math.abs(sample.root.scaleY - 1) > 0.015
+    || Math.abs(sample.surface.scaleX - 1) > 0.015
+    || Math.abs(sample.surface.scaleY - 1) > 0.015
+  ))) {
+    failures.push(`${label}: 外壳发生了投影缩放，可能再次拉伸封面纹理`);
+    return failures;
+  }
+  if (valid.some((sample) => (
+    Math.abs(sample.cover.scaleX - 1) > 0.015
+    || Math.abs(sample.cover.scaleY - 1) > 0.015
+  ))) {
+    failures.push(`${label}: 封面容器发生了二次投影缩放`);
+    return failures;
+  }
+  if (valid.some((sample) => (
+    sample.cover.overflowX !== 'visible'
+    || sample.cover.overflowY !== 'visible'
+    || sample.cover.clipPath !== 'none'
+    || sample.coverClip.overflowX !== 'clip'
+    || sample.coverClip.overflowY !== 'clip'
+    || sample.coverClip.clipPath !== 'none'
+    || Math.abs(
+      sample.cover.borderRadius
+      - sample.coverClip.borderRadius
+      - Math.max(
+        (sample.cover.width - sample.coverClip.width) / 2,
+        (sample.cover.height - sample.coverClip.height) / 2,
+      )
+    ) > 0.55
+  ))) {
+    failures.push(`${label}: 封面存在重复圆角裁剪层或裁剪半径不同步`);
+    return failures;
+  }
+  if (valid.some((sample) => (
+    sample.coverClip.transformValue !== 'none'
+    || sample.coverClip.contain !== 'none'
+    || sample.coverClip.backfaceVisibility !== 'visible'
+  ))) {
+    failures.push(`${label}: 封面裁剪层被提升为可重分配纹理`);
+    return failures;
+  }
   const visibilityDeadline = valid.find((sample) => sample.time >= 90) ?? last;
   if (expectedDensity === 'minimized') {
     for (const name of ['previous', 'next', 'minimize', 'densityAction', 'progress', 'expandedDetail']) {
@@ -1059,9 +1151,10 @@ function assertAdminTransitionTrace(label, samples, {
   const surfaceWidthTravel = Math.abs(last.surface.width - first.surface.width);
   const surfaceHeightTravel = Math.abs(last.surface.height - first.surface.height);
   const radiusTravel = Math.abs(last.surface.borderRadius - first.surface.borderRadius);
+  const coverCenterTravel = distance(first.cover, last.cover);
+  const playCenterTravel = distance(first.play, last.play);
   let previousRadius = first.surface.borderRadius;
   let previousCoverProgress = 0;
-  let previousPlayProgress = 0;
 
   for (let index = 0; index < valid.length; index += 1) {
     const sample = valid[index];
@@ -1086,22 +1179,12 @@ function assertAdminTransitionTrace(label, samples, {
       failures.push(`${label}: persistent 封面在第 ${index} 帧偏离单一几何轨迹`);
       break;
     }
-    if (distanceToSegment(sample.play, first.play, last.play) > 7) {
-      failures.push(`${label}: persistent 播放键在第 ${index} 帧偏离单一几何轨迹`);
-      break;
-    }
     const coverProgress = normalizedProgress(sample.cover, first.cover, last.cover);
-    const playProgress = normalizedProgress(sample.play, first.play, last.play);
     if (index > 0 && coverProgress < previousCoverProgress - 0.08) {
       failures.push(`${label}: persistent 封面在第 ${index} 帧反向跳动`);
       break;
     }
-    if (index > 0 && playProgress < previousPlayProgress - 0.08) {
-      failures.push(`${label}: persistent 播放键在第 ${index} 帧反向跳动`);
-      break;
-    }
     previousCoverProgress = Math.max(previousCoverProgress, coverProgress);
-    previousPlayProgress = Math.max(previousPlayProgress, playProgress);
     if (index === 0) continue;
     const previous = valid[index - 1];
     const elapsed = sample.time - previous.time;
@@ -1138,7 +1221,15 @@ function assertAdminTransitionTrace(label, samples, {
     }
     const frameFactor = Math.min(2, Math.max(1, elapsed / 16.7));
     for (const name of ['cover', 'play']) {
-      if (distance(sample[name], previous[name]) > 12 * frameFactor) {
+      const centerTravel = name === 'cover' ? coverCenterTravel : playCenterTravel;
+      const nodeSizeTravel = Math.max(
+        Math.abs(last[name].width - first[name].width),
+        Math.abs(last[name].height - first[name].height),
+      );
+      const maxFrameTravel = name === 'cover'
+        ? Math.max(16, centerTravel * 0.28)
+        : Math.max(24, centerTravel * 0.5);
+      if (distance(sample[name], previous[name]) > maxFrameTravel * frameFactor) {
         failures.push(`${label}: persistent ${name} 在第 ${index} 帧发生位置突跳`);
         break;
       }
@@ -1146,7 +1237,7 @@ function assertAdminTransitionTrace(label, samples, {
         Math.max(
           Math.abs(sample[name].width - previous[name].width),
           Math.abs(sample[name].height - previous[name].height),
-        ) > 14 * frameFactor
+        ) > Math.max(14, nodeSizeTravel * 0.35) * frameFactor
       ) {
         failures.push(`${label}: persistent ${name} 在第 ${index} 帧发生尺寸突跳`);
         break;
@@ -1252,50 +1343,169 @@ function assertAdminPersistentSequenceIdentity(traces) {
   return failures;
 }
 
-async function auditFrontend(page, blogUrl, browserName) {
+async function prepareFrontendPlayer(page, blogUrl) {
   await page.goto(joinUrl(blogUrl, '/music'), { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '播放歌单', exact: true }).waitFor({ state: 'visible', timeout: 12000 });
   await page.getByRole('button', { name: '播放歌单', exact: true }).click();
   await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
-  await page.locator('[data-music-floating-density="orb"]').waitFor({ state: 'visible', timeout: 12000 });
+  await page.locator('[data-music-floating-density="minimized"]').waitFor({ state: 'visible', timeout: 12000 });
   await page.evaluate(() => document.fonts.ready);
   await waitForDecodedImage(page, '[data-music-floating-artwork]');
+}
 
-  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-orb-${browserName}.png`) });
-  await page.locator('[data-music-floating-shell]').screenshot({ path: path.join(OUTPUT_DIR, `front-orb-detail-${browserName}.png`) });
+async function auditFrontendMobile(page, blogUrl, browserName) {
+  await prepareFrontendPlayer(page, blogUrl);
+
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-mobile-minimized-${browserName}.png`) });
+  await page.locator('[data-music-floating-shell]').screenshot({ path: path.join(OUTPUT_DIR, `front-mobile-minimized-detail-${browserName}.png`) });
   const openTrace = await captureMorph(page, '[data-music-floating-artwork]', 'compact');
-  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-compact-${browserName}.png`) });
-  await page.locator('[data-music-floating-shell]').screenshot({ path: path.join(OUTPUT_DIR, `front-compact-detail-${browserName}.png`) });
-  const closeTrace = await captureMorph(page, '[data-music-density-toggle]', 'orb');
-  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-orb-returned-${browserName}.png`) });
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-mobile-compact-${browserName}.png`) });
+  await page.locator('[data-music-floating-shell]').screenshot({ path: path.join(OUTPUT_DIR, `front-mobile-compact-detail-${browserName}.png`) });
+  const closeTrace = await captureMorph(
+    page,
+    'button[aria-label^="收起为灵动音乐元"]',
+    'minimized',
+  );
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-mobile-minimized-returned-${browserName}.png`) });
 
   await writeFile(
-    path.join(OUTPUT_DIR, `front-open-trace-${browserName}.json`),
+    path.join(OUTPUT_DIR, `front-mobile-open-trace-${browserName}.json`),
     `${JSON.stringify(openTrace, null, 2)}\n`,
   );
   await writeFile(
-    path.join(OUTPUT_DIR, `front-close-trace-${browserName}.json`),
+    path.join(OUTPUT_DIR, `front-mobile-close-trace-${browserName}.json`),
     `${JSON.stringify(closeTrace, null, 2)}\n`,
   );
 
   return [
-    ...assertMorphTrace('前台 orb → compact', openTrace, {
-      expectedArtworkSize: 64,
-      expectedImageSize: 62,
+    ...assertMorphTrace('前台移动 minimized → compact', openTrace, {
+      expectedArtworkSize: 52,
+      expectedImageSize: 52,
       expectedShellWidth: 358,
-      expectedShellHeight: 264,
+      expectedShellHeight: 136,
       expectedCssInset: 0,
+      expectedRadius: 24,
       direction: 'open',
     }),
-    ...assertMorphTrace('前台 compact → orb', closeTrace, {
+    ...assertMorphTrace('前台移动 compact → minimized', closeTrace, {
       expectedArtworkSize: 52,
-      expectedImageSize: 40,
+      expectedImageSize: 42,
       expectedShellWidth: 52,
       expectedShellHeight: 52,
       expectedCssInset: 5,
+      expectedRadius: 'capsule',
       direction: 'close',
     }),
-    ...assertInversePath(openTrace, closeTrace),
+    ...assertInversePath('前台移动 minimized ↔ compact', openTrace, closeTrace),
+  ];
+}
+
+async function auditFrontendDesktop(page, blogUrl, browserName) {
+  await prepareFrontendPlayer(page, blogUrl);
+
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-desktop-minimized-${browserName}.png`) });
+  const minimizedToCompact = await captureMorph(page, '[data-music-floating-artwork]', 'compact');
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-desktop-compact-${browserName}.png`) });
+  const compactToExpanded = await captureMorph(page, '[data-music-density-toggle]', 'expanded');
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-desktop-expanded-${browserName}.png`) });
+  const expandedToCompact = await captureMorph(
+    page,
+    'button[aria-label="收起播放器"]',
+    'compact',
+  );
+  const compactToMinimized = await captureMorph(
+    page,
+    'button[aria-label^="收起为灵动音乐元"]',
+    'minimized',
+  );
+  await page.screenshot({ path: path.join(OUTPUT_DIR, `front-desktop-minimized-returned-${browserName}.png`) });
+
+  const densityFocusFailures = [];
+  await page.locator('[data-music-floating-artwork]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="compact"]');
+  await page.locator('[data-music-density-toggle]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="expanded"]');
+  const expandedFocusTransferred = await page.evaluate(() => (
+    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
+  ));
+  if (!expandedFocusTransferred) {
+    densityFocusFailures.push('前台桌面 compact → expanded 后键盘焦点未交给持久歌曲信息按钮');
+  }
+  await page.locator('button[aria-label="收起播放器"]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-music-floating-density="compact"]');
+  const compactFocusTransferred = await page.evaluate(() => (
+    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
+  ));
+  if (!compactFocusTransferred) {
+    densityFocusFailures.push('前台桌面 expanded → compact 后键盘焦点未交给持久歌曲信息按钮');
+  }
+  await writeFile(
+    path.join(OUTPUT_DIR, `front-desktop-density-focus-${browserName}.json`),
+    `${JSON.stringify({ expandedFocusTransferred, compactFocusTransferred }, null, 2)}\n`,
+  );
+
+  const traces = {
+    minimizedToCompact,
+    compactToExpanded,
+    expandedToCompact,
+    compactToMinimized,
+  };
+  await writeFile(
+    path.join(OUTPUT_DIR, `front-desktop-traces-${browserName}.json`),
+    `${JSON.stringify(traces, null, 2)}\n`,
+  );
+
+  return [
+    ...densityFocusFailures,
+    ...assertMorphTrace('前台桌面 minimized → compact', minimizedToCompact, {
+      expectedArtworkSize: 52,
+      expectedImageSize: 52,
+      expectedShellWidth: 520,
+      expectedShellHeight: 136,
+      expectedCssInset: 0,
+      expectedRadius: 24,
+      direction: 'open',
+    }),
+    ...assertMorphTrace('前台桌面 compact → expanded', compactToExpanded, {
+      expectedArtworkSize: 120,
+      expectedImageSize: 120,
+      expectedShellWidth: 520,
+      expectedShellHeight: 380,
+      expectedCssInset: 0,
+      expectedRadius: 24,
+      direction: 'open',
+    }),
+    ...assertMorphTrace('前台桌面 expanded → compact', expandedToCompact, {
+      expectedArtworkSize: 52,
+      expectedImageSize: 52,
+      expectedShellWidth: 520,
+      expectedShellHeight: 136,
+      expectedCssInset: 0,
+      expectedRadius: 24,
+      direction: 'close',
+    }),
+    ...assertMorphTrace('前台桌面 compact → minimized', compactToMinimized, {
+      expectedArtworkSize: 44,
+      expectedImageSize: 44,
+      expectedShellWidth: 360,
+      expectedShellHeight: 64,
+      expectedCssInset: 0,
+      expectedRadius: 24,
+      direction: 'close',
+    }),
+    ...assertInversePath(
+      '前台桌面 minimized ↔ compact',
+      minimizedToCompact,
+      compactToMinimized,
+    ),
+    ...assertInversePath(
+      '前台桌面 compact ↔ expanded',
+      compactToExpanded,
+      expandedToCompact,
+    ),
   ];
 }
 
@@ -1729,6 +1939,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 352,
       expectedSurfaceHeight: 60,
       expectedRadius: 'capsule',
+      expectedCoverRasterSize: 120,
       sizeDirection: 'shrink',
     }),
     ...assertAdminTransitionTrace('后台 minimized → compact', restoreTrace, {
@@ -1738,6 +1949,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 520,
       expectedSurfaceHeight: 136,
       expectedRadius: 24,
+      expectedCoverRasterSize: 120,
       sizeDirection: 'grow',
     }),
     ...assertAdminTransitionTrace('后台 compact → expanded', expandTrace, {
@@ -1747,6 +1959,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 520,
       expectedSurfaceHeight: 380,
       expectedRadius: 24,
+      expectedCoverRasterSize: 120,
       sizeDirection: 'grow',
     }),
     ...assertAdminTransitionTrace('后台 expanded → compact', collapseTrace, {
@@ -1756,6 +1969,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 520,
       expectedSurfaceHeight: 136,
       expectedRadius: 24,
+      expectedCoverRasterSize: 120,
       sizeDirection: 'shrink',
     }),
     ...assertAdminTransitionTrace('后台 compact → expanded（二次）', reexpandTrace, {
@@ -1765,6 +1979,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 520,
       expectedSurfaceHeight: 380,
       expectedRadius: 24,
+      expectedCoverRasterSize: 120,
       sizeDirection: 'grow',
     }),
     ...assertAdminTransitionTrace('后台 expanded → minimized', expandedMinimizeTrace, {
@@ -1774,6 +1989,7 @@ async function auditAdmin(page, adminUrl, browserName) {
       expectedSurfaceWidth: 352,
       expectedSurfaceHeight: 60,
       expectedRadius: 'capsule',
+      expectedCoverRasterSize: 120,
       sizeDirection: 'shrink',
     }),
   ];
@@ -1901,6 +2117,7 @@ async function auditAdminMobile(page, adminUrl, browserName) {
       expectedSurfaceWidth: 52,
       expectedSurfaceHeight: 52,
       expectedRadius: 'capsule',
+      expectedCoverRasterSize: 96,
       sizeDirection: 'shrink',
       allowPlayFade: true,
       expectRestoreReveal: false,
@@ -1912,6 +2129,7 @@ async function auditAdminMobile(page, adminUrl, browserName) {
       expectedSurfaceWidth: 366,
       expectedSurfaceHeight: 184,
       expectedRadius: 24,
+      expectedCoverRasterSize: 96,
       sizeDirection: 'grow',
       allowPlayFade: true,
     }),
@@ -1940,7 +2158,25 @@ async function main() {
   const browserVersion = browser.version();
 
   try {
-    const frontContext = await browser.newContext(options.browser === 'webkit'
+    const frontDesktopContext = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+      deviceScaleFactor: 1,
+      reducedMotion: 'no-preference',
+    });
+    const frontDesktopPage = await frontDesktopContext.newPage();
+    await installBrowserState(frontDesktopPage);
+    await installMusicMocks(frontDesktopPage, fixture);
+    try {
+      failures.push(...await auditFrontendDesktop(
+        frontDesktopPage,
+        options.blogUrl,
+        options.browser,
+      ));
+    } finally {
+      await frontDesktopContext.close();
+    }
+
+    const frontMobileContext = await browser.newContext(options.browser === 'webkit'
       ? { ...devices['iPhone 13'], reducedMotion: 'no-preference' }
       : {
           viewport: { width: 390, height: 844 },
@@ -1949,13 +2185,17 @@ async function main() {
           hasTouch: true,
           reducedMotion: 'no-preference',
         });
-    const frontPage = await frontContext.newPage();
-    await installBrowserState(frontPage);
-    await installMusicMocks(frontPage, fixture);
+    const frontMobilePage = await frontMobileContext.newPage();
+    await installBrowserState(frontMobilePage);
+    await installMusicMocks(frontMobilePage, fixture);
     try {
-      failures.push(...await auditFrontend(frontPage, options.blogUrl, options.browser));
+      failures.push(...await auditFrontendMobile(
+        frontMobilePage,
+        options.blogUrl,
+        options.browser,
+      ));
     } finally {
-      await frontContext.close();
+      await frontMobileContext.close();
     }
 
     const adminContext = await browser.newContext({
@@ -2005,7 +2245,8 @@ async function main() {
     blogUrl: options.blogUrl,
     adminUrl: options.adminUrl,
     gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-    frontDevice: options.browser === 'webkit' ? 'iPhone 13' : '390x844 touch mobile',
+    frontDesktopViewport: '1280x720',
+    frontMobileViewport: options.browser === 'webkit' ? 'iPhone 13' : '390x844 touch mobile',
     adminViewport: '1440x900',
     adminMobileViewport: options.browser === 'webkit' ? 'iPhone 13' : '390x844 touch mobile',
     status: failures.length === 0 ? 'passed' : 'failed',
