@@ -3,6 +3,14 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const musicPageSource = readFileSync(path.resolve(__dirname, '../MusicPage.tsx'), 'utf8');
+const generativeCoverSource = readFileSync(
+  path.resolve(__dirname, './GenerativeCoverStudio.tsx'),
+  'utf8'
+);
+const musicTagEditorSource = readFileSync(
+  path.resolve(__dirname, './MusicTagEditor.tsx'),
+  'utf8'
+);
 const adminIndexSource = readFileSync(path.resolve(__dirname, '../../../index.html'), 'utf8');
 
 describe('mobile track editor interaction', () => {
@@ -39,6 +47,15 @@ describe('mobile track editor interaction', () => {
     );
     expect(musicPageSource.match(/max-\[360px\]:min-w-0 max-\[360px\]:gap-1\.5/g)).toHaveLength(3);
   });
+
+  it('keeps tag selection buttons at the 44px mobile touch minimum', () => {
+    expect(musicTagEditorSource).toContain(
+      "'inline-flex min-h-11 items-center gap-1.5 rounded-full border"
+    );
+    expect(musicTagEditorSource).not.toContain(
+      "'inline-flex min-h-10 items-center gap-1.5 rounded-full border"
+    );
+  });
 });
 
 describe('music overlay coordination', () => {
@@ -64,5 +81,12 @@ describe('music overlay coordination', () => {
     expect(adminIndexSource).toContain(
       'content="width=device-width, initial-scale=1.0, viewport-fit=cover"'
     );
+  });
+
+  it('keeps explanatory copy legible on the dark generated-cover preview', () => {
+    expect(generativeCoverSource).toContain('text-white/60');
+    expect(generativeCoverSource).toContain('text-white/70');
+    expect(generativeCoverSource).not.toContain('text-white/52');
+    expect(generativeCoverSource).not.toContain('text-white/68');
   });
 });

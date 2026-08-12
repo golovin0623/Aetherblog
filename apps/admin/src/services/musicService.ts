@@ -3,6 +3,10 @@ import type {
   MusicAudioCandidate,
   MusicImportMediaRequest,
   MusicLibrarySummary,
+  MusicLyric,
+  MusicLyricBindingRequest,
+  MusicLyricRequest,
+  MusicLyricStatus,
   MusicPlaylist,
   MusicPlaylistRequest,
   MusicPlayer,
@@ -17,6 +21,11 @@ export interface MusicListParams {
   keyword?: string;
   status?: 'ACTIVE' | 'HIDDEN';
   playlistId?: number;
+  tagId?: number;
+  tagState?: 'WITH_TAGS' | 'WITHOUT_TAGS';
+  favorite?: boolean;
+  lyricState?: 'WITH_LYRIC' | 'WITHOUT_LYRIC' | 'NEEDS_REVIEW';
+  coverState?: 'WITH_COVER' | 'WITHOUT_COVER';
   pageNum?: number;
   pageSize?: number;
 }
@@ -32,6 +41,16 @@ export interface MusicScanParams {
 export interface MusicPlaylistListParams {
   status?: 'ACTIVE' | 'HIDDEN';
   visibility?: 'PRIVATE' | 'PUBLIC';
+  favorite?: boolean;
+  pageNum?: number;
+  pageSize?: number;
+}
+
+export interface MusicLyricListParams {
+  keyword?: string;
+  status?: MusicLyricStatus;
+  bound?: boolean;
+  trackId?: number;
   pageNum?: number;
   pageSize?: number;
 }
@@ -65,6 +84,24 @@ export const musicService = {
     api.delete(`/v1/admin/music/tracks/${id}`, {
       params: options?.deleteMedia ? { deleteMedia: 'true' } : undefined,
     }),
+
+  getLyrics: (params: MusicLyricListParams = {}): Promise<R<PageResult<MusicLyric>>> =>
+    api.get('/v1/admin/music/lyrics', { params }),
+
+  getLyric: (id: number): Promise<R<MusicLyric>> =>
+    api.get(`/v1/admin/music/lyrics/${id}`),
+
+  createLyric: (data: MusicLyricRequest): Promise<R<MusicLyric>> =>
+    api.post('/v1/admin/music/lyrics', data),
+
+  updateLyric: (id: number, data: MusicLyricRequest): Promise<R<MusicLyric>> =>
+    api.put(`/v1/admin/music/lyrics/${id}`, data),
+
+  bindLyric: (id: number, data: MusicLyricBindingRequest): Promise<R<MusicLyric>> =>
+    api.put(`/v1/admin/music/lyrics/${id}/binding`, data),
+
+  deleteLyric: (id: number): Promise<R<void>> =>
+    api.delete(`/v1/admin/music/lyrics/${id}`),
 
   getPlaylists: (params: MusicPlaylistListParams = {}): Promise<R<PageResult<MusicPlaylist>>> =>
     api.get('/v1/admin/music/playlists', { params }),

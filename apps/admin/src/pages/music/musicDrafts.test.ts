@@ -16,6 +16,7 @@ import {
 } from './musicDrafts';
 
 const musicPageSource = readFileSync(path.resolve(__dirname, '../MusicPage.tsx'), 'utf8');
+const lyricsWorkspaceSource = readFileSync(path.resolve(__dirname, './LyricsWorkspace.tsx'), 'utf8');
 const appSource = readFileSync(path.resolve(__dirname, '../../App.tsx'), 'utf8');
 
 describe('music editing payloads', () => {
@@ -30,6 +31,7 @@ describe('music editing payloads', () => {
       status: 'ACTIVE',
       sortOrder: 3,
       isFeatured: true,
+      isFavorite: true,
     } as MusicTrack;
 
     expect(buildMusicTrackUpdate(track, { title: 'Renamed title' })).toMatchObject({
@@ -39,6 +41,7 @@ describe('music editing payloads', () => {
       status: 'ACTIVE',
       sortOrder: 3,
       isFeatured: true,
+      isFavorite: true,
     });
   });
 
@@ -54,6 +57,7 @@ describe('music editing payloads', () => {
       displayOnProfile: true,
       carouselEnabled: false,
       randomEnabled: true,
+      isFavorite: true,
       sortOrder: 4,
     } as MusicPlaylist;
 
@@ -63,6 +67,7 @@ describe('music editing payloads', () => {
     expect(buildMusicPlaylistUpdate(draft, playlist.name)).toMatchObject({
       name: 'Night drive',
       coverMediaFileId: 108,
+      isFavorite: true,
       sortOrder: 4,
     });
   });
@@ -287,9 +292,10 @@ describe('track draft safety', () => {
 
   it('wires dirty-track confirmation into selection, close, and tab navigation', () => {
     expect(musicPageSource).toContain('trackDraftDirty');
+    expect(musicPageSource).toContain('lyricDraftDirty');
     expect(musicPageSource).toContain('pendingTrackNavigation');
     expect(musicPageSource).toContain("kind: 'tab'");
-    expect(musicPageSource).toContain('放弃未保存的歌曲修改？');
+    expect(musicPageSource).toContain('放弃未保存的音乐修改？');
   });
 
   it('closes the track editor before leaving the library tab', () => {
@@ -299,8 +305,11 @@ describe('track draft safety', () => {
 
     expect(navigationStart).toBeGreaterThanOrEqual(0);
     expect(navigationEnd).toBeGreaterThan(navigationStart);
-    expect(navigationSource).toMatch(
-      /if \(navigation\.kind === 'close'\) \{[\s\S]*?return;\s*\}[\s\S]*?editingTrackIdRef\.current = null;\s*setEditingTrack\(null\);\s*setActiveTab\(navigation\.tab\);/
+    expect(navigationSource).toMatch(/if \(navigation\.kind === 'close'\) \{[\s\S]*?return;\s*\}/);
+    expect(navigationSource.indexOf('editingTrackIdRef.current = null;')).toBeGreaterThanOrEqual(0);
+    expect(navigationSource.indexOf('setEditingTrack(null);')).toBeGreaterThanOrEqual(0);
+    expect(navigationSource.indexOf('setActiveTab(navigation.tab);')).toBeGreaterThan(
+      navigationSource.indexOf('setEditingTrack(null);')
     );
   });
 
@@ -310,18 +319,24 @@ describe('track draft safety', () => {
   });
 
   it('cancels stale lyric imports and keeps the hidden file input out of focus order', () => {
-    expect(musicPageSource).toMatch(
-      /return \(\) => \{\s*lyricImportRequestRef\.current \+= 1;\s*\};\s*\}, \[track\.id\]\);/
+    expect(lyricsWorkspaceSource).toMatch(
+      /return \(\) => \{\s*lyricImportRequestRef\.current \+= 1;\s*\};\s*\}, \[focusTrack\?\.id\]\);/
     );
-    expect(musicPageSource).toContain('if (importRequestId !== lyricImportRequestRef.current) return;');
-    expect(musicPageSource).toContain('tabIndex={-1}');
-    expect(musicPageSource).toContain('aria-hidden="true"');
+    expect(lyricsWorkspaceSource).toContain('if (importRequestId !== lyricImportRequestRef.current) return;');
+    expect(lyricsWorkspaceSource).toContain(
+      'if (shouldInvalidatePendingLyricImport(replacement.kind))'
+    );
+    expect(lyricsWorkspaceSource).toContain("requestReplacement({ kind: 'import', draft: imported });");
+    expect(lyricsWorkspaceSource).toContain('tabIndex={-1}');
+    expect(lyricsWorkspaceSource).toContain('aria-hidden="true"');
   });
 
   it('protects dirty drafts across links, programmatic navigation, and browser history', () => {
     expect(appSource).toContain('createBrowserRouter(');
     expect(appSource).toContain('<RouterProvider router={router} />');
-    expect(musicPageSource).toContain('useBlocker(trackDraftDirty || playlistDraftDirty)');
+    expect(musicPageSource).toMatch(
+      /useBlocker\(\s*trackDraftDirty \|\| playlistDraftDirty \|\| lyricDraftDirty\s*\)/
+    );
     expect(musicPageSource).toContain("dirtyNavigationBlocker.state === 'blocked'");
     expect(musicPageSource).toContain('dirtyNavigationBlocker.proceed();');
     expect(musicPageSource).not.toContain('protectSpaNavigation');

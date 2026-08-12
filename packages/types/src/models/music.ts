@@ -1,8 +1,12 @@
+import type { TagCategory } from './media';
+
 export type MusicTrackStatus = 'ACTIVE' | 'HIDDEN';
 export type MusicTrackSource = 'MEDIA_LIBRARY' | 'UPLOAD' | 'MANUAL';
 export type MusicPlaylistVisibility = 'PRIVATE' | 'PUBLIC';
 export type MusicPlaybackMode = 'SEQUENTIAL' | 'SHUFFLE' | 'LOOP' | 'CAROUSEL';
 export type MusicHallSkinMode = 'preset' | 'custom';
+export type MusicLyricFormat = 'LRC' | 'PLAIN';
+export type MusicLyricStatus = 'DRAFT' | 'READY' | 'NEEDS_REVIEW';
 
 export interface MusicMedia {
   id: number;
@@ -15,6 +19,22 @@ export interface MusicMedia {
   fileType: 'AUDIO' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'OTHER';
   folderId?: number;
   deleted: boolean;
+}
+
+/**
+ * Embedded canonical media-tag projection returned with a music track.
+ *
+ * Detailed tag timestamps and descriptions remain available from the media-tag
+ * endpoints; the music library only needs the stable fields used for filtering,
+ * display, and tag editing.
+ */
+export interface MusicTagSummary {
+  id: number;
+  name: string;
+  slug: string;
+  color: string;
+  category: TagCategory;
+  usageCount: number;
 }
 
 export interface MusicTrack {
@@ -31,7 +51,11 @@ export interface MusicTrack {
   status: MusicTrackStatus;
   sortOrder: number;
   isFeatured: boolean;
+  isFavorite?: boolean;
   playCount: number;
+  playlistCount?: number;
+  tags?: MusicTagSummary[];
+  lyricAsset?: MusicLyricSummary;
   media: MusicMedia;
   createdAt?: string;
   updatedAt?: string;
@@ -50,6 +74,7 @@ export interface MusicPlaylist {
   displayOnProfile: boolean;
   carouselEnabled: boolean;
   randomEnabled: boolean;
+  isFavorite?: boolean;
   sortOrder: number;
   trackCount: number;
   tracks?: MusicTrack[];
@@ -84,7 +109,33 @@ export interface MusicLibrarySummary {
   playlistCount: number;
   mappedMediaCount: number;
   availableAudioCount: number;
+  favoriteTrackCount?: number;
+  favoritePlaylistCount?: number;
+  lyricCount?: number;
+  readyLyricCount?: number;
+  missingLyricCount?: number;
+  missingCoverCount?: number;
+  taggedTrackCount?: number;
   settings: MusicSettings;
+}
+
+export interface MusicLyricSummary {
+  id: number;
+  name: string;
+  format: MusicLyricFormat;
+  language: string;
+  sourceFileName?: string;
+  timingOffsetMs: number;
+  status: MusicLyricStatus;
+}
+
+export interface MusicLyric extends MusicLyricSummary {
+  content: string;
+  boundTrackId?: number;
+  boundTrackTitle?: string;
+  boundTrackArtist?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MusicAudioCandidate extends MusicMedia {
@@ -145,6 +196,21 @@ export interface MusicTrackRequest {
   status?: MusicTrackStatus;
   sortOrder?: number;
   isFeatured?: boolean;
+  isFavorite?: boolean;
+}
+
+export interface MusicLyricRequest {
+  name?: string;
+  content: string;
+  format?: MusicLyricFormat;
+  language?: string;
+  sourceFileName?: string;
+  timingOffsetMs?: number;
+  status?: MusicLyricStatus;
+}
+
+export interface MusicLyricBindingRequest {
+  trackId?: number;
 }
 
 export interface MusicPlaylistRequest {
@@ -157,5 +223,6 @@ export interface MusicPlaylistRequest {
   displayOnProfile: boolean;
   carouselEnabled: boolean;
   randomEnabled: boolean;
+  isFavorite?: boolean;
   sortOrder?: number;
 }

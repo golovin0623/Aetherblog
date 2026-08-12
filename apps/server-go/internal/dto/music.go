@@ -16,23 +16,62 @@ type MusicMediaVO struct {
 }
 
 type MusicTrackVO struct {
-	ID               int64        `json:"id"`
-	MediaFileID      int64        `json:"mediaFileId"`
-	Title            string       `json:"title"`
-	Artist           string       `json:"artist"`
-	Album            string       `json:"album"`
-	DurationSeconds  *int         `json:"durationSeconds,omitempty"`
-	CoverMediaFileID *int64       `json:"coverMediaFileId,omitempty"`
-	CoverURL         string       `json:"coverUrl,omitempty"`
-	Lyric            *string      `json:"lyric,omitempty"`
-	Source           string       `json:"source"`
-	Status           string       `json:"status"`
-	SortOrder        int          `json:"sortOrder"`
-	IsFeatured       bool         `json:"isFeatured"`
-	PlayCount        int64        `json:"playCount"`
-	Media            MusicMediaVO `json:"media"`
-	CreatedAt        *time.Time   `json:"createdAt"`
-	UpdatedAt        *time.Time   `json:"updatedAt"`
+	ID               int64                `json:"id"`
+	MediaFileID      int64                `json:"mediaFileId"`
+	Title            string               `json:"title"`
+	Artist           string               `json:"artist"`
+	Album            string               `json:"album"`
+	DurationSeconds  *int                 `json:"durationSeconds,omitempty"`
+	CoverMediaFileID *int64               `json:"coverMediaFileId,omitempty"`
+	CoverURL         string               `json:"coverUrl,omitempty"`
+	Lyric            *string              `json:"lyric,omitempty"`
+	Source           string               `json:"source"`
+	Status           string               `json:"status"`
+	SortOrder        int                  `json:"sortOrder"`
+	IsFeatured       bool                 `json:"isFeatured"`
+	IsFavorite       bool                 `json:"isFavorite"`
+	PlayCount        int64                `json:"playCount"`
+	PlaylistCount    int64                `json:"playlistCount"`
+	Tags             []MusicTagVO         `json:"tags"`
+	LyricAsset       *MusicLyricSummaryVO `json:"lyricAsset,omitempty"`
+	Media            MusicMediaVO         `json:"media"`
+	CreatedAt        *time.Time           `json:"createdAt"`
+	UpdatedAt        *time.Time           `json:"updatedAt"`
+}
+
+type MusicTagVO struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Slug       string `json:"slug"`
+	Color      string `json:"color"`
+	Category   string `json:"category"`
+	UsageCount int    `json:"usageCount"`
+}
+
+type MusicLyricSummaryVO struct {
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	Format         string  `json:"format"`
+	Language       string  `json:"language"`
+	SourceFileName *string `json:"sourceFileName,omitempty"`
+	TimingOffsetMs int     `json:"timingOffsetMs"`
+	Status         string  `json:"status"`
+}
+
+type MusicLyricVO struct {
+	ID               int64      `json:"id"`
+	Name             string     `json:"name"`
+	Content          string     `json:"content"`
+	Format           string     `json:"format"`
+	Language         string     `json:"language"`
+	SourceFileName   *string    `json:"sourceFileName,omitempty"`
+	TimingOffsetMs   int        `json:"timingOffsetMs"`
+	Status           string     `json:"status"`
+	BoundTrackID     *int64     `json:"boundTrackId,omitempty"`
+	BoundTrackTitle  *string    `json:"boundTrackTitle,omitempty"`
+	BoundTrackArtist *string    `json:"boundTrackArtist,omitempty"`
+	CreatedAt        *time.Time `json:"createdAt"`
+	UpdatedAt        *time.Time `json:"updatedAt"`
 }
 
 type MusicPlaylistVO struct {
@@ -48,6 +87,7 @@ type MusicPlaylistVO struct {
 	DisplayOnProfile bool           `json:"displayOnProfile"`
 	CarouselEnabled  bool           `json:"carouselEnabled"`
 	RandomEnabled    bool           `json:"randomEnabled"`
+	IsFavorite       bool           `json:"isFavorite"`
 	SortOrder        int            `json:"sortOrder"`
 	TrackCount       int64          `json:"trackCount"`
 	Tracks           []MusicTrackVO `json:"tracks,omitempty"`
@@ -73,12 +113,19 @@ type MusicSettingsVO struct {
 }
 
 type MusicLibrarySummaryVO struct {
-	TrackCount          int64           `json:"trackCount"`
-	ActiveTrackCount    int64           `json:"activeTrackCount"`
-	PlaylistCount       int64           `json:"playlistCount"`
-	MappedMediaCount    int64           `json:"mappedMediaCount"`
-	AvailableAudioCount int64           `json:"availableAudioCount"`
-	Settings            MusicSettingsVO `json:"settings"`
+	TrackCount            int64           `json:"trackCount"`
+	ActiveTrackCount      int64           `json:"activeTrackCount"`
+	PlaylistCount         int64           `json:"playlistCount"`
+	MappedMediaCount      int64           `json:"mappedMediaCount"`
+	AvailableAudioCount   int64           `json:"availableAudioCount"`
+	FavoriteTrackCount    int64           `json:"favoriteTrackCount"`
+	FavoritePlaylistCount int64           `json:"favoritePlaylistCount"`
+	LyricCount            int64           `json:"lyricCount"`
+	ReadyLyricCount       int64           `json:"readyLyricCount"`
+	MissingLyricCount     int64           `json:"missingLyricCount"`
+	MissingCoverCount     int64           `json:"missingCoverCount"`
+	TaggedTrackCount      int64           `json:"taggedTrackCount"`
+	Settings              MusicSettingsVO `json:"settings"`
 }
 
 type MusicAudioCandidateVO struct {
@@ -114,6 +161,21 @@ type MusicTrackRequest struct {
 	Status           string  `json:"status" validate:"omitempty,oneof=ACTIVE HIDDEN"`
 	SortOrder        int     `json:"sortOrder"`
 	IsFeatured       bool    `json:"isFeatured"`
+	IsFavorite       *bool   `json:"isFavorite"`
+}
+
+type MusicLyricRequest struct {
+	Name           string  `json:"name" validate:"omitempty,max=180"`
+	Content        string  `json:"content" validate:"required,max=200000"`
+	Format         string  `json:"format" validate:"omitempty,oneof=LRC PLAIN"`
+	Language       string  `json:"language" validate:"omitempty,max=32"`
+	SourceFileName *string `json:"sourceFileName" validate:"omitempty,max=255"`
+	TimingOffsetMs int     `json:"timingOffsetMs" validate:"min=-600000,max=600000"`
+	Status         string  `json:"status" validate:"omitempty,oneof=DRAFT READY NEEDS_REVIEW"`
+}
+
+type MusicLyricBindingRequest struct {
+	TrackID *int64 `json:"trackId" validate:"omitempty,min=1"`
 }
 
 type MusicImportMediaRequest struct {
@@ -145,6 +207,7 @@ type MusicPlaylistRequest struct {
 	DisplayOnProfile bool    `json:"displayOnProfile"`
 	CarouselEnabled  bool    `json:"carouselEnabled"`
 	RandomEnabled    bool    `json:"randomEnabled"`
+	IsFavorite       *bool   `json:"isFavorite"`
 	SortOrder        int     `json:"sortOrder"`
 }
 
