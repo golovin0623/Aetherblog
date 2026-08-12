@@ -104,6 +104,40 @@ describe('track curation readiness', () => {
     expect(state.score).toBe(0);
     expect(state.missing).toEqual(['metadata', 'artwork', 'tags', 'lyrics', 'playlist', 'publication']);
   });
+
+  it('treats metadata-less import fallbacks as incomplete metadata', () => {
+    const track = {
+      title: 'untitled',
+      artist: '未知艺术家',
+      album: '',
+      media: { originalName: 'untitled.mp3' },
+      tags: [],
+      playlistCount: 0,
+      status: 'ACTIVE',
+    } as unknown as MusicTrack;
+
+    const state = buildTrackCurationState(track);
+
+    expect(state.missing).toContain('metadata');
+  });
+
+  it('honors lyric review status before counting lyrics complete', () => {
+    const draftBoundTrack = {
+      title: 'Night Flight',
+      artist: 'Aether',
+      lyric: '[00:01.00]legacy',
+      lyricAsset: { id: 9, status: 'DRAFT' },
+    } as unknown as MusicTrack;
+    const reviewBoundTrack = {
+      title: 'Night Flight',
+      artist: 'Aether',
+      lyric: '[00:01.00]legacy',
+      lyricAsset: { id: 9, status: 'NEEDS_REVIEW' },
+    } as unknown as MusicTrack;
+
+    expect(buildTrackCurationState(draftBoundTrack).missing).toContain('lyrics');
+    expect(buildTrackCurationState(reviewBoundTrack).missing).toContain('lyrics');
+  });
 });
 
 describe('music overview fallback counts', () => {

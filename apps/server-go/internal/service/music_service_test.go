@@ -82,6 +82,27 @@ func musicTrackRowsWithIDAndThumbnail(trackID, mediaID int64, title string, thum
 	)
 }
 
+func musicTrackRowsWithLyricAsset(trackID, mediaID int64, title string, lyricContent *string, lyricStatus string) *sqlmock.Rows {
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	mime := "audio/mpeg"
+	folderID := int64(7)
+	lyricID := int64(31)
+	lyricFormat := "LRC"
+	lyricLanguage := "zh-Hans"
+	return sqlmock.NewRows([]string{
+		"id", "media_file_id", "title", "artist", "album", "duration_seconds",
+		"cover_media_file_id", "lyric", "source", "status", "sort_order", "is_featured",
+		"play_count", "created_at", "updated_at", "media_original_name", "media_file_url",
+		"media_file_size", "media_mime_type", "media_file_type", "media_folder_id", "media_deleted", "media_thumbnail_url",
+		"lyric_asset_id", "lyric_format", "lyric_language", "lyric_status",
+	}).AddRow(
+		trackID, mediaID, title, "Aether", "", nil, nil, lyricContent, "MEDIA_LIBRARY",
+		"ACTIVE", 0, false, int64(0), now, now, "night-flight.mp3", "/api/uploads/music/night-flight.mp3",
+		int64(4_096), mime, "AUDIO", folderID, false, nil,
+		lyricID, lyricFormat, lyricLanguage, lyricStatus,
+	)
+}
+
 func TestMusicServicePublicPlayerDisabledDoesNotLoadTracks(t *testing.T) {
 	svc, mock, cleanup := newMusicServiceMock(t)
 	defer cleanup()
@@ -354,6 +375,66 @@ func TestMusicServicePublicPlayerUsesPublicPlaylistTracks(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestMusicServicePublicPlayerOnlyExposesReadyLyricAssets(t *testing.T) {
+	readyLyric := "[00:01.00]已发布的歌词"
+
+	tests := []struct {
+		name      string
+		status    string
+		lyric     *string
+		wantLyric string
+	}{
+		{
+			name:      "draft lyric asset stays out of public projection",
+			status:    "DRAFT",
+			lyric:     nil,
+			wantLyric: "",
+		},
+		{
+			name:      "needs review lyric asset stays out of public projection",
+			status:    "NEEDS_REVIEW",
+			lyric:     nil,
+			wantLyric: "",
+		},
+		{
+			name:      "ready lyric asset is exposed",
+			status:    "READY",
+			lyric:     &readyLyric,
+			wantLyric: readyLyric,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, cleanup := newMusicServiceMock(t)
+			defer cleanup()
+			expectMusicSettings(mock, true)
+			mock.ExpectQuery(regexp.QuoteMeta(`SELECT p.id, p.name, p.slug`)).
+				WillReturnRows(musicPlaylistRows())
+			mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)`)).
+				WithArgs(int64(42)).
+				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
+			mock.ExpectQuery(regexp.QuoteMeta(`COALESCE(CASE WHEN ml.status='READY' THEN ml.content ELSE NULL END, t.lyric)`)).
+				WithArgs(int64(42), 100, 0).
+				WillReturnRows(musicTrackRowsWithLyricAsset(11, 99, "夜航", tt.lyric, tt.status))
+
+			player, err := svc.PublicPlayer(context.Background())
+			if err != nil {
+				t.Fatalf("PublicPlayer: %v", err)
+			}
+			if len(player.Tracks) != 1 {
+				t.Fatalf("tracks len = %d, want 1", len(player.Tracks))
+			}
+			if got := derefString(player.Tracks[0].Lyric); got != tt.wantLyric {
+				t.Fatalf("Lyric = %q, want %q", got, tt.wantLyric)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet expectations: %v", err)
+			}
+		})
 	}
 }
 

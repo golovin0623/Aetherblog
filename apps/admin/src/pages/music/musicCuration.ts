@@ -200,6 +200,8 @@ export function shiftLyricTimestamps(raw: string, deltaMilliseconds: number): st
     .join('\n');
 }
 
+const UNKNOWN_ARTIST_FALLBACKS = new Set(['', '未知艺术家', 'unknown artist']);
+
 function hasCuratedMetadata(track: CuratableMusicTrack): boolean {
   const title = track.title?.trim();
   const artist = track.artist?.trim();
@@ -207,6 +209,7 @@ function hasCuratedMetadata(track: CuratableMusicTrack): boolean {
   return Boolean(
     title &&
       artist &&
+      !UNKNOWN_ARTIST_FALLBACKS.has(artist.toLocaleLowerCase()) &&
       (!originalName || title.toLocaleLowerCase() !== originalName.toLocaleLowerCase())
   );
 }
@@ -235,10 +238,9 @@ export function buildTrackCurationState(track: CuratableMusicTrack): TrackCurati
     {
       key: 'lyrics',
       label: '歌词',
-      complete: Boolean(
-        track.lyricAsset?.status === 'READY' ||
-          track.lyric?.trim()
-      ),
+      complete: track.lyricAsset
+        ? track.lyricAsset.status === 'READY'
+        : Boolean(track.lyric?.trim()),
     },
     {
       key: 'playlist',

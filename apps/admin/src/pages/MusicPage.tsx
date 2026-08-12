@@ -1132,6 +1132,8 @@ export default function MusicPage() {
   } | null>(null);
   const settingsWriteLockRef = useRef(false);
   const deleteWriteLockRef = useRef(false);
+  const batchDeleteInFlightRef = useRef(false);
+  const batchPlaylistInFlightRef = useRef(false);
   const [activeTab, setActiveTab] = useState<MusicTab>('overview');
   const {
     queue,
@@ -1771,7 +1773,7 @@ export default function MusicPage() {
     mutationFn: ({ id, deleteMedia }: { id: number; deleteMedia: boolean }) =>
       musicService.deleteTrack(id, { deleteMedia }),
     onSuccess: (_response, { id }) => {
-      toast.success('歌曲已移除');
+      if (!batchDeleteInFlightRef.current) toast.success('歌曲已移除');
       removeQueueTrack(id);
       if (editingTrackIdRef.current === id) {
         editingTrackIdRef.current = null;
@@ -1783,7 +1785,9 @@ export default function MusicPage() {
       setPendingDelete(null);
       invalidateMusic();
     },
-    onError: (error) => toast.error(extractApiErrorMessage(error, '移除歌曲失败')),
+    onError: (error) => {
+      if (!batchDeleteInFlightRef.current) toast.error(extractApiErrorMessage(error, '移除歌曲失败'));
+    },
     onSettled: () => {
       deleteWriteLockRef.current = false;
     },
@@ -1930,6 +1934,7 @@ export default function MusicPage() {
     mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
       musicService.addTrackToPlaylist(playlistId, trackId),
     onSuccess: async (_data, { playlistId }) => {
+      if (batchPlaylistInFlightRef.current) return;
       toast.success('已加入歌单');
       if (selectedPlaylistIdRef.current === playlistId) setTrackToAdd('');
       try {
@@ -1944,7 +1949,108 @@ export default function MusicPage() {
       queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     },
-    onError: (error) => toast.error(extractApiErrorMessage(error, '加入歌单失败')),
+    onError: (error) => {
+      if (!batchPlaylistInFlightRef.current) toast.error(extractApiErrorMessage(error, '加入歌单失败'));
+    },
+  });
+
+  const batchPlaylistAddMutation = useMutation({
+    mutationFn: async ({ playlistId, trackIds }: { playlistId: number; trackIds: number[] }) => {
+      batchPlaylistInFlightRef.current = true;
+      try {
+        const results = await Promise.allSettled(
+          trackIds.map((trackId) => playlistTrackMutation.mutateAsync({ playlistId, trackId }))
+        );
+        return { playlistId, trackIds, results };
+      } finally {
+        batchPlaylistInFlightRef.current = false;
+      }
+    },
+    onSuccess: ({ playlistId, trackIds, results }) => {
+      const succeeded = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = trackIds.length - succeeded;
+      const playlist = playlists.find((item) => item.id === playlistId);
+      if (failedCount === 0) {
+        toast.success(`已批量将 ${succeeded} 首歌曲加入歌单「${playlist?.name ?? ''}」`);
+        setSelectedTrackIds([]);
+      } else {
+        setSelectedTrackIds(trackIds.filter((_id, index) => results[index].status === 'rejected'));
+        toast.error(`已加入 ${succeeded} 首，${failedCount} 首失败，失败歌曲保留在选中列表，请重试`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-detail', playlistId] });
+      queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '批量加入歌单失败')),
+  });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: async ({ trackIds }: { trackIds: number[] }) => {
+      batchDeleteInFlightRef.current = true;
+      try {
+        const results = await Promise.allSettled(
+          trackIds.map((id) => deleteTrackMutation.mutateAsync({ id, deleteMedia: false }))
+        );
+        return { trackIds, results };
+      } finally {
+        batchDeleteInFlightRef.current = false;
+      }
+    },
+    onSuccess: ({ trackIds, results }) => {
+      const succeeded = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = trackIds.length - succeeded;
+      if (failedCount === 0) {
+        toast.success(`已批量删除 ${succeeded} 首歌曲`);
+        setSelectedTrackIds([]);
+      } else {
+        setSelectedTrackIds(trackIds.filter((_id, index) => results[index].status === 'rejected'));
+        toast.error(`已删除 ${succeeded} 首，${failedCount} 首失败，失败歌曲保留在选中列表，请重试`);
+      }
+      invalidateMusic();
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '批量删除失败')),
+  });
+
+  const batchTagMutation = useMutation({
+    mutationFn: async ({ tagIds, trackIds }: { tagIds: number[]; trackIds: number[] }) => {
+      const resolvedTracks = tracks.filter((track) => trackIds.includes(track.id));
+      const unresolvedCount = trackIds.length - resolvedTracks.length;
+      const fileIds = resolvedTracks
+        .map((track) => track.mediaFileId)
+        .filter((fileId) => fileId > 0);
+      const results = await Promise.allSettled(
+        tagIds.map((tagId) => mediaTagService.batchTag(fileIds, tagId))
+      );
+      return {
+        tagIds,
+        resolvedTrackIds: resolvedTracks.map((track) => track.id),
+        fileIds,
+        unresolvedCount,
+        results,
+      };
+    },
+    onSuccess: ({ tagIds, resolvedTrackIds, fileIds, unresolvedCount, results }) => {
+      const succeeded = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = tagIds.length - succeeded;
+      if (failedCount === 0) {
+        toast.success(`已为 ${resolvedTrackIds.length} 首歌曲添加 ${tagIds.length} 个标签`);
+      } else {
+        toast.error(`已应用 ${succeeded}/${tagIds.length} 个标签，${failedCount} 个失败，请重试`);
+      }
+      if (unresolvedCount > 0) {
+        toast.error(`另有 ${unresolvedCount} 首不在当前页，未处理`);
+        setSelectedTrackIds((ids) => ids.filter((id) => !resolvedTrackIds.includes(id)));
+      } else {
+        setSelectedTrackIds([]);
+      }
+      for (const fileId of fileIds) {
+        queryClient.invalidateQueries({ queryKey: ['media-file-tags', fileId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['media-tags'] });
+      queryClient.invalidateQueries({ queryKey: ['music-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['music-summary'] });
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '批量添加标签失败')),
   });
 
   const removePlaylistTrackMutation = useMutation({
@@ -3079,25 +3185,12 @@ export default function MusicPage() {
       <BatchActionBar
         selectedCount={selectedTrackIds.length}
         onClearSelection={() => setSelectedTrackIds([])}
-        onBatchAddToPlaylist={() => {
-          if (playlists.length === 0) {
-            toast.error('请先创建一个歌单');
-            return;
-          }
-          const targetPlaylist = playlists[0];
-          for (const trackId of selectedTrackIds) {
-            playlistTrackMutation.mutate({ playlistId: targetPlaylist.id, trackId });
-          }
-          toast.success(`已批量将 ${selectedTrackIds.length} 首歌曲加入歌单「${targetPlaylist.name}」`);
-          setSelectedTrackIds([]);
-        }}
-        onBatchDelete={() => {
-          for (const trackId of selectedTrackIds) {
-            deleteTrackMutation.mutate({ id: trackId, deleteMedia: false });
-          }
-          toast.success(`已批量删除 ${selectedTrackIds.length} 首歌曲`);
-          setSelectedTrackIds([]);
-        }}
+        allPlaylists={playlists}
+        allTags={mediaTagsQuery.data?.data ?? []}
+        busy={batchTagMutation.isPending || batchPlaylistAddMutation.isPending || batchDeleteMutation.isPending}
+        onBatchAddTags={(tagIds) => batchTagMutation.mutate({ tagIds, trackIds: selectedTrackIds })}
+        onBatchAddToPlaylist={(playlistId) => batchPlaylistAddMutation.mutate({ playlistId, trackIds: selectedTrackIds })}
+        onBatchDelete={() => batchDeleteMutation.mutate({ trackIds: selectedTrackIds })}
       />
     </div>
   );

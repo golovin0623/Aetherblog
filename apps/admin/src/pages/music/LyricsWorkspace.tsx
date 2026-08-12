@@ -34,6 +34,7 @@ import type {
 import { toast } from 'sonner';
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useAdminMusicPlayerTimeline } from '@/components/music/AdminMusicPlayerProvider';
 import {
   AdminSectionCount,
   AdminSectionHeader,
@@ -133,6 +134,7 @@ export function LyricsWorkspace({
   const lyricImportRequestRef = useRef(0);
   const initializedRef = useRef(false);
   const previousDiscardTokenRef = useRef(discardToken);
+  const playerTimeline = useAdminMusicPlayerTimeline();
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | MusicLyricStatus>('ALL');
   const [bindingFilter, setBindingFilter] = useState<'ALL' | 'BOUND' | 'UNBOUND'>('ALL');
@@ -754,15 +756,18 @@ export function LyricsWorkspace({
                 <button
                   type="button"
                   onClick={() => {
+                    if (!Number.isFinite(playerTimeline.duration) || playerTimeline.duration <= 0) {
+                      toast.error('请先在播放器中播放这首歌，再进行打点');
+                      return;
+                    }
                     const lines = draft.content.split('\n');
-                    const now = new Date();
-                    const mockSeconds = now.getSeconds() + (now.getMilliseconds() / 1000);
+                    const playbackSeconds = Math.max(0, playerTimeline.progress);
                     // 找到第一个没有时间戳或首行进行打点演示
                     let synced = false;
                     const newLines = lines.map((l) => {
                       if (!synced && l.trim() && !/^\[\d{1,3}:/.test(l)) {
                         synced = true;
-                        return syncLineWithTimestamp(l, mockSeconds);
+                        return syncLineWithTimestamp(l, playbackSeconds);
                       }
                       return l;
                     });
@@ -770,7 +775,7 @@ export function LyricsWorkspace({
                       content: newLines.join('\n'),
                       format: 'LRC',
                     });
-                    toast.success(`已为当前行注入时间戳 ${formatTimeTag(mockSeconds)}`);
+                    toast.success(`已为当前行注入时间戳 ${formatTimeTag(playbackSeconds)}`);
                   }}
                   className={actionClass('primary')}
                   disabled={!draft.content.trim()}

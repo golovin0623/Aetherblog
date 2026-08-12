@@ -162,9 +162,21 @@ type MusicLyricRow struct {
 	UpdatedAt        *time.Time `db:"updated_at"`
 }
 
+const musicLyricProjectionAdmin = "COALESCE(ml.content, t.lyric)"
+const musicLyricProjectionPublic = "COALESCE(CASE WHEN ml.status='READY' THEN ml.content ELSE NULL END, t.lyric)"
+
+// musicTrackSelectFor 面向公开投影时只暴露 READY 状态的歌词资产内容,
+// 避免 DRAFT / NEEDS_REVIEW 歌词通过公开播放器接口泄漏给访客。
+func musicTrackSelectFor(publicOnly bool) string {
+	if publicOnly {
+		return strings.Replace(musicTrackSelect, musicLyricProjectionAdmin, musicLyricProjectionPublic, 1)
+	}
+	return musicTrackSelect
+}
+
 const musicTrackSelect = `
 	t.id, t.media_file_id, t.title, t.artist, t.album, t.duration_seconds,
-	t.cover_media_file_id, COALESCE(ml.content, t.lyric) AS lyric,
+	t.cover_media_file_id, ` + musicLyricProjectionAdmin + ` AS lyric,
 	t.source, t.status, t.sort_order, t.is_featured, t.is_favorite,
 	t.play_count,
 	(SELECT COUNT(*) FROM music_playlist_tracks playlist_membership WHERE playlist_membership.track_id=t.id) AS playlist_count,
@@ -475,7 +487,7 @@ func (r *MusicRepo) ListTracks(ctx context.Context, f MusicTrackFilter) ([]Music
 	}
 
 	query := fmt.Sprintf(`
-		SELECT `+musicTrackSelect+`
+		SELECT `+musicTrackSelectFor(f.PublicOnly)+`
 		%s
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d`, base, orderBy, idx, idx+1)
