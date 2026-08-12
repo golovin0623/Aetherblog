@@ -31,6 +31,9 @@ export function buildMusicTrackUpdate(
     status: changes.status ?? track.status,
     sortOrder: changes.sortOrder ?? track.sortOrder,
     isFeatured: changes.isFeatured ?? track.isFeatured,
+    isFavorite: hasOwn(changes, 'isFavorite')
+      ? changes.isFavorite
+      : track.isFavorite,
   };
 }
 
@@ -45,6 +48,7 @@ export function playlistToDraft(playlist: MusicPlaylist): PlaylistDraft {
     displayOnProfile: playlist.displayOnProfile,
     carouselEnabled: playlist.carouselEnabled,
     randomEnabled: playlist.randomEnabled,
+    isFavorite: playlist.isFavorite,
     sortOrder: playlist.sortOrder,
   };
 }

@@ -33,6 +33,13 @@ func (h *MusicHandler) MountAdmin(g *echo.Group) {
 	g.PUT("/tracks/:id", h.UpdateTrack)
 	g.DELETE("/tracks/:id", h.DeleteTrack)
 
+	g.GET("/lyrics", h.ListLyrics)
+	g.POST("/lyrics", h.CreateLyric)
+	g.GET("/lyrics/:id", h.GetLyric)
+	g.PUT("/lyrics/:id", h.UpdateLyric)
+	g.PUT("/lyrics/:id/binding", h.BindLyric)
+	g.DELETE("/lyrics/:id", h.DeleteLyric)
+
 	g.GET("/playlists", h.ListPlaylists)
 	g.POST("/playlists", h.CreatePlaylist)
 	g.GET("/playlists/:id", h.GetPlaylist)
@@ -84,10 +91,27 @@ func (h *MusicHandler) ListTracks(c echo.Context) error {
 		}
 		playlistID = &id
 	}
+	var tagID *int64
+	if v := c.QueryParam("tagId"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, "无效的标签ID")
+		}
+		tagID = &id
+	}
+	favorite, err := parseOptionalMusicBool(c.QueryParam("favorite"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "favorite 必须是 true 或 false")
+	}
 	pr, err := h.svc.ListTracks(c.Request().Context(), repository.MusicTrackFilter{
 		Keyword:    c.QueryParam("keyword"),
 		Status:     c.QueryParam("status"),
 		PlaylistID: playlistID,
+		TagID:      tagID,
+		TagState:   c.QueryParam("tagState"),
+		Favorite:   favorite,
+		LyricState: c.QueryParam("lyricState"),
+		CoverState: c.QueryParam("coverState"),
 		PageNum:    parseIntDefault(c.QueryParam("pageNum"), 1),
 		PageSize:   parseIntDefault(c.QueryParam("pageSize"), 20),
 	})
@@ -181,10 +205,109 @@ func (h *MusicHandler) DeleteTrack(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+func (h *MusicHandler) ListLyrics(c echo.Context) error {
+	bound, err := parseOptionalMusicBool(c.QueryParam("bound"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "bound 必须是 true 或 false")
+	}
+	var trackID *int64
+	if value := c.QueryParam("trackId"); value != "" {
+		id, parseErr := parseMusicID(value)
+		if parseErr != nil {
+			return response.FailWith(c, response.BadRequest, "无效的歌曲ID")
+		}
+		trackID = &id
+	}
+	result, err := h.svc.ListLyrics(c.Request().Context(), repository.MusicLyricFilter{
+		Keyword:  c.QueryParam("keyword"),
+		Status:   c.QueryParam("status"),
+		Bound:    bound,
+		TrackID:  trackID,
+		PageNum:  parseIntDefault(c.QueryParam("pageNum"), 1),
+		PageSize: parseIntDefault(c.QueryParam("pageSize"), 20),
+	})
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *MusicHandler) CreateLyric(c echo.Context) error {
+	var req dto.MusicLyricRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	lyric, err := h.svc.CreateLyric(c.Request().Context(), req)
+	if err != nil {
+		return h.respondMusicError(c, err)
+	}
+	return response.OK(c, lyric)
+}
+
+func (h *MusicHandler) GetLyric(c echo.Context) error {
+	id, err := parseMusicID(c.Param("id"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的歌词ID")
+	}
+	lyric, err := h.svc.GetLyric(c.Request().Context(), id)
+	if err != nil {
+		return h.respondMusicError(c, err)
+	}
+	return response.OK(c, lyric)
+}
+
+func (h *MusicHandler) UpdateLyric(c echo.Context) error {
+	id, err := parseMusicID(c.Param("id"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的歌词ID")
+	}
+	var req dto.MusicLyricRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	lyric, err := h.svc.UpdateLyric(c.Request().Context(), id, req)
+	if err != nil {
+		return h.respondMusicError(c, err)
+	}
+	return response.OK(c, lyric)
+}
+
+func (h *MusicHandler) BindLyric(c echo.Context) error {
+	id, err := parseMusicID(c.Param("id"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的歌词ID")
+	}
+	var req dto.MusicLyricBindingRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	lyric, err := h.svc.BindLyric(c.Request().Context(), id, req.TrackID)
+	if err != nil {
+		return h.respondMusicError(c, err)
+	}
+	return response.OK(c, lyric)
+}
+
+func (h *MusicHandler) DeleteLyric(c echo.Context) error {
+	id, err := parseMusicID(c.Param("id"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的歌词ID")
+	}
+	if err := h.svc.DeleteLyric(c.Request().Context(), id); err != nil {
+		return h.respondMusicError(c, err)
+	}
+	return response.OKEmpty(c)
+}
+
 func (h *MusicHandler) ListPlaylists(c echo.Context) error {
+	favorite, err := parseOptionalMusicBool(c.QueryParam("favorite"))
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "favorite 必须是 true 或 false")
+	}
 	pr, err := h.svc.ListPlaylists(c.Request().Context(), repository.MusicPlaylistFilter{
 		Status:     c.QueryParam("status"),
 		Visibility: c.QueryParam("visibility"),
+		Favorite:   favorite,
 		PageNum:    parseIntDefault(c.QueryParam("pageNum"), 1),
 		PageSize:   parseIntDefault(c.QueryParam("pageSize"), 20),
 	})
@@ -300,9 +423,11 @@ func (h *MusicHandler) PublicPlayer(c echo.Context) error {
 
 func (h *MusicHandler) respondMusicError(c echo.Context, err error) error {
 	switch {
-	case errors.Is(err, service.ErrMusicTrackNotFound), errors.Is(err, service.ErrMusicPlaylistNotFound):
+	case errors.Is(err, service.ErrMusicTrackNotFound),
+		errors.Is(err, service.ErrMusicPlaylistNotFound),
+		errors.Is(err, service.ErrMusicLyricNotFound):
 		return response.FailWith(c, response.NotFound, err.Error())
-	case errors.Is(err, service.ErrMusicMediaNotAudio):
+	case errors.Is(err, service.ErrMusicMediaNotAudio), errors.Is(err, service.ErrMusicLyricEmpty):
 		return response.FailWith(c, response.BadRequest, err.Error())
 	default:
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -314,4 +439,15 @@ func parseMusicID(raw string) (int64, error) {
 		return 0, strconv.ErrSyntax
 	}
 	return strconv.ParseInt(raw, 10, 64)
+}
+
+func parseOptionalMusicBool(raw string) (*bool, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
 }

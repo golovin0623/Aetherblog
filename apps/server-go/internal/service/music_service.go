@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -20,6 +21,8 @@ import (
 var (
 	ErrMusicTrackNotFound    = errors.New("歌曲不存在")
 	ErrMusicPlaylistNotFound = errors.New("歌单不存在")
+	ErrMusicLyricNotFound    = errors.New("歌词资产不存在")
+	ErrMusicLyricEmpty       = errors.New("歌词内容不能为空")
 	ErrMusicMediaNotAudio    = errors.New("请选择媒体库中的音频文件")
 )
 
@@ -91,12 +94,19 @@ func (s *MusicService) Summary(ctx context.Context) (*dto.MusicLibrarySummaryVO,
 		return nil, err
 	}
 	return &dto.MusicLibrarySummaryVO{
-		TrackCount:          counts.TrackCount,
-		ActiveTrackCount:    counts.ActiveTrackCount,
-		PlaylistCount:       counts.PlaylistCount,
-		MappedMediaCount:    counts.MappedMediaCount,
-		AvailableAudioCount: counts.AvailableAudioCount,
-		Settings:            *settings,
+		TrackCount:            counts.TrackCount,
+		ActiveTrackCount:      counts.ActiveTrackCount,
+		PlaylistCount:         counts.PlaylistCount,
+		MappedMediaCount:      counts.MappedMediaCount,
+		AvailableAudioCount:   counts.AvailableAudioCount,
+		FavoriteTrackCount:    counts.FavoriteTrackCount,
+		FavoritePlaylistCount: counts.FavoritePlaylistCount,
+		LyricCount:            counts.LyricCount,
+		ReadyLyricCount:       counts.ReadyLyricCount,
+		MissingLyricCount:     counts.MissingLyricCount,
+		MissingCoverCount:     counts.MissingCoverCount,
+		TaggedTrackCount:      counts.TaggedTrackCount,
+		Settings:              *settings,
 	}, nil
 }
 
@@ -260,6 +270,173 @@ func (s *MusicService) GetTrack(ctx context.Context, id int64) (*dto.MusicTrackV
 	return &vo, nil
 }
 
+var musicLyricTimestampPattern = regexp.MustCompile(`\[[0-9]{1,3}:[0-9]{1,2}(?:[.:][0-9]{1,3})?\]`)
+
+func inferMusicLyricFormat(content string) string {
+	if musicLyricTimestampPattern.MatchString(content) {
+		return "LRC"
+	}
+	return "PLAIN"
+}
+
+func normalizeMusicLyricSourceFileName(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func normalizeMusicLyricName(name string, sourceFileName *string) string {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		return name
+	}
+	if sourceFileName != nil {
+		base := strings.TrimSpace(strings.TrimSuffix(*sourceFileName, filepath.Ext(*sourceFileName)))
+		if base != "" {
+			return base
+		}
+	}
+	return "未命名歌词"
+}
+
+func normalizeMusicLyricModel(req dto.MusicLyricRequest, existing *repository.MusicLyricRow) (model.MusicLyric, error) {
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return model.MusicLyric{}, ErrMusicLyricEmpty
+	}
+	sourceFileName := normalizeMusicLyricSourceFileName(req.SourceFileName)
+	format := strings.ToUpper(strings.TrimSpace(req.Format))
+	if format == "" {
+		format = inferMusicLyricFormat(content)
+	}
+	language := strings.TrimSpace(req.Language)
+	if language == "" && existing != nil {
+		language = existing.Language
+	}
+	if language == "" {
+		language = "und"
+	}
+	status := strings.ToUpper(strings.TrimSpace(req.Status))
+	if status == "" && existing != nil {
+		status = existing.Status
+	}
+	if status == "" {
+		status = "DRAFT"
+	}
+	name := normalizeMusicLyricName(req.Name, sourceFileName)
+	if strings.TrimSpace(req.Name) == "" && existing != nil {
+		name = existing.Name
+	}
+	return model.MusicLyric{
+		Name:           name,
+		Content:        content,
+		Format:         format,
+		Language:       language,
+		SourceFileName: sourceFileName,
+		TimingOffsetMs: req.TimingOffsetMs,
+		Status:         status,
+	}, nil
+}
+
+func (s *MusicService) CreateLyric(ctx context.Context, req dto.MusicLyricRequest) (*dto.MusicLyricVO, error) {
+	lyric, err := normalizeMusicLyricModel(req, nil)
+	if err != nil {
+		return nil, err
+	}
+	id, err := s.repo.CreateLyric(ctx, lyric)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetLyric(ctx, id)
+}
+
+func (s *MusicService) GetLyric(ctx context.Context, id int64) (*dto.MusicLyricVO, error) {
+	row, err := s.repo.FindLyricByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, ErrMusicLyricNotFound
+	}
+	vo := musicLyricRowToVO(*row)
+	return &vo, nil
+}
+
+func (s *MusicService) ListLyrics(ctx context.Context, filter repository.MusicLyricFilter) (*response.PageResult, error) {
+	rows, total, err := s.repo.ListLyrics(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.MusicLyricVO, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, musicLyricRowToVO(row))
+	}
+	pageNum, pageSize := normalizeMusicServicePage(filter.PageNum, filter.PageSize)
+	result := response.NewPageResult(items, total, pageNum, pageSize)
+	return &result, nil
+}
+
+func (s *MusicService) UpdateLyric(ctx context.Context, id int64, req dto.MusicLyricRequest) (*dto.MusicLyricVO, error) {
+	existing, err := s.repo.FindLyricByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, ErrMusicLyricNotFound
+	}
+	lyric, err := normalizeMusicLyricModel(req, existing)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.UpdateLyric(ctx, id, lyric); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrMusicLyricNotFound
+		}
+		return nil, err
+	}
+	return s.GetLyric(ctx, id)
+}
+
+func (s *MusicService) BindLyric(ctx context.Context, lyricID int64, trackID *int64) (*dto.MusicLyricVO, error) {
+	if _, err := s.GetLyric(ctx, lyricID); err != nil {
+		return nil, err
+	}
+	if trackID == nil {
+		if err := s.repo.UnbindLyric(ctx, lyricID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrMusicLyricNotFound
+			}
+			return nil, err
+		}
+		return s.GetLyric(ctx, lyricID)
+	}
+	if _, err := s.GetTrack(ctx, *trackID); err != nil {
+		return nil, err
+	}
+	if err := s.repo.BindLyric(ctx, lyricID, *trackID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrMusicLyricNotFound
+		}
+		return nil, err
+	}
+	return s.GetLyric(ctx, lyricID)
+}
+
+func (s *MusicService) DeleteLyric(ctx context.Context, id int64) error {
+	if err := s.repo.DeleteLyric(ctx, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrMusicLyricNotFound
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *MusicService) UpdateTrack(ctx context.Context, id int64, req dto.MusicTrackRequest) (*dto.MusicTrackVO, error) {
 	existing, err := s.repo.FindTrackByID(ctx, id)
 	if err != nil {
@@ -281,6 +458,10 @@ func (s *MusicService) UpdateTrack(ctx context.Context, id int64, req dto.MusicT
 			return nil, err
 		}
 	}
+	isFavorite := existing.IsFavorite
+	if req.IsFavorite != nil {
+		isFavorite = *req.IsFavorite
+	}
 	err = s.repo.UpdateTrack(ctx, id, model.MusicTrack{
 		Title:            title,
 		Artist:           strings.TrimSpace(req.Artist),
@@ -291,6 +472,7 @@ func (s *MusicService) UpdateTrack(ctx context.Context, id int64, req dto.MusicT
 		Status:           status,
 		SortOrder:        req.SortOrder,
 		IsFeatured:       req.IsFeatured,
+		IsFavorite:       isFavorite,
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -386,6 +568,7 @@ func (s *MusicService) CreatePlaylist(ctx context.Context, req dto.MusicPlaylist
 		DisplayOnProfile: req.DisplayOnProfile,
 		CarouselEnabled:  req.CarouselEnabled,
 		RandomEnabled:    req.RandomEnabled,
+		IsFavorite:       req.IsFavorite != nil && *req.IsFavorite,
 		SortOrder:        req.SortOrder,
 	})
 	if err != nil {
@@ -415,6 +598,10 @@ func (s *MusicService) UpdatePlaylist(ctx context.Context, id int64, req dto.Mus
 	if status == "" {
 		status = existing.Status
 	}
+	isFavorite := existing.IsFavorite
+	if req.IsFavorite != nil {
+		isFavorite = *req.IsFavorite
+	}
 	err = s.repo.UpdatePlaylist(ctx, id, model.MusicPlaylist{
 		Name:             strings.TrimSpace(req.Name),
 		Description:      normalizeOptionalText(req.Description),
@@ -425,6 +612,7 @@ func (s *MusicService) UpdatePlaylist(ctx context.Context, id int64, req dto.Mus
 		DisplayOnProfile: req.DisplayOnProfile,
 		CarouselEnabled:  req.CarouselEnabled,
 		RandomEnabled:    req.RandomEnabled,
+		IsFavorite:       isFavorite,
 		SortOrder:        req.SortOrder,
 	})
 	if err != nil {
@@ -592,10 +780,56 @@ func derefString(p *string) string {
 	return *p
 }
 
+func decodeMusicTags(raw []byte) []dto.MusicTagVO {
+	if len(raw) == 0 {
+		return []dto.MusicTagVO{}
+	}
+	var tags []dto.MusicTagVO
+	if err := json.Unmarshal(raw, &tags); err != nil || tags == nil {
+		return []dto.MusicTagVO{}
+	}
+	return tags
+}
+
+func musicLyricRowToVO(row repository.MusicLyricRow) dto.MusicLyricVO {
+	return dto.MusicLyricVO{
+		ID:               row.ID,
+		Name:             row.Name,
+		Content:          row.Content,
+		Format:           row.Format,
+		Language:         row.Language,
+		SourceFileName:   row.SourceFileName,
+		TimingOffsetMs:   row.TimingOffsetMs,
+		Status:           row.Status,
+		BoundTrackID:     row.TrackID,
+		BoundTrackTitle:  row.BoundTrackTitle,
+		BoundTrackArtist: row.BoundTrackArtist,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
+	}
+}
+
 func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrackVO {
 	coverURL := publicMediaURLForID(row.CoverMediaFileID)
 	if coverURL == "" && row.MediaThumbnailURL != nil {
 		coverURL = *row.MediaThumbnailURL
+	}
+	var lyricAsset *dto.MusicLyricSummaryVO
+	if row.LyricAssetID != nil {
+		lyricAsset = &dto.MusicLyricSummaryVO{
+			ID:             *row.LyricAssetID,
+			Name:           derefString(row.LyricAssetName),
+			Format:         derefString(row.LyricFormat),
+			Language:       derefString(row.LyricLanguage),
+			SourceFileName: row.LyricSourceFileName,
+			TimingOffsetMs: func() int {
+				if row.LyricTimingOffsetMs == nil {
+					return 0
+				}
+				return *row.LyricTimingOffsetMs
+			}(),
+			Status: derefString(row.LyricStatus),
+		}
 	}
 	return dto.MusicTrackVO{
 		ID:               row.ID,
@@ -611,7 +845,11 @@ func (s *MusicService) trackRowToVO(row repository.MusicTrackRow) dto.MusicTrack
 		Status:           row.Status,
 		SortOrder:        row.SortOrder,
 		IsFeatured:       row.IsFeatured,
+		IsFavorite:       row.IsFavorite,
 		PlayCount:        row.PlayCount,
+		PlaylistCount:    row.PlaylistCount,
+		Tags:             decodeMusicTags(row.TagsJSON),
+		LyricAsset:       lyricAsset,
 		Media: dto.MusicMediaVO{
 			ID:           row.MediaFileID,
 			OriginalName: row.MediaOriginalName,
@@ -643,6 +881,7 @@ func (s *MusicService) playlistRowToVO(row repository.MusicPlaylistRow) dto.Musi
 		DisplayOnProfile: row.DisplayOnProfile,
 		CarouselEnabled:  row.CarouselEnabled,
 		RandomEnabled:    row.RandomEnabled,
+		IsFavorite:       row.IsFavorite,
 		SortOrder:        row.SortOrder,
 		TrackCount:       row.TrackCount,
 		CreatedAt:        row.CreatedAt,

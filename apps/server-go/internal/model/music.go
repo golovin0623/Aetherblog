@@ -15,6 +15,7 @@ type MusicTrack struct {
 	Status           string     `db:"status"`
 	SortOrder        int        `db:"sort_order"`
 	IsFeatured       bool       `db:"is_featured"`
+	IsFavorite       bool       `db:"is_favorite"`
 	PlayCount        int64      `db:"play_count"`
 	CreatedAt        *time.Time `db:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at"`
@@ -32,9 +33,24 @@ type MusicPlaylist struct {
 	DisplayOnProfile bool       `db:"display_on_profile"`
 	CarouselEnabled  bool       `db:"carousel_enabled"`
 	RandomEnabled    bool       `db:"random_enabled"`
+	IsFavorite       bool       `db:"is_favorite"`
 	SortOrder        int        `db:"sort_order"`
 	CreatedAt        *time.Time `db:"created_at"`
 	UpdatedAt        *time.Time `db:"updated_at"`
+}
+
+type MusicLyric struct {
+	ID             int64      `db:"id"`
+	TrackID        *int64     `db:"track_id"`
+	Name           string     `db:"name"`
+	Content        string     `db:"content"`
+	Format         string     `db:"format"`
+	Language       string     `db:"language"`
+	SourceFileName *string    `db:"source_file_name"`
+	TimingOffsetMs int        `db:"timing_offset_ms"`
+	Status         string     `db:"status"`
+	CreatedAt      *time.Time `db:"created_at"`
+	UpdatedAt      *time.Time `db:"updated_at"`
 }
 
 type MusicPlaylistTrack struct {

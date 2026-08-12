@@ -575,7 +575,8 @@ describe('admin music player state', () => {
     expect(adminStylesSource).toContain('left: calc(50% - 5.25rem);');
     expect(adminStylesSource).toContain('right: 1.5rem;');
     expect(adminStylesSource).toContain('left: 1.5rem;');
-    expect(adminStylesSource).toContain('top: 3.625rem;');
+    expect(adminStylesSource).toContain('top: auto;');
+    expect(adminStylesSource).toContain('bottom: 2rem;');
     expect(providerSource).toContain('const topActionControlClass =');
     expect(providerSource).not.toMatch(/const topActionControlClass = '[^']*hover:bg/);
     expect(adminStylesSource).toContain("data-admin-player-density='compact'] .admin-player-core-actions svg");

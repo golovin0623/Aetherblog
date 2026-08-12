@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useBlocker } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,8 +9,11 @@ import {
   Check,
   Disc3,
   ExternalLink,
+  FileText,
   FolderPlus,
   Headphones,
+  Heart,
+  Image,
   LibraryBig,
   ListMusic,
   ListPlus,
@@ -29,6 +32,8 @@ import {
   SkipBack,
   SkipForward,
   SlidersHorizontal,
+  Sparkles,
+  Tag,
   Trash2,
   Upload,
   Volume2,
@@ -47,6 +52,7 @@ import type {
   MusicPlaylistRequest,
   MusicSettings,
   MusicSettingsRequest,
+  MusicTagSummary,
   MusicTrack,
   MusicTrackRequest,
 } from '@aetherblog/types';
@@ -60,7 +66,20 @@ import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
 import { getMediaUrl, mediaService, type MediaItem } from '@/services/mediaService';
+import { mediaTagService } from '@/services/mediaTagService';
 import { musicService } from '@/services/musicService';
+import { CurationSignalChain } from './music/CurationSignalChain';
+import { LyricsWorkspace } from './music/LyricsWorkspace';
+import {
+  MusicCurationOverview,
+  type MusicOverviewLibraryFilter,
+} from './music/MusicCurationOverview';
+import { MusicTagEditor } from './music/MusicTagEditor';
+import { buildTrackCurationState } from './music/musicCuration';
+import { isCurrentMusicCoverUploadRequest } from './music/musicCoverArt';
+import { parseAudioMetadataFromFile } from './music/musicMetadataParser';
+import { extractPaletteFromImageUrl, type ExtractedColorPalette } from './music/musicColorExtractor';
+import { BatchActionBar } from './music/BatchActionBar';
 import {
   PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
   PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
@@ -82,11 +101,11 @@ import {
   type PlaylistDraft,
 } from './music/musicDrafts';
 
-type MusicTab = 'library' | 'playlists' | 'display';
+type MusicTab = 'overview' | 'library' | 'lyrics' | 'playlists' | 'display';
 type PendingTrackNavigation =
   | { kind: 'select'; track: MusicTrack }
   | { kind: 'close' }
-  | { kind: 'tab'; tab: MusicTab };
+  | { kind: 'tab'; tab: MusicTab; focusTrack?: MusicTrack };
 type PendingDelete =
   | { kind: 'track'; track: MusicTrack; deleteMedia: boolean }
   | { kind: 'playlist'; playlist: MusicPlaylist };
@@ -116,36 +135,8 @@ const MUSIC_HALL_FOLDER_NAME = '音乐大厅';
 const MUSIC_SETTINGS_QUERY_KEY = ['music-settings'] as const;
 const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba']);
 const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba';
-const MAX_LYRIC_FILE_BYTES = 512 * 1024;
-
-function summarizeLyricDraft(raw: string): {
-  timedLines: number;
-  plainLines: number;
-  invalidTimestampLines: number;
-} {
-  let timedLines = 0;
-  let plainLines = 0;
-  let invalidTimestampLines = 0;
-  const timestampPattern = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
-  const metadataPattern = /^\[(ar|ti|al|by|offset|re|ve):/i;
-
-  for (const rawLine of raw.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || metadataPattern.test(line)) continue;
-    timestampPattern.lastIndex = 0;
-    const matches = Array.from(line.matchAll(timestampPattern));
-    const validMatches = matches.filter((match) => Number(match[2]) < 60);
-    if (validMatches.length > 0) {
-      timedLines += validMatches.length;
-      if (validMatches.length !== matches.length) invalidTimestampLines += 1;
-      continue;
-    }
-    if (/\[\d{1,3}:/.test(line)) invalidTimestampLines += 1;
-    else plainLines += 1;
-  }
-
-  return { timedLines, plainLines, invalidTimestampLines };
-}
+const OVERVIEW_TRACK_PAGE_SIZE = 100;
+const GenerativeCoverStudio = lazy(() => import('./music/GenerativeCoverStudio'));
 
 function isCommonAudioFile(file: File): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -184,24 +175,62 @@ async function fetchAllPlaylistTracks(playlistId: number): Promise<MusicTrack[]>
   return tracks;
 }
 
+async function fetchAllMusicTracks(): Promise<MusicTrack[]> {
+  const firstPage = (await musicService.getTracks({
+    pageNum: 1,
+    pageSize: OVERVIEW_TRACK_PAGE_SIZE,
+  })).data;
+  const tracks = [...(firstPage.list ?? [])];
+  const missingPages = getMissingPlaylistMemberPageNumbers(
+    firstPage.total,
+    tracks.length,
+    OVERVIEW_TRACK_PAGE_SIZE
+  );
+  if (missingPages.length === 0) return tracks;
+  const remainingPages = await Promise.all(
+    missingPages.map(async (pageNum) =>
+      (await musicService.getTracks({
+        pageNum,
+        pageSize: OVERVIEW_TRACK_PAGE_SIZE,
+      })).data
+    )
+  );
+  for (const page of remainingPages) tracks.push(...(page.list ?? []));
+  return tracks;
+}
+
 const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
   {
+    key: 'overview',
+    label: '策展总览',
+    shortLabel: '总览',
+    description: '用完整度信号链定位曲库的策展缺口。',
+    icon: Sparkles,
+  },
+  {
     key: 'library',
-    label: '音乐大厅',
+    label: '歌曲库',
     shortLabel: '曲库',
-    description: '上传、扫描、试听与维护独立歌曲库。',
+    description: '上传、扫描、筛选并维护歌曲元数据、标签与封面。',
     icon: LibraryBig,
   },
   {
+    key: 'lyrics',
+    label: '歌词工作台',
+    shortLabel: '歌词',
+    description: '独立上传、修正、审核并绑定歌词资产。',
+    icon: FileText,
+  },
+  {
     key: 'playlists',
-    label: '歌单编排',
+    label: '歌单策展',
     shortLabel: '歌单',
-    description: '将歌曲映射到歌单，管理独立排序与展示策略。',
+    description: '编排曲序、封面、收藏与公开展示策略。',
     icon: ListMusic,
   },
   {
     key: 'display',
-    label: '展示播放',
+    label: '展示与播放',
     shortLabel: '展示',
     description: '配置个人卡片入口、随机与轮播播放策略。',
     icon: SlidersHorizontal,
@@ -381,8 +410,8 @@ function PlaylistTrackActionMenu({
   );
 }
 
-function flattenFolders(nodes: FolderTreeNode[] | undefined, depth = 0): SelectOption[] {
-  if (!nodes) return [];
+function flattenFolders(nodes?: FolderTreeNode[] | null, depth = 0): SelectOption[] {
+  if (!Array.isArray(nodes)) return [];
   return nodes.flatMap((node) => [
     {
       value: String(node.id),
@@ -475,87 +504,235 @@ function TogglePill({ checked, label, onClick }: { checked: boolean; label: stri
 }
 
 function CoverPicker({
+  ownerKey,
+  title,
   value,
   currentUrl,
   items,
   loading,
+  uploadFolderId,
   onChange,
 }: {
+  ownerKey: string;
+  title: string;
   value?: number;
   currentUrl?: string;
   items: MediaItem[];
   loading: boolean;
+  uploadFolderId?: number;
   onChange: (media?: MediaItem) => void;
 }) {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadRequestRef = useRef(0);
+  const currentOwnerKeyRef = useRef(ownerKey);
+  const [uploadedItem, setUploadedItem] = useState<MediaItem | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
+  currentOwnerKeyRef.current = ownerKey;
   const selectedItem = items.find((item) => item.id === value);
-  const previewUrl = selectedItem ? getMediaUrl(selectedItem) : currentUrl;
+  const previewItem = uploadedItem?.id === value ? uploadedItem : selectedItem;
+  const previewUrl = previewItem ? getMediaUrl(previewItem) : currentUrl;
+
+  useEffect(() => {
+    uploadRequestRef.current += 1;
+    setUploadedItem(null);
+    setUploading(false);
+    setStudioOpen(false);
+  }, [ownerKey]);
+
+  useEffect(() => {
+    return () => {
+      uploadRequestRef.current += 1;
+    };
+  }, []);
+
+  const uploadCover = async (file: File): Promise<boolean> => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件作为音乐封面');
+      return false;
+    }
+    const requestId = uploadRequestRef.current + 1;
+    uploadRequestRef.current = requestId;
+    const requestOwnerKey = ownerKey;
+    setUploading(true);
+    try {
+      const media = await mediaService.upload(file, undefined, {
+        folderId: uploadFolderId,
+      });
+      queryClient.invalidateQueries({ queryKey: ['music-cover-images'] });
+      if (!isCurrentMusicCoverUploadRequest({
+        requestId,
+        requestOwnerKey,
+        currentRequestId: uploadRequestRef.current,
+        currentOwnerKey: currentOwnerKeyRef.current,
+      })) {
+        toast.info(`封面已上传到媒体库，但当前编辑对象已切换，未自动应用：${file.name}`);
+        return false;
+      }
+      setUploadedItem(media);
+      onChange(media);
+      toast.success(`封面已上传：${file.name}`);
+      return true;
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, '上传封面失败'));
+      return false;
+    } finally {
+      if (isCurrentMusicCoverUploadRequest({
+        requestId,
+        requestOwnerKey,
+        currentRequestId: uploadRequestRef.current,
+        currentOwnerKey: currentOwnerKeyRef.current,
+      })) {
+        setUploading(false);
+      }
+    }
+  };
 
   return (
-    <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-[var(--radius-md)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_2%,transparent)] p-3">
-      <div className="flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-[var(--radius-sm)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]">
-        {previewUrl ? (
-          <img src={previewUrl} alt="当前封面" className="h-full w-full object-cover" />
-        ) : (
-          <Disc3 className="h-7 w-7 text-[var(--ink-muted)]" aria-hidden="true" />
-        )}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-bold text-[var(--ink-primary)]">从媒体库选择封面</p>
-          <Link to="/media" className="inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
-            管理图片
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+    <>
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 rounded-[var(--radius-md)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_2%,transparent)] p-3">
+        <div className="relative flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.75)]">
+          {previewUrl ? (
+            <img src={previewUrl} alt="当前封面" className="h-full w-full object-cover" />
+          ) : (
+            <Disc3 className="h-8 w-8 text-[var(--ink-muted)]" aria-hidden="true" />
+          )}
+          {uploading ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white" role="status">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="sr-only">正在上传封面</span>
+            </span>
+          ) : null}
         </div>
-        {loading ? (
-          <div className="flex min-h-12 items-center gap-2 text-xs text-[var(--ink-muted)]" role="status">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            正在载入图片
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-black text-[var(--ink-primary)]">封面工作流</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                直接上传、生成共振封面，或复用媒体库图片。
+              </p>
+            </div>
+            <Link to="/media" className="inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--aurora-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">
+              管理图片
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
           </div>
-        ) : items.length > 0 ? (
-          <div className="mt-1 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
-            {items.slice(0, 12).map((item) => {
-              const url = getMediaUrl(item);
-              const active = value === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onChange(item)}
-                  aria-pressed={active}
-                  aria-label={`选择封面 ${item.originalName}`}
-                  title={item.originalName}
-                  className={cn(
-                    'relative h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border transition-[border-color,opacity,transform] duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
-                    active
-                      ? 'border-[var(--aurora-1)] ring-1 ring-[var(--aurora-1)]'
-                      : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] opacity-75 hover:opacity-100'
-                  )}
-                >
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                  {active && (
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white" aria-hidden="true">
-                      <Check className="h-4 w-4" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (file) void uploadCover(file);
+            }}
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className={textButtonClass('primary')}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              上传图片
+            </button>
+            <button
+              type="button"
+              onClick={() => setStudioOpen(true)}
+              disabled={uploading}
+              className={textButtonClass()}
+            >
+              <Sparkles className="h-4 w-4" />
+              生成封面
+            </button>
+            {value ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadedItem(null);
+                  onChange(undefined);
+                }}
+                className={textButtonClass('danger')}
+              >
+                <X className="h-4 w-4" />
+                清除
+              </button>
+            ) : null}
           </div>
-        ) : (
-          <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">媒体库还没有图片，先前往媒体库上传封面。</p>
-        )}
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className="mt-1 min-h-11 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--ink-muted)] hover:text-[var(--signal-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-          >
-            清除封面
-          </button>
-        )}
+
+          {loading ? (
+            <div className="mt-2 flex min-h-12 items-center gap-2 text-xs text-[var(--ink-muted)]" role="status">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在载入媒体库图片
+            </div>
+          ) : items.length > 0 ? (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+              {items.slice(0, 12).map((item) => {
+                const url = getMediaUrl(item);
+                const active = value === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setUploadedItem(null);
+                      onChange(item);
+                    }}
+                    aria-pressed={active}
+                    aria-label={`选择封面 ${item.originalName}`}
+                    title={item.originalName}
+                    className={cn(
+                      'relative h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border transition-[border-color,opacity,transform] duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                      active
+                        ? 'border-[var(--aurora-1)] ring-1 ring-[var(--aurora-1)]'
+                        : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] opacity-75 hover:opacity-100'
+                    )}
+                  >
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                    {active ? (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white" aria-hidden="true">
+                        <Check className="h-4 w-4" />
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
+              媒体库还没有图片，可直接上传或生成第一张封面。
+            </p>
+          )}
+        </div>
       </div>
-    </div>
+
+      {studioOpen ? (
+        <Suspense
+          fallback={(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 backdrop-blur-sm" role="status">
+              <span className="surface-overlay inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-[var(--ink-primary)]">
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--aurora-1)]" />
+                正在载入生成式封面工作室
+              </span>
+            </div>
+          )}
+        >
+          <GenerativeCoverStudio
+            title={title}
+            onClose={() => setStudioOpen(false)}
+            onApply={async (blob, fileName) => {
+              const file = new File([blob], fileName, { type: 'image/png' });
+              return uploadCover(file);
+            }}
+          />
+        </Suspense>
+      ) : null}
+    </>
   );
 }
 
@@ -572,9 +749,12 @@ function TrackEditor({
   addingToPlaylist,
   onRequestDeleteWithMedia,
   onPreview,
+  onOpenLyrics,
+  onTagsChange,
   mobile = false,
   coverImages,
   coverImagesLoading,
+  uploadFolderId,
 }: {
   track: MusicTrack;
   onClose: () => void;
@@ -588,14 +768,31 @@ function TrackEditor({
   addingToPlaylist: boolean;
   onRequestDeleteWithMedia: (track: MusicTrack) => void;
   onPreview: (track: MusicTrack) => void;
+  onOpenLyrics: (track: MusicTrack) => void;
+  onTagsChange: (track: MusicTrack, tags: MusicTagSummary[]) => void;
   mobile?: boolean;
   coverImages: MediaItem[];
   coverImagesLoading: boolean;
+  uploadFolderId?: number;
 }) {
   const [draft, setDraft] = useState<MusicTrack>(track);
+  const [ambientPalette, setAmbientPalette] = useState<ExtractedColorPalette | null>(null);
+
+  useEffect(() => {
+    const coverUrl = draft.coverUrl || draft.media?.thumbnailUrl;
+    if (!coverUrl) {
+      setAmbientPalette(null);
+      return;
+    }
+    let active = true;
+    void extractPaletteFromImageUrl(coverUrl).then((palette) => {
+      if (active) setAmbientPalette(palette);
+    });
+    return () => {
+      active = false;
+    };
+  }, [draft.coverUrl, draft.media?.thumbnailUrl]);
   const [addPlaylistId, setAddPlaylistId] = useState('');
-  const lyricFileInputRef = useRef<HTMLInputElement>(null);
-  const lyricImportRequestRef = useRef(0);
   const selectedTrackRef = useRef(track);
   const sheetPanelRef = useRef<HTMLDivElement>(null);
   const sheetDragControls = useDragControls();
@@ -603,17 +800,9 @@ function TrackEditor({
   const prefersReducedMotion = useReducedMotion();
   selectedTrackRef.current = track;
   const mediaFileName = track.media?.originalName || '未加载媒体文件名';
-  const lyricSummary = useMemo(
-    () => summarizeLyricDraft(draft.lyric || ''),
-    [draft.lyric]
-  );
   useEffect(() => {
-    lyricImportRequestRef.current += 1;
     setDraft(selectedTrackRef.current);
     setAddPlaylistId('');
-    return () => {
-      lyricImportRequestRef.current += 1;
-    };
   }, [track.id]);
   useEffect(() => {
     if (!dirty) setDraft(track);
@@ -694,9 +883,18 @@ function TrackEditor({
       dragConstraints={{ top: 0, bottom: 0 }}
       dragElastic={{ top: 0, bottom: 0.55 }}
       onDragEnd={handleSheetDragEnd}
-      style={mobile ? { y: sheetY, touchAction: 'auto' } : undefined}
+      style={mobile ? { y: sheetY, touchAction: 'auto' } : (
+        ambientPalette
+          ? ({
+              '--ambient-glow-light': ambientPalette.ambientGlowLight,
+              '--ambient-glow-dark': ambientPalette.ambientGlowDark,
+              backgroundImage: 'var(--ambient-glow-light)',
+            } as CSSProperties)
+          : undefined
+      )}
       className={cn(
         panelClass,
+        'relative overflow-hidden transition-[background] duration-500',
         mobile
           ? 'flex max-h-[66dvh] w-full flex-col !rounded-b-none !rounded-t-[var(--radius-xl)] !p-0'
           : 'sticky top-4 space-y-4'
@@ -767,83 +965,67 @@ function TrackEditor({
           <input value={draft.album} onChange={(e) => updateDraft({ album: e.target.value })} className={inputClass()} />
         </label>
         <CoverPicker
+          ownerKey={`track:${track.id}`}
+          title={`${draft.artist || '未知艺术家'} · ${draft.title || '未命名歌曲'}`}
           value={draft.coverMediaFileId}
           currentUrl={draft.coverUrl}
           items={coverImages}
           loading={coverImagesLoading}
+          uploadFolderId={uploadFolderId}
           onChange={(media) => updateDraft({
             coverMediaFileId: media?.id,
             coverUrl: media ? getMediaUrl(media) : undefined,
           })}
         />
-        <div className="block">
-          <span className="mb-1.5 flex items-center justify-between gap-3">
-            <label htmlFor={`track-${track.id}-lyric`} className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌词 / LRC</label>
-            <button
-              type="button"
-              onClick={() => lyricFileInputRef.current?.click()}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 text-xs font-semibold text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              导入歌词
-            </button>
-            <input
-              ref={lyricFileInputRef}
-              type="file"
-              accept=".lrc,.txt,text/plain"
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (!file) return;
-                if (file.size > MAX_LYRIC_FILE_BYTES) {
-                  toast.error('歌词文件不能超过 512 KB');
-                  return;
-                }
-                const extension = file.name.split('.').pop()?.toLowerCase();
-                if (extension !== 'lrc' && extension !== 'txt' && file.type !== 'text/plain') {
-                  toast.error('请选择 .lrc 或 .txt 歌词文件');
-                  return;
-                }
-                const importRequestId = lyricImportRequestRef.current + 1;
-                lyricImportRequestRef.current = importRequestId;
-                try {
-                  const lyric = await file.text();
-                  if (importRequestId !== lyricImportRequestRef.current) return;
-                  if (!lyric.trim()) {
-                    toast.error('歌词文件为空');
-                    return;
-                  }
-                  updateDraft({ lyric });
-                  toast.success(`已导入歌词：${file.name}`);
-                } catch {
-                  toast.error('无法读取歌词文件，请确认文件编码为 UTF-8');
-                }
-              }}
-            />
-          </span>
-          <textarea
-            id={`track-${track.id}-lyric`}
-            value={draft.lyric || ''}
-            onChange={(e) => updateDraft({ lyric: e.target.value })}
-            className={cn(inputClass(), 'h-auto min-h-32 resize-y py-2 leading-6')}
-            placeholder="[00:12.00] 第一行歌词，也支持普通纯文本"
-            aria-describedby={`track-${track.id}-lyric-summary`}
-          />
-          <span
-            id={`track-${track.id}-lyric-summary`}
-            className={cn(
-              'mt-1.5 block text-xs leading-5',
-              lyricSummary.invalidTimestampLines > 0 ? 'text-[var(--signal-warn)]' : 'text-[var(--ink-muted)]'
-            )}
+        <section className="rounded-[var(--radius-md)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--ink-primary)_2%,transparent)] p-3">
+          <div className="flex items-start gap-3">
+            <span className={cn(
+              'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+              draft.lyricAsset
+                ? 'bg-[color-mix(in_oklch,var(--signal-success)_11%,transparent)] text-[var(--signal-success)]'
+                : 'bg-[color-mix(in_oklch,var(--signal-warn)_11%,transparent)] text-[var(--signal-warn)]'
+            )}>
+              <FileText className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-[var(--ink-primary)]">
+                {draft.lyricAsset?.name || (draft.lyric?.trim() ? '兼容歌词待迁移' : '尚未绑定歌词')}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
+                {draft.lyricAsset
+                  ? `${draft.lyricAsset.format} · ${draft.lyricAsset.language || 'und'} · ${
+                    draft.lyricAsset.status === 'READY'
+                      ? '可发布'
+                      : draft.lyricAsset.status === 'NEEDS_REVIEW'
+                        ? '需复核'
+                        : '草稿'
+                  }`
+                  : '歌词正文已从歌曲元数据中拆分，请在歌词工作台上传、校时、审核与绑定。'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenLyrics(track)}
+            className={cn(textButtonClass('primary'), 'mt-3 w-full')}
           >
-            {draft.lyric?.trim()
-              ? `${lyricSummary.timedLines} 行时间轴 · ${lyricSummary.plainLines} 行纯文本${lyricSummary.invalidTimestampLines > 0 ? ` · ${lyricSummary.invalidTimestampLines} 行时间格式需检查` : ''}`
-              : '支持标准 LRC 时间轴和纯文本；时间格式示例 [00:12.00]。'}
-          </span>
-        </div>
+            <Wand2 className="h-4 w-4" />
+            前往歌词工作台
+          </button>
+        </section>
+        <MusicTagEditor
+          fileId={track.mediaFileId}
+          initialTags={draft.tags}
+          onTagsChange={(tags) => {
+            setDraft((current) => ({ ...current, tags }));
+            onTagsChange(track, tags);
+          }}
+        />
+        <TogglePill
+          checked={Boolean(draft.isFavorite)}
+          label="策展人喜爱收藏"
+          onClick={() => updateDraft({ isFavorite: !draft.isFavorite })}
+        />
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
@@ -920,10 +1102,10 @@ function TrackEditor({
             artist: draft.artist,
             album: draft.album,
             coverMediaFileId: draft.coverMediaFileId,
-            lyric: draft.lyric,
             status: draft.status,
             sortOrder: draft.sortOrder,
             isFeatured: draft.isFeatured,
+            isFavorite: draft.isFavorite,
           }))}
           className={cn(textButtonClass('primary'), mobile && 'max-[360px]:min-w-0 max-[360px]:gap-1.5 max-[360px]:px-2 max-[360px]:text-xs')}
           disabled={saving || !dirty}
@@ -950,7 +1132,7 @@ export default function MusicPage() {
   } | null>(null);
   const settingsWriteLockRef = useRef(false);
   const deleteWriteLockRef = useRef(false);
-  const [activeTab, setActiveTab] = useState<MusicTab>('library');
+  const [activeTab, setActiveTab] = useState<MusicTab>('overview');
   const {
     queue,
     queueSource,
@@ -990,10 +1172,16 @@ export default function MusicPage() {
   const [trackPage, setTrackPage] = useState(1);
   const [trackPageSize, setTrackPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [trackKeyword, setTrackKeyword] = useState('');
+  const [trackFavoriteFilter, setTrackFavoriteFilter] = useState<'ALL' | 'FAVORITE' | 'NOT_FAVORITE'>('ALL');
+  const [trackTagId, setTrackTagId] = useState('');
+  const [trackTagState, setTrackTagState] = useState<'ALL' | 'WITH_TAGS' | 'WITHOUT_TAGS'>('ALL');
+  const [trackLyricState, setTrackLyricState] = useState<'ALL' | 'WITH_LYRIC' | 'WITHOUT_LYRIC' | 'NEEDS_REVIEW'>('ALL');
+  const [trackCoverState, setTrackCoverState] = useState<'ALL' | 'WITH_COVER' | 'WITHOUT_COVER'>('ALL');
   const [scanKeyword, setScanKeyword] = useState('');
   const [scanPage, setScanPage] = useState(1);
   const [scanPageSize, setScanPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<number[]>([]);
   const [newFolderName, setNewFolderName] = useState(MUSIC_HALL_FOLDER_NAME);
   const [uploadingLabel, setUploadingLabel] = useState('');
   const [editingTrack, setEditingTrack] = useState<MusicTrack | null>(null);
@@ -1001,6 +1189,9 @@ export default function MusicPage() {
   const trackDraftRevisionRef = useRef(0);
   const [trackDraftDirty, setTrackDraftDirty] = useState(false);
   const [pendingTrackNavigation, setPendingTrackNavigation] = useState<PendingTrackNavigation | null>(null);
+  const [lyricDraftDirty, setLyricDraftDirty] = useState(false);
+  const [lyricDiscardToken, setLyricDiscardToken] = useState(0);
+  const [lyricsFocusTrack, setLyricsFocusTrack] = useState<MusicTrack | undefined>();
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
   const selectedPlaylistIdRef = useRef<number | null>(null);
   const [playlistForm, setPlaylistForm] = useState({
@@ -1009,6 +1200,7 @@ export default function MusicPage() {
     displayOnProfile: true,
     carouselEnabled: true,
     randomEnabled: false,
+    isFavorite: false,
   });
   const [playlistDraft, setPlaylistDraft] = useState<PlaylistDraft>({
     name: '',
@@ -1019,6 +1211,7 @@ export default function MusicPage() {
     displayOnProfile: true,
     carouselEnabled: true,
     randomEnabled: false,
+    isFavorite: false,
     sortOrder: 0,
   });
   const [playlistDraftSourceId, setPlaylistDraftSourceId] = useState<number | null>(null);
@@ -1027,10 +1220,14 @@ export default function MusicPage() {
   const [pendingPlaylistSelectionId, setPendingPlaylistSelectionId] = useState<number | null>(null);
   const [trackToAdd, setTrackToAdd] = useState('');
   const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
+  const [playlistFavoriteFilter, setPlaylistFavoriteFilter] = useState<'ALL' | 'FAVORITE'>('ALL');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [isSettingsWriteBusy, setIsSettingsWriteBusy] = useState(false);
+  const deferredTrackKeyword = useDeferredValue(trackKeyword.trim());
   const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
-  const dirtyNavigationBlocker = useBlocker(trackDraftDirty || playlistDraftDirty);
+  const dirtyNavigationBlocker = useBlocker(
+    trackDraftDirty || playlistDraftDirty || lyricDraftDirty
+  );
   const activeConfirmation = pendingDelete
     ? 'delete'
     : pendingTrackNavigation
@@ -1046,14 +1243,16 @@ export default function MusicPage() {
   );
 
   useEffect(() => {
-    if (!trackDraftDirty && !playlistDraftDirty) return;
+    if (!trackDraftDirty && !playlistDraftDirty && !lyricDraftDirty) return;
     const protectUnsavedWork = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', protectUnsavedWork);
     return () => window.removeEventListener('beforeunload', protectUnsavedWork);
-  }, [playlistDraftDirty, trackDraftDirty]);
+  }, [lyricDraftDirty, playlistDraftDirty, trackDraftDirty]);
+
+
 
   const selectPlaylist = useCallback((playlistId: number | null) => {
     playlistDraftRevisionRef.current += 1;
@@ -1084,27 +1283,51 @@ export default function MusicPage() {
       setEditingTrack(null);
       return;
     }
+    if (lyricDraftDirty) {
+      setLyricDraftDirty(false);
+      setLyricDiscardToken((token) => token + 1);
+    }
+    if (playlistDraftDirty) {
+      playlistDraftRevisionRef.current += 1;
+      setPlaylistDraftDirty(false);
+    }
     // Leaving the library unmounts the editor sheet. Clear its state first so
     // the scroll lock, document-level focus trap and return-focus lifecycle all
     // run their cleanup instead of surviving as an invisible modal.
     editingTrackIdRef.current = null;
     setEditingTrack(null);
+    if (navigation.tab === 'lyrics') {
+      setLyricsFocusTrack(navigation.focusTrack);
+    }
     setActiveTab(navigation.tab);
-  }, []);
+  }, [lyricDraftDirty, playlistDraftDirty]);
   const requestTrackNavigation = useCallback((navigation: PendingTrackNavigation) => {
     if (navigation.kind === 'tab' && navigation.tab === activeTab) return;
     const targetTrackId = navigation.kind === 'select' ? navigation.track.id : null;
-    if (shouldConfirmTrackDraftDiscard({
+    const discardsTrackDraft = shouldConfirmTrackDraftDiscard({
       isDirty: trackDraftDirty,
       currentTrackId: editingTrackIdRef.current,
       targetTrackId,
-    })) {
+    });
+    const discardsLyricDraft = navigation.kind === 'tab'
+      && activeTab === 'lyrics'
+      && lyricDraftDirty;
+    const discardsPlaylistDraft = navigation.kind === 'tab'
+      && activeTab === 'playlists'
+      && playlistDraftDirty;
+    if (discardsTrackDraft || discardsLyricDraft || discardsPlaylistDraft) {
       setPendingTrackNavigation(navigation);
       return;
     }
     if (navigation.kind === 'select' && navigation.track.id === editingTrackIdRef.current) return;
     performTrackNavigation(navigation);
-  }, [activeTab, performTrackNavigation, trackDraftDirty]);
+  }, [
+    activeTab,
+    lyricDraftDirty,
+    performTrackNavigation,
+    playlistDraftDirty,
+    trackDraftDirty,
+  ]);
   useEffect(() => {
     const editorId = isMobile ? (editingTrack?.id ?? null) : null;
     if (editorId != null && previousMobileEditorIdRef.current == null) {
@@ -1196,13 +1419,37 @@ export default function MusicPage() {
     queryFn: async () => (await musicService.getSummary()).data,
   });
 
+  const overviewTracksQuery = useQuery({
+    queryKey: ['music-overview-tracks'],
+    enabled: activeTab === 'overview',
+    queryFn: fetchAllMusicTracks,
+    staleTime: 30_000,
+  });
+
   const tracksQuery = useQuery({
-    queryKey: ['music-tracks', trackPage, trackPageSize, trackKeyword],
+    queryKey: [
+      'music-tracks',
+      trackPage,
+      trackPageSize,
+      deferredTrackKeyword,
+      trackFavoriteFilter,
+      trackTagId,
+      trackTagState,
+      trackLyricState,
+      trackCoverState,
+    ],
     queryFn: async () =>
       (await musicService.getTracks({
         pageNum: trackPage,
         pageSize: trackPageSize,
-        keyword: trackKeyword || undefined,
+        keyword: deferredTrackKeyword || undefined,
+        favorite: trackFavoriteFilter === 'ALL'
+          ? undefined
+          : trackFavoriteFilter === 'FAVORITE',
+        tagId: trackTagId ? Number(trackTagId) : undefined,
+        tagState: trackTagState === 'ALL' ? undefined : trackTagState,
+        lyricState: trackLyricState === 'ALL' ? undefined : trackLyricState,
+        coverState: trackCoverState === 'ALL' ? undefined : trackCoverState,
       })).data,
   });
 
@@ -1220,6 +1467,12 @@ export default function MusicPage() {
   const playlistsQuery = useQuery({
     queryKey: ['music-playlists'],
     queryFn: async () => (await musicService.getPlaylists({ pageNum: 1, pageSize: 100 })).data,
+  });
+
+  const mediaTagsQuery = useQuery({
+    queryKey: ['media-tags'],
+    queryFn: () => mediaTagService.getAll(),
+    staleTime: 60_000,
   });
 
   const foldersQuery = useQuery({
@@ -1268,8 +1521,41 @@ export default function MusicPage() {
     setCarouselIntervalDraft(String(settingsQuery.data.carouselIntervalSeconds));
   }, [carouselIntervalDirty, settingsQuery.data]);
   const tracks = tracksQuery.data?.list ?? [];
+
+  useEffect(() => {
+    const handleGlobalMusicShortcuts = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        activeConfirmation != null
+      ) {
+        return;
+      }
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        if (currentTrack) {
+          void togglePlayback();
+        } else if (tracks.length > 0) {
+          playSingle(tracks[0]);
+        }
+      } else if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="搜索歌曲"]');
+        searchInput?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalMusicShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalMusicShortcuts);
+  }, [activeConfirmation, currentTrack, isPlaying, togglePlayback, tracks]);
   const playlistTrackCandidates = playlistTrackCandidatesQuery.data?.list ?? [];
   const playlists = playlistsQuery.data?.list ?? [];
+  const visiblePlaylists = playlistFavoriteFilter === 'FAVORITE'
+    ? playlists.filter((playlist) => playlist.isFavorite)
+    : playlists;
   const selectedPlaylist = playlists.find((item) => item.id === selectedPlaylistId);
   const folderOptions = useMemo<SelectOption[]>(
     () => flattenFolders(foldersQuery.data).filter((option) => option.value !== '1'),
@@ -1282,6 +1568,34 @@ export default function MusicPage() {
       description: `${item.trackCount} 首 · ${item.visibility === 'PUBLIC' ? '公开' : '私有'}`,
     })),
     [playlists]
+  );
+  const musicTagFilterOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: '__all__', label: '全部标签' },
+      { value: '__untagged__', label: '未打标签' },
+      { value: '__tagged__', label: '已有标签' },
+      ...(Array.isArray(mediaTagsQuery.data?.data) ? mediaTagsQuery.data.data : Array.isArray(mediaTagsQuery.data) ? mediaTagsQuery.data : []).map((tag) => ({
+        value: `tag:${tag.id}`,
+        label: tag.name,
+        description: `${tag.usageCount ?? 0} 个媒体文件`,
+      })),
+    ],
+    [mediaTagsQuery.data]
+  );
+  const trackTagFilterValue = trackTagId
+    ? `tag:${trackTagId}`
+    : trackTagState === 'WITHOUT_TAGS'
+      ? '__untagged__'
+      : trackTagState === 'WITH_TAGS'
+        ? '__tagged__'
+        : '__all__';
+  const hasTrackFilters = Boolean(
+    trackKeyword.trim()
+      || trackFavoriteFilter !== 'ALL'
+      || trackTagId
+      || trackTagState !== 'ALL'
+      || trackLyricState !== 'ALL'
+      || trackCoverState !== 'ALL'
   );
   const scanQuery = useQuery({
     queryKey: ['music-scan', settings.mediaFolderId, scanKeyword, scanPage, scanPageSize],
@@ -1340,8 +1654,11 @@ export default function MusicPage() {
 
   const invalidateMusic = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['music-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['music-overview-tracks'] });
     queryClient.invalidateQueries({ queryKey: ['music-settings'] });
     queryClient.invalidateQueries({ queryKey: ['music-tracks'] });
+    queryClient.invalidateQueries({ queryKey: ['music-lyrics'] });
+    queryClient.invalidateQueries({ queryKey: ['music-lyric-for-track'] });
     queryClient.invalidateQueries({ queryKey: ['music-track-candidates'] });
     queryClient.invalidateQueries({ queryKey: ['music-scan'] });
     queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
@@ -1432,6 +1749,24 @@ export default function MusicPage() {
     onError: (error) => toast.error(extractApiErrorMessage(error, '更新歌曲失败')),
   });
 
+  const trackFavoriteMutation = useMutation({
+    mutationFn: (track: MusicTrack) =>
+      musicService.updateTrack(
+        track.id,
+        buildMusicTrackUpdate(track, { isFavorite: !track.isFavorite })
+      ),
+    onSuccess: (response) => {
+      const updated = response.data;
+      toast.success(updated.isFavorite ? '已加入喜爱歌曲' : '已取消喜爱歌曲');
+      replaceQueueTrack(updated);
+      if (editingTrackIdRef.current === updated.id && !trackDraftDirty) {
+        setEditingTrack(updated);
+      }
+      invalidateMusic();
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '更新歌曲收藏失败')),
+  });
+
   const deleteTrackMutation = useMutation({
     mutationFn: ({ id, deleteMedia }: { id: number; deleteMedia: boolean }) =>
       musicService.deleteTrack(id, { deleteMedia }),
@@ -1495,6 +1830,7 @@ export default function MusicPage() {
         displayOnProfile: playlistForm.displayOnProfile,
         carouselEnabled: playlistForm.carouselEnabled,
         randomEnabled: playlistForm.randomEnabled,
+        isFavorite: playlistForm.isFavorite,
         visibility: 'PUBLIC',
         status: 'ACTIVE',
       }),
@@ -1539,6 +1875,27 @@ export default function MusicPage() {
       invalidateMusic();
     },
     onError: (error) => toast.error(extractApiErrorMessage(error, '保存歌单失败')),
+  });
+
+  const playlistFavoriteMutation = useMutation({
+    mutationFn: (playlist: MusicPlaylist) =>
+      musicService.updatePlaylist(
+        playlist.id,
+        buildMusicPlaylistUpdate({
+          ...playlistToDraft(playlist),
+          isFavorite: !playlist.isFavorite,
+        }, playlist.name)
+      ),
+    onSuccess: (response) => {
+      const updated = response.data;
+      toast.success(updated.isFavorite ? '已加入喜爱歌单' : '已取消喜爱歌单');
+      if (selectedPlaylistIdRef.current === updated.id && !playlistDraftDirty) {
+        setPlaylistDraft(playlistToDraft(updated));
+        setPlaylistDraftSourceId(updated.id);
+      }
+      invalidateMusic();
+    },
+    onError: (error) => toast.error(extractApiErrorMessage(error, '更新歌单收藏失败')),
   });
 
   const deletePlaylistMutation = useMutation({
@@ -1678,6 +2035,7 @@ export default function MusicPage() {
           displayOnProfile: target.displayOnProfile,
           carouselEnabled: target.carouselEnabled,
           randomEnabled: target.randomEnabled,
+          isFavorite: target.isFavorite,
           sortOrder: target.sortOrder,
         });
       }
@@ -1708,6 +2066,7 @@ export default function MusicPage() {
   const isPlaylistWriteBusy =
     createPlaylistMutation.isPending ||
     updatePlaylistMutation.isPending ||
+    playlistFavoriteMutation.isPending ||
     deletePlaylistMutation.isPending ||
     playlistTrackMutation.isPending ||
     removePlaylistTrackMutation.isPending ||
@@ -1807,6 +2166,17 @@ export default function MusicPage() {
     });
   };
 
+  const openLibraryWithFilter = (filter: MusicOverviewLibraryFilter = {}) => {
+    setTrackKeyword('');
+    setTrackFavoriteFilter(filter.favorite ?? 'ALL');
+    setTrackLyricState(filter.lyricState ?? 'ALL');
+    setTrackCoverState(filter.coverState ?? 'ALL');
+    setTrackTagState(filter.tagState ?? 'ALL');
+    setTrackTagId('');
+    setTrackPage(1);
+    requestTrackNavigation({ kind: 'tab', tab: 'library' });
+  };
+
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (!settings.mediaFolderId) {
@@ -1820,9 +2190,20 @@ export default function MusicPage() {
       }
       try {
         setUploadingLabel(file.name);
+        const meta = await parseAudioMetadataFromFile(file);
         const media = await mediaService.upload(file, undefined, { folderId: settings.mediaFolderId });
-        await musicService.importMedia({ mediaFileId: media.id });
-        toast.success(`上传并纳入曲库：${file.name}`);
+        const imported = await musicService.importMedia({ mediaFileId: media.id });
+        if (imported?.data?.id && (meta.title || meta.artist || meta.album)) {
+          const trackId = imported.data.id;
+          await musicService.updateTrack(trackId, {
+            title: meta.title || imported.data.title,
+            artist: meta.artist || imported.data.artist,
+            album: meta.album || imported.data.album,
+            status: imported.data.status,
+            sortOrder: imported.data.sortOrder,
+          });
+        }
+        toast.success(`上传并自动解析入库：${meta.title || file.name}`);
       } catch (error) {
         toast.error(extractApiErrorMessage(error, `上传失败：${file.name}`));
       } finally {
@@ -1866,9 +2247,21 @@ export default function MusicPage() {
       addingToPlaylist={playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
       onRequestDeleteWithMedia={(track) => setPendingDelete({ kind: 'track', track, deleteMedia: true })}
       onPreview={playSingle}
+      onOpenLyrics={(track) => requestTrackNavigation({
+        kind: 'tab',
+        tab: 'lyrics',
+        focusTrack: track,
+      })}
+      onTagsChange={(track, tags) => {
+        if (editingTrackIdRef.current !== track.id) return;
+        setEditingTrack((current) => current?.id === track.id
+          ? { ...current, tags }
+          : current);
+      }}
       mobile={mobile}
       coverImages={coverImagesQuery.data?.list ?? []}
       coverImagesLoading={coverImagesQuery.isLoading}
+      uploadFolderId={settings.mediaFolderId}
     />
   ) : null;
 
@@ -2150,6 +2543,16 @@ export default function MusicPage() {
     </div>
   );
 
+  const resetTrackFilters = () => {
+    setTrackKeyword('');
+    setTrackFavoriteFilter('ALL');
+    setTrackTagId('');
+    setTrackTagState('ALL');
+    setTrackLyricState('ALL');
+    setTrackCoverState('ALL');
+    setTrackPage(1);
+  };
+
   const renderLibrary = () => (
     <div className="space-y-4">
       {!settings.mediaFolderId && renderDirectoryGuard()}
@@ -2212,6 +2615,104 @@ export default function MusicPage() {
               正在上传并纳入曲库：<span className="text-[var(--ink-primary)]">{uploadingLabel}</span>
             </p>
           )}
+          <div className="border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] pt-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.8fr)_minmax(190px,1fr)_minmax(160px,0.9fr)_minmax(150px,0.8fr)_auto]">
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                  喜爱
+                </span>
+                <Select
+                  value={trackFavoriteFilter}
+                  onValueChange={(value) => {
+                    setTrackFavoriteFilter(value as typeof trackFavoriteFilter);
+                    setTrackPage(1);
+                  }}
+                  options={[
+                    { value: 'ALL', label: '全部歌曲' },
+                    { value: 'FAVORITE', label: '已喜爱' },
+                    { value: 'NOT_FAVORITE', label: '未喜爱' },
+                  ]}
+                  prefix={<Heart />}
+                  ariaLabel="按喜爱状态筛选歌曲"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                  标签
+                </span>
+                <Select
+                  value={trackTagFilterValue}
+                  onValueChange={(value) => {
+                    setTrackTagId(value.startsWith('tag:') ? value.slice(4) : '');
+                    setTrackTagState(
+                      value === '__untagged__'
+                        ? 'WITHOUT_TAGS'
+                        : value === '__tagged__'
+                          ? 'WITH_TAGS'
+                          : 'ALL'
+                    );
+                    setTrackPage(1);
+                  }}
+                  options={musicTagFilterOptions}
+                  prefix={<Tag />}
+                  ariaLabel="按媒体标签筛选歌曲"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                  歌词
+                </span>
+                <Select
+                  value={trackLyricState}
+                  onValueChange={(value) => {
+                    setTrackLyricState(value as typeof trackLyricState);
+                    setTrackPage(1);
+                  }}
+                  options={[
+                    { value: 'ALL', label: '全部歌词状态' },
+                    { value: 'WITH_LYRIC', label: '已有歌词' },
+                    { value: 'WITHOUT_LYRIC', label: '缺歌词' },
+                    { value: 'NEEDS_REVIEW', label: '歌词需复核' },
+                  ]}
+                  prefix={<FileText />}
+                  ariaLabel="按歌词状态筛选歌曲"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--ink-muted)]">
+                  封面
+                </span>
+                <Select
+                  value={trackCoverState}
+                  onValueChange={(value) => {
+                    setTrackCoverState(value as typeof trackCoverState);
+                    setTrackPage(1);
+                  }}
+                  options={[
+                    { value: 'ALL', label: '全部封面状态' },
+                    { value: 'WITH_COVER', label: '已有封面' },
+                    { value: 'WITHOUT_COVER', label: '缺封面' },
+                  ]}
+                  prefix={<Image />}
+                  ariaLabel="按封面状态筛选歌曲"
+                />
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={resetTrackFilters}
+                  className={cn(textButtonClass(), 'w-full xl:w-auto')}
+                  disabled={!hasTrackFilters}
+                >
+                  <RotateCw className="h-4 w-4" />
+                  重置筛选
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[var(--ink-muted)]">
+              筛选直接对应策展缺口，可从总览下钻后继续组合搜索、标签、歌词与封面状态。
+            </p>
+          </div>
         </div>
 
         <div className={cn('grid grid-cols-1 gap-4', editingTrack && 'xl:grid-cols-[minmax(0,1fr)_360px]')}>
@@ -2227,55 +2728,203 @@ export default function MusicPage() {
               <div className="p-6 text-sm text-[var(--ink-muted)]">正在加载歌曲库...</div>
             ) : tracks.length === 0 ? (
               <div className="p-6 text-sm leading-6 text-[var(--ink-muted)]">
-                曲库还是空的。<span className="text-[var(--ink-secondary)]">上传音频</span>或在下方「媒体库音频扫描」纳入曲库;入库后点歌曲「加入歌单」,再到「歌单编排」把歌单「设为公开」即可对外展示。
-              </div>
-            ) : (
-              tracks.map((track) => (
-                <div
-                  key={track.id}
-                  className={cn(
-                    'grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
-                    editingTrack?.id === track.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => playSingle(track)}
-                    className={iconButtonClass(currentTrack?.id === track.id, 'primary')}
-                    aria-label={currentTrack?.id === track.id && isPlaying ? `暂停 ${track.title}` : `播放 ${track.title}`}
-                  >
-                    {currentTrack?.id === track.id && isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => requestTrackNavigation({ kind: 'select', track })}
-                    className="flex min-h-11 min-w-0 flex-col justify-center rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                  >
-                    <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
-                    <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">
-                      {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media?.fileSize ?? 0)}
-                    </p>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <span className={cn(
-                      'hidden rounded-full px-2 py-1 text-xs font-semibold sm:inline-flex',
-                      track.status === 'ACTIVE'
-                        ? 'bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
-                        : 'bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-muted)]'
-                    )}>
-                      {track.status === 'ACTIVE' ? '展示' : '隐藏'}
-                    </span>
+                {hasTrackFilters ? (
+                  <>
+                    <p className="font-semibold text-[var(--ink-primary)]">没有符合当前策展筛选的歌曲。</p>
+                    <p className="mt-1">可以调整搜索条件，或重置筛选查看完整曲库。</p>
                     <button
                       type="button"
-                      onClick={() => setPendingDelete({ kind: 'track', track, deleteMedia: false })}
-                      className={iconButtonClass(false, 'danger')}
-                      aria-label={`移除 ${track.title}`}
+                      onClick={resetTrackFilters}
+                      className={cn(textButtonClass('primary'), 'mt-4')}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <RotateCw className="h-4 w-4" />
+                      重置筛选
                     </button>
+                  </>
+                ) : (
+                  <>
+                    曲库还是空的。<span className="text-[var(--ink-secondary)]">上传音频</span>或在下方「媒体库音频扫描」纳入曲库；入库后补齐元数据、封面、标签、歌词与歌单，即可进入完整发布链路。
+                  </>
+                )}
+              </div>
+            ) : (
+              tracks.map((track) => {
+                const curationState = buildTrackCurationState(track);
+                const artworkUrl = track.coverUrl || track.media?.thumbnailUrl;
+                const isCurrentTrack = currentTrack?.id === track.id;
+                const favoriteBlockedByDraft =
+                  editingTrackIdRef.current === track.id && trackDraftDirty;
+                const favoritePending =
+                  trackFavoriteMutation.isPending
+                  && trackFavoriteMutation.variables?.id === track.id;
+                const lyricLabel = track.lyricAsset
+                  ? track.lyricAsset.status === 'READY'
+                    ? '歌词可发布'
+                    : track.lyricAsset.status === 'NEEDS_REVIEW'
+                      ? '歌词需复核'
+                      : '歌词草稿'
+                  : track.lyric?.trim()
+                    ? '兼容歌词'
+                    : '缺歌词';
+                const lyricReady = track.lyricAsset?.status === 'READY' || Boolean(track.lyric?.trim());
+                const visibleTags = track.tags?.slice(0, 3) ?? [];
+
+                const isTrackSelected = selectedTrackIds.includes(track.id);
+                return (
+                  <div
+                    key={track.id}
+                    className={cn(
+                      'grid grid-cols-[28px_64px_minmax(0,1fr)] items-start gap-3 px-4 py-4 transition-colors [contain-intrinsic-size:auto_112px] [content-visibility:auto] sm:grid-cols-[28px_64px_minmax(0,1fr)_auto]',
+                      'hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
+                      isTrackSelected && 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]',
+                      editingTrack?.id === track.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
+                    )}
+                  >
+                    <div className="flex h-16 items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={isTrackSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedTrackIds((prev) =>
+                            prev.includes(track.id)
+                              ? prev.filter((id) => id !== track.id)
+                              : [...prev, track.id]
+                          );
+                        }}
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-800/80 text-[var(--aurora-1)] focus:ring-[var(--aurora-1)] cursor-pointer"
+                        aria-label={`选择歌曲 ${track.title}`}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => playSingle(track)}
+                      className="group relative h-16 w-16 overflow-hidden rounded-[var(--radius-md)] bg-[radial-gradient(circle_at_50%_38%,color-mix(in_oklch,var(--aurora-1)_24%,var(--bg-raised)),color-mix(in_oklch,var(--bg-void)_88%,var(--aurora-1)_12%))] shadow-[0_16px_34px_-24px_rgba(0,0,0,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                      aria-label={isCurrentTrack && isPlaying ? `暂停 ${track.title}` : `播放 ${track.title}`}
+                    >
+                      {artworkUrl ? (
+                        <img
+                          src={artworkUrl}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform duration-200 motion-safe:group-hover:scale-[1.04]"
+                        />
+                      ) : (
+                        <span className="relative flex h-full w-full items-center justify-center bg-[radial-gradient(circle,color-mix(in_oklch,var(--ink-primary)_6%,transparent)_1px,transparent_1px)] [background-size:6px_6px] [box-shadow:inset_0_0_12px_color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
+                          <Disc3 className="h-7 w-7 text-[var(--ink-muted)] transition-transform duration-700 motion-safe:group-hover:rotate-45" aria-hidden="true" />
+                          <span className="pointer-events-none absolute inset-0 rounded-[var(--radius-md)] [box-shadow:inset_0_1px_1px_rgba(255,255,255,0.15)]" />
+                        </span>
+                      )}
+                      <span
+                        className={cn(
+                          'absolute inset-0 flex items-center justify-center bg-black/34 text-white transition-opacity',
+                          isCurrentTrack ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'
+                        )}
+                        aria-hidden="true"
+                      >
+                        {isCurrentTrack && isPlaying ? (
+                          <Pause className="h-5 w-5 fill-current" />
+                        ) : (
+                          <Play className="h-5 w-5 translate-x-px fill-current" />
+                        )}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => requestTrackNavigation({ kind: 'select', track })}
+                      className="min-h-16 min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    >
+                      <span className="flex min-w-0 items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-black text-[var(--ink-primary)]">
+                            {track.title}
+                          </span>
+                          <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">
+                            {track.artist || '未知艺术家'} · {track.album || '未分专辑'} · {formatFileSize(track.media?.fileSize ?? 0)}
+                          </span>
+                        </span>
+                        <span className="tnum shrink-0 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-2 py-1 text-[10px] font-black text-[var(--ink-secondary)]">
+                          {curationState.score}%
+                        </span>
+                      </span>
+
+                      <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className={cn(
+                          'rounded-full px-2 py-1 text-[10px] font-bold',
+                          track.status === 'ACTIVE'
+                            ? 'bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
+                            : 'bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-muted)]'
+                        )}>
+                          {track.status === 'ACTIVE' ? '展示' : '隐藏'}
+                        </span>
+                        <span className={cn(
+                          'rounded-full px-2 py-1 text-[10px] font-bold',
+                          lyricReady
+                            ? 'bg-[color-mix(in_oklch,var(--signal-success)_9%,transparent)] text-[var(--signal-success)]'
+                            : track.lyricAsset?.status === 'NEEDS_REVIEW'
+                              ? 'bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] text-[var(--signal-warn)]'
+                              : 'bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-muted)]'
+                        )}>
+                          {lyricLabel}
+                        </span>
+                        <span className="rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] px-2 py-1 text-[10px] font-bold text-[var(--ink-muted)]">
+                          {track.playlistCount ?? 0} 个歌单
+                        </span>
+                        {visibleTags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold text-[var(--ink-secondary)]"
+                            style={{
+                              borderColor: `${tag.color}66`,
+                              backgroundColor: `${tag.color}12`,
+                            }}
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                            {tag.name}
+                          </span>
+                        ))}
+                        {(track.tags?.length ?? 0) > visibleTags.length ? (
+                          <span className="text-[10px] font-bold text-[var(--ink-muted)]">
+                            +{(track.tags?.length ?? 0) - visibleTags.length}
+                          </span>
+                        ) : null}
+                      </span>
+
+                      <CurationSignalChain
+                        state={curationState}
+                        compact
+                        className="mt-3 max-w-[320px]"
+                      />
+                    </button>
+
+                    <div className="col-span-2 flex items-center justify-end gap-1 sm:col-span-1 sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => trackFavoriteMutation.mutate(track)}
+                        className={iconButtonClass(Boolean(track.isFavorite))}
+                        disabled={favoritePending || favoriteBlockedByDraft}
+                        aria-pressed={Boolean(track.isFavorite)}
+                        aria-label={track.isFavorite ? `取消喜爱 ${track.title}` : `喜爱 ${track.title}`}
+                        title={favoriteBlockedByDraft ? '请先保存当前歌曲草稿' : track.isFavorite ? '取消喜爱' : '加入喜爱'}
+                      >
+                        {favoritePending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Heart className={cn('h-4 w-4', track.isFavorite && 'fill-current text-[#ec496f]')} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDelete({ kind: 'track', track, deleteMedia: false })}
+                        className={iconButtonClass(false, 'danger')}
+                        aria-label={`移除 ${track.title}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
           <AdminPagination
@@ -2426,6 +3075,30 @@ export default function MusicPage() {
             loading={scanQuery.isFetching}
           />
         </div>
+
+      <BatchActionBar
+        selectedCount={selectedTrackIds.length}
+        onClearSelection={() => setSelectedTrackIds([])}
+        onBatchAddToPlaylist={() => {
+          if (playlists.length === 0) {
+            toast.error('请先创建一个歌单');
+            return;
+          }
+          const targetPlaylist = playlists[0];
+          for (const trackId of selectedTrackIds) {
+            playlistTrackMutation.mutate({ playlistId: targetPlaylist.id, trackId });
+          }
+          toast.success(`已批量将 ${selectedTrackIds.length} 首歌曲加入歌单「${targetPlaylist.name}」`);
+          setSelectedTrackIds([]);
+        }}
+        onBatchDelete={() => {
+          for (const trackId of selectedTrackIds) {
+            deleteTrackMutation.mutate({ id: trackId, deleteMedia: false });
+          }
+          toast.success(`已批量删除 ${selectedTrackIds.length} 首歌曲`);
+          setSelectedTrackIds([]);
+        }}
+      />
     </div>
   );
 
@@ -2486,10 +3159,11 @@ export default function MusicPage() {
             <p className="text-sm font-bold text-[var(--ink-primary)]">创建歌单</p>
             <input value={playlistForm.name} onChange={(e) => setPlaylistForm((f) => ({ ...f, name: e.target.value }))} className={inputClass()} />
             <input value={playlistForm.description} onChange={(e) => setPlaylistForm((f) => ({ ...f, description: e.target.value }))} className={inputClass()} placeholder="歌单描述" />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <TogglePill checked={playlistForm.displayOnProfile} label="个人卡片" onClick={() => setPlaylistForm((f) => ({ ...f, displayOnProfile: !f.displayOnProfile }))} />
               <TogglePill checked={playlistForm.carouselEnabled} label="轮播" onClick={() => setPlaylistForm((f) => ({ ...f, carouselEnabled: !f.carouselEnabled }))} />
               <TogglePill checked={playlistForm.randomEnabled} label="随机" onClick={() => setPlaylistForm((f) => ({ ...f, randomEnabled: !f.randomEnabled }))} />
+              <TogglePill checked={playlistForm.isFavorite} label="喜爱歌单" onClick={() => setPlaylistForm((f) => ({ ...f, isFavorite: !f.isFavorite }))} />
             </div>
             <button type="button" onClick={() => createPlaylistMutation.mutate()} className={textButtonClass('primary')} disabled={isPlaylistWriteBusy}>
               <Plus className="h-4 w-4" />
@@ -2498,11 +3172,43 @@ export default function MusicPage() {
           </div>
 
           <div className={shellClass}>
-            <AdminSectionHeader icon={<ListMusic className="h-4 w-4" />} title="歌单列表" aside={<AdminSectionCount>{playlists.length} 个</AdminSectionCount>} />
+            <AdminSectionHeader
+              icon={<ListMusic className="h-4 w-4" />}
+              title="歌单列表"
+              aside={(
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlaylistFavoriteFilter((value) => value === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
+                    aria-pressed={playlistFavoriteFilter === 'FAVORITE'}
+                    className={cn(
+                      'inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                      playlistFavoriteFilter === 'FAVORITE'
+                        ? 'bg-[color-mix(in_oklch,#ec496f_12%,transparent)] text-[#ec496f]'
+                        : 'bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                    )}
+                  >
+                    <Heart className={cn('h-3.5 w-3.5', playlistFavoriteFilter === 'FAVORITE' && 'fill-current')} />
+                    只看喜爱
+                  </button>
+                  <AdminSectionCount>{visiblePlaylists.length}/{playlists.length} 个</AdminSectionCount>
+                </span>
+              )}
+            />
             <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-              {playlists.length === 0 ? (
-                <div className="p-4 text-sm text-[var(--ink-muted)]">暂无歌单。</div>
-              ) : playlists.map((playlist) => (
+              {visiblePlaylists.length === 0 ? (
+                <div className="p-4 text-sm leading-6 text-[var(--ink-muted)]">
+                  {playlistFavoriteFilter === 'FAVORITE'
+                    ? '还没有喜爱歌单。可取消筛选，或点歌单右侧心形按钮加入喜爱。'
+                    : '暂无歌单。'}
+                </div>
+              ) : visiblePlaylists.map((playlist) => {
+                const displayedFavorite = playlist.id === playlistDraftSourceId
+                  ? Boolean(playlistDraft.isFavorite)
+                  : Boolean(playlist.isFavorite);
+                const favoritePending = playlistFavoriteMutation.isPending
+                  && playlistFavoriteMutation.variables?.id === playlist.id;
+                return (
                 <div
                   key={playlist.id}
                   className={cn(
@@ -2534,6 +3240,40 @@ export default function MusicPage() {
                     <span className="mt-1 block text-xs text-[var(--ink-muted)]">{playlist.trackCount} 首</span>
                   </button>
                   <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (
+                          playlist.id === playlistDraftSourceId
+                          && playlistDraftDirty
+                        ) {
+                          updatePlaylistDraft((draft) => ({
+                            ...draft,
+                            isFavorite: !draft.isFavorite,
+                          }));
+                          return;
+                        }
+                        playlistFavoriteMutation.mutate(playlist);
+                      }}
+                      className={iconButtonClass(displayedFavorite)}
+                      disabled={isPlaylistWriteBusy}
+                      aria-pressed={displayedFavorite}
+                      aria-label={displayedFavorite ? `取消喜爱歌单「${playlist.name}」` : `喜爱歌单「${playlist.name}」`}
+                      title={
+                        playlist.id === playlistDraftSourceId && playlistDraftDirty
+                          ? '收藏状态会随当前歌单草稿一起保存'
+                          : displayedFavorite
+                            ? '取消喜爱'
+                            : '加入喜爱'
+                      }
+                    >
+                      {favoritePending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Heart className={cn('h-4 w-4', displayedFavorite && 'fill-current text-[#ec496f]')} />
+                      )}
+                    </button>
                     {settings.featuredPlaylistId !== playlist.id && (
                       <button
                         type="button"
@@ -2576,7 +3316,8 @@ export default function MusicPage() {
                     </button>
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2623,10 +3364,13 @@ export default function MusicPage() {
             <>
               <div className="space-y-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
                 <CoverPicker
+                  ownerKey={`playlist:${selectedPlaylist.id}`}
+                  title={playlistDraft.name || selectedPlaylist.name}
                   value={playlistDraft.coverMediaFileId}
                   currentUrl={playlistDraft.coverMediaFileId ? (detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
                   items={coverImagesQuery.data?.list ?? []}
                   loading={coverImagesQuery.isLoading}
+                  uploadFolderId={settings.mediaFolderId}
                   onChange={(media) => updatePlaylistDraft((draft) => ({
                     ...draft,
                     coverMediaFileId: media?.id,
@@ -2660,10 +3404,11 @@ export default function MusicPage() {
                     />
                   </label>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
                   <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
                   <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
+                  <TogglePill checked={Boolean(playlistDraft.isFavorite)} label="喜爱歌单" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, isFavorite: !draft.isFavorite }))} />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <Select
@@ -3011,11 +3756,21 @@ export default function MusicPage() {
       : pendingDelete?.deleteMedia
         ? `歌曲「${pendingDelete.track.title}」会从曲库移除，并把对应媒体文件移入媒体库回收站。`
         : `歌曲「${pendingDelete?.track.title ?? ''}」只会从音乐管理中移除，媒体库原文件会保留。`;
-  const pendingTrackNavigationMessage = pendingTrackNavigation?.kind === 'select'
-    ? `切换到「${pendingTrackNavigation.track.title}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`
+  const dirtyDraftDescriptions = [
+    trackDraftDirty ? `歌曲「${editingTrack?.title || '当前歌曲'}」的元数据` : null,
+    lyricDraftDirty ? '当前歌词资产' : null,
+    playlistDraftDirty ? `歌单「${selectedPlaylist?.name || '当前歌单'}」的编排设置` : null,
+  ].filter((description): description is string => Boolean(description));
+  const dirtyDraftSummary = dirtyDraftDescriptions.length > 0
+    ? dirtyDraftDescriptions.join('、')
+    : '当前音乐内容';
+  const pendingTrackNavigationTarget = pendingTrackNavigation?.kind === 'select'
+    ? `切换到歌曲「${pendingTrackNavigation.track.title}」`
     : pendingTrackNavigation?.kind === 'tab'
-      ? `切换到「${tabs.find((tab) => tab.key === pendingTrackNavigation.tab)?.label || '目标页签'}」会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的修改。`
-      : `关闭歌曲编辑器会丢弃「${editingTrack?.title || '当前歌曲'}」尚未保存的元数据或歌词修改。`;
+      ? `切换到「${tabs.find((tab) => tab.key === pendingTrackNavigation.tab)?.label || '目标页签'}」`
+      : '关闭歌曲编辑器';
+  const pendingTrackNavigationMessage =
+    `${pendingTrackNavigationTarget}会丢弃${dirtyDraftSummary}尚未保存的修改。`;
   const activeConfirmationConfig: MusicConfirmationConfig | null = (() => {
     switch (activeConfirmation) {
       case 'delete':
@@ -3050,7 +3805,7 @@ export default function MusicPage() {
       case 'track-navigation':
         if (!pendingTrackNavigation) return null;
         return {
-          title: '放弃未保存的歌曲修改？',
+          title: '放弃未保存的音乐修改？',
           message: pendingTrackNavigationMessage,
           confirmText: pendingTrackNavigation.kind === 'close' ? '放弃并关闭' : '放弃并继续',
           cancelText: '继续编辑',
@@ -3078,11 +3833,7 @@ export default function MusicPage() {
       case 'route-navigation':
         return {
           title: '放弃未保存的音乐修改？',
-          message: trackDraftDirty && playlistDraftDirty
-            ? '当前歌曲和歌单都有尚未保存的修改。继续前往其他页面会丢弃这些修改。'
-            : trackDraftDirty
-              ? `歌曲「${editingTrack?.title || '当前歌曲'}」还有尚未保存的元数据或歌词修改。`
-              : '当前歌单还有尚未保存的名称、描述或展示设置。',
+          message: `${dirtyDraftSummary}还有尚未保存的修改。继续前往其他页面会丢弃这些修改。`,
           confirmText: '放弃并离开',
           cancelText: '继续编辑',
           variant: 'warning',
@@ -3096,6 +3847,8 @@ export default function MusicPage() {
             playlistDraftRevisionRef.current += 1;
             setTrackDraftDirty(false);
             setPlaylistDraftDirty(false);
+            setLyricDraftDirty(false);
+            setLyricDiscardToken((token) => token + 1);
             dirtyNavigationBlocker.proceed();
           },
         };
@@ -3103,6 +3856,7 @@ export default function MusicPage() {
         return null;
     }
   })();
+  const hasHeaderPlaybackActions = activeTab === 'library' || activeTab === 'playlists';
   const headerPlaybackTracks = activeTab === 'library' ? tracks : selectedPlaylistTracks;
   const headerPlaybackLabel = activeTab === 'library' ? '播放当前曲库页' : '播放当前歌单';
 
@@ -3114,17 +3868,16 @@ export default function MusicPage() {
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-0 py-2 sm:gap-4 sm:px-6 sm:py-4 lg:px-8">
         <AdminModuleHeader
           className="music-module-header"
-          title="音乐大厅"
-          description="以媒体库音频为存储层，独立管理歌曲、歌单、展示入口与播放策略。"
+          title="音乐策展工作室"
+          description="从音频入库到元数据、封面、标签、歌词、歌单与发布，沿一条可下钻的策展信号链完成管理。"
           tabs={tabs}
           activeKey={activeTab}
           onTabChange={(tab) => requestTrackNavigation({ kind: 'tab', tab })}
           tabPanelIdPrefix="admin-module"
           showCurrentLabel={false}
           showActiveSummary={false}
-          actions={
+          actions={hasHeaderPlaybackActions ? (
             <>
-              {activeTab !== 'display' && (
               <button
                 type="button"
                 onClick={() => {
@@ -3149,7 +3902,6 @@ export default function MusicPage() {
                 <span className="hidden sm:inline">{activeTab === 'library' ? '播放当前页' : '播放歌单'}</span>
                 <span className="sm:hidden">播放</span>
               </button>
-              )}
               <button
                 type="button"
                 onClick={() => saveSettingsPatch({ enabled: !settings.enabled })}
@@ -3162,12 +3914,51 @@ export default function MusicPage() {
                 <span>{settings.enabled ? '已启用' : '启用'}</span>
               </button>
             </>
-          }
+          ) : undefined}
         />
 
+        {activeTab === 'overview' && (
+          <section id="admin-module-panel-overview" role="tabpanel" aria-labelledby="admin-module-tab-overview" tabIndex={0}>
+            {overviewTracksQuery.isError ? (
+              <div className={cn(panelClass, 'flex min-h-48 items-center justify-center text-center')} role="alert">
+                <div>
+                  <p className="text-sm font-black text-[var(--ink-primary)]">策展总览载入失败</p>
+                  <p className="mt-2 text-xs text-[var(--ink-muted)]">歌曲不会被修改，可以重新拉取完整度信号。</p>
+                  <button
+                    type="button"
+                    onClick={() => void overviewTracksQuery.refetch()}
+                    className={cn(textButtonClass('primary'), 'mt-4')}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    重新载入
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <MusicCurationOverview
+                summary={summaryQuery.data}
+                tracks={overviewTracksQuery.data ?? []}
+                loading={overviewTracksQuery.isLoading}
+                onOpenLibrary={openLibraryWithFilter}
+                onOpenLyrics={() => requestTrackNavigation({ kind: 'tab', tab: 'lyrics' })}
+                onOpenPlaylists={() => requestTrackNavigation({ kind: 'tab', tab: 'playlists' })}
+                onOpenDisplay={() => requestTrackNavigation({ kind: 'tab', tab: 'display' })}
+              />
+            )}
+          </section>
+        )}
         {activeTab === 'library' && (
           <section id="admin-module-panel-library" role="tabpanel" aria-labelledby="admin-module-tab-library" tabIndex={0}>
             {renderLibrary()}
+          </section>
+        )}
+        {activeTab === 'lyrics' && (
+          <section id="admin-module-panel-lyrics" role="tabpanel" aria-labelledby="admin-module-tab-lyrics" tabIndex={0}>
+            <LyricsWorkspace
+              focusTrack={lyricsFocusTrack}
+              discardToken={lyricDiscardToken}
+              onDirtyChange={setLyricDraftDirty}
+            />
           </section>
         )}
         {activeTab === 'playlists' && (
