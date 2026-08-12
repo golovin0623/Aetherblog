@@ -139,6 +139,29 @@ func TestMusicServiceImportMediaRejectsMissingAudio(t *testing.T) {
 	}
 }
 
+func TestNormalizeMusicLyricNameClampsLongNamesToDatabaseLimit(t *testing.T) {
+	longBase := strings.Repeat("词", 250)
+	source := longBase + ".lrc"
+
+	got := normalizeMusicLyricName("", &source)
+	if runes := len([]rune(got)); runes != musicLyricNameMaxRunes {
+		t.Fatalf("derived name runes = %d, want %d", runes, musicLyricNameMaxRunes)
+	}
+	if !strings.HasPrefix(got, strings.Repeat("词", 180)) {
+		t.Fatalf("derived name truncated unexpectedly: %q", got)
+	}
+
+	explicit := strings.Repeat("歌", 200)
+	got = normalizeMusicLyricName(explicit, nil)
+	if runes := len([]rune(got)); runes != musicLyricNameMaxRunes {
+		t.Fatalf("explicit name runes = %d, want %d", runes, musicLyricNameMaxRunes)
+	}
+
+	if got := normalizeMusicLyricName("", nil); got != "未命名歌词" {
+		t.Fatalf("empty fallback = %q, want 未命名歌词", got)
+	}
+}
+
 func TestResolveMusicImportFieldsUsesTagsWithoutOverridingExplicitValues(t *testing.T) {
 	metadata := &audioTrackMetadata{
 		Title:  "假如让我说下去",

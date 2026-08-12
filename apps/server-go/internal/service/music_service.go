@@ -290,15 +290,25 @@ func normalizeMusicLyricSourceFileName(value *string) *string {
 	return &trimmed
 }
 
+const musicLyricNameMaxRunes = 180
+
+func truncateMusicLyricName(name string) string {
+	runes := []rune(name)
+	if len(runes) <= musicLyricNameMaxRunes {
+		return name
+	}
+	return string(runes[:musicLyricNameMaxRunes])
+}
+
 func normalizeMusicLyricName(name string, sourceFileName *string) string {
 	name = strings.TrimSpace(name)
 	if name != "" {
-		return name
+		return truncateMusicLyricName(name)
 	}
 	if sourceFileName != nil {
 		base := strings.TrimSpace(strings.TrimSuffix(*sourceFileName, filepath.Ext(*sourceFileName)))
 		if base != "" {
-			return base
+			return truncateMusicLyricName(base)
 		}
 	}
 	return "未命名歌词"

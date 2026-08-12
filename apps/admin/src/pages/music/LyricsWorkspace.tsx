@@ -134,6 +134,8 @@ export function LyricsWorkspace({
   const lyricImportRequestRef = useRef(0);
   const initializedRef = useRef(false);
   const previousDiscardTokenRef = useRef(discardToken);
+  const lyricDraftRevisionRef = useRef(0);
+  const pendingCreatedLyricRef = useRef<{ id: number; boundTrackId?: number } | null>(null);
   const playerTimeline = useAdminMusicPlayerTimeline();
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | MusicLyricStatus>('ALL');
@@ -300,21 +302,43 @@ export function LyricsWorkspace({
   }, [queryClient]);
 
   const saveMutation = useMutation({
-    mutationFn: async (snapshot: MusicLyricDraft) => {
-      const response = snapshot.id
-        ? await musicService.updateLyric(snapshot.id, buildMusicLyricRequest(snapshot))
-        : await musicService.createLyric(buildMusicLyricRequest(snapshot));
-      let saved = response.data;
+    mutationFn: async ({ revision: _revision, ...snapshot }: MusicLyricDraft & { revision: number }) => {
+      const request = buildMusicLyricRequest(snapshot);
+      let saved: MusicLyric;
+      if (snapshot.id) {
+        saved = (await musicService.updateLyric(snapshot.id, request)).data;
+      } else {
+        const retained = pendingCreatedLyricRef.current;
+        if (retained && retained.boundTrackId === snapshot.boundTrackId) {
+          pendingCreatedLyricRef.current = null;
+          saved = (await musicService.updateLyric(retained.id, request)).data;
+        } else {
+          saved = (await musicService.createLyric(request)).data;
+        }
+      }
       if (saved.boundTrackId !== snapshot.boundTrackId) {
-        saved = (await musicService.bindLyric(saved.id, {
-          trackId: snapshot.boundTrackId,
-        })).data;
+        if (!snapshot.id) {
+          pendingCreatedLyricRef.current = { id: saved.id, boundTrackId: snapshot.boundTrackId };
+        }
+        try {
+          saved = (await musicService.bindLyric(saved.id, {
+            trackId: snapshot.boundTrackId,
+          })).data;
+          pendingCreatedLyricRef.current = null;
+        } catch (bindError) {
+          if (!snapshot.id) {
+            throw new Error('歌词资产已创建，但绑定歌曲失败，请直接重试保存');
+          }
+          throw bindError;
+        }
       }
       return saved;
     },
-    onSuccess: async (saved) => {
-      applyDraft(musicLyricToDraft(saved));
+    onSuccess: async (saved, { revision }) => {
       toast.success(saved.status === 'READY' ? '歌词已保存并标记为可发布' : '歌词资产已保存');
+      if (lyricDraftRevisionRef.current === revision) {
+        applyDraft(musicLyricToDraft(saved));
+      }
       await invalidateMusicCuration();
     },
     onError: async (error) => {
@@ -383,6 +407,7 @@ export function LyricsWorkspace({
   }, [bindingTracks, draft.boundTrackId, focusTrack, selectedLyric]);
 
   const updateDraft = (changes: Partial<MusicLyricDraft>) => {
+    lyricDraftRevisionRef.current += 1;
     setDraft((current) => ({ ...current, ...changes }));
   };
 
@@ -418,7 +443,7 @@ export function LyricsWorkspace({
       toast.error('请先修正无效时间戳，再标记为可发布');
       return;
     }
-    saveMutation.mutate({ ...draft });
+    saveMutation.mutate({ ...draft, revision: lyricDraftRevisionRef.current });
   };
 
   const importLyricFile = async (file: File) => {

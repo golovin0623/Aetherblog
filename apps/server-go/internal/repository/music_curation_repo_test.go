@@ -63,6 +63,36 @@ func TestMusicRepoUnbindLyricClearsDenormalizedTrackText(t *testing.T) {
 	}
 }
 
+func TestMusicRepoListTracksTreatsSoftDeletedCoverMediaAsMissing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	repo := NewMusicRepo(sqlx.NewDb(db, "sqlmock"))
+
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\).*cover_mf\.deleted=false.*cover_mf\.id IS NULL`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`(?s)SELECT .*cover_mf\.deleted=false.*cover_mf\.id IS NULL.*ORDER BY`).
+		WithArgs(20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	rows, total, err := repo.ListTracks(context.Background(), MusicTrackFilter{
+		CoverState: "WITHOUT_COVER",
+		PageNum:    1,
+		PageSize:   20,
+	})
+	if err != nil {
+		t.Fatalf("ListTracks: %v", err)
+	}
+	if len(rows) != 0 || total != 0 {
+		t.Fatalf("expected no rows, got rows=%d total=%d", len(rows), total)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestMusicRepoListTracksFiltersTracksWithoutTags(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -136,6 +136,7 @@ const MUSIC_SETTINGS_QUERY_KEY = ['music-settings'] as const;
 const COMMON_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'm4b', 'aac', 'wav', 'ogg', 'oga', 'opus', 'weba']);
 const MUSIC_UPLOAD_ACCEPT = 'audio/*,.mp3,.flac,.m4a,.m4b,.aac,.wav,.ogg,.oga,.opus,.weba';
 const OVERVIEW_TRACK_PAGE_SIZE = 100;
+const OVERVIEW_FETCH_CONCURRENCY = 4;
 const GenerativeCoverStudio = lazy(() => import('./music/GenerativeCoverStudio'));
 
 function isCommonAudioFile(file: File): boolean {
@@ -175,6 +176,24 @@ async function fetchAllPlaylistTracks(playlistId: number): Promise<MusicTrack[]>
   return tracks;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function fetchAllMusicTracks(): Promise<MusicTrack[]> {
   const firstPage = (await musicService.getTracks({
     pageNum: 1,
@@ -187,13 +206,11 @@ async function fetchAllMusicTracks(): Promise<MusicTrack[]> {
     OVERVIEW_TRACK_PAGE_SIZE
   );
   if (missingPages.length === 0) return tracks;
-  const remainingPages = await Promise.all(
-    missingPages.map(async (pageNum) =>
-      (await musicService.getTracks({
-        pageNum,
-        pageSize: OVERVIEW_TRACK_PAGE_SIZE,
-      })).data
-    )
+  const remainingPages = await mapWithConcurrency(missingPages, OVERVIEW_FETCH_CONCURRENCY, async (pageNum) =>
+    (await musicService.getTracks({
+      pageNum,
+      pageSize: OVERVIEW_TRACK_PAGE_SIZE,
+    })).data
   );
   for (const page of remainingPages) tracks.push(...(page.list ?? []));
   return tracks;
@@ -1224,6 +1241,7 @@ export default function MusicPage() {
   const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
   const [playlistFavoriteFilter, setPlaylistFavoriteFilter] = useState<'ALL' | 'FAVORITE'>('ALL');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [pendingBatchDelete, setPendingBatchDelete] = useState(false);
   const [isSettingsWriteBusy, setIsSettingsWriteBusy] = useState(false);
   const deferredTrackKeyword = useDeferredValue(trackKeyword.trim());
   const deferredPlaylistTrackKeyword = useDeferredValue(playlistTrackKeyword);
@@ -1232,13 +1250,15 @@ export default function MusicPage() {
   );
   const activeConfirmation = pendingDelete
     ? 'delete'
-    : pendingTrackNavigation
-      ? 'track-navigation'
-      : pendingPlaylistSelectionId != null
-        ? 'playlist-selection'
-        : dirtyNavigationBlocker.state === 'blocked'
-          ? 'route-navigation'
-          : null;
+    : pendingBatchDelete
+      ? 'batch-delete'
+      : pendingTrackNavigation
+        ? 'track-navigation'
+        : pendingPlaylistSelectionId != null
+          ? 'playlist-selection'
+          : dirtyNavigationBlocker.state === 'blocked'
+            ? 'route-navigation'
+            : null;
   const activeMobileEditorId = isMobile ? (editingTrack?.id ?? null) : null;
   const mobileEditorCoveredByModal = Boolean(
     activeMobileEditorId != null && activeConfirmation != null
@@ -1471,6 +1491,13 @@ export default function MusicPage() {
     queryFn: async () => (await musicService.getPlaylists({ pageNum: 1, pageSize: 100 })).data,
   });
 
+  const favoritePlaylistsQuery = useQuery({
+    queryKey: ['music-playlists', 'favorite'],
+    enabled: playlistFavoriteFilter === 'FAVORITE',
+    queryFn: async () =>
+      (await musicService.getPlaylists({ favorite: true, pageNum: 1, pageSize: 100 })).data,
+  });
+
   const mediaTagsQuery = useQuery({
     queryKey: ['media-tags'],
     queryFn: () => mediaTagService.getAll(),
@@ -1556,7 +1583,7 @@ export default function MusicPage() {
   const playlistTrackCandidates = playlistTrackCandidatesQuery.data?.list ?? [];
   const playlists = playlistsQuery.data?.list ?? [];
   const visiblePlaylists = playlistFavoriteFilter === 'FAVORITE'
-    ? playlists.filter((playlist) => playlist.isFavorite)
+    ? (favoritePlaylistsQuery.data?.list ?? [])
     : playlists;
   const selectedPlaylist = playlists.find((item) => item.id === selectedPlaylistId);
   const folderOptions = useMemo<SelectOption[]>(
@@ -2032,15 +2059,14 @@ export default function MusicPage() {
     onSuccess: ({ tagIds, resolvedTrackIds, fileIds, unresolvedCount, results }) => {
       const succeeded = results.filter((result) => result.status === 'fulfilled').length;
       const failedCount = tagIds.length - succeeded;
-      if (failedCount === 0) {
+      if (failedCount > 0) {
+        toast.error(`已应用 ${succeeded}/${tagIds.length} 个标签，${failedCount} 个失败，选中歌曲已保留，请重试`);
+      } else if (unresolvedCount > 0) {
         toast.success(`已为 ${resolvedTrackIds.length} 首歌曲添加 ${tagIds.length} 个标签`);
-      } else {
-        toast.error(`已应用 ${succeeded}/${tagIds.length} 个标签，${failedCount} 个失败，请重试`);
-      }
-      if (unresolvedCount > 0) {
         toast.error(`另有 ${unresolvedCount} 首不在当前页，未处理`);
         setSelectedTrackIds((ids) => ids.filter((id) => !resolvedTrackIds.includes(id)));
       } else {
+        toast.success(`已为 ${resolvedTrackIds.length} 首歌曲添加 ${tagIds.length} 个标签`);
         setSelectedTrackIds([]);
       }
       for (const fileId of fileIds) {
@@ -2880,13 +2906,13 @@ export default function MusicPage() {
                   <div
                     key={track.id}
                     className={cn(
-                      'grid grid-cols-[28px_64px_minmax(0,1fr)] items-start gap-3 px-4 py-4 transition-colors [contain-intrinsic-size:auto_112px] [content-visibility:auto] sm:grid-cols-[28px_64px_minmax(0,1fr)_auto]',
+                      'grid grid-cols-[44px_64px_minmax(0,1fr)] items-start gap-3 px-4 py-4 transition-colors [contain-intrinsic-size:auto_112px] [content-visibility:auto] sm:grid-cols-[44px_64px_minmax(0,1fr)_auto]',
                       'hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
                       isTrackSelected && 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]',
                       editingTrack?.id === track.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
                     )}
                   >
-                    <div className="flex h-16 items-center justify-center">
+                    <label className="flex h-16 w-11 cursor-pointer items-center justify-center">
                       <input
                         type="checkbox"
                         checked={isTrackSelected}
@@ -2901,7 +2927,7 @@ export default function MusicPage() {
                         className="h-4 w-4 rounded border-slate-700 bg-slate-800/80 text-[var(--aurora-1)] focus:ring-[var(--aurora-1)] cursor-pointer"
                         aria-label={`选择歌曲 ${track.title}`}
                       />
-                    </div>
+                    </label>
                     <button
                       type="button"
                       onClick={() => playSingle(track)}
@@ -3190,7 +3216,7 @@ export default function MusicPage() {
         busy={batchTagMutation.isPending || batchPlaylistAddMutation.isPending || batchDeleteMutation.isPending}
         onBatchAddTags={(tagIds) => batchTagMutation.mutate({ tagIds, trackIds: selectedTrackIds })}
         onBatchAddToPlaylist={(playlistId) => batchPlaylistAddMutation.mutate({ playlistId, trackIds: selectedTrackIds })}
-        onBatchDelete={() => batchDeleteMutation.mutate({ trackIds: selectedTrackIds })}
+        onBatchDelete={() => setPendingBatchDelete(true)}
       />
     </div>
   );
@@ -3893,6 +3919,21 @@ export default function MusicPage() {
               id: pendingDelete.track.id,
               deleteMedia: pendingDelete.deleteMedia,
             });
+          },
+        };
+      case 'batch-delete':
+        return {
+          title: `批量删除 ${selectedTrackIds.length} 首歌曲？`,
+          message: '所选歌曲会从音乐管理中移除，歌单成员关系将一并清除；媒体库原文件会保留。',
+          confirmText: '确认删除',
+          cancelText: '取消',
+          variant: 'danger',
+          pending: batchDeleteMutation.isPending,
+          onCancel: () => setPendingBatchDelete(false),
+          onConfirm: () => {
+            if (batchDeleteMutation.isPending) return;
+            setPendingBatchDelete(false);
+            batchDeleteMutation.mutate({ trackIds: selectedTrackIds });
           },
         };
       case 'track-navigation':

@@ -409,6 +409,7 @@ func (r *MusicRepo) ListTracks(ctx context.Context, f MusicTrackFilter) ([]Music
 		FROM music_tracks t
 		JOIN media_files mf ON mf.id=t.media_file_id
 		LEFT JOIN media_variants mv ON mv.media_file_id = mf.id AND mv.variant_type='THUMBNAIL'
+		LEFT JOIN media_files cover_mf ON cover_mf.id=t.cover_media_file_id AND cover_mf.deleted=false
 		LEFT JOIN music_lyrics ml ON ml.track_id=t.id`)
 	if f.PlaylistID != nil {
 		sb.WriteString(" JOIN music_playlist_tracks mpt ON mpt.track_id=t.id")
@@ -475,9 +476,9 @@ func (r *MusicRepo) ListTracks(ctx context.Context, f MusicTrackFilter) ([]Music
 	}
 	switch strings.ToUpper(strings.TrimSpace(f.CoverState)) {
 	case "WITH_COVER":
-		sb.WriteString(" AND (t.cover_media_file_id IS NOT NULL OR mv.file_url IS NOT NULL)")
+		sb.WriteString(" AND (cover_mf.id IS NOT NULL OR mv.file_url IS NOT NULL)")
 	case "WITHOUT_COVER":
-		sb.WriteString(" AND t.cover_media_file_id IS NULL AND mv.file_url IS NULL")
+		sb.WriteString(" AND cover_mf.id IS NULL AND mv.file_url IS NULL")
 	}
 
 	base := sb.String()
@@ -698,10 +699,13 @@ func (r *MusicRepo) SummaryCounts(ctx context.Context) (*MusicSummaryCounts, err
 			(
 				SELECT COUNT(*)
 				FROM music_tracks track
+				LEFT JOIN media_files cover_media
+				  ON cover_media.id=track.cover_media_file_id
+				 AND cover_media.deleted=false
 				LEFT JOIN media_variants variant
 				  ON variant.media_file_id=track.media_file_id
 				 AND variant.variant_type='THUMBNAIL'
-				WHERE track.cover_media_file_id IS NULL
+				WHERE cover_media.id IS NULL
 				  AND variant.file_url IS NULL
 			) AS missing_cover_count,
 			(
