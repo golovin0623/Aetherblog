@@ -22,7 +22,8 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    const helperId = helperText ? `${React.useId()}-helper` : undefined;
+    const generatedId = React.useId();
+    const helperId = helperText ? `${generatedId}-helper` : undefined;
     const describedBy = [ariaDescribedby, helperId].filter(Boolean).join(' ') || undefined;
 
     return (
