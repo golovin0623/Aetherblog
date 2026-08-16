@@ -1005,9 +1005,11 @@
     left: 1rem;
   }
 
+  /* 横屏顶部动作组有三键(收起/最小化/关闭,x≈408-548):
+     identity 右缩到 10rem(止于 x=400)避免文字被盖、点击被截 */
   [data-music-floating-density='expanded'] .music-island-identity {
     top: 0.75rem;
-    right: 5.5rem;
+    right: 10rem;
     left: 8rem;
     height: 3.5rem;
   }
