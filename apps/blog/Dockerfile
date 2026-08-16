@@ -60,8 +60,11 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs nextjs
 
 # Copy built files
-COPY --from=builder /app/apps/blog/public ./public
+# NOTE: monorepo standalone 模式下 server.js 位于 /app/apps/blog/server.js，
+# 静态资源必须落在 ./apps/blog/public 才会被服务（旧路径 ./public 不生效 ——
+# 此前 public 目录为空未暴露；贴纸资产 /stickers/* 起依赖此路径）。
 COPY --from=builder --chown=nextjs:nodejs /app/apps/blog/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/blog/public ./apps/blog/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/blog/.next/static ./apps/blog/.next/static
 
 USER nextjs

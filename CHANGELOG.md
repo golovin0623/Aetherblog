@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
+
+按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：
+
+- **后端（migration 000087 `chat_interactions`）：**
+  - 新表 `chat_message_reactions`（PK 幂等）+ `chat_conversation_members.pinned_at` + `chat_messages.mentions BIGINT[]`（部分 GIN 索引）+ `chat_messages.recalled_at`。
+  - 新端点：`PATCH/DELETE /v1/chat/conversations/:id/messages/:msgId`（编辑 / 软撤回，2 分钟窗口在 UPDATE SQL 内联校验）、`POST/DELETE …/messages/:msgId/reactions`（回应增删返回聚合）、`PUT …/:id/prefs`（本人置顶 / 免打扰）。
+  - WS 新事件 `message-updated` / `reaction`；会话列表新增 `mentionCount`（@我 未读，SECURITY：mentions 落库前过滤为会话真实成员）与本人 `pinned/muted`；成员带 `lastReadMessageId` 供 ✓✓ 回执。
+- **前端（`app/team-chat/` 全面升级）：**
+  - **表情三层**：emoji 面板（分类 + 最近使用 localStorage）→ 悬停快捷条 / 菜单回应（气泡下聚合 chip，本人高亮）→ 原创「星灵 Aeti」贴纸包（8 枚 SVG，`attachmentMeta.sticker` 协议零后端）。
+  - **引用回复**：闲置的 `replyToId` 接通 —— 引用条、气泡内引用块、点击滚回原文 + 极光闪烁定位。
+  - **已读回执**：消费闲置的 WS `read` 事件 —— 私聊 钟面→✓→极光✓✓ 三态（列表预览同步）。
+  - **消息菜单**：右键 / 触屏长按 480ms —— 回应排 + 回复 / 复制 / 编辑（↑ 快捷）/ 撤回（撤回后占位行带「重新编辑」回填）。
+  - **图片管线**：按钮 / 粘贴 / 拖拽全帧遮罩三入口 → canvas 压缩（≤2560px WebP、EXIF 纠正剥离）→ 托盘预览 + XHR 进度环 → 均色占位淡入 → 灯箱（←/→ 切换、Esc、媒体墙共用）。
+  - **语音**：MediaRecorder 录制（AnalyserNode 采样 32 段波形写 `meta.peaks`），接收端波形逐段点亮播放。
+  - **提示链 L2–L5**：会话徽标（免打扰降级灰点、@我 信号红穿透）、rail 未读总数、跨会话页内 Toast（点击跳转）、标题闪烁 + Notification API + Web Audio 合成「墨滴」音（默认关）。
+  - **结构**：新增图标 rail（会话 / 联系人 / 提示音 / 桌面通知）、联系人视图（成员目录 + 智能体席位聚合，零新后端）、会话信息面板（成员 / 媒体墙 / 置顶 / 免打扰 / 气泡样式直连 settings）、未读与 @我 筛选 chips、[草稿] 保留、「以下为新消息」分隔线、⌘K 聚焦搜索。
+- **Fixed（顺带）：** `apps/blog/Dockerfile` 修正 monorepo standalone 的 public 拷贝路径（`./public` → `./apps/blog/public`）—— 旧路径不会被 `server.js` 服务，此前 public 为空未暴露，贴纸静态资产上线即会 404。
+- **验证：** `go build` + 全部后端测试通过；blog `tsc --noEmit` / ESLint（0 警告）/ `next build` 通过；`pnpm design-system:check` 保持 0 error。
+
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 
 把站内**文章 / 学习笔记 / 知识库文件**一键转换成可翻页的「拟真书籍」，前台以全屏 3D 翻页阅读器沉浸式呈现，后台在文章模块统一管理。

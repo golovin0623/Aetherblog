@@ -18,6 +18,8 @@ var (
 	ErrChatConvNotFound = errors.New("会话不存在")
 	ErrChatBadTarget    = errors.New("无效的私聊对象")
 	ErrChatBadMessage   = errors.New("消息内容不合法")
+	// ErrChatEditWindow：编辑 / 撤回被拒 —— 不是本人消息、类型不符或超出 2 分钟窗口。
+	ErrChatEditWindow = errors.New("只能在发出 2 分钟内编辑或撤回自己的消息")
 )
 
 // ChatService 编排团队聊天的会话 / 消息 / 偏好逻辑，并通过 realtime.Hub 实时扇出。
@@ -93,6 +95,7 @@ func (s *ChatService) EnsureTeamConversation(ctx context.Context, userID, teamID
 }
 
 // GetHistory 校验成员资格后倒序拉取历史，并按时间升序返回（便于前端追加渲染）。
+// 附带批量聚合的表情回应（000087），避免逐条查询。
 func (s *ChatService) GetHistory(ctx context.Context, userID, convID int64, beforeID *int64, limit int) ([]dto.ChatMessageVO, error) {
 	if err := s.assertMember(ctx, convID, userID); err != nil {
 		return nil, err
@@ -101,10 +104,45 @@ func (s *ChatService) GetHistory(ctx context.Context, userID, convID int64, befo
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]int64, 0, len(rows))
+	for i := range rows {
+		ids = append(ids, rows[i].ID)
+	}
+	reactions, err := s.reactionsByMessage(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]dto.ChatMessageVO, 0, len(rows))
 	// 数据库按 id DESC 返回，反转为升序。
 	for i := len(rows) - 1; i >= 0; i-- {
-		out = append(out, messageRowToVO(&rows[i]))
+		vo := messageRowToVO(&rows[i])
+		vo.Reactions = reactions[rows[i].ID]
+		out = append(out, vo)
+	}
+	return out, nil
+}
+
+// reactionsByMessage 批量拉取并按消息聚合回应：同表情合并 userIds，保持首次出现顺序。
+func (s *ChatService) reactionsByMessage(ctx context.Context, msgIDs []int64) (map[int64][]dto.ChatReactionVO, error) {
+	rows, err := s.repo.ListReactionsForMessages(ctx, msgIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64][]dto.ChatReactionVO)
+	for _, r := range rows {
+		list := out[r.MessageID]
+		found := false
+		for i := range list {
+			if list[i].Emoji == r.Emoji {
+				list[i].UserIDs = append(list[i].UserIDs, r.UserID)
+				found = true
+				break
+			}
+		}
+		if !found {
+			list = append(list, dto.ChatReactionVO{Emoji: r.Emoji, UserIDs: []int64{r.UserID}})
+		}
+		out[r.MessageID] = list
 	}
 	return out, nil
 }
@@ -152,8 +190,42 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID int64, req
 	if req.AttachmentSize > 0 {
 		m.AttachmentSize = &req.AttachmentSize
 	}
+	if len(req.Mentions) > 0 {
+		// SECURITY: 只保留会话真实成员的提及 —— 否则可以对非成员制造「@我」
+		// 未读徽标（mention_count 只看 mentions 数组，不校验成员资格）。
+		filtered, err := s.filterMentions(ctx, convID, req.Mentions)
+		if err != nil {
+			return nil, err
+		}
+		m.Mentions = filtered
+	}
 
 	return s.emitMessage(ctx, m)
+}
+
+// filterMentions 把提及列表收敛到会话的有权成员集合内并去重。
+func (s *ChatService) filterMentions(ctx context.Context, convID int64, mentions []int64) ([]int64, error) {
+	ids, err := s.repo.ActiveMemberUserIDs(ctx, convID)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		allowed[id] = struct{}{}
+	}
+	seen := make(map[int64]struct{}, len(mentions))
+	out := make([]int64, 0, len(mentions))
+	for _, id := range mentions {
+		if _, ok := allowed[id]; !ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // emitMessage 落库一条消息，更新会话活跃时间并向成员实时扇出，返回组装好的 VO。
@@ -218,6 +290,103 @@ func (s *ChatService) MarkRead(ctx context.Context, userID, convID, messageID in
 		Payload:        map[string]any{"userId": userID, "messageId": messageID},
 	})
 	return nil
+}
+
+// EditMessage 在窗口期内编辑自己的文本消息，并向成员广播 message-updated（000087）。
+func (s *ChatService) EditMessage(ctx context.Context, userID, convID, msgID int64, content string) (*dto.ChatMessageVO, error) {
+	if err := s.assertMember(ctx, convID, userID); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(content) == "" {
+		return nil, ErrChatBadMessage
+	}
+	updated, err := s.repo.EditMessage(ctx, convID, msgID, userID, content)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, ErrChatEditWindow
+	}
+	return s.broadcastMessageUpdated(ctx, msgID, convID)
+}
+
+// RecallMessage 在窗口期内软撤回自己的消息，并向成员广播 message-updated（000087）。
+func (s *ChatService) RecallMessage(ctx context.Context, userID, convID, msgID int64) (*dto.ChatMessageVO, error) {
+	if err := s.assertMember(ctx, convID, userID); err != nil {
+		return nil, err
+	}
+	recalled, err := s.repo.RecallMessage(ctx, convID, msgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if recalled == nil {
+		return nil, ErrChatEditWindow
+	}
+	return s.broadcastMessageUpdated(ctx, msgID, convID)
+}
+
+// broadcastMessageUpdated 回查消息组装 VO（含回应聚合）并向全体成员扇出 message-updated。
+func (s *ChatService) broadcastMessageUpdated(ctx context.Context, msgID, convID int64) (*dto.ChatMessageVO, error) {
+	row, err := s.repo.GetMessageRow(ctx, msgID)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	vo := messageRowToVO(row)
+	if reactions, rerr := s.reactionsByMessage(ctx, []int64{msgID}); rerr == nil {
+		vo.Reactions = reactions[msgID]
+	}
+	s.broadcast(ctx, convID, realtime.Event{Type: "message-updated", ConversationID: convID, Payload: vo})
+	return &vo, nil
+}
+
+// React 添加 / 移除一个表情回应（add=true 添加），并向全体成员广播该消息的最新回应聚合。
+// 广播含发起者本人 —— 多标签页 / 多端据聚合结果幂等对齐。
+func (s *ChatService) React(ctx context.Context, userID, convID, msgID int64, emoji string, add bool) ([]dto.ChatReactionVO, error) {
+	if err := s.assertMember(ctx, convID, userID); err != nil {
+		return nil, err
+	}
+	emoji = strings.TrimSpace(emoji)
+	if emoji == "" {
+		return nil, ErrChatBadMessage
+	}
+	var changed bool
+	var err error
+	if add {
+		changed, err = s.repo.AddReaction(ctx, convID, msgID, userID, emoji)
+	} else {
+		changed, err = s.repo.RemoveReaction(ctx, msgID, userID, emoji)
+	}
+	if err != nil {
+		return nil, err
+	}
+	agg, err := s.reactionsByMessage(ctx, []int64{msgID})
+	if err != nil {
+		return nil, err
+	}
+	list := agg[msgID]
+	if list == nil {
+		list = []dto.ChatReactionVO{}
+	}
+	if changed {
+		s.broadcast(ctx, convID, realtime.Event{
+			Type:           "reaction",
+			ConversationID: convID,
+			Payload:        map[string]any{"messageId": msgID, "reactions": list},
+		})
+	}
+	return list, nil
+}
+
+// UpdateConvPrefs 更新当前用户的会话偏好（置顶 / 免打扰），只影响本人视图，不广播。
+func (s *ChatService) UpdateConvPrefs(ctx context.Context, userID, convID int64, req dto.UpdateConvPrefsRequest) (*dto.ChatConvPrefsVO, error) {
+	if err := s.assertMember(ctx, convID, userID); err != nil {
+		return nil, err
+	}
+	pinnedAt, muted, err := s.repo.UpdateMemberPrefs(ctx, convID, userID, req.Pinned, req.Muted)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.ChatConvPrefsVO{Pinned: pinnedAt != nil, Muted: muted}, nil
 }
 
 // HandleTyping 处理「正在输入」信令：校验成员资格后向其他成员广播（不落库）。
@@ -318,12 +487,13 @@ func memberRowsToVO(rows []repository.ChatMemberRow) []dto.ChatMemberVO {
 	out := make([]dto.ChatMemberVO, 0, len(rows))
 	for _, m := range rows {
 		out = append(out, dto.ChatMemberVO{
-			UserID:     m.UserID,
-			Username:   m.Username,
-			Nickname:   m.Nickname,
-			Avatar:     m.Avatar,
-			MemberRole: m.MemberRole,
-			Muted:      m.Muted,
+			UserID:            m.UserID,
+			Username:          m.Username,
+			Nickname:          m.Nickname,
+			Avatar:            m.Avatar,
+			MemberRole:        m.MemberRole,
+			Muted:             m.Muted,
+			LastReadMessageID: m.LastReadMessageID,
 		})
 	}
 	return out
@@ -405,6 +575,9 @@ func (s *ChatService) buildConversationVO(row *repository.ChatConversationListRo
 		Title:         title,
 		LastMessageAt: row.LastMessageAt,
 		UnreadCount:   row.UnreadCount,
+		MentionCount:  row.MentionCount,
+		Pinned:        row.MyPinnedAt != nil,
+		Muted:         row.MyMuted,
 		Members:       members,
 		CreatedAt:     row.CreatedAt,
 	}
@@ -415,6 +588,7 @@ func (s *ChatService) buildConversationVO(row *repository.ChatConversationListRo
 			SenderID:       row.LastMsgSenderID,
 			MessageType:    derefStr(row.LastMsgType, model.ChatMsgText),
 			Content:        row.LastMsgContent,
+			RecalledAt:     row.LastMsgRecalledAt,
 		}
 		if row.LastMsgCreatedAt != nil {
 			lm.CreatedAt = *row.LastMsgCreatedAt
@@ -447,7 +621,9 @@ func messageModelToVO(m *model.ChatMessage) dto.ChatMessageVO {
 		ReplyToID:      m.ReplyToID,
 		ClientMsgID:    m.ClientMsgID,
 		AgentID:        m.AgentID,
+		Mentions:       m.Mentions,
 		EditedAt:       m.EditedAt,
+		RecalledAt:     m.RecalledAt,
 		CreatedAt:      m.CreatedAt,
 	}
 }

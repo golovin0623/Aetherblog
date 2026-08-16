@@ -6,6 +6,7 @@ import type {
   ChatConversation,
   ChatMember,
   ChatMessage,
+  ChatReaction,
   ChatSettings,
 } from './types';
 
@@ -81,8 +82,50 @@ export const chatApi = {
       attachmentMeta?: Record<string, unknown>;
       replyToId?: number;
       clientMsgId?: string;
+      mentions?: number[];
     },
   ) => post<ChatMessage>(`/conversations/${conversationId}/messages`, body),
+
+  /** 编辑本人文本消息（服务端 2 分钟窗口校验），成功后 WS 广播 message-updated。 */
+  editMessage: (conversationId: number, messageId: number, content: string) =>
+    fetch(`/api/v1/chat/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    }).then((r) => unwrap<ChatMessage>(r)),
+
+  /** 软撤回本人消息（2 分钟窗口），行保留为「已撤回」占位。 */
+  recallMessage: (conversationId: number, messageId: number) =>
+    fetch(`/api/v1/chat/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).then((r) => unwrap<ChatMessage>(r)),
+
+  /** 添加表情回应，返回该消息最新聚合。 */
+  addReaction: (conversationId: number, messageId: number, emoji: string) =>
+    post<{ messageId: number; reactions: ChatReaction[] }>(
+      `/conversations/${conversationId}/messages/${messageId}/reactions`,
+      { emoji },
+    ),
+
+  /** 移除本人表情回应，返回该消息最新聚合。 */
+  removeReaction: (conversationId: number, messageId: number, emoji: string) =>
+    fetch(`/api/v1/chat/conversations/${conversationId}/messages/${messageId}/reactions`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji }),
+    }).then((r) => unwrap<{ messageId: number; reactions: ChatReaction[] }>(r)),
+
+  /** 更新会话偏好（置顶 / 免打扰），只影响本人视图。 */
+  updateConvPrefs: (conversationId: number, body: { pinned?: boolean; muted?: boolean }) =>
+    fetch(`/api/v1/chat/conversations/${conversationId}/prefs`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => unwrap<{ pinned: boolean; muted: boolean }>(r)),
 
   markRead: (conversationId: number, messageId: number) =>
     post<void>(`/conversations/${conversationId}/read`, { messageId }),
@@ -109,6 +152,37 @@ export const chatApi = {
       body: fd,
     }).then((r) => unwrap<AttachmentResult>(r));
   },
+
+  /**
+   * 带进度的附件上传（图片托盘进度环）。fetch 拿不到上行进度，这里用 XHR 的
+   * upload.onprogress 驱动；响应仍遵循统一信封 { code, data, message }。
+   */
+  uploadAttachmentWithProgress: (
+    file: File | Blob,
+    fileName: string,
+    onProgress: (percent: number) => void,
+  ): Promise<AttachmentResult> =>
+    new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append('file', file, fileName);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/v1/chat/attachments');
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        try {
+          const json = JSON.parse(xhr.responseText) as { data?: AttachmentResult; message?: string };
+          if (xhr.status >= 200 && xhr.status < 300 && json.data) resolve(json.data);
+          else reject(new Error(json.message || `上传失败 (${xhr.status})`));
+        } catch {
+          reject(new Error(`上传失败 (${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('网络错误，上传失败'));
+      xhr.send(fd);
+    }),
 
   // --- Phase 2: Agent 纳入与管理 ---
 

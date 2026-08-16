@@ -551,7 +551,7 @@ docker logs aetherblog-ai-service --tail 200
 | [`docker-build.sh`](../docker-build.sh) | 多平台构建脚本（支持并行） |
 | [`docker-compose.prod.yml`](../docker-compose.prod.yml) | 生产环境编排配置 |
 | [`apps/server-go/Dockerfile`](../apps/server-go/Dockerfile) | 后端镜像（Go 后端） |
-| [`apps/blog/Dockerfile`](../apps/blog/Dockerfile) | 博客前端镜像（Next.js standalone） |
+| [`apps/blog/Dockerfile`](../apps/blog/Dockerfile) | 博客前端镜像（Next.js standalone；monorepo 模式下 `public/` 须拷贝到 `./apps/blog/public` 才会被 `server.js` 服务 —— 贴纸等静态资产 `/stickers/*` 依赖此路径） |
 | [`apps/admin/Dockerfile`](../apps/admin/Dockerfile) | 管理后台镜像（Vite + Nginx） |
 | [`.env.example`](../.env.example) | 环境变量模板（所有密钥为空占位） |
 | [`.github/CICD_GUIDE.md`](../.github/CICD_GUIDE.md) | CI/CD 配置指南 |

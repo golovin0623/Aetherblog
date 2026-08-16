@@ -62,6 +62,11 @@ func (h *ChatHandler) Mount(g *echo.Group) {
 	g.POST("/conversations/team/:teamId", h.OpenTeam)
 	g.GET("/conversations/:id/messages", h.History)
 	g.POST("/conversations/:id/messages", h.SendMessage)
+	g.PATCH("/conversations/:id/messages/:msgId", h.EditMessage)
+	g.DELETE("/conversations/:id/messages/:msgId", h.RecallMessage)
+	g.POST("/conversations/:id/messages/:msgId/reactions", h.AddReaction)
+	g.DELETE("/conversations/:id/messages/:msgId/reactions", h.RemoveReaction)
+	g.PUT("/conversations/:id/prefs", h.UpdateConvPrefs)
 	g.POST("/conversations/:id/read", h.MarkRead)
 	g.GET("/conversations/:id/members", h.Members)
 	g.POST("/attachments", h.UploadAttachment)
@@ -209,6 +214,89 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// EditMessage 编辑自己的文本消息（2 分钟窗口），成功后向成员广播 message-updated。
+func (h *ChatHandler) EditMessage(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, msgID, err := parseChatMsgIDs(c)
+	if err != nil {
+		return err
+	}
+	var req dto.EditMessageRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	vo, err := h.svc.EditMessage(c.Request().Context(), lu.UserID, convID, msgID, req.Content)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// RecallMessage 软撤回自己的消息（2 分钟窗口），成功后向成员广播 message-updated。
+func (h *ChatHandler) RecallMessage(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, msgID, err := parseChatMsgIDs(c)
+	if err != nil {
+		return err
+	}
+	vo, err := h.svc.RecallMessage(c.Request().Context(), lu.UserID, convID, msgID)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
+// AddReaction 给消息添加表情回应，返回该消息最新的回应聚合。
+func (h *ChatHandler) AddReaction(c echo.Context) error {
+	return h.react(c, true)
+}
+
+// RemoveReaction 移除自己的表情回应，返回该消息最新的回应聚合。
+func (h *ChatHandler) RemoveReaction(c echo.Context) error {
+	return h.react(c, false)
+}
+
+func (h *ChatHandler) react(c echo.Context, add bool) error {
+	lu := middleware.GetLoginUser(c)
+	convID, msgID, err := parseChatMsgIDs(c)
+	if err != nil {
+		return err
+	}
+	var req dto.ChatReactionRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	if err := c.Validate(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	list, err := h.svc.React(c.Request().Context(), lu.UserID, convID, msgID, req.Emoji, add)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, map[string]any{"messageId": msgID, "reactions": list})
+}
+
+// UpdateConvPrefs 更新当前用户在会话内的偏好（置顶 / 免打扰）。
+func (h *ChatHandler) UpdateConvPrefs(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	convID, err := parseChatID(c)
+	if err != nil {
+		return err
+	}
+	var req dto.UpdateConvPrefsRequest
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求体格式错误")
+	}
+	vo, err := h.svc.UpdateConvPrefs(c.Request().Context(), lu.UserID, convID, req)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, vo)
+}
+
 // MarkRead 标记已读位点。
 func (h *ChatHandler) MarkRead(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
@@ -309,7 +397,7 @@ func (h *ChatHandler) chatError(c echo.Context, err error) error {
 		return response.FailWith(c, response.Forbidden, err.Error())
 	case errors.Is(err, service.ErrChatConvNotFound):
 		return response.FailWith(c, response.NotFound, err.Error())
-	case errors.Is(err, service.ErrChatBadTarget), errors.Is(err, service.ErrChatBadMessage):
+	case errors.Is(err, service.ErrChatBadTarget), errors.Is(err, service.ErrChatBadMessage), errors.Is(err, service.ErrChatEditWindow):
 		return response.FailWith(c, response.BadRequest, err.Error())
 	default:
 		return response.Error(c, err)
@@ -322,4 +410,17 @@ func parseChatID(c echo.Context) (int64, error) {
 		return 0, response.FailWith(c, response.BadRequest, "会话 ID 非法")
 	}
 	return id, nil
+}
+
+// parseChatMsgIDs 解析 /conversations/:id/messages/:msgId 双路径参数。
+func parseChatMsgIDs(c echo.Context) (int64, int64, error) {
+	convID, err := parseChatID(c)
+	if err != nil {
+		return 0, 0, err
+	}
+	msgID, perr := strconv.ParseInt(strings.TrimSpace(c.Param("msgId")), 10, 64)
+	if perr != nil || msgID <= 0 {
+		return 0, 0, response.FailWith(c, response.BadRequest, "消息 ID 非法")
+	}
+	return convID, msgID, nil
 }
