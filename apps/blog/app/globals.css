@@ -419,10 +419,10 @@
 /* 播放台底部工具栏:左(随机+音量)/ 右(大厅+关闭),中央留给居中传输键。
    容器不吃指针,两侧分组各自可点,避免遮挡中央播放键。 */
 .music-island-toolbar {
-  left: 1.25rem;
-  right: 1.25rem;
-  bottom: 0.7rem;
-  height: 2.75rem;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 1rem;
+  height: 3.25rem;
   opacity: 0;
   visibility: hidden;
   transform: translateY(0.35rem);
@@ -504,61 +504,68 @@
 }
 
 [data-music-floating-density='expanded'] .music-island-cover {
-  top: 1.25rem;
-  left: 1.25rem;
+  top: 1.5rem;
+  left: 1.5rem;
+}
+
+[data-music-floating-density='expanded'] .music-island-actions {
+  top: 0.75rem;
+  right: 0.75rem;
 }
 
 [data-music-floating-density='expanded'] .music-island-identity {
-  top: 1.6rem;
+  top: 1.9rem;
   right: 7rem;
-  left: 9.75rem;
-  height: 6rem;
+  left: 10.5rem;
+  height: 6.75rem;
 }
 
 [data-music-floating-density='expanded'] .music-island-title {
-  margin-top: 0.4rem;
-  font-size: 1.16rem;
+  margin-top: 0.45rem;
+  font-size: 1.22rem;
 }
 
 [data-music-floating-density='expanded'] .music-island-meta {
-  margin-top: 0.3rem;
-  font-size: 0.78rem;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
 }
 
-/* 进度通栏铺满,与详情面板同宽 —— 播放台的「时间轴」层 */
+/* 进度通栏铺满,时间刻度内联在两端 —— 播放台的「时间轴」层 */
 [data-music-floating-density='expanded'] .music-island-progress {
-  left: 1.25rem;
-  right: 1.25rem;
-  bottom: 3.9rem;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 8.4rem;
 }
 
-/* 传输键居中(Apple 播放台语法):上一首 / 播放 / 下一首坐在时间轴正下方 */
+/* 传输键独占一行居中(Apple 播放台语法),两侧不再有任何元素争位 */
 [data-music-floating-density='expanded'] .music-island-transport {
   right: 50%;
-  bottom: 0.7rem;
+  bottom: 4.5rem;
   transform: translateX(50%);
 }
 
 [data-music-floating-density='expanded'] .music-island-transport-play {
-  height: 3rem;
-  width: 3rem;
+  height: 3.25rem;
+  width: 3.25rem;
 }
 
-/* 详情面板通栏:吃掉原先封面下方的整列留白(评审反馈:内容挤在右侧一块) */
+/* 详情面板通栏:吃掉原先封面下方的整列留白(评审反馈:内容挤在右侧一块)。
+   播放台自上而下五层,层间 ≥12px 呼吸:
+   header(封面+标题) → 详情面板 → 时间轴 → 传输(独占一行) → 工具行 */
 [data-music-floating-density='expanded'] .music-island-expanded-detail {
-  top: 9.15rem;
-  right: 1.25rem;
-  bottom: 8.1rem;
-  left: 1.25rem;
+  top: 10.5rem;
+  right: 1.5rem;
+  bottom: 11.9rem;
+  left: 1.5rem;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
-/* 桌面播放台内的页签瘦身(纯指针环境,视觉 36px 即可),把高度让给歌词 */
+/* 桌面播放台内的页签瘦身(纯指针环境,视觉 32px 即可),把高度让给歌词 */
 [data-music-floating-density='expanded'] .music-island-detail-header [role='tab'] {
-  min-height: 2.25rem;
+  min-height: 2rem;
 }
 
 .music-playback-orb[data-playing='true'] .music-island-cover-ring {
@@ -579,12 +586,15 @@
     width: min(32.5rem, calc(100vw - 4rem));
   }
 
+  /* 桌面画布放宽:评审反馈内容贴挤 —— 胶囊 136→152,播放台 520×380→560×464,
+     让每个分区之间有真实的呼吸间距,而不是在旧盒子里互相让位。 */
   [data-music-floating-density='compact'].music-floating-player-root {
-    height: 8.5rem;
+    height: 9.5rem;
   }
 
   [data-music-floating-density='expanded'].music-floating-player-root {
-    height: 23.75rem;
+    width: min(35rem, calc(100vw - 4rem));
+    height: 31.25rem;
   }
 
   [data-music-floating-density='minimized'] .music-floating-player-surface {
@@ -643,6 +653,28 @@
   [data-music-floating-density='minimized'] .music-island-transport-previous,
   [data-music-floating-density='minimized'] .music-island-transport-next {
     display: none;
+  }
+
+  /* 桌面胶囊 152px:上下两区各自获得完整呼吸带 */
+  [data-music-floating-density='compact'] .music-island-cover {
+    top: 1.5rem;
+  }
+
+  [data-music-floating-density='compact'] .music-island-identity {
+    top: 1.75rem;
+  }
+
+  [data-music-floating-density='compact'] .music-island-actions {
+    top: 0.55rem;
+    right: 0.55rem;
+  }
+
+  [data-music-floating-density='compact'] .music-island-progress {
+    bottom: 0.85rem;
+  }
+
+  [data-music-floating-density='compact'] .music-island-transport {
+    bottom: 1rem;
   }
 
 }
@@ -909,7 +941,7 @@
 
   [data-music-floating-density='expanded'] .music-island-transport {
     right: 50%;
-    bottom: 0.4rem;
+    bottom: 0.45rem;
   }
 
   [data-music-floating-density='expanded'] .music-island-transport-play {
@@ -920,16 +952,20 @@
   [data-music-floating-density='expanded'] .music-island-progress {
     left: 1rem;
     right: 1rem;
-    bottom: 3.3rem;
+    bottom: 3.4rem;
   }
 
+  /* 短视口纵向放不下独立工具行:隐藏之,关闭键回到顶部控制组 */
   [data-music-floating-density='expanded'] .music-island-toolbar {
-    bottom: 0.35rem;
-    height: 2.5rem;
+    display: none;
   }
 
-  [data-music-floating-density='expanded'] .music-island-volume {
-    display: none;
+  [data-music-floating-density='expanded'] .music-island-action--close {
+    display: grid;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
   }
 }
 

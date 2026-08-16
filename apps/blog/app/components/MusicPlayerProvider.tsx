@@ -2387,12 +2387,10 @@ function PersistentMusicDock({
               </button>
             </div>
 
-            <div data-music-island-progress aria-hidden={floatingDensity === 'minimized' ? true : undefined} inert={floatingDensity === 'minimized'} className="music-island-progress pointer-events-auto absolute z-10">
-              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" />
-              <div className="music-island-progress-time mt-1.5 flex items-center justify-between text-[10px] tnum text-[var(--ink-muted)]">
-                <span>{formatMusicClock(progress)}</span>
-                <span>{formatMusicClock(duration || currentTrack?.durationSeconds || 0)}</span>
-              </div>
+            <div data-music-island-progress aria-hidden={floatingDensity === 'minimized' ? true : undefined} inert={floatingDensity === 'minimized'} className="music-island-progress pointer-events-auto absolute z-10 flex items-center gap-2.5">
+              <span className="music-island-progress-time shrink-0 text-[10px] tnum text-[var(--ink-muted)]">{formatMusicClock(progress)}</span>
+              <SeekBar percent={percent} progress={progress} duration={duration} onSeek={seekToPercent} size="sm" className="min-w-0 flex-1" />
+              <span className="music-island-progress-time shrink-0 text-[10px] tnum text-[var(--ink-muted)]">{formatMusicClock(duration || currentTrack?.durationSeconds || 0)}</span>
             </div>
 
             <div data-music-island-actions className="music-island-actions pointer-events-auto absolute z-20 flex items-center gap-1">
@@ -2437,7 +2435,7 @@ function PersistentMusicDock({
               className="music-island-expanded-detail pointer-events-auto absolute z-10 flex min-h-0 flex-col overflow-hidden"
             >
               <div className="music-island-detail-header flex shrink-0 items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-2 pb-2">
-                <p className="min-w-0 truncate text-xs font-bold text-[var(--ink-secondary)]">{desktopPane === 'lyrics' ? '歌词跟随' : `${playlistName} · ${tracks.length} 首`}</p>
+                <p className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-muted)]">{desktopPane === 'lyrics' ? '歌词' : `${tracks.length} 首`}</p>
                 <div role="tablist" aria-label="播放详情" className="grid shrink-0 grid-cols-2 gap-1 rounded-[var(--music-radius-control)] bg-[var(--music-control-fill)] p-1">
                   <button ref={desktopLyricsTabRef} id="desktop-lyrics-tab" type="button" role="tab" aria-selected={desktopPane === 'lyrics'} aria-controls="desktop-lyrics-panel" tabIndex={desktopPane === 'lyrics' ? 0 : -1} onClick={() => setDesktopPane('lyrics')} onKeyDown={handleDesktopPaneKeyDown} className={cn('music-control-button inline-flex min-h-11 items-center gap-1.5 rounded-[calc(var(--music-radius-control)-0.2rem)] px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', desktopPane === 'lyrics' ? 'bg-[var(--music-control-fill-hover)] text-[var(--ink-primary)]' : 'text-[var(--ink-muted)]')}>
                     <Music2 className="h-4 w-4" />歌词
@@ -2480,7 +2478,7 @@ function PersistentMusicDock({
                 <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
                   <Shuffle className="h-[17px] w-[17px]" />
                 </button>
-                <label className="music-island-volume flex h-11 w-28 min-w-0 items-center gap-2 px-1">
+                <label className="music-island-volume flex h-11 w-40 min-w-0 items-center gap-2 px-1">
                   <Volume2 className="h-4 w-4 shrink-0" />
                   <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="music-volume-range h-11 min-w-0 flex-1 appearance-none bg-transparent" aria-label="音量" />
                 </label>
