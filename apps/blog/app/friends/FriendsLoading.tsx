@@ -19,16 +19,16 @@ export default function FriendsLoading() {
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-24 md:pb-16">
-        {/* 页头骨架(居中) */}
-        <div className="mb-8 flex flex-col items-center md:mb-10" aria-hidden="true">
+        {/* 页头骨架(居中,导语骨架与正式页一致仅桌面展示) */}
+        <div className="mb-6 flex flex-col items-center md:mb-10" aria-hidden="true">
           <Bone className="h-3 w-28 rounded-full" />
-          <Bone className="mt-4 h-9 w-52 rounded-lg md:h-11 md:w-64" />
-          <SoftBone className="mt-4 h-5 w-72 max-w-full rounded-md" />
-          <SoftBone className="mt-4 h-3 w-40 rounded-full" />
+          <Bone className="mt-3 h-9 w-52 rounded-lg md:mt-4 md:h-11 md:w-64" />
+          <SoftBone className="mt-4 hidden h-5 w-72 max-w-full rounded-md sm:block" />
+          <SoftBone className="mt-3 h-3 w-40 rounded-full md:mt-4" />
         </div>
 
         {/* 切换器骨架 */}
-        <div className="mb-10 flex justify-center md:mb-12" aria-hidden="true">
+        <div className="mb-8 flex justify-center md:mb-12" aria-hidden="true">
           <Bone className="h-10 w-44 rounded-full" />
         </div>
 

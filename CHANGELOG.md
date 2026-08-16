@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **页面级：** 页头对齐 `/about` 的 Apple 式居中排版（`.eyebrow` + Fraunces 标题 + Instrument Serif lede + mono 计数）；视图切换器改为 `layoutId` 弹簧滑块胶囊；背景环境光从 `bg-primary/bg-blue-500` 迁移到 aurora 令牌；底部交换友链 CTA 卡片化。
 - **加载体验：** `FriendsLoading` 重写为镜像新布局的骨架屏（Codex 令牌骨骼色,顺带清掉 `bg-white/5` 等 legacy 玻璃）,并新增路由级 `friends/loading.tsx` 接管导航等待。
 - **合规：** `pnpm design-system:check` 保持 0 error;无 `dark:` 变体、无裸 bezier/spring 数值、无任意字号。
+- **产线回归修复（对照线上截图）：** ① `themeColor` 为空字符串时默认参数不生效,头像加载失败的友链渲染成「黑洞球」(线上旧版可见的历史 bug) —— `FriendCard` / `FriendBubbleField` / `DeckAvatar` 三处统一空值归一化;② 移动端页头过高把星群压出首屏 —— 导语改 `hidden sm:block`(与旧版隐藏副标题的行为一致)并收紧移动端间距,骨架屏同步镜像。
 
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 

@@ -185,10 +185,11 @@ const WatchBubble: React.FC<WatchBubbleProps> = ({
     { stiffness: spring.precise.stiffness, damping: spring.precise.damping },
   );
 
-  /* 头像加载(带缓存与降级) */
+  /* 头像加载(带缓存与降级)。themeColor 需拦住空字符串(产线 DB 存在),
+     否则降级渐变失效渲染成"黑洞球"。 */
   const safeAvatar = sanitizeImageUrl(friend.logo || '', '');
   const safeUrl = sanitizeImageUrl(friend.url, '#');
-  const themeColor = friend.themeColor || '#6366f1';
+  const themeColor = (friend.themeColor || '').trim() || '#6366f1';
   const hasValidAvatar = safeAvatar !== '' && safeAvatar.trim() !== '';
   const cachedAvatar = useCachedImage(hasValidAvatar ? safeAvatar : '', {
     enabled: hasValidAvatar,

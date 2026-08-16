@@ -42,6 +42,10 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
   // 智能检测图片宽高比:正方形填满,非正方形留白适配
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
 
+  // themeColor 兜底:DB 里可能存空字符串,默认参数只拦 undefined ——
+  // 空串会让 linear-gradient 失效,头像加载失败时渲染成"黑洞球"(产线旧 bug)。
+  const brandColor = themeColor.trim() !== '' ? themeColor : '#6366f1';
+
   // 安全验证: 防止 XSS 注入 (#136)
   const safeAvatar = sanitizeImageUrl(avatar, '');
   const safeUrl = sanitizeImageUrl(url, '#');
@@ -98,7 +102,7 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
       className="group surface-leaf relative block overflow-hidden rounded-2xl px-4 py-3.5 antialiased focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)] md:px-5 md:py-4"
       // 用友链品牌色本地覆盖 --aurora-1:hover 光带 / 边框辉光跟随各站品牌,
       // 既保留 surface 系统交互一致性,又让每封"信笺"带上寄信人的色彩。
-      style={{ ['--aurora-1' as string]: themeColor }}
+      style={{ ['--aurora-1' as string]: brandColor }}
     >
       <div className="relative flex items-start gap-3.5 md:gap-4">
         {/* 头像 —— iOS 应用图标式 squircle */}
@@ -106,7 +110,7 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
           {/* 品牌色底晕:hover 时从图标后方透出 */}
           <div
             className="absolute -inset-1.5 rounded-[var(--radius-md)] opacity-0 blur-md transition-opacity duration-[var(--dur-quick)] ease-[var(--ease-out)] group-hover:opacity-35"
-            style={{ backgroundColor: themeColor }}
+            style={{ backgroundColor: brandColor }}
             aria-hidden="true"
           />
           <div className="relative h-11 w-11 overflow-hidden rounded-[var(--radius-md)] bg-[var(--bg-raised)] ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] md:h-12 md:w-12">
@@ -127,7 +131,7 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
             ) : (
               <div
                 className="flex h-full w-full items-center justify-center"
-                style={{ background: `linear-gradient(145deg, ${themeColor}, ${themeColor}cc)` }}
+                style={{ background: `linear-gradient(145deg, ${brandColor}, ${brandColor}cc)` }}
               >
                 <span className="text-body font-semibold text-white">
                   {name.charAt(0).toUpperCase()}

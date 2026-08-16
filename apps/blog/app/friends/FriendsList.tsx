@@ -42,7 +42,7 @@ const DECK_PREVIEW = 5;
 function DeckAvatar({ friend }: { friend: FriendLink }) {
   const [failed, setFailed] = useState(false);
   const safeLogo = sanitizeImageUrl(friend.logo || '', '');
-  const themeColor = friend.themeColor || '#6366f1';
+  const themeColor = (friend.themeColor || '').trim() || '#6366f1';
   const showImage = safeLogo !== '' && !failed;
 
   return (
@@ -133,16 +133,17 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           initial="initial"
           animate="animate"
           transition={{ ...transition.flow }}
-          className="mb-8 text-center md:mb-10"
+          className="mb-6 text-center md:mb-10"
         >
           <p className="eyebrow">Constellation</p>
-          <h1 className="mt-3 font-display text-h2 font-bold text-[var(--ink-primary)] md:text-h1">
+          <h1 className="mt-2 font-display text-h2 font-bold text-[var(--ink-primary)] md:mt-3 md:text-h1">
             友情链接
           </h1>
-          <p className="mx-auto mt-3 max-w-xl font-editorial text-lede italic text-[var(--ink-secondary)]">
+          {/* 导语仅桌面展示 —— 移动端寸土寸金,让星群/信笺尽快进入首屏(与旧版行为一致) */}
+          <p className="mx-auto mt-3 hidden max-w-xl font-editorial text-lede italic text-[var(--ink-secondary)] sm:block">
             每一位朋友，都是宇宙里一颗独立发光的星。
           </p>
-          <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-[var(--ink-muted)] tabular-nums">
+          <p className="mt-2.5 font-mono text-micro uppercase tracking-[0.2em] text-[var(--ink-muted)] tabular-nums md:mt-4">
             {count} friends connected
           </p>
         </motion.header>
@@ -154,7 +155,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
             initial="initial"
             animate="animate"
             transition={{ ...transition.flow, delay: 0.08 }}
-            className="mb-10 flex justify-center md:mb-12"
+            className="mb-8 flex justify-center md:mb-12"
           >
             <div
               role="group"
