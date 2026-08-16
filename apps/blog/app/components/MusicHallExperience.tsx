@@ -50,7 +50,6 @@ function HallNowPlayingStrip({
       className="mt-6 max-w-xl rounded-[var(--music-radius-detail)] bg-[var(--music-control-fill)] px-4 py-3 shadow-[inset_0_0_0_0.5px_var(--music-stroke)]"
     >
       <div className="flex items-center gap-2.5">
-        <NowPlayingGlyph className="shrink-0" />
         <p className="min-w-0 flex-1 truncate text-sm font-semibold">
           {title}
           {artist && <span className="text-[var(--ink-muted)]"> · {artist}</span>}
@@ -230,11 +229,6 @@ export default function MusicHallExperience() {
                       <Disc3 className="h-9 w-9" />
                       <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">暂无封面</span>
                     </div>
-                  )}
-                  {hasPlaybackSession && isPlaying && (
-                    <span className="absolute bottom-2.5 left-2.5 grid h-8 w-8 place-items-center rounded-full bg-[color-mix(in_oklch,var(--bg-void)_62%,transparent)] backdrop-blur-sm">
-                      <NowPlayingGlyph />
-                    </span>
                   )}
                 </div>
               </div>

@@ -34,12 +34,12 @@ import {
 import {
   ChevronDown,
   ChevronLeft,
+  ChevronUp,
   AlertCircle,
   Disc3,
   ListMusic,
   LibraryBig,
-  Maximize2,
-  Minimize2,
+  Minus,
   Music2,
   Pause,
   Play,
@@ -2400,7 +2400,7 @@ function PersistentMusicDock({
                 openImmersivePlayer();
                 if (!isMobile && event.detail === 0) focusPersistentIdentityAfterDensityChange();
               }} tabIndex={floatingDensity === 'compact' ? 0 : -1} aria-hidden={floatingDensity === 'compact' ? undefined : true} className="music-control-button music-icon-button music-island-action music-island-action--expand grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="打开沉浸播放器">
-                <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                <ChevronUp className="h-[19px] w-[19px]" strokeWidth={1.8} />
               </button>
               <button type="button" onClick={(event) => {
                 closeExpandedPlayer();
@@ -2423,7 +2423,7 @@ function PersistentMusicDock({
                 aria-label="收起为灵动音乐元；下滑也可收起"
                 title="最小化播放器"
               >
-                <Minimize2 className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                <Minus className="h-[18px] w-[18px]" strokeWidth={2} />
               </button>
               <button type="button" data-dismiss-music-player onClick={dismissPlayer} tabIndex={floatingDensity === 'minimized' ? -1 : 0} aria-hidden={floatingDensity === 'minimized' ? true : undefined} className="music-control-button music-icon-button music-island-action music-island-action--close grid h-11 w-11 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="停止播放并关闭播放器">
                 <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
@@ -2468,22 +2468,32 @@ function PersistentMusicDock({
                   <MemoizedMusicQueueRows tracks={tracks} currentIndex={currentIndex} hasPlaybackSession={hasPlaybackSession} isPlaying={isPlaying} isBuffering={isBuffering} playbackError={playbackError} playlistName={playlistName} onPlayIndex={playIndex} onRetryPlayback={retryPlayback} onTogglePlayback={togglePlayback} variant="desktop" />
                 </section>
               )}
-              <div className="music-island-volume flex h-11 shrink-0 items-center gap-1 border-t border-[var(--music-stroke)] px-1 text-[var(--ink-muted)]">
-                <label className="flex h-11 min-w-0 flex-1 items-center gap-2 px-1">
+            </section>
+
+            <div
+              data-music-island-toolbar
+              aria-hidden={floatingDensity !== 'expanded'}
+              inert={floatingDensity !== 'expanded'}
+              className="music-island-toolbar pointer-events-none absolute z-10 flex items-center justify-between gap-3"
+            >
+              <div className="pointer-events-auto flex min-w-0 items-center gap-0.5 text-[var(--ink-muted)]">
+                <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
+                  <Shuffle className="h-[17px] w-[17px]" />
+                </button>
+                <label className="music-island-volume flex h-11 w-28 min-w-0 items-center gap-2 px-1">
                   <Volume2 className="h-4 w-4 shrink-0" />
                   <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="music-volume-range h-11 min-w-0 flex-1 appearance-none bg-transparent" aria-label="音量" />
                 </label>
-                <button type="button" onClick={() => setShuffle((selected) => !selected)} className={cn('music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]', shuffle ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} data-selected={shuffle ? 'true' : 'false'} aria-label="随机播放" aria-pressed={shuffle}>
-                  <Shuffle className="h-[18px] w-[18px]" />
-                </button>
+              </div>
+              <div className="pointer-events-auto flex shrink-0 items-center gap-0.5">
                 <Link href="/music" onClick={closeExpandedPlayer} className="music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅" title="进入音乐大厅">
-                  <LibraryBig className="h-[19px] w-[19px]" />
+                  <LibraryBig className="h-[18px] w-[18px]" />
                 </Link>
                 <button type="button" data-dismiss-music-player onClick={dismissPlayer} className="music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="停止播放并关闭播放器" title="停止播放并关闭播放器">
                   <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
                 </button>
               </div>
-            </section>
+            </div>
 
             {floatingDensity !== 'minimized' && activeLine && (
               <span className="sr-only" aria-live="polite">{activeLine}</span>
@@ -2557,7 +2567,7 @@ function PersistentMusicDock({
                 className="music-control-button music-icon-button grid h-11 w-11 touch-none place-items-center rounded-full text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]"
                 aria-label={mobilePane === 'player' ? '收起为迷你播放器；下滑也可收起' : '返回正在播放'}
               >
-                {mobilePane === 'player' ? <Minimize2 className="h-5 w-5" strokeWidth={1.8} /> : <ChevronLeft className="h-6 w-6" />}
+                {mobilePane === 'player' ? <ChevronDown className="h-6 w-6" strokeWidth={1.8} /> : <ChevronLeft className="h-6 w-6" />}
               </button>
               <div className="min-w-0 text-center" aria-live="polite" aria-atomic="true">
                 <p className="truncate text-[11px] font-semibold text-[var(--ink-secondary)]">

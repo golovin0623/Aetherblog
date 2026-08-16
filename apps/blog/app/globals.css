@@ -307,10 +307,10 @@
 }
 
 .music-island-identity {
-  top: 1.1rem;
-  right: 9.25rem;
+  top: 1.2rem;
+  right: 10rem;
   left: 5.25rem;
-  height: 3.75rem;
+  height: 3.1rem;
   padding: 0.25rem 0.25rem 0.25rem 0;
   border-radius: var(--music-radius-detail);
   transition:
@@ -321,28 +321,34 @@
     opacity var(--dur-quick) var(--ease-out);
 }
 
+/* compact 态只保留 标题+艺人 两行:歌单 eyebrow 留给展开态,减少拥挤 */
+[data-music-floating-density='compact'] .music-island-eyebrow {
+  display: none;
+}
+
 .music-island-title {
-  margin-top: 0.2rem;
-  font-size: 0.9rem;
+  margin-top: 0.1rem;
+  font-size: 0.95rem;
 }
 
 .music-island-meta {
-  margin-top: 0.1rem;
-  font-size: 0.69rem;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
 }
 
 .music-island-transport {
   right: 0.75rem;
-  bottom: 0.85rem;
+  bottom: 0.7rem;
   transition:
     right var(--dur-flow) var(--ease-out),
     bottom var(--dur-flow) var(--ease-out),
+    transform var(--dur-flow) var(--ease-out),
     opacity var(--dur-quick) var(--ease-out);
 }
 
 .music-island-progress {
-  right: 10.6rem;
-  bottom: 0.95rem;
+  right: 11.75rem;
+  bottom: 0.55rem;
   left: 1rem;
   transition:
     right var(--dur-flow) var(--ease-out),
@@ -351,8 +357,9 @@
     opacity var(--dur-quick) var(--ease-out);
 }
 
+/* 时间标签常显:裸进度线不带刻度会像一根断线(评审反馈) */
 .music-island-progress-time {
-  opacity: 0;
+  opacity: 1;
   transition: opacity var(--dur-quick) var(--ease-out);
 }
 
@@ -371,6 +378,17 @@
     opacity var(--dur-quick) var(--ease-out),
     transform var(--dur-quick) var(--ease-out),
     background-color var(--dur-instant) var(--ease-out);
+}
+
+/* 窗口控制键退后景:默认低透明度,hover / 聚焦时才全亮 */
+[data-music-skin] .music-island-action svg {
+  opacity: 0.68;
+  transition: opacity var(--dur-instant) var(--ease-out);
+}
+
+[data-music-skin] .music-island-action:hover svg,
+[data-music-skin] .music-island-action:focus-visible svg {
+  opacity: 1;
 }
 
 .music-island-expanded-detail {
@@ -396,6 +414,27 @@
 
 .music-island-detail-scroll {
   scrollbar-gutter: stable;
+}
+
+/* 播放台底部工具栏:左(随机+音量)/ 右(大厅+关闭),中央留给居中传输键。
+   容器不吃指针,两侧分组各自可点,避免遮挡中央播放键。 */
+.music-island-toolbar {
+  left: 1.25rem;
+  right: 1.25rem;
+  bottom: 0.7rem;
+  height: 2.75rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(0.35rem);
+  transition:
+    opacity var(--dur-quick) var(--ease-out),
+    transform var(--dur-flow) var(--ease-out);
+}
+
+[data-music-floating-density='expanded'] .music-island-toolbar {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 [data-music-floating-density='minimized'].music-floating-player-root {
@@ -443,12 +482,13 @@
   height: 8.5rem;
 }
 
+/* 展开态的关闭动作由底部工具栏承担,顶部只保留「收起 / 最小化」,
+   避免同屏两个 ×(评审反馈:控制键语义重叠、内容拥挤)。 */
 [data-music-floating-density='compact'] .music-island-action--expand,
 [data-music-floating-density='compact'] .music-island-action--minimize,
 [data-music-floating-density='compact'] .music-island-action--close,
 [data-music-floating-density='expanded'] .music-island-action--collapse,
-[data-music-floating-density='expanded'] .music-island-action--minimize,
-[data-music-floating-density='expanded'] .music-island-action--close {
+[data-music-floating-density='expanded'] .music-island-action--minimize {
   display: grid;
   visibility: visible;
   opacity: 1;
@@ -469,41 +509,56 @@
 }
 
 [data-music-floating-density='expanded'] .music-island-identity {
-  top: 1.15rem;
-  right: 9.75rem;
-  left: 9.5rem;
-  height: 4rem;
+  top: 1.6rem;
+  right: 7rem;
+  left: 9.75rem;
+  height: 6rem;
 }
 
 [data-music-floating-density='expanded'] .music-island-title {
-  margin-top: 0.35rem;
-  font-size: 1.05rem;
+  margin-top: 0.4rem;
+  font-size: 1.16rem;
 }
 
 [data-music-floating-density='expanded'] .music-island-meta {
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
 }
 
+/* 进度通栏铺满,与详情面板同宽 —— 播放台的「时间轴」层 */
 [data-music-floating-density='expanded'] .music-island-progress {
-  right: 10.75rem;
-  bottom: 1.5rem;
+  left: 1.25rem;
+  right: 1.25rem;
+  bottom: 3.9rem;
 }
 
-[data-music-floating-density='expanded'] .music-island-progress-time {
-  opacity: 1;
-}
-
+/* 传输键居中(Apple 播放台语法):上一首 / 播放 / 下一首坐在时间轴正下方 */
 [data-music-floating-density='expanded'] .music-island-transport {
-  right: 1rem;
-  bottom: 1rem;
+  right: 50%;
+  bottom: 0.7rem;
+  transform: translateX(50%);
 }
 
+[data-music-floating-density='expanded'] .music-island-transport-play {
+  height: 3rem;
+  width: 3rem;
+}
+
+/* 详情面板通栏:吃掉原先封面下方的整列留白(评审反馈:内容挤在右侧一块) */
 [data-music-floating-density='expanded'] .music-island-expanded-detail {
+  top: 9.15rem;
+  right: 1.25rem;
+  bottom: 8.1rem;
+  left: 1.25rem;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+}
+
+/* 桌面播放台内的页签瘦身(纯指针环境,视觉 36px 即可),把高度让给歌词 */
+[data-music-floating-density='expanded'] .music-island-detail-header [role='tab'] {
+  min-height: 2.25rem;
 }
 
 .music-playback-orb[data-playing='true'] .music-island-cover-ring {
@@ -548,7 +603,7 @@
 
   [data-music-floating-density='minimized'] .music-island-identity {
     top: 0.45rem;
-    right: 7.5rem;
+    right: 4.4rem;
     left: 4rem;
     height: 3.1rem;
     opacity: 1;
@@ -570,12 +625,19 @@
   }
 
   [data-music-floating-density='minimized'] .music-island-transport {
-    right: 3.8rem;
+    right: 0.55rem;
     bottom: 0.5rem;
     grid-template-columns: 3rem;
     gap: 0;
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* 迷你条播放键收到 40px:与 64px 条高保持呼吸比例,不再喧宾夺主 */
+  [data-music-floating-density='minimized'] .music-island-transport-play {
+    height: 2.5rem;
+    width: 2.5rem;
+    place-self: center;
   }
 
   [data-music-floating-density='minimized'] .music-island-transport-previous,
@@ -693,25 +755,23 @@
   opacity: 0.78;
 }
 
+/* 播放中声波标 —— 裸声波条,无容器底色(评审反馈:圆底金标同屏多处出现
+   显得设计过度;Apple 的对应元素也是裸 bar)。尺寸盒保留 1.45rem,
+   保证在曲目行序号位与数字互换时零位移。 */
 .music-wave-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.16rem;
+  gap: 0.14rem;
   width: 1.45rem;
   height: 1.45rem;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 24%, transparent), transparent 64%),
-    color-mix(in oklch, var(--aurora-1) 8%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--aurora-1) 22%, transparent);
 }
 
 .music-wave-mark > span {
-  width: 0.22rem;
-  height: 0.72rem;
+  width: 0.16rem;
+  height: 0.78rem;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--aurora-3), var(--aurora-1));
+  background: var(--aurora-1);
   transform-origin: 50% 100%;
   animation: music-eq-pulse 940ms cubic-bezier(0.37, 0, 0.63, 1) infinite;
 }
@@ -809,6 +869,7 @@
   .music-island-progress,
   .music-island-progress-time,
   .music-island-action,
+  .music-island-toolbar,
   .music-island-expanded-detail {
     transition: none;
   }
@@ -834,25 +895,37 @@
 
   [data-music-floating-density='expanded'] .music-island-identity {
     top: 0.75rem;
-    right: 15.5rem;
+    right: 5.5rem;
     left: 8rem;
-    height: 3.75rem;
+    height: 3.5rem;
   }
 
   [data-music-floating-density='expanded'] .music-island-expanded-detail {
     top: 7.25rem;
     bottom: 5.75rem;
     left: 1rem;
+    right: 1rem;
   }
 
   [data-music-floating-density='expanded'] .music-island-transport {
-    right: 0.75rem;
-    bottom: 0.55rem;
+    right: 50%;
+    bottom: 0.4rem;
+  }
+
+  [data-music-floating-density='expanded'] .music-island-transport-play {
+    height: 2.5rem;
+    width: 2.5rem;
   }
 
   [data-music-floating-density='expanded'] .music-island-progress {
-    right: 10.5rem;
-    bottom: 1rem;
+    left: 1rem;
+    right: 1rem;
+    bottom: 3.3rem;
+  }
+
+  [data-music-floating-density='expanded'] .music-island-toolbar {
+    bottom: 0.35rem;
+    height: 2.5rem;
   }
 
   [data-music-floating-density='expanded'] .music-island-volume {

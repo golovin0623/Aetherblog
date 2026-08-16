@@ -18,6 +18,28 @@ import { chromium, devices, webkit } from 'playwright';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 const FIXTURE_COVER_PATH = path.join(REPO_ROOT, '.agent/rules/assets/dark-theme-preview.png');
+
+/** 30s 静音 PCM WAV(8kHz 单声道):任何浏览器可解码的回放 fixture。 */
+function buildSilentWav(seconds = 30, sampleRate = 8000) {
+  const sampleCount = seconds * sampleRate;
+  const dataSize = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+
+const FIXTURE_SILENT_WAV = buildSilentWav();
 const DEFAULT_BLOG_URL = 'http://127.0.0.1:3000';
 const DEFAULT_ADMIN_URL = 'http://127.0.0.1:5173/admin/';
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
@@ -177,7 +199,22 @@ async function installMusicMocks(page, fixture) {
       return;
     }
 
+    // 音频与封面同哲学:回放用本地 fixture,不依赖真实媒体库。
+    // Playwright 打包的 Chromium 不带 MP3 专有解码器,直连真实 mp3 会触发
+    // NotSupportedError → playbackError → 错误态自动弹出 compact,让
+    // 「minimized → compact」形变捕获的起点漂移(竞态偶发)。静音 PCM WAV
+    // 任何浏览器都可解码,时间轴照常推进。
     if (requestPath.includes('/api/v1/public/media/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/wav',
+        body: FIXTURE_SILENT_WAV,
+      });
+      return;
+    }
+
+    // 重定向或缩略图等静态上传文件放行给真实 dev server(不落兜底 JSON)。
+    if (requestPath.includes('/api/uploads/')) {
       await route.continue();
       return;
     }
