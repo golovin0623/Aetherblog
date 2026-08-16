@@ -168,6 +168,8 @@ AetherBlog/
 
 **外加：** Aether Codex 动效预设 `motion`（`ease`、`duration`、`spring`、`transition`、`variants`、`stagger()`、`cssMotion`），从 `@aetherblog/ui` 导入。
 
+**音乐域动效：** `musicMotion`（`ease.glide/fling`、`spring.orbSnap/rebound/reanchor/sheet`、`duration.reduced/pane/veil/dialog/zoom/swap`）—— 播放器浮岛与沉浸台的实机调优物理参数,2026-08-16 从 `MusicPlayerProvider` 收编;音乐播放器组件内禁止再写裸 spring/bezier 数值(见 `.claude/design-system/04-motion.md` §音乐域)。
+
 ### `@aetherblog/hooks`（16 个 hooks + 1 个组件）
 
 `useDebounce` · `useThrottle` · `useCopyToClipboard` · `useLocalStorage` · `useSessionStorage` · `useAsync` · `useMediaQuery` · `useClickOutside` · `useScrollLock` · `useIntersectionObserver` · `useKeyPress` · `useWindowSize` · `usePrevious` · `useToggle` · `useScrollPosition` · `useTheme` + `ThemeToggle` 组件
