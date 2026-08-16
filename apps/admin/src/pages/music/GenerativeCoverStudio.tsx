@@ -4,12 +4,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Dices, Loader2, RefreshCcw, Sparkles, X, Sliders } from 'lucide-react';
+import { Dices, Loader2, RefreshCcw, Sparkles, X, Sliders } from 'lucide-react';
 import { toast } from 'sonner';
 import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn } from '@/lib/utils';
+import { solidButtonClass, textButtonClass } from './musicUi';
 import {
   buildResonantCoverComposition,
   hashMusicCoverSeed,
@@ -25,65 +27,38 @@ interface GenerativeCoverStudioProps {
   onApply: (blob: Blob, fileName: string) => Promise<boolean>;
 }
 
-export interface CoverPreset {
-  id: string;
-  name: string;
-  tag: string;
+// 预设已抽至 ./coverPresets(与列表缩略图 ResonantThumb 共用同一份调色板);
+// 此处 re-export 维持既有对外 API。
+export { COVER_PRESETS, type CoverPreset } from './coverPresets';
+import { COVER_PRESETS } from './coverPresets';
+
+// 预设块的实时迷你画布 —— 用当前种子渲染,点选前就能看到「这颗种子在那套配方下的样子」
+function PresetThumb({ seed, orbits, turbulence, palette }: {
+  seed: number;
   orbits: number;
   turbulence: number;
   palette: ResonantCoverPalette;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    const px = 96;
+    canvas.width = px;
+    canvas.height = px;
+    const composition = buildResonantCoverComposition({
+      seed,
+      width: px,
+      height: px,
+      particleCount: 300,
+      orbitCount: Math.min(orbits, 8),
+      turbulence,
+    });
+    paintResonantCover(context, composition, palette, px, px);
+  }, [orbits, palette, seed, turbulence]);
+  return <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />;
 }
-
-export const COVER_PRESETS: CoverPreset[] = [
-  {
-    id: 'cyberpunk',
-    name: 'Cyberpunk Neon',
-    tag: '赛博霓虹',
-    orbits: 14,
-    turbulence: 1.3,
-    palette: { background: '#090a0f', primary: '#ff007f', secondary: '#00f0ff', accent: '#ffe600' },
-  },
-  {
-    id: 'nordic',
-    name: 'Nordic Minimal',
-    tag: '极简北欧',
-    orbits: 6,
-    turbulence: 0.35,
-    palette: { background: '#12141a', primary: '#e2e8f0', secondary: '#64748b', accent: '#38bdf8' },
-  },
-  {
-    id: 'ambient-dusk',
-    name: 'Ambient Dusk',
-    tag: '落日余晖',
-    orbits: 10,
-    turbulence: 0.85,
-    palette: { background: '#140c1c', primary: '#f43f5e', secondary: '#fb923c', accent: '#c084fc' },
-  },
-  {
-    id: 'abyssal',
-    name: 'Abyssal Deep',
-    tag: '深海共鸣',
-    orbits: 12,
-    turbulence: 1.05,
-    palette: { background: '#040d1a', primary: '#0ea5e9', secondary: '#10b981', accent: '#6366f1' },
-  },
-  {
-    id: 'retro-vinyl',
-    name: 'Retro Vinyl',
-    tag: '复古黑胶',
-    orbits: 16,
-    turbulence: 0.25,
-    palette: { background: '#140f0c', primary: '#f59e0b', secondary: '#b45309', accent: '#ef4444' },
-  },
-  {
-    id: 'sakura-lofi',
-    name: 'Sakura Pulse',
-    tag: '落樱微波',
-    orbits: 8,
-    turbulence: 0.65,
-    palette: { background: '#180e1a', primary: '#f472b6', secondary: '#e879f9', accent: '#fb7185' },
-  },
-];
 
 const DEFAULT_PALETTE: ResonantCoverPalette = {
   background: '#0d0f14',
@@ -246,8 +221,10 @@ export default function GenerativeCoverStudio({
             </div>
 
             <div className="flex items-center justify-between text-xs text-white/60">
-              <span>1200 × 1200 方形母带画幅</span>
-              <span className="font-mono text-white/70">P5.js · Chaos Harmonic</span>
+              <span>1200 × 1200 · PNG 母带</span>
+              <span className="font-mono text-white/70">
+                {COVER_PRESETS.find((preset) => preset.id === activePresetId)?.tag ?? '自定义和声'}
+              </span>
             </div>
           </div>
         </div>
@@ -257,11 +234,11 @@ export default function GenerativeCoverStudio({
           <div className="space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
               <div>
-                <h2 id="generative-cover-title" className="text-base font-black tracking-tight text-[var(--ink-primary)]">
+                <h2 id="generative-cover-title" className="font-display text-lg font-bold tracking-tight text-[var(--ink-primary)]">
                   计算艺术封面工坊
                 </h2>
                 <p className="text-xs text-[var(--ink-muted)] mt-0.5">
-                  基于确定性哈希与物理流场生成的原创封面
+                  确定性种子驱动 —— 同一首歌,永远同一张脸
                 </p>
               </div>
               <button
@@ -277,9 +254,9 @@ export default function GenerativeCoverStudio({
 
             {/* 灵感配方预设色卡 */}
             <div>
-              <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-[var(--ink-secondary)]">
-                <span>风格配方 (Presets)</span>
-                <span className="text-[10px] text-[var(--ink-muted)] font-normal">一键套用大师配色</span>
+              <div className="mb-2.5 flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">风格配方</span>
+                <span className="text-[10px] text-[var(--ink-muted)]">点选即换调色与声场</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {COVER_PRESETS.map((preset) => {
@@ -301,13 +278,17 @@ export default function GenerativeCoverStudio({
                           : 'border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:border-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)] bg-[var(--bg-substrate)]'
                       )}
                     >
-                      <div className="flex -space-x-1 shrink-0">
-                        <span className="h-3.5 w-3.5 rounded-full border border-black/20 shadow-sm" style={{ backgroundColor: preset.palette.primary }} />
-                        <span className="h-3.5 w-3.5 rounded-full border border-black/20 shadow-sm" style={{ backgroundColor: preset.palette.secondary }} />
-                        <span className="h-3.5 w-3.5 rounded-full border border-black/20 shadow-sm" style={{ backgroundColor: preset.palette.accent }} />
-                      </div>
+                      <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]">
+                        <PresetThumb
+                          seed={seed}
+                          orbits={preset.orbits}
+                          turbulence={preset.turbulence}
+                          palette={preset.palette}
+                        />
+                      </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-bold leading-none text-[var(--ink-primary)]">{preset.tag}</p>
+                        <p className="truncate text-xs font-bold leading-tight text-[var(--ink-primary)]">{preset.tag}</p>
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--ink-muted)]">{preset.name}</p>
                       </div>
                     </button>
                   );
@@ -318,9 +299,9 @@ export default function GenerativeCoverStudio({
             {/* 核心参数微调 */}
             <div className="space-y-4 pt-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-[var(--ink-secondary)] flex items-center gap-1.5">
+                <label className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                   <Sliders className="w-3.5 h-3.5 text-[var(--aurora-1)]" />
-                  声场生成参数
+                  声场参数
                 </label>
                 <button
                   type="button"
@@ -348,7 +329,8 @@ export default function GenerativeCoverStudio({
                     setOrbitCount(Number(e.target.value));
                     setActivePresetId(null);
                   }}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] accent-[var(--aurora-1)]"
+                  className="music-range"
+                  style={{ '--range-fill': `${((orbitCount - 4) / 14) * 100}%` } as CSSProperties}
                 />
               </div>
 
@@ -368,13 +350,14 @@ export default function GenerativeCoverStudio({
                     setTurbulence(Number(e.target.value));
                     setActivePresetId(null);
                   }}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] accent-[var(--aurora-1)]"
+                  className="music-range"
+                  style={{ '--range-fill': `${((turbulence - 0.1) / 1.7) * 100}%` } as CSSProperties}
                 />
               </div>
 
               {/* 三色调色板微控 */}
               <div className="pt-1">
-                <span className="mb-2 block text-xs text-[var(--ink-muted)]">三色和声色彩微调</span>
+                <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">三色和声</span>
                 <div className="grid grid-cols-3 gap-2">
                   {(
                     [
@@ -416,7 +399,7 @@ export default function GenerativeCoverStudio({
                 setActivePresetId(null);
               }}
               disabled={applying}
-              className="flex h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)] transition-colors disabled:opacity-50"
+              className={textButtonClass()}
             >
               <RefreshCcw className="w-3.5 h-3.5" />
               重置
@@ -425,15 +408,14 @@ export default function GenerativeCoverStudio({
               type="button"
               onClick={() => void applyCover()}
               disabled={applying}
-              className="flex-1 flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--aurora-1)] text-xs font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+              className={cn(solidButtonClass(), 'flex-1')}
             >
               {applying ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {applying ? '正在导出高清画幅并上传...' : '应用为专辑封面'}
-              {!applying && <Check className="h-3.5 w-3.5" />}
+              {applying ? '正在导出母带…' : '应用为专辑封面'}
             </button>
           </div>
         </div>

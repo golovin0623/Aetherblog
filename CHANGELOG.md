@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 音乐大厅·歌单策展重设计 + 模块头部布局统一 (2026-08-16, branch claude/music-hall-admin-design-43c8f1)
+
+对标主流音乐软件(Apple Music 级交互模式,Aether Codex 材质实现)重做后台音乐大厅的歌单管理,并修复全后台模块头部 tab 条随宽度/actions 跳位的割裂感。
+
+- **模块头部统一(全后台生效)：** `AdminModuleHeader` 此前在 ≥1280px 断点上「无 actions=双列(tab 条在标题右上)/有 actions=单列(tab 条在下)」,切 tab 时 actions 出没导致 tab 条在右上/下方之间跳位。现统一为:**带 tab 的模块头恒为单列,tab 条固定在标题下方一行(tab 左、actions 右),所有断点稳定**;双列右上布局仅保留给无 tab 的头。compact-tabs / taxonomy 皮肤几何不受影响。
+- **歌单策展(playlists tab)重构：**
+  - **左栏歌单库(`PlaylistRail`)：** 每行 44px 封面缩略为视觉锚点(真实封面或确定性计算艺术封面),选中态极光左光带,管理操作(喜爱/设为公开/删除)桌面 hover 浮现、触屏常驻;「创建歌单」从常驻表单收成 [+] 按钮 + 内联命名卡(Apple 式:新建只要名字)。
+  - **详情 Hero：** 大封面(极光辉光投影)+ mono eyebrow(PLAYLIST·可见性·状态·公开中)+ `font-display` 标题 + 描述 + 「N 首 · 总时长」(tabular-nums)+ 主操作行:实底「播放全部/暂停」(每视图唯一实底 CTA)、随机播放、编辑详情;原编辑表单(封面工作流/字段/开关/可见性)整体收进可折叠面板,脏草稿时 Hero 直接给「保存修改」。
+  - **曲目表(`PlaylistTrackTable`)：** 列头(#/歌曲/时长),行=序号(hover 让位播放键,正在播放行常驻极光均衡器动画)+ 封面缩略 + 标题/艺术家·专辑 + 右对齐时长;**拖拽排序**(framer Reorder,手柄触发,提交沿用 `reorderPlaylistMutation` 契约,顺序未变不发请求),手柄聚焦后 ↑/↓ 键可调序(键盘可达);移动端溢出菜单(播放/上移/下移/移除)保留为降级路径。
+  - **添加歌曲(`AddTracksPanel`)：** 取代「搜索+下拉+按钮」——可搜索候选列表行内点 [+] 直加,已在歌单的曲目保持可见并标记 ✓ 已加入,底部保留候选状态文案(核对中/加载中/已载入 x/y)。
+  - **计算艺术封面缩略(`ResonantThumb`)：** 复用封面工作室渲染核心(`musicCoverArt`),seed 由业务身份哈希决定,同一歌单/曲目永远同脸;调色板预设抽为 `coverPresets.ts` 供工作室与缩略图共用(不再把懒加载的工作室拖进主 chunk)。
+  - **细节：** 骨架屏全面替换文字加载与 spinner(切歌单/曲目表/候选面板/歌单库);空态重写(选择引导/空歌单 CTA/无喜爱歌单);`#ec496f` 硬编码粉一律收敛为 `--aurora-4`(曲库/歌单心形、策展总览喜爱卡);过渡统一 `duration-[var(--dur-*)] ease-[var(--ease-out)]`。
+- **结构化拆分：** `MusicPage.tsx` 4126 → 约 3900 行;样式工厂抽至 `musicUi.ts`(新增 `solidButtonClass`/`formatClock`),歌单子组件落位 `pages/music/`(PlaylistRail / PlaylistTrackTable / AddTracksPanel / ResonantThumb / coverPresets)。
+- **Legacy 清理：** `BatchActionBar` 手写玻璃(`dark:` 阴影/`ring-white/10`/`backdrop-blur-2xl` 组合)迁移为 `.surface-raised`(音乐模块最后的 `dark:` 用法清零)。
+- **修复：** 拖拽提交竞态 —— 快速拖拽时 framer `onReorder` 先于 `onDragStart` 触发,旧「脏标记」方案会漏提交;改为结束一律上交 + 父级「顺序未变不提交」守卫。曲目行入场动画与拖拽变换解耦(整表单次 fadeUp),避免拖拽中断入场后行卡在透明态。
+- **计算艺术封面·渲染算法重写(`musicCoverArt.ts` Resonant Cartography v2)：** 旧算法输出为居中径向光斑+随机短刺,评为廉价 AI 感;新分层:① 近黑大气层+克制焦点辉光(砍掉角落 accent 大块渐变);② 倾斜谐波轨道弧段(内紧外疏指数间距、呼吸缺口、共振载波双线+辉光底);③ **流丝改为严格沿轨道切向的二次微弧**(曲率精确贴合椭圆——黑胶沟槽/星轨长曝光质感),旋臂角向密度调制+共振环邻域聚集形成「活跃带」,拒绝均匀贴图感;④ 彗尾长弧(辉光底+锐利主线,头亮尾隐)为每张封面的签名瞬间;⑤ 制图仪式的精密核心(分离暗圈+亮环+四向刻度);⑥ 星尘+胶片颗粒;⑦ 克制渐晕。同 seed 确定性不变,工坊/列表缩略/Hero 全线同步升级;composition 契约向后兼容(strokes 增加控制点,新增 arcs/comets/dust)。
+- **封面工坊 UI 精修(`GenerativeCoverStudio`)：** 预设块从三个色点升级为**实时迷你画布**(当前种子×该配方的真实渲染,选前即所见);删除虚构的「P5.js · Chaos Harmonic」标签,右下角改为当前配方名/自定义和声的诚实回显;标题接入 `font-display`,节标签统一 mono uppercase eyebrow;滑杆自定义 `.music-range`(极光填充轨道+精密拇指,替代原生 accent);底部按钮接入 `textButtonClass`/`solidButtonClass` 工厂并去除图标堆叠;画布侧保持刻意的暗房单一视觉(亮色主题下仅控制面板翻转)。
+- 📄 文档影响:已更新 CHANGELOG.md;无 API/DB/共享包变更,architecture 与 api-handlers 无需更新。
+
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 
 把站内**文章 / 学习笔记 / 知识库文件**一键转换成可翻页的「拟真书籍」，前台以全屏 3D 翻页阅读器沉浸式呈现，后台在文章模块统一管理。
