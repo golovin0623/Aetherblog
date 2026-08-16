@@ -17,7 +17,8 @@ interface FriendCardProps {
   url: string;
   avatar: string;
   description?: string;
-  themeColor?: string;
+  /** 后端可返回 null(DTO *string 无 omitempty)或空串,组件内统一归一化 */
+  themeColor?: string | null;
   /** 入场延迟(秒) — 由父级按索引编排,形成 iOS 通知逐条落入的节奏 */
   enterDelay?: number;
 }
@@ -36,15 +37,16 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
   url,
   avatar,
   description,
-  themeColor = '#6366f1',
+  themeColor,
   enterDelay = 0,
 }) => {
   // 智能检测图片宽高比:正方形填满,非正方形留白适配
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
 
-  // themeColor 兜底:DB 里可能存空字符串,默认参数只拦 undefined ——
-  // 空串会让 linear-gradient 失效,头像加载失败时渲染成"黑洞球"(产线旧 bug)。
-  const brandColor = themeColor.trim() !== '' ? themeColor : '#6366f1';
+  // themeColor 兜底:产线可能给 null(默认参数拦不住)或空字符串 ——
+  // null.trim() 会崩掉整棵 /friends 客户端树,空串则让 linear-gradient
+  // 失效渲染成"黑洞球"(产线旧 bug)。统一归一化。
+  const brandColor = (themeColor || '').trim() || '#6366f1';
 
   // 安全验证: 防止 XSS 注入 (#136)
   const safeAvatar = sanitizeImageUrl(avatar, '');

@@ -169,6 +169,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 ]
               ).map(({ mode, label, Icon, onClick }) => {
                 const active = activeMode === mode;
+                // min-h-[44px]:AGENTS.md 移动端触控约定 ≥44×44px;md 起还原紧凑胶囊,不影响桌面布局
                 return (
                   <button
                     key={mode}
@@ -176,7 +177,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                     onClick={onClick}
                     aria-pressed={active}
                     aria-label={`${label}视图`}
-                    className={`relative flex items-center gap-1.5 rounded-full px-4 py-2 text-caption font-medium transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    className={`relative flex min-h-[44px] items-center gap-1.5 rounded-full px-4 py-2 text-caption font-medium transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-0 ${
                       active
                         ? 'text-[var(--ink-primary)]'
                         : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]'
@@ -311,7 +312,8 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                           animate={{ opacity: 1, transition: { ...transition.quick, delay: 0.3 } }}
                           exit={{ opacity: 0, transition: { ...transition.quick } }}
                           whileTap={{ scale: 0.96, transition: { ...spring.precise } }}
-                          className="mx-auto mt-3 flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-4 py-2 text-caption text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] hover:text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          /* min-h-[44px]:AGENTS.md 移动端触控约定 ≥44×44px */
+                          className="mx-auto mt-3 flex min-h-[44px] items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] px-5 py-2 text-caption text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] hover:text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-0 md:px-4"
                         >
                           <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
                           收起
