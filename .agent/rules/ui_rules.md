@@ -121,6 +121,8 @@ import { cn, formatDate } from '@aetherblog/utils';
 import { Button } from '@/components/ui/Button';  // 禁止！
 ```
 
+> **Toast（2026-08 Codex 迁移后）：** 用 `ToastProvider`（支持 `position="top-right" | "bottom-center"`）包裹页面，`useToast().showToast({ message, type, duration, action })` 触发；`action` 是可选操作按钮（如删除后的「撤销」）。样式全部走 Codex token（`--bg-raised` 卡 + `signal-*` 状态点色），禁止再引入自绘 toast。
+
 ### 7.4 新增组件流程
 1. 确认 `packages/ui` 中不存在该组件
 2. 在 `packages/ui/src/components/` 创建组件

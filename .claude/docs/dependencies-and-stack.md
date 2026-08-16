@@ -165,6 +165,8 @@ AetherBlog/
 `Button` · `Card` · `Input` · `Modal` · `ConfirmModal` · `Toast` · `Avatar` · `Badge` · `Tag` · `Skeleton` · `Dropdown` · `Select` · `DateRangePicker` · `Tooltip` · `Textarea` · `Toggle` · `AetherMark` + `cn` 工具（clsx + tailwind-merge）
 
 > `Select` / `DateRangePicker` 是 PR #568 PostsPage 滤镜重构时从 admin 私有组件提升为共享组件 —— 任何 admin 页用到的「样式化下拉」「日期范围筛选」一律走这两个；`AetherMark` 是 Codex 标识徽。
+>
+> `Toast` 已于 2026-08 迁移到 Codex token（不再使用 legacy `bg-green-500/20` 等）并扩展 API：`showToast({ message, type, duration, action })` 支持可选 `action`（如「撤销」按钮）；`ToastProvider` 新增 `position`（`'top-right'` 默认 / `'bottom-center'`）。灵境工作台（blog `/agent/workspace`）是首个消费方。
 
 **外加：** Aether Codex 动效预设 `motion`（`ease`、`duration`、`spring`、`transition`、`variants`、`stagger()`、`cssMotion`），从 `@aetherblog/ui` 导入。
 

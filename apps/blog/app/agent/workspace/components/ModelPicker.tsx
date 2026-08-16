@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@aetherblog/ui';
-import { useAgentModels, type AgentModelItem } from '../../lib/agentModels';
+import { useAgentModels, type AgentModelItem, type ModelsState } from '../../lib/agentModels';
 import AgentProviderIcon from './AgentProviderIcon';
 
 interface Props {
@@ -35,6 +35,9 @@ interface Props {
   placement?: 'bottom-end' | 'top-start';
   /** 紧凑模式：composer 内嵌时高度更小、padding 更紧。 */
   compact?: boolean;
+  /** 父级已拉取的模型清单 —— 传入时不再自行 fetch（WorkspaceClient 需要同一份
+   *  数据做消息元数据与上下文窗口估算，单一来源避免双请求）。 */
+  modelsState?: ModelsState;
 }
 
 function modelLabel(item: AgentModelItem): string {
@@ -129,8 +132,11 @@ export default function ModelPicker({
   enabled,
   placement = 'bottom-end',
   compact = false,
+  modelsState,
 }: Props) {
-  const state = useAgentModels(enabled);
+  // 外部注入时内部 hook 关闭拉取（enabled=false 永不 fetch），单一数据源。
+  const internalState = useAgentModels(enabled && !modelsState);
+  const state = modelsState ?? internalState;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);

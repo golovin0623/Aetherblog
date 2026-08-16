@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 灵境工作台 · 对话知识库体验整体升级 (2026-08-16, branch claude/linghjing-ai-chat-kb-design-v5jvdy)
+
+**背景：** 前台灵境（blog `/agent/workspace`）与 LobeHub / Cherry Studio / ChatGPT 相比存在体验断层：后端一直在发的知识检索回执（SSE `retrieval` 事件）被前端整体丢弃、聊天请求从不携带 `kbIds` / `knowledgeContextMode`（「对话知识库」名不副实）、无消息元数据、无翻译/引用/分支等消息编排、无上下文管理、会话管理只有重命名+删除。本次纯前端（blog + packages/ui）对齐补课，零后端改动。
+
+**Added — 知识检索编排（核心）：**
+- **接通 `retrieval` SSE 回执**（此前被静默丢弃；旧 `sources` 事件为后端从不发送的死契约，保留兼容渲染）。新组件 `RetrievalReceipt`：状态结论（matched/partial/empty/unavailable 四态 signal 色）+ 编号命中列表（kind 徽标 / 标题 / 来源 / snippet 3 行截断 / 相关度微条 + 百分比 / 安全 href 白名单 `/posts/`，`/admin/` 仅 admin 角色）+ warnings。回执渲染在回答上方 —— 与「先检索后作答」的执行顺序一致。
+- **知识库三态控制**（`KnowledgePicker` + composer 书库按钮）：自动（后端自动发现，默认）/ 指定（多选 KB，未就绪库降级不可选）/ 关闭；勾选即隐含切换，选择随会话持久化，重试/编辑无损恢复。请求契约对齐 admin AetherHub：auto 省略 `kbIds`、selected 传数组、none 传 `null`，`knowledgeContextMode` 三态必填。新增数据源 `lib/agentKbs.ts`（`GET /api/v1/agent/knowledge-bases`）。
+- **内联引用标记**：回答正文中的 `[n]`/`【n】`（n ≤ 命中数）链接化为 aurora-2 上标胶囊（`lib/citations.ts`，代码块/行内代码内绝不改写），点击展开回执、平滑滚动并高亮对应依据。
+- **检索阶段可视化**：携带知识上下文且回执未到时,思考面板显示「正在检索知识」；`selected_context_not_grounded` 错误提供「自动检索重试」一键出路（同时把会话检索模式固化为 auto）。
+
+**Added — 消息编排与元数据：**
+- **元数据 footer**（assistant 完成态常驻微行）：模型名（发送时戳记 `modelId`/`providerCode`，经模型清单解析显示名）· 用时 · 首字延迟 · `~N tok` 估算（新 `lib/tokenEstimate.ts`，CJK≈1 字/token、其余≈4 字符/token；后端无 usage 事件，故为估算并带 `~` 标注）。
+- **消息操作扩展**：复制 / **引用**（blockquote 回填 composer）/ **翻译**（中⇄EN 自动判向，独立 SSE 流内联写入 `message.translation`，aurora-3 面板可复制/重译/关闭，不占对话历史与 busy 状态机）/ 编辑（user）/ 重新生成（assistant）/ **分支会话**（复制到该消息为止开新会话）/ **删除单条**（5s 撤销 toast）。
+- **流式渲染细节**：光标从「独立 span 挂在整个 markdown 块后（永远孤行）」改为 CSS 内联长在最后一个文本块行内末尾（`agent-stream-caret`，覆盖 p/标题/引用末段/列表末项）；流式轻渲染 → 完整渲染（shiki/KaTeX）切换加 260ms 落定淡入（`agent-md-settle`）消除内容跳变；SSE 流意外断开不再伪装成正常完成（标记可重试错误，已收内容保留）。
+
+**Added — 上下文管理：**
+- **清除上下文**（Cherry Studio 心智）：composer 剪刀按钮 / `/context` 命令在当前位置放置断点 —— 消息保留可回看，断点之前的历史不再随请求发送；线程内 aurora-3 虚线分隔线可一键「恢复」，清除动作有 5s 撤销 toast。断点在截断/删除/分支后自动归一化，绝不悬空。
+- **上下文用量计**（composer 右下,桌面端）：断点后历史条数 + `~token` 估算，选定具体模型时按其 `contextWindow` 显示占比微条（>80% warn / >95% danger 变色）；流式期间冻结估算避免每帧全量扫描。
+
+**Changed — 会话管理（Sidebar）：**
+- **置顶**（置顶分组置前 + Pin 标识,菜单可置顶/取消）；**搜索升级为全文**（标题 + 消息正文）；**导出 Markdown**（`/export` 命令或会话菜单,含思考过程 `<details>` 与知识来源脚注）；删除会话在原有 inline 双击确认之外再加 5s 撤销 toast。
+- 线程内新增**日期分隔线**（今天/昨天/M月D日,全新对话不标「今天」）。
+
+**Changed — `packages/ui` Toast 迁移 Codex**（原为 legacy `bg-green-500/20` 等且全站零消费）：`--bg-raised` 实色卡 + `signal-*` 状态点色 + framer-motion 出入场；新增 `action` 操作按钮（撤销类交互）与 `ToastProvider position`（`top-right`/`bottom-center`）。灵境工作台为首个消费方（bottom-center）。
+
+**Perf：** ModelPicker 支持外部注入 `modelsState` —— 工作台一次拉取模型清单,ModelPicker 展示 / 元数据解析 / 上下文窗口三处共用,消除重复请求。
+
+**明确不做（后端缺口,单靠前端无法闭环）：** 图片/多模态发送 —— `AgentChatRequest.messages[].content` 仅支持 string 且 Go 网关 body 上限 96KB,需要 ai-service schema（content parts）+ 上传端点 + 网关配额三处后端改动后前端再接。
+
+**Tests：** blog `tsc --noEmit` 0 error；`design-system:check` 0 error（红线保持）；`next build` 通过。
+
+**📄 文档影响：** [已更新 CHANGELOG.md · .agent/rules/ui_rules.md（Toast 新 API）· .claude/docs/dependencies-and-stack.md §5（Toast 说明）]。无新增后端 API / DB schema,architecture.md / api-handlers.md 无需更新。
+
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 
 把站内**文章 / 学习笔记 / 知识库文件**一键转换成可翻页的「拟真书籍」，前台以全屏 3D 翻页阅读器沉浸式呈现，后台在文章模块统一管理。

@@ -12,10 +12,13 @@ import { spring } from '@aetherblog/ui';
 import {
   ArrowUp,
   AtSign,
+  BookDashed,
+  BookMarked,
   Check,
   ChevronDown,
   CornerDownLeft,
   Hash,
+  Scissors,
   SlidersHorizontal,
   SlashSquare,
   Square,
@@ -27,9 +30,23 @@ import {
 import ArticlePicker from './ArticlePicker';
 import TagPicker from './TagPicker';
 import SlashCommandPicker from './SlashCommandPicker';
+import KnowledgePicker from './KnowledgePicker';
 import type { AgentArticle, AgentTag, SlashCommand } from '../../lib/agentResources';
+import type { AgentKbRef, AgentKnowledgeBase } from '../../lib/agentKbs';
+import type { KnowledgeContextMode } from '../../lib/agentChatStream';
+import { formatTokenCount } from '../../lib/tokenEstimate';
 
-type PickerKey = 'article' | 'tag' | 'slash' | null;
+type PickerKey = 'article' | 'tag' | 'slash' | 'kb' | null;
+
+/** 上下文用量摘要 —— 由 WorkspaceClient 估算后传入。 */
+export interface ComposerContextStats {
+  /** 将随下一轮请求发送的历史消息条数（不含正在输入的草稿）。 */
+  messages: number;
+  /** 历史 + 草稿的 token 估算。 */
+  tokens: number;
+  /** 当前模型的上下文窗口（未知为 null）。 */
+  window?: number | null;
+}
 type SendShortcut = 'enter' | 'mod-enter';
 
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.blog.agent.sendShortcut';
@@ -80,6 +97,20 @@ interface Props {
   /** 用户从 mentions chip 上点 X 移除引用 */
   onRemoveArticle?: (id: number) => void;
   onRemoveTag?: (slug: string) => void;
+
+  /** 知识检索三态（auto/selected/none）+ 已选知识库。提供 onKnowledgeModeChange
+   *  即视为启用知识 picker 按钮。 */
+  knowledgeMode?: KnowledgeContextMode;
+  selectedKbs?: AgentKbRef[];
+  onKnowledgeModeChange?: (mode: KnowledgeContextMode) => void;
+  onToggleKb?: (kb: AgentKnowledgeBase) => void;
+  onRemoveKb?: (id: number) => void;
+
+  /** 上下文用量摘要（null 时不渲染计量）。 */
+  contextStats?: ComposerContextStats | null;
+  /** 「清除上下文」—— 保留消息但让模型从此重新开始记忆。 */
+  onClearContext?: () => void;
+  canClearContext?: boolean;
 }
 
 /** Composer 暴露的命令式 API。 */
@@ -127,6 +158,14 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     onSlashCommand,
     onRemoveArticle,
     onRemoveTag,
+    knowledgeMode = 'auto',
+    selectedKbs = [],
+    onKnowledgeModeChange,
+    onToggleKb,
+    onRemoveKb,
+    contextStats,
+    onClearContext,
+    canClearContext = false,
   },
   ref,
 ) {
@@ -139,6 +178,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const atBtnRef = useRef<HTMLButtonElement>(null);
   const hashBtnRef = useRef<HTMLButtonElement>(null);
   const slashBtnRef = useRef<HTMLButtonElement>(null);
+  const kbBtnRef = useRef<HTMLButtonElement>(null);
   const sendMenuRef = useRef<HTMLDivElement>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
@@ -231,11 +271,35 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setPicker((curr) => (curr === k ? null : k));
   };
 
-  const selectedContextCount = selectedArticles.length + selectedTags.length;
+  const selectedContextCount =
+    selectedArticles.length + selectedTags.length + selectedKbs.length;
   const hasSelectedContext = selectedContextCount > 0;
   const trayScrollEnabled = selectedContextCount > 6;
   const selectedArticleIds = new Set(selectedArticles.map((a) => a.id));
   const selectedTagSlugs = new Set(selectedTags.map((t) => t.slug));
+  const selectedKbIds = new Set(selectedKbs.map((k) => k.id));
+
+  // 上下文用量：window 已知时给出占比，>80% 转 warn、>95% 转 danger。
+  const ctxRatio =
+    contextStats && contextStats.window && contextStats.window > 0
+      ? Math.min(1, contextStats.tokens / contextStats.window)
+      : null;
+  const ctxToneClass =
+    ctxRatio == null
+      ? 'text-[var(--ink-muted)]'
+      : ctxRatio > 0.95
+      ? 'text-[var(--signal-danger)]'
+      : ctxRatio > 0.8
+      ? 'text-[var(--signal-warn)]'
+      : 'text-[var(--ink-muted)]';
+  const ctxBarClass =
+    ctxRatio == null
+      ? ''
+      : ctxRatio > 0.95
+      ? 'bg-[var(--signal-danger)]'
+      : ctxRatio > 0.8
+      ? 'bg-[var(--signal-warn)]'
+      : 'bg-[color-mix(in_oklch,var(--aurora-3)_70%,transparent)]';
   const activeShortcut =
     SEND_SHORTCUT_OPTIONS.find((option) => option.value === sendShortcut) ??
     SEND_SHORTCUT_OPTIONS[0];
@@ -315,6 +379,17 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             }}
           />
         )}
+        {onKnowledgeModeChange && onToggleKb && (
+          <KnowledgePicker
+            open={picker === 'kb'}
+            onClose={() => setPicker(null)}
+            anchorRef={kbBtnRef}
+            mode={knowledgeMode}
+            selectedIds={selectedKbIds}
+            onModeChange={onKnowledgeModeChange}
+            onToggleKb={onToggleKb}
+          />
+        )}
 
         {/* mentions 区 —— 选中的文章 / 标签作为胶囊显示在 textarea 上方,
             包在同一个 form 容器内,视觉上与 textarea 一体。Codex/ChatGPT 风格:
@@ -349,6 +424,38 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 }}
               >
                 <AnimatePresence initial={false}>
+                  {selectedKbs.map((kb) => (
+                    <motion.span
+                      layout
+                      initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.98, y: -4 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 36, mass: 0.72 }}
+                      key={`kb-${kb.id}`}
+                      className="group/chip inline-flex items-center gap-1.5 pl-2.5 pr-1 py-[3px] rounded-full text-[12px] leading-tight max-w-[min(15rem,calc(100vw-7rem))] transition-[box-shadow,border-color,background-color]"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, color-mix(in oklch, var(--aurora-2) 14%, transparent), color-mix(in oklch, var(--aurora-2) 8%, transparent))',
+                        border: '1px solid color-mix(in oklch, var(--aurora-2) 36%, transparent)',
+                        color: 'var(--aurora-2)',
+                        boxShadow:
+                          '0 1px 0 inset color-mix(in oklch, var(--aurora-2) 14%, transparent), 0 2px 6px -3px color-mix(in oklch, var(--aurora-2) 38%, transparent)',
+                      }}
+                    >
+                      <BookMarked className="w-3 h-3 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+                      <span className="truncate font-medium tracking-tight" title={kb.name}>{kb.name}</span>
+                      {onRemoveKb && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveKb(kb.id)}
+                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[var(--aurora-2)]/75 hover:text-[var(--bg-void)] hover:bg-[var(--aurora-2)] transition-colors"
+                          aria-label={`移除知识库 ${kb.name}`}
+                        >
+                          <X className="w-3 h-3" strokeWidth={2.75} />
+                        </button>
+                      )}
+                    </motion.span>
+                  ))}
                   {selectedArticles.map((a) => (
                     <motion.span
                       layout
@@ -450,6 +557,27 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               >
                 <Hash className="w-3.5 h-3.5" />
               </ToolButton>
+              {onKnowledgeModeChange && (
+                <ToolButton
+                  ref={kbBtnRef}
+                  title={
+                    knowledgeMode === 'none'
+                      ? '知识检索已关闭'
+                      : selectedKbs.length
+                      ? `指定 ${selectedKbs.length} 个知识库`
+                      : '知识检索（自动）'
+                  }
+                  active={picker === 'kb' || knowledgeMode === 'selected'}
+                  count={selectedKbs.length}
+                  onClick={() => togglePicker('kb')}
+                >
+                  {knowledgeMode === 'none' ? (
+                    <BookDashed className="w-3.5 h-3.5 opacity-70" />
+                  ) : (
+                    <BookMarked className="w-3.5 h-3.5" />
+                  )}
+                </ToolButton>
+              )}
               <ToolButton
                 ref={slashBtnRef}
                 title="斜杠命令"
@@ -459,10 +587,52 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               >
                 <SlashSquare className="w-3.5 h-3.5" />
               </ToolButton>
+              {onClearContext && (
+                <ToolButton
+                  title={
+                    canClearContext
+                      ? '清除上下文（保留消息，模型从此重新开始记忆）'
+                      : '当前没有可清除的上下文'
+                  }
+                  disabled={!canClearContext}
+                  mobileHidden
+                  onClick={onClearContext}
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                </ToolButton>
+              )}
             </div>
           </div>
 
           <div className="flex shrink-0 items-center justify-end gap-1">
+            {contextStats && contextStats.messages > 0 && (
+              <div
+                className={`mr-0.5 hidden select-none items-center gap-1.5 md:flex ${ctxToneClass}`}
+                title={`上下文：${contextStats.messages} 条消息 · ~${formatTokenCount(
+                  contextStats.tokens,
+                )} tokens${
+                  contextStats.window
+                    ? ` / 窗口 ${formatTokenCount(contextStats.window)}`
+                    : ''
+                }`}
+                aria-label="上下文用量"
+              >
+                {ctxRatio != null && (
+                  <span
+                    aria-hidden="true"
+                    className="h-[3px] w-7 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
+                  >
+                    <span
+                      className={`block h-full rounded-full transition-[width] duration-300 ${ctxBarClass}`}
+                      style={{ width: `${Math.max(3, Math.round(ctxRatio * 100))}%` }}
+                    />
+                  </span>
+                )}
+                <span className="font-mono text-[9.5px] tracking-[0.06em] tnum">
+                  ~{formatTokenCount(contextStats.tokens)}
+                </span>
+              </div>
+            )}
             <motion.button
               type="button"
               onClick={() => setExpanded((v) => !v)}
