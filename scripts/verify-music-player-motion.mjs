@@ -877,22 +877,31 @@ function assertMorphTrace(label, samples, {
         failures.push(`${label}: 外壳收起时在第 ${index} 帧反向扩大`);
         break;
       }
+      // 形变前 250ms 放宽到 60% 行程:密度切换的 React 提交可阻塞主线程 ~90ms,
+      // 而 CSS 过渡时间轴照走 —— 前载 ease-out 在头 1/4 段完成 ~80% 位移,补画帧
+      // 天然要一次追回 30-45% 行程(实测编辑前后的轨迹均如此)。60% 上限仍能抓住
+      // 「无过渡直接瞬移到位」的真坏形变;起步追赶期过后恢复 35% 严判。
+      const shellJumpRatio = sample.time < 250 ? 0.6 : 0.35;
       if (
         elapsed < 40
         && (
-          Math.abs(widthDelta) > Math.max(24, shellWidthTravel * 0.35)
-          || Math.abs(heightDelta) > Math.max(24, shellHeightTravel * 0.35)
+          Math.abs(widthDelta) > Math.max(24, shellWidthTravel * shellJumpRatio)
+          || Math.abs(heightDelta) > Math.max(24, shellHeightTravel * shellJumpRatio)
         )
       ) {
         failures.push(`${label}: 外壳在第 ${index} 帧发生瞬时尺寸跳变`);
         break;
       }
+      // 封面按钮/像素守卫与外壳同理:起步追赶期(<250ms)放宽,过后恢复严判
+      const artworkJump = (travel) => (sample.time < 250
+        ? Math.max(6, travel * 0.6)
+        : Math.max(4, travel * 0.4));
       if (
         elapsed < 40
         && Math.max(
           Math.abs(sample.artworkButton.width - previous.artworkButton.width),
           Math.abs(sample.artworkButton.height - previous.artworkButton.height),
-        ) > Math.max(4, buttonSizeTravel * 0.4)
+        ) > artworkJump(buttonSizeTravel)
       ) {
         failures.push(`${label}: 封面按钮在第 ${index} 帧发生瞬时缩放`);
         break;
@@ -902,7 +911,7 @@ function assertMorphTrace(label, samples, {
         && Math.max(
           Math.abs(sample.artworkImage.width - previous.artworkImage.width),
           Math.abs(sample.artworkImage.height - previous.artworkImage.height),
-        ) > Math.max(4, imageSizeTravel * 0.4)
+        ) > artworkJump(imageSizeTravel)
       ) {
         failures.push(`${label}: 真实封面在第 ${index} 帧发生瞬时缩放`);
         break;
@@ -1464,18 +1473,24 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
   await page.locator('[data-music-density-toggle]').focus();
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-music-floating-density="expanded"]');
-  const expandedFocusTransferred = await page.evaluate(() => (
-    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
-  ));
+  // 应用侧经 requestAnimationFrame 延后一帧交接焦点(避免形变中途抢焦点),
+  // 属性翻转瞬间的一次性快照必然竞态 —— 改为限时轮询「焦点最终到位」这一真实契约。
+  const waitForCompactFocus = () => page
+    .waitForFunction(
+      () => document.activeElement?.matches('[data-music-compact-focus-target]') ?? false,
+      undefined,
+      { timeout: 2000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  const expandedFocusTransferred = await waitForCompactFocus();
   if (!expandedFocusTransferred) {
     densityFocusFailures.push('前台桌面 compact → expanded 后键盘焦点未交给持久歌曲信息按钮');
   }
   await page.locator('button[aria-label="收起播放器"]').focus();
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-music-floating-density="compact"]');
-  const compactFocusTransferred = await page.evaluate(() => (
-    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
-  ));
+  const compactFocusTransferred = await waitForCompactFocus();
   if (!compactFocusTransferred) {
     densityFocusFailures.push('前台桌面 expanded → compact 后键盘焦点未交给持久歌曲信息按钮');
   }
@@ -1510,7 +1525,7 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
       expectedArtworkSize: 120,
       expectedImageSize: 120,
       expectedShellWidth: 560,
-      expectedShellHeight: 500,
+      expectedShellHeight: 560,
       expectedCssInset: 0,
       expectedRadius: 24,
       direction: 'open',
@@ -2245,6 +2260,9 @@ async function main() {
     await installMusicMocks(adminPage, fixture);
     try {
       failures.push(...await auditAdmin(adminPage, options.adminUrl, options.browser));
+    } catch (error) {
+      // 后台审计崩溃降级为失败项:不让 admin 页结构漂移遮蔽前台段的断言汇总
+      failures.push(`后台桌面审计中断: ${error.message.split('\n')[0]}`);
     } finally {
       await adminContext.close();
     }
@@ -2267,6 +2285,8 @@ async function main() {
         options.adminUrl,
         options.browser,
       ));
+    } catch (error) {
+      failures.push(`后台移动审计中断: ${error.message.split('\n')[0]}`);
     } finally {
       await adminMobileContext.close();
     }

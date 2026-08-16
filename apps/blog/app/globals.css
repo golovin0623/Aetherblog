@@ -414,6 +414,9 @@
 
 .music-island-detail-scroll {
   scrollbar-gutter: stable;
+  /* 上下渐隐罩:被裁切的行读作「可继续滚动」而不是「排版断裂」(Apple 列表语法) */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
 }
 
 /* 播放台底部工具栏:左(随机+音量)/ 右(大厅+关闭),中央留给居中传输键。
@@ -586,7 +589,7 @@
     width: min(32.5rem, calc(100vw - 4rem));
   }
 
-  /* 桌面画布放宽:评审反馈内容贴挤 —— 胶囊 136→152,播放台 520×380→560×464,
+  /* 桌面画布放宽:评审反馈内容贴挤 —— 胶囊 136→152,播放台升为 560×560 正方形,
      让每个分区之间有真实的呼吸间距,而不是在旧盒子里互相让位。 */
   [data-music-floating-density='compact'].music-floating-player-root {
     height: 9.5rem;
@@ -594,7 +597,15 @@
 
   [data-music-floating-density='expanded'].music-floating-player-root {
     width: min(35rem, calc(100vw - 4rem));
-    height: 31.25rem;
+    height: min(35rem, calc(100dvh - 5rem));
+  }
+
+  /* 歌词/队列面板是播放台的弹性层:画布增高的收益全部给内容区 ——
+     头区(封面+标题)锚顶、底部三层(时间轴/传输/工具行)锚底,
+     短视口由 dvh 钳制时只压缩面板,不牺牲任何控制层。 */
+  [data-music-floating-density='expanded'] .music-island-expanded-detail {
+    top: 10rem;
+    bottom: 10.15rem;
   }
 
   [data-music-floating-density='minimized'] .music-floating-player-surface {

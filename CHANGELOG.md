@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **音乐大厅 `/music`（`MusicHallExperience` 重写）**：影院式封面氛围场（fixed 全视口、52s 缓漂,播放中跟随当前曲目）;mono 微大写 eyebrow + 流体 display 标题 + 种子 underglow 封面碑座;Apple Music 式曲目表（列头、序号 hover 换播放符、行 hover 极光光带、当前行种子染色、tnum mono 时长、stagger 入场）;新增 `isFeatured` 主打卡片轨（snap 横滚,hover 封面缓推+描边点亮）;正在播放光带（隔离高频 timeline 订阅,可拖 SeekBar + 打开播放台）;加载态 spinner → 同构骨架屏（修复违反设计红线 3.6 的遗留）。
 - **全局浮岛（三态几何与测试门禁全保持）**：壳体升级四层渐变玻璃 + 顶部内高光 + 种子描边与柔影;新增壳体内封面氛围层（orb 态自动退场）;`data-music-playing` 播放态静态辉光;传输区主播放键改实心墨面;展开态大封面种子 underglow。
 - **移动沉浸台**：封面背景提亮（0.14→0.26 + saturate-150）;封面碑座投影混入种子色;歌词 active 行种子微光;歌词空态文案统一「这首歌暂时没有歌词，先让旋律继续。」;桌面展开态工具行补第三个显式关闭键 —— 两项使基线上 2 个既有失败的语义测试转绿。
+- **播放台内容区扩容（评审第 4 轮）**：桌面播放台 560×500 → 560×560,短视口经 `min(35rem, 100dvh−5rem)` 钳制时只压缩面板层、不牺牲控制层;歌词/队列面板作为弹性层吃下全部增量;桌面队列行 72→48px Apple 密度（36px 封面、悬停才显播放符）,歌词行距同步收紧;滚动区上下渐隐罩把被裁切的行读作「可继续滚动」;动效门禁补齐起步追赶期宽容（React 提交卡顿 vs CSS 过渡时间轴）与焦点限时轮询,admin 审计崩溃降级为失败项不再遮蔽前台汇总。
 - **`@aetherblog/ui` 新增 `musicMotion` 动效预设**：浮岛/沉浸台 6 组实机调优 spring/ease/duration 从组件内裸数值收编为语义化令牌（`orbSnap/rebound/reanchor/sheet` + `glide/fling`）,音乐组件内禁再写裸动效参数。
 - **域内排印**：`[data-music-skin] .tnum` 统一 `--font-mono`,时长/序号/进度对齐「metadata = mono」;SeekBar hover 高度过渡,填充按门禁保持纯平。
 - 验证：音乐测试 129/129、`design-system:check` 0 error、`tsc --noEmit` 干净。
