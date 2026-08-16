@@ -7,7 +7,11 @@ export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 }
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, error, helperText, ...props }, ref) => {
+  ({ className, error, helperText, 'aria-describedby': ariaDescribedby, 'aria-invalid': ariaInvalid, ...props }, ref) => {
+    const generatedId = React.useId();
+    const helperId = helperText ? `${generatedId}-helper` : undefined;
+    const describedBy = [ariaDescribedby, helperId].filter(Boolean).join(' ') || undefined;
+
     return (
       <div className="w-full">
         <textarea
@@ -22,9 +26,11 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             className
           )}
           {...props}
+          aria-invalid={error ? true : ariaInvalid}
+          aria-describedby={describedBy}
         />
         {helperText && (
-          <p className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}>
+          <p id={helperId} className={cn('mt-1.5 text-sm', error ? 'text-red-400' : 'text-[var(--text-muted)]')}>
             {helperText}
           </p>
         )}
