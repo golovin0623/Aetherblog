@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { MotionConfig, motion } from 'framer-motion';
 import {
   AlertCircle,
   Disc3,
@@ -148,6 +148,8 @@ export default function MusicHallExperience() {
     .filter(({ track }) => track.isFeatured);
 
   return (
+    // CSS 媒体查询只能关掉 CSS 动画,framer 变体(y 位移)必须经 MotionConfig 接系统减动效偏好
+    <MotionConfig reducedMotion="user">
     <main
       data-music-skin={skin}
       className="relative isolate min-h-screen overflow-x-clip bg-[var(--bg-substrate)] pb-44 pt-20 text-[var(--ink-primary)] sm:pt-28"
@@ -486,5 +488,6 @@ export default function MusicHallExperience() {
         )}
       </div>
     </main>
+    </MotionConfig>
   );
 }

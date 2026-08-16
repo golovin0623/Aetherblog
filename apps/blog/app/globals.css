@@ -443,9 +443,10 @@
   mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
 }
 
-/* 队列滚动吸附:停下时总是整行对齐,不出现半行 */
+/* 队列滚动吸附:mandatory 保证任何停点都落在整行界 —— proximity 允许
+   停在两行之间,破坏「视口恒为完整行」的不变量 */
 .music-island-queue-scroll {
-  scroll-snap-type: y proximity;
+  scroll-snap-type: y mandatory;
 }
 
 .music-island-queue-scroll > button {
@@ -599,9 +600,12 @@
   transform: translateY(0);
 }
 
-/* 桌面播放台内的页签瘦身(纯指针环境,视觉 32px 即可),把高度让给歌词 */
-[data-music-floating-density='expanded'] .music-island-detail-header [role='tab'] {
-  min-height: 2rem;
+/* 桌面播放台内的页签瘦身仅限精指针环境(视觉 32px 即可,把高度让给歌词);
+   粗指针宽视口(横屏平板走桌面台)保持 min-h-11 的 44px 触控底线 */
+@media (hover: hover) and (pointer: fine) {
+  [data-music-floating-density='expanded'] .music-island-detail-header [role='tab'] {
+    min-height: 2rem;
+  }
 }
 
 .music-playback-orb[data-playing='true'] .music-island-cover-ring {
@@ -641,6 +645,13 @@
   [data-music-floating-density='expanded'] .music-island-expanded-detail {
     top: 10rem;
     bottom: 12.1875rem;
+  }
+
+  /* 粗指针宽视口:页签保持 44px 后面板头 49→61px,画布 +12px 维持 4 整行精确适配 */
+  @media not all and (hover: hover) and (pointer: fine) {
+    [data-music-floating-density='expanded'].music-floating-player-root {
+      height: min(39rem, calc(100dvh - 5rem));
+    }
   }
 
   [data-music-floating-density='minimized'] .music-floating-player-surface {

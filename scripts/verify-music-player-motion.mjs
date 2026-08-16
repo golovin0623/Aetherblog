@@ -884,21 +884,28 @@ function assertMorphTrace(label, samples, {
   // 间隔可合法推进 60%+ 行程(实测 127ms 间隔 310px),rAF 攒批时又会出现
   // 1ms 时间戳携带 90ms 位移的相邻帧;无论怎么设阈值都在误报与漏报之间摇摆。
   // 唯一对卡顿稳健的不变量:无过渡的硬瞬移不会产生任何处于行程中段的采样,
-  // 而真实动画无论多卡总能采到若干中间帧。行程 ≥64px 的维度要求 ≥2 个
-  // 位于 5%-95% 区间的中间帧;方向单调性与终点几何由前后的独立断言覆盖。
-  const intermediateSamples = (dimension, travel) => {
-    if (travel < 64) return Infinity;
-    const startValue = valid[0].shell[dimension];
+  // 而真实动画无论多卡总能采到若干中间帧。逐通道断言(外壳尺寸/圆角、封面
+  // 按钮/像素各自可能单独断链,例如仅圆角无过渡);小行程通道亚像素采样
+  // 不稳定,阈值以下交给终点断言与反向回跳守卫覆盖。
+  const intermediateSamples = (accessor, travel, minTravel) => {
+    if (travel < minTravel) return Infinity;
+    const startValue = accessor(valid[0]);
     return valid.filter((sample) => {
-      const progress = Math.abs(sample.shell[dimension] - startValue) / travel;
+      const progress = Math.abs(accessor(sample) - startValue) / travel;
       return progress > 0.05 && progress < 0.95;
     }).length;
   };
-  if (
-    intermediateSamples('width', shellWidthTravel) < 2
-    || intermediateSamples('height', shellHeightTravel) < 2
-  ) {
-    failures.push(`${label}: 外壳缺少中间过渡帧(疑似无动画直接瞬移到位)`);
+  const coverageChannels = [
+    ['外壳宽度', (sample) => sample.shell.width, shellWidthTravel, 64],
+    ['外壳高度', (sample) => sample.shell.height, shellHeightTravel, 64],
+    ['外壳圆角', (sample) => sample.shell.borderRadius, shellRadiusTravel, 16],
+    ['封面按钮', (sample) => Math.max(sample.artworkButton.width, sample.artworkButton.height), buttonSizeTravel, 16],
+    ['真实封面', (sample) => Math.max(sample.artworkImage.width, sample.artworkImage.height), imageSizeTravel, 16],
+  ];
+  for (const [channelLabel, accessor, travel, minTravel] of coverageChannels) {
+    if (intermediateSamples(accessor, travel, minTravel) < 2) {
+      failures.push(`${label}: ${channelLabel}缺少中间过渡帧(疑似无动画直接瞬移到位)`);
+    }
   }
 
   const near = (actual, expected, tolerance, description) => {
