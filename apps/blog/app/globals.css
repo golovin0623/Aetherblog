@@ -412,11 +412,44 @@
     transform var(--dur-flow) var(--ease-out);
 }
 
+/* 评审第 5 轮:队列不用「半行渐隐」暗示可滚动 —— 整行适配 + 常显细滚动条。
+   注意:不能声明 scrollbar-width,Chrome 121+ 一旦见到它就忽略 ::-webkit-scrollbar
+   自定义并回落 overlay(自动隐藏)模式;只走 webkit 伪元素才能强制常绘。 */
 .music-island-detail-scroll {
   scrollbar-gutter: stable;
-  /* 上下渐隐罩:被裁切的行读作「可继续滚动」而不是「排版断裂」(Apple 列表语法) */
+}
+
+.music-island-detail-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.music-island-detail-scroll::-webkit-scrollbar-track {
+  background: color-mix(in oklch, var(--ink-primary) 7%, transparent);
+  border-radius: 999px;
+}
+
+.music-island-detail-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-primary) 45%, transparent);
+}
+
+.music-island-detail-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--ink-primary) 62%, transparent);
+}
+
+/* 歌词随播放连续滚动,边缘截行是标准语法 —— 渐隐罩只保留在歌词页 */
+.music-island-lyrics-scroll {
   -webkit-mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
   mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
+}
+
+/* 队列滚动吸附:停下时总是整行对齐,不出现半行 */
+.music-island-queue-scroll {
+  scroll-snap-type: y proximity;
+}
+
+.music-island-queue-scroll > button {
+  scroll-snap-align: start;
 }
 
 /* 播放台底部工具栏:左(随机+音量)/ 右(大厅+关闭),中央留给居中传输键。
@@ -597,15 +630,17 @@
 
   [data-music-floating-density='expanded'].music-floating-player-root {
     width: min(35rem, calc(100vw - 4rem));
-    height: min(35rem, calc(100dvh - 5rem));
+    height: min(38.25rem, calc(100dvh - 5rem));
   }
 
-  /* 歌词/队列面板是播放台的弹性层:画布增高的收益全部给内容区 ——
-     头区(封面+标题)锚顶、底部三层(时间轴/传输/工具行)锚底,
-     短视口由 dvh 钳制时只压缩面板,不牺牲任何控制层。 */
+  /* 歌词/队列面板是播放台的弹性层:头区锚顶、底部三层(时间轴/传输/工具行)锚底,
+     短视口由 dvh 钳制时只压缩面板,不牺牲任何控制层。
+     整行适配几何(实测推导):面板高 = 头 49px + 队列行 4×52px = 257px;
+     底缘 12.1875rem 与时间轴 44px 触区(细线居中,上下为命中区)留 16px 实距,
+     既消除视觉贴挤,也避免最后一行下半点击落进 SeekBar。 */
   [data-music-floating-density='expanded'] .music-island-expanded-detail {
     top: 10rem;
-    bottom: 10.15rem;
+    bottom: 12.1875rem;
   }
 
   [data-music-floating-density='minimized'] .music-floating-player-surface {

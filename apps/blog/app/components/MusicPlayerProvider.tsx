@@ -1714,7 +1714,7 @@ const MemoizedMusicQueueRows = memo(function MemoizedMusicQueueRows({
         aria-current={active ? 'true' : undefined}
         className={mobile
           ? 'grid min-h-[72px] w-full grid-cols-[1.25rem_48px_minmax(0,1fr)_44px] items-center gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'
-          : 'group/queue-row grid min-h-[48px] w-full grid-cols-[1.75rem_36px_minmax(0,1fr)_36px] items-center gap-2.5 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-1.5 text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'}
+          : 'group/queue-row grid h-[52px] w-full grid-cols-[1.75rem_36px_minmax(0,1fr)_36px] items-center gap-2.5 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-left transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]'}
       >
         <span className={cn('text-xs tnum text-[var(--ink-muted)]', mobile && 'text-center')}>
           {mobile
@@ -2457,7 +2457,7 @@ function PersistentMusicDock({
                   {!lyricsFollowing && (
                     <button type="button" onClick={() => setLyricsFollowing(true)} className="music-control-button music-pill-button absolute right-1 top-2 z-10 min-h-11 bg-[var(--music-control-fill)] px-3 text-xs font-semibold text-[var(--ink-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]">回到当前歌词</button>
                   )}
-                  <div ref={lyricsBoxRef} onPointerDown={() => setLyricsFollowing(false)} onWheel={() => setLyricsFollowing(false)} className="music-island-detail-scroll h-full space-y-1 overflow-y-auto overscroll-contain px-3 py-3 pr-1.5">
+                  <div ref={lyricsBoxRef} onPointerDown={() => setLyricsFollowing(false)} onWheel={() => setLyricsFollowing(false)} className="music-island-detail-scroll music-island-lyrics-scroll h-full space-y-1 overflow-y-auto overscroll-contain px-3 py-3 pr-1.5">
                     {lyrics.length === 0 ? (
                       <div className="flex min-h-full flex-col items-center justify-center text-center text-[var(--ink-muted)]">
                         <Music2 className="h-6 w-6" aria-hidden="true" />
@@ -2469,7 +2469,7 @@ function PersistentMusicDock({
                   </div>
                 </section>
               ) : (
-                <section id="desktop-queue-panel" role="tabpanel" aria-labelledby="desktop-queue-tab" className="music-island-detail-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-1">
+                <section id="desktop-queue-panel" role="tabpanel" aria-labelledby="desktop-queue-tab" className="music-island-detail-scroll music-island-queue-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3">
                   <MemoizedMusicQueueRows tracks={tracks} currentIndex={currentIndex} hasPlaybackSession={hasPlaybackSession} isPlaying={isPlaying} isBuffering={isBuffering} playbackError={playbackError} playlistName={playlistName} onPlayIndex={playIndex} onRetryPlayback={retryPlayback} onTogglePlayback={togglePlayback} variant="desktop" />
                 </section>
               )}

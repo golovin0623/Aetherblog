@@ -866,7 +866,6 @@ function assertMorphTrace(label, samples, {
 
     if (index > 0) {
       const previous = valid[index - 1];
-      const elapsed = sample.time - previous.time;
       const widthDelta = sample.shell.width - previous.shell.width;
       const heightDelta = sample.shell.height - previous.shell.height;
       if (direction === 'open' && (widthDelta < -2 || heightDelta < -2)) {
@@ -877,54 +876,29 @@ function assertMorphTrace(label, samples, {
         failures.push(`${label}: 外壳收起时在第 ${index} 帧反向扩大`);
         break;
       }
-      // 形变前 250ms 放宽到 60% 行程:密度切换的 React 提交可阻塞主线程 ~90ms,
-      // 而 CSS 过渡时间轴照走 —— 前载 ease-out 在头 1/4 段完成 ~80% 位移,补画帧
-      // 天然要一次追回 30-45% 行程(实测编辑前后的轨迹均如此)。60% 上限仍能抓住
-      // 「无过渡直接瞬移到位」的真坏形变;起步追赶期过后恢复 35% 严判。
-      const shellJumpRatio = sample.time < 250 ? 0.6 : 0.35;
-      if (
-        elapsed < 40
-        && (
-          Math.abs(widthDelta) > Math.max(24, shellWidthTravel * shellJumpRatio)
-          || Math.abs(heightDelta) > Math.max(24, shellHeightTravel * shellJumpRatio)
-        )
-      ) {
-        failures.push(`${label}: 外壳在第 ${index} 帧发生瞬时尺寸跳变`);
-        break;
-      }
-      // 封面按钮/像素守卫与外壳同理:起步追赶期(<250ms)放宽,过后恢复严判
-      const artworkJump = (travel) => (sample.time < 250
-        ? Math.max(6, travel * 0.6)
-        : Math.max(4, travel * 0.4));
-      if (
-        elapsed < 40
-        && Math.max(
-          Math.abs(sample.artworkButton.width - previous.artworkButton.width),
-          Math.abs(sample.artworkButton.height - previous.artworkButton.height),
-        ) > artworkJump(buttonSizeTravel)
-      ) {
-        failures.push(`${label}: 封面按钮在第 ${index} 帧发生瞬时缩放`);
-        break;
-      }
-      if (
-        elapsed < 40
-        && Math.max(
-          Math.abs(sample.artworkImage.width - previous.artworkImage.width),
-          Math.abs(sample.artworkImage.height - previous.artworkImage.height),
-        ) > artworkJump(imageSizeTravel)
-      ) {
-        failures.push(`${label}: 真实封面在第 ${index} 帧发生瞬时缩放`);
-        break;
-      }
-      if (
-        elapsed < 40
-        && Math.abs(sample.shell.borderRadius - previous.shell.borderRadius)
-          > Math.max(24, shellRadiusTravel * 0.4)
-      ) {
-        failures.push(`${label}: 外壳圆角在第 ${index} 帧发生瞬时跳变`);
-        break;
-      }
     }
+  }
+
+  // 反瞬移断言:形变必须真实采到中间几何。
+  // 帧间「位移/时间」阈值在主线程卡顿下双向失真 —— rAF 采样饥饿时一个采样
+  // 间隔可合法推进 60%+ 行程(实测 127ms 间隔 310px),rAF 攒批时又会出现
+  // 1ms 时间戳携带 90ms 位移的相邻帧;无论怎么设阈值都在误报与漏报之间摇摆。
+  // 唯一对卡顿稳健的不变量:无过渡的硬瞬移不会产生任何处于行程中段的采样,
+  // 而真实动画无论多卡总能采到若干中间帧。行程 ≥64px 的维度要求 ≥2 个
+  // 位于 5%-95% 区间的中间帧;方向单调性与终点几何由前后的独立断言覆盖。
+  const intermediateSamples = (dimension, travel) => {
+    if (travel < 64) return Infinity;
+    const startValue = valid[0].shell[dimension];
+    return valid.filter((sample) => {
+      const progress = Math.abs(sample.shell[dimension] - startValue) / travel;
+      return progress > 0.05 && progress < 0.95;
+    }).length;
+  };
+  if (
+    intermediateSamples('width', shellWidthTravel) < 2
+    || intermediateSamples('height', shellHeightTravel) < 2
+  ) {
+    failures.push(`${label}: 外壳缺少中间过渡帧(疑似无动画直接瞬移到位)`);
   }
 
   const near = (actual, expected, tolerance, description) => {
@@ -1525,7 +1499,7 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
       expectedArtworkSize: 120,
       expectedImageSize: 120,
       expectedShellWidth: 560,
-      expectedShellHeight: 560,
+      expectedShellHeight: 612,
       expectedCssInset: 0,
       expectedRadius: 24,
       direction: 'open',
