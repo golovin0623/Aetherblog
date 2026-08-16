@@ -337,7 +337,15 @@ export default function MusicHallExperience() {
                             void togglePlayback();
                           }
                         }}
-                        aria-label={cardActive ? (isPlaying ? `暂停 ${cardPresentation.title}` : `继续播放 ${cardPresentation.title}`) : `播放 ${cardPresentation.title}`}
+                        aria-label={cardActive
+                          ? playbackError
+                            ? `重新尝试 ${cardPresentation.title}`
+                            : isBuffering
+                              ? `取消载入 ${cardPresentation.title}`
+                              : isPlaying
+                                ? `暂停 ${cardPresentation.title}`
+                                : `继续播放 ${cardPresentation.title}`
+                          : `播放 ${cardPresentation.title}`}
                         className="music-featured-card group w-44 shrink-0 snap-start text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-substrate)] sm:w-48"
                       >
                         <span className="music-featured-card-art relative block aspect-square">

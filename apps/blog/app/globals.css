@@ -363,6 +363,14 @@
   transition: opacity var(--dur-quick) var(--ease-out);
 }
 
+/* 窄屏胶囊例外:进度带在 320px 视口只剩 ~84px,内联时刻挤占后 SeekBar
+   不足 20px 无法拖动 —— 空间物理优先,隐藏时刻把整条留给可拖进度 */
+@media (max-width: 430px) {
+  [data-music-floating-density='compact'] .music-island-progress-time {
+    display: none;
+  }
+}
+
 .music-island-actions {
   top: 0.35rem;
   right: 0.45rem;
@@ -441,6 +449,13 @@
 .music-island-lyrics-scroll {
   -webkit-mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
   mask-image: linear-gradient(180deg, transparent 0, black 0.9rem, black calc(100% - 1.1rem), transparent 100%);
+}
+
+/* 粗指针宽视口:桌面歌词行的 min-h-10(40px)不满足 44px 触控底线,还原可点行高 */
+@media not all and (hover: hover) and (pointer: fine) {
+  [data-music-skin] .music-island-lyrics-scroll button {
+    min-height: 2.75rem;
+  }
 }
 
 /* 队列滚动吸附:mandatory 保证任何停点都落在整行界 —— proximity 允许
@@ -705,6 +720,14 @@
     height: 2.5rem;
     width: 2.5rem;
     place-self: center;
+  }
+
+  /* 粗指针宽视口(横屏平板):迷你条主播放键保持 44px 触控底线 */
+  @media not all and (hover: hover) and (pointer: fine) {
+    [data-music-floating-density='minimized'] .music-island-transport-play {
+      height: 2.75rem;
+      width: 2.75rem;
+    }
   }
 
   [data-music-floating-density='minimized'] .music-island-transport-previous,
@@ -989,9 +1012,11 @@
     height: 3.5rem;
   }
 
+  /* 面板底缘须让出 SeekBar 的 44px 触区(bottom 3.4rem + 44px = 98.4px):
+     6.75rem = 108px,留 9.6px 实距,面板不再盖住触区上半 */
   [data-music-floating-density='expanded'] .music-island-expanded-detail {
     top: 7.25rem;
-    bottom: 5.75rem;
+    bottom: 6.75rem;
     left: 1rem;
     right: 1rem;
   }
@@ -1004,6 +1029,14 @@
   [data-music-floating-density='expanded'] .music-island-transport-play {
     height: 2.5rem;
     width: 2.5rem;
+  }
+
+  /* 横屏矮视口多为触屏手机:主播放键保持 44px 触控底线 */
+  @media not all and (hover: hover) and (pointer: fine) {
+    [data-music-floating-density='expanded'] .music-island-transport-play {
+      height: 2.75rem;
+      width: 2.75rem;
+    }
   }
 
   [data-music-floating-density='expanded'] .music-island-progress {
