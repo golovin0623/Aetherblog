@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
-import { ExternalLink } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowUpRight } from 'lucide-react';
+import { spring, transition } from '@aetherblog/ui';
 import {
   markCachedImageFailed,
   markCachedImageLoaded,
@@ -16,10 +18,17 @@ interface FriendCardProps {
   avatar: string;
   description?: string;
   themeColor?: string;
-  tags?: string[];
-  email?: string;
-  rss?: string;
-  index?: number;
+  /** 入场延迟(秒) — 由父级按索引编排,形成 iOS 通知逐条落入的节奏 */
+  enterDelay?: number;
+}
+
+/** 从 URL 提取展示用域名 —— 充当 iOS 通知右上角"时间戳"的位置 */
+function displayDomain(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
 }
 
 const FriendCardBase: React.FC<FriendCardProps> = ({
@@ -28,19 +37,15 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
   avatar,
   description,
   themeColor = '#6366f1',
-  tags = [],
-  email,
-  rss,
-  index = 0,
+  enterDelay = 0,
 }) => {
-  // 智能检测图片宽高比
+  // 智能检测图片宽高比:正方形填满,非正方形留白适配
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
 
   // 安全验证: 防止 XSS 注入 (#136)
   const safeAvatar = sanitizeImageUrl(avatar, '');
   const safeUrl = sanitizeImageUrl(url, '#');
 
-  // 检测是否有有效的头像 URL
   const hasValidAvatar = safeAvatar !== '' && safeAvatar.trim() !== '';
   const cachedAvatar = useCachedImage(hasValidAvatar ? safeAvatar : '', {
     enabled: hasValidAvatar,
@@ -49,127 +54,124 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
 
   const handleImageLoad = (img: HTMLImageElement) => {
     const aspectRatio = img.naturalWidth / img.naturalHeight;
-    // 宽高比在 0.7~1.4 之间视为"接近正方形"，使用填充模式
     setIsSquareImage(aspectRatio >= 0.7 && aspectRatio <= 1.4);
     markCachedImageLoaded(safeAvatar, img.naturalWidth || undefined, img.naturalHeight || undefined);
   };
 
-  // 根据图片比例动态决定样式
-  // - 正方形图片: 填满圆形 (object-cover)
-  // - 非正方形: 缩放适配 + 内边距 (object-contain + padding)
   const imageClass = !cachedAvatar.isLoaded || isSquareImage === null
-    ? "h-full w-full object-contain p-1.5 opacity-0" // 加载中先隐藏，避免闪烁
+    ? 'h-full w-full object-contain p-1 opacity-0'
     : isSquareImage
-      ? "h-full w-full object-cover opacity-100 transition-opacity duration-200"
-      : "h-full w-full object-contain p-1.5 opacity-100 transition-opacity duration-200";
-  
-  // 是否显示回退的首字母头像
+      ? 'h-full w-full object-cover opacity-100 transition-opacity duration-[var(--dur-quick)] ease-[var(--ease-out)]'
+      : 'h-full w-full object-contain p-1 opacity-100 transition-opacity duration-[var(--dur-quick)] ease-[var(--ease-out)]';
+
   const showFallback = !hasValidAvatar || cachedAvatar.isError;
+  const domain = displayDomain(safeUrl);
+
+  // iOS 通知落入:自下方 24px 带 3% 缩放,soft 弹簧回正;
+  // 退场用于「收起通知组」时的快速消散。
+  const cardVariants = useMemo(
+    () => ({
+      initial: { opacity: 0, y: 24, scale: 0.97 },
+      animate: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: { ...spring.soft, delay: enterDelay },
+      },
+      exit: { opacity: 0, y: -6, scale: 0.98, transition: { ...transition.quick } },
+    }),
+    [enterDelay],
+  );
 
   return (
-    <a
+    <motion.a
+      variants={cardVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      whileTap={{ scale: 0.98, transition: { ...spring.precise } }}
       href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`访问 ${name} 的网站`}
       data-interactive
-      className="group surface-leaf relative block overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 antialiased"
-      style={{
-        animationDelay: `${index * 100}ms`,
-        // 保留 themeColor 品牌识别:145deg 倾斜渐变作为卡片主背景,
-        // 叠在 surface-leaf 的 blur 层上仍保留磨砂纹理。
-        background: `linear-gradient(145deg, ${themeColor}15, var(--bg-leaf))`,
-        // 用当前卡片的 themeColor 本地覆盖 --aurora-1,这样 [data-interactive]::after
-        // 的左侧光带和边框辉光都会跟随友链品牌色,而不是全站统一极光 ——
-        // 既获得 surface 系统的 hover 交互一致性,又保留每张卡片独立色相。
-        ['--aurora-1' as string]: themeColor,
-      }}
+      className="group surface-leaf relative block overflow-hidden rounded-2xl px-4 py-3.5 antialiased focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)] md:px-5 md:py-4"
+      // 用友链品牌色本地覆盖 --aurora-1:hover 光带 / 边框辉光跟随各站品牌,
+      // 既保留 surface 系统交互一致性,又让每封"信笺"带上寄信人的色彩。
+      style={{ ['--aurora-1' as string]: themeColor }}
     >
-      {/* 悬浮时的强光晕背景 */}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ 
-          background: `linear-gradient(145deg, ${themeColor}25, var(--bg-card-hover))`,
-        }}
-      />
-
-      {/* 顶部渐变融合光效 */}
-      <div
-        className="absolute top-0 left-0 right-0 h-20 opacity-20 transition-all duration-300 group-hover:opacity-30"
-        style={{ 
-          background: `linear-gradient(to bottom, ${themeColor}, transparent)`,
-        }}
-      />
-      
-      {/* 顶部微弱高亮边线 (替代原来的粗线条) */}
-      <div 
-        className="absolute top-0 left-0 right-0 h-[1px] opacity-40"
-        style={{ 
-          background: `linear-gradient(90deg, transparent, ${themeColor}, transparent)` 
-        }} 
-      />
-
-      {/* 卡片内容 */}
-      <div className="relative p-5">
-        <div className="flex items-start gap-4">
-          {/* 头像 */}
-          <div className="relative flex-shrink-0">
-            {/* 头像背后的光晕 */}
-            <div
-              className="absolute -inset-2 rounded-full opacity-30 blur-md transition-opacity group-hover:opacity-50"
-              style={{ backgroundColor: themeColor }}
-            />
-            <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-[var(--border-subtle)] group-hover:ring-[var(--border-hover)] transition-all bg-[var(--bg-secondary)]">
-              {!showFallback ? (
-                <Image
-                  src={safeAvatar}
-                  alt={name}
-                  fill
-                  sizes="56px"
-                  onLoadingComplete={handleImageLoad}
-                  onError={() => markCachedImageFailed(safeAvatar)}
-                  className={imageClass}
-                  aria-hidden="true"
-                  /* 友链头像来自任意外部域名(博主网站、Google/GitHub/自建 CDN 等),
-                     无法预先穷举白名单 — 关闭 next/image 的域名校验与优化,
-                     用浏览器原生加载。56px 小图也不需要 srcset 优化。 */
-                  unoptimized
-                />
-              ) : (
-                <div
-                  className="h-full w-full flex items-center justify-center text-white text-lg font-bold"
-                  style={{ backgroundColor: themeColor }}
-                >
+      <div className="relative flex items-start gap-3.5 md:gap-4">
+        {/* 头像 —— iOS 应用图标式 squircle */}
+        <div className="relative flex-shrink-0">
+          {/* 品牌色底晕:hover 时从图标后方透出 */}
+          <div
+            className="absolute -inset-1.5 rounded-[var(--radius-md)] opacity-0 blur-md transition-opacity duration-[var(--dur-quick)] ease-[var(--ease-out)] group-hover:opacity-35"
+            style={{ backgroundColor: themeColor }}
+            aria-hidden="true"
+          />
+          <div className="relative h-11 w-11 overflow-hidden rounded-[var(--radius-md)] bg-[var(--bg-raised)] ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] md:h-12 md:w-12">
+            {!showFallback ? (
+              <Image
+                src={safeAvatar}
+                alt={name}
+                fill
+                sizes="48px"
+                onLoadingComplete={handleImageLoad}
+                onError={() => markCachedImageFailed(safeAvatar)}
+                className={imageClass}
+                aria-hidden="true"
+                /* 友链头像来自任意外部域名,无法穷举白名单 —
+                   关闭 next/image 域名校验,48px 小图无需 srcset 优化 */
+                unoptimized
+              />
+            ) : (
+              <div
+                className="flex h-full w-full items-center justify-center"
+                style={{ background: `linear-gradient(145deg, ${themeColor}, ${themeColor}cc)` }}
+              >
+                <span className="text-body font-semibold text-white">
                   {name.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 信息区域 */}
-          <div className="flex-1 min-w-0 pt-1">
-            <h3 className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-lg truncate tracking-wide">
-              {name}
-              <ExternalLink className="h-4 w-4 text-[var(--text-muted)] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
-            </h3>
-            <p className="mt-1.5 text-sm text-[var(--text-secondary)] line-clamp-2 leading-relaxed font-medium">
-              {description || '这个人很懒，什么都没写~'}
-            </p>
+                </span>
+              </div>
+            )}
+            {/* 顶部球面高光弧 —— Apple 图标的玻璃质感 */}
+            <div
+              className="pointer-events-none absolute inset-0 z-[2]"
+              style={{
+                background:
+                  'radial-gradient(ellipse 75% 45% at 50% 10%, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.04) 55%, transparent 75%)',
+              }}
+              aria-hidden="true"
+            />
           </div>
         </div>
-      </div>
 
-      {/* 悬浮边框高亮 */}
-      <div
-        className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ boxShadow: `inset 0 0 0 1px ${themeColor}60` }}
-      />
-    </a>
+        {/* 信息区 —— iOS 通知的「标题 + 正文」,右上角域名充当时间戳位 */}
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className="truncate text-body font-semibold tracking-tight text-[var(--ink-primary)]">
+              {name}
+            </h3>
+            {domain && (
+              <span className="flex max-w-[45%] flex-shrink-0 items-center gap-1 font-mono text-micro text-[var(--ink-muted)] transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] group-hover:text-[var(--ink-secondary)]">
+                <span className="truncate">{domain}</span>
+                <ArrowUpRight
+                  className="h-3 w-3 flex-shrink-0 -translate-x-0.5 translate-y-0.5 opacity-0 transition-all duration-[var(--dur-quick)] ease-[var(--ease-out)] group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100"
+                  aria-hidden="true"
+                />
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-caption leading-relaxed text-[var(--ink-secondary)]">
+            {description || '这位朋友很低调，还没有留下自我介绍。'}
+          </p>
+        </div>
+      </div>
+    </motion.a>
   );
 };
 
-// ⚡ Bolt: 添加 React.memo() 以防止父组件 FriendsList 更新时的不必要重渲染。
-// FriendCard 接收原始值/稳定 props，可避免列表中 O(n) 次重渲染。
+// React.memo:父级展开/收起通知组时避免已挂载卡片的 O(n) 重渲染
 export const FriendCard = React.memo(FriendCardBase);
 FriendCard.displayName = 'FriendCard';
 export default FriendCard;
