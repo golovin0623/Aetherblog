@@ -19,7 +19,7 @@ import {
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useIsMobile } from '@aetherblog/hooks';
-import { transition as motionTransition } from '@aetherblog/ui';
+import { musicMotion, transition as motionTransition } from '@aetherblog/ui';
 import {
   AnimatePresence,
   LayoutGroup,
@@ -231,6 +231,11 @@ export function SeekBar({
   const activePointerRef = useRef<number | null>(null);
   const clampedPercent = Math.min(100, Math.max(0, percent));
   const heightClass = size === 'lg' ? 'h-1.5' : size === 'sm' ? 'h-[3px]' : 'h-1';
+  const hoverHeightClass = size === 'lg'
+    ? 'group-hover/music-seek:h-2 group-active/music-seek:h-2'
+    : size === 'sm'
+      ? 'group-hover/music-seek:h-[5px] group-active/music-seek:h-[5px]'
+      : 'group-hover/music-seek:h-1.5 group-active/music-seek:h-1.5';
   const knobClass = size === 'lg' ? 'h-4 w-4' : size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5';
   const seekFromClientX = (clientX: number) => {
     const el = trackRef.current;
@@ -306,7 +311,8 @@ export function SeekBar({
     >
       <span
         className={cn(
-          'relative block w-full overflow-visible rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_13%,transparent)]',
+          'relative block w-full overflow-visible rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_13%,transparent)] transition-[height] duration-200 motion-reduce:transition-none',
+          interactive && hoverHeightClass,
           heightClass
         )}
       >
@@ -1625,7 +1631,7 @@ const MemoizedMusicLyricRows = memo(function MemoizedMusicLyricRows({
       mobile ? 'text-[1.15rem]' : 'text-base',
       line.time != null && 'hover:bg-[var(--music-control-fill)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]',
       index === activeIndex
-        ? 'translate-x-1 text-[var(--ink-primary)]'
+        ? 'music-lyric-line-active translate-x-1 text-[var(--ink-primary)]'
         : 'text-[var(--ink-muted)] opacity-55',
     );
     if (line.time == null) {
@@ -1904,20 +1910,10 @@ function PersistentMusicDock({
         // displacement settles. Sliding the whole card off-screen first made
         // the orb re-enter on a second, visibly disconnected trajectory.
         collapseToOrb();
-        animate(compactDragY, 0, {
-          type: 'spring',
-          stiffness: 460,
-          damping: 40,
-          mass: 0.68,
-        });
+        animate(compactDragY, 0, musicMotion.spring.orbSnap);
       }
     } else {
-      animate(compactDragY, 0, {
-        type: 'spring',
-        stiffness: 440,
-        damping: 38,
-        mass: 0.72,
-      });
+      animate(compactDragY, 0, musicMotion.spring.rebound);
     }
     window.setTimeout(() => {
       compactGestureRef.current = false;
@@ -1937,17 +1933,12 @@ function PersistentMusicDock({
         closeExpandedPlayer();
       } else {
         void animate(immersiveDragY, Math.max(window.innerHeight, 720), {
-          duration: 0.24,
-          ease: [0.32, 0.72, 0, 1],
+          duration: musicMotion.duration.swap,
+          ease: musicMotion.ease.fling,
         }).then(closeExpandedPlayer);
       }
     } else {
-      animate(immersiveDragY, 0, {
-        type: 'spring',
-        stiffness: 420,
-        damping: 40,
-        mass: 0.8,
-      });
+      animate(immersiveDragY, 0, musicMotion.spring.reanchor);
     }
     window.setTimeout(() => {
       immersiveGestureRef.current = false;
@@ -2218,6 +2209,7 @@ function PersistentMusicDock({
             data-music-skin={skin}
             data-music-floating-root
             data-music-floating-density={floatingDensity}
+            data-music-playing={isPlaying ? 'true' : 'false'}
             data-music-compact-player={surface === 'compact' ? '' : undefined}
             aria-label={floatingDensity === 'expanded' ? '展开的音乐播放器' : floatingDensity === 'compact' ? '迷你播放器' : '灵动音乐元'}
             className="music-floating-player-root pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] overflow-visible text-[var(--ink-primary)] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))] min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto"
@@ -2250,7 +2242,14 @@ function PersistentMusicDock({
               data-music-floating-shell
               aria-hidden="true"
               className="music-floating-player-surface pointer-events-auto absolute inset-0"
-            />
+            >
+              {persistentCover && (
+                <span className="music-floating-ambient" aria-hidden="true">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 壳体内封面氛围光,高斯化装饰渲染 */}
+                  <img src={persistentCover} alt="" draggable={false} />
+                </span>
+              )}
+            </div>
 
             <motion.button
               ref={surfaceTriggerRef}
@@ -2457,7 +2456,7 @@ function PersistentMusicDock({
                     {lyrics.length === 0 ? (
                       <div className="flex min-h-20 flex-col items-center justify-center text-center text-[var(--ink-muted)]">
                         <Music2 className="h-6 w-6" aria-hidden="true" />
-                        <p className="mt-2 text-xs font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词</p>
+                        <p className="mt-2 text-xs font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词，先让旋律继续。</p>
                       </div>
                     ) : (
                       <MemoizedMusicLyricRows lines={lyrics} activeIndex={activeLyricIndex} activeRef={activeLyricRef} onSeek={seekToTime} onResumeFollowing={resumeLyricsFollowing} variant="desktop" />
@@ -2480,6 +2479,9 @@ function PersistentMusicDock({
                 <Link href="/music" onClick={closeExpandedPlayer} className="music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="进入音乐大厅" title="进入音乐大厅">
                   <LibraryBig className="h-[19px] w-[19px]" />
                 </Link>
+                <button type="button" data-dismiss-music-player onClick={dismissPlayer} className="music-control-button music-icon-button grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--ink-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)]" aria-label="停止播放并关闭播放器" title="停止播放并关闭播放器">
+                  <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                </button>
               </div>
             </section>
 
@@ -2503,7 +2505,7 @@ function PersistentMusicDock({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0.08 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: prefersReducedMotion ? musicMotion.duration.reduced : musicMotion.duration.dialog, ease: musicMotion.ease.glide }}
           className="fixed inset-0 z-[70] h-[100dvh] overflow-hidden text-[var(--ink-primary)]"
         >
           <motion.div
@@ -2528,15 +2530,15 @@ function PersistentMusicDock({
             animate={{ opacity: 1, scale: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
             transition={prefersReducedMotion
-              ? { duration: 0.08 }
-              : { layout: { type: 'spring', stiffness: 360, damping: 36, mass: 0.82 }, opacity: { duration: 0.18 }, scale: { duration: 0.22 } }}
+              ? { duration: musicMotion.duration.reduced }
+              : { layout: musicMotion.spring.sheet, opacity: { duration: musicMotion.duration.veil }, scale: { duration: musicMotion.duration.zoom } }}
             style={{ y: immersiveDragY }}
             className="music-mobile-player-sheet absolute bottom-0 left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {currentCover && (
               <div className="music-mobile-player-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-                <Image src={currentCover} alt="" fill sizes="100vw" className="scale-105 object-cover opacity-[0.14] blur-3xl saturate-125" unoptimized />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-void)_34%,transparent),var(--bg-void)_84%)]" />
+                <Image src={currentCover} alt="" fill sizes="100vw" className="scale-110 object-cover opacity-[0.26] blur-3xl saturate-150" unoptimized />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--bg-void)_22%,transparent),color-mix(in_oklch,var(--bg-void)_88%,transparent)_86%)]" />
               </div>
             )}
 
@@ -2583,7 +2585,7 @@ function PersistentMusicDock({
               initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-              transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: prefersReducedMotion ? musicMotion.duration.reduced : musicMotion.duration.pane, ease: musicMotion.ease.glide }}
               className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col overflow-y-auto overscroll-contain px-5"
             >
               <motion.div
@@ -2611,7 +2613,7 @@ function PersistentMusicDock({
                     initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * 28, scale: 0.97 }}
                     animate={{ opacity: 1, x: 0, scale: 1 }}
                     exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: artworkDirection * -22, scale: 0.97 }}
-                    transition={{ duration: prefersReducedMotion ? 0.08 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: prefersReducedMotion ? musicMotion.duration.reduced : musicMotion.duration.swap, ease: musicMotion.ease.glide }}
                     className="flex w-full justify-center"
                   >
                     <MusicArtwork
@@ -2706,7 +2708,7 @@ function PersistentMusicDock({
                 initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: prefersReducedMotion ? musicMotion.duration.reduced : musicMotion.duration.pane, ease: musicMotion.ease.glide }}
                 className="relative z-10 mx-auto flex min-h-0 w-full max-w-[26rem] flex-1 flex-col px-6 pt-4"
               >
                 <h2 ref={mobilePaneHeadingRef} tabIndex={-1} className="sr-only">歌词</h2>
@@ -2731,8 +2733,7 @@ function PersistentMusicDock({
                   {lyrics.length === 0 ? (
                     <div className="flex min-h-[16rem] flex-col items-center justify-center text-center text-[var(--ink-muted)]">
                       <Music2 className="h-7 w-7" aria-hidden="true" />
-                      <p className="mt-4 text-sm font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词</p>
-                      <p className="mt-1 text-xs">旋律仍会继续播放。</p>
+                      <p className="mt-4 text-sm font-semibold text-[var(--ink-secondary)]">这首歌暂时没有歌词，先让旋律继续。</p>
                     </div>
                   ) : (
                     <MemoizedMusicLyricRows
@@ -2754,7 +2755,7 @@ function PersistentMusicDock({
                 initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                transition={{ duration: prefersReducedMotion ? 0.08 : 0.16, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: prefersReducedMotion ? musicMotion.duration.reduced : musicMotion.duration.pane, ease: musicMotion.ease.glide }}
                 className="relative z-10 mx-auto flex min-h-0 w-full max-w-[30rem] flex-1 flex-col px-5 pt-4"
               >
                 <h2 ref={mobilePaneHeadingRef} tabIndex={-1} className="sr-only">播放队列</h2>

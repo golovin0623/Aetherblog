@@ -135,17 +135,79 @@
   overflow: hidden;
   border-radius: var(--music-radius-floating);
   background:
-    radial-gradient(circle at 14% 12%, color-mix(in oklch, var(--aurora-1) 8%, transparent), transparent 38%),
-    color-mix(in oklch, var(--bg-raised) 95%, transparent);
+    linear-gradient(180deg, color-mix(in oklch, white 6%, transparent), transparent 32%),
+    radial-gradient(circle at 14% 12%, color-mix(in oklch, var(--aurora-1) 12%, transparent), transparent 44%),
+    radial-gradient(circle at 88% 96%, color-mix(in oklch, var(--aurora-4) 6%, transparent), transparent 40%),
+    color-mix(in oklch, var(--bg-raised) 92%, transparent);
   box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 9%, transparent),
     inset 0 0 0 0.5px var(--music-stroke),
+    0 0 0 1px color-mix(in oklch, var(--aurora-1) 9%, transparent),
+    0 28px 56px -30px color-mix(in oklch, var(--aurora-1) 24%, rgb(0 0 0 / 0.6)),
     var(--music-shadow-float);
-  backdrop-filter: blur(18px) saturate(132%);
-  -webkit-backdrop-filter: blur(18px) saturate(132%);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
   transition:
     border-radius var(--dur-flow) var(--ease-out),
     background-color var(--dur-quick) var(--ease-out),
     box-shadow var(--dur-quick) var(--ease-out);
+}
+
+/* 封面氛围层 —— 壳体内的「唱片光」:当前封面高斯化后作为浮岛室内光,
+   随三态形变淡入淡出;灵动音乐元(orb)态下封面本体即光源,氛围层退场。 */
+.music-floating-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--dur-flow) var(--ease-out);
+}
+
+.music-floating-ambient > img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160%;
+  height: auto;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  object-fit: cover;
+  filter: blur(52px) saturate(160%);
+  opacity: 0.42;
+}
+
+.music-floating-ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--bg-raised) 34%, transparent),
+    color-mix(in oklch, var(--bg-raised) 72%, transparent) 78%
+  );
+}
+
+:root.light [data-music-skin] .music-floating-ambient > img {
+  opacity: 0.26;
+  filter: blur(52px) saturate(130%);
+}
+
+[data-music-floating-density='minimized'] .music-floating-ambient {
+  opacity: 0;
+}
+
+/* 播放中:壳体获得一圈来自种子光源的低强度辉光,静止(不脉冲)。 */
+.music-floating-player-root[data-music-playing='true'] .music-floating-player-surface {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 9%, transparent),
+    inset 0 0 0 0.5px var(--music-stroke),
+    0 0 0 1px color-mix(in oklch, var(--aurora-1) 16%, transparent),
+    0 0 30px -8px color-mix(in oklch, var(--aurora-1) 34%, transparent),
+    0 28px 56px -30px color-mix(in oklch, var(--aurora-1) 30%, rgb(0 0 0 / 0.6)),
+    var(--music-shadow-float);
 }
 
 .music-playback-orb {
@@ -545,6 +607,34 @@
   box-shadow: none;
 }
 
+/* 浮岛传输区主播放键 —— 与 Profile 卡的 music-primary-play-button 同语法:
+   实心墨面 + 种子色柔影,取代原先几乎不可辨的淡填充,建立清晰的操控层级。 */
+[data-music-skin] .music-island-transport-play.music-icon-button--tinted {
+  background: var(--ink-primary);
+  color: var(--bg-void);
+  box-shadow: 0 10px 22px -12px color-mix(in oklch, var(--aurora-1) 45%, rgb(0 0 0 / 0.55));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-music-skin] .music-island-transport-play.music-icon-button--tinted:hover {
+    background: color-mix(in oklch, var(--ink-primary) 90%, var(--aurora-1));
+  }
+}
+
+/* 展开态大封面 —— 种子光从唱片下方溢出,形成「光源在唱片里」的错觉 */
+[data-music-floating-density='expanded'] .music-island-cover-image {
+  box-shadow:
+    inset 0 0 0 0.5px color-mix(in oklch, white 20%, transparent),
+    0 22px 44px -20px color-mix(in oklch, var(--aurora-1) 52%, rgb(0 0 0 / 0.8));
+}
+
+/* 沉浸台 hero 封面 —— 底座投影混入种子色,并被 music-artwork[data-size="hero"] 消费 */
+.music-mobile-player-sheet {
+  --music-shadow-artwork:
+    0 36px 90px -38px color-mix(in oklch, var(--aurora-1) 44%, rgb(0 0 0 / 0.78)),
+    0 14px 34px -20px rgb(0 0 0 / 0.6);
+}
+
 .music-volume-range::-webkit-slider-runnable-track {
   height: 0.25rem;
   border-radius: var(--music-radius-capsule);
@@ -767,6 +857,263 @@
 
   [data-music-floating-density='expanded'] .music-island-volume {
     display: none;
+  }
+}
+
+/* =============================================================
+ * 音乐大厅 · Resonant Vault(留声穹顶)
+ * -------------------------------------------------------------
+ * 大厅是音乐域的「听音室」:当前封面经高斯化后成为房间唯一的光源,
+ * 种子色(--music-seed → aurora 派生)为所有控件与描边重新着色。
+ * 所有颜色仅由 ink / bg / aurora 令牌组合,无新增色相。
+ * ============================================================= */
+
+/* 大厅专属排印令牌:流体歌单标题(fs-h2 → fs-h1 区间内滑动) */
+[data-music-skin] {
+  --music-fs-hall-title: clamp(2.125rem, 1.35rem + 3vw, 3.5rem);
+}
+
+/* 主 CTA:墨面按钮 + 种子色柔影,与浮岛主播放键同语法 */
+.music-hall-cta-primary {
+  box-shadow: 0 16px 34px -18px color-mix(in oklch, var(--aurora-1) 46%, rgb(0 0 0 / 0.6));
+}
+
+/* ---------- 封面氛围场:铺满视口的唱片光(fixed,不参与滚动) ---------- */
+.music-hall-ambient {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.music-hall-ambient > img {
+  position: absolute;
+  left: 50%;
+  top: -14%;
+  width: min(120vw, 72rem);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  object-fit: cover;
+  filter: blur(110px) saturate(140%);
+  opacity: 0.38;
+  animation: music-ambient-drift 52s var(--ease-in-out) infinite alternate;
+  will-change: transform;
+}
+
+/* 种子径向补光:没有封面时也有房间光 */
+.music-hall-ambient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 55% at 18% -6%, color-mix(in oklch, var(--aurora-1) 16%, transparent), transparent 58%),
+    radial-gradient(ellipse 60% 42% at 86% 4%, color-mix(in oklch, var(--aurora-4) 8%, transparent), transparent 52%);
+}
+
+/* 收光罩:向页面底色收拢,保证正文对比度 */
+.music-hall-ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--bg-substrate) 24%, transparent),
+    color-mix(in oklch, var(--bg-substrate) 86%, transparent) 46%,
+    var(--bg-substrate) 82%
+  );
+}
+
+:root.light .music-hall-ambient > img {
+  opacity: 0.2;
+  filter: blur(110px) saturate(120%);
+}
+
+@keyframes music-ambient-drift {
+  from {
+    transform: translateX(-53%) scale(1);
+  }
+  to {
+    transform: translateX(-47%) scale(1.08);
+  }
+}
+
+/* ---------- Hero 封面:碑座感 + 种子underglow ---------- */
+.music-hall-hero-art {
+  position: relative;
+}
+
+.music-hall-hero-art::before {
+  content: '';
+  position: absolute;
+  inset: 12% -8% -10%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in oklch, var(--aurora-1) 34%, transparent), transparent 68%);
+  filter: blur(30px);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.music-hall-hero-art-frame {
+  box-shadow:
+    inset 0 0 0 0.5px color-mix(in oklch, white 22%, transparent),
+    var(--music-shadow-artwork);
+}
+
+/* ---------- 曲目行:hover 极光签名光带 + 当前曲目种子染色 ---------- */
+.music-hall-row {
+  position: relative;
+}
+
+.music-hall-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.875rem;
+  bottom: 0.875rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--aurora-1);
+  box-shadow: 0 0 8px var(--aurora-1);
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .music-hall-row:hover::before {
+    opacity: 1;
+  }
+}
+
+.music-hall-row[aria-current='true']::before {
+  opacity: 1;
+}
+
+.music-hall-row[aria-current='true'] {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--aurora-1) 10%, transparent),
+    color-mix(in oklch, var(--aurora-1) 3%, transparent) 55%,
+    transparent
+  );
+}
+
+/* 行内封面 hover 播放浮层 */
+.music-hall-row-thumb {
+  position: relative;
+}
+
+.music-hall-row-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in oklch, var(--bg-void) 42%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .music-hall-row:hover .music-hall-row-thumb::after {
+    opacity: 1;
+  }
+}
+
+/* ---------- 主打卡片轨:克制的「光变」而非位移 ---------- */
+.music-featured-rail {
+  scrollbar-width: none;
+}
+
+.music-featured-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.music-featured-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--music-radius-detail);
+  background: color-mix(in oklch, var(--bg-raised) 88%, transparent);
+  box-shadow:
+    inset 0 0 0 0.5px var(--music-stroke),
+    0 18px 40px -28px rgb(0 0 0 / 0.7);
+  isolation: isolate;
+  transition: box-shadow var(--dur-quick) var(--ease-out);
+}
+
+.music-featured-card-art {
+  position: relative;
+  overflow: hidden;
+}
+
+.music-featured-card-art img {
+  transition: transform var(--dur-flow) var(--ease-out);
+  will-change: transform;
+}
+
+/* 卡片本体不位移不缩放(评审门禁),让封面在框内缓推 + 描边点亮 */
+@media (hover: hover) and (pointer: fine) {
+  .music-featured-card:hover {
+    box-shadow:
+      inset 0 0 0 0.5px var(--music-stroke),
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 34%, transparent),
+      0 0 24px -6px color-mix(in oklch, var(--aurora-1) 30%, transparent),
+      0 18px 40px -28px rgb(0 0 0 / 0.7);
+  }
+
+  .music-featured-card:hover .music-featured-card-art img {
+    transform: scale(1.05);
+  }
+}
+
+.music-featured-card-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    color-mix(in oklch, var(--bg-void) 62%, transparent) 82%,
+    color-mix(in oklch, var(--bg-void) 85%, transparent)
+  );
+  pointer-events: none;
+}
+
+/* ---------- 骨架屏(禁 spinner):与最终布局同构 + 极光 shimmer ---------- */
+.music-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--music-radius-control);
+  background: color-mix(in oklch, var(--ink-primary) 7%, transparent);
+}
+
+.music-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 16%, transparent) 50%,
+    transparent 100%
+  );
+  animation: shimmer-sweep 2.2s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+
+/* ---------- 歌词 active 行:墨色回魂 + 种子微光 ---------- */
+.music-lyric-line-active {
+  text-shadow: 0 0 18px color-mix(in oklch, var(--aurora-1) 36%, transparent);
+}
+
+/* ---------- 减动效:关停音乐大厅新增动画 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .music-hall-ambient > img,
+  .music-skeleton::after {
+    animation: none;
+  }
+
+  .music-featured-card-art img {
+    transition: none;
   }
 }
 
@@ -1082,6 +1429,12 @@
 }
 [data-music-skin] [data-eyebrow] {
   font-family: var(--font-mono);
+}
+/* 音乐域内所有 tabular 数字(时长 / 进度 / 序号)统一走 Mono 字体,
+   与排印规范「metadata = font-mono」对齐;作用域外不受影响。 */
+[data-music-skin] .tnum {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 /* 注：代码语法高亮现在由 MarkdownRenderer 中的 Shiki 处理 */

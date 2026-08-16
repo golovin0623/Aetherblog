@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 音乐域「留声穹顶」视觉重构：大厅 / 浮岛 / 沉浸台对标 Apple Music (2026-08-16, branch claude/music-hall-redesign-a31788)
+
+保持播放内核(状态机 / 手势 / 断点续播 / A11y)与全部 129 条产品质量门禁不动,重做三个表面的视觉与体验层。核心:**当前封面高斯化后成为音乐域的氛围光源**,与既有 `--music-seed` 作用域四色派生协同,实现「专辑色动态渲染」且零新增色相。
+
+- **音乐大厅 `/music`（`MusicHallExperience` 重写）**：影院式封面氛围场（fixed 全视口、52s 缓漂,播放中跟随当前曲目）;mono 微大写 eyebrow + 流体 display 标题 + 种子 underglow 封面碑座;Apple Music 式曲目表（列头、序号 hover 换播放符、行 hover 极光光带、当前行种子染色、tnum mono 时长、stagger 入场）;新增 `isFeatured` 主打卡片轨（snap 横滚,hover 封面缓推+描边点亮）;正在播放光带（隔离高频 timeline 订阅,可拖 SeekBar + 打开播放台）;加载态 spinner → 同构骨架屏（修复违反设计红线 3.6 的遗留）。
+- **全局浮岛（三态几何与测试门禁全保持）**：壳体升级四层渐变玻璃 + 顶部内高光 + 种子描边与柔影;新增壳体内封面氛围层（orb 态自动退场）;`data-music-playing` 播放态静态辉光;传输区主播放键改实心墨面;展开态大封面种子 underglow。
+- **移动沉浸台**：封面背景提亮（0.14→0.26 + saturate-150）;封面碑座投影混入种子色;歌词 active 行种子微光;歌词空态文案统一「这首歌暂时没有歌词，先让旋律继续。」;桌面展开态工具行补第三个显式关闭键 —— 两项使基线上 2 个既有失败的语义测试转绿。
+- **`@aetherblog/ui` 新增 `musicMotion` 动效预设**：浮岛/沉浸台 6 组实机调优 spring/ease/duration 从组件内裸数值收编为语义化令牌（`orbSnap/rebound/reanchor/sheet` + `glide/fling`）,音乐组件内禁再写裸动效参数。
+- **域内排印**：`[data-music-skin] .tnum` 统一 `--font-mono`,时长/序号/进度对齐「metadata = mono」;SeekBar hover 高度过渡,填充按门禁保持纯平。
+- 验证：音乐测试 129/129、`design-system:check` 0 error、`tsc --noEmit` 干净。
+- 📄 文档影响：已更新 `.claude/design-system/history.md`（Round 7）、`.claude/design-system/04-motion.md`（musicMotion 章节）、`.claude/docs/dependencies-and-stack.md` §5。
+
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 
 把站内**文章 / 学习笔记 / 知识库文件**一键转换成可翻页的「拟真书籍」，前台以全屏 3D 翻页阅读器沉浸式呈现，后台在文章模块统一管理。
