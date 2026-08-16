@@ -18,6 +18,28 @@ import { chromium, devices, webkit } from 'playwright';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 const FIXTURE_COVER_PATH = path.join(REPO_ROOT, '.agent/rules/assets/dark-theme-preview.png');
+
+/** 30s 静音 PCM WAV(8kHz 单声道):任何浏览器可解码的回放 fixture。 */
+function buildSilentWav(seconds = 30, sampleRate = 8000) {
+  const sampleCount = seconds * sampleRate;
+  const dataSize = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+
+const FIXTURE_SILENT_WAV = buildSilentWav();
 const DEFAULT_BLOG_URL = 'http://127.0.0.1:3000';
 const DEFAULT_ADMIN_URL = 'http://127.0.0.1:5173/admin/';
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
@@ -177,7 +199,22 @@ async function installMusicMocks(page, fixture) {
       return;
     }
 
+    // 音频与封面同哲学:回放用本地 fixture,不依赖真实媒体库。
+    // Playwright 打包的 Chromium 不带 MP3 专有解码器,直连真实 mp3 会触发
+    // NotSupportedError → playbackError → 错误态自动弹出 compact,让
+    // 「minimized → compact」形变捕获的起点漂移(竞态偶发)。静音 PCM WAV
+    // 任何浏览器都可解码,时间轴照常推进。
     if (requestPath.includes('/api/v1/public/media/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/wav',
+        body: FIXTURE_SILENT_WAV,
+      });
+      return;
+    }
+
+    // 重定向或缩略图等静态上传文件放行给真实 dev server(不落兜底 JSON)。
+    if (requestPath.includes('/api/uploads/')) {
       await route.continue();
       return;
     }
@@ -829,7 +866,6 @@ function assertMorphTrace(label, samples, {
 
     if (index > 0) {
       const previous = valid[index - 1];
-      const elapsed = sample.time - previous.time;
       const widthDelta = sample.shell.width - previous.shell.width;
       const heightDelta = sample.shell.height - previous.shell.height;
       if (direction === 'open' && (widthDelta < -2 || heightDelta < -2)) {
@@ -840,44 +876,35 @@ function assertMorphTrace(label, samples, {
         failures.push(`${label}: 外壳收起时在第 ${index} 帧反向扩大`);
         break;
       }
-      if (
-        elapsed < 40
-        && (
-          Math.abs(widthDelta) > Math.max(24, shellWidthTravel * 0.35)
-          || Math.abs(heightDelta) > Math.max(24, shellHeightTravel * 0.35)
-        )
-      ) {
-        failures.push(`${label}: 外壳在第 ${index} 帧发生瞬时尺寸跳变`);
-        break;
-      }
-      if (
-        elapsed < 40
-        && Math.max(
-          Math.abs(sample.artworkButton.width - previous.artworkButton.width),
-          Math.abs(sample.artworkButton.height - previous.artworkButton.height),
-        ) > Math.max(4, buttonSizeTravel * 0.4)
-      ) {
-        failures.push(`${label}: 封面按钮在第 ${index} 帧发生瞬时缩放`);
-        break;
-      }
-      if (
-        elapsed < 40
-        && Math.max(
-          Math.abs(sample.artworkImage.width - previous.artworkImage.width),
-          Math.abs(sample.artworkImage.height - previous.artworkImage.height),
-        ) > Math.max(4, imageSizeTravel * 0.4)
-      ) {
-        failures.push(`${label}: 真实封面在第 ${index} 帧发生瞬时缩放`);
-        break;
-      }
-      if (
-        elapsed < 40
-        && Math.abs(sample.shell.borderRadius - previous.shell.borderRadius)
-          > Math.max(24, shellRadiusTravel * 0.4)
-      ) {
-        failures.push(`${label}: 外壳圆角在第 ${index} 帧发生瞬时跳变`);
-        break;
-      }
+    }
+  }
+
+  // 反瞬移断言:形变必须真实采到中间几何。
+  // 帧间「位移/时间」阈值在主线程卡顿下双向失真 —— rAF 采样饥饿时一个采样
+  // 间隔可合法推进 60%+ 行程(实测 127ms 间隔 310px),rAF 攒批时又会出现
+  // 1ms 时间戳携带 90ms 位移的相邻帧;无论怎么设阈值都在误报与漏报之间摇摆。
+  // 唯一对卡顿稳健的不变量:无过渡的硬瞬移不会产生任何处于行程中段的采样,
+  // 而真实动画无论多卡总能采到若干中间帧。逐通道断言(外壳尺寸/圆角、封面
+  // 按钮/像素各自可能单独断链,例如仅圆角无过渡);小行程通道亚像素采样
+  // 不稳定,阈值以下交给终点断言与反向回跳守卫覆盖。
+  const intermediateSamples = (accessor, travel, minTravel) => {
+    if (travel < minTravel) return Infinity;
+    const startValue = accessor(valid[0]);
+    return valid.filter((sample) => {
+      const progress = Math.abs(accessor(sample) - startValue) / travel;
+      return progress > 0.05 && progress < 0.95;
+    }).length;
+  };
+  const coverageChannels = [
+    ['外壳宽度', (sample) => sample.shell.width, shellWidthTravel, 64],
+    ['外壳高度', (sample) => sample.shell.height, shellHeightTravel, 64],
+    ['外壳圆角', (sample) => sample.shell.borderRadius, shellRadiusTravel, 16],
+    ['封面按钮', (sample) => Math.max(sample.artworkButton.width, sample.artworkButton.height), buttonSizeTravel, 16],
+    ['真实封面', (sample) => Math.max(sample.artworkImage.width, sample.artworkImage.height), imageSizeTravel, 16],
+  ];
+  for (const [channelLabel, accessor, travel, minTravel] of coverageChannels) {
+    if (intermediateSamples(accessor, travel, minTravel) < 2) {
+      failures.push(`${label}: ${channelLabel}缺少中间过渡帧(疑似无动画直接瞬移到位)`);
     }
   }
 
@@ -1427,18 +1454,24 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
   await page.locator('[data-music-density-toggle]').focus();
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-music-floating-density="expanded"]');
-  const expandedFocusTransferred = await page.evaluate(() => (
-    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
-  ));
+  // 应用侧经 requestAnimationFrame 延后一帧交接焦点(避免形变中途抢焦点),
+  // 属性翻转瞬间的一次性快照必然竞态 —— 改为限时轮询「焦点最终到位」这一真实契约。
+  const waitForCompactFocus = () => page
+    .waitForFunction(
+      () => document.activeElement?.matches('[data-music-compact-focus-target]') ?? false,
+      undefined,
+      { timeout: 2000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  const expandedFocusTransferred = await waitForCompactFocus();
   if (!expandedFocusTransferred) {
     densityFocusFailures.push('前台桌面 compact → expanded 后键盘焦点未交给持久歌曲信息按钮');
   }
   await page.locator('button[aria-label="收起播放器"]').focus();
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-music-floating-density="compact"]');
-  const compactFocusTransferred = await page.evaluate(() => (
-    document.activeElement?.matches('[data-music-compact-focus-target]') ?? false
-  ));
+  const compactFocusTransferred = await waitForCompactFocus();
   if (!compactFocusTransferred) {
     densityFocusFailures.push('前台桌面 expanded → compact 后键盘焦点未交给持久歌曲信息按钮');
   }
@@ -1464,7 +1497,7 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
       expectedArtworkSize: 52,
       expectedImageSize: 52,
       expectedShellWidth: 520,
-      expectedShellHeight: 136,
+      expectedShellHeight: 152,
       expectedCssInset: 0,
       expectedRadius: 24,
       direction: 'open',
@@ -1472,8 +1505,8 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
     ...assertMorphTrace('前台桌面 compact → expanded', compactToExpanded, {
       expectedArtworkSize: 120,
       expectedImageSize: 120,
-      expectedShellWidth: 520,
-      expectedShellHeight: 380,
+      expectedShellWidth: 560,
+      expectedShellHeight: 612,
       expectedCssInset: 0,
       expectedRadius: 24,
       direction: 'open',
@@ -1482,7 +1515,7 @@ async function auditFrontendDesktop(page, blogUrl, browserName) {
       expectedArtworkSize: 52,
       expectedImageSize: 52,
       expectedShellWidth: 520,
-      expectedShellHeight: 136,
+      expectedShellHeight: 152,
       expectedCssInset: 0,
       expectedRadius: 24,
       direction: 'close',
@@ -2208,6 +2241,9 @@ async function main() {
     await installMusicMocks(adminPage, fixture);
     try {
       failures.push(...await auditAdmin(adminPage, options.adminUrl, options.browser));
+    } catch (error) {
+      // 后台审计崩溃降级为失败项:不让 admin 页结构漂移遮蔽前台段的断言汇总
+      failures.push(`后台桌面审计中断: ${error.message.split('\n')[0]}`);
     } finally {
       await adminContext.close();
     }
@@ -2230,6 +2266,8 @@ async function main() {
         options.adminUrl,
         options.browser,
       ));
+    } catch (error) {
+      failures.push(`后台移动审计中断: ${error.message.split('\n')[0]}`);
     } finally {
       await adminMobileContext.close();
     }

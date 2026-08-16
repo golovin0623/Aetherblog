@@ -253,6 +253,30 @@ hover 时从左到右扫过一道极光:
 
 ---
 
+## 音乐域动效(musicMotion)
+
+播放器浮岛(orb / compact / expanded 三态形变)与移动端沉浸台的手势物理经过
+Playwright 实机门禁(`scripts/verify-music-player-motion.mjs`)多轮调优,数值与
+全站三档时长不同属一个语义域,故单独收编为 `musicMotion` 预设(2026-08-16):
+
+```ts
+import { musicMotion } from '@aetherblog/ui';
+
+musicMotion.spring.orbSnap;   // 下滑收起 → 回吸成灵动音乐元
+musicMotion.spring.rebound;   // 手势未达阈值 → 卡片弹回
+musicMotion.spring.reanchor;  // 沉浸台拖拽回锚
+musicMotion.spring.sheet;     // 沉浸台共享布局形变(layoutId)
+musicMotion.ease.glide;       // 音乐域内容出入(pane 切换、封面轮换)
+musicMotion.ease.fling;       // 沉浸台下滑离场
+musicMotion.duration.*;       // reduced / pane / veil / dialog / zoom / swap
+```
+
+**规则:** 音乐播放器组件(`MusicPlayerProvider` / `MusicHallExperience` /
+`ProfileMusicPlayer`)内禁止出现裸 spring 参数或裸 bezier —— 新的手势物理先在
+此预设登记语义,再消费。全站通用交互仍走 `spring` / `transition` 主预设。
+
+---
+
 ## 无障碍
 
 所有非必要动画在 `prefers-reduced-motion` 下必须禁用:

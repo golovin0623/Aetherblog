@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **加载体验：** `FriendsLoading` 重写为镜像新布局的骨架屏（Codex 令牌骨骼色,顺带清掉 `bg-white/5` 等 legacy 玻璃）,并新增路由级 `friends/loading.tsx` 接管导航等待。
 - **合规：** `pnpm design-system:check` 保持 0 error;无 `dark:` 变体、无裸 bezier/spring 数值、无任意字号。
 - **产线回归修复（对照线上截图）：** ① `themeColor` 为空字符串时默认参数不生效,头像加载失败的友链渲染成「黑洞球」(线上旧版可见的历史 bug) —— `FriendCard` / `FriendBubbleField` / `DeckAvatar` 三处统一空值归一化;② 移动端页头过高把星群压出首屏 —— 导语改 `hidden sm:block`(与旧版隐藏副标题的行为一致)并收紧移动端间距,骨架屏同步镜像。
+- **Codex 评审采纳（2 条 P1）：** ① 后端 DTO `ThemeColor *string` 无 omitempty,`themeColor: null` 会让 `FriendCard` 的 `.trim()` 崩掉整棵 `/friends` 客户端树 —— `FriendLink` 类型改 `string | null` 并统一归一化;② 视图切换与「收起」按钮触控区约 36px,不满足 AGENTS.md 移动端 ≥44×44px 约定 —— 按仓库先例补 `min-h-[44px]`(md 起还原紧凑,不影响桌面)。
+
+### Changed — 音乐域「留声穹顶」视觉重构：大厅 / 浮岛 / 沉浸台对标 Apple Music (2026-08-16, branch claude/music-hall-redesign-a31788)
+
+保持播放内核(状态机 / 手势 / 断点续播 / A11y)与全部 129 条产品质量门禁不动,重做三个表面的视觉与体验层。核心:**当前封面高斯化后成为音乐域的氛围光源**,与既有 `--music-seed` 作用域四色派生协同,实现「专辑色动态渲染」且零新增色相。
+
+- **音乐大厅 `/music`（`MusicHallExperience` 重写）**：影院式封面氛围场（fixed 全视口、52s 缓漂,播放中跟随当前曲目）;mono 微大写 eyebrow + 流体 display 标题 + 种子 underglow 封面碑座;Apple Music 式曲目表（列头、序号 hover 换播放符、行 hover 极光光带、当前行种子染色、tnum mono 时长、stagger 入场）;新增 `isFeatured` 主打卡片轨（snap 横滚,hover 封面缓推+描边点亮）;正在播放光带（隔离高频 timeline 订阅,可拖 SeekBar + 打开播放台）;加载态 spinner → 同构骨架屏（修复违反设计红线 3.6 的遗留）。
+- **全局浮岛（三态几何与测试门禁全保持）**：壳体升级四层渐变玻璃 + 顶部内高光 + 种子描边与柔影;新增壳体内封面氛围层（orb 态自动退场）;`data-music-playing` 播放态静态辉光;传输区主播放键改实心墨面;展开态大封面种子 underglow。
+- **移动沉浸台**：封面背景提亮（0.14→0.26 + saturate-150）;封面碑座投影混入种子色;歌词 active 行种子微光;歌词空态文案统一「这首歌暂时没有歌词，先让旋律继续。」;桌面展开态工具行补第三个显式关闭键 —— 两项使基线上 2 个既有失败的语义测试转绿。
+- **播放台内容区扩容（评审第 4-5 轮）**：桌面播放台 560×500 → 560×612,短视口经 `min(38.25rem, 100dvh−5rem)` 钳制时只压缩面板层、不牺牲控制层;歌词/队列面板作为弹性层吃下全部增量。队列改**确定性整行适配**：行定高 52px、视口 208px = 恰好 4 整行,滚动吸附 `y proximity` 保证停下永远整行对齐,常显细滚动条替代「半行渐隐」暗示（评审:最后一行不许卡一半）;实测修复面板与 SeekBar 44px 触区的 16px 重叠（点击最后一行下半误命中进度条）。桌面队列行 72→52px Apple 密度（36px 封面、悬停才显播放符）,歌词行距收紧、空态垂直居中,渐隐罩只保留在歌词页。动效门禁重构反瞬移不变量为**中间帧覆盖率断言**（行程 ≥64px 的维度须采到 ≥2 个 5%-95% 区间中间帧）：帧间「位移/时间」阈值在主线程卡顿下双向失真——rAF 饥饿时一个采样间隔可合法推进 60%+ 行程,攒批时又出现 1ms 时间戳携带 90ms 位移,阈值怎么设都在误报与漏报间摇摆,而硬瞬移必然零中间帧;焦点断言改限时轮询;admin 审计崩溃降级为失败项不再遮蔽前台汇总。
+- **`@aetherblog/ui` 新增 `musicMotion` 动效预设**：浮岛/沉浸台 6 组实机调优 spring/ease/duration 从组件内裸数值收编为语义化令牌（`orbSnap/rebound/reanchor/sheet` + `glide/fling`）,音乐组件内禁再写裸动效参数。
+- **域内排印**：`[data-music-skin] .tnum` 统一 `--font-mono`,时长/序号/进度对齐「metadata = mono」;SeekBar hover 高度过渡,填充按门禁保持纯平。
+- 验证：音乐测试 129/129、`design-system:check` 0 error、`tsc --noEmit` 干净。
+- 📄 文档影响：已更新 `.claude/design-system/history.md`（Round 7）、`.claude/design-system/04-motion.md`（musicMotion 章节）、`.claude/docs/dependencies-and-stack.md` §5。
 
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)
 
