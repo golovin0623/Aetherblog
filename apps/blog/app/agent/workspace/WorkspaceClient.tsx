@@ -62,6 +62,7 @@ import {
 import { toKbRef, type AgentKbRef, type AgentKnowledgeBase } from '../lib/agentKbs';
 import { useAgentModels } from '../lib/agentModels';
 import { estimateMessagesTokens, estimateTokens } from '../lib/tokenEstimate';
+import { SEND_SHORTCUT_OPTIONS, useSendShortcut } from '../lib/sendShortcut';
 
 interface Props {
   siteTitle: string;
@@ -1972,7 +1973,13 @@ function WorkspaceInner({ siteTitle }: Props) {
               onToggleKb={handleToggleKb}
               onRemoveKb={handleRemoveKb}
               contextStats={contextStats}
-              onClearContext={handleClearContext}
+              // 空会话没有可清的上下文 —— 直接不渲染剪刀按钮(会话内则常驻,
+              // 流式期间仅置灰,避免布局抖动)。
+              onClearContext={
+                activeSession && activeSession.messages.length > 0
+                  ? handleClearContext
+                  : undefined
+              }
               canClearContext={canClearContext}
             />
           </div>
@@ -2216,6 +2223,8 @@ function RenderingPreferencesButton({
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // 发送方式（Enter / ⌘Enter）—— 与 Composer 经 lib/sendShortcut 同源同步。
+  const [sendShortcut, setSendShortcut] = useSendShortcut();
 
   useEffect(() => {
     if (!open) return;
@@ -2333,6 +2342,26 @@ function RenderingPreferencesButton({
               />
               <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
                 节流模型 SSE 颗粒，平滑越好阅读节奏越稳。
+              </p>
+            </motion.div>
+
+            {/* 发送方式 —— 从发送按钮的分裂式下拉迁来:主键保持单一纯粹,
+                低频偏好统一收进本面板。 */}
+            <motion.div variants={sectionVariants} className="mb-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">发送方式</span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  SEND
+                </span>
+              </div>
+              <AgentSegmentedControl
+                ariaLabel="发送方式"
+                value={sendShortcut}
+                options={SEND_SHORTCUT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                onChange={(v) => setSendShortcut(v as typeof sendShortcut)}
+              />
+              <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
+                {SEND_SHORTCUT_OPTIONS.find((o) => o.value === sendShortcut)?.description}
               </p>
             </motion.div>
 

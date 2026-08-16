@@ -2114,6 +2114,13 @@ body {
   overflow: hidden;
 }
 
+/* Composer 岛内 textarea：焦点指示由浮岛容器统一承担（极光发丝双描边），
+   textarea 天然永远命中 :focus-visible，再叠全局焦点环会形成"框中框"。 */
+.agent-composer-textarea:focus-visible {
+  box-shadow: none;
+  border-radius: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-stream-caret .agent-md-stream > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
   .agent-stream-caret .agent-md-stream > blockquote:last-child > p:last-child::after,

@@ -14,12 +14,8 @@ import {
   AtSign,
   BookDashed,
   BookMarked,
-  Check,
-  ChevronDown,
-  CornerDownLeft,
   Hash,
   Scissors,
-  SlidersHorizontal,
   SlashSquare,
   Square,
   Maximize2,
@@ -35,6 +31,7 @@ import type { AgentArticle, AgentTag, SlashCommand } from '../../lib/agentResour
 import type { AgentKbRef, AgentKnowledgeBase } from '../../lib/agentKbs';
 import type { KnowledgeContextMode } from '../../lib/agentChatStream';
 import { formatTokenCount } from '../../lib/tokenEstimate';
+import { SEND_SHORTCUT_OPTIONS, useSendShortcut } from '../../lib/sendShortcut';
 
 type PickerKey = 'article' | 'tag' | 'slash' | 'kb' | null;
 
@@ -47,35 +44,6 @@ export interface ComposerContextStats {
   /** 当前模型的上下文窗口（未知为 null）。 */
   window?: number | null;
 }
-type SendShortcut = 'enter' | 'mod-enter';
-
-const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.blog.agent.sendShortcut';
-const SEND_SHORTCUT_OPTIONS: Array<{
-  value: SendShortcut;
-  label: string;
-  keys: string;
-  description: string;
-}> = [
-  {
-    value: 'enter',
-    label: '按 Enter 发送',
-    keys: '↵',
-    description: 'Shift + Enter 保持换行',
-  },
-  {
-    value: 'mod-enter',
-    label: '按 ⌘ / Ctrl + Enter 发送',
-    keys: '⌘ ↵',
-    description: 'Enter 直接换行',
-  },
-];
-
-function readSendShortcut(): SendShortcut {
-  if (typeof window === 'undefined') return 'enter';
-  const stored = window.localStorage.getItem(SEND_SHORTCUT_STORAGE_KEY);
-  return stored === 'mod-enter' ? 'mod-enter' : 'enter';
-}
-
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -179,9 +147,8 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const hashBtnRef = useRef<HTMLButtonElement>(null);
   const slashBtnRef = useRef<HTMLButtonElement>(null);
   const kbBtnRef = useRef<HTMLButtonElement>(null);
-  const sendMenuRef = useRef<HTMLDivElement>(null);
-  const [sendMenuOpen, setSendMenuOpen] = useState(false);
-  const [sendShortcut, setSendShortcut] = useState<SendShortcut>(() => readSendShortcut());
+  // 发送方式偏好 —— 设置入口在顶栏「渲染偏好」面板,这里只消费。
+  const [sendShortcut] = useSendShortcut();
   const isMobile = useComposerMobileMode();
 
   useImperativeHandle(ref, () => ({
@@ -216,40 +183,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     });
   }
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
-  }, [sendShortcut]);
-
-  useEffect(() => {
-    if (!sendMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (!sendMenuRef.current) return;
-      if (!sendMenuRef.current.contains(e.target as Node)) setSendMenuOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSendMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [sendMenuOpen]);
-
-  useEffect(() => {
-    if (busy) setSendMenuOpen(false);
-  }, [busy]);
-
-  useEffect(() => {
-    if (isMobile) setSendMenuOpen(false);
-  }, [isMobile]);
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Esc 停止生成（ChatGPT 同款心智）—— 仅在没有弹层抢 Esc 语义时生效，
     // 否则用户想关 picker 却把回答停了。
-    if (e.key === 'Escape' && busy && picker === null && !sendMenuOpen) {
+    if (e.key === 'Escape' && busy && picker === null) {
       e.preventDefault();
       onAbort?.();
       return;
@@ -335,13 +272,15 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           if (canSend) onSubmit();
         }}
         className={[
-          'group/composer rounded-[26px] px-3 pt-3.5 pb-2.5 sm:rounded-[28px] sm:px-3.5',
+          'group/composer rounded-[26px] px-3 pt-3.5 pb-2 sm:rounded-[28px] sm:px-3.5',
           'transition-[box-shadow,border-color,background-color] duration-quick ease-aether',
           'bg-[var(--bg-raised)]',
           'border',
+          // 聚焦光环走"发丝双描边"而非粗 ring —— 1px 极光外圈 + 柔和远投影,
+          // 顶部再叠一线内高光,浮岛在两主题下都有玻璃器物的克制质感。
           focused
-            ? 'border-[color-mix(in_oklch,var(--aurora-1)_38%,transparent)] shadow-[0_18px_46px_-26px_color-mix(in_oklch,var(--aurora-1)_42%,transparent),0_0_0_3.5px_color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
-            : 'border-[var(--ink-subtle)]/16 shadow-[0_12px_34px_-28px_rgba(0,0,0,0.42)]',
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_34%,transparent)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_5%,transparent),0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_16%,transparent),0_16px_44px_-28px_color-mix(in_oklch,var(--aurora-1)_38%,transparent)]'
+            : 'border-[var(--ink-subtle)]/15 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_4%,transparent),0_14px_36px_-30px_rgba(0,0,0,0.5)]',
         ].join(' ')}
         style={bottomSafeArea ? { paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' } : undefined}
       >
@@ -535,7 +474,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           autoComplete="off"
           spellCheck={false}
         />
-        <div className="mt-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--ink-subtle)]/10 pt-2 md:min-h-8">
+        {/* 工具行 —— 无硬分割线,以留白与克制的对齐完成分区(Claude / Codex 的
+            安静浮岛语言;此前的 border-t 横贯整岛,是"表单感"最重的一笔)。 */}
+        <div className="mt-1 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 md:min-h-9">
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[var(--ink-muted)]">
             {leadingSlot && <div className="min-w-0 flex-1 sm:flex-none">{leadingSlot}</div>}
             <div className="flex shrink-0 items-center gap-0.5">
@@ -604,10 +545,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-1">
+          <div className="flex shrink-0 items-center justify-end gap-1.5">
             {contextStats && contextStats.messages > 0 && (
               <div
-                className={`mr-0.5 hidden select-none items-center gap-1.5 md:flex ${ctxToneClass}`}
+                className={`mr-0.5 hidden select-none items-center gap-1.5 opacity-75 transition-opacity hover:opacity-100 md:flex ${ctxToneClass}`}
                 title={`上下文：${contextStats.messages} 条消息 · ~${formatTokenCount(
                   contextStats.tokens,
                 )} tokens${
@@ -620,7 +561,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 {ctxRatio != null && (
                   <span
                     aria-hidden="true"
-                    className="h-[3px] w-7 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
+                    className="h-[3px] w-6 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
                   >
                     <span
                       className={`block h-full rounded-full transition-[width] duration-300 ${ctxBarClass}`}
@@ -638,129 +579,66 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? '收起输入框' : '展开输入框'}
               aria-label={expanded ? '收起输入框' : '展开输入框'}
-              whileTap={{ scale: 0.88 }}
+              whileTap={{ scale: 0.9 }}
               transition={spring.precise}
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-leaf)] hover:text-[var(--ink-primary)]"
+              className="hidden h-8 w-8 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] sm:inline-flex"
             >
               {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </motion.button>
 
+            {/* 发送 ⇄ 停止 —— 单一圆形主键(Claude / ChatGPT 语言),二态以
+                弹簧缩放交接;不再有拼接式分裂按钮,发送方式设置移入顶栏
+                「渲染偏好」。 */}
             {busy ? (
               <motion.button
+                key="stop"
                 type="button"
                 onClick={onAbort}
                 aria-label="停止生成"
-                whileTap={{ scale: 0.96 }}
+                title="停止生成（Esc）"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                whileTap={{ scale: 0.92 }}
                 transition={spring.precise}
-                className="group/stop relative inline-flex h-11 items-center gap-1.5 rounded-full border border-transparent bg-[color-mix(in_oklch,var(--signal-danger)_16%,transparent)] px-4 text-[12px] font-medium text-[var(--signal-danger)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--signal-danger)_26%,transparent)_inset] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] md:h-8 md:px-3"
+                className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--signal-danger)_13%,transparent)] text-[var(--signal-danger)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--signal-danger)_32%,transparent)] transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] md:h-9 md:w-9"
               >
                 <span
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 rounded-full"
-                  style={{ animation: 'breath-soft 2.4s ease-in-out infinite' }}
+                  style={{
+                    animation: 'breath-soft 2.4s ease-in-out infinite',
+                    boxShadow: '0 0 18px color-mix(in oklch, var(--signal-danger) 30%, transparent)',
+                  }}
                 />
-                <Square className="w-3 h-3 fill-current" />
-                停止
+                <Square className="h-3 w-3 fill-current" />
               </motion.button>
             ) : (
-              <motion.div
-                ref={sendMenuRef}
-                // 仅可发送时才给按压反馈;禁用态保持 inert(苹果级触感原则,
-                // gemini review #770)。
-                whileTap={canSend ? { scale: 0.97 } : undefined}
+              <motion.button
+                key="send"
+                type="submit"
+                disabled={!canSend}
+                aria-label="发送"
+                title={isMobile ? '发送' : `发送 · ${activeShortcut.description}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                // 仅可发送时给悬浮上抬与按压反馈;禁用态保持 inert(苹果级触感
+                // 原则,gemini review #770)。
+                whileHover={canSend ? { y: -1 } : undefined}
+                whileTap={canSend ? { scale: 0.92 } : undefined}
                 transition={spring.precise}
                 className={[
-                  'relative flex h-11 shrink-0 items-center rounded-full border transition-[background-color,border-color,box-shadow] duration-quick ease-aether md:h-8',
+                  'group/send inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
+                  'transition-[background-color,box-shadow,color,filter] duration-quick ease-aether md:h-9 md:w-9',
                   canSend
-                    ? 'border-transparent bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[0_8px_20px_-10px_color-mix(in_oklch,var(--aurora-1)_72%,transparent)]'
-                    : 'border-transparent bg-[var(--bg-leaf)] text-[var(--ink-muted)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--ink-subtle)_22%,transparent)_inset,0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
+                    ? 'bg-[var(--aurora-1)] text-[var(--bg-void)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_26px_-12px_color-mix(in_oklch,var(--aurora-1)_80%,transparent)] hover:brightness-110'
+                    : 'cursor-not-allowed bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-muted)]/75',
                 ].join(' ')}
               >
-                <button
-                  type="submit"
-                  disabled={!canSend}
-                  aria-label="发送"
-                  title={isMobile ? '发送' : `发送（${activeShortcut.label}）`}
-                  className={[
-                    'relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-colors duration-quick ease-aether md:h-8 md:w-8 md:rounded-l-full md:rounded-r-none',
-                    canSend
-                      ? 'hover:bg-[color-mix(in_oklch,var(--bg-void)_12%,transparent)]'
-                      : 'cursor-not-allowed opacity-58',
-                  ].join(' ')}
-                >
-                  <ArrowUp className="h-4 w-4 md:h-3.5 md:w-3.5" />
-                </button>
-                <span
-                  aria-hidden="true"
-                  className={`hidden h-6 w-px md:block md:h-5 ${
-                    canSend
-                      ? 'bg-[color-mix(in_oklch,var(--bg-void)_28%,transparent)]'
-                      : 'bg-[var(--ink-subtle)]/18'
-                  }`}
+                <ArrowUp
+                  className="h-[18px] w-[18px] transition-transform duration-quick ease-aether group-hover/send:-translate-y-px md:h-4 md:w-4"
+                  strokeWidth={2.2}
                 />
-                <button
-                  type="button"
-                  onClick={() => setSendMenuOpen((open) => !open)}
-                  aria-label="选择发送方式"
-                  aria-haspopup="menu"
-                  aria-expanded={sendMenuOpen}
-                  title="选择发送方式"
-                  className="hidden h-11 w-9 items-center justify-center rounded-r-full bg-transparent transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,currentColor_8%,transparent)] md:inline-flex md:h-8 md:w-8"
-                >
-                  <ChevronDown className={`h-4 w-4 transition-transform md:h-3.5 md:w-3.5 ${sendMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                <AnimatePresence>
-                  {sendMenuOpen && !isMobile && (
-                    <motion.div
-                      role="menu"
-                      aria-label="发送触发方式"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="absolute bottom-full right-0 z-50 mb-3 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--ink-subtle)]/18 bg-[var(--bg-raised)] p-2 shadow-[0_24px_48px_-18px_rgba(0,0,0,0.36)]"
-                    >
-                      <div className="flex items-center gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
-                        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span>发送方式</span>
-                      </div>
-                      {SEND_SHORTCUT_OPTIONS.map((option) => {
-                        const selected = option.value === sendShortcut;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={selected}
-                            onClick={() => {
-                              setSendShortcut(option.value);
-                              setSendMenuOpen(false);
-                            }}
-                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                              selected
-                                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
-                                : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]'
-                            }`}
-                          >
-                            <span className="inline-flex h-7 w-12 shrink-0 items-center justify-center gap-1 rounded-lg bg-[var(--bg-leaf)] font-mono text-[12px] text-[var(--ink-secondary)]">
-                              <CornerDownLeft className="h-3 w-3" aria-hidden="true" />
-                              <span>{option.keys}</span>
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-[13px] font-medium">{option.label}</span>
-                              <span className="block text-[11px] text-[var(--ink-muted)]">
-                                {option.description}
-                              </span>
-                            </span>
-                            {selected && <Check className="h-4 w-4 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+              </motion.button>
             )}
           </div>
         </div>
@@ -805,8 +683,10 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
         disabled
           ? 'opacity-40 cursor-not-allowed'
         : active
-          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] ring-1 ring-[color-mix(in_oklch,var(--aurora-1)_35%,transparent)]'
-          : 'hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)]'
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_28%,transparent)]'
+          // 岛底就是 --bg-raised,此前 hover:bg-raised 悬浮完全不可见 ——
+          // "按钮没反应"正是廉价感的来源之一。改 ink 淡染,悬浮即时可感。
+          : 'hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
       }`}
     >
       {children}

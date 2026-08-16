@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **置顶**（置顶分组置前 + Pin 标识,菜单可置顶/取消）；**搜索升级为全文**（标题 + 消息正文）；**导出 Markdown**（`/export` 命令或会话菜单,含思考过程 `<details>` 与知识来源脚注）；删除会话在原有 inline 双击确认之外再加 5s 撤销 toast。
 - 线程内新增**日期分隔线**（今天/昨天/M月D日,全新对话不标「今天」）。
 
+**Changed — Composer 浮岛与按钮体系精修（对标 Claude / Codex 质感）：**
+- 工具行**去掉横贯整岛的硬分割线**（表单感最重的一笔），以留白分区；聚焦光环从 3.5px 粗 ring 收敛为「1px 极光外圈 + 内顶高光 + 柔和远投影」的发丝双描边。
+- **发送键重做**：拼接式分裂按钮（发送半格 + 下拉半格 + 刀切分隔线）→ 单一圆形主键，busy 与可发送二态以弹簧缩放交接；停止键同尺寸圆形 + 呼吸光晕。「发送方式」（Enter / ⌘Enter）迁入顶栏「渲染偏好」面板（新 `lib/sendShortcut.ts` 经自定义事件跨组件同步）。
+- **ModelPicker 紧凑触发器幽灵化**：去掉"边框+底色+内投影"三层壳，provider 圆徽作锚点、悬浮 ink 淡染；200K 徽标去盒化为纯 mono 文本。
+- **修复两处"悬浮不可见"**：Composer 工具键与消息操作条的 hover 背景此前用 `--bg-raised`，而容器底就是 raised —— 悬浮零反馈正是廉价感来源，统一改 ink 7-8% 淡染。
+- **修复焦点"框中框"**：textarea 天然恒命中 `:focus-visible`，全局无障碍焦点环与浮岛聚焦光环叠加成双框 —— 岛内 textarea 豁免（焦点指示由浮岛容器统一承担）。
+- 空会话隐藏「清除上下文」剪刀（无可清对象时不再摆一枚置灰按钮）。
+
 **Changed — `packages/ui` Toast 迁移 Codex**（原为 legacy `bg-green-500/20` 等且全站零消费）：`--bg-raised` 实色卡 + `signal-*` 状态点色 + framer-motion 出入场；新增 `action` 操作按钮（撤销类交互）与 `ToastProvider position`（`top-right`/`bottom-center`）。灵境工作台为首个消费方（bottom-center）。
 
 **Perf：** ModelPicker 支持外部注入 `modelsState` —— 工作台一次拉取模型清单,ModelPicker 展示 / 元数据解析 / 上下文窗口三处共用,消除重复请求。

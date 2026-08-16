@@ -209,8 +209,9 @@ function MessageBubbleBase({
   // LobeHub 风格操作条：不占用标题行，默认隐藏，hover/focus 时浮现。
   const hasActions =
     !!message.content || canEditUser || canRetryAssistant || canFork || canDelete;
+  // 操作条容器底就是 --bg-raised —— hover 必须走 ink 淡染,否则悬浮不可见。
   const actionButtonClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]';
+    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]';
   const messageActions = hasActions ? (
     <div
       className={`flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)] p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto`}
