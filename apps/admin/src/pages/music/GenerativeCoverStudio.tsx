@@ -17,6 +17,7 @@ import {
   hashMusicCoverSeed,
   paintResonantCover,
   renderResonantCoverBlob,
+  resolveCoverParticleCount,
   sanitizeMusicCoverFileName,
   type ResonantCoverPalette,
 } from './musicCoverArt';
@@ -60,6 +61,9 @@ function PresetThumb({ seed, orbits, turbulence, palette }: {
   return <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />;
 }
 
+// 预览画幅边长 —— 与流丝密度换算共用同一基准
+const PREVIEW_SIZE = 720;
+
 const DEFAULT_PALETTE: ResonantCoverPalette = {
   background: '#0d0f14',
   primary: '#ec496f',
@@ -97,9 +101,9 @@ export default function GenerativeCoverStudio({
     () =>
       buildResonantCoverComposition({
         seed: deferredSeed,
-        width: 720,
-        height: 720,
-        particleCount: 1_400,
+        width: PREVIEW_SIZE,
+        height: PREVIEW_SIZE,
+        particleCount: resolveCoverParticleCount(PREVIEW_SIZE),
         orbitCount: deferredOrbitCount,
         turbulence: deferredTurbulence,
       }),
@@ -212,8 +216,8 @@ export default function GenerativeCoverStudio({
             <div className="group relative aspect-square w-full overflow-hidden rounded-2xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)] ring-1 ring-white/10">
               <canvas
                 ref={canvasRef}
-                width={720}
-                height={720}
+                width={PREVIEW_SIZE}
+                height={PREVIEW_SIZE}
                 className="h-full w-full object-cover transition-transform duration-500 ease-out"
                 aria-label="计算艺术封面画幅"
               />

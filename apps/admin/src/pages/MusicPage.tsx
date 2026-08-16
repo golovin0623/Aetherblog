@@ -9,7 +9,6 @@ import {
   ExternalLink,
   FileText,
   FolderPlus,
-  Headphones,
   Heart,
   Image,
   LibraryBig,

@@ -529,6 +529,16 @@ export function paintResonantCover(
   context.restore();
 }
 
+/**
+ * 按画幅面积推导流丝数量,让任意尺寸保持同一视觉密度。
+ * 基准:720px 预览用 1400 条 —— 导出若沿用固定值会比预览稀疏近三成(所见非所得)。
+ */
+export function resolveCoverParticleCount(size: number): number {
+  const BASE_SIZE = 720;
+  const BASE_PARTICLES = 1_400;
+  return Math.max(120, Math.round(BASE_PARTICLES * (size / BASE_SIZE) ** 2));
+}
+
 export async function renderResonantCoverBlob({
   seed,
   orbitCount,
@@ -551,7 +561,7 @@ export async function renderResonantCoverBlob({
     seed,
     width: size,
     height: size,
-    particleCount: 2_800,
+    particleCount: resolveCoverParticleCount(size),
     orbitCount,
     turbulence,
   });
