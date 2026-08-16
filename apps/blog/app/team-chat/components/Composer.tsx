@@ -37,6 +37,11 @@ export interface ComposerHandle {
   /** 草稿存取：切换会话时父级读走 / 回填输入内容。 */
   getText: () => string;
   setText: (text: string) => void;
+  /**
+   * 清空会话瞬态：托盘图片（revoke objectURL）、录音、面板与提及弹层。
+   * 切换会话必须调用 —— 否则托盘残留会把图片发进错误的会话。
+   */
+  reset: () => void;
 }
 
 interface Props {
@@ -48,7 +53,7 @@ interface Props {
   editing: ChatMessage | null;
   onCancelContext: () => void;
   onSend: (text: string, mentions: number[]) => void;
-  onSendEdit: (msg: ChatMessage, text: string) => void;
+  onSendEdit: (msg: ChatMessage, text: string, mentions: number[]) => void;
   onSendSticker: (slug: string) => void;
   /** 上传并发送一张已压缩图片；onProgress 回报 0-100。 */
   onSendImage: (prep: PreparedImage, onProgress: (p: number) => void) => Promise<void>;
@@ -57,6 +62,8 @@ interface Props {
   onTyping: (active: boolean) => void;
   /** ↑（输入框为空）→ 编辑我的上一条。 */
   onEditLast: () => void;
+  /** 非阻断提示（如麦克风权限被拒），父级转 Toast。 */
+  onNotice?: (message: string) => void;
 }
 
 /**
@@ -82,6 +89,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     onSendVoice,
     onTyping,
     onEditLast,
+    onNotice,
   },
   ref,
 ) {
@@ -195,14 +203,20 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     [mentionCandidates, autoGrow],
   );
 
-  /** 发送时从文本反解 @提及 → 会话成员 userId（服务端再过滤一次）。 */
+  /**
+   * 发送时从文本反解 @提及 → 会话成员 userId（服务端再过滤一次）。
+   * 完整定界匹配：`@名字` 后必须是非词字符 / 行尾 —— 否则 `@Anna` 会同时命中
+   * 前缀成员 `Ann`，给无关成员误发 @我 徽标（评审 P2）。
+   */
   const extractMentions = useCallback(
     (content: string): number[] => {
       const out: number[] = [];
       for (const m of members) {
         if (m.userId === currentUserId) continue;
         const name = m.nickname || m.username;
-        if (name && content.includes(`@${name}`)) out.push(m.userId);
+        if (!name) continue;
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(`@${escaped}(?![一-龥A-Za-z0-9_])`, 'u').test(content)) out.push(m.userId);
       }
       return out;
     },
@@ -227,22 +241,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     [disabled, addImages, onSendFile],
   );
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      addFiles,
-      focus: () => taRef.current?.focus(),
-      getText: () => taRef.current?.value ?? '',
-      setText: (t: string) => {
-        setText(t);
-        requestAnimationFrame(() => {
-          autoGrow();
-          if (t) taRef.current?.focus();
-        });
-      },
-    }),
-    [addFiles, autoGrow],
-  );
+  // useImperativeHandle 在 stopRecording 定义之后统一挂出（reset 依赖它）。
 
   const removeTray = useCallback((id: number) => {
     setTray((prev) => {
@@ -259,7 +258,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
     if (editing) {
       if (!trimmed) return;
-      onSendEdit(editing, trimmed);
+      onSendEdit(editing, trimmed, extractMentions(trimmed));
       setText('');
       stopTyping();
       requestAnimationFrame(() => {
@@ -355,11 +354,38 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       recorder.start();
       setRecording({ startedAt, seconds: 0, live: [] });
     } catch {
-      // 无麦克风权限等 —— 静默失败，保持输入态。
+      // 无麦克风权限 / Permissions-Policy 拦截 —— 给出可见提示而非静默（评审 P1）。
+      onNotice?.('无法访问麦克风：请检查浏览器地址栏的麦克风权限后重试。');
     }
-  }, [recording, disabled, stopRecording, onSendVoice]);
+  }, [recording, disabled, stopRecording, onSendVoice, onNotice]);
 
   useEffect(() => () => stopRecording(false), [stopRecording]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      addFiles,
+      focus: () => taRef.current?.focus(),
+      getText: () => taRef.current?.value ?? '',
+      setText: (t: string) => {
+        setText(t);
+        requestAnimationFrame(() => {
+          autoGrow();
+          if (t) taRef.current?.focus();
+        });
+      },
+      reset: () => {
+        setTray((prev) => {
+          prev.forEach((t) => URL.revokeObjectURL(t.prep.previewUrl));
+          return [];
+        });
+        setPanelOpen(false);
+        setMentionQuery(null);
+        stopRecording(false);
+      },
+    }),
+    [addFiles, autoGrow, stopRecording],
+  );
 
   const canSend = (!!text.trim() || tray.length > 0) && !disabled && !sending;
   const ctxMsg = editing || replyTo;
@@ -445,7 +471,11 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           </span>
           <button
             type="button"
-            onClick={onCancelContext}
+            onClick={() => {
+              // 取消编辑必须同时清掉回填的旧正文 —— 否则下一次 Enter 会把旧消息重复发送（评审 P2）。
+              if (editing) setText('');
+              onCancelContext();
+            }}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
             aria-label="取消"
             title="取消 (Esc)"

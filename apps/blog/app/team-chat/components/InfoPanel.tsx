@@ -50,8 +50,10 @@ export default function InfoPanel({
   }, [messages]);
 
   return (
+    // 桌面：静态右侧栏；移动端（<md）：右缘滑出抽屉覆盖消息区 ——
+    // 375px 视口塞 270px 固定侧栏会把会话挤到不可用（评审 P1）。
     <aside
-      className="flex w-[270px] shrink-0 flex-col border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--bg-leaf)_50%,transparent)]"
+      className="absolute inset-y-0 right-0 z-40 flex w-[min(300px,85vw)] shrink-0 flex-col border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.55)] md:static md:z-auto md:w-[270px] md:bg-[color-mix(in_oklch,var(--bg-leaf)_50%,transparent)] md:shadow-none"
       aria-label="会话信息"
     >
       <header className="flex items-center justify-between border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] px-4 py-3">

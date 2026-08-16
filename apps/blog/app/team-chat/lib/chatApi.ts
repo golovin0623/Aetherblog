@@ -86,13 +86,13 @@ export const chatApi = {
     },
   ) => post<ChatMessage>(`/conversations/${conversationId}/messages`, body),
 
-  /** 编辑本人文本消息（服务端 2 分钟窗口校验），成功后 WS 广播 message-updated。 */
-  editMessage: (conversationId: number, messageId: number, content: string) =>
+  /** 编辑本人文本消息（服务端 2 分钟窗口校验；mentions 随新文本覆盖），成功后 WS 广播 message-updated。 */
+  editMessage: (conversationId: number, messageId: number, content: string, mentions?: number[]) =>
     fetch(`/api/v1/chat/conversations/${conversationId}/messages/${messageId}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, mentions: mentions?.length ? mentions : undefined }),
     }).then((r) => unwrap<ChatMessage>(r)),
 
   /** 软撤回本人消息（2 分钟窗口），行保留为「已撤回」占位。 */

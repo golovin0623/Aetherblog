@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **提示链 L2–L5**：会话徽标（免打扰降级灰点、@我 信号红穿透）、rail 未读总数、跨会话页内 Toast（点击跳转）、标题闪烁 + Notification API + Web Audio 合成「墨滴」音（默认关）。
   - **结构**：新增图标 rail（会话 / 联系人 / 提示音 / 桌面通知）、联系人视图（成员目录 + 智能体席位聚合，零新后端）、会话信息面板（成员 / 媒体墙 / 置顶 / 免打扰 / 气泡样式直连 settings）、未读与 @我 筛选 chips、[草稿] 保留、「以下为新消息」分隔线、⌘K 聚焦搜索。
 - **Fixed（顺带）：** `apps/blog/Dockerfile` 修正 monorepo standalone 的 public 拷贝路径（`./public` → `./apps/blog/public`）—— 旧路径不会被 `server.js` 服务，此前 public 为空未暴露，贴纸静态资产上线即会 404。
+- **Fixed（评审第一轮，Codex 13 项全采纳）：**
+  - 安全：回应端点绑定会话 —— `React()` 先过 `MessageInConversation` 守卫 + `RemoveReaction` SQL 内联 EXISTS，堵住「有权 convID + 他人会话 msgID」越权读删外部消息回应的信息泄露。
+  - 正确性：编辑消息同步覆盖 `mentions`（删 @ 后徽标不误留）；会话列表末条投影带 `attachment_meta`（贴纸预览不再显示 [图片]）；消息 VO 新增 `replyPreview` 引用快照（被引用消息在已加载历史页之外时引用块兜底渲染）；「以下为新消息」锚点改用自身 `last_read_message_id`（深未读不丢分隔线）；@提及完整定界匹配（`@Anna` 不再误中前缀成员 `Ann`）。
+  - 交互：切会话**同步**清空托盘/录音/面板并回填目标草稿（历史慢加载窗口内不再可能把旧草稿/托盘图片发进新会话）；取消编辑按钮清空回填正文（防重复发送）；联系人视图接入顶部搜索。
+  - 移动端：信息面板改为 <md 右缘滑出抽屉（375px 不再被 270px 侧栏挤压）；列表头新增「会话/联系人」切换（rail 隐藏时联系人可达）。
+  - 语音可用性：`next.config.ts` 与 `nginx/security-headers.conf` 的 Permissions-Policy 改 `microphone=(self)`（原 `microphone=()` 会让 MediaRecorder 生产直接被拒），并给麦克风失败加可见 Toast 提示。
 - **验证：** `go build` + 全部后端测试通过；blog `tsc --noEmit` / ESLint（0 警告）/ `next build` 通过；`pnpm design-system:check` 保持 0 error。
 
 ### Added — 拟真阅读（Simulated Reading）· 3D 翻页阅读器 (2026-06-19, branch claude/blog-simulated-reading-iwxr7q)

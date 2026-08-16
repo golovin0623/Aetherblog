@@ -21,6 +21,15 @@ export interface ChatReaction {
   userIds: number[];
 }
 
+/** 被引用消息的预览快照 —— 引用可能落在已加载历史页之外，快照兜底渲染。 */
+export interface ChatReplyPreview {
+  senderName: string;
+  messageType: MessageType;
+  content?: string;
+  recalled?: boolean;
+  sticker?: boolean;
+}
+
 export interface ChatMessage {
   id: number;
   conversationId: number;
@@ -36,6 +45,8 @@ export interface ChatMessage {
   attachmentSize?: number;
   attachmentMeta?: Record<string, unknown>;
   replyToId?: number;
+  /** 被引用消息快照（服务端 join 下发），跨历史页兜底。 */
+  replyPreview?: ChatReplyPreview;
   clientMsgId?: string;
   /** @提及的用户 id 集合（仅会话成员，服务端过滤）。 */
   mentions?: number[];

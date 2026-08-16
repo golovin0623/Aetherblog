@@ -228,7 +228,7 @@ func (h *ChatHandler) EditMessage(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	vo, err := h.svc.EditMessage(c.Request().Context(), lu.UserID, convID, msgID, req.Content)
+	vo, err := h.svc.EditMessage(c.Request().Context(), lu.UserID, convID, msgID, req.Content, req.Mentions)
 	if err != nil {
 		return h.chatError(c, err)
 	}

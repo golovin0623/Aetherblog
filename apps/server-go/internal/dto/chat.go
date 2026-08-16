@@ -36,6 +36,16 @@ type ChatReactionVO struct {
 	UserIDs []int64 `json:"userIds"`
 }
 
+// ChatReplyPreviewVO 是被引用消息的预览快照 —— 引用可能落在前端已加载
+// 历史页之外，快照让引用块始终可渲染（不可跳转时仅展示）。
+type ChatReplyPreviewVO struct {
+	SenderName  string `json:"senderName"`
+	MessageType string `json:"messageType"`
+	Content     string `json:"content,omitempty"`
+	Recalled    bool   `json:"recalled,omitempty"`
+	Sticker     bool   `json:"sticker,omitempty"`
+}
+
 // ChatMessageVO 是消息视图。
 type ChatMessageVO struct {
 	ID             int64          `json:"id"`
@@ -52,13 +62,14 @@ type ChatMessageVO struct {
 	AttachmentMime *string        `json:"attachmentMime,omitempty"`
 	AttachmentSize *int64         `json:"attachmentSize,omitempty"`
 	AttachmentMeta map[string]any `json:"attachmentMeta,omitempty"`
-	ReplyToID      *int64           `json:"replyToId,omitempty"`
-	ClientMsgID    *string          `json:"clientMsgId,omitempty"`
-	Mentions       []int64          `json:"mentions,omitempty"`
-	Reactions      []ChatReactionVO `json:"reactions,omitempty"`
-	EditedAt       *time.Time       `json:"editedAt,omitempty"`
-	RecalledAt     *time.Time       `json:"recalledAt,omitempty"`
-	CreatedAt      time.Time        `json:"createdAt"`
+	ReplyToID      *int64              `json:"replyToId,omitempty"`
+	ReplyPreview   *ChatReplyPreviewVO `json:"replyPreview,omitempty"`
+	ClientMsgID    *string             `json:"clientMsgId,omitempty"`
+	Mentions       []int64             `json:"mentions,omitempty"`
+	Reactions      []ChatReactionVO    `json:"reactions,omitempty"`
+	EditedAt       *time.Time          `json:"editedAt,omitempty"`
+	RecalledAt     *time.Time          `json:"recalledAt,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
 }
 
 // OpenDirectRequest 打开 / 创建一条私聊会话。
@@ -81,8 +92,10 @@ type SendMessageRequest struct {
 }
 
 // EditMessageRequest 编辑消息正文（2 分钟窗口，仅本人文本消息）。
+// Mentions 随新文本整体覆盖旧值（service 层过滤为会话真实成员）。
 type EditMessageRequest struct {
-	Content string `json:"content" validate:"required,max=8000"`
+	Content  string  `json:"content" validate:"required,max=8000"`
+	Mentions []int64 `json:"mentions" validate:"omitempty,max=32,dive,gt=0"`
 }
 
 // ChatReactionRequest 添加 / 移除消息回应。

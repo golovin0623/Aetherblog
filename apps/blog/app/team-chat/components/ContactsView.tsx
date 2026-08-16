@@ -10,6 +10,8 @@ interface Props {
   agents: ChatAgent[];
   onlineUserIds: Set<number>;
   currentUserId: number;
+  /** 顶部搜索框的查询串 —— 成员与智能体同时过滤。 */
+  searchQuery: string;
   onOpenDirect: (userId: number) => void;
   /** 点击智能体：提示在会话中 @ 或纳入（智能体没有独立私聊信道）。 */
   onAgentHint: (agent: ChatAgent) => void;
@@ -25,9 +27,11 @@ export default function ContactsView({
   agents,
   onlineUserIds,
   currentUserId,
+  searchQuery,
   onOpenDirect,
   onAgentHint,
 }: Props) {
+  const q = searchQuery.trim().toLowerCase();
   const people = useMemo(() => {
     const map = new Map<number, ChatMember>();
     for (const c of conversations) {
@@ -35,15 +39,23 @@ export default function ContactsView({
         if (m.userId !== currentUserId && !map.has(m.userId)) map.set(m.userId, m);
       }
     }
-    return Array.from(map.values()).sort((a, b) => {
-      const ao = onlineUserIds.has(a.userId) ? 0 : 1;
-      const bo = onlineUserIds.has(b.userId) ? 0 : 1;
-      if (ao !== bo) return ao - bo;
-      return (a.nickname || a.username).localeCompare(b.nickname || b.username, 'zh-Hans-CN');
-    });
-  }, [conversations, currentUserId, onlineUserIds]);
+    return Array.from(map.values())
+      .filter((m) => !q || `${m.nickname || ''} ${m.username}`.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const ao = onlineUserIds.has(a.userId) ? 0 : 1;
+        const bo = onlineUserIds.has(b.userId) ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return (a.nickname || a.username).localeCompare(b.nickname || b.username, 'zh-Hans-CN');
+      });
+  }, [conversations, currentUserId, onlineUserIds, q]);
 
-  const activeAgents = useMemo(() => agents.filter((a) => a.status === 'ACTIVE'), [agents]);
+  const activeAgents = useMemo(
+    () =>
+      agents.filter(
+        (a) => a.status === 'ACTIVE' && (!q || `${a.name} ${a.description || ''}`.toLowerCase().includes(q)),
+      ),
+    [agents, q],
+  );
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-5">
@@ -53,9 +65,15 @@ export default function ContactsView({
       </p>
       {people.length === 0 ? (
         <p className="px-3 py-8 text-center text-[12.5px] leading-relaxed text-[var(--ink-muted)]">
-          还没有共同会话的成员。
-          <br />
-          发起会话后，联系人会自动出现在这里。
+          {q ? (
+            '没有匹配的成员'
+          ) : (
+            <>
+              还没有共同会话的成员。
+              <br />
+              发起会话后，联系人会自动出现在这里。
+            </>
+          )}
         </p>
       ) : (
         <div className="flex flex-col gap-1">

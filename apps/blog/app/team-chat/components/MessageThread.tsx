@@ -98,6 +98,21 @@ export function messageSummary(m: ChatMessage): string {
   }
 }
 
+/** 引用预览快照的摘要（被引用消息不在已加载历史页时的兜底口径）。 */
+function previewSummary(p: NonNullable<ChatMessage['replyPreview']>): string {
+  if (p.recalled) return '已撤回的消息';
+  switch (p.messageType) {
+    case 'IMAGE':
+      return p.sticker ? '[星灵贴纸]' : '[图片]';
+    case 'FILE':
+      return '[文件]';
+    case 'VOICE':
+      return '[语音]';
+    default:
+      return p.content || '';
+  }
+}
+
 /** 把 @提及 高亮为极光色（纯展示，不构造 DOM 注入 —— React 文本节点安全）。 */
 function renderTextWithMentions(text: string, mine: boolean): React.ReactNode {
   const parts = text.split(/(@[一-龥A-Za-z0-9_]+)/g);
@@ -471,11 +486,12 @@ export default function MessageThread({
                             }
                     }
                   >
-                    {quoted && !bare && (
+                    {!bare && (quoted || m.replyPreview) && (
                       <button
                         type="button"
-                        onClick={() => jumpToMsg(quoted.id)}
-                        className="mb-1.5 block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md px-2.5 py-1 text-left text-[12px] leading-normal"
+                        onClick={() => quoted && jumpToMsg(quoted.id)}
+                        title={quoted ? '跳到原消息' : '原消息在更早的历史中'}
+                        className={`mb-1.5 block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md px-2.5 py-1 text-left text-[12px] leading-normal ${quoted ? '' : 'cursor-default'}`}
                         style={
                           mine
                             ? {
@@ -491,9 +507,11 @@ export default function MessageThread({
                         }
                       >
                         <span className="block text-[11px] font-medium" style={mine ? { opacity: 0.85 } : { color: 'var(--aurora-1)' }}>
-                          {quoted.senderName || (quoted.senderId === currentUserId ? '我' : '成员')}
+                          {quoted
+                            ? quoted.senderName || (quoted.senderId === currentUserId ? '我' : '成员')
+                            : m.replyPreview!.senderName || '成员'}
                         </span>
-                        {messageSummary(quoted)}
+                        {quoted ? messageSummary(quoted) : previewSummary(m.replyPreview!)}
                       </button>
                     )}
                     <MessageBody m={m} mine={mine} sticker={sticker} onOpenImage={onOpenImage} />

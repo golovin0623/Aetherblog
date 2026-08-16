@@ -292,15 +292,20 @@ func (s *ChatService) MarkRead(ctx context.Context, userID, convID, messageID in
 	return nil
 }
 
-// EditMessage 在窗口期内编辑自己的文本消息，并向成员广播 message-updated（000087）。
-func (s *ChatService) EditMessage(ctx context.Context, userID, convID, msgID int64, content string) (*dto.ChatMessageVO, error) {
+// EditMessage 在窗口期内编辑自己的文本消息（mentions 随新文本整体覆盖 ——
+// 移除 @Bob 后 Bob 的 @我 徽标不再误留），并向成员广播 message-updated（000087）。
+func (s *ChatService) EditMessage(ctx context.Context, userID, convID, msgID int64, content string, mentions []int64) (*dto.ChatMessageVO, error) {
 	if err := s.assertMember(ctx, convID, userID); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(content) == "" {
 		return nil, ErrChatBadMessage
 	}
-	updated, err := s.repo.EditMessage(ctx, convID, msgID, userID, content)
+	filtered, err := s.filterMentions(ctx, convID, mentions)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.repo.EditMessage(ctx, convID, msgID, userID, content, filtered)
 	if err != nil {
 		return nil, err
 	}
@@ -345,16 +350,24 @@ func (s *ChatService) React(ctx context.Context, userID, convID, msgID int64, em
 	if err := s.assertMember(ctx, convID, userID); err != nil {
 		return nil, err
 	}
+	// SECURITY: msgID 必须真实属于本会话 —— 否则可用有权会话的 convID 配任意
+	// 消息 ID，读取（聚合返回）甚至删除外部会话消息上的回应。
+	ok, err := s.repo.MessageInConversation(ctx, convID, msgID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrChatBadMessage
+	}
 	emoji = strings.TrimSpace(emoji)
 	if emoji == "" {
 		return nil, ErrChatBadMessage
 	}
 	var changed bool
-	var err error
 	if add {
 		changed, err = s.repo.AddReaction(ctx, convID, msgID, userID, emoji)
 	} else {
-		changed, err = s.repo.RemoveReaction(ctx, msgID, userID, emoji)
+		changed, err = s.repo.RemoveReaction(ctx, convID, msgID, userID, emoji)
 	}
 	if err != nil {
 		return nil, err
@@ -589,6 +602,8 @@ func (s *ChatService) buildConversationVO(row *repository.ChatConversationListRo
 			MessageType:    derefStr(row.LastMsgType, model.ChatMsgText),
 			Content:        row.LastMsgContent,
 			RecalledAt:     row.LastMsgRecalledAt,
+			// 列表预览需要 meta 区分贴纸（sticker:true）与普通图片。
+			AttachmentMeta: jsonToMeta(row.LastMsgAttachmentMeta),
 		}
 		if row.LastMsgCreatedAt != nil {
 			lm.CreatedAt = *row.LastMsgCreatedAt
@@ -602,6 +617,17 @@ func messageRowToVO(row *repository.ChatMessageRow) dto.ChatMessageVO {
 	vo := messageModelToVO(&row.ChatMessage)
 	vo.SenderName = row.SenderName
 	vo.SenderAvatar = row.SenderAvatar
+	// 引用预览快照：被引用消息可能在前端已加载历史页之外，快照保证引用块始终可渲染。
+	if row.ReplyToID != nil && row.ReplyMessageType != nil {
+		meta := jsonToMeta(row.ReplyAttachmentMeta)
+		vo.ReplyPreview = &dto.ChatReplyPreviewVO{
+			SenderName:  derefStr(row.ReplySenderName, ""),
+			MessageType: *row.ReplyMessageType,
+			Content:     truncateRunes(derefStr(row.ReplyContent, ""), 120), // 复用 note_service 的包内工具
+			Recalled:    row.ReplyRecalledAt != nil,
+			Sticker:     meta != nil && meta["sticker"] == true,
+		}
+	}
 	return vo
 }
 

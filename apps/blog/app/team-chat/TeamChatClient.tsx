@@ -345,26 +345,25 @@ export default function TeamChatClient() {
       setFirstUnreadId(null);
       setLightboxIdx(null);
       setConvAgents([]);
+      // 同步清空瞬态（托盘 / 录音 / 面板）并回填目标会话草稿 —— 必须在等待
+      // 历史返回**之前**完成：历史慢或失败时输入框若仍是上一会话的文本，
+      // 此刻按 Enter 会把旧草稿发给新会话（评审 P1 ×2）。
+      composerRef.current?.reset();
+      composerRef.current?.setText(draftsRef.current.get(conv.id) || '');
       void chatApi.listConversationAgents(conv.id).then(setConvAgents).catch(() => {});
       try {
         const unreadBefore = conv.unreadCount;
+        // 未读分隔线的锚点用自己的已读位点 —— 深未读（>1 页）时按条数倒扫
+        // 永远数不满，分隔线会静默丢失（评审 P2）。
+        const myLastRead = conv.members?.find((m) => m.userId === currentUserId)?.lastReadMessageId ?? 0;
         const history = await chatApi.getHistory(conv.id);
         // 防竞态：用户在历史返回前切到了别的会话 → 丢弃这份陈旧响应。
         if (activeIdRef.current !== conv.id) return;
         setMessages(history);
         setHasMore(history.length >= 30);
-        // 「以下为新消息」定位：从尾部数 unreadCount 条他人消息。
         if (unreadBefore > 0) {
-          let count = 0;
-          for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].senderId !== currentUserId) {
-              count += 1;
-              if (count === unreadBefore) {
-                setFirstUnreadId(history[i].id);
-                break;
-              }
-            }
-          }
+          const first = history.find((h) => h.senderId !== currentUserId && h.id > myLastRead);
+          setFirstUnreadId(first ? first.id : null);
         }
         const last = history[history.length - 1];
         if (last) {
@@ -373,8 +372,6 @@ export default function TeamChatClient() {
         setConversations((prev) =>
           prev.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0, mentionCount: 0 } : c)),
         );
-        // 回填草稿。
-        requestAnimationFrame(() => composerRef.current?.setText(draftsRef.current.get(conv.id) || ''));
       } catch {
         /* ignore */
       }
@@ -597,11 +594,11 @@ export default function TeamChatClient() {
 
   // --- 编辑 / 撤回 / 回应 ---
   const submitEdit = useCallback(
-    async (msg: ChatMessage, text: string) => {
+    async (msg: ChatMessage, text: string, mentions: number[]) => {
       if (!activeId) return;
       setEditing(null);
       try {
-        const updated = await chatApi.editMessage(activeId, msg.id, text);
+        const updated = await chatApi.editMessage(activeId, msg.id, text, mentions);
         patchMessage(msg.id, (m) => ({ ...updated, localOrigText: m.localOrigText }));
       } catch (e) {
         pushToast({ convId: activeId, title: '编辑失败', body: (e as Error).message, fallback: '!' });
@@ -1014,6 +1011,48 @@ export default function TeamChatClient() {
           </div>
         </div>
 
+        {/* 移动端 tab 切换 —— rail 在 <md 隐藏，没有它联系人视图在手机上不可达（评审 P1）。 */}
+        <div className="flex gap-1.5 px-3 pb-2 md:hidden" role="tablist" aria-label="视图切换">
+          {(
+            [
+              { key: 'chats', label: '会话', icon: MessageCircle, badge: totalUnread },
+              { key: 'contacts', label: '联系人', icon: Users, badge: 0 },
+            ] as const
+          ).map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-1.5 text-[12.5px] font-medium transition-colors"
+                style={
+                  tab === t.key
+                    ? {
+                        color: 'var(--aurora-1)',
+                        borderColor: 'color-mix(in oklch, var(--aurora-1) 45%, transparent)',
+                        background: 'color-mix(in oklch, var(--aurora-1) 10%, transparent)',
+                      }
+                    : { color: 'var(--ink-muted)', borderColor: 'color-mix(in oklch, var(--ink-primary) 10%, transparent)' }
+                }
+              >
+                <Icon size={14} />
+                {t.label}
+                {t.badge > 0 && (
+                  <span
+                    className="flex h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[9.5px] font-medium [font-feature-settings:'tnum'_1]"
+                    style={{ background: 'var(--aurora-1)', color: 'var(--bg-void)' }}
+                  >
+                    {t.badge > 99 ? '99+' : t.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {tab === 'chats' ? (
           <>
             <div className="flex gap-1.5 px-3 pb-2" role="tablist" aria-label="会话筛选">
@@ -1061,6 +1100,7 @@ export default function TeamChatClient() {
             agents={agents}
             onlineUserIds={onlineUserIds}
             currentUserId={currentUserId}
+            searchQuery={searchQuery}
             onOpenDirect={openDirect}
             onAgentHint={(a) =>
               pushToast({
@@ -1095,6 +1135,7 @@ export default function TeamChatClient() {
                     else draftsRef.current.delete(activeIdRef.current);
                     setDraftsVersion((v) => v + 1);
                   }
+                  composerRef.current?.reset();
                   activeIdRef.current = null;
                   setActiveId(null);
                   setMobileView('list');
@@ -1151,7 +1192,7 @@ export default function TeamChatClient() {
             </header>
 
             <AgentBar conversationId={activeConv.id} />
-            <div className="flex min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1">
               <div className="flex min-w-0 flex-1 flex-col">
                 <MessageThread
                   key={activeConv.id}
@@ -1189,13 +1230,14 @@ export default function TeamChatClient() {
                     setEditing(null);
                   }}
                   onSend={(text, mentions) => void sendText(text, mentions)}
-                  onSendEdit={(msg, text) => void submitEdit(msg, text)}
+                  onSendEdit={(msg, text, mentions) => void submitEdit(msg, text, mentions)}
                   onSendSticker={(slug) => void sendSticker(slug)}
                   onSendImage={sendImage}
                   onSendFile={(f) => void sendFile(f)}
                   onSendVoice={sendVoice}
                   onTyping={(active) => activeId && sendTyping(activeId, active)}
                   onEditLast={editLastOwn}
+                  onNotice={(m) => pushToast({ convId: 0, title: '提示', body: m, fallback: '!' })}
                 />
               </div>
               {infoOpen && (
