@@ -74,15 +74,17 @@ func (r *CommentRepo) findWithFilter(ctx context.Context, f dto.CommentFilter) (
 		args = append(args, *f.PostID)
 		idx++
 	}
-	// 关键字同时模糊匹配评论内容、昵称、邮箱和文章标题（不区分大小写）
+	// 关键字同时模糊匹配评论内容、昵称、邮箱和文章标题（不区分大小写）。
+	// 显式声明 ESCAPE '\'，保证转义字符与 dbutil.EscapeLike 使用的反斜杠一致，
+	// 避免通配符注入引发全表扫描 / DoS。
 	if f.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(` AND (
-			content ILIKE $%d
-			OR nickname ILIKE $%d
-			OR COALESCE(email, '') ILIKE $%d
+			content ILIKE $%d ESCAPE '\'
+			OR nickname ILIKE $%d ESCAPE '\'
+			OR COALESCE(email, '') ILIKE $%d ESCAPE '\'
 			OR EXISTS (
 				SELECT 1 FROM posts p
-				WHERE p.id = comments.post_id AND p.title ILIKE $%d
+				WHERE p.id = comments.post_id AND p.title ILIKE $%d ESCAPE '\'
 			)
 		)`, idx, idx, idx, idx))
 		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")

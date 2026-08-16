@@ -23,10 +23,10 @@ func TestCommentRepoFindForAdminKeywordSearchesEmailAndPostTitle(t *testing.T) {
 	repo, mock, cleanup := newCommentRepoMock(t)
 	defer cleanup()
 
-	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM comments WHERE .*COALESCE\(email, ''\) ILIKE \$1.*FROM posts p.*p\.title ILIKE \$1`).
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM comments WHERE .*COALESCE\(email, ''\) ILIKE \$1 ESCAPE '\\'.*FROM posts p.*p\.title ILIKE \$1 ESCAPE '\\'`).
 		WithArgs("%deploy%").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery(`(?s)SELECT \* FROM comments WHERE .*COALESCE\(email, ''\) ILIKE \$1.*FROM posts p.*p\.title ILIKE \$1.*ORDER BY created_at DESC LIMIT \$2 OFFSET \$3`).
+	mock.ExpectQuery(`(?s)SELECT \* FROM comments WHERE .*COALESCE\(email, ''\) ILIKE \$1 ESCAPE '\\'.*FROM posts p.*p\.title ILIKE \$1 ESCAPE '\\'.*ORDER BY created_at DESC LIMIT \$2 OFFSET \$3`).
 		WithArgs("%deploy%", 10, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 

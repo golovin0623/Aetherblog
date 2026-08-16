@@ -945,7 +945,7 @@ describe('music modal product quality gates', () => {
     );
 
     expect(landscapeSource).toMatch(
-      /\.music-island-expanded-detail[\s\S]*?top:\s*7\.25rem;[\s\S]*?bottom:\s*5\.75rem;/,
+      /\.music-island-expanded-detail[\s\S]*?top:\s*7\.25rem;[\s\S]*?bottom:\s*6\.75rem;/,
     );
     expect(landscapeSource).toContain('.music-island-transport');
     expect(landscapeSource).toContain('.music-island-progress');
