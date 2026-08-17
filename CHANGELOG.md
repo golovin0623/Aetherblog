@@ -25,6 +25,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 验证：reader gate 19/19（新增缩放钳制与翻页物理用例）、admin 351/351、`design-system:check` 0 error、blog/admin 构建通过、Playwright 14 组状态截图逐帧目检（桌面初始/沉浸/掀角/翻页中帧/拖拽持停/目录/设置/夜读/缩放 + 移动端）。
 - 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更，其余子文档无需更新。
 
+### Changed — 音乐大厅·歌单策展重设计 + 模块头部布局统一 (2026-08-16, branch claude/music-hall-admin-design-43c8f1)
+
+对标主流音乐软件(Apple Music 级交互模式,Aether Codex 材质实现)重做后台音乐大厅的歌单管理,并修复全后台模块头部 tab 条随宽度/actions 跳位的割裂感。
+
+- **模块头部统一(全后台生效)：** `AdminModuleHeader` 此前在 ≥1280px 断点上「无 actions=双列(tab 条在标题右上)/有 actions=单列(tab 条在下)」,切 tab 时 actions 出没导致 tab 条在右上/下方之间跳位。现统一为:**带 tab 的模块头恒为单列,tab 条固定在标题下方一行(tab 左、actions 右),所有断点稳定**;双列右上布局仅保留给无 tab 的头。compact-tabs / taxonomy 皮肤几何不受影响。
+- **歌单策展(playlists tab)重构：**
+  - **左栏歌单库(`PlaylistRail`)：** 每行 44px 封面缩略为视觉锚点(真实封面或确定性计算艺术封面),选中态极光左光带,管理操作(喜爱/设为公开/删除)桌面 hover 浮现、触屏常驻;「创建歌单」从常驻表单收成 [+] 按钮 + 内联命名卡(Apple 式:新建只要名字)。
+  - **详情 Hero：** 大封面(极光辉光投影)+ mono eyebrow(PLAYLIST·可见性·状态·公开中)+ `font-display` 标题 + 描述 + 「N 首 · 总时长」(tabular-nums)+ 主操作行:实底「播放全部/暂停」(每视图唯一实底 CTA)、随机播放、编辑详情;原编辑表单(封面工作流/字段/开关/可见性)整体收进可折叠面板,脏草稿时 Hero 直接给「保存修改」。
+  - **曲目表(`PlaylistTrackTable`)：** 列头(#/歌曲/时长),行=序号(hover 让位播放键,正在播放行常驻极光均衡器动画)+ 封面缩略 + 标题/艺术家·专辑 + 右对齐时长;**拖拽排序**(framer Reorder,手柄触发,提交沿用 `reorderPlaylistMutation` 契约,顺序未变不发请求),手柄聚焦后 ↑/↓ 键可调序(键盘可达);移动端溢出菜单(播放/上移/下移/移除)保留为降级路径。
+  - **添加歌曲(`AddTracksPanel`)：** 取代「搜索+下拉+按钮」——可搜索候选列表行内点 [+] 直加,已在歌单的曲目保持可见并标记 ✓ 已加入,底部保留候选状态文案(核对中/加载中/已载入 x/y)。
+  - **计算艺术封面缩略(`ResonantThumb`)：** 复用封面工作室渲染核心(`musicCoverArt`),seed 由业务身份哈希决定,同一歌单/曲目永远同脸;调色板预设抽为 `coverPresets.ts` 供工作室与缩略图共用(不再把懒加载的工作室拖进主 chunk)。
+  - **细节：** 骨架屏全面替换文字加载与 spinner(切歌单/曲目表/候选面板/歌单库);空态重写(选择引导/空歌单 CTA/无喜爱歌单);`#ec496f` 硬编码粉一律收敛为 `--aurora-4`(曲库/歌单心形、策展总览喜爱卡);过渡统一 `duration-[var(--dur-*)] ease-[var(--ease-out)]`。
+- **结构化拆分：** `MusicPage.tsx` 4126 → 约 3900 行;样式工厂抽至 `musicUi.ts`(新增 `solidButtonClass`/`formatClock`),歌单子组件落位 `pages/music/`(PlaylistRail / PlaylistTrackTable / AddTracksPanel / ResonantThumb / coverPresets)。
+- **Legacy 清理：** `BatchActionBar` 手写玻璃(`dark:` 阴影/`ring-white/10`/`backdrop-blur-2xl` 组合)迁移为 `.surface-raised`(音乐模块最后的 `dark:` 用法清零)。
+- **修复：** 拖拽提交竞态 —— 快速拖拽时 framer `onReorder` 先于 `onDragStart` 触发,旧「脏标记」方案会漏提交;改为结束一律上交 + 父级「顺序未变不提交」守卫。曲目行入场动画与拖拽变换解耦(整表单次 fadeUp),避免拖拽中断入场后行卡在透明态。
+- **计算艺术封面·渲染算法重写(`musicCoverArt.ts` Resonant Cartography v2)：** 旧算法输出为居中径向光斑+随机短刺,评为廉价 AI 感;新分层:① 近黑大气层+克制焦点辉光(砍掉角落 accent 大块渐变);② 倾斜谐波轨道弧段(内紧外疏指数间距、呼吸缺口、共振载波双线+辉光底);③ **流丝改为严格沿轨道切向的二次微弧**(曲率精确贴合椭圆——黑胶沟槽/星轨长曝光质感),旋臂角向密度调制+共振环邻域聚集形成「活跃带」,拒绝均匀贴图感;④ 彗尾长弧(辉光底+锐利主线,头亮尾隐)为每张封面的签名瞬间;⑤ 制图仪式的精密核心(分离暗圈+亮环+四向刻度);⑥ 星尘+胶片颗粒;⑦ 克制渐晕。同 seed 确定性不变,工坊/列表缩略/Hero 全线同步升级;composition 契约向后兼容(strokes 增加控制点,新增 arcs/comets/dust)。
+- **封面工坊 UI 精修(`GenerativeCoverStudio`)：** 预设块从三个色点升级为**实时迷你画布**(当前种子×该配方的真实渲染,选前即所见);删除虚构的「P5.js · Chaos Harmonic」标签,右下角改为当前配方名/自定义和声的诚实回显;标题接入 `font-display`,节标签统一 mono uppercase eyebrow;滑杆自定义 `.music-range`(极光填充轨道+精密拇指,替代原生 accent);底部按钮接入 `textButtonClass`/`solidButtonClass` 工厂并去除图标堆叠;画布侧保持刻意的暗房单一视觉(亮色主题下仅控制面板翻转)。
+- 📄 文档影响:已更新 CHANGELOG.md;无 API/DB/共享包变更,architecture 与 api-handlers 无需更新。
+
+### Changed — 灵境工作台 · 对话知识库体验整体升级 (2026-08-16, branch claude/linghjing-ai-chat-kb-design-v5jvdy)
+
+**背景：** 前台灵境（blog `/agent/workspace`）与 LobeHub / Cherry Studio / ChatGPT 相比存在体验断层：后端一直在发的知识检索回执（SSE `retrieval` 事件）被前端整体丢弃、聊天请求从不携带 `kbIds` / `knowledgeContextMode`（「对话知识库」名不副实）、无消息元数据、无翻译/引用/分支等消息编排、无上下文管理、会话管理只有重命名+删除。本次纯前端（blog + packages/ui）对齐补课，零后端改动。
+
+**Added — 知识检索编排（核心）：**
+- **接通 `retrieval` SSE 回执**（此前被静默丢弃；旧 `sources` 事件为后端从不发送的死契约，保留兼容渲染）。新组件 `RetrievalReceipt`：状态结论（matched/partial/empty/unavailable 四态 signal 色）+ 编号命中列表（kind 徽标 / 标题 / 来源 / snippet 3 行截断 / 相关度微条 + 百分比 / 安全 href 白名单 `/posts/`，`/admin/` 仅 admin 角色）+ warnings。回执渲染在回答上方 —— 与「先检索后作答」的执行顺序一致。
+- **知识库三态控制**（`KnowledgePicker` + composer 书库按钮）：自动（后端自动发现，默认）/ 指定（多选 KB，未就绪库降级不可选）/ 关闭；勾选即隐含切换，选择随会话持久化，重试/编辑无损恢复。请求契约对齐 admin AetherHub：auto 省略 `kbIds`、selected 传数组、none 传 `null`，`knowledgeContextMode` 三态必填。新增数据源 `lib/agentKbs.ts`（`GET /api/v1/agent/knowledge-bases`）。
+- **内联引用标记**：回答正文中的 `[n]`/`【n】`（n ≤ 命中数）链接化为 aurora-2 上标胶囊（`lib/citations.ts`，代码块/行内代码内绝不改写），点击展开回执、平滑滚动并高亮对应依据。
+- **检索阶段可视化**：携带知识上下文且回执未到时,思考面板显示「正在检索知识」；`selected_context_not_grounded` 错误提供「自动检索重试」一键出路（同时把会话检索模式固化为 auto）。
+
+**Added — 消息编排与元数据：**
+- **元数据 footer**（assistant 完成态常驻微行）：模型名（发送时戳记 `modelId`/`providerCode`，经模型清单解析显示名）· 用时 · 首字延迟 · `~N tok` 估算（新 `lib/tokenEstimate.ts`，CJK≈1 字/token、其余≈4 字符/token；后端无 usage 事件，故为估算并带 `~` 标注）。
+- **消息操作扩展**：复制 / **引用**（blockquote 回填 composer）/ **翻译**（中⇄EN 自动判向，独立 SSE 流内联写入 `message.translation`，aurora-3 面板可复制/重译/关闭，不占对话历史与 busy 状态机）/ 编辑（user）/ 重新生成（assistant）/ **分支会话**（复制到该消息为止开新会话）/ **删除单条**（5s 撤销 toast）。
+- **流式渲染细节**：光标从「独立 span 挂在整个 markdown 块后（永远孤行）」改为 CSS 内联长在最后一个文本块行内末尾（`agent-stream-caret`，覆盖 p/标题/引用末段/列表末项）；流式轻渲染 → 完整渲染（shiki/KaTeX）切换加 260ms 落定淡入（`agent-md-settle`）消除内容跳变；SSE 流意外断开不再伪装成正常完成（标记可重试错误，已收内容保留）。
+
+**Added — 上下文管理：**
+- **清除上下文**（Cherry Studio 心智）：composer 剪刀按钮 / `/context` 命令在当前位置放置断点 —— 消息保留可回看，断点之前的历史不再随请求发送；线程内 aurora-3 虚线分隔线可一键「恢复」，清除动作有 5s 撤销 toast。断点在截断/删除/分支后自动归一化，绝不悬空。
+- **上下文用量计**（composer 右下,桌面端）：断点后历史条数 + `~token` 估算，选定具体模型时按其 `contextWindow` 显示占比微条（>80% warn / >95% danger 变色）；流式期间冻结估算避免每帧全量扫描。
+
+**Changed — 会话管理（Sidebar）：**
+- **置顶**（置顶分组置前 + Pin 标识,菜单可置顶/取消）；**搜索升级为全文**（标题 + 消息正文）；**导出 Markdown**（`/export` 命令或会话菜单,含思考过程 `<details>` 与知识来源脚注）；删除会话在原有 inline 双击确认之外再加 5s 撤销 toast。
+- 线程内新增**日期分隔线**（今天/昨天/M月D日,全新对话不标「今天」）。
+
+**Changed — Composer 浮岛与按钮体系精修（对标 Claude / Codex 质感）：**
+- 工具行**去掉横贯整岛的硬分割线**（表单感最重的一笔），以留白分区；聚焦光环从 3.5px 粗 ring 收敛为「1px 极光外圈 + 内顶高光 + 柔和远投影」的发丝双描边。
+- **发送键重做**：拼接式分裂按钮（发送半格 + 下拉半格 + 刀切分隔线）→ 单一圆形主键，busy 与可发送二态以弹簧缩放交接；停止键同尺寸圆形 + 呼吸光晕。「发送方式」（Enter / ⌘Enter）迁入顶栏「渲染偏好」面板（新 `lib/sendShortcut.ts` 经自定义事件跨组件同步）。
+- **ModelPicker 紧凑触发器幽灵化**：去掉"边框+底色+内投影"三层壳，provider 圆徽作锚点、悬浮 ink 淡染；200K 徽标去盒化为纯 mono 文本。
+- **修复两处"悬浮不可见"**：Composer 工具键与消息操作条的 hover 背景此前用 `--bg-raised`，而容器底就是 raised —— 悬浮零反馈正是廉价感来源，统一改 ink 7-8% 淡染。
+- **修复焦点"框中框"**：textarea 天然恒命中 `:focus-visible`，全局无障碍焦点环与浮岛聚焦光环叠加成双框 —— 岛内 textarea 豁免（焦点指示由浮岛容器统一承担）。
+- 空会话隐藏「清除上下文」剪刀（无可清对象时不再摆一枚置灰按钮）。
+
+**Changed — `packages/ui` Toast 迁移 Codex**（原为 legacy `bg-green-500/20` 等且全站零消费）：`--bg-raised` 实色卡 + `signal-*` 状态点色 + framer-motion 出入场；新增 `action` 操作按钮（撤销类交互）与 `ToastProvider position`（`top-right`/`bottom-center`）。灵境工作台为首个消费方（bottom-center）。
+
+**Perf：** ModelPicker 支持外部注入 `modelsState` —— 工作台一次拉取模型清单,ModelPicker 展示 / 元数据解析 / 上下文窗口三处共用,消除重复请求。
+
+**明确不做（后端缺口,单靠前端无法闭环）：** 图片/多模态发送 —— `AgentChatRequest.messages[].content` 仅支持 string 且 Go 网关 body 上限 96KB,需要 ai-service schema（content parts）+ 上传端点 + 网关配额三处后端改动后前端再接。
+
+**Tests：** blog `tsc --noEmit` 0 error；`design-system:check` 0 error（红线保持）；`next build` 通过。
+
+**📄 文档影响：** [已更新 CHANGELOG.md · .agent/rules/ui_rules.md（Toast 新 API）· .claude/docs/dependencies-and-stack.md §5（Toast 说明）]。无新增后端 API / DB schema,architecture.md / api-handlers.md 无需更新。
+
 ### Changed — 友链页「星群与信笺」重设计 · Apple Watch 气泡 + iOS 通知栈 (2026-08-16, branch claude/homepage-links-design-ppbpt8)
 
 **背景：** 友链页的列表 / 气泡两种视图与 Apple Watch 表盘、iPhone 通知中心的质感差距明显（列表是三栏杂色渐变卡、气泡只是静态 flex 蜂窝、无页面级排版语言）。本次以「星群与信笺」立意整体重做，全部颜色走 Codex 令牌、动效走 `@aetherblog/ui` 预设。
@@ -36,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **合规：** `pnpm design-system:check` 保持 0 error;无 `dark:` 变体、无裸 bezier/spring 数值、无任意字号。
 - **产线回归修复（对照线上截图）：** ① `themeColor` 为空字符串时默认参数不生效,头像加载失败的友链渲染成「黑洞球」(线上旧版可见的历史 bug) —— `FriendCard` / `FriendBubbleField` / `DeckAvatar` 三处统一空值归一化;② 移动端页头过高把星群压出首屏 —— 导语改 `hidden sm:block`(与旧版隐藏副标题的行为一致)并收紧移动端间距,骨架屏同步镜像。
 - **Codex 评审采纳（2 条 P1）：** ① 后端 DTO `ThemeColor *string` 无 omitempty,`themeColor: null` 会让 `FriendCard` 的 `.trim()` 崩掉整棵 `/friends` 客户端树 —— `FriendLink` 类型改 `string | null` 并统一归一化;② 视图切换与「收起」按钮触控区约 36px,不满足 AGENTS.md 移动端 ≥44×44px 约定 —— 按仓库先例补 `min-h-[44px]`(md 起还原紧凑,不影响桌面)。
+
 ### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
 
 按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：

@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@aetherblog/ui';
-import { useAgentModels, type AgentModelItem } from '../../lib/agentModels';
+import { useAgentModels, type AgentModelItem, type ModelsState } from '../../lib/agentModels';
 import AgentProviderIcon from './AgentProviderIcon';
 
 interface Props {
@@ -35,6 +35,9 @@ interface Props {
   placement?: 'bottom-end' | 'top-start';
   /** 紧凑模式：composer 内嵌时高度更小、padding 更紧。 */
   compact?: boolean;
+  /** 父级已拉取的模型清单 —— 传入时不再自行 fetch（WorkspaceClient 需要同一份
+   *  数据做消息元数据与上下文窗口估算，单一来源避免双请求）。 */
+  modelsState?: ModelsState;
 }
 
 function modelLabel(item: AgentModelItem): string {
@@ -129,8 +132,11 @@ export default function ModelPicker({
   enabled,
   placement = 'bottom-end',
   compact = false,
+  modelsState,
 }: Props) {
-  const state = useAgentModels(enabled);
+  // 外部注入时内部 hook 关闭拉取（enabled=false 永不 fetch），单一数据源。
+  const internalState = useAgentModels(enabled && !modelsState);
+  const state = modelsState ?? internalState;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -267,10 +273,11 @@ export default function ModelPicker({
   // 用户主动选过非 null 的模型 → icon 着色（aurora），强化"已主动选择"感知。
   const isUserSelected = !!value.modelId;
 
-  // 紧凑（composer 内嵌）时采用 LobeHub 式工具胶囊：移动端只露模型图标，
-  // 与 @/#/slash/send 同轴对齐；桌面端再展开当前模型名称，避免窄屏抢空间。
+  // 紧凑（composer 内嵌）时走幽灵胶囊 —— 无边框无底色,provider 圆徽即锚点,
+  // 悬浮 ink 淡染(Claude / Codex 的模型指示语言;之前的"边框+底色+内投影"
+  // 三层壳让它看起来像一枚过时的表单控件)。移动端只露图标,桌面端再展开名称。
   const triggerClass = compact
-    ? 'inline-flex h-8 min-w-0 max-w-[38vw] items-center justify-start gap-1.5 rounded-full border border-[var(--ink-subtle)]/16 bg-[var(--bg-leaf)] px-2.5 text-[12px] text-[var(--ink-secondary)] shadow-[0_1px_0_inset_color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-all duration-quick ease-aether hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-95 sm:max-w-[240px]'
+    ? 'inline-flex h-8 min-w-0 max-w-[38vw] items-center justify-start gap-1.5 rounded-full px-1.5 text-[12px] text-[var(--ink-secondary)] transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)] active:scale-[0.97] sm:max-w-[240px] sm:pr-2'
     : 'inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border border-[var(--ink-subtle)]/20 bg-[var(--bg-raised)] px-2.5 py-1.5 text-[12px] text-[var(--ink-secondary)] transition-all hover:border-[var(--aurora-1)]/40 hover:text-[var(--ink-primary)] active:scale-[0.97]';
 
   // 弹出尺寸：top-start 用 300px、bottom-end 用 280px。
@@ -575,7 +582,11 @@ export default function ModelPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         className={`${triggerClass} ${
-          isUserSelected ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]' : ''
+          isUserSelected && compact ? 'text-[var(--ink-primary)]' : ''
+        } ${
+          isUserSelected && !compact
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]'
+            : ''
         }`}
         title="切换模型"
       >
@@ -588,11 +599,13 @@ export default function ModelPicker({
         )}
         <span className={compact ? 'min-w-0 truncate' : 'truncate'}>{currentLabel}</span>
         {currentContext && (
-          <span className="hidden rounded-md bg-[var(--bg-leaf)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-muted)] sm:inline">
+          <span className="hidden font-mono text-[10px] text-[var(--ink-muted)]/80 tnum sm:inline">
             {currentContext}
           </span>
         )}
-        <ChevronDown className={`hidden w-3 h-3 flex-shrink-0 transition-transform sm:block ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`hidden w-3 h-3 flex-shrink-0 text-[var(--ink-muted)] transition-transform sm:block ${open ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {mounted &&
