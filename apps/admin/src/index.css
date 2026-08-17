@@ -3296,6 +3296,246 @@
     var(--intelligence-panel-strong);
 }
 
+/* -------------------------------------------------------------
+ * 知识工作台 · 统一检索 / 知识脉搏 / 来源托盘
+ * 只组合既有 token(ink / aurora / signal / intelligence-*),不新增颜色;
+ * 动效时长与曲线一律引用 --dur-* / --ease-* 令牌。
+ * ------------------------------------------------------------- */
+.intelligence-search-field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--intelligence-border);
+  border-radius: 1rem;
+  background: var(--intelligence-control);
+  padding: 0.4rem 0.5rem 0.4rem 0.85rem;
+  transition:
+    border-color var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out);
+}
+
+.intelligence-search-field:focus-within {
+  border-color: var(--intelligence-border-strong);
+  background: var(--intelligence-panel-strong);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 14%, transparent);
+}
+
+.intelligence-kbd {
+  display: inline-flex;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--intelligence-border);
+  border-bottom-width: 2px;
+  border-radius: 0.45rem;
+  padding: 0 0.35rem;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.intelligence-atom {
+  min-width: 0;
+  border: 1px solid var(--intelligence-border);
+  border-radius: 0.95rem;
+  background: var(--intelligence-panel-strong);
+  padding: 0.75rem 0.85rem;
+  transition:
+    border-color var(--dur-quick) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out);
+}
+
+.intelligence-atom:hover {
+  border-color: var(--intelligence-border-strong);
+  box-shadow: 0 10px 28px -24px color-mix(in oklch, var(--aurora-1) 55%, transparent);
+}
+
+.intelligence-atom-pinned {
+  border-color: var(--intelligence-border-strong);
+  background:
+    linear-gradient(135deg,
+      color-mix(in oklch, var(--aurora-1) 7%, transparent),
+      transparent 55%),
+    var(--intelligence-panel-strong);
+}
+
+.intelligence-atom-snippet {
+  margin-top: 0.35rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--ink-secondary);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+/* 触控目标 ≥44px(AGENTS.md 移动端约定),桌面指针设备回到紧凑密度。
+   静息文字用 --ink-secondary 而非 --ink-muted:后者在暗色卡片上仅约 3.3:1,
+   低于 WCAG AA;这三枚是每条命中的全部后续动作,不是辅助 metadata。 */
+.intelligence-atom-action {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  padding: 0 0.55rem;
+  color: var(--ink-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  transition:
+    border-color var(--dur-quick) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
+}
+
+.intelligence-atom-action:hover {
+  border-color: var(--intelligence-border);
+  background: var(--intelligence-control);
+  color: var(--ink-primary);
+}
+
+.intelligence-atom-action-active,
+.intelligence-atom-action-active:hover {
+  border-color: color-mix(in oklch, var(--aurora-1) 30%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 10%, transparent);
+  color: var(--aurora-1);
+}
+
+.intelligence-score-bar {
+  display: inline-block;
+  width: 2.25rem;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-primary) 10%, transparent);
+}
+
+.intelligence-score-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--aurora-1), var(--aurora-3));
+  transform-origin: left center;
+}
+
+.intelligence-lane-filter {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--intelligence-border);
+  border-radius: 999px;
+  background: transparent;
+  padding: 0 0.65rem;
+  color: var(--ink-secondary);
+  font-size: 0.7rem;
+  font-weight: 750;
+  transition:
+    border-color var(--dur-quick) var(--ease-out),
+    background-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
+}
+
+.intelligence-lane-filter:hover {
+  border-color: var(--intelligence-border-strong);
+  color: var(--ink-primary);
+}
+
+.intelligence-lane-filter[data-active='true'] {
+  border-color: color-mix(in oklch, var(--aurora-1) 32%, transparent);
+  background: color-mix(in oklch, var(--aurora-1) 10%, transparent);
+  color: var(--aurora-1);
+}
+
+.intelligence-pulse-bar {
+  display: block;
+  width: 100%;
+  height: 0.3rem;
+  margin-top: 0.55rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-primary) 8%, transparent);
+}
+
+.intelligence-pulse-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg,
+    var(--signal-success),
+    color-mix(in oklch, var(--signal-success) 55%, var(--aurora-1)));
+  transform-origin: left center;
+}
+
+.intelligence-pulse-bar-fill-warning {
+  background: linear-gradient(90deg,
+    var(--signal-warn),
+    color-mix(in oklch, var(--signal-warn) 60%, var(--aurora-1)));
+}
+
+.intelligence-tray-chip {
+  display: inline-flex;
+  min-height: 1.9rem;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--intelligence-border);
+  border-radius: 999px;
+  background: var(--intelligence-control);
+  padding: 0 0.3rem 0 0.6rem;
+  color: var(--ink-secondary);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.intelligence-tray-chip-remove {
+  display: inline-flex;
+  height: 1.35rem;
+  width: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--ink-muted);
+  transition:
+    background-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
+}
+
+.intelligence-tray-chip-remove:hover {
+  background: color-mix(in oklch, var(--signal-danger) 12%, transparent);
+  color: var(--signal-danger);
+}
+
+/* 触控密度:移动端按 AGENTS.md「按钮触控区域不小于 44x44px」放大,
+   ≥640px 的指针设备回到紧凑排布(与仓库既有 min-h-11 sm:min-h-9 先例一致)。 */
+@media (max-width: 639px) {
+  .intelligence-tray-chip {
+    min-height: 2.75rem;
+    padding-right: 0.35rem;
+  }
+
+  .intelligence-tray-chip-remove {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .intelligence-atom-action,
+  .intelligence-lane-filter {
+    min-height: 1.9rem;
+  }
+}
+
 @media (min-width: 1024px) {
   .intelligence-header {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -4355,6 +4595,106 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ink-cursor {
+    animation: none !important;
+  }
+}
+
+/* ── AI 协同写作 · 对话面板 ──────────────────────────────────
+   签名时刻 #5「AI 工坊 · Ink Bleed」的 markdown 变体:AI 回复用
+   Instrument Serif 渲染("有人味"),流式期间整段做极轻的纸面浮起,
+   与 useSmoothStream 的匀速吐字协同。 */
+.writing-chat-md.markdown-preview,
+.writing-chat-md > div,
+.writing-chat-md .markdown-body {
+  font-family: var(--font-editorial, ui-serif);
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  font-size: var(--fs-body);
+  line-height: var(--lh-relaxed);
+  color: var(--ink-primary);
+}
+
+.writing-chat-md p,
+.writing-chat-md.markdown-preview p {
+  margin: 0.55em 0;
+  color: var(--ink-primary);
+}
+
+.writing-chat-md ul,
+.writing-chat-md ol,
+.writing-chat-md.markdown-preview ul,
+.writing-chat-md.markdown-preview ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+
+.writing-chat-md li,
+.writing-chat-md.markdown-preview li {
+  margin: 0.2em 0;
+}
+
+.writing-chat-md code:not(pre code),
+.writing-chat-md.markdown-preview code:not(pre code) {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.writing-chat-md blockquote,
+.writing-chat-md.markdown-preview blockquote {
+  margin: 0.6em 0;
+  padding: 0.4em 0.9em;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 32%, transparent);
+  color: var(--ink-secondary);
+}
+
+/* 内联流式光标 —— 与前台灵境 `.agent-stream-caret` 同范式。
+   独立 <span> 挂在块级 markdown 容器之后会永远孤零零落在下一行;改成 ::after
+   长在最后一个文本块的行内末尾,才是「光标贴着最后一个字闪」的体感。
+   pre / table 结尾不加(代码块有独立视觉体系)。 */
+.writing-stream-caret .writing-chat-md :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.writing-stream-caret .writing-chat-md blockquote:last-child > p:last-child::after,
+.writing-stream-caret .writing-chat-md :is(ul, ol):last-child li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--aurora-1);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--aurora-1) 45%, transparent);
+  animation: ai-ink-cursor 1.05s steps(1, end) infinite;
+}
+
+.writing-stream-fade {
+  animation: writing-stream-tween var(--dur-quick) var(--ease-out);
+}
+
+@keyframes writing-stream-tween {
+  from { opacity: 0.78; transform: translateY(1px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+
+/* 思考占位 —— 三颗极光呼吸点(骨架级占位,禁 spinner) */
+.writing-typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--aurora-1) 65%, transparent);
+  animation: writing-typing 1.2s var(--ease-in-out) infinite;
+}
+
+@keyframes writing-typing {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writing-stream-fade { animation: none !important; }
+  .writing-typing-dot  { animation: none !important; opacity: 0.6; }
+  .writing-stream-caret .writing-chat-md :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+  .writing-stream-caret .writing-chat-md blockquote:last-child > p:last-child::after,
+  .writing-stream-caret .writing-chat-md :is(ul, ol):last-child li:last-child::after {
     animation: none !important;
   }
 }
