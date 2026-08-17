@@ -12,7 +12,7 @@
  * 快照直接兼容加载。
  */
 
-import type { AgentRetrievalReceipt } from './chat';
+import type { AgentRetrievalReceipt } from '@aetherblog/agent-kit';
 import type { KnowledgeContextSelection } from '../knowledgeWorkspaceHandoff';
 
 export type AgentMode = 'chat' | 'cowork' | 'code';
@@ -39,6 +39,37 @@ export interface AgentUsage {
   completionTokens: number;
   totalTokens: number;
   estimated: boolean;
+}
+
+/**
+ * assistant 消息的单次工具调用轨迹 —— SSE tool_call 到达即建（进行中），
+ * 同 id 的 tool_result 到达后合并 result / isError / finishedAt。
+ * 数组顺序即服务端执行顺序（协议保证一次 tool_call 后必跟同 id 的 tool_result）。
+ */
+export interface AgentToolEvent {
+  id: string;
+  name: string;
+  /** 服务端拼装完成的完整 JSON 参数串（展示层再尝试 pretty-print）。 */
+  arguments: string;
+  /** 工具执行结果（服务端已截断 ≤2000 字符）；undefined = 尚未返回。 */
+  result?: string;
+  isError?: boolean;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+/**
+ * 多模型对比的存档回答 —— 「对比」浮层采纳某一列后，其余完成的列与被替换的
+ * 原回答落在这里，随消息持久化 / 云同步，可在消息 meta footer 下方回看。
+ */
+export interface AgentAlternative {
+  /** 产生该回答的模型戳记（null = 后端自动路由）。 */
+  modelId: string | null;
+  providerCode: string | null;
+  content: string;
+  usage?: AgentUsage;
+  /** 该回答从发起到完成的耗时（毫秒）。 */
+  elapsedMs?: number;
 }
 
 /** 消息图片附件 —— dataUrl 直接内联持久化（MVP 不走对象存储）。 */
@@ -69,6 +100,10 @@ export interface AgentMessage {
   translation?: AgentTranslation;
   /** 本条消息的 token 用量（assistant 消息使用）。 */
   usage?: AgentUsage;
+  /** 本轮回答的工具调用轨迹（assistant 消息使用，按执行顺序排列）。 */
+  toolEvents?: AgentToolEvent[];
+  /** 多模型对比后存档的其他回答（assistant 消息使用，采纳时写入）。 */
+  alternatives?: AgentAlternative[];
   /** 本轮 user 消息携带的图片附件。 */
   attachments?: AgentAttachment[];
   createdAt: number;
@@ -110,6 +145,10 @@ export interface AgentSession {
    *  null/undefined = 无断点。对齐 Cherry Studio「清除上下文」心智：
    *  消息仍在、可回看，但模型从断点后重新开始记忆。 */
   contextBreakId?: string | null;
+  /** 用户手动改过标题 —— AI 自动起名不再覆盖。
+   *  本地字段：云同步 wire 映射是显式字段构建，天然忽略它（跨设备不持久化
+   *  属已知边界——其他设备最多多做一次无害的自动起名尝试）。 */
+  titleEdited?: boolean;
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];
@@ -280,6 +319,22 @@ export function deriveSessionTitle(firstMessage: string): string {
   }
   if (trimmed.length <= 24) return trimmed;
   return `${trimmed.slice(0, 24)}…`;
+}
+
+/**
+ * 清洗 AI 生成的会话标题 —— 模型偶尔会带引号 / 书名号 / 收尾句号 / 换行，
+ * 全部剥掉后截 24 字（与 deriveSessionTitle 的截断上限一致）。清洗后为空
+ * 返回 ''，调用方据此放弃写入。
+ */
+export function sanitizeGeneratedSessionTitle(raw: string): string {
+  // 换行与连续空白折叠为单空格
+  let title = raw.replace(/\s+/g, ' ').trim();
+  // 剥掉首尾的引号 / 书名号 / 括号类包装字符（模型爱加的装饰）
+  title = title.replace(/^[\s"'“”‘’「」『』《》【】()（）]+|[\s"'“”‘’「」『』《》【】()（）]+$/g, '');
+  // 去掉收尾的句号类标点
+  title = title.replace(/[。．.!！?？~～、，,;；:：]+$/g, '').trim();
+  if (!title) return '';
+  return title.length > 24 ? title.slice(0, 24) : title;
 }
 
 export interface SessionGroup {

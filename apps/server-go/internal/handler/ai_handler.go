@@ -554,6 +554,10 @@ var allowedSSETypes = map[string]bool{
 	"think": true, "sources": true, "retrieval": true,
 	// usage 在 done 前下发本轮真实/估算 token 用量（estimated 标记区分），供前端展示。
 	"usage": true,
+	// agent 工具调用（enableTools 显式开启）：tool_call 是模型请求执行服务端
+	// 白名单工具（arguments 为拼装完成的 JSON 字符串）；tool_result 是执行
+	// 结果回执（result 截断 ≤2000 字符，isError 标记失败）。
+	"tool_call": true, "tool_result": true,
 }
 
 // sseEvent 用于解析 SSE data 行中的 JSON 负载以提取 type 字段。

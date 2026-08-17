@@ -10,7 +10,7 @@ import {
   useAgentKnowledgeBases,
   type AgentKnowledgeBase,
 } from '../../lib/agentKbs';
-import type { KnowledgeContextMode } from '../../lib/agentChatStream';
+import type { KnowledgeContextMode } from '@aetherblog/agent-kit';
 
 interface Props {
   open: boolean;

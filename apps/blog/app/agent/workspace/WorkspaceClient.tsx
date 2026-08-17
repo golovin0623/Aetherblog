@@ -49,11 +49,16 @@ import {
   sessionToMarkdown,
   sliceContextMessages,
 } from '../lib/agentSessions';
-import type { StreamAnimationMode } from '../lib/smooth';
+import {
+  estimateMessagesTokens,
+  estimateTokens,
+  streamAgentChat,
+  type KnowledgeContextMode,
+  type StreamAnimationMode,
+} from '@aetherblog/agent-kit';
 
 /** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
 type DisplayMode = 'bubble' | 'engraved';
-import { streamAgentChat, type KnowledgeContextMode } from '../lib/agentChatStream';
 import {
   type AgentArticle,
   type AgentTag,
@@ -61,7 +66,6 @@ import {
 } from '../lib/agentResources';
 import { toKbRef, type AgentKbRef, type AgentKnowledgeBase } from '../lib/agentKbs';
 import { useAgentModels } from '../lib/agentModels';
-import { estimateMessagesTokens, estimateTokens } from '../lib/tokenEstimate';
 import { SEND_SHORTCUT_OPTIONS, useSendShortcut } from '../lib/sendShortcut';
 
 interface Props {

@@ -12,6 +12,7 @@
     "clean": "rm -rf .next node_modules"
   },
   "dependencies": {
+    "@aetherblog/agent-kit": "workspace:*",
     "@aetherblog/hooks": "workspace:*",
     "@aetherblog/ui": "workspace:*",
     "@aetherblog/utils": "workspace:*",

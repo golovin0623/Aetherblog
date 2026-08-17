@@ -314,6 +314,19 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 
 全部 `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等。down 逆序 `DROP INDEX/COLUMN/TABLE IF EXISTS`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
 
+### 000088 · `agent_chat_sessions`
+
+灵境 AI 会话云端持久化（`/api/v1/agent/sessions`，跨设备漫游）。取空号 000088（当前最大 000087 +1，**不顺移**）。纯新增 2 张表：
+
+- `agent_chat_sessions`（会话 meta；`id TEXT PK` **客户端生成**，CHECK `^[A-Za-z0-9_-]{8,64}$`；`user_id` FK ON DELETE CASCADE；`mode`/`model_id`/`provider_code`/`model_params JSONB`/`pinned`/`context_break_id`/`draft`；**时间戳双轨**：`client_created_at`/`client_updated_at BIGINT` 客户端毫秒（`client_updated_at` 为 LWW 冲突判定基准），`created_at`/`updated_at TIMESTAMPTZ` 服务端换算视图。索引 `(user_id, pinned DESC, updated_at DESC)` 撑侧栏列表）
+- `agent_chat_messages`（消息；`id TEXT PK` 客户端生成同 CHECK；`session_id` FK CASCADE + `seq` 会话内顺序（`(session_id, seq)` 唯一，整会话 upsert 时按数组下标重排）；`role` CHECK [user/assistant]；全部可选流式元数据（think/sources/retrieval/usage/attachments 元信息(不含 dataUrl)/translation/requestSnapshot/error/errorCode/retryable/各时间戳）收进单个 `payload JSONB`，服务端不解析原样回传；`created_at BIGINT` 客户端毫秒）
+
+`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等（本地已实测重放全程 no-op）。down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增表，失败 fail-closed 中止部署）。
+
+### 000089 · `agent_chat_messages` 复合主键 forward-fix
+
+000088 把消息 `id` 设计成了**全局** TEXT PK，但客户端消息 id 只保证会话内唯一——灵境「分支会话」按产品语义原样复制消息（含 id）到新会话，两个会话先后同步时后者必撞 23505，整会话 upsert 500（全栈联调实测抓到）。按「改不动老迁移就写前向修复迁移」范式取 000089：`DO $$` 块探测现存主键仍为单列时 `DROP CONSTRAINT` + 重建为 `PRIMARY KEY (session_id, id)`，重放 no-op 幂等；down 还原单列（存在跨会话重复 id 时会失败，需人工清理后再回滚）。
+
 ---
 
 ## 部署期 migration 自愈机制

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, CircleAlert, ExternalLink, ShieldAlert } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { AgentRetrievalReceipt } from '@/services/agent/chat';
+import type { AgentRetrievalReceipt } from '@aetherblog/agent-kit';
 import {
   getRetrievalReceiptPresentation,
   retrievalHitKindLabel,

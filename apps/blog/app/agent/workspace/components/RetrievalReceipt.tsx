@@ -17,7 +17,7 @@ import {
 import type {
   AgentRetrievalHitKind,
   AgentRetrievalReceipt,
-} from '../../lib/agentChatStream';
+} from '@aetherblog/agent-kit';
 
 /**
  * RetrievalReceipt —— 知识检索回执卡（回答编排的可视化）

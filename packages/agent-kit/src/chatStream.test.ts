@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { streamAgentChat, type ChatStreamRequest } from './chat';
+import { streamAgentChat, type ChatStreamRequest } from './chatStream';
 
 const request: ChatStreamRequest = {
   sessionId: 'session-1',
@@ -316,6 +316,107 @@ describe('streamAgentChat usage events', () => {
     await streamAgentChat(request, { onUsage });
 
     expect(onUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe('streamAgentChat tool events', () => {
+  it('serializes enableTools when the request explicitly opts in', async () => {
+    mockResponse(
+      new Response('data: {"type":"done"}\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+
+    await streamAgentChat({ ...request, enableTools: true }, {});
+
+    const fetchMock = vi.mocked(fetch);
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ enableTools: true });
+  });
+
+  it('delivers tool_call and tool_result between answer chunks in order', async () => {
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"delta","content":"我先查一下"}',
+          'data: {"type":"tool_call","id":"call_abc","name":"search_posts","arguments":"{\\"query\\":\\"部署\\",\\"limit\\":2}"}',
+          'data: {"type":"tool_result","id":"call_abc","name":"search_posts","result":"[{\\"id\\":1,\\"title\\":\\"部署手册\\"}]","isError":false}',
+          'data: {"type":"delta","content":"根据检索结果"}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const calls: string[] = [];
+    const onToolCall = vi.fn((call) => calls.push(`call:${call.id}`));
+    const onToolResult = vi.fn((result) => calls.push(`result:${result.id}`));
+
+    await streamAgentChat(request, {
+      onDelta: (chunk) => calls.push(`delta:${chunk}`),
+      onToolCall,
+      onToolResult,
+    });
+
+    expect(onToolCall).toHaveBeenCalledExactlyOnceWith({
+      id: 'call_abc',
+      name: 'search_posts',
+      arguments: '{"query":"部署","limit":2}',
+    });
+    expect(onToolResult).toHaveBeenCalledExactlyOnceWith({
+      id: 'call_abc',
+      name: 'search_posts',
+      result: '[{"id":1,"title":"部署手册"}]',
+      isError: false,
+    });
+    expect(calls).toEqual([
+      'delta:我先查一下',
+      'call:call_abc',
+      'result:call_abc',
+      'delta:根据检索结果',
+    ]);
+  });
+
+  it('drops malformed tool_call packets instead of surfacing partial data', async () => {
+    // id 缺失 / arguments 非字符串 —— 整包丢弃，不回调
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"tool_call","name":"search_posts","arguments":"{}"}',
+          'data: {"type":"tool_call","id":"call_x","name":"search_posts","arguments":{"query":"部署"}}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onToolCall = vi.fn();
+    const onDone = vi.fn();
+
+    await streamAgentChat(request, { onToolCall, onDone });
+
+    expect(onToolCall).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it('drops malformed tool_result packets (missing result / non-boolean isError)', async () => {
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"tool_result","id":"call_a","name":"search_posts","isError":false}',
+          'data: {"type":"tool_result","id":"call_b","name":"search_posts","result":"ok","isError":"no"}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onToolResult = vi.fn();
+
+    await streamAgentChat(request, { onToolResult });
+
+    expect(onToolResult).not.toHaveBeenCalled();
   });
 });
 

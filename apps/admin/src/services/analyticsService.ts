@@ -89,7 +89,19 @@ export interface AiTaskDistribution {
   calls: number;
   percentage: number;
   tokens: number;
+  /** 输入 token 合计（provider 真值优先、估算兜底） */
+  tokensIn?: number;
+  /** 输出 token 合计（provider 真值优先、估算兜底） */
+  tokensOut?: number;
   cost: number;
+  /** 平均延迟（毫秒） */
+  avgLatencyMs?: number;
+  /** 今日（服务器时区自然日）调用次数 */
+  todayCalls?: number;
+  todayTokensIn?: number;
+  todayTokensOut?: number;
+  todayCost?: number;
+  todayAvgLatencyMs?: number;
 }
 
 export interface AiCallRecord {

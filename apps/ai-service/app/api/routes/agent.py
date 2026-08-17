@@ -21,6 +21,8 @@
   data: {"type":"retrieval","version":1,"status":"matched",...}\\n\\n
   data: {"type":"think","content":"…"}\\n\\n
   data: {"type":"delta","content":"…"}\\n\\n
+  data: {"type":"tool_call","id":"…","name":"…","arguments":"{…}"}\\n\\n
+  data: {"type":"tool_result","id":"…","name":"…","result":"…","isError":false}\\n\\n
   data: {"type":"usage","promptTokens":0,"completionTokens":0,"totalTokens":0,"estimated":false}\\n\\n
   data: {"type":"done"}\\n\\n
   data: {"type":"error","code":"…","message":"…"}\\n\\n
@@ -29,6 +31,16 @@
 ``stream_options.include_usage`` 返回 prompt / completion 两侧真值时
 ``estimated`` 为 false；任一侧缺失则该侧用本地 ``estimate_tokens`` 补齐并
 整条标 true；error / 客户端取消不发。
+
+工具调用（``enableTools: true`` 显式开启 + 模型 ``abilities.functionCall``）：
+模型请求工具时先发 ``tool_call``（arguments 为分片拼装完成的 JSON 字符串），
+服务端执行白名单工具（单工具 10s 超时）后发 ``tool_result``（result 截断
+≤2000 字符，``isError`` 标记失败），随后把 assistant(tool_calls)+tool 消息
+追加进上下文再次调用继续流式；最多 4 轮工具循环，超限注入 system 提示令
+模型直接作答。``usage`` 与计费聚合覆盖全部轮次（累加；provider 缺真值时
+prompt 侧按「每轮调用前的完整上下文」逐轮估算累加）。防护硬限：单个调用
+的 arguments 累加超过 8KB 即标记 oversized —— 事件与回填用截断版、不执行
+并回 isError 回执；单轮超出 8 个的调用合并为一条 isError 回执，不逐个下发。
 """
 
 from __future__ import annotations
@@ -58,6 +70,11 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.schemas.common import ApiResponse
+from app.services.agent_tools import (
+    AgentToolSpec,
+    build_agent_tools,
+    run_agent_tool,
+)
 from app.services.llm_router import (
     NON_CHAT_MODEL_TYPES,
     LlmRouter,
@@ -223,6 +240,10 @@ class AgentChatRequest(BaseModel):
     # 本轮模型参数覆盖。只允许少量兼容字段进入 LiteLLM 请求，避免把任意 JSON
     # 直接透传给上游。
     modelParams: dict[str, Any] | None = None
+    # 显式开启工具调用（function calling）。工具清单为服务端白名单
+    # （search_knowledge_base / search_posts），不接受客户端自定义工具；
+    # 模型 abilities.functionCall 非 true 时静默降级为无工具普通对话（不报错）。
+    enableTools: bool = False
 
     @model_validator(mode="after")
     def enforce_request_image_budget(self) -> "AgentChatRequest":
@@ -503,6 +524,24 @@ _SELECTED_CONTEXT_NOT_GROUNDED_MESSAGE = (
 # 当 'agent' 任务未配置 routing 时，按这个顺序回退到已有任务的路由。
 # qa / summary 在生产环境通常都有配置，能保证开箱可用；任一命中即停止。
 _FALLBACK_TASK_ALIASES = ("agent", "qa", "summary")
+
+# 工具调用执行循环的硬上限：最多 4 轮「模型请求工具 → 服务端执行 → 回喂」；
+# 超限后撤下 tools 参数并注入 system 提示，强制模型直接作答收敛。
+_MAX_TOOL_ROUNDS = 4
+# 单轮最多执行的工具调用数 —— 防止 provider 一次吐几十个并行调用拖垮事件循环；
+# 超出部分不逐个下发 / 回填（每个多余调用要占两条 SSE 事件 + 两条上下文消息），
+# 而是合并为一条 isError 回执：协议上保留第一个超限调用挂载回执，其余全部忽略。
+_MAX_TOOL_CALLS_PER_ROUND = 8
+# 单个工具调用 arguments 分片累加的硬上限（字节，UTF-8）。异常 / 恶意 provider
+# 可无限续传 arguments 分片 —— 不设上限时一条 SSE tool_call 行能被撑到数百 KB，
+# 直接超过 Go 侧 SSE scanner 的行缓冲上限（整条流被掐断）。超限即标记
+# oversized：停止累加、不执行该工具，事件与上下文回填一律用截断版。
+_TOOL_ARGUMENTS_MAX_BYTES = 8192
+_TOOL_ARGUMENTS_TRUNCATED_SUFFIX = "…（参数超长已截断）"
+_TOOL_ARGUMENTS_OVERSIZED_RESULT = "工具参数超长，已拒绝执行"
+_TOOL_ROUND_LIMIT_PROMPT = (
+    "工具调用轮次已达上限，禁止再请求任何工具；请直接基于已获得的信息作答。"
+)
 _GEMINI_THINKING_ALLOWED_OPENAI_PARAMS = ["reasoning_effort", "extra_body"]
 _GEMINI_THINKING_EXTRA_BODY = {
     # LiteLLM 将 ``extra_body`` 传递给底层的 OpenAI Python 客户端作为
@@ -978,6 +1017,92 @@ class _ThinkTagSplitter:
             return
 
 
+def _truncate_utf8(text: str, max_bytes: int) -> str:
+    """按 UTF-8 字节数截断，丢弃截断点上的不完整多字节序列。"""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _tool_call_wire_arguments(call: dict[str, Any]) -> str:
+    """SSE tool_call 事件与上下文回填共用的 arguments 文本。
+
+    oversized 调用统一用「截断到 8KB 的参数 + 提示后缀」——SSE 行长度与
+    下一轮 prompt 上下文都必须被硬限约束，绝不把完整超长参数透传出去。
+    """
+    arguments = str(call.get("arguments") or "")
+    if call.get("oversized"):
+        return arguments + _TOOL_ARGUMENTS_TRUNCATED_SUFFIX
+    return arguments
+
+
+class _ToolCallAssembler:
+    """把 OpenAI 流式 delta 里的 tool_calls 分片拼装成完整调用。
+
+    OpenAI wire 格式下，一次工具调用会被拆成多个 delta 分片：首片带
+    ``index``/``id``/``function.name``，后续分片按同一 ``index`` 续传
+    ``function.arguments`` 的 JSON 字符串片段。这里按 index 归并、字符串
+    直接连接，流结束后一次性产出。兼容 dict / pydantic 对象两种分片形态。
+
+    单个调用的 arguments 累加超过 ``_TOOL_ARGUMENTS_MAX_BYTES`` 即标记
+    ``oversized`` 并停止累加（截断到硬限）——上限之外的分片直接丢弃，
+    保证内存与下游 SSE 行长度都被封顶。
+    """
+
+    def __init__(self) -> None:
+        self._calls: dict[int, dict[str, Any]] = {}
+
+    def feed(self, fragments: Any) -> None:
+        if fragments is None:
+            return
+        if not isinstance(fragments, (list, tuple)):
+            fragments = [fragments]
+        for fragment in fragments:
+            raw_index = _get_delta_field(fragment, "index")
+            try:
+                index = int(raw_index)
+            except (TypeError, ValueError):
+                index = 0
+            entry = self._calls.setdefault(
+                index, {"id": "", "name": "", "arguments": "", "oversized": False}
+            )
+            call_id = _get_delta_field(fragment, "id")
+            if call_id and not entry["id"]:
+                entry["id"] = str(call_id)
+            function = _get_delta_field(fragment, "function")
+            if function is None:
+                continue
+            name = _get_delta_field(function, "name")
+            if name:
+                entry["name"] += str(name)
+            arguments = _get_delta_field(function, "arguments")
+            if arguments and not entry["oversized"]:
+                combined = entry["arguments"] + str(arguments)
+                if len(combined.encode("utf-8")) > _TOOL_ARGUMENTS_MAX_BYTES:
+                    entry["oversized"] = True
+                    entry["arguments"] = _truncate_utf8(combined, _TOOL_ARGUMENTS_MAX_BYTES)
+                else:
+                    entry["arguments"] = combined
+
+    def result(self) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        for index in sorted(self._calls):
+            entry = self._calls[index]
+            name = entry["name"].strip()
+            if not name:
+                continue
+            calls.append(
+                {
+                    "id": entry["id"] or f"call_{index}",
+                    "name": name,
+                    "arguments": entry["arguments"] or "{}",
+                    "oversized": bool(entry["oversized"]),
+                }
+            )
+        return calls
+
+
 def _usage_token_count(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -1031,6 +1156,7 @@ def _agent_usage_event(
     *,
     request_text: str,
     output_text: str,
+    estimated_prompt_tokens: int | None = None,
 ) -> dict[str, Any]:
     """构造 done 前下发的 ``usage`` 事件。
 
@@ -1038,11 +1164,20 @@ def _agent_usage_event(
     completion_tokens），此时缺失侧用 ``estimate_tokens`` 补齐。只要任一字段
     是估算值，整条事件就必须标 ``estimated=true`` —— 前端据此加 "~" 前缀，
     不能把估算冒充成 provider 真值。两侧都是真值才 ``estimated=false``。
+
+    ``estimated_prompt_tokens`` 是工具循环逐轮累加的 prompt 估算合计
+    （``_AgentUsageAggregator.estimated_prompt_tokens``）；提供时 prompt 缺
+    真值优先用它，只按最终 ``request_text`` 估一次会低估多轮消耗（P2-H）。
     """
     prompt = provider_usage.get("promptTokens") if provider_usage else None
     completion = provider_usage.get("completionTokens") if provider_usage else None
     estimated = prompt is None or completion is None
-    prompt_tokens = prompt if prompt is not None else estimate_tokens(request_text)
+    if prompt is not None:
+        prompt_tokens = prompt
+    elif estimated_prompt_tokens is not None:
+        prompt_tokens = estimated_prompt_tokens
+    else:
+        prompt_tokens = estimate_tokens(request_text)
     completion_tokens = completion if completion is not None else estimate_tokens(output_text)
     total = provider_usage.get("totalTokens") if provider_usage else None
     if estimated or total is None:
@@ -1058,15 +1193,81 @@ def _agent_usage_event(
     }
 
 
+class _AgentUsageAggregator:
+    """跨工具调用轮次累加 provider 真实用量。
+
+    工具循环里每次 LLM 调用都是独立计费的一轮；usage 事件与落库必须覆盖
+    全部轮次（累加）。任一轮某一侧缺失真值时，该侧整体退化为 ``None`` ——
+    下游 ``_agent_usage_event`` / ``_record_agent_usage`` 对 ``None`` 侧回退
+    本地估算并标 ``estimated``，绝不把「部分轮次真值」冒充成全程真值。
+    单轮（无工具）场景下与直接透传该轮 usage 完全等价。
+
+    prompt 侧的估算回退同样必须逐轮累加：多轮循环里每轮都会重新发送完整
+    上下文，只按最终 request_text 估一次会漏掉前几轮的 prompt 消耗（低估
+    计费）。调用方在每轮 LLM 调用前用该轮 loop_messages 的估算调用
+    ``add_prompt_estimate``；真值缺失时下游以 ``estimated_prompt_tokens``
+    为准。
+    """
+
+    def __init__(self) -> None:
+        self._rounds = 0
+        self._prompt: int | None = 0
+        self._completion: int | None = 0
+        self._total: int | None = 0
+        self._estimated_prompt = 0
+
+    @staticmethod
+    def _accumulate(current: int | None, value: Any) -> int | None:
+        if current is None:
+            return None
+        parsed = _usage_token_count(value)
+        if parsed is None:
+            return None
+        return current + parsed
+
+    def add(self, round_usage: dict[str, int | None] | None) -> None:
+        self._rounds += 1
+        usage = round_usage or {}
+        self._prompt = self._accumulate(self._prompt, usage.get("promptTokens"))
+        self._completion = self._accumulate(self._completion, usage.get("completionTokens"))
+        self._total = self._accumulate(self._total, usage.get("totalTokens"))
+
+    def add_prompt_estimate(self, tokens: int) -> None:
+        """累加一轮 LLM 调用发起前的本地 prompt 估算（P2-H）。"""
+        if isinstance(tokens, int) and tokens > 0:
+            self._estimated_prompt += tokens
+
+    @property
+    def estimated_prompt_tokens(self) -> int:
+        """全部已发起轮次的 prompt 估算合计（真值缺失时的回退口径）。"""
+        return self._estimated_prompt
+
+    def result(self) -> dict[str, int | None] | None:
+        if self._rounds == 0:
+            return None
+        if self._prompt is None and self._completion is None and self._total is None:
+            return None
+        return {
+            "promptTokens": self._prompt,
+            "completionTokens": self._completion,
+            "totalTokens": self._total,
+        }
+
+
 async def _stream_litellm_agent_events(stream):
     """把 LiteLLM streaming chunk 转成 Agent SSE 事件。
 
     - provider 显式返回 ``reasoning_content`` 等字段时，直接映射为 ``think``；
     - provider 把推理轨迹混在正文 ``<think>...</think>`` 中时，拆分为 ``think``；
     - 普通正文继续作为 ``delta``；
+    - delta 里的 tool_calls 分片持续拼装，流结束后（若有）产出一条**内部**
+      ``tool_calls`` 事件（``{"type":"tool_calls","toolCalls":[...]}``）——
+      由 agent_chat 的执行循环消费并转译为对外的 ``tool_call``/``tool_result``
+      SSE，绝不直接下发给客户端；
     - 流末尾拿到的真实 token 用量在所有正文事件之后映射为一条 ``usage``。
     """
     splitter = _ThinkTagSplitter()
+    tool_call_assembler = _ToolCallAssembler()
     usage_payload: dict[str, int] | None = None
     async for part in stream:
         extracted_usage = _extract_stream_usage(part)
@@ -1077,6 +1278,8 @@ async def _stream_litellm_agent_events(stream):
             # include_usage 的收尾 chunk 只带 usage，没有 delta。
             continue
         delta = choices[0].delta
+
+        tool_call_assembler.feed(_get_delta_field(delta, "tool_calls"))
 
         reasoning = _extract_reasoning_content(delta)
         if reasoning:
@@ -1094,6 +1297,9 @@ async def _stream_litellm_agent_events(stream):
 
     for event in splitter.flush():
         yield event
+    assembled_tool_calls = tool_call_assembler.result()
+    if assembled_tool_calls:
+        yield {"type": "tool_calls", "toolCalls": assembled_tool_calls}
     if usage_payload is not None:
         yield {"type": "usage", **usage_payload}
 
@@ -1763,18 +1969,13 @@ async def _resolve_for_agent(
 _VISION_NOT_SUPPORTED_MESSAGE = "所选模型不支持图片输入，请更换支持视觉能力的模型"
 
 
-async def _ensure_vision_capability(pool, resolved: Any, payload: AgentChatRequest) -> None:
-    """请求携带图片时校验最终解析出的模型具备视觉能力（fail-closed）。
+async def _fetch_model_capabilities(pool, resolved: Any) -> dict[str, Any]:
+    """按最终 (provider_code, model_id) 反查 ai_models 的 capabilities。
 
     路由解析（``_resolve_for_agent``）只关心凭证与启用状态，不携带
-    capabilities；这里按最终 (provider_code, model_id) 反查 ai_models 的
-    capabilities 判定 ``abilities.vision``。模型行缺失、capabilities 缺失或
-    查询失败一律按"不支持"拒绝 —— 宁可 400 也不把图片喂给纯文本模型。
-    必须在真正调用 provider 之前执行。
+    capabilities。模型行缺失、capabilities 非法或查询失败一律返回空 dict ——
+    调用方按「能力缺失」处理（vision 门禁 400 / tools 静默降级）。
     """
-    if sum(_message_image_count(m) for m in payload.messages) == 0:
-        return
-    caps: dict[str, Any] = {}
     try:
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -1793,10 +1994,10 @@ async def _ensure_vision_capability(pool, resolved: Any, payload: AgentChatReque
             raw = row["capabilities"]
             parsed = json.loads(raw) if isinstance(raw, str) else raw
             if isinstance(parsed, dict):
-                caps = parsed
+                return parsed
     except Exception:
         logger.warning(
-            "agent.vision_capability_lookup_failed",
+            "agent.model_capability_lookup_failed",
             extra={
                 "data": {
                     "provider_code": resolved.provider_code,
@@ -1804,7 +2005,18 @@ async def _ensure_vision_capability(pool, resolved: Any, payload: AgentChatReque
                 }
             },
         )
-        caps = {}
+    return {}
+
+
+async def _ensure_vision_capability(pool, resolved: Any, payload: AgentChatRequest) -> None:
+    """请求携带图片时校验最终解析出的模型具备视觉能力（fail-closed）。
+
+    模型行缺失、capabilities 缺失或查询失败一律按"不支持"拒绝 ——
+    宁可 400 也不把图片喂给纯文本模型。必须在真正调用 provider 之前执行。
+    """
+    if sum(_message_image_count(m) for m in payload.messages) == 0:
+        return
+    caps = await _fetch_model_capabilities(pool, resolved)
     if not _resolve_agent_model_abilities(caps).get("vision"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1822,7 +2034,10 @@ def _agent_usage_request_text(messages: list[dict[str, Any]]) -> str:
     for message in messages:
         role = str(message.get("role") or "unknown")
         content = message.get("content")
-        if isinstance(content, str):
+        if content is None:
+            # assistant(tool_calls) 消息的 content 允许为 None —— 不计入文本估算。
+            text = ""
+        elif isinstance(content, str):
             text = content
         elif isinstance(content, list):
             fragments: list[str] = []
@@ -2194,6 +2409,22 @@ async def agent_chat(
     if not selected_context_blocked:
         await llm_router._guard_api_base(resolved.api_base)  # noqa: SLF001
 
+    # 工具调用门禁：显式 enableTools 且模型 abilities.functionCall 为 true 才
+    # 注册服务端白名单工具；能力缺失 / capabilities 查询失败一律静默降级为
+    # 无工具普通对话（不报错）。mock 短路路径不查能力（无 DB 依赖），由
+    # generate() 直接产出固定的 tool_call → tool_result → delta 联调序列。
+    # kbIds 已经过 Go 端权限过滤/注入 —— search_knowledge_base 只在该范围内
+    # 检索；kbIds 为空时该工具不注册。
+    agent_tools: list[AgentToolSpec] = []
+    if (
+        payload.enableTools
+        and not selected_context_blocked
+        and not (settings.mock_mode and not resolved.override)
+    ):
+        caps = await _fetch_model_capabilities(pool, resolved)
+        if _resolve_agent_model_abilities(caps).get("functionCall"):
+            agent_tools = build_agent_tools(pool, llm_router, kb_ids=payload.kbIds)
+
     async def generate():
         start_time = time.perf_counter()
         request_text = _agent_usage_request_text(chat_messages)
@@ -2231,6 +2462,27 @@ async def agent_chat(
             )
             return
         if settings.mock_mode and not resolved.override:
+            if payload.enableTools:
+                # 固定的工具调用联调序列 —— 让前端在 mock 模式下就能开发
+                # tool_call / tool_result 的 UI，无需真实 provider 与工具执行。
+                mock_call = {
+                    "type": "tool_call",
+                    "id": "call_mock_1",
+                    "name": "search_posts",
+                    "arguments": json.dumps({"query": "mock", "limit": 5}, ensure_ascii=False),
+                }
+                yield f"data: {json.dumps(mock_call, ensure_ascii=False)}\n\n"
+                mock_result = {
+                    "type": "tool_result",
+                    "id": "call_mock_1",
+                    "name": "search_posts",
+                    "result": json.dumps(
+                        [{"id": 1, "title": "Mock 文章", "summary": "mock 摘要"}],
+                        ensure_ascii=False,
+                    ),
+                    "isError": False,
+                }
+                yield f"data: {json.dumps(mock_result, ensure_ascii=False)}\n\n"
             for chunk in [
                 "[mock:", resolved.model, "] ", "你好,",
                 "我已收到 ", str(len(payload.messages)), " 条消息。"
@@ -2260,8 +2512,11 @@ async def agent_chat(
 
         response_chars = 0
         think_chars = 0
+        # 跨轮次 usage 聚合器必须在 try 之外创建：finally 的落库路径依赖
+        # 它的 prompt 估算合计（异常发生在首轮调用前时为 0，回退旧口径）。
+        usage_aggregator = _AgentUsageAggregator()
         try:
-            completion_kwargs = _agent_completion_kwargs(
+            base_completion_kwargs = _agent_completion_kwargs(
                 model=resolved.model,
                 temperature=resolved.temperature,
                 max_tokens=resolved.max_tokens,
@@ -2270,32 +2525,156 @@ async def agent_chat(
             )
             # 让支持的 provider 在流末尾追加真实 token 用量 chunk；
             # 被拒时 _start_agent_stream 会自动去掉该参数降级重试。
-            completion_kwargs["stream_options"] = {"include_usage": True}
-            stream = await _start_agent_stream(
-                resolved=resolved,
-                chat_messages=chat_messages,
-                completion_kwargs=completion_kwargs,
-            )
-            async for event in _stream_litellm_agent_events(stream):
-                if event.get("type") == "usage":
-                    # 真实用量不立刻透传 —— 统一在 done 前按协议格式下发。
-                    # 保留单侧 None 语义（不要用 0 兜底）：缺失侧由
-                    # _agent_usage_event / _record_agent_usage 逐项回退估算。
-                    provider_usage = {
-                        "promptTokens": event.get("promptTokens"),
-                        "completionTokens": event.get("completionTokens"),
-                        "totalTokens": event.get("totalTokens"),
+            base_completion_kwargs["stream_options"] = {"include_usage": True}
+
+            # ---- 工具调用执行循环 ----
+            # 无工具时恰好跑一轮，与历史单次流式行为等价。
+            tool_schemas = [spec.openai_schema() for spec in agent_tools]
+            tools_by_name = {spec.name: spec for spec in agent_tools}
+            loop_messages = list(chat_messages)
+            offer_tools = bool(tool_schemas)
+            tool_rounds = 0
+            while True:
+                # P2-H：每轮 LLM 调用发起前，用该轮完整上下文累加本地 prompt
+                # 估算 —— provider 不回真实 usage 时按此合计计费，而不是只按
+                # 最终 request_text 估一次（多轮循环会严重低估）。此处
+                # request_text 恰等于 _agent_usage_request_text(loop_messages)
+                # （首轮在 try 前初始化，后续轮在上一轮末尾同步刷新）。
+                usage_aggregator.add_prompt_estimate(estimate_tokens(request_text))
+                completion_kwargs = dict(base_completion_kwargs)
+                if offer_tools:
+                    completion_kwargs["tools"] = tool_schemas
+                stream = await _start_agent_stream(
+                    resolved=resolved,
+                    chat_messages=loop_messages,
+                    completion_kwargs=completion_kwargs,
+                )
+                round_usage: dict[str, int | None] | None = None
+                round_tool_calls: list[dict[str, str]] | None = None
+                round_text_parts: list[str] = []
+                async for event in _stream_litellm_agent_events(stream):
+                    if event.get("type") == "usage":
+                        # 真实用量不立刻透传 —— 各轮累加后统一在 done 前按
+                        # 协议格式下发。保留单侧 None 语义（不要用 0 兜底）：
+                        # 缺失侧由 _agent_usage_event / _record_agent_usage
+                        # 逐项回退估算。
+                        round_usage = {
+                            "promptTokens": event.get("promptTokens"),
+                            "completionTokens": event.get("completionTokens"),
+                            "totalTokens": event.get("totalTokens"),
+                        }
+                        continue
+                    if event.get("type") == "tool_calls":
+                        # 内部拼装完成事件，不直接下发；由下方执行段转译。
+                        round_tool_calls = event.get("toolCalls") or None
+                        continue
+                    content = event.get("content", "") or ""
+                    if event.get("type") == "think":
+                        think_chars += len(content)
+                        think_parts.append(content)
+                    else:
+                        response_chars += len(content)
+                        response_parts.append(content)
+                        round_text_parts.append(content)
+                    data = json.dumps(event, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                usage_aggregator.add(round_usage)
+                provider_usage = usage_aggregator.result()
+
+                # 未注册工具（或已因轮次超限撤下）时忽略任何 tool_calls 残片，
+                # 该轮即最终回答。
+                if not offer_tools or not round_tool_calls:
+                    break
+
+                tool_rounds += 1
+                # 单轮执行数硬上限：第 9 个起既不执行也不逐个下发 / 回填
+                # （每个多余调用要占两条 SSE 事件 + 两条上下文消息），合并为
+                # 一条 isError 回执。协议上保留第一个超限调用进 assistant
+                # tool_calls 作为回执挂载点（tool 消息的 tool_call_id 必须能
+                # 对上），其余超限调用彻底忽略。
+                executed_calls = round_tool_calls[:_MAX_TOOL_CALLS_PER_ROUND]
+                overflow_calls = round_tool_calls[_MAX_TOOL_CALLS_PER_ROUND:]
+                backfill_calls = executed_calls + overflow_calls[:1]
+                # OpenAI 协议：assistant(tool_calls) + 每个调用一条 tool 消息，
+                # 缺一不可，否则下一轮请求会被 provider 拒绝。oversized 调用
+                # 回填截断版 arguments，保证上下文不被超长参数撑爆。
+                loop_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "".join(round_text_parts) or None,
+                        "tool_calls": [
+                            {
+                                "id": call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": call["name"],
+                                    "arguments": _tool_call_wire_arguments(call),
+                                },
+                            }
+                            for call in backfill_calls
+                        ],
                     }
-                    continue
-                content = event.get("content", "") or ""
-                if event.get("type") == "think":
-                    think_chars += len(content)
-                    think_parts.append(content)
-                else:
-                    response_chars += len(content)
-                    response_parts.append(content)
-                data = json.dumps(event, ensure_ascii=False)
-                yield f"data: {data}\n\n"
+                )
+                for call in executed_calls:
+                    call_event = {
+                        "type": "tool_call",
+                        "id": call["id"],
+                        "name": call["name"],
+                        "arguments": _tool_call_wire_arguments(call),
+                    }
+                    yield f"data: {json.dumps(call_event, ensure_ascii=False)}\n\n"
+                    spec = tools_by_name.get(call["name"])
+                    if call.get("oversized"):
+                        # arguments 累加超过 8KB 硬限：不执行，直接拒绝。
+                        result_text, is_error = _TOOL_ARGUMENTS_OVERSIZED_RESULT, True
+                    elif spec is None:
+                        # 白名单外的工具名（provider 幻觉）：不执行，回错误结果。
+                        result_text, is_error = "未知工具：仅支持服务端白名单工具", True
+                    else:
+                        result_text, is_error = await run_agent_tool(spec, call["arguments"])
+                    result_event = {
+                        "type": "tool_result",
+                        "id": call["id"],
+                        "name": call["name"],
+                        "result": result_text,
+                        "isError": is_error,
+                    }
+                    yield f"data: {json.dumps(result_event, ensure_ascii=False)}\n\n"
+                    loop_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call["id"],
+                            "content": result_text,
+                        }
+                    )
+                if overflow_calls:
+                    merged = overflow_calls[0]
+                    merged_text = f"本轮工具调用超过上限，已忽略 {len(overflow_calls)} 个"
+                    merged_event = {
+                        "type": "tool_result",
+                        "id": merged["id"],
+                        "name": merged["name"],
+                        "result": merged_text,
+                        "isError": True,
+                    }
+                    yield f"data: {json.dumps(merged_event, ensure_ascii=False)}\n\n"
+                    loop_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": merged["id"],
+                            "content": merged_text,
+                        }
+                    )
+                if tool_rounds >= _MAX_TOOL_ROUNDS:
+                    # 超限强制收敛：撤下 tools 参数 + 注入 system 提示，
+                    # 下一轮模型只能直接作答。
+                    offer_tools = False
+                    loop_messages.append(
+                        {"role": "system", "content": _TOOL_ROUND_LIMIT_PROMPT}
+                    )
+                # 计费估算口径覆盖全部轮次：工具结果与 assistant(tool_calls)
+                # 都进入了下一轮 prompt，request_text 同步扩展。
+                request_text = _agent_usage_request_text(loop_messages)
             logger.info(
                 "agent.stream_done",
                 extra={
@@ -2304,6 +2683,7 @@ async def agent_chat(
                         "model_id": resolved.model_id,
                         "response_chars": response_chars,
                         "think_chars": think_chars,
+                        "tool_rounds": tool_rounds,
                         "provider_usage": provider_usage,
                     }
                 },
@@ -2312,6 +2692,9 @@ async def agent_chat(
                 provider_usage,
                 request_text=request_text,
                 output_text="".join(think_parts) + "".join(response_parts),
+                # prompt 侧真值缺失时用逐轮累加的估算合计（P2-H），与 finally
+                # 的 _record_agent_usage 落库同口径。
+                estimated_prompt_tokens=usage_aggregator.estimated_prompt_tokens or None,
             )
             yield f"data: {json.dumps(usage_event, ensure_ascii=False)}\n\n"
             yield 'data: {"type": "done"}\n\n'
@@ -2349,6 +2732,12 @@ async def agent_chat(
             )
             yield f"data: {err}\n\n"
         finally:
+            # prompt 侧真值缺失时落库逐轮累加的估算合计（P2-H）——与 SSE usage
+            # 事件同口径；一轮都没发起（估算合计为 0）时保持 None，让
+            # _record_agent_usage 沿用旧的 request_text 单次估算兜底。
+            usage_tokens_in = (provider_usage or {}).get("promptTokens")
+            if usage_tokens_in is None and usage_aggregator.estimated_prompt_tokens > 0:
+                usage_tokens_in = usage_aggregator.estimated_prompt_tokens
             await asyncio.shield(
                 _record_agent_usage(
                     request=request,
@@ -2362,7 +2751,7 @@ async def agent_chat(
                     start_time=start_time,
                     success=error_code is None,
                     error_code=error_code,
-                    usage_tokens_in=(provider_usage or {}).get("promptTokens"),
+                    usage_tokens_in=usage_tokens_in,
                     usage_tokens_out=(provider_usage or {}).get("completionTokens"),
                 )
             )

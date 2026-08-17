@@ -124,3 +124,17 @@ func TestValidateSSELineRejectsUnknownAgentEvent(t *testing.T) {
 		t.Fatal("expected unknown agent event SSE line to be rejected")
 	}
 }
+
+func TestValidateSSELineAllowsAgentToolCall(t *testing.T) {
+	line := `data: {"type":"tool_call","id":"call_1","name":"search_posts","arguments":"{\"query\":\"aether\"}"}`
+	if !validateSSELine(line) {
+		t.Fatal("expected agent tool_call SSE line to be forwarded")
+	}
+}
+
+func TestValidateSSELineAllowsAgentToolResult(t *testing.T) {
+	line := `data: {"type":"tool_result","id":"call_1","name":"search_posts","result":"[]","isError":false}`
+	if !validateSSELine(line) {
+		t.Fatal("expected agent tool_result SSE line to be forwarded")
+	}
+}

@@ -15,7 +15,7 @@ import {
   type AgentMessage,
   type AgentSession,
 } from './sessions';
-import type { AgentRetrievalReceipt } from './chat';
+import type { AgentRetrievalReceipt } from '@aetherblog/agent-kit';
 
 // ---- 测试基建：vitest 跑在 node 环境，浏览器全局需要手动搭 ----
 

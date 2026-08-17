@@ -60,12 +60,22 @@ type AiModelDistributionVO struct {
 }
 
 // AiTaskDistributionVO 表示按任务类型聚合的调用占比数据。
+// today* 字段为当天（服务器时区）子集聚合，token 数值以 provider 返回的真值优先、估算兜底
+// （由 ai-service 写入 ai_usage_logs 时决定），供任务专项卡片（如灵境对话）展示。
 type AiTaskDistributionVO struct {
-	Task       string  `json:"task"`
-	Calls      int64   `json:"calls"`
-	Percentage float64 `json:"percentage"`
-	Tokens     int64   `json:"tokens"`
-	Cost       float64 `json:"cost"`
+	Task              string  `json:"task"`
+	Calls             int64   `json:"calls"`
+	Percentage        float64 `json:"percentage"`
+	Tokens            int64   `json:"tokens"`
+	TokensIn          int64   `json:"tokensIn"`
+	TokensOut         int64   `json:"tokensOut"`
+	Cost              float64 `json:"cost"`
+	AvgLatencyMs      float64 `json:"avgLatencyMs"`
+	TodayCalls        int64   `json:"todayCalls"`
+	TodayTokensIn     int64   `json:"todayTokensIn"`
+	TodayTokensOut    int64   `json:"todayTokensOut"`
+	TodayCost         float64 `json:"todayCost"`
+	TodayAvgLatencyMs float64 `json:"todayAvgLatencyMs"`
 }
 
 // AiCallRecordVO 表示单条 AI 调用明细。
@@ -209,11 +219,19 @@ func mapAiTaskDistribution(rows []repository.AITaskDistribution, totalCalls int6
 	vos := make([]AiTaskDistributionVO, len(rows))
 	for i, row := range rows {
 		vos[i] = AiTaskDistributionVO{
-			Task:       row.Task,
-			Calls:      row.Calls,
-			Percentage: ratio(row.Calls, totalCalls),
-			Tokens:     row.Tokens,
-			Cost:       row.Cost,
+			Task:              row.Task,
+			Calls:             row.Calls,
+			Percentage:        ratio(row.Calls, totalCalls),
+			Tokens:            row.Tokens,
+			TokensIn:          row.TokensIn,
+			TokensOut:         row.TokensOut,
+			Cost:              row.Cost,
+			AvgLatencyMs:      row.AvgLatencyMs,
+			TodayCalls:        row.TodayCalls,
+			TodayTokensIn:     row.TodayTokensIn,
+			TodayTokensOut:    row.TodayTokensOut,
+			TodayCost:         row.TodayCost,
+			TodayAvgLatencyMs: row.TodayAvgLatencyMs,
 		}
 	}
 	return vos

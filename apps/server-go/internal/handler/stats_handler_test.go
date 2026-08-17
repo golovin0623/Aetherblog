@@ -49,11 +49,19 @@ type aiDashboardResponse struct {
 			Cost         float64 `json:"cost"`
 		} `json:"modelDistribution"`
 		TaskDistribution []struct {
-			Task       string  `json:"task"`
-			Calls      int64   `json:"calls"`
-			Percentage float64 `json:"percentage"`
-			Tokens     int64   `json:"tokens"`
-			Cost       float64 `json:"cost"`
+			Task              string  `json:"task"`
+			Calls             int64   `json:"calls"`
+			Percentage        float64 `json:"percentage"`
+			Tokens            int64   `json:"tokens"`
+			TokensIn          int64   `json:"tokensIn"`
+			TokensOut         int64   `json:"tokensOut"`
+			Cost              float64 `json:"cost"`
+			AvgLatencyMs      float64 `json:"avgLatencyMs"`
+			TodayCalls        int64   `json:"todayCalls"`
+			TodayTokensIn     int64   `json:"todayTokensIn"`
+			TodayTokensOut    int64   `json:"todayTokensOut"`
+			TodayCost         float64 `json:"todayCost"`
+			TodayAvgLatencyMs float64 `json:"todayAvgLatencyMs"`
 		} `json:"taskDistribution"`
 		Records struct {
 			List []struct {
@@ -136,8 +144,16 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"task",
 			"calls",
 			"tokens",
+			"tokens_in",
+			"tokens_out",
 			"cost",
-		}).AddRow("summary", 2, 12, 0.024))
+			"avg_latency_ms",
+			"today_calls",
+			"today_tokens_in",
+			"today_tokens_out",
+			"today_cost",
+			"today_avg_latency_ms",
+		}).AddRow("summary", 2, 12, 4, 8, 0.024, 345.5, 1, 2, 4, 0.012, 300.0))
 
 	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -211,6 +227,21 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 	}
 	if len(resp.Data.TaskDistribution) != 1 || resp.Data.TaskDistribution[0].Task != "summary" {
 		t.Fatalf("taskDistribution = %#v, want task=summary", resp.Data.TaskDistribution)
+	}
+	taskDist := resp.Data.TaskDistribution[0]
+	if taskDist.TokensIn != 4 || taskDist.TokensOut != 8 {
+		t.Fatalf("taskDistribution tokens in/out = %d/%d, want 4/8", taskDist.TokensIn, taskDist.TokensOut)
+	}
+	if taskDist.AvgLatencyMs != 345.5 {
+		t.Fatalf("taskDistribution.avgLatencyMs = %v, want 345.5", taskDist.AvgLatencyMs)
+	}
+	if taskDist.TodayCalls != 1 || taskDist.TodayTokensIn != 2 || taskDist.TodayTokensOut != 4 {
+		t.Fatalf("taskDistribution today calls/in/out = %d/%d/%d, want 1/2/4",
+			taskDist.TodayCalls, taskDist.TodayTokensIn, taskDist.TodayTokensOut)
+	}
+	if taskDist.TodayCost != 0.012 || taskDist.TodayAvgLatencyMs != 300.0 {
+		t.Fatalf("taskDistribution today cost/latency = %v/%v, want 0.012/300",
+			taskDist.TodayCost, taskDist.TodayAvgLatencyMs)
 	}
 	if len(resp.Data.Records.List) != 1 {
 		t.Fatalf("records.list length = %d, want 1", len(resp.Data.Records.List))

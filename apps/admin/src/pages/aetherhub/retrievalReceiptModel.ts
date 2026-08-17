@@ -1,7 +1,7 @@
 import type {
   AgentRetrievalHitKind,
   AgentRetrievalReceipt,
-} from '@/services/agent/chat';
+} from '@aetherblog/agent-kit';
 
 export type RetrievalReceiptTone = 'success' | 'warning' | 'danger';
 

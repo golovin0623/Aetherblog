@@ -100,3 +100,102 @@ export async function fileToAttachment(file: File): Promise<AgentAttachment> {
 export function attachmentTokenEstimate(a: AgentAttachment): number {
   return a.kind === 'image' ? 800 : 0;
 }
+
+// ---------------------------------------------------------------------------
+// 超限图片压缩 —— canvas 降采样 + 重编码
+// ---------------------------------------------------------------------------
+
+/** 压缩目标：最长边 2048px（聊天 / 多模态识别场景足够），编码质量 0.85。 */
+export const COMPRESS_MAX_EDGE = 2048;
+export const COMPRESS_QUALITY = 0.85;
+
+/** 可注入的压缩实现 —— vitest（node 无 canvas）注入 stub 只测纯逻辑分支。 */
+export type ImageCompressor = (
+  file: File,
+  options: { maxEdge: number; quality: number },
+) => Promise<File>;
+
+/** 解码图片为可绘制源：优先 createImageBitmap（免 objectURL、可解 EXIF 方向），
+ *  回退 HTMLImageElement。两者都不可用（SSR / node）直接抛错，由上层回退原文件。 */
+async function loadImageSource(file: File): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(file);
+  }
+  if (typeof Image === 'undefined' || typeof URL === 'undefined') {
+    throw new Error('图片解码环境不可用');
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('图片解码失败'));
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** 默认 canvas 压缩实现。任何一步失败都抛错 —— compressImageIfNeeded 捕获后
+ *  回退原文件，让原有 5MB 校验给出明确报错，而不是静默吞掉异常。 */
+const canvasCompressImage: ImageCompressor = async (file, { maxEdge, quality }) => {
+  if (typeof document === 'undefined') throw new Error('canvas 环境不可用');
+  const source = await loadImageSource(file);
+  const srcWidth = 'naturalWidth' in source ? source.naturalWidth : source.width;
+  const srcHeight = 'naturalHeight' in source ? source.naturalHeight : source.height;
+  if (!(srcWidth > 0) || !(srcHeight > 0)) throw new Error('图片尺寸不可用');
+  const scale = Math.min(1, maxEdge / Math.max(srcWidth, srcHeight));
+  const width = Math.max(1, Math.round(srcWidth * scale));
+  const height = Math.max(1, Math.round(srcHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d 上下文不可用');
+  ctx.drawImage(source, 0, 0, width, height);
+  if ('close' in source && typeof source.close === 'function') source.close();
+  // 输出格式取舍：JPEG 原图继续走 JPEG（本就无透明）；PNG / WebP 统一转 WebP
+  // —— 保留 alpha 通道的同时体积远小于 PNG 重编码（JPEG 会把透明底涂黑）。
+  // 浏览器不支持 WebP 编码时 toBlob 按规范回退 PNG，仍是合法附件类型，只是
+  // 可能压不下去 —— 随后被 5MB 校验拦下并明确报错。
+  const outputType = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, outputType, quality),
+  );
+  if (!blob) throw new Error('图片编码失败');
+  const finalType = blob.type || outputType;
+  const ext =
+    finalType === 'image/webp' ? '.webp' : finalType === 'image/png' ? '.png' : '.jpg';
+  const baseName = file.name.replace(/\.[^.]*$/, '') || 'image';
+  return new File([blob], `${baseName}${ext}`, { type: finalType });
+};
+
+/**
+ * 超过单图上限（5MB）时先降采样压缩，压不动 / 压不了再交回原文件让校验拒绝。
+ *
+ * 策略：
+ *  · ≤5MB 原样通过 —— 不做无谓的重编码劣化；
+ *  · GIF 旁路 —— canvas 只能取首帧，重编码等于把动图压成静态图（丢帧）；
+ *  · 非受支持格式旁路 —— 交给 validateImageFile 报「格式不支持」，避免把
+ *    任意格式偷偷转成 WebP 的意外行为；
+ *  · 压缩失败（解码 / 编码异常、SSR 无 canvas）或压完反而更大 → 返回原文件，
+ *    调用方按原规则校验，用户拿到明确的 5MB 报错而不是静默异常。
+ */
+export async function compressImageIfNeeded(
+  file: File,
+  compressor: ImageCompressor = canvasCompressImage,
+): Promise<File> {
+  if (file.size <= MAX_IMAGE_BYTES) return file;
+  if (file.type === 'image/gif') return file;
+  if (!(ACCEPTED_IMAGE_MIME as readonly string[]).includes(file.type)) return file;
+  try {
+    const compressed = await compressor(file, {
+      maxEdge: COMPRESS_MAX_EDGE,
+      quality: COMPRESS_QUALITY,
+    });
+    return compressed.size < file.size ? compressed : file;
+  } catch {
+    return file;
+  }
+}

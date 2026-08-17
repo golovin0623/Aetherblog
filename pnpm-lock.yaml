@@ -24,6 +24,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@aetherblog/agent-kit':
+        specifier: workspace:*
+        version: link:../../packages/agent-kit
       '@aetherblog/editor':
         specifier: workspace:*
         version: link:../../packages/editor
@@ -117,6 +120,9 @@ importers:
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.0
+      virtua:
+        specifier: ^0.50.1
+        version: 0.50.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       zod:
         specifier: ^4.3.5
         version: 4.3.5
@@ -169,6 +175,9 @@ importers:
 
   apps/blog:
     dependencies:
+      '@aetherblog/agent-kit':
+        specifier: workspace:*
+        version: link:../../packages/agent-kit
       '@aetherblog/hooks':
         specifier: workspace:*
         version: link:../../packages/hooks
@@ -284,6 +293,22 @@ importers:
       unist-util-visit:
         specifier: ^5.1.0
         version: 5.1.0
+
+  packages/agent-kit:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.7
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.6(@types/debug@4.1.12)(@types/node@22.19.3)(jiti@1.21.7)
 
   packages/editor:
     dependencies:
@@ -5649,6 +5674,32 @@ packages:
       svelte: '>=5.0'
       vue: '>=3.2'
     peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      solid-js:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+
+  virtua@0.50.1:
+    resolution: {integrity: sha512-rNue/Cv/0Z14Yg9Pj6Xx9QaQPKhmlNWkx7Y7SytRnhojxvZ0z3GhCWr4QH2+tJm5mYL2vm4GudZPPt0i1PLzSA==}
+    peerDependencies:
+      '@angular/common': '>=20.0.0'
+      '@angular/core': '>=20.0.0'
+      react: '>=16.14.0'
+      react-dom: '>=16.14.0'
+      solid-js: '>=1.0'
+      svelte: '>=5.0'
+      vue: '>=3.2'
+    peerDependenciesMeta:
+      '@angular/common':
+        optional: true
+      '@angular/core':
+        optional: true
       react:
         optional: true
       react-dom:
@@ -12656,6 +12707,11 @@ snapshots:
       d3-timer: 3.0.1
 
   virtua@0.48.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    optionalDependencies:
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+
+  virtua@0.50.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     optionalDependencies:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
