@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 拟真阅读器指针残留与掀角吞滚轮（PR #852 合并后补修） (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
+
+PR #852 的多视角对抗评审因用量上限中断，仅「指针手势」视角跑完且其发现未经核实即随 PR 合入。本次逐条核实并修复，均在浏览器内复现验证。
+
+- **指针残留 → 幽灵翻页 / 笔输入永久失效（critical）：** #852 把 `setPointerCapture` 从 pointerdown 推迟到拖拽确立，触摸有隐式捕获兜底，鼠标/笔没有——在书内按下、未跨拖拽阈值就移出书外松手时，元素级 `pointerup` 永不触发，`pointerRef` 永久残留。随后 (a) 鼠标无按键悬停扫过书面会用陈旧 `startX` 判定越阈，凭空掀起叶片跟随光标并吞掉下一次点击；(b) 笔每次接触分配新 `pointerId`，而同批修复引入的 `if (pointerRef.current) return` 活跃指针守卫会丢弃其后全部输入，阅读器对笔**永久无响应，只能刷新**。修法：`pointermove` 中对非触摸指针加 `e.buttons === 0` 陈旧清理，并挂 window 级 `pointerup` / `pointercancel` 兜底结算（元素级已接管时 `pointerRef` 已为 null，不重复结算）。
+- **静置掀角吞掉滚轮翻页（minor）：** 悬停掀角在静置分支让 `jobRef` 长期非空，而滚轮 handler 在 `preventDefault()` 后一刀切 `if (jobRef.current) return`——光标停在左右命中区（各 38%，合计占书宽 76%）时滚轮既不翻页也不回落浏览器默认行为，完全哑掉。修法：放行 `peeking && !dragging` 的静置任务，`beginFlip` 已有的同向顺势翻完 / 反向先完结逻辑会正确接管。
+- 验证：Playwright 实测两条路径——书外松手后悬停扫过书面无叶片、页码不变、随后点击正常翻页；真实建立掀角静置后滚轮成功翻页。reader gate 19/19、admin 350/350、blog `tsc --noEmit` 干净、`next build` 通过、`design-system:check` 0 error。
+- ⚠️ 遗留：React 生命周期 / 翻页数学 / CSS 跨浏览器 / admin 四个评审视角两次派发均被用量上限中断，尚未覆盖。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更。
+
 ### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
 
 对标 Kindle / 真书翻页体验，把阅读器从「能翻页」升级为「一本安静躺在书桌上的实体书」。保持 `readerLogic` 既有契约（皮肤解析 / 光标映射 / 偏好钳制）与移动端满幅单页布局不变。

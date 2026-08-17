@@ -745,6 +745,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const handleBookPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const pointer = pointerRef.current;
     if (!pointer || pointer.id !== e.pointerId) return;
+    // 鼠标/笔的按键已松开却仍有活跃记录 = 在书外松手留下的残留（窗口失焦丢事件同理）。
+    // 不清掉的话，悬停扫过书面会用陈旧 startX 判定越阈，凭空掀起叶片跟着光标走。
+    if (e.pointerType !== 'touch' && e.buttons === 0) {
+      pointerRef.current = null;
+      return;
+    }
     const d = latest.current.dims;
     if (!d) return;
     const dx = e.clientX - pointer.startX;
@@ -861,6 +867,29 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     suppressClickRef.current = false;
   }, []);
 
+  /**
+   * 窗口级兜底：拖拽未确立时不持有指针捕获，若在书容器外松手，元素级 pointerup 永不触发，
+   * pointerRef 会永久残留（笔每次接触换新 pointerId，pointerdown 的活跃指针守卫会因此丢弃后续全部输入）。
+   * 元素级 handler 已接管时这里读到的 pointerRef 已为 null，不会重复结算。
+   */
+  useEffect(() => {
+    const onWindowPointerEnd = (e: PointerEvent) => {
+      const pointer = pointerRef.current;
+      if (!pointer || pointer.id !== e.pointerId) return;
+      pointerRef.current = null;
+      if (pointer.handled) releaseDrag(e.timeStamp);
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    };
+    window.addEventListener('pointerup', onWindowPointerEnd);
+    window.addEventListener('pointercancel', onWindowPointerEnd);
+    return () => {
+      window.removeEventListener('pointerup', onWindowPointerEnd);
+      window.removeEventListener('pointercancel', onWindowPointerEnd);
+    };
+  }, [releaseDrag]);
+
   const handleBookPointerCancel = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const pointer = pointerRef.current;
     if (pointer?.id === e.pointerId) {
@@ -963,7 +992,10 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
         return;
       }
       e.preventDefault();
-      if (jobRef.current) return;
+      // 静置的掀角任务会长期占着 jobRef（光标停在左右命中区即触发，两区合计占书宽 76%），
+      // 一刀切拦截会让滚轮在这些区域被 preventDefault 吞掉且毫无反应；beginFlip 能正确接管在场 peek。
+      const job = jobRef.current;
+      if (job && !(job.peeking && !job.dragging)) return;
       const dominant = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * unit;
       wheelAccRef.current += dominant;
       if (wheelResetTimer.current) clearTimeout(wheelResetTimer.current);
