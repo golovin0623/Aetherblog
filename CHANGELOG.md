@@ -31,6 +31,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **验证：** admin `tsc --noEmit` 干净、`vite build` 通过、vitest 351/351 全绿、`pnpm design-system:check` 保持 0 error;全部动效带 `prefers-reduced-motion` 降级。
 - 📄 文档影响:已更新 `CHANGELOG.md`、`.claude/design-system/history.md`(Round 8);无新增 API / migration / 共享包导出,故 architecture 与 api-handlers 无需更新。
 
+### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
+
+对标 Kindle / 真书翻页体验，把阅读器从「能翻页」升级为「一本安静躺在书桌上的实体书」。保持 `readerLogic` 既有契约（皮肤解析 / 光标映射 / 偏好钳制）与移动端满幅单页布局不变。
+
+- **翻页引擎重写**：一次性 CSS transition → rAF 临界阻尼弹簧（`stepFlipSpring` 等纯函数落在 `readerLogic`，单测覆盖）。拖拽跟手（叶片/滑轨逐帧随指针）、松手按 160ms 速度投影裁决（快甩小位移也能翻过去）、悬停掀角（hover 热区页角微翘，点击顺势翻完）、快速连翻 fast-forward、后台标签页恢复 dt 钳制 34ms 防跳帧、`prefers-reduced-motion` 全程瞬切。
+- **翻页物理修正**：prev 翻页时右侧底页曾提前换成目标页（真书应保持原右页直到叶片落下盖住）；单页 curl 的叶片背面改为空白纸背（纸张反面不重复印刷）；掀角→拖拽转换时停掉在跑的弹簧（原先弹簧会抢走叶片直接提交）。
+- **关键交互修复**：`pointerdown` 即 `setPointerCapture` 会把后续 click 重定向到书容器——翻页热区按钮与正文链接从未收到点击。捕获推迟到拖拽确立后，点击翻页 / 内容链接恢复正常。
+- **自由缩放**：新偏好 `zoom`（70%–140%，步进 5%，桌面双页生效并受视口钳制）。设置面板滑杆 + Ctrl/⌘+滚轮 + 键盘 `+` / `−` / `0`；普通滚轮与触控板横扫累计翻页。另补 PageUp/PageDown/Home/End。
+- **书籍级排印**：h1/h2 章题居中 + `§ N` 自动编号眉标 + 束尾细线；书籍缩进模式下章从新页起（`break-before: column`）、章首段首字下沉；运行头 verso 书名 / recto 当前章（由章节→页映射驱动）；页码落外角、mono + tabular；`hr` → ⁂ 星群纹样；引用去 CJK 伪斜体改纸面色块；全部灰阶改 `color-mix` 从 `--reader-ink` 派生（自定皮肤同样和谐）；`text-spacing-trim` / `text-autospace` 渐进增强；衬线按需注入 Noto Serif SC webfont 且字形就绪后重排；新增楷体字族（本地楷体栈）。
+- **空间与氛围**：书口纸叠厚度随阅读进度流动（左侧读过的页渐厚、右侧余量变薄）；封面基座厚度 / 书脊沟壑 / 顶部书房灯光 + 桌面暗角 + feTurbulence 纸纹颗粒；飞行叶片动态明暗、折光扫过与底页投影逐帧驱动；入场书体自下升起，分页测量期间为同构骨架书（无 spinner）。
+- **Chrome 与面板**：桌面顶栏/底栏改悬浮层并自动隐藏（鼠标近上下边缘呼出，中央点按切换）；进度条自绘（章节刻度点 + 页码 + 百分比）；目录抽屉印刷式点线引导 + 页码 + 当前章高亮。
+- **admin 书架重设计**（`SimulatedReadingModal`）：列表行 → 主题书封网格（书脊 / 书口纸线 / 悬停浮起），新增「重制」按原来源+主题重跑成书缓存，加载态 spinner → 同构骨架屏（补齐红线 3.6）。
+- **自评审采纳 10 项**（Codex 额度耗尽，本轮由 Claude 自评审补位）：滚轮 `deltaMode` 归一（Firefox 行模式滚轮翻页失效）；捏合缩放改比例累积步进（原先事件流每个都走整档 5%，一次捏合打满边界）；骨架书 2.5s 超时放行（悬挂图片不再永锁）；多点触控守卫（第二根手指不再抢走拖拽令叶片悬死）；键盘修饰键交还浏览器（Alt+← 后退 / Ctrl+0 不再被劫持）；松手速度 120ms 陈旧守卫（快甩后停驻按静止裁决）；目录点击回退现场测量（慢图期间目录不失效）；从链接起手的拖拽容差保留 42px（手滑不吞点击）；chrome 悬停期间不自动隐藏（按钮不在光标下消失）；admin 并发重制改 Set 跟踪（互不清除状态、不再重复提交）。
+- 验证：reader gate 19/19（新增缩放钳制与翻页物理用例）、admin 351/351、`design-system:check` 0 error、blog/admin 构建通过、Playwright 14 组状态截图逐帧目检（桌面初始/沉浸/掀角/翻页中帧/拖拽持停/目录/设置/夜读/缩放 + 移动端）。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更，其余子文档无需更新。
+
+### Changed — 音乐大厅·歌单策展重设计 + 模块头部布局统一 (2026-08-16, branch claude/music-hall-admin-design-43c8f1)
+
+对标主流音乐软件(Apple Music 级交互模式,Aether Codex 材质实现)重做后台音乐大厅的歌单管理,并修复全后台模块头部 tab 条随宽度/actions 跳位的割裂感。
+
+- **模块头部统一(全后台生效)：** `AdminModuleHeader` 此前在 ≥1280px 断点上「无 actions=双列(tab 条在标题右上)/有 actions=单列(tab 条在下)」,切 tab 时 actions 出没导致 tab 条在右上/下方之间跳位。现统一为:**带 tab 的模块头恒为单列,tab 条固定在标题下方一行(tab 左、actions 右),所有断点稳定**;双列右上布局仅保留给无 tab 的头。compact-tabs / taxonomy 皮肤几何不受影响。
+- **歌单策展(playlists tab)重构：**
+  - **左栏歌单库(`PlaylistRail`)：** 每行 44px 封面缩略为视觉锚点(真实封面或确定性计算艺术封面),选中态极光左光带,管理操作(喜爱/设为公开/删除)桌面 hover 浮现、触屏常驻;「创建歌单」从常驻表单收成 [+] 按钮 + 内联命名卡(Apple 式:新建只要名字)。
+  - **详情 Hero：** 大封面(极光辉光投影)+ mono eyebrow(PLAYLIST·可见性·状态·公开中)+ `font-display` 标题 + 描述 + 「N 首 · 总时长」(tabular-nums)+ 主操作行:实底「播放全部/暂停」(每视图唯一实底 CTA)、随机播放、编辑详情;原编辑表单(封面工作流/字段/开关/可见性)整体收进可折叠面板,脏草稿时 Hero 直接给「保存修改」。
+  - **曲目表(`PlaylistTrackTable`)：** 列头(#/歌曲/时长),行=序号(hover 让位播放键,正在播放行常驻极光均衡器动画)+ 封面缩略 + 标题/艺术家·专辑 + 右对齐时长;**拖拽排序**(framer Reorder,手柄触发,提交沿用 `reorderPlaylistMutation` 契约,顺序未变不发请求),手柄聚焦后 ↑/↓ 键可调序(键盘可达);移动端溢出菜单(播放/上移/下移/移除)保留为降级路径。
+  - **添加歌曲(`AddTracksPanel`)：** 取代「搜索+下拉+按钮」——可搜索候选列表行内点 [+] 直加,已在歌单的曲目保持可见并标记 ✓ 已加入,底部保留候选状态文案(核对中/加载中/已载入 x/y)。
+  - **计算艺术封面缩略(`ResonantThumb`)：** 复用封面工作室渲染核心(`musicCoverArt`),seed 由业务身份哈希决定,同一歌单/曲目永远同脸;调色板预设抽为 `coverPresets.ts` 供工作室与缩略图共用(不再把懒加载的工作室拖进主 chunk)。
+  - **细节：** 骨架屏全面替换文字加载与 spinner(切歌单/曲目表/候选面板/歌单库);空态重写(选择引导/空歌单 CTA/无喜爱歌单);`#ec496f` 硬编码粉一律收敛为 `--aurora-4`(曲库/歌单心形、策展总览喜爱卡);过渡统一 `duration-[var(--dur-*)] ease-[var(--ease-out)]`。
+- **结构化拆分：** `MusicPage.tsx` 4126 → 约 3900 行;样式工厂抽至 `musicUi.ts`(新增 `solidButtonClass`/`formatClock`),歌单子组件落位 `pages/music/`(PlaylistRail / PlaylistTrackTable / AddTracksPanel / ResonantThumb / coverPresets)。
+- **Legacy 清理：** `BatchActionBar` 手写玻璃(`dark:` 阴影/`ring-white/10`/`backdrop-blur-2xl` 组合)迁移为 `.surface-raised`(音乐模块最后的 `dark:` 用法清零)。
+- **修复：** 拖拽提交竞态 —— 快速拖拽时 framer `onReorder` 先于 `onDragStart` 触发,旧「脏标记」方案会漏提交;改为结束一律上交 + 父级「顺序未变不提交」守卫。曲目行入场动画与拖拽变换解耦(整表单次 fadeUp),避免拖拽中断入场后行卡在透明态。
+- **计算艺术封面·渲染算法重写(`musicCoverArt.ts` Resonant Cartography v2)：** 旧算法输出为居中径向光斑+随机短刺,评为廉价 AI 感;新分层:① 近黑大气层+克制焦点辉光(砍掉角落 accent 大块渐变);② 倾斜谐波轨道弧段(内紧外疏指数间距、呼吸缺口、共振载波双线+辉光底);③ **流丝改为严格沿轨道切向的二次微弧**(曲率精确贴合椭圆——黑胶沟槽/星轨长曝光质感),旋臂角向密度调制+共振环邻域聚集形成「活跃带」,拒绝均匀贴图感;④ 彗尾长弧(辉光底+锐利主线,头亮尾隐)为每张封面的签名瞬间;⑤ 制图仪式的精密核心(分离暗圈+亮环+四向刻度);⑥ 星尘+胶片颗粒;⑦ 克制渐晕。同 seed 确定性不变,工坊/列表缩略/Hero 全线同步升级;composition 契约向后兼容(strokes 增加控制点,新增 arcs/comets/dust)。
+- **封面工坊 UI 精修(`GenerativeCoverStudio`)：** 预设块从三个色点升级为**实时迷你画布**(当前种子×该配方的真实渲染,选前即所见);删除虚构的「P5.js · Chaos Harmonic」标签,右下角改为当前配方名/自定义和声的诚实回显;标题接入 `font-display`,节标签统一 mono uppercase eyebrow;滑杆自定义 `.music-range`(极光填充轨道+精密拇指,替代原生 accent);底部按钮接入 `textButtonClass`/`solidButtonClass` 工厂并去除图标堆叠;画布侧保持刻意的暗房单一视觉(亮色主题下仅控制面板翻转)。
+- 📄 文档影响:已更新 CHANGELOG.md;无 API/DB/共享包变更,architecture 与 api-handlers 无需更新。
+
 ### Changed — 灵境工作台 · 对话知识库体验整体升级 (2026-08-16, branch claude/linghjing-ai-chat-kb-design-v5jvdy)
 
 **背景：** 前台灵境（blog `/agent/workspace`）与 LobeHub / Cherry Studio / ChatGPT 相比存在体验断层：后端一直在发的知识检索回执（SSE `retrieval` 事件）被前端整体丢弃、聊天请求从不携带 `kbIds` / `knowledgeContextMode`（「对话知识库」名不副实）、无消息元数据、无翻译/引用/分支等消息编排、无上下文管理、会话管理只有重命名+删除。本次纯前端（blog + packages/ui）对齐补课，零后端改动。

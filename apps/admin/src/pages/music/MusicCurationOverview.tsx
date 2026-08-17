@@ -107,7 +107,7 @@ function OverviewAction({
         tone === 'warn'
           ? 'border-[color-mix(in_oklch,var(--signal-warn)_20%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_5%,var(--bg-leaf))]'
           : tone === 'favorite'
-            ? 'border-[color-mix(in_oklch,#ec496f_20%,transparent)] bg-[color-mix(in_oklch,#ec496f_5%,var(--bg-leaf))]'
+            ? 'border-[color-mix(in_oklch,var(--aurora-4)_20%,transparent)] bg-[color-mix(in_oklch,var(--aurora-4)_5%,var(--bg-leaf))]'
             : 'border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] hover:bg-[var(--bg-card-hover)]'
       )}
     >
@@ -117,7 +117,7 @@ function OverviewAction({
           tone === 'warn'
             ? 'bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)] text-[var(--signal-warn)]'
             : tone === 'favorite'
-              ? 'bg-[color-mix(in_oklch,#ec496f_12%,transparent)] text-[#ec496f]'
+              ? 'bg-[color-mix(in_oklch,var(--aurora-4)_12%,transparent)] text-[var(--aurora-4)]'
               : 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
         )}>
           {icon}
@@ -193,8 +193,8 @@ export function MusicCurationOverview({
           style={{
             background: [
               'radial-gradient(circle, transparent 0 16%, color-mix(in oklch, var(--aurora-1) 18%, transparent) 16.4% 16.8%, transparent 17.2% 28%)',
-              'radial-gradient(circle, transparent 0 34%, color-mix(in oklch, #4cc9d8 18%, transparent) 34.3% 34.7%, transparent 35.1% 46%)',
-              'radial-gradient(circle, transparent 0 52%, color-mix(in oklch, #ec496f 14%, transparent) 52.3% 52.7%, transparent 53.1%)',
+              'radial-gradient(circle, transparent 0 34%, color-mix(in oklch, var(--aurora-3) 18%, transparent) 34.3% 34.7%, transparent 35.1% 46%)',
+              'radial-gradient(circle, transparent 0 52%, color-mix(in oklch, var(--aurora-4) 14%, transparent) 52.3% 52.7%, transparent 53.1%)',
             ].join(','),
           }}
           aria-hidden="true"
@@ -236,8 +236,8 @@ export function MusicCurationOverview({
 
           <div className="relative flex min-h-64 items-center justify-center">
             <div className="relative flex h-56 w-56 items-center justify-center rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] bg-[radial-gradient(circle,color-mix(in_oklch,var(--aurora-1)_12%,var(--bg-leaf)),var(--bg-leaf)_58%,color-mix(in_oklch,var(--ink-primary)_4%,var(--bg-leaf)))] shadow-[0_32px_90px_-56px_color-mix(in_oklch,var(--aurora-1)_70%,transparent)]">
-              <div className="absolute inset-4 rounded-full border border-dashed border-[color-mix(in_oklch,#4cc9d8_28%,transparent)] motion-safe:animate-[spin_28s_linear_infinite] motion-reduce:animate-none" />
-              <div className="absolute inset-10 rounded-full border border-[color-mix(in_oklch,#ec496f_22%,transparent)]" />
+              <div className="absolute inset-4 rounded-full border border-dashed border-[color-mix(in_oklch,var(--aurora-3)_28%,transparent)] motion-safe:animate-[spin_28s_linear_infinite] motion-reduce:animate-none" />
+              <div className="absolute inset-10 rounded-full border border-[color-mix(in_oklch,var(--aurora-4)_22%,transparent)]" />
               <div className="text-center">
                 <p className="tnum text-5xl font-black tracking-[-0.06em] text-[var(--ink-primary)]">
                   {loading ? '—' : averageScore}
@@ -320,7 +320,7 @@ export function MusicCurationOverview({
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
                     <span
-                      className="block h-full origin-left rounded-full bg-[linear-gradient(90deg,var(--aurora-1),#4cc9d8)] transition-transform duration-500 motion-reduce:transition-none"
+                      className="block h-full origin-left rounded-full bg-[linear-gradient(90deg,var(--aurora-1),var(--aurora-3))] transition-transform duration-500 motion-reduce:transition-none"
                       style={{ transform: `scaleX(${progress / 100})` }}
                     />
                   </div>

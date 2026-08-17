@@ -10,25 +10,8 @@ export interface PlaylistTrackOptionSource {
   };
 }
 
-export interface PlaylistTrackSelectOption {
-  value: string;
-  label: string;
-  description: string;
-}
-
-export function buildPlaylistTrackOptions(
-  tracks: PlaylistTrackOptionSource[],
-  existingTrackIds: Set<number> = new Set()
-): PlaylistTrackSelectOption[] {
-  return tracks
-    .filter((track) => !existingTrackIds.has(track.id))
-    .map((track) => ({
-      value: String(track.id),
-      label: track.title,
-      description: `${track.artist || '未知艺术家'} · ${track.media?.originalName || '未加载媒体文件名'}`,
-    }));
-}
-
+// 候选歌曲不再折叠成 Select options —— AddTracksPanel 直接渲染曲目行,
+// 已加入的曲目保持可见并标记 ✓,故 buildPlaylistTrackOptions 已随旧下拉一并移除。
 export function buildPlaylistTrackIdSet(tracks: PlaylistTrackOptionSource[]): Set<number> {
   return new Set(tracks.map((track) => track.id));
 }

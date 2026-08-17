@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BookOpen, FileText, NotebookPen, Library, Search, Loader2,
+  BookOpen, FileText, NotebookPen, Library, Search,
   ExternalLink, Trash2, RefreshCw, ChevronLeft, Check, Sparkles,
 } from 'lucide-react';
 import { Modal, Select, type SelectOption } from '@aetherblog/ui';
@@ -40,6 +40,15 @@ const THEME_OPTIONS: SelectOption[] = [
   { value: 'night', label: '夜读 Night' },
 ];
 
+/** 成书主题对应的封面纸色（内容数据色，与阅读器皮肤 swatch 同源）。 */
+const THEME_COVERS: Record<string, { bg: string; ink: string; edge: string; label: string }> = {
+  paper: { bg: '#fbfaf6', ink: '#2b2a27', edge: '#e4dfd2', label: '纸张' },
+  sepia: { bg: '#f6ecd6', ink: '#46392a', edge: '#e4d5b6', label: '羊皮' },
+  night: { bg: '#20242c', ink: '#d3d8df', edge: '#14171d', label: '夜读' },
+};
+
+const COVER_SERIF = "Georgia, 'Songti SC', 'STSong', SimSun, serif";
+
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 const BLOG_BASE_URL = (import.meta.env.VITE_BLOG_URL ?? '').trim().replace(/\/+$/, '');
 
@@ -55,10 +64,14 @@ function readerLaunchUrl(slug: string): string {
   return `${API_BASE_URL}/v1/admin/reading-books/reader/${encodedSlug}?redirect=${redirect}`;
 }
 
+function coverForTheme(theme: string | undefined) {
+  return THEME_COVERS[theme ?? 'paper'] ?? THEME_COVERS.paper;
+}
+
 /**
  * SimulatedReadingModal —— 「拟真阅读」管理入口。
  * 提供两个视图：
- *   - shelf：已生成成书的书架（打开 / 重新生成 / 删除）
+ *   - shelf：已生成成书的书架（书封网格：打开 / 重新生成 / 删除）
  *   - import：选择来源（文章 / 学习笔记 / 知识库文件）→ 导入生成成书缓存
  */
 export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModalProps) {
@@ -68,6 +81,9 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
   const [books, setBooks] = useState<ReadingBookListItem[]>([]);
   const [shelfLoading, setShelfLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  // 允许多本书并发重制，各自独立跟踪，互不清除对方的进行中状态。
+  const [regeneratingIds, setRegeneratingIds] = useState<ReadonlySet<number>>(new Set());
+  const [shelfError, setShelfError] = useState<string | null>(null);
 
   const loadShelf = useCallback(async () => {
     setShelfLoading(true);
@@ -85,6 +101,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
     if (isOpen) {
       setView('shelf');
       setConfirmDeleteId(null);
+      setShelfError(null);
       loadShelf();
     }
   }, [isOpen, loadShelf]);
@@ -97,6 +114,30 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
       logger.error('删除拟真阅读失败:', err);
     } finally {
       setConfirmDeleteId(null);
+    }
+  };
+
+  /** 用原来源与主题重跑一次成书渲染（内容更新后刷新缓存）。 */
+  const handleRegenerate = async (b: ReadingBookListItem) => {
+    setRegeneratingIds((prev) => new Set(prev).add(b.id));
+    setShelfError(null);
+    try {
+      const theme = (['paper', 'sepia', 'night'].includes(b.theme) ? b.theme : 'paper') as 'paper' | 'sepia' | 'night';
+      const res = await readingBookService.generate({ sourceType: b.sourceType, sourceId: b.sourceId, theme });
+      if (res.code === 200) {
+        await loadShelf();
+      } else {
+        setShelfError(res.message || `《${b.title}》重新生成失败`);
+      }
+    } catch (err) {
+      logger.error('重新生成拟真阅读失败:', err);
+      setShelfError(err instanceof Error ? err.message : `《${b.title}》重新生成失败`);
+    } finally {
+      setRegeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(b.id);
+        return next;
+      });
     }
   };
 
@@ -234,6 +275,137 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
     }
   };
 
+  const renderBookCard = (b: ReadingBookListItem) => {
+    const cover = coverForTheme(b.theme);
+    const regenerating = regeneratingIds.has(b.id);
+    const ready = b.status === 'READY';
+    return (
+      <div key={b.id} className="group flex flex-col gap-2">
+        {/* 书封：主题纸色 + 书脊 + 书口纸线 */}
+        <div
+          className={cn(
+            'relative aspect-[3/4] overflow-hidden rounded-r-lg rounded-l-[3px]',
+            'shadow-[0_10px_24px_-12px_rgba(0,0,0,0.4)] transition-all duration-200 ease-out',
+            'group-hover:-translate-y-1 group-hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,0.5)]',
+            regenerating && 'animate-pulse',
+          )}
+          style={{ background: cover.bg }}
+        >
+          {/* 书脊 */}
+          <div
+            className="absolute inset-y-0 left-0 w-[7px]"
+            style={{
+              background: `linear-gradient(90deg, ${cover.edge}, transparent 90%)`,
+              boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.28)',
+            }}
+          />
+          {/* 书口纸线 */}
+          <div
+            className="absolute inset-y-1 right-0 w-[5px] opacity-70"
+            style={{
+              background: `repeating-linear-gradient(90deg, ${cover.edge} 0 1px, transparent 1px 2.5px)`,
+            }}
+          />
+          {/* 顶部柔光 */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-black/10" />
+
+          <div className="relative flex h-full flex-col items-center justify-between px-4 pb-3 pt-5 text-center">
+            <span
+              className="font-mono text-[9px] uppercase tracking-[0.2em]"
+              style={{ color: cover.ink, opacity: 0.55 }}
+            >
+              {cover.label}
+            </span>
+            <span
+              className="line-clamp-4 text-sm font-semibold leading-relaxed"
+              style={{ color: cover.ink, fontFamily: COVER_SERIF }}
+            >
+              {b.title}
+            </span>
+            <span className="font-mono text-[10px] tabular-nums" style={{ color: cover.ink, opacity: 0.6 }}>
+              {b.wordCount} 字 · {b.readingTime} 分钟
+            </span>
+          </div>
+
+          {b.status !== 'READY' && (
+            <span
+              className={cn(
+                'absolute right-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                b.status === 'FAILED'
+                  ? 'bg-[var(--signal-danger)]/15 text-[var(--signal-danger)]'
+                  : 'bg-[var(--signal-warn)]/15 text-[var(--signal-warn)]',
+              )}
+            >
+              {b.status === 'FAILED' ? '生成失败' : '生成中'}
+            </span>
+          )}
+        </div>
+
+        {/* 元信息 + 操作 */}
+        <div className="min-w-0">
+          <p className="truncate text-xs text-[var(--ink-muted)]">{b.sourceRef || b.sourceType}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {confirmDeleteId === b.id ? (
+            <>
+              <button
+                type="button"
+                onClick={() => handleDelete(b.id)}
+                className="flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
+              >
+                确认删除
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 rounded-md px-2 py-1.5 text-xs text-[var(--ink-muted)] transition hover:bg-[var(--bg-raised)]"
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <>
+              <a
+                href={ready ? readerLaunchUrl(b.slug) : undefined}
+                target="_blank"
+                rel="noreferrer"
+                title="打开阅读"
+                aria-disabled={!ready}
+                className={cn(
+                  'inline-flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition',
+                  ready
+                    ? 'text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
+                    : 'cursor-not-allowed text-[var(--ink-muted)] opacity-50',
+                )}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                打开
+              </a>
+              <button
+                type="button"
+                disabled={regenerating}
+                onClick={() => handleRegenerate(b)}
+                title="重新生成（内容更新后刷新成书缓存）"
+                className="inline-flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-[var(--ink-muted)] transition hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {regenerating ? '生成中' : '重制'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(b.id)}
+                title="删除"
+                className="inline-flex items-center justify-center rounded-md p-1.5 text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="拟真阅读" size="xl">
       {view === 'shelf' ? (
@@ -245,6 +417,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
             <button
               type="button"
               onClick={goImport}
+              data-interactive
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[var(--aurora-1)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
             >
               <Sparkles className="h-4 w-4" />
@@ -252,76 +425,30 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
             </button>
           </div>
 
+          {shelfError && (
+            <div className="rounded-lg bg-[var(--signal-danger)]/10 px-3 py-2 text-sm text-[var(--signal-danger)]">
+              {shelfError}
+            </div>
+          )}
+
           {shelfLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-16 animate-pulse rounded-lg bg-[var(--bg-raised)]" />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex flex-col gap-2">
+                  <div className="aspect-[3/4] animate-pulse rounded-r-lg rounded-l-[3px] bg-[var(--bg-raised)]" />
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--bg-raised)]" />
+                  <div className="h-6 animate-pulse rounded bg-[var(--bg-raised)]" />
+                </div>
               ))}
             </div>
           ) : books.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--ink-muted)]/30 py-12 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--ink-muted)]/30 py-14 text-center">
               <BookOpen className="h-10 w-10 text-[var(--ink-muted)]" />
-              <p className="text-sm text-[var(--ink-muted)]">还没有拟真阅读书籍，点击「新建拟真阅读」开始。</p>
+              <p className="text-sm text-[var(--ink-muted)]">书架还空着，点击「新建拟真阅读」放上第一本书。</p>
             </div>
           ) : (
-            <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
-              {books.map((b) => (
-                <div
-                  key={b.id}
-                  className="flex items-center gap-3 rounded-lg border border-[var(--ink-muted)]/15 bg-[var(--bg-leaf)] p-3"
-                >
-                  <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded bg-[var(--aurora-1)]/15 text-[var(--aurora-1)]">
-                    <BookOpen className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[var(--ink-primary)]">{b.title}</p>
-                    <p className="truncate text-xs text-[var(--ink-muted)]">
-                      {b.sourceRef || b.sourceType} · {b.wordCount} 字 · 约 {b.readingTime} 分钟
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {confirmDeleteId === b.id ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(b.id)}
-                          className="rounded-md px-2 py-1.5 text-xs font-medium text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
-                        >
-                          确认删除
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(null)}
-                          className="rounded-md px-2 py-1.5 text-xs text-[var(--ink-muted)] transition hover:bg-[var(--bg-raised)]"
-                        >
-                          取消
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <a
-                          href={readerLaunchUrl(b.slug)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="打开阅读"
-                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[var(--aurora-1)] transition hover:bg-[var(--aurora-1)]/10"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          <span className="hidden sm:inline">打开</span>
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(b.id)}
-                          title="删除"
-                          className="inline-flex items-center rounded-md p-1.5 text-[var(--signal-danger)] transition hover:bg-[var(--signal-danger)]/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="grid max-h-[56vh] grid-cols-2 gap-x-4 gap-y-5 overflow-y-auto p-1 pr-2 sm:grid-cols-3 md:grid-cols-4">
+              {books.map(renderBookCard)}
             </div>
           )}
         </div>
@@ -354,7 +481,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
                   className={cn(
                     'inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition',
                     active
-                      ? 'border-[var(--aurora-1)] bg-[var(--aurora-1)]/10 text-[var(--aurora-1)]'
+                      ? 'border-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)]'
                       : 'border-[var(--ink-muted)]/20 text-[var(--ink-muted)] hover:border-[var(--ink-muted)]/40',
                   )}
                 >
@@ -392,8 +519,16 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
           {/* 来源列表 */}
           <div className="max-h-[34vh] min-h-[12rem] space-y-1 overflow-y-auto rounded-lg border border-[var(--ink-muted)]/15 p-1">
             {listLoading ? (
-              <div className="flex h-40 items-center justify-center text-[var(--ink-muted)]">
-                <Loader2 className="h-5 w-5 animate-spin" />
+              <div className="space-y-1 p-1">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center gap-3 rounded-md px-3 py-2">
+                    <span className="h-5 w-5 shrink-0 animate-pulse rounded-full bg-[var(--bg-raised)]" />
+                    <span
+                      className="h-4 animate-pulse rounded bg-[var(--bg-raised)]"
+                      style={{ width: `${62 - (i % 3) * 14}%` }}
+                    />
+                  </div>
+                ))}
               </div>
             ) : items.length === 0 ? (
               <div className="flex h-40 items-center justify-center text-sm text-[var(--ink-muted)]">
@@ -409,7 +544,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
                     onClick={() => setSelectedId(it.id)}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition',
-                      active ? 'bg-[var(--aurora-1)]/10' : 'hover:bg-[var(--bg-raised)]',
+                      active ? 'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]' : 'hover:bg-[var(--bg-raised)]',
                     )}
                   >
                     <span
@@ -455,9 +590,12 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
               type="button"
               disabled={!selectedId || generating}
               onClick={handleGenerate}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--aurora-1)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className={cn(
+                'inline-flex items-center gap-2 rounded-lg bg-[var(--aurora-1)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50',
+                generating && 'animate-pulse',
+              )}
             >
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <RefreshCw className="h-4 w-4" />
               {generating ? '生成中…' : '导入并生成'}
             </button>
           </div>
