@@ -2,16 +2,13 @@ import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffe
 import { createPortal } from 'react-dom';
 import { Link, useBlocker } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
+import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion';
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   Disc3,
   ExternalLink,
   FileText,
   FolderPlus,
-  Headphones,
   Heart,
   Image,
   LibraryBig,
@@ -19,9 +16,9 @@ import {
   ListPlus,
   Loader2,
   Music2,
-  MoreHorizontal,
   Palette,
   Pause,
+  Pencil,
   Play,
   Plus,
   Radio,
@@ -40,7 +37,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import { Select, type SelectOption } from '@aetherblog/ui';
+import { Select, Skeleton, transition, type SelectOption } from '@aetherblog/ui';
 import { useMediaQuery } from '@aetherblog/hooks';
 import { MUSIC_SKIN_PRESETS, resolveMusicSkinValue } from '@aetherblog/utils';
 import { toast } from 'sonner';
@@ -61,7 +58,7 @@ import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/Admin
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useAdminMusicPlayer, useAdminMusicPlayerTimeline } from '@/components/music/AdminMusicPlayerProvider';
-import { hasSameAdminMusicQueueTrackIds } from '@/components/music/adminMusicQueueState';
+import { hasSameAdminMusicQueueTrackIds, type AdminMusicQueueSource } from '@/components/music/adminMusicQueueState';
 import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
@@ -80,11 +77,15 @@ import { isCurrentMusicCoverUploadRequest } from './music/musicCoverArt';
 import { parseAudioMetadataFromFile } from './music/musicMetadataParser';
 import { extractPaletteFromImageUrl, type ExtractedColorPalette } from './music/musicColorExtractor';
 import { BatchActionBar } from './music/BatchActionBar';
+import { AddTracksPanel } from './music/AddTracksPanel';
+import { PlaylistRail } from './music/PlaylistRail';
+import { PlaylistTrackTable, PlaylistTrackTableSkeleton } from './music/PlaylistTrackTable';
+import { MusicCoverThumb } from './music/ResonantThumb';
+import { formatClock, iconButtonClass, inputClass, panelClass, shellClass, solidButtonClass, textButtonClass } from './music/musicUi';
 import {
   PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
   PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
   buildPlaylistTrackIdSet,
-  buildPlaylistTrackOptions,
   getMissingPlaylistMemberPageNumbers,
 } from './music/playlistTrackOptions';
 import {
@@ -254,178 +255,8 @@ const tabs: Array<AdminModuleHeaderTab<MusicTab>> = [
   },
 ];
 
-const panelClass = cn(
-  'surface-leaf surface-admin-panel rounded-[var(--radius-lg)]',
-  'p-3 sm:p-4'
-);
-
-const shellClass = cn(
-  'surface-leaf overflow-hidden rounded-[var(--radius-lg)]'
-);
-
-function iconButtonClass(active = false, tone: 'default' | 'primary' | 'danger' = 'default') {
-  return cn(
-    'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-60 min-[769px]:h-10 min-[769px]:w-10',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
-    active && 'bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]',
-    tone === 'primary' &&
-      'bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)]',
-    tone === 'danger' &&
-      'text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--signal-danger)] focus-visible:text-[var(--signal-danger)]',
-    tone === 'default' &&
-      'bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] hover:text-[var(--ink-primary)]'
-  );
-}
-
-function textButtonClass(tone: 'default' | 'primary' | 'danger' = 'default') {
-  return cn(
-    'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-md)] border border-transparent px-3 text-sm font-semibold transition-[background-color,color,box-shadow,opacity] duration-100 active:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 min-[769px]:h-10',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
-    tone === 'primary' &&
-      'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
-    tone === 'danger' &&
-      'bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_13%,transparent)]',
-    tone === 'default' &&
-      'bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]'
-  );
-}
-
-function inputClass(extra?: string) {
-  return cn(
-    'h-10 w-full rounded-[var(--radius-sm)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-3 text-sm text-[var(--ink-primary)]',
-    'placeholder:text-[var(--ink-muted)] transition-[border-color,box-shadow] duration-200 focus:border-[color-mix(in_oklch,var(--aurora-1)_48%,transparent)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_18%,transparent)]',
-    extra
-  );
-}
-
-function PlaylistTrackActionMenu({
-  trackTitle,
-  moveUpDisabled,
-  moveDownDisabled,
-  removeDisabled,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
-}: {
-  trackTitle: string;
-  moveUpDisabled: boolean;
-  moveDownDisabled: boolean;
-  removeDisabled: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRemove: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const closeMenu = useCallback((restoreFocus = false) => {
-    setOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
-  }, []);
-
-  useEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setMenuStyle({
-      position: 'fixed',
-      right: Math.max(12, window.innerWidth - rect.right),
-      top: Math.max(12, Math.min(window.innerHeight - 184, rect.bottom + 6)),
-      zIndex: 90,
-    });
-    window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus());
-
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      closeMenu();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Tab') {
-        closeMenu();
-        return;
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeMenu(true);
-        return;
-      }
-      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-
-      const items = Array.from(
-        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []
-      );
-      if (items.length === 0) return;
-      event.preventDefault();
-      const activeIndex = items.findIndex((item) => item === document.activeElement);
-      if (event.key === 'Home') {
-        items[0]?.focus();
-      } else if (event.key === 'End') {
-        items.at(-1)?.focus();
-      } else if (event.key === 'ArrowDown') {
-        items[(activeIndex + 1 + items.length) % items.length]?.focus();
-      } else {
-        items[(activeIndex - 1 + items.length) % items.length]?.focus();
-      }
-    };
-    const onViewportChange = () => closeMenu();
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onViewportChange);
-    window.addEventListener('scroll', onViewportChange, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', onViewportChange);
-      window.removeEventListener('scroll', onViewportChange, true);
-    };
-  }, [closeMenu, open]);
-
-  const runAction = (action: () => void) => {
-    action();
-    closeMenu(true);
-  };
-
-  return (
-    <div className="min-[769px]:hidden">
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className={iconButtonClass()}
-        aria-label={`更多「${trackTitle}」操作`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        <MoreHorizontal className="h-5 w-5" />
-      </button>
-      {open && createPortal(
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label={`「${trackTitle}」排序与移除`}
-          style={menuStyle}
-          className="surface-overlay w-44 overflow-hidden rounded-xl p-1 shadow-xl"
-        >
-          <button type="button" role="menuitem" onClick={() => runAction(onMoveUp)} disabled={moveUpDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] disabled:opacity-40">
-            <ArrowUp className="h-4 w-4" />
-            上移
-          </button>
-          <button type="button" role="menuitem" onClick={() => runAction(onMoveDown)} disabled={moveDownDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] disabled:opacity-40">
-            <ArrowDown className="h-4 w-4" />
-            下移
-          </button>
-          <button type="button" role="menuitem" onClick={() => runAction(onRemove)} disabled={removeDisabled} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--signal-danger)] disabled:opacity-40">
-            <Trash2 className="h-4 w-4" />
-            从歌单移除
-          </button>
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
+// 面板 / 按钮 / 输入框样式工厂已抽至 ./music/musicUi(歌单子组件与本页共用);
+// 歌单曲目的溢出菜单随曲目表迁至 ./music/PlaylistTrackTable。
 
 function flattenFolders(nodes?: FolderTreeNode[] | null, depth = 0): SelectOption[] {
   if (!Array.isArray(nodes)) return [];
@@ -1150,7 +981,6 @@ export default function MusicPage() {
   const settingsWriteLockRef = useRef(false);
   const deleteWriteLockRef = useRef(false);
   const batchDeleteInFlightRef = useRef(false);
-  const batchPlaylistInFlightRef = useRef(false);
   const [activeTab, setActiveTab] = useState<MusicTab>('overview');
   const {
     queue,
@@ -1213,14 +1043,6 @@ export default function MusicPage() {
   const [lyricsFocusTrack, setLyricsFocusTrack] = useState<MusicTrack | undefined>();
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
   const selectedPlaylistIdRef = useRef<number | null>(null);
-  const [playlistForm, setPlaylistForm] = useState({
-    name: '我的歌单',
-    description: '',
-    displayOnProfile: true,
-    carouselEnabled: true,
-    randomEnabled: false,
-    isFavorite: false,
-  });
   const [playlistDraft, setPlaylistDraft] = useState<PlaylistDraft>({
     name: '',
     description: '',
@@ -1237,7 +1059,10 @@ export default function MusicPage() {
   const [playlistDraftDirty, setPlaylistDraftDirty] = useState(false);
   const playlistDraftRevisionRef = useRef(0);
   const [pendingPlaylistSelectionId, setPendingPlaylistSelectionId] = useState<number | null>(null);
-  const [trackToAdd, setTrackToAdd] = useState('');
+  // 未保存封面的本地预览(仅用于 Hero 即时回显,不进请求体)
+  const [playlistCoverPreview, setPlaylistCoverPreview] = useState<{ mediaId: number; url: string } | null>(null);
+  const [playlistEditOpen, setPlaylistEditOpen] = useState(false);
+  const [addTracksPanelOpen, setAddTracksPanelOpen] = useState(false);
   const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
   const [playlistFavoriteFilter, setPlaylistFavoriteFilter] = useState<'ALL' | 'FAVORITE'>('ALL');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
@@ -1282,6 +1107,11 @@ export default function MusicPage() {
     setPlaylistDraftSourceId(null);
     setPlaylistDraftDirty(false);
     setSelectedPlaylistId(playlistId);
+    // 换歌单 = 换策展对象:编辑面板与添加面板都归位,避免上一份歌单的展开态串场;
+    // 封面预览同属上一份草稿,一并作废。
+    setPlaylistEditOpen(false);
+    setAddTracksPanelOpen(false);
+    setPlaylistCoverPreview(null);
   }, []);
   const updatePlaylistDraft = useCallback(
     (updater: (draft: PlaylistDraft) => PlaylistDraft) => {
@@ -1681,6 +1511,23 @@ export default function MusicPage() {
   const isCurrentPageFullySelected =
     currentPageCandidateIds.length > 0 && selectedCurrentPageCount === currentPageCandidateIds.length;
 
+  // 歌单任一写入成功后都必须把结果回填列表缓存:收藏/发布是「读列表快照 → 全字段 PUT」,
+  // 列表滞后一个 RTT 就会把刚保存的改名/封面静默回滚,且回滚结果又会被装载进草稿,用户毫无察觉。
+  const patchPlaylistInList = useCallback((playlist: MusicPlaylist) => {
+    queryClient.setQueryData(
+      ['music-playlists'],
+      (current: typeof playlistsQuery.data) => current
+        ? { ...current, list: current.list.map((item) => item.id === playlist.id ? playlist : item) }
+        : current
+    );
+    queryClient.setQueryData(
+      ['music-playlists', 'favorite'],
+      (current: typeof favoritePlaylistsQuery.data) => current
+        ? { ...current, list: current.list.map((item) => item.id === playlist.id ? playlist : item) }
+        : current
+    );
+  }, [queryClient]);
+
   const invalidateMusic = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['music-summary'] });
     queryClient.invalidateQueries({ queryKey: ['music-overview-tracks'] });
@@ -1852,16 +1699,17 @@ export default function MusicPage() {
     },
   });
 
+  // 新建只要一个名字(Apple 式);展示开关等细节创建后在详情编辑面板里调。
   const createPlaylistMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (name: string) =>
       musicService.createPlaylist({
-        name: playlistForm.name.trim() || '我的歌单',
-        description: playlistForm.description.trim() || undefined,
+        name: name.trim() || '我的歌单',
+        description: undefined,
         displayOnHome: false,
-        displayOnProfile: playlistForm.displayOnProfile,
-        carouselEnabled: playlistForm.carouselEnabled,
-        randomEnabled: playlistForm.randomEnabled,
-        isFavorite: playlistForm.isFavorite,
+        displayOnProfile: true,
+        carouselEnabled: true,
+        randomEnabled: false,
+        isFavorite: false,
         visibility: 'PUBLIC',
         status: 'ACTIVE',
       }),
@@ -1889,6 +1737,7 @@ export default function MusicPage() {
     onSuccess: (res, { id, revision }) => {
       toast.success(`已保存歌单：${res.data.name}`);
       queryClient.setQueryData(['music-playlist-detail', id], res.data);
+      patchPlaylistInList(res.data);
       if (shouldApplyPlaylistSaveResult({
         savedPlaylistId: id,
         selectedPlaylistId: selectedPlaylistIdRef.current,
@@ -1920,9 +1769,18 @@ export default function MusicPage() {
     onSuccess: (response) => {
       const updated = response.data;
       toast.success(updated.isFavorite ? '已加入喜爱歌单' : '已取消喜爱歌单');
-      if (selectedPlaylistIdRef.current === updated.id && !playlistDraftDirty) {
+      patchPlaylistInList(updated);
+      queryClient.setQueryData(['music-playlist-detail', updated.id], (current: MusicPlaylist | undefined) =>
+        current ? { ...current, ...updated, tracks: current.tracks } : current
+      );
+      // 只在草稿本来就绑在这个歌单上时才回写 —— 否则会在 detail 尚未到达时
+      // 用列表快照伪造「草稿已载入」,后续 detail 再也落不进来,拖拽也会被永久拒绝。
+      if (
+        selectedPlaylistIdRef.current === updated.id
+        && playlistDraftSourceId === updated.id
+        && !playlistDraftDirty
+      ) {
         setPlaylistDraft(playlistToDraft(updated));
-        setPlaylistDraftSourceId(updated.id);
       }
       invalidateMusic();
     },
@@ -1958,12 +1816,13 @@ export default function MusicPage() {
   });
 
   const playlistTrackMutation = useMutation({
-    mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
+    mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number; fromBatch?: boolean }) =>
       musicService.addTrackToPlaylist(playlistId, trackId),
-    onSuccess: async (_data, { playlistId }) => {
-      if (batchPlaylistInFlightRef.current) return;
+    // 用 variables 上的来源标记判定,而不是「此刻有没有批量在跑」——
+    // 后者会把批量期间用户手动加的那一首的回调(含三条 invalidate 与 toast)整个吞掉。
+    onSuccess: async (_data, { playlistId, fromBatch }) => {
+      if (fromBatch) return;
       toast.success('已加入歌单');
-      if (selectedPlaylistIdRef.current === playlistId) setTrackToAdd('');
       try {
         const refreshedTracks = await fetchAllPlaylistTracks(playlistId);
         queryClient.setQueryData(['music-playlist-member-tracks', playlistId], refreshedTracks);
@@ -1976,22 +1835,27 @@ export default function MusicPage() {
       queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     },
-    onError: (error) => {
-      if (!batchPlaylistInFlightRef.current) toast.error(extractApiErrorMessage(error, '加入歌单失败'));
+    onError: (error, { fromBatch }) => {
+      if (!fromBatch) toast.error(extractApiErrorMessage(error, '加入歌单失败'));
     },
   });
 
   const batchPlaylistAddMutation = useMutation({
     mutationFn: async ({ playlistId, trackIds }: { playlistId: number; trackIds: number[] }) => {
-      batchPlaylistInFlightRef.current = true;
-      try {
-        const results = await Promise.allSettled(
-          trackIds.map((trackId) => playlistTrackMutation.mutateAsync({ playlistId, trackId }))
-        );
-        return { playlistId, trackIds, results };
-      } finally {
-        batchPlaylistInFlightRef.current = false;
+      // 顺序提交:后端的 sort_order 取 MAX+1 且在自动提交事务里算,
+      // 并发提交会让 N 首拿到同一个 sort_order,进而使分页不稳定、重排提交出现重复与漏项。
+      const results: PromiseSettledResult<unknown>[] = [];
+      for (const trackId of trackIds) {
+        try {
+          results.push({
+            status: 'fulfilled',
+            value: await playlistTrackMutation.mutateAsync({ playlistId, trackId, fromBatch: true }),
+          });
+        } catch (error) {
+          results.push({ status: 'rejected', reason: error });
+        }
       }
+      return { playlistId, trackIds, results };
     },
     onSuccess: ({ playlistId, trackIds, results }) => {
       const succeeded = results.filter((result) => result.status === 'fulfilled').length;
@@ -2196,6 +2060,7 @@ export default function MusicPage() {
   });
 
   const isPlaylistWriteBusy =
+    batchPlaylistAddMutation.isPending ||
     createPlaylistMutation.isPending ||
     updatePlaylistMutation.isPending ||
     playlistFavoriteMutation.isPending ||
@@ -2224,10 +2089,6 @@ export default function MusicPage() {
   useEffect(() => {
     setSelectedCandidateIds([]);
   }, [settings.mediaFolderId, scanKeyword, scanPage, scanPageSize]);
-
-  useEffect(() => {
-    setTrackToAdd('');
-  }, [selectedPlaylistId, deferredPlaylistTrackKeyword]);
 
   const saveSettingsPatch = (patch: Partial<MusicSettingsRequest>) => {
     if (!settingsQuery.data || settingsWriteLockRef.current) return;
@@ -3042,7 +2903,7 @@ export default function MusicPage() {
                         {favoritePending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Heart className={cn('h-4 w-4', track.isFavorite && 'fill-current text-[#ec496f]')} />
+                          <Heart className={cn('h-4 w-4', track.isFavorite && 'fill-current text-[var(--aurora-4)]')} />
                         )}
                       </button>
                       <button
@@ -3227,442 +3088,424 @@ export default function MusicPage() {
       : undefined;
     const detailTracks = selectedPlaylistTracks;
     const existingTrackIds = buildPlaylistTrackIdSet(playlistMemberTracksQuery.data ?? []);
-    const playlistTrackOptions = buildPlaylistTrackOptions(playlistTrackCandidates, existingTrackIds);
     const playlistCandidateTotal = playlistTrackCandidatesQuery.data?.total ?? 0;
     const playlistCandidateLoaded = playlistTrackCandidates.length;
     const hasMorePlaylistCandidates = playlistCandidateTotal > playlistCandidateLoaded;
     const isPlaylistMemberTrackLoading = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isLoading;
     const isPlaylistMemberTrackUnavailable = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isError;
-    const playlistTrackPickerDisabled =
-      playlistTrackOptions.length === 0 ||
-      playlistTrackCandidatesQuery.isFetching ||
-      isPlaylistMemberTrackLoading ||
-      isPlaylistMemberTrackUnavailable;
-    let playlistTrackPlaceholder = '没有可加入歌曲';
-    let playlistTrackStatusText = `可加入 ${playlistTrackOptions.length} 首${playlistCandidateTotal ? ` · 曲库匹配 ${playlistCandidateTotal} 首` : ''}`;
+    // 注意 total 为 0 是「搜过但没命中」,不能与「还没开始搜」共用 falsy 分支
+    let addTracksStatusText = playlistTrackKeyword.trim()
+      ? `匹配到 ${playlistCandidateTotal} 首`
+      : playlistCandidateTotal
+        ? `曲库共 ${playlistCandidateTotal} 首可选`
+        : '输入关键词搜索曲库';
     if (isPlaylistMemberTrackLoading) {
-      playlistTrackPlaceholder = '正在核对已加入歌曲';
-      playlistTrackStatusText = '正在核对歌单内全部歌曲，避免重复加入已存在曲目...';
+      addTracksStatusText = '正在核对歌单内全部歌曲，避免重复加入已存在曲目...';
     } else if (isPlaylistMemberTrackUnavailable) {
-      playlistTrackPlaceholder = '无法核对已加入歌曲';
-      playlistTrackStatusText = '无法核对歌单内歌曲，请刷新后重试。';
+      addTracksStatusText = '无法核对歌单内歌曲，请刷新后重试。';
     } else if (playlistTrackCandidatesQuery.isFetching) {
-      playlistTrackPlaceholder = '正在加载曲库';
-      playlistTrackStatusText = '正在更新候选歌曲...';
-    } else if (playlistTrackOptions.length > 0) {
-      playlistTrackPlaceholder = '从候选歌曲加入';
-    } else if (playlistTrackKeyword.trim()) {
-      playlistTrackPlaceholder = '没有匹配的可加入歌曲';
+      addTracksStatusText = '正在更新候选歌曲...';
+    } else if (hasMorePlaylistCandidates) {
+      addTracksStatusText = `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`;
     }
-    if (!isPlaylistMemberTrackLoading && !isPlaylistMemberTrackUnavailable && !playlistTrackCandidatesQuery.isFetching && hasMorePlaylistCandidates) {
-      playlistTrackStatusText = `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`;
-    }
+    // 成员列表拉取失败时 detailTracks 只是 detail 的前 100 首截断值,
+    // 拿它算出的顺序提交上去会把 100 名之后的曲目排序打乱。
+    const trackActionsBusy =
+      isPlaylistMemberTrackUnavailable ||
+      reorderPlaylistMutation.isPending ||
+      playlistTrackMutation.isPending ||
+      removePlaylistTrackMutation.isPending ||
+      deletePlaylistMutation.isPending;
     const moveTrack = (index: number, direction: -1 | 1) => {
-      if (
-        !selectedPlaylistId ||
-        !detail ||
-        reorderPlaylistMutation.isPending ||
-        playlistTrackMutation.isPending ||
-        removePlaylistTrackMutation.isPending ||
-        deletePlaylistMutation.isPending
-      ) return;
+      if (!selectedPlaylistId || !detail || trackActionsBusy) return;
       const next = movePlaylistTrack(detailTracks, index, direction);
       if (next === detailTracks) return;
       reorderPlaylistMutation.mutate({ playlistId: selectedPlaylistId, tracks: next });
     };
+    // 返回值即「本地顺序是否被接受」:被守卫挡下时表格必须回滚,
+    // 否则本地顺序与父级按 detailTracks 计算的 index 会永久错位。
+    const commitTrackOrder = (next: MusicTrack[]): boolean => {
+      if (!selectedPlaylistId || !detail || trackActionsBusy) return false;
+      const unchanged = next.length === detailTracks.length
+        && next.every((track, index) => track.id === detailTracks[index]?.id);
+      if (unchanged) return true;
+      reorderPlaylistMutation.mutate({ playlistId: selectedPlaylistId, tracks: next });
+      return true;
+    };
+    const nowPlayingTrackId =
+      selectedPlaylistId != null
+        && queueSource.type === 'playlist'
+        && queueSource.playlistId === selectedPlaylistId
+        ? currentTrack?.id
+        : undefined;
+    const playFromIndex = (index: number) => {
+      if (!selectedPlaylistId || detailTracks.length === 0) return;
+      playTracks(
+        detailTracks,
+        index,
+        { type: 'playlist', playlistId: selectedPlaylistId },
+        selectedPlaylist?.name || '歌单播放'
+      );
+    };
+    const playShuffled = () => {
+      if (detailTracks.length === 0) return;
+      playFromIndex(Math.floor(Math.random() * detailTracks.length));
+    };
+    // 队列归属与出声状态必须分开:合并成一个布尔会让「暂停后再点」退化成从第一首重开
+    const queueIsThisPlaylist =
+      selectedPlaylistId != null
+      && queueSource.type === 'playlist'
+      && queueSource.playlistId === selectedPlaylistId
+      && currentTrack != null;
+    const playingThisPlaylist = queueIsThisPlaylist && isPlaying;
+    const totalDurationSeconds = detailTracks.reduce((sum, track) => sum + (track.durationSeconds ?? 0), 0);
+    const draftLoaded = playlistDraftSourceId === selectedPlaylistId;
+    const heroTitle = draftLoaded
+      ? (playlistDraft.name.trim() || '未命名歌单')
+      : (selectedPlaylist?.name || '');
+    const heroDescription = draftLoaded
+      ? (playlistDraft.description || '')
+      : (selectedPlaylist?.description || '');
+    // 刚选中/刚生成的封面尚未落库,服务端 coverUrl 仍指向旧图 ——
+    // 用本地预览 URL 兜住这段窗口,让 Hero 立即反映用户的选择。
+    const pendingCoverUrl =
+      playlistCoverPreview && playlistCoverPreview.mediaId === playlistDraft.coverMediaFileId
+        ? playlistCoverPreview.url
+        : undefined;
+    const heroCoverUrl = draftLoaded
+      ? (playlistDraft.coverMediaFileId
+          ? (pendingCoverUrl || detail?.coverUrl || selectedPlaylist?.coverUrl)
+          : undefined)
+      : selectedPlaylist?.coverUrl;
+    const heroVisibility = (draftLoaded ? playlistDraft.visibility : selectedPlaylist?.visibility) || 'PUBLIC';
+    const heroStatus = (draftLoaded ? playlistDraft.status : selectedPlaylist?.status) || 'ACTIVE';
+    const isFeaturedSelected = selectedPlaylist != null && settings.featuredPlaylistId === selectedPlaylist.id;
+    const canSaveDraftNow = canSavePlaylistDraft({
+      selectedPlaylistId,
+      loadedPlaylistId: playlistDraftSourceId,
+      isFetching: playlistDetailQuery.isFetching,
+      isSaving: isPlaylistWriteBusy,
+    }) && Boolean(playlistDraft.name.trim());
+    const addTracksToggle = (
+      <button
+        type="button"
+        onClick={() => setAddTracksPanelOpen((value) => !value)}
+        className={textButtonClass('primary')}
+        aria-expanded={addTracksPanelOpen}
+      >
+        <ListPlus className="h-4 w-4" />
+        添加歌曲
+      </button>
+    );
 
     return (
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <div className={cn(panelClass, 'space-y-3')}>
-            <p className="text-sm font-bold text-[var(--ink-primary)]">创建歌单</p>
-            <input value={playlistForm.name} onChange={(e) => setPlaylistForm((f) => ({ ...f, name: e.target.value }))} className={inputClass()} />
-            <input value={playlistForm.description} onChange={(e) => setPlaylistForm((f) => ({ ...f, description: e.target.value }))} className={inputClass()} placeholder="歌单描述" />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <TogglePill checked={playlistForm.displayOnProfile} label="个人卡片" onClick={() => setPlaylistForm((f) => ({ ...f, displayOnProfile: !f.displayOnProfile }))} />
-              <TogglePill checked={playlistForm.carouselEnabled} label="轮播" onClick={() => setPlaylistForm((f) => ({ ...f, carouselEnabled: !f.carouselEnabled }))} />
-              <TogglePill checked={playlistForm.randomEnabled} label="随机" onClick={() => setPlaylistForm((f) => ({ ...f, randomEnabled: !f.randomEnabled }))} />
-              <TogglePill checked={playlistForm.isFavorite} label="喜爱歌单" onClick={() => setPlaylistForm((f) => ({ ...f, isFavorite: !f.isFavorite }))} />
-            </div>
-            <button type="button" onClick={() => createPlaylistMutation.mutate()} className={textButtonClass('primary')} disabled={isPlaylistWriteBusy}>
-              <Plus className="h-4 w-4" />
-              创建歌单
-            </button>
-          </div>
-
-          <div className={shellClass}>
-            <AdminSectionHeader
-              icon={<ListMusic className="h-4 w-4" />}
-              title="歌单列表"
-              aside={(
-                <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPlaylistFavoriteFilter((value) => value === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
-                    aria-pressed={playlistFavoriteFilter === 'FAVORITE'}
-                    className={cn(
-                      'inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
-                      playlistFavoriteFilter === 'FAVORITE'
-                        ? 'bg-[color-mix(in_oklch,#ec496f_12%,transparent)] text-[#ec496f]'
-                        : 'bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
-                    )}
-                  >
-                    <Heart className={cn('h-3.5 w-3.5', playlistFavoriteFilter === 'FAVORITE' && 'fill-current')} />
-                    只看喜爱
-                  </button>
-                  <AdminSectionCount>{visiblePlaylists.length}/{playlists.length} 个</AdminSectionCount>
-                </span>
-              )}
-            />
-            <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-              {visiblePlaylists.length === 0 ? (
-                <div className="p-4 text-sm leading-6 text-[var(--ink-muted)]">
-                  {playlistFavoriteFilter === 'FAVORITE'
-                    ? '还没有喜爱歌单。可取消筛选，或点歌单右侧心形按钮加入喜爱。'
-                    : '暂无歌单。'}
-                </div>
-              ) : visiblePlaylists.map((playlist) => {
-                const displayedFavorite = playlist.id === playlistDraftSourceId
-                  ? Boolean(playlistDraft.isFavorite)
-                  : Boolean(playlist.isFavorite);
-                const favoritePending = playlistFavoriteMutation.isPending
-                  && playlistFavoriteMutation.variables?.id === playlist.id;
-                return (
-                <div
-                  key={playlist.id}
-                  className={cn(
-                    'flex w-full items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)]',
-                    selectedPlaylistId === playlist.id && 'bg-[color-mix(in_oklch,var(--aurora-1)_7%,transparent)]'
-                  )}
-                >
-                  {/* 左侧选择区改回原生 <button> —— 不再用 role=button 容器套子按钮(ARIA 禁止嵌套交互控件);原生按钮自带 Enter/Space 键盘支持 */}
-                  <button
-                    type="button"
-                    onClick={() => requestPlaylistSelection(playlist.id)}
-                    aria-pressed={selectedPlaylistId === playlist.id}
-                    className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-[var(--ink-primary)]">{playlist.name}</span>
-                      {settings.featuredPlaylistId === playlist.id && (
-                        <span className={cn(
-                          'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
-                          settings.enabled
-                            ? 'bg-[color-mix(in_oklch,var(--signal-success)_16%,transparent)] text-[var(--signal-success)]'
-                            : 'bg-[color-mix(in_oklch,var(--signal-warn)_16%,transparent)] text-[var(--signal-warn)]'
-                        )}>
-                          <Radio className="h-3 w-3" />
-                          {settings.enabled ? '公开中' : '已选·未启用'}
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-1 block text-xs text-[var(--ink-muted)]">{playlist.trackCount} 首</span>
-                  </button>
-                  <span className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (
-                          playlist.id === playlistDraftSourceId
-                          && playlistDraftDirty
-                        ) {
-                          updatePlaylistDraft((draft) => ({
-                            ...draft,
-                            isFavorite: !draft.isFavorite,
-                          }));
-                          return;
-                        }
-                        playlistFavoriteMutation.mutate(playlist);
-                      }}
-                      className={iconButtonClass(displayedFavorite)}
-                      disabled={isPlaylistWriteBusy}
-                      aria-pressed={displayedFavorite}
-                      aria-label={displayedFavorite ? `取消喜爱歌单「${playlist.name}」` : `喜爱歌单「${playlist.name}」`}
-                      title={
-                        playlist.id === playlistDraftSourceId && playlistDraftDirty
-                          ? '收藏状态会随当前歌单草稿一起保存'
-                          : displayedFavorite
-                            ? '取消喜爱'
-                            : '加入喜爱'
-                      }
-                    >
-                      {favoritePending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Heart className={cn('h-4 w-4', displayedFavorite && 'fill-current text-[#ec496f]')} />
-                      )}
-                    </button>
-                    {settings.featuredPlaylistId !== playlist.id && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          publishPlaylist(playlist.id);
-                        }}
-                        className={iconButtonClass(false, 'primary')}
-                        title={
-                          playlist.id === playlistDraftSourceId && playlistDraftDirty
-                            ? '请先保存当前歌单的修改'
-                            : '设为公开展示并启用公开播放器'
-                        }
-                        aria-label={`将「${playlist.name}」设为公开展示`}
-                        disabled={
-                          isPlaylistWriteBusy
-                          || isSettingsWriteBusy
-                          || !settingsQuery.data
-                          || (playlist.id === playlistDraftSourceId && playlistDraftDirty)
-                        }
-                      >
-                        {publishPlaylistMutation.isPending && publishPlaylistMutation.variables?.playlistId === playlist.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Radio className="h-4 w-4" />
-                        )}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setPendingDelete({ kind: 'playlist', playlist });
-                      }}
-                      className={iconButtonClass(false, 'danger')}
-                      disabled={isPlaylistWriteBusy || isSettingsWriteBusy}
-                      aria-label={`删除歌单「${playlist.name}」`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </span>
-                </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <PlaylistRail
+          playlists={visiblePlaylists}
+          totalCount={playlists.length}
+          loading={playlistFavoriteFilter === 'FAVORITE' ? favoritePlaylistsQuery.isLoading : playlistsQuery.isLoading}
+          selectedId={selectedPlaylistId}
+          favoriteFilter={playlistFavoriteFilter}
+          onToggleFavoriteFilter={() => setPlaylistFavoriteFilter((value) => value === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
+          onSelect={requestPlaylistSelection}
+          featuredPlaylistId={settings.featuredPlaylistId}
+          featuredEnabled={Boolean(settings.enabled)}
+          writeBusy={isPlaylistWriteBusy || isSettingsWriteBusy}
+          settingsReady={Boolean(settingsQuery.data)}
+          favoritePendingId={playlistFavoriteMutation.isPending ? (playlistFavoriteMutation.variables?.id ?? null) : null}
+          publishPendingId={publishPlaylistMutation.isPending ? (publishPlaylistMutation.variables?.playlistId ?? null) : null}
+          draftSourceId={playlistDraftSourceId}
+          draftDirty={playlistDraftDirty}
+          draftFavorite={Boolean(playlistDraft.isFavorite)}
+          onToggleFavoriteDraft={() => updatePlaylistDraft((draft) => ({ ...draft, isFavorite: !draft.isFavorite }))}
+          onToggleFavorite={(playlist) => playlistFavoriteMutation.mutate(playlist)}
+          onPublish={publishPlaylist}
+          onDelete={(playlist) => setPendingDelete({ kind: 'playlist', playlist })}
+          creating={createPlaylistMutation.isPending}
+          onCreate={(name) => createPlaylistMutation.mutateAsync(name)}
+        />
 
         <div className={shellClass}>
-          <AdminSectionHeader
-            icon={<Headphones className="h-4 w-4" />}
-            title={selectedPlaylist?.name || '选择歌单'}
-            description={selectedPlaylist ? '歌单排序独立于媒体库和曲库排序' : '创建或选择一个歌单后开始编排'}
-            aside={selectedPlaylist ? (
-              <span className="flex items-center gap-2">
-                {playlistDraftDirty && playlistDraftSourceId === selectedPlaylistId && (
-                  <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] px-2 py-1 text-[10px] font-bold text-[var(--signal-warn)]">
-                    未保存
-                  </span>
-                )}
-                <AdminSectionCount>{selectedPlaylist.trackCount} 首</AdminSectionCount>
-              </span>
-            ) : null}
-          />
-          {selectedPlaylist ? (
-            playlistDetailQuery.isError ? (
-              <div className="p-6 text-sm text-[var(--ink-muted)]" role="alert">
-                <p className="font-semibold text-[var(--ink-primary)]">歌单详情载入失败</p>
-                <p className="mt-1">为避免把其他歌单的草稿误存到当前歌单，编辑区已锁定。</p>
-                <button
-                  type="button"
-                  onClick={() => void playlistDetailQuery.refetch()}
-                  className={cn(textButtonClass('primary'), 'mt-4')}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  重新载入
-                </button>
+          {!selectedPlaylist ? (
+            <div className="flex min-h-80 flex-col items-center justify-center gap-1.5 p-8 text-center">
+              <div className="mb-3 h-20 w-20 overflow-hidden rounded-[var(--radius-lg)] opacity-90 shadow-[0_16px_36px_-16px_color-mix(in_oklch,var(--aurora-1)_40%,transparent)] ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]">
+                <MusicCoverThumb identity="aether:playlist-stage" alt="" />
               </div>
-            ) : playlistDraftSourceId !== selectedPlaylistId ? (
-              <div className="flex min-h-48 items-center justify-center p-6 text-center" role="status">
-                <div>
-                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-[var(--aurora-1)]" />
-                  <p className="mt-3 text-sm font-semibold text-[var(--ink-primary)]">正在切换到「{selectedPlaylist.name}」</p>
-                  <p className="mt-1 text-xs text-[var(--ink-muted)]">载入完成前不会显示或保存上一份歌单草稿。</p>
+              <p className="text-sm font-semibold text-[var(--ink-primary)]">选择一个歌单开始策展</p>
+              <p className="max-w-72 text-xs leading-5 text-[var(--ink-muted)]">在左侧选择或新建歌单;排序、封面与公开状态都在这里打理。</p>
+            </div>
+          ) : playlistDetailQuery.isError ? (
+            <div className="p-6 text-sm text-[var(--ink-muted)]" role="alert">
+              <p className="font-semibold text-[var(--ink-primary)]">歌单详情载入失败</p>
+              <p className="mt-1">为避免把其他歌单的草稿误存到当前歌单，编辑区已锁定。</p>
+              <button
+                type="button"
+                onClick={() => void playlistDetailQuery.refetch()}
+                className={cn(textButtonClass('primary'), 'mt-4')}
+              >
+                <RefreshCw className="h-4 w-4" />
+                重新载入
+              </button>
+            </div>
+          ) : !draftLoaded ? (
+            <div role="status" aria-label={`正在载入「${selectedPlaylist.name}」`}>
+              <div className="border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4 min-[769px]:p-5">
+                <div className="flex gap-4 min-[769px]:gap-5">
+                  <Skeleton variant="rectangular" width={112} height={112} className="shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-2.5 py-1">
+                    <Skeleton width={128} height={10} />
+                    <Skeleton width="42%" height={24} />
+                    <Skeleton width="30%" height={12} />
+                    <div className="flex gap-2 pt-2">
+                      <Skeleton width={108} height={40} className="rounded-[var(--radius-md)]" />
+                      <Skeleton width={100} height={40} className="rounded-[var(--radius-md)]" />
+                    </div>
+                  </div>
                 </div>
               </div>
-            ) : (
+              <PlaylistTrackTableSkeleton />
+            </div>
+          ) : (
             <>
-              <div className="space-y-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4">
-                <CoverPicker
-                  ownerKey={`playlist:${selectedPlaylist.id}`}
-                  title={playlistDraft.name || selectedPlaylist.name}
-                  value={playlistDraft.coverMediaFileId}
-                  currentUrl={playlistDraft.coverMediaFileId ? (detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
-                  items={coverImagesQuery.data?.list ?? []}
-                  loading={coverImagesQuery.isLoading}
-                  uploadFolderId={settings.mediaFolderId}
-                  onChange={(media) => updatePlaylistDraft((draft) => ({
-                    ...draft,
-                    coverMediaFileId: media?.id,
-                  }))}
+              {/* Hero:歌单是一件作品 —— 封面、标题层级、元信息与主行动,编辑细节收进折叠面板 */}
+              <div className="relative overflow-hidden border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+                <div
+                  className="pointer-events-none absolute inset-0 bg-[linear-gradient(130deg,color-mix(in_oklch,var(--aurora-1)_7%,transparent)_0%,transparent_52%)]"
+                  aria-hidden="true"
                 />
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
-                  <label className="block">
-                    <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌单名称</span>
-                    <input
-                      value={playlistDraft.name}
-                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, name: e.target.value }))}
-                      className={inputClass()}
+                <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:gap-5 min-[769px]:p-5">
+                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius-lg)] shadow-[0_18px_40px_-16px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)] ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] min-[769px]:h-32 min-[769px]:w-32">
+                    <MusicCoverThumb
+                      src={heroCoverUrl}
+                      identity={`playlist:${selectedPlaylist.id}:${selectedPlaylist.name}`}
+                      alt={`歌单「${selectedPlaylist.name}」封面`}
                     />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">描述</span>
-                    <input
-                      value={playlistDraft.description || ''}
-                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, description: e.target.value }))}
-                      className={inputClass()}
-                      placeholder="可选"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
-                    <input
-                      type="number"
-                      value={playlistDraft.sortOrder}
-                      onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, sortOrder: Number(e.target.value) || 0 }))}
-                      className={inputClass()}
-                    />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <TogglePill checked={playlistDraft.displayOnProfile} label="卡片" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
-                  <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
-                  <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
-                  <TogglePill checked={Boolean(playlistDraft.isFavorite)} label="喜爱歌单" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, isFavorite: !draft.isFavorite }))} />
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <Select
-                    value={playlistDraft.visibility || 'PUBLIC'}
-                    onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, visibility: value as MusicPlaylist['visibility'] }))}
-                    options={[
-                      { value: 'PUBLIC', label: '公开' },
-                      { value: 'PRIVATE', label: '私有' },
-                    ]}
-                    ariaLabel="歌单可见性"
-                  />
-                  <Select
-                    value={playlistDraft.status || 'ACTIVE'}
-                    onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, status: value as MusicPlaylist['status'] }))}
-                    options={[
-                      { value: 'ACTIVE', label: '展示' },
-                      { value: 'HIDDEN', label: '隐藏' },
-                    ]}
-                    ariaLabel="歌单状态"
-                  />
-                  <button
-                    type="button"
-                    onClick={saveSelectedPlaylist}
-                    className={textButtonClass('primary')}
-                    disabled={!canSavePlaylistDraft({
-                      selectedPlaylistId,
-                      loadedPlaylistId: playlistDraftSourceId,
-                      isFetching: playlistDetailQuery.isFetching,
-                      isSaving: isPlaylistWriteBusy,
-                    }) || !playlistDraft.name.trim() || !playlistDraftDirty}
-                  >
-                    {updatePlaylistMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                    {playlistDraftDirty ? '保存歌单' : '已保存'}
-                  </button>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      <span className="inline-block h-3 w-0.5 rounded-full bg-[var(--aurora-1)]" aria-hidden="true" />
+                      Playlist
+                      <span>· {heroVisibility === 'PUBLIC' ? '公开' : '私有'}</span>
+                      <span>· {heroStatus === 'ACTIVE' ? '展示' : '隐藏'}</span>
+                      {isFeaturedSelected && (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-bold',
+                          settings.enabled
+                            ? 'bg-[color-mix(in_oklch,var(--signal-success)_14%,transparent)] text-[var(--signal-success)]'
+                            : 'bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] text-[var(--signal-warn)]'
+                        )}>
+                          <Radio className="h-3 w-3" />
+                          {settings.enabled ? '公开中' : '未启用'}
+                        </span>
+                      )}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <h2 className="font-display text-2xl font-bold leading-snug text-[var(--ink-primary)] min-[1100px]:text-3xl">
+                        {heroTitle}
+                      </h2>
+                      {playlistDraftDirty && (
+                        <span className="rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)] px-2 py-1 text-[10px] font-bold text-[var(--signal-warn)]">
+                          未保存
+                        </span>
+                      )}
+                    </div>
+                    {heroDescription ? (
+                      <p className="mt-1 line-clamp-1 text-sm text-[var(--ink-secondary)]">{heroDescription}</p>
+                    ) : (
+                      <p className="mt-1 text-sm text-[var(--ink-subtle)]">还没有描述 —— 在「编辑详情」里补一句。</p>
+                    )}
+                    <p className="tnum mt-1.5 text-xs text-[var(--ink-muted)]">
+                      {isPlaylistMemberTrackLoading ? selectedPlaylist.trackCount : detailTracks.length} 首
+                      {totalDurationSeconds > 0 ? ` · ${formatClock(totalDurationSeconds)}` : ''}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 min-[769px]:mt-auto min-[769px]:pt-3">
+                      <button
+                        type="button"
+                        onClick={() => (queueIsThisPlaylist ? void togglePlayback() : playFromIndex(0))}
+                        className={solidButtonClass()}
+                        disabled={detailTracks.length === 0 || isPlaylistMemberTrackLoading}
+                      >
+                        {playingThisPlaylist
+                          ? <Pause className="h-4 w-4 fill-current" />
+                          : <Play className="h-4 w-4 fill-current" />}
+                        {playingThisPlaylist ? '暂停' : '播放全部'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={playShuffled}
+                        className={textButtonClass()}
+                        disabled={detailTracks.length === 0 || isPlaylistMemberTrackLoading}
+                        title="从随机一首开始播放"
+                      >
+                        <Shuffle className="h-4 w-4" />
+                        随机播放
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlaylistEditOpen((value) => !value)}
+                        className={textButtonClass()}
+                        aria-expanded={playlistEditOpen}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        {playlistEditOpen ? '收起编辑' : '编辑详情'}
+                      </button>
+                      {playlistDraftDirty && (
+                        <button
+                          type="button"
+                          onClick={saveSelectedPlaylist}
+                          className={textButtonClass('primary')}
+                          disabled={!canSaveDraftNow}
+                        >
+                          {updatePlaylistMutation.isPending
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <RotateCw className="h-4 w-4" />}
+                          保存修改
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] p-4 md:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[minmax(180px,0.75fr)_minmax(0,1fr)]">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]" />
-                    <input
-                      value={playlistTrackKeyword}
-                      onChange={(event) => setPlaylistTrackKeyword(event.target.value)}
-                      className={inputClass('pl-9')}
-                      placeholder="搜索曲库歌曲、艺术家或文件名"
-                      aria-label="搜索可加入歌单的歌曲"
-                    />
-                  </div>
-                  <Select
-                    value={trackToAdd}
-                    onValueChange={setTrackToAdd}
-                    options={playlistTrackOptions}
-                    placeholder={playlistTrackPlaceholder}
-                    disabled={playlistTrackPickerDisabled}
-                    disabledHint={playlistTrackPlaceholder}
-                    prefix={<Music2 />}
-                    ariaLabel="选择歌曲加入歌单"
-                  />
-                  <p className="text-xs leading-5 text-[var(--ink-muted)] lg:col-span-2">
-                    {playlistTrackStatusText}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => selectedPlaylistId && trackToAdd && playlistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: Number(trackToAdd) })}
-                  className={textButtonClass('primary')}
-                  disabled={!trackToAdd || playlistTrackMutation.isPending || reorderPlaylistMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending || playlistTrackPickerDisabled}
-                >
-                  <Plus className="h-4 w-4" />
-                  加入歌单
-                </button>
-              </div>
-              <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
-                {playlistDetailQuery.isLoading || isPlaylistMemberTrackLoading ? (
-                  <div className="p-6 text-sm text-[var(--ink-muted)]">正在加载歌单歌曲...</div>
-                ) : detailTracks.length === 0 ? (
-                  <div className="p-6 text-sm text-[var(--ink-muted)]">这个歌单还没有歌曲。</div>
-                ) : detailTracks.map((track, index) => (
-                  <div key={track.id} className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-                    <span className="tnum text-xs font-semibold text-[var(--ink-muted)]">{index + 1}</span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--ink-primary)]">{track.title}</p>
-                      <p className="mt-1 truncate text-xs text-[var(--ink-muted)]">{track.artist || '未知艺术家'} · {track.media?.originalName || '未加载媒体文件名'}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => selectedPlaylistId && playTracks(
-                          detailTracks,
-                          index,
-                          { type: 'playlist', playlistId: selectedPlaylistId },
-                          selectedPlaylist?.name || '歌单播放'
-                        )}
-                        className={iconButtonClass(false, 'primary')}
-                        aria-label={`从「${track.title}」开始播放歌单`}
-                        title="试听"
-                      >
-                        <Play className="h-4 w-4" />
-                      </button>
-                      <div className="hidden items-center gap-2 min-[769px]:flex">
-                        <button type="button" onClick={() => moveTrack(index, -1)} className={iconButtonClass()} disabled={index === 0 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending} aria-label={`将「${track.title}」上移`} title="上移">
-                          <ArrowUp className="h-4 w-4" strokeWidth={1.9} />
-                        </button>
-                        <button type="button" onClick={() => moveTrack(index, 1)} className={iconButtonClass()} disabled={index === detailTracks.length - 1 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending} aria-label={`将「${track.title}」下移`} title="下移">
-                          <ArrowDown className="h-4 w-4" strokeWidth={1.9} />
-                        </button>
+              <AnimatePresence initial={false}>
+                {playlistEditOpen && (
+                  <motion.div
+                    key="playlist-edit"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={transition.quick}
+                    className="overflow-hidden border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]"
+                  >
+                    <div className="space-y-4 p-4">
+                      <CoverPicker
+                        ownerKey={`playlist:${selectedPlaylist.id}`}
+                        title={playlistDraft.name || selectedPlaylist.name}
+                        value={playlistDraft.coverMediaFileId}
+                        currentUrl={playlistDraft.coverMediaFileId ? (pendingCoverUrl || detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
+                        items={coverImagesQuery.data?.list ?? []}
+                        loading={coverImagesQuery.isLoading}
+                        uploadFolderId={settings.mediaFolderId}
+                        onChange={(media) => {
+                          setPlaylistCoverPreview(
+                            media ? { mediaId: media.id, url: getMediaUrl(media) } : null
+                          );
+                          updatePlaylistDraft((draft) => ({
+                            ...draft,
+                            coverMediaFileId: media?.id,
+                          }));
+                        }}
+                      />
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+                        <label className="block">
+                          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">歌单名称</span>
+                          <input
+                            value={playlistDraft.name}
+                            onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, name: e.target.value }))}
+                            className={inputClass()}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">描述</span>
+                          <input
+                            value={playlistDraft.description || ''}
+                            onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, description: e.target.value }))}
+                            className={inputClass()}
+                            placeholder="可选"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">排序</span>
+                          <input
+                            type="number"
+                            value={playlistDraft.sortOrder}
+                            onChange={(e) => updatePlaylistDraft((draft) => ({ ...draft, sortOrder: Number(e.target.value) || 0 }))}
+                            className={inputClass()}
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <TogglePill checked={playlistDraft.displayOnProfile} label="个人卡片" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, displayOnProfile: !draft.displayOnProfile }))} />
+                        <TogglePill checked={playlistDraft.carouselEnabled} label="轮播" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, carouselEnabled: !draft.carouselEnabled }))} />
+                        <TogglePill checked={playlistDraft.randomEnabled} label="随机" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, randomEnabled: !draft.randomEnabled }))} />
+                        <TogglePill checked={Boolean(playlistDraft.isFavorite)} label="喜爱歌单" onClick={() => updatePlaylistDraft((draft) => ({ ...draft, isFavorite: !draft.isFavorite }))} />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                        <Select
+                          value={playlistDraft.visibility || 'PUBLIC'}
+                          onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, visibility: value as MusicPlaylist['visibility'] }))}
+                          options={[
+                            { value: 'PUBLIC', label: '公开' },
+                            { value: 'PRIVATE', label: '私有' },
+                          ]}
+                          ariaLabel="歌单可见性"
+                        />
+                        <Select
+                          value={playlistDraft.status || 'ACTIVE'}
+                          onValueChange={(value) => updatePlaylistDraft((draft) => ({ ...draft, status: value as MusicPlaylist['status'] }))}
+                          options={[
+                            { value: 'ACTIVE', label: '展示' },
+                            { value: 'HIDDEN', label: '隐藏' },
+                          ]}
+                          ariaLabel="歌单状态"
+                        />
                         <button
                           type="button"
-                          onClick={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
-                          className={iconButtonClass(false, 'danger')}
-                          disabled={reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
-                          aria-label={`从歌单移除「${track.title}」`}
-                          title="从歌单移除"
+                          onClick={saveSelectedPlaylist}
+                          className={textButtonClass('primary')}
+                          disabled={!canSaveDraftNow || !playlistDraftDirty}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          {updatePlaylistMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                          {playlistDraftDirty ? '保存歌单' : '已保存'}
                         </button>
                       </div>
-                      <PlaylistTrackActionMenu
-                        trackTitle={track.title}
-                        moveUpDisabled={index === 0 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
-                        moveDownDisabled={index === detailTracks.length - 1 || reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
-                        removeDisabled={reorderPlaylistMutation.isPending || playlistTrackMutation.isPending || removePlaylistTrackMutation.isPending || deletePlaylistMutation.isPending}
-                        onMoveUp={() => moveTrack(index, -1)}
-                        onMoveDown={() => moveTrack(index, 1)}
-                        onRemove={() => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId: track.id })}
-                      />
                     </div>
-                  </div>
-                ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-4 py-2">
+                <p className="min-w-0 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  曲目 · <span className="tnum">{detailTracks.length}</span>
+                  <span className="ml-2 hidden normal-case tracking-normal min-[900px]:inline">
+                    拖拽调序 —— 歌单顺序独立于媒体库与曲库
+                  </span>
+                </p>
+                {addTracksToggle}
               </div>
+
+              <AnimatePresence initial={false}>
+                {addTracksPanelOpen && (
+                  <AddTracksPanel
+                    key="add-tracks"
+                    keyword={playlistTrackKeyword}
+                    onKeywordChange={setPlaylistTrackKeyword}
+                    candidates={playlistTrackCandidates}
+                    existingIds={existingTrackIds}
+                    statusText={addTracksStatusText}
+                    fetching={playlistTrackCandidatesQuery.isFetching}
+                    memberCheckPending={isPlaylistMemberTrackLoading || isPlaylistMemberTrackUnavailable}
+                    addingTrackId={playlistTrackMutation.isPending ? (playlistTrackMutation.variables?.trackId ?? null) : null}
+                    busy={isPlaylistWriteBusy}
+                    onAdd={(trackId) => selectedPlaylistId && playlistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId })}
+                    onClose={() => setAddTracksPanelOpen(false)}
+                  />
+                )}
+              </AnimatePresence>
+
+              <PlaylistTrackTable
+                tracks={detailTracks}
+                loading={playlistDetailQuery.isLoading || isPlaylistMemberTrackLoading}
+                busy={trackActionsBusy}
+                nowPlayingTrackId={nowPlayingTrackId}
+                isPlaying={isPlaying}
+                onPlayAt={playFromIndex}
+                onTogglePlayback={() => void togglePlayback()}
+                onCommitOrder={commitTrackOrder}
+                onMove={moveTrack}
+                onRemove={(trackId) => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId })}
+              />
             </>
-            )
-          ) : (
-            <div className="p-6 text-sm text-[var(--ink-muted)]">选择左侧歌单后可以加入歌曲、试听和调整排序。</div>
           )}
         </div>
       </div>
@@ -4016,16 +3859,27 @@ export default function MusicPage() {
                 type="button"
                 onClick={() => {
                   if (headerPlaybackTracks.length === 0) return;
-                  if (activeTab === 'playlists' && selectedPlaylistId) {
-                    playTracks(
-                      headerPlaybackTracks,
-                      0,
-                      { type: 'playlist', playlistId: selectedPlaylistId },
-                      selectedPlaylist?.name || '歌单播放'
-                    );
+                  // 与 Hero 主按钮同一语义:队列已是当前来源就恢复播放,
+                  // 否则暂停后点这里会从第一首重开,两颗按钮行为互相矛盾。
+                  const headerSource: AdminMusicQueueSource = activeTab === 'playlists' && selectedPlaylistId
+                    ? { type: 'playlist', playlistId: selectedPlaylistId }
+                    : { type: 'library' };
+                  const sameQueue = currentTrack != null
+                    && queueSource.type === headerSource.type
+                    && (headerSource.type !== 'playlist'
+                      || (queueSource.type === 'playlist' && queueSource.playlistId === headerSource.playlistId));
+                  if (sameQueue) {
+                    void togglePlayback();
                     return;
                   }
-                  playTracks(headerPlaybackTracks, 0, { type: 'library' }, '歌曲库 · 当前页');
+                  playTracks(
+                    headerPlaybackTracks,
+                    0,
+                    headerSource,
+                    headerSource.type === 'playlist'
+                      ? (selectedPlaylist?.name || '歌单播放')
+                      : '歌曲库 · 当前页'
+                  );
                 }}
                 className="admin-module-action-button"
                 disabled={headerPlaybackTracks.length === 0}
