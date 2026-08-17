@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 知识工作台「聚合重铸」：统一检索 · 知识脉搏 · 来源托盘 (2026-08-17, branch claude/knowledge-workbench-design-q8n7rq)
+
+把 `/intelligence` 从「目标表单 + 交接」补齐为名副其实的聚合工作台：资产状态、跨域检索、来源治理、任务交接四件事同屏完成。零后端改动 —— 全部复用既有端点（`kbs/:id/retrieve` 向量检索、`atlas/search` 关键词+语义、`notes?keyword` 关键词、`atlas/graph/health` 图谱统计）。
+
+- **统一检索（新 `UnifiedRetrievalPanel` + 纯模型 `unifiedRetrievalModel.ts`，17 条单测）：** 一句话并行探询三条链路 —— 就绪知识库逐库向量检索（按最近活跃取前 6 个，超出上限如实计数展示）、Atlas 语义/关键词（知识点带证据预览与相似度）、笔记关键词。命中归一为「知识原子」卡片：mono 出处眉标 + 相似度墨条（只信任 0..1 量纲，未知量纲不显示臆造数字）+ 三个动作（打开原文 / 固定为来源 / 就此提问）。泳道级降级：任何一路失败都转成可见状态（部分库失败点名、语义退化提示、全链路失败与「无结果」严格区分）。`/` 聚焦检索框，Enter 检索，请求带竞态序号守卫。
+- **打通 atlas-kp 契约缺口：** handoff 与灵境侧本就支持 `atlas-kp` refs（上限 12），但工作台一直没有选择入口 —— 现在检索命中的知识点可直接固定进本次任务来源，与知识库引用同池治理（跨类限额、去重、刷新时保留）。
+- **知识脉搏（新 `KnowledgePulse`）：** 四块 mono/tabular-nums 指标 —— 可检索片段（含就绪库数）、资料就绪率（墨条 + 失败待处理警示）、知识图谱（活跃知识点/关系/孤点，统计不可用时如实显示占位而非伪造 0）、笔记与读物。
+- **来源托盘（右栏新面板）：** 「指定来源」模式下已固定 refs 以可移除芯片呈现（scaleIn 入场 + layout 重排），限额实时显示 `知识库 n/10 · 知识点 m/12`；「来源就绪度」面板改为逐库状态行（就绪点 + 片段数/索引进度）。
+- **动效编排（全部走 `@aetherblog/ui` motion 预设，零裸 bezier/spring）：** 页面区块 stagger 入场；compose↔review 以 `AnimatePresence mode="wait"` 切换；方案步骤连线 scaleY 生长 + 逐步 stagger；固定来源按钮 `spring.precise` 按压；来源清单高度展开动画；`useReducedMotion` 全程降级为纯淡入。
+- **合规清理：** 页内硬编码路由字面量全部改走 `INTELLIGENCE_ROUTES` 契约；`isKnowledgeBaseQueryable` 下沉到 `unifiedRetrievalModel.ts` 并由页面 re-export（既有模型测试导入路径不变）；准备中的知识库在来源清单显示索引进度墨条。
+- **对抗式评审采纳 18 项**（Codex 额度耗尽，本轮由 6 维度 finder + 每条 2 名独立反驳者的对抗验证补位；1 条被驳回不改）：
+  - **契约（最高危）：** atlas-kp 的 `pinRef.label` 直接用未截断的 `kp.title` —— 后端标题为 `VARCHAR(300)` 无长度校验，而 handoff 的 `normalizeRef` 强制 label ≤160。长标题知识点能 pin 成功、能生成方案，却在「确认并进入灵境」时整条交接被拒且不指明是哪个来源。改为在铸造 ref 处统一 `safeRefLabel`（截断 + 空标题回退 `知识点 #id`），恢复本文件自述的「pin 出来的 ref 必然可交接」不变量；知识库 label 同样加固。
+  - **失败可见性：** ① 三条泳道未全失败但零命中时，通用空态「换一种问法」会吞掉泳道的 error/degraded/skipped 说明（此时正确动作是重试而非换问法）—— 新增 `isCleanEmptyResult`，只有全部泳道「成功执行且确实无话可说」才给换问法引导，否则渲染泳道自述；② 笔记链路用 `res.data?.list ?? []` 把后端业务失败（HTTP 200 + `data:null`）映射成「你的笔记里确实没有」—— 与 kb/atlas 对齐改 `res.data` 守卫。
+  - **原文保真：** `stripMarkdownLite` 把单个 `~` / 词内 `_` 当强调标记剥除，「3~5 天」被改写成「35 天」、`get_user_name` 被拼成 `getusername`，篡改后的文本还会经「就此提问」伪装成原文引文送进灵境 —— 改为成对同种标记 + 删除线必须 `~~` + 下划线不作用于词内 + 内容不跨行；`clampText` 按 UTF-16 切分会切开 surrogate pair 留下「�」，改为整字符边界回退。
+  - **来源模式语义：** `togglePinnedRef` 对 pin/unpin 无差别地把 sourceMode 强制切到 `selected` —— 取消最后一个固定会留下 `selected` + 空 refs 的卡死态，把用户显式选的「自动」/「不用来源」永久改掉。改为仅 pin 时切换并记住来处，撤销最后一个 pin 时原路还原；手动改模式即放弃该承诺；模式变化在检索面板就近给出可关闭提示（原本唯一反馈在 <xl 视口沉到页面底部）。
+  - **输入安全：** 「就此提问」整体覆盖用户已手写的目标（上限 4000 字，无确认无撤销）—— 改为非空且非模板时追加而不覆盖，并保留用户已选的任务类型；`buildAskSeed` 改为按份额分别裁剪标题/出处/引文，避免整体截断把引文与「我想确认:」脚手架一起吞掉。
+  - **可达性：** `/` 快捷键在 react-hotkeys-hook v5 下永不触发（v5 按 `event.code` 匹配）→ 改 `'slash'`，与仓库既有 `useMediaKeyboardShortcuts` 一致；泳道筛选补 `aria-pressed`；新增常驻 `role="status"` live region（原 `aria-live` 随结果挂载，初次内容永远静默）；检索中改 `aria-disabled` 保住键盘焦点；骨架容器改 `aria-hidden`。
+  - **触控与对比度：** `.intelligence-atom-action` / `.intelligence-lane-filter` 30.4px、提交按钮 36px 低于 `AGENTS.md` 的 44×44px —— 移动端放大、≥640px 回到紧凑（沿用仓库 `min-h-11 sm:min-h-9` 先例），托盘芯片同步；原子动作文字 `--ink-muted` 在暗色卡片上仅约 3.3:1，改 `--ink-secondary`（约 7:1）。
+  - **规范合规：** `stagger(70)/(55)/(45)` 超出动效规范硬禁忌「列表项 stagger ≤40ms」→ 一律收敛到 ≤40ms；「就此提问」的 60ms `setTimeout` 与 `AnimatePresence mode="wait"` 竞态（从 review 态进入时 composer 尚未挂载，聚焦静默失败且无清理）→ 改为 effect 驱动；知识脉搏的读物分母被 `CARRIER_LOAD_LIMIT=24` 截断却当作资产总览，命中上限时改为「最近 N 份读物中 M 份可读」的诚实文案。
+  - **驳回 1 条：** 托盘移除按钮 21.6px「违反 WCAG 2.5.8」—— 该 SC 的 Spacing 例外在两个轴向都以数量级余量满足；但仓库另有 44px 硬约定，仍按约定在移动端放大了芯片与按钮。
+- **验证：** admin 全量 375 测试通过（新增 25 条统一检索模型单测，其中 8 条为本轮修复的回归锁）、`tsc --noEmit` 干净、ESLint 0 告警、`pnpm design-system:check` 保持 0 error、`vite build` 通过。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无新增 API / DB / 共享组件，`docs/architecture.md` 与 `.claude/docs/*` 无需变更。
+
 ### Changed — AI 协同写作工坊精修:真流式对话 / 结果预览卡 / 签名时刻 #5「Ink Bleed」落地 (2026-08-17, branch claude/ai-writing-design-polish-apdkb6)
 
 对标主流 AI 辅助创作工具(Notion AI / 飞书),把 `/posts/:id/ai-writing` 工作区从「粗略可用」升级到设计系统签名级交互。零新增色相/字号/曲线,全部消费既有 Codex token 与 `@aetherblog/ui` 动效预设。
