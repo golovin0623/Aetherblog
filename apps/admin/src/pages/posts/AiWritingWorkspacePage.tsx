@@ -40,6 +40,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
 import { spring, transition } from '@aetherblog/ui';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { padBlockInsert, relocateOriginal } from '@/lib/editorSelection';
 
 // Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
@@ -199,11 +200,11 @@ export function AiWritingWorkspacePage() {
   // 选区 AI 工具:结果先预览再落笔
   const [toolPreview, setToolPreview] = useState<AiToolPreviewState | null>(null);
   const toolSeqRef = useRef(0);
+  /** 正文写入互斥锁 —— 落笔路径含 await 快照,无锁会被双击/连按回车重入。 */
+  const writeLockRef = useRef(false);
 
-  // 保存状态(底部状态栏)
+  // 保存状态(底部状态栏)。isDirty 由指纹派生,见下方 docSignature。
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const mountedRef = useRef(false);
 
   // AI 对话 —— 状态持在页面层,面板开关不丢历史
   const chat = useWritingChat();
@@ -242,7 +243,8 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // 历史管理
+  // 历史管理。useHistoryManager 每次渲染返回新对象字面量,直接进 effect 依赖会
+  // 让防抖/监听每帧重挂 —— 需要长期持有的地方一律走 ref。
   const historyManager = useHistoryManager({
     postId: postId?.toString(),
     onEvent: (event) => {
@@ -252,6 +254,10 @@ export function AiWritingWorkspacePage() {
         setSummary(event.snapshot.summary);
       }
     },
+  });
+  const historyManagerRef = useRef(historyManager);
+  useEffect(() => {
+    historyManagerRef.current = historyManager;
   });
 
   // Ghost Text 编辑器扩展
@@ -345,172 +351,237 @@ export function AiWritingWorkspacePage() {
     void runSelectionTool(toolPreview.toolId, toolPreview.original, toolPreview.range);
   }, [toolPreview, runSelectionTool]);
 
-  // 应用预览结果:优先原选区;若期间文档已变化则按原文重新定位(修复
-  // 旧实现 content.replace 只替换首个匹配的错位问题)
+  // 应用预览结果:优先原选区;若期间文档已变化则按原文重新定位(取最近匹配,
+  // 等距歧义时拒绝落笔 —— 不能退回 indexOf 首个匹配的老 bug)
+  //
+  // 重入保护:落笔前有 await createSnapshot 的真实异步间隙(IndexedDB 写入),
+  // 期间预览卡按钮仍可点(主按钮还被自动聚焦,连按回车即触发)。没有 in-flight
+  // 守卫时,第二次调用会拿着基于旧文档算出的偏移二次 dispatch,把正文改烂。
   const applyToolResult = useCallback(
     async (mode: 'replace' | 'append') => {
       if (!toolPreview || toolPreview.status !== 'ok') return;
+      if (writeLockRef.current) return;
       const view = editorViewRef.current;
       if (!view) {
         toast.error('编辑器未就绪,请改用复制');
         return;
       }
-      const { range, original, result, toolLabel } = toolPreview;
-      const doc = view.state.doc.toString();
-      let { from, to } = range;
-      if (doc.slice(from, to) !== original) {
-        const located = doc.indexOf(original);
-        if (located < 0) {
-          toast.error('原文已被修改,无法定位选区;请改用复制');
+
+      writeLockRef.current = true;
+      setToolPreview((p) => (p ? { ...p, status: 'applying' } : p));
+      try {
+        const { range, original, result, toolLabel } = toolPreview;
+
+        if (postId) {
+          await historyManager.createSnapshot({
+            title,
+            content,
+            summary,
+            source: 'user-edit',
+            sourceName: `AI ${toolLabel}前`,
+          });
+        }
+
+        // 快照落盘期间文档可能又变了 —— 定位必须基于 await 之后的最新文档
+        const located = relocateOriginal(view.state.doc.toString(), original, range);
+        if (located.kind !== 'ok') {
+          toast.error(
+            located.kind === 'ambiguous'
+              ? '原文在正文中多处等距出现,无法唯一定位;请改用复制'
+              : '原文已被修改,无法定位选区;请改用复制'
+          );
+          setToolPreview((p) => (p ? { ...p, status: 'ok' } : p));
           return;
         }
-        from = located;
-        to = located + original.length;
-      }
 
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'user-edit',
-          sourceName: `AI ${toolLabel}前`,
+        const { from, to } = located.range;
+        const insert = mode === 'replace' ? result : `${original}\n\n${result}`;
+        view.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + insert.length },
         });
+        const newContent = view.state.doc.toString();
+        setContent(newContent);
+
+        if (postId) {
+          await historyManager.createSnapshot({
+            title,
+            content: newContent,
+            summary,
+            source: 'ai-suggestion',
+            sourceName: `AI ${toolLabel}`,
+          });
+        }
+
+        setToolPreview(null);
+        view.focus();
+        toast.success(
+          mode === 'replace' ? `已替换为 AI ${toolLabel}结果` : `已在原文后插入 AI ${toolLabel}结果`
+        );
+      } finally {
+        writeLockRef.current = false;
       }
-
-      const insert = mode === 'replace' ? result : `${original}\n\n${result}`;
-      view.dispatch({
-        changes: { from, to, insert },
-        selection: { anchor: from + insert.length },
-      });
-      const newContent = view.state.doc.toString();
-      setContent(newContent);
-
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content: newContent,
-          summary,
-          source: 'ai-suggestion',
-          sourceName: `AI ${toolLabel}`,
-        });
-      }
-
-      setToolPreview(null);
-      view.focus();
-      toast.success(mode === 'replace' ? `已替换为 AI ${toolLabel}结果` : `已在原文后插入 AI ${toolLabel}结果`);
     },
     [toolPreview, postId, historyManager, title, content, summary]
   );
 
   // 把 AI 对话回复插入正文(光标处;编辑器未挂载时追加到文末)
+  //
+  // 回复是块级 Markdown,按需补 \n\n 分隔 —— 裸插到段落中间会让 `## ` / `- `
+  // 因不在行首而失效。同样需要重入守卫:按钮点击后不禁用,双击会插两遍。
   const insertChatReply = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'user-edit',
-          sourceName: '插入 AI 回复前',
-        });
+      if (!trimmed || writeLockRef.current) return;
+
+      writeLockRef.current = true;
+      try {
+        if (postId) {
+          await historyManager.createSnapshot({
+            title,
+            content,
+            summary,
+            source: 'user-edit',
+            sourceName: '插入 AI 回复前',
+          });
+        }
+        const view = editorViewRef.current;
+        if (view) {
+          const { from, to } = view.state.selection.main;
+          const insert = padBlockInsert(view.state.doc.toString(), from, trimmed);
+          view.dispatch({
+            changes: { from, to, insert },
+            selection: { anchor: from + insert.length },
+          });
+          setContent(view.state.doc.toString());
+          view.focus();
+        } else {
+          setContent((current) => {
+            const separator = current.trim() ? '\n\n' : '';
+            return `${current}${separator}${trimmed}`;
+          });
+        }
+        toast.success('已插入 AI 回复');
+      } finally {
+        writeLockRef.current = false;
       }
-      const view = editorViewRef.current;
-      if (view) {
-        const { from, to } = view.state.selection.main;
-        view.dispatch({
-          changes: { from, to, insert: trimmed },
-          selection: { anchor: from + trimmed.length },
-        });
-        setContent(view.state.doc.toString());
-        view.focus();
-      } else {
-        setContent((current) => {
-          const separator = current.trim() ? '\n\n' : '';
-          return `${current}${separator}${trimmed}`;
-        });
-      }
-      toast.success('已插入 AI 回复');
     },
     [content, historyManager, postId, summary, title]
   );
 
-  // 内容变更标脏(首帧初始化不算)
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    setIsDirty(true);
-  }, [title, content, summary]);
+  /**
+   * 保存状态由「当前文档指纹 vs 已落盘指纹」推导,而不是用 effect 打标记。
+   *
+   * 旧写法用 mountedRef 跳过首帧,但 StrictMode 会 setup→cleanup→setup 双跑,
+   * ref 跨模拟卸载保留 → 第二次 setup 直接标脏,页面刚打开就显示「未保存」。
+   * 派生值天然免疫这个问题,也不会出现「保存回调把期间的新编辑误标为已保存」。
+   */
+  const docSignature = useMemo(
+    () => `${title}\u0000${summary}\u0000${content}`,
+    [title, summary, content]
+  );
+  const [savedSignature, setSavedSignature] = useState(docSignature);
+  const isDirty = docSignature !== savedSignature;
 
-  // 自动保存
-  useEffect(() => {
-    if (!postId || !content) return;
+  /**
+   * 落一条快照并同步保存状态。
+   *
+   * `force: true` 是必需的 —— createSnapshot 只按 content 去重(useHistoryManager
+   * :119),只改标题/摘要时会被静默短路,而 UI 却宣告「已保存」,新值从未进快照。
+   * 落盘失败(隐私模式 / 配额耗尽,IndexedDB reject)必须把 dirty 保持住。
+   */
+  const persistSnapshot = useCallback(
+    async (
+      doc: { title: string; content: string; summary: string; signature: string },
+      source: 'auto-save' | 'manual-save',
+      sourceName: string
+    ): Promise<boolean> => {
+      if (!postId) return false;
+      await historyManagerRef.current.createSnapshot({
+        title: doc.title,
+        content: doc.content,
+        summary: doc.summary,
+        source,
+        sourceName,
+        force: true,
+      });
+      setSavedSignature(doc.signature);
+      setLastSavedAt(Date.now());
+      return true;
+    },
+    [postId]
+  );
 
-    const timer = setTimeout(() => {
-      void Promise.resolve(
-        historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'auto-save',
-          sourceName: '自动保存',
-        })
-      ).then(() => {
-        setLastSavedAt(Date.now());
-        setIsDirty(false);
+  // 自动保存 —— 依赖里**不能**放 historyManager:它每次渲染都是新对象,而本 PR
+  // 把流式对话状态提到了页面层,每个 SSE delta 都会重渲染 → 3 秒防抖被无限重置,
+  // 整段流式期间自动保存一次都不会触发(经 ref 取用即可稳定依赖)。
+  useEffect(() => {
+    if (!postId || !content || !isDirty) return;
+
+    const timer = window.setTimeout(() => {
+      void persistSnapshot(
+        { title, content, summary, signature: docSignature },
+        'auto-save',
+        '自动保存'
+      ).catch((error) => {
+        console.error('自动保存失败:', error);
       });
     }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [title, content, summary, postId, historyManager]);
+    return () => window.clearTimeout(timer);
+  }, [title, content, summary, docSignature, isDirty, postId, persistSnapshot]);
 
-  const handleSave = useCallback(() => {
-    if (postId) {
-      historyManager.createSnapshot({
-        title,
-        content,
-        summary,
-        source: 'manual-save',
-        sourceName: '手动保存',
-      });
+  const handleSave = useCallback(async () => {
+    if (!postId) {
+      toast.error('文章尚未创建,无法保存快照');
+      return;
     }
-    setLastSavedAt(Date.now());
-    setIsDirty(false);
-    toast.success('保存成功');
-  }, [postId, historyManager, title, content, summary]);
+    try {
+      await persistSnapshot(
+        { title, content, summary, signature: docSignature },
+        'manual-save',
+        '手动保存'
+      );
+      toast.success('保存成功');
+    } catch (error) {
+      console.error('保存失败:', error);
+      toast.error(extractApiErrorMessage(error, '保存失败,请重试'));
+    }
+  }, [postId, persistSnapshot, title, content, summary, docSignature]);
 
   // 快捷键:⌘Z 撤销 · ⌘⇧Z 重做 · ⌘H 历史 · ⌘S 保存
+  // 处理器经 ref 取用,避免因 historyManager / handleSave 每帧变化而反复重挂监听。
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        historyManager.undo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        historyManagerRef.current.undo();
+      } else if (key === 'z' && e.shiftKey) {
         e.preventDefault();
-        historyManager.redo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        historyManagerRef.current.redo();
+      } else if (key === 'h') {
         e.preventDefault();
         if (isMobile) {
           setMobilePanel((p) => (p === 'history' ? null : 'history'));
         } else {
           setShowHistoryPanel((prev) => !prev);
         }
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      } else if (key === 's') {
         e.preventDefault();
-        handleSave();
+        void handleSaveRef.current();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyManager, isMobile, handleSave]);
+  }, [isMobile]);
 
   const runArticleAuditWorkflow = useCallback(async () => {
     if (!postId) {
@@ -681,7 +752,7 @@ export function AiWritingWorkspacePage() {
                 <Network className="w-[18px] h-[18px]" />
               </MobileIconButton>
               <button
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
               >
                 <Save className="w-3.5 h-3.5" />
@@ -903,7 +974,7 @@ export function AiWritingWorkspacePage() {
             )}
 
             <button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
               className="flex items-center gap-2 h-9 px-4 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium hover:opacity-90 transition-opacity"
             >
               <Save className="w-4 h-4" />

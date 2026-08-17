@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ArrowUp,
   Check,
@@ -70,21 +70,60 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
   const [clearArmed, setClearArmed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const wordCount = useMemo(() => doc.content.replace(/\s+/g, '').length, [doc.content]);
   const lastMessage = chat.messages[chat.messages.length - 1];
 
-  // 自动跟随底部 —— 但用户上翻阅读时(距底 > 120px)不打断
+  /**
+   * 贴底跟随 —— 必须由**渲染尺寸**驱动,不能只随 chat.messages 触发。
+   *
+   * 实际 DOM 高度由子组件 useSmoothStream 的 rAF 循环增长(两次 delta 之间也在长),
+   * 只监听原始消息会出现:(a) 流末尾一次性 flush 的内容落在视口外无人跟随;
+   * (b) 平滑释放期间高度增量被误判成「用户上翻」而永久停跟。
+   * 因此:用 scroll 事件维护 stickToBottom 意图,用 ResizeObserver 在每次高度
+   * 变化时执行跟随。
+   */
+  const stickToBottomRef = useRef(true);
+
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (distance > 120) return;
-    bottomRef.current?.scrollIntoView({ behavior: lastMessage?.pending ? 'auto' : 'smooth', block: 'end' });
-  }, [chat.messages, lastMessage?.pending]);
 
+    const updateStick = () => {
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      stickToBottomRef.current = distance <= 120;
+    };
+    container.addEventListener('scroll', updateStick, { passive: true });
+
+    const follow = () => {
+      if (!stickToBottomRef.current) return;
+      container.scrollTop = container.scrollHeight;
+    };
+    const observer = new ResizeObserver(follow);
+    if (contentRef.current) observer.observe(contentRef.current);
+    observer.observe(container);
+    follow();
+
+    return () => {
+      container.removeEventListener('scroll', updateStick);
+      observer.disconnect();
+    };
+  }, []);
+
+  // 新消息发出时无条件回到底部(用户自己发言即视为回到对话现场)
   useEffect(() => {
+    if (lastMessage?.role !== 'user') return;
+    stickToBottomRef.current = true;
+    const container = scrollRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [lastMessage?.id, lastMessage?.role]);
+
+  // 仅桌面自动聚焦 —— 移动端底抽屉一打开就弹软键盘会把消息区挤没,
+  // 用户往往只是想读上一轮回复。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(min-width: 768px)').matches) return;
     textareaRef.current?.focus();
   }, []);
 
@@ -101,10 +140,14 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
     const value = (text ?? input).trim();
     if (!value || chat.isStreaming) return;
     chat.send(value, text ? { includeContext: true, document: doc } : sendOptions);
-    if (!text) setInput('');
-    requestAnimationFrame(() => {
-      if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    });
+    // 高度复位只属于「清空了输入框」的路径 —— 快捷指令不动用户已写的草稿,
+    // 此时重置高度会把多行草稿折叠成单行(受控 value 仍在,视觉却溢出隐藏)
+    if (!text) {
+      setInput('');
+      requestAnimationFrame(() => {
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -150,10 +193,10 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
                 }
               }}
               className={cn(
-                'inline-flex items-center justify-center h-8 rounded-lg transition-colors',
+                'inline-flex items-center justify-center h-11 w-11 md:h-8 md:w-8 rounded-lg transition-colors',
                 clearArmed
-                  ? 'px-2 gap-1 font-mono text-[var(--fs-micro)] text-[var(--signal-danger)] bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)]'
-                  : 'w-8 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]'
+                  ? 'px-2 gap-1 !w-auto font-mono text-[var(--fs-micro)] text-[var(--signal-danger)] bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)]'
+                  : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]'
               )}
               aria-label={clearArmed ? '再次点击确认清空对话' : '清空对话'}
               title={clearArmed ? '再次点击确认清空' : '清空对话'}
@@ -165,7 +208,7 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+            className="inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
             aria-label="关闭 AI 对话"
           >
             <X className="w-4 h-4" />
@@ -173,30 +216,38 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
         </div>
       </div>
 
+      {/* 屏幕阅读器播报 —— 只在回复完成时播报一次。
+          把整个消息流挂 role=log/aria-live 会让 rAF 逐帧变异的流式文本刷爆
+          live region(每秒最多 60 次重排队),读屏输出连续碎片噪音。 */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {chat.isStreaming ? 'AI 正在回复' : lastMessage?.role === 'assistant' && lastMessage.content ? 'AI 已回复' : ''}
+      </p>
+
       {/* ── 消息区 ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4" role="log" aria-live="polite">
-        {chat.messages.length === 0 ? (
-          <EmptyState onPick={(prompt) => handleSend(prompt)} hasContent={wordCount > 0} />
-        ) : (
-          <div className="space-y-5">
-            {chat.messages.map((message, index) =>
-              message.role === 'user' ? (
-                <UserMessage key={message.id} message={message} />
-              ) : (
-                <AssistantMessage
-                  key={message.id}
-                  message={message}
-                  isDark={isDark}
-                  isLast={index === chat.messages.length - 1}
-                  canRetry={!chat.isStreaming}
-                  onRetry={() => chat.retry(sendOptions)}
-                  onInsert={onInsertToEditor}
-                />
-              )
-            )}
-          </div>
-        )}
-        <div ref={bottomRef} />
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        <div ref={contentRef} className="min-h-full">
+          {chat.messages.length === 0 ? (
+            <EmptyState onPick={(prompt) => handleSend(prompt)} hasContent={wordCount > 0} />
+          ) : (
+            <div className="space-y-5">
+              {chat.messages.map((message, index) =>
+                message.role === 'user' ? (
+                  <UserMessage key={message.id} message={message} />
+                ) : (
+                  <AssistantMessage
+                    key={message.id}
+                    message={message}
+                    isDark={isDark}
+                    isLast={index === chat.messages.length - 1}
+                    canRetry={!chat.isStreaming}
+                    onRetry={() => chat.retry(sendOptions)}
+                    onInsert={onInsertToEditor}
+                  />
+                )
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── 输入区 ── */}
@@ -229,7 +280,7 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
               aria-pressed={includeContext}
               title={includeContext ? '本轮携带全文上下文' : '本轮不携带全文'}
               className={cn(
-                'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full font-mono text-[var(--fs-micro)] tracking-[0.08em] transition-colors',
+                'inline-flex items-center gap-1.5 min-h-11 md:min-h-0 h-11 md:h-7 px-2.5 rounded-full font-mono text-[var(--fs-micro)] tracking-[0.08em] transition-colors',
                 includeContext
                   ? 'bg-[color-mix(in_oklch,var(--aurora-1)_13%,transparent)] text-[var(--aurora-1)]'
                   : 'text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]'
@@ -242,7 +293,7 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
               <button
                 type="button"
                 onClick={chat.stop}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_40%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full border border-[color-mix(in_oklch,var(--signal-danger)_40%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] transition-colors"
                 aria-label="停止生成"
                 title="停止生成"
               >
@@ -253,7 +304,7 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
                 type="button"
                 onClick={() => handleSend()}
                 disabled={!input.trim()}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] disabled:opacity-30 transition-opacity"
+                className="inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] disabled:opacity-30 transition-opacity"
                 aria-label="发送"
                 title="发送 (⏎)"
               >
@@ -270,6 +321,7 @@ export function AiChatPanel({ chat, document: doc, onInsertToEditor, onClose }: 
 // ==================== 空状态 ====================
 
 function EmptyState({ onPick, hasContent }: { onPick: (prompt: string) => void; hasContent: boolean }) {
+  const prefersReducedMotion = useReducedMotion();
   return (
     <div className="h-full flex flex-col items-center justify-center gap-6 px-2 text-center">
       <div className="space-y-2">
@@ -285,13 +337,15 @@ function EmptyState({ onPick, hasContent }: { onPick: (prompt: string) => void; 
           <motion.button
             key={item.label}
             type="button"
-            variants={variants.fadeUp}
+            variants={prefersReducedMotion ? variants.fade : variants.fadeUp}
             initial="initial"
             animate="animate"
-            transition={{ ...transition.quick, delay: index * 0.05 }}
+            transition={
+              prefersReducedMotion ? { duration: 0 } : { ...transition.quick, delay: index * 0.05 }
+            }
             onClick={() => onPick(item.prompt)}
             className={cn(
-              'h-8 px-3.5 rounded-full text-[var(--fs-caption)] text-[var(--ink-secondary)] transition-colors',
+              'min-h-11 md:min-h-0 h-11 md:h-8 px-3.5 rounded-full text-[var(--fs-caption)] text-[var(--ink-secondary)] transition-colors',
               'border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]',
               'hover:border-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)]',
               'hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
@@ -315,7 +369,7 @@ function UserMessage({ message }: { message: WritingChatMessage }) {
           {message.content}
         </p>
       </div>
-      <div className="flex items-center gap-1.5 pr-1 font-mono text-[10px] tabular-nums text-[var(--ink-subtle)]">
+      <div className="flex items-center gap-1.5 pr-1 font-mono text-[10px] tabular-nums text-[var(--ink-muted)]">
         {message.withContext && (
           <span className="inline-flex items-center gap-0.5">
             <FileText className="w-2.5 h-2.5" />
@@ -373,7 +427,7 @@ function AssistantMessage({
       {showTyping ? (
         <TypingDots />
       ) : (
-        <div className="writing-stream-fade">
+        <div className={cn('writing-stream-fade', pending && message.content && 'writing-stream-caret')}>
           {message.content && (
             <MarkdownPreview
               content={renderable}
@@ -381,7 +435,6 @@ function AssistantMessage({
               className="writing-chat-md"
             />
           )}
-          {pending && message.content && <span className="ink-cursor" aria-hidden="true" />}
         </div>
       )}
 
@@ -394,7 +447,7 @@ function AssistantMessage({
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center gap-1 h-6 px-2 rounded-md font-mono text-[var(--fs-micro)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+              className="inline-flex items-center gap-1 min-h-11 md:min-h-0 md:h-6 px-2 rounded-md font-mono text-[var(--fs-micro)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               重试
@@ -439,7 +492,7 @@ function MessageActionButton({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className="inline-flex items-center gap-1 h-7 px-2 rounded-md font-mono text-[var(--fs-micro)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+      className="inline-flex items-center gap-1 min-h-11 md:min-h-0 md:h-7 px-2.5 md:px-2 rounded-md font-mono text-[var(--fs-micro)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
     >
       {icon}
       {label}
@@ -452,6 +505,7 @@ function MessageActionButton({
 function WritingThinkPanel({ think, streaming }: { think: string; streaming: boolean }) {
   const [open, setOpen] = useState(false);
   const userToggledRef = useRef(false);
+  const prefersReducedMotion = useReducedMotion();
 
   // 流式中自动展开;结束后若用户未手动干预,自动收起
   useEffect(() => {
@@ -468,7 +522,7 @@ function WritingThinkPanel({ think, streaming }: { think: string; streaming: boo
           setOpen((v) => !v);
         }}
         aria-expanded={open}
-        className="flex items-center gap-2 h-7 px-2 -ml-2 rounded-md text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
+        className="flex items-center gap-2 min-h-11 md:min-h-0 md:h-7 px-2 -ml-2 rounded-md text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
       >
         <span
           className={cn(
@@ -481,7 +535,7 @@ function WritingThinkPanel({ think, streaming }: { think: string; streaming: boo
         <span className="font-mono text-[var(--fs-micro)] uppercase tracking-[0.16em]">
           {streaming ? '思考中' : '思考过程'}
         </span>
-        <span className="font-mono text-[10px] tabular-nums text-[var(--ink-subtle)]">
+        <span className="font-mono text-[10px] tabular-nums text-[var(--ink-muted)]">
           {formatCount(think.length)}
         </span>
         <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', open && 'rotate-180')} />
@@ -492,7 +546,7 @@ function WritingThinkPanel({ think, streaming }: { think: string; streaming: boo
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={transition.quick}
+            transition={prefersReducedMotion ? { duration: 0 } : transition.quick}
             className="overflow-hidden"
           >
             <div className="mt-1 max-h-48 overflow-y-auto border-l-2 border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] pl-3 pr-1">

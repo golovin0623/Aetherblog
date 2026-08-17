@@ -37,10 +37,16 @@ export interface WritingChatSendOptions {
   document: WritingChatDocument;
 }
 
-/** 发给模型的历史轮数上限 —— 写作对话是短上下文场景,防 token 失控。 */
-const HISTORY_TURN_LIMIT = 12;
-/** 注入文档上下文的正文截断长度。 */
+/** 发给模型的历史**轮数**(user+assistant 为一轮)上限 —— 写作对话是短上下文场景,防 token 失控。 */
+const HISTORY_TURN_LIMIT = 6;
+/** 注入文档上下文的正文截断长度。与后端单条 8000 字符封顶留出提问余量。 */
 const CONTEXT_CONTENT_LIMIT = 6000;
+/**
+ * 后端 ai-service `_enforce_message_limits` 的硬封顶(单条 8000 / 全量 32000 字符,
+ * 超限直接 413)。全文上下文只随**本轮**提问注入,历史轮一律回落到展示文本,
+ * 因此正常不会触顶;这里再做一次客户端预算兜底,避免超长正文 + 超长提问击穿。
+ */
+const BACKEND_TOTAL_CHAR_BUDGET = 30000;
 
 function buildOutboundContent(text: string, opts: WritingChatSendOptions): string {
   if (!opts.includeContext) return text;
@@ -57,6 +63,54 @@ function buildOutboundContent(text: string, opts: WritingChatSendOptions): strin
     '---',
     text,
   ].join('\n\n');
+}
+
+type OutboundMessage = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * 把会话历史折算成发往 /agent/chat 的消息数组。
+ *
+ * 三条硬约束(踩过的坑,勿回退):
+ * 1. **全文上下文只随本轮注入。** 历史 user 消息一律回落到展示文本 `content`,
+ *    否则每轮都重复携带 6000 字正文,数轮后必然击穿后端 32000 字符总长封顶,
+ *    且此后关掉「全文」开关也救不回来(历史里存的仍是胖 outbound),只能清空重来。
+ * 2. **按轮配对截断。** 以 (user, assistant) 为单位切,保证首条永远是 user ——
+ *    裸 slice 消息数会切出打头的孤儿 assistant,Anthropic / deepseek-reasoner 等
+ *    要求严格交替的 provider 会直接 400。
+ * 3. **总长预算兜底。** 从旧到新丢弃整轮,直到落进后端封顶以内。
+ */
+export function buildOutboundMessages(history: WritingChatMessage[]): OutboundMessage[] {
+  const usable = history.filter(
+    (m) => !m.pending && !(m.role === 'assistant' && !m.content.trim())
+  );
+
+  // 找出最后一条 user 消息 —— 只有它使用携带全文上下文的 outbound
+  const lastUserIndex = usable.map((m) => m.role).lastIndexOf('user');
+
+  // 按轮分组:每轮以 user 开头,收拢其后的 assistant
+  const turns: OutboundMessage[][] = [];
+  usable.forEach((message, index) => {
+    const content =
+      message.role === 'user' && index === lastUserIndex
+        ? (message.outbound ?? message.content)
+        : message.content;
+    if (message.role === 'user') {
+      turns.push([{ role: 'user', content }]);
+    } else if (turns.length > 0) {
+      turns[turns.length - 1].push({ role: 'assistant', content });
+    }
+    // 首条即 assistant(历史被裁过)的情形直接丢弃,不制造孤儿
+  });
+
+  let kept = turns.slice(-HISTORY_TURN_LIMIT);
+  const totalChars = (list: OutboundMessage[][]) =>
+    list.reduce((sum, turn) => sum + turn.reduce((s, m) => s + m.content.length, 0), 0);
+  // 预算兜底:从最旧的轮开始丢,但至少保留本轮
+  while (kept.length > 1 && totalChars(kept) > BACKEND_TOTAL_CHAR_BUDGET) {
+    kept = kept.slice(1);
+  }
+
+  return kept.flat();
 }
 
 export interface WritingChatApi {
@@ -111,13 +165,7 @@ export function useWritingChat(): WritingChatApi {
         setIsStreaming(false);
       };
 
-      const outboundMessages = history
-        .filter((m) => !m.pending && !(m.role === 'assistant' && !m.content.trim()))
-        .slice(-HISTORY_TURN_LIMIT)
-        .map((m) => ({
-          role: m.role,
-          content: m.role === 'user' ? (m.outbound ?? m.content) : m.content,
-        }));
+      const outboundMessages = buildOutboundMessages(history);
 
       void streamAgentChat(
         {

@@ -8,12 +8,12 @@
  * (墨水一滴一滴渗入纸张),等待态是骨架行(禁 spinner)。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Check, Copy, CornerDownRight, RefreshCw, Replace, Sparkles, X } from 'lucide-react';
 import { spring, transition, variants } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
 
-export type AiToolPreviewStatus = 'loading' | 'ok' | 'error';
+export type AiToolPreviewStatus = 'loading' | 'ok' | 'error' | 'applying';
 
 export interface AiToolPreviewState {
   toolId: string;
@@ -39,24 +39,74 @@ function splitSentences(text: string): string[] {
 
 export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const ready = state.status === 'ok';
+  const busy = state.status === 'applying';
   const chunks = useMemo(
-    () => (state.status === 'ok' ? splitSentences(state.result) : []),
-    [state.status, state.result]
+    () => (state.result ? splitSentences(state.result) : []),
+    [state.result]
   );
 
-  // Esc 舍弃;结果就绪后聚焦主操作
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    onCloseRef.current = onClose;
   }, [onClose]);
 
+  // 焦点管理 —— 复用 ConfirmDialog 的 modal 范式:打开即接管焦点(loading 期
+  // 也要接管,否则按键继续打进被遮罩盖住的编辑器)、Tab 首尾循环、关闭恢复原焦点。
   useEffect(() => {
-    if (state.status === 'ok') primaryRef.current?.focus();
-  }, [state.status]);
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusFrame = window.requestAnimationFrame(() => {
+      (primaryRef.current ?? dialogRef.current)?.focus({ preventScroll: true });
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // 输入法组字中按 Esc 只是取消候选词,不能误关预览(会丢弃在途 AI 结果)
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((element) => !element.hasAttribute('hidden'));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      previouslyFocusedRef.current?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  // 结果就绪后把焦点移到主操作(loading→ok 的接力)
+  useEffect(() => {
+    if (ready) primaryRef.current?.focus({ preventScroll: true });
+  }, [ready]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(state.result);
@@ -72,22 +122,25 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
         initial="initial"
         animate="animate"
         exit="exit"
-        transition={transition.quick}
+        transition={prefersReducedMotion ? { duration: 0 } : transition.quick}
         onClick={onClose}
         className="absolute inset-0 bg-[color-mix(in_oklch,var(--ink-primary)_38%,transparent)] backdrop-blur-sm"
         aria-hidden="true"
       />
 
       <motion.div
-        variants={variants.scaleIn}
+        ref={dialogRef}
+        tabIndex={-1}
+        variants={prefersReducedMotion ? variants.fade : variants.scaleIn}
         initial="initial"
         animate="animate"
         exit="exit"
-        transition={spring.soft}
+        transition={prefersReducedMotion ? { duration: 0 } : spring.soft}
         role="dialog"
         aria-modal="true"
+        aria-busy={state.status === 'loading' || busy}
         aria-label={`AI ${state.toolLabel}结果预览`}
-        className="surface-overlay relative w-full max-w-xl max-h-[82vh] md:max-h-[76vh] !rounded-2xl flex flex-col overflow-hidden"
+        className="surface-overlay relative w-full max-w-xl max-h-[82vh] md:max-h-[76vh] !rounded-2xl flex flex-col overflow-hidden focus:outline-none"
       >
         {/* 头部 */}
         <div className="flex items-center justify-between gap-2 px-4 h-12 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
@@ -103,7 +156,10 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+            className={cn(
+              'inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-lg',
+              'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]'
+            )}
             aria-label="关闭预览"
           >
             <X className="w-4 h-4" />
@@ -145,7 +201,10 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="inline-flex items-center gap-1 h-6 px-2 rounded-md font-mono text-[var(--fs-micro)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+                  className={cn(
+                    'inline-flex items-center gap-1 min-h-11 md:min-h-0 md:h-6 px-2 rounded-md font-mono text-[var(--fs-micro)]',
+                    'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors'
+                  )}
                 >
                   <RefreshCw className="w-3 h-3" />
                   重试
@@ -172,16 +231,19 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
           <button
             type="button"
             onClick={onClose}
-            className="h-9 px-3.5 rounded-full text-[var(--fs-caption)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+            className={cn(
+              'min-h-11 md:min-h-0 h-11 md:h-9 px-3.5 rounded-full text-[var(--fs-caption)]',
+              'text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors'
+            )}
           >
             舍弃
           </button>
           <button
             type="button"
             onClick={handleCopy}
-            disabled={state.status !== 'ok'}
+            disabled={!ready && !busy}
             className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[var(--fs-caption)] transition-colors',
+              'inline-flex items-center gap-1.5 h-11 md:h-9 px-3.5 rounded-full text-[var(--fs-caption)] transition-colors',
               'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]',
               'hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]',
               'disabled:opacity-40 disabled:pointer-events-none'
@@ -193,9 +255,9 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
           <button
             type="button"
             onClick={() => onApply('append')}
-            disabled={state.status !== 'ok'}
+            disabled={!ready}
             className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[var(--fs-caption)] transition-colors',
+              'inline-flex items-center gap-1.5 h-11 md:h-9 px-3.5 rounded-full text-[var(--fs-caption)] transition-colors',
               'border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] text-[var(--ink-primary)]',
               'hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]',
               'disabled:opacity-40 disabled:pointer-events-none'
@@ -208,15 +270,15 @@ export function AiResultPreview({ state, onApply, onRetry, onClose }: AiResultPr
             ref={primaryRef}
             type="button"
             onClick={() => onApply('replace')}
-            disabled={state.status !== 'ok'}
+            disabled={!ready}
             className={cn(
-              'inline-flex items-center gap-1.5 h-9 px-4 rounded-full text-[var(--fs-caption)] font-medium transition-opacity',
+              'inline-flex items-center gap-1.5 h-11 md:h-9 px-4 rounded-full text-[var(--fs-caption)] font-medium transition-opacity',
               'bg-[var(--ink-primary)] text-[var(--bg-void)] hover:opacity-90',
               'disabled:opacity-40 disabled:pointer-events-none'
             )}
           >
             <Replace className="w-3.5 h-3.5" />
-            替换选中
+            {busy ? '落笔中…' : '替换选中'}
           </button>
         </div>
       </motion.div>
