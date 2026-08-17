@@ -9,10 +9,13 @@ import {
   LogOut,
   ChevronDown,
   Pencil,
+  Pin,
+  PinOff,
   Trash2,
   X,
   MoreHorizontal,
   AlertTriangle,
+  FileDown,
   Home,
   Sun,
   Moon,
@@ -21,7 +24,7 @@ import {
 import { useTheme } from '@aetherblog/hooks';
 import { CachedAvatarImage } from '@/app/components/CachedAvatarImage';
 import type { AgentSession } from '../../lib/agentSessions';
-import { groupSessionsByRecency } from '../../lib/agentSessions';
+import { groupSessionsByRecency, sessionMatchesQuery } from '../../lib/agentSessions';
 import type { AgentUser } from '../../lib/agentAuth';
 
 interface Props {
@@ -37,6 +40,10 @@ interface Props {
   onCreate: () => void;
   onRename: (id: string, title: string) => void;
   onDelete: (id: string) => void;
+  /** 置顶 / 取消置顶。 */
+  onTogglePin?: (id: string) => void;
+  /** 导出该会话为 Markdown。 */
+  onExport?: (id: string) => void;
   onLogout: () => void;
 }
 
@@ -60,6 +67,8 @@ export default function Sidebar({
   onCreate,
   onRename,
   onDelete,
+  onTogglePin,
+  onExport,
   onLogout,
 }: Props) {
   const [filter, setFilter] = useState('');
@@ -68,10 +77,11 @@ export default function Sidebar({
   // 哪个会话当前打开了"..."菜单 —— 同一时间只能开一个
   const [menuId, setMenuId] = useState<string | null>(null);
 
+  // 搜索覆盖标题 + 消息正文（对齐 ChatGPT 的历史全文搜索）。
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return sessions;
-    return sessions.filter((s) => s.title.toLowerCase().includes(q));
+    return sessions.filter((s) => sessionMatchesQuery(s, q));
   }, [sessions, filter]);
 
   const groups = useMemo(() => groupSessionsByRecency(filtered), [filtered]);
@@ -174,7 +184,7 @@ export default function Sidebar({
             type="search"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="搜索对话…"
+            placeholder="搜索对话与消息…"
             className="w-full rounded-lg border border-[var(--ink-subtle)]/14 bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] py-1.5 pl-8 pr-2 text-[12px] text-[var(--ink-secondary)] placeholder-[var(--ink-muted)]/60 outline-none transition-[border-color,box-shadow] duration-quick ease-aether focus:border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] focus:ring-1 focus:ring-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]"
           />
         </div>
@@ -245,17 +255,42 @@ export default function Sidebar({
                             className="flex-1 bg-transparent outline-none text-[var(--ink-primary)] min-w-0 border-b border-[var(--aurora-1)]/35 pb-0.5"
                           />
                         ) : (
-                          <span className="flex-1 truncate">{s.title}</span>
+                          <>
+                            <span className="flex-1 truncate">{s.title}</span>
+                            {s.pinned && (
+                              <Pin
+                                className="h-3 w-3 flex-shrink-0 -rotate-45 text-[var(--ink-muted)]/75"
+                                aria-label="已置顶"
+                              />
+                            )}
+                          </>
                         )}
                         {!isEditing && (
                           <SessionMenu
                             open={menuOpen}
                             isActive={isActive}
+                            pinned={!!s.pinned}
                             onToggle={() =>
                               setMenuId((curr) => (curr === s.id ? null : s.id))
                             }
                             onClose={() => setMenuId(null)}
                             onRename={() => startRename(s)}
+                            onTogglePin={
+                              onTogglePin
+                                ? () => {
+                                    onTogglePin(s.id);
+                                    setMenuId(null);
+                                  }
+                                : undefined
+                            }
+                            onExport={
+                              onExport
+                                ? () => {
+                                    onExport(s.id);
+                                    setMenuId(null);
+                                  }
+                                : undefined
+                            }
                             onDelete={() => {
                               onDelete(s.id);
                               setMenuId(null);
@@ -348,17 +383,23 @@ export default function Sidebar({
 function SessionMenu({
   open,
   isActive,
+  pinned,
   onToggle,
   onClose,
   onRename,
+  onTogglePin,
+  onExport,
   onDelete,
   sessionTitle,
 }: {
   open: boolean;
   isActive: boolean;
+  pinned: boolean;
   onToggle: () => void;
   onClose: () => void;
   onRename: () => void;
+  onTogglePin?: () => void;
+  onExport?: () => void;
   onDelete: () => void;
   sessionTitle: string;
 }) {
@@ -448,6 +489,25 @@ function SessionMenu({
               className="absolute right-0 top-full mt-1 w-44 surface-overlay rounded-xl border border-[var(--ink-subtle)]/22 z-50 overflow-hidden shadow-[0_18px_40px_-16px_rgba(0,0,0,0.32)]"
               onClick={(e) => e.stopPropagation()}
             >
+            {onTogglePin && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePin();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-[0.985] transition-all"
+              >
+                {pinned ? (
+                  <PinOff className="w-3.5 h-3.5 flex-shrink-0" />
+                ) : (
+                  <Pin className="w-3.5 h-3.5 flex-shrink-0" />
+                )}
+                {pinned ? '取消置顶' : '置顶会话'}
+              </button>
+            )}
+
             <button
               type="button"
               role="menuitem"
@@ -460,6 +520,21 @@ function SessionMenu({
               <Pencil className="w-3.5 h-3.5 flex-shrink-0" />
               重命名
             </button>
+
+            {onExport && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExport();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[12.5px] text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-[0.985] transition-all"
+              >
+                <FileDown className="w-3.5 h-3.5 flex-shrink-0" />
+                导出 Markdown
+              </button>
+            )}
 
             <div className="h-px bg-[var(--ink-subtle)]/15" aria-hidden="true" />
 

@@ -4,24 +4,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ConfirmModal, spring, duration as motionDuration, ease as motionEase } from '@aetherblog/ui';
 import {
+  ConfirmModal,
+  ToastProvider,
+  useToast,
+  spring,
+  duration as motionDuration,
+  ease as motionEase,
+} from '@aetherblog/ui';
+import {
+  BookMarked,
   ChevronDown,
   CornerDownLeft,
   Feather,
   FileText,
   Languages,
-  Lightbulb,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Scissors,
   SlidersHorizontal,
   Sparkles,
+  Undo2,
 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
 import Sidebar from './components/Sidebar';
-import MessageBubble from './components/MessageBubble';
-import Composer, { type ComposerHandle } from './components/Composer';
+import MessageBubble, { type RetryOptions } from './components/MessageBubble';
+import Composer, { type ComposerHandle, type ComposerContextStats } from './components/Composer';
 import ModeSwitch, { AVAILABLE_MODES } from './components/ModeSwitch';
 import ModelPicker from './components/ModelPicker';
 import WorkspaceSkeleton from './components/WorkspaceSkeleton';
@@ -31,21 +40,29 @@ import {
   AgentMode,
   AgentSession,
   deriveSessionTitle,
+  exportFileName,
   loadSessions,
   newMessageId,
   newSessionId,
+  normalizeContextBreak,
   saveSessions,
+  sessionToMarkdown,
+  sliceContextMessages,
 } from '../lib/agentSessions';
 import type { StreamAnimationMode } from '../lib/smooth';
 
 /** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
 type DisplayMode = 'bubble' | 'engraved';
-import { streamAgentChat } from '../lib/agentChatStream';
+import { streamAgentChat, type KnowledgeContextMode } from '../lib/agentChatStream';
 import {
   type AgentArticle,
   type AgentTag,
   type SlashCommand,
 } from '../lib/agentResources';
+import { toKbRef, type AgentKbRef, type AgentKnowledgeBase } from '../lib/agentKbs';
+import { useAgentModels } from '../lib/agentModels';
+import { estimateMessagesTokens, estimateTokens } from '../lib/tokenEstimate';
+import { SEND_SHORTCUT_OPTIONS, useSendShortcut } from '../lib/sendShortcut';
 
 interface Props {
   siteTitle: string;
@@ -54,9 +71,17 @@ interface Props {
 type SendOptions = {
   articles?: AgentArticle[];
   tags?: AgentTag[];
+  kbs?: AgentKbRef[];
+  knowledgeMode?: KnowledgeContextMode;
   session?: AgentSession | null;
   baseMessages?: AgentMessage[];
 };
+
+/** 判断文本主导语种 —— CJK 占比超过 ¼ 视为中文，翻译目标取反。 */
+function detectTranslationTarget(text: string): 'en' | 'zh' {
+  const cjk = text.match(/[぀-ヿ㐀-䶿一-鿿]/g)?.length ?? 0;
+  return cjk / Math.max(1, text.length) > 0.25 ? 'en' : 'zh';
+}
 
 // 空态建议卡 —— icon + 分类眉标 + 文案，四张卡分别用 aurora-1..4 点色
 // （只取既有 token 组合，不发明新色）。点击把文案填入 composer。
@@ -66,9 +91,9 @@ const PROMPT_SUGGESTIONS: ReadonlyArray<{
   text: string;
   aurora: 1 | 2 | 3 | 4;
 }> = [
+  { icon: BookMarked, category: 'Knowledge', text: '在我的知识库里查一查这个主题都写过什么', aurora: 2 },
   { icon: FileText, category: 'Summarize', text: '总结这篇文章的核心观点', aurora: 1 },
-  { icon: Feather, category: 'Refine', text: '帮我把这段写得更短', aurora: 2 },
-  { icon: Lightbulb, category: 'Ideate', text: '为这个标题生成 5 个备选', aurora: 3 },
+  { icon: Feather, category: 'Refine', text: '帮我把这段写得更短', aurora: 3 },
   { icon: Languages, category: 'Translate', text: '把这段话翻译成英文', aurora: 4 },
 ];
 
@@ -117,8 +142,19 @@ function stripMentionToken(draft: string, prefix: '@' | '#', label: string): str
  * guest → /agent/login。零 flash 是这次改版的关键诉求。
  */
 export default function WorkspaceClient({ siteTitle }: Props) {
+  // Toast 挂在工作台自己这一层（博客全局 layout 不引入 ToastProvider），
+  // bottom-center 紧贴 composer 上方 —— 撤销类操作离手最近。
+  return (
+    <ToastProvider position="bottom-center">
+      <WorkspaceInner siteTitle={siteTitle} />
+    </ToastProvider>
+  );
+}
+
+function WorkspaceInner({ siteTitle }: Props) {
   const router = useRouter();
   const { state, logout } = useAgentAuth();
+  const { showToast } = useToast();
 
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -133,6 +169,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // 手动移除、清空会话或切换会话时再同步到对应会话上下文。
   const [pendingArticles, setPendingArticles] = useState<AgentArticle[]>([]);
   const [pendingTags, setPendingTags] = useState<AgentTag[]>([]);
+  // 知识检索三态 + 选中的知识库（selected 模式生效）。同样按会话持久化。
+  const [pendingKbs, setPendingKbs] = useState<AgentKbRef[]>([]);
+  const [knowledgeMode, setKnowledgeMode] = useState<KnowledgeContextMode>('auto');
   // sessionModelOverride 三态：
   //   · null              —— 未触达；ModelPicker.value 与 send payload 落到
   //                         activeSession 存档值（或全 null 让后端走默认路由）。
@@ -146,8 +185,33 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     providerCode: string | null;
   } | null>(null);
 
+  // 模型清单在这一层统一拉取：ModelPicker 展示、消息元数据解析（displayName）、
+  // 上下文窗口估算三处共用一份数据。
+  const modelsState = useAgentModels(state.status === 'authed');
+  const modelLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (modelsState.status === 'ready') {
+      for (const m of modelsState.items) {
+        map.set(`${m.providerCode}::${m.modelId}`, m.displayName?.trim() || m.modelId);
+      }
+    }
+    return map;
+  }, [modelsState]);
+  const resolveModelLabel = useCallback(
+    (providerCode: string | null | undefined, modelId: string | null | undefined) => {
+      if (!modelId) return null;
+      return (
+        modelLabelMap.get(`${providerCode ?? ''}::${modelId}`) ??
+        (modelLabelMap.size > 0 ? modelId : null)
+      );
+    },
+    [modelLabelMap],
+  );
+
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
+  // 进行中的翻译流（按消息 id）—— 卸载时统一 abort；同一消息重译先断旧流。
+  const translationControllersRef = useRef<Map<string, AbortController>>(new Map());
   // 当前 streaming 消息的服务端累加快照（含尚未画到屏幕的 buffer 尾巴）。
   // 用户按"停止"/切会话时，finalize 用它兜底 content —— 否则消息定格在最后
   // 一个已绘制帧，把服务端已送达但还在追帧的几百字符悄悄丢掉。
@@ -382,6 +446,37 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       if (id === activeId && streamingMsgIdRef.current) {
         finalizeStreamingMessage('已中断');
       }
+      // 记快照供撤销 —— 菜单里已有 inline 双击确认，这里再给 5 秒后悔药。
+      // sessionsRef 在下一次 commit 才同步（finalize 的 setSessions 尚未落地），
+      // 快照里可能残留 pending:true 的流式消息 —— 采集时就地定格为"已中断"，
+      // 撤销恢复后不会出现一条永远"正在生成"的幽灵消息。
+      const raw = sessionsRef.current.find((s) => s.id === id) ?? null;
+      const snapshot = raw
+        ? {
+            ...raw,
+            messages: raw.messages.map((m) =>
+              m.pending
+                ? {
+                    ...m,
+                    pending: false,
+                    error: m.error || '已中断',
+                    finishedAt: m.finishedAt ?? Date.now(),
+                  }
+                : m,
+            ),
+          }
+        : null;
+      // 该会话消息上进行中的翻译流一并中止 —— 否则孤儿流白烧 token，
+      // 每 90ms 往一个已不存在的会话 id 空 patch。
+      if (raw) {
+        for (const m of raw.messages) {
+          const c = translationControllersRef.current.get(m.id);
+          if (c) {
+            c.abort();
+            translationControllersRef.current.delete(m.id);
+          }
+        }
+      }
       setSessions((list) => list.filter((s) => s.id !== id));
       // 如果删的是当前活跃会话，自动切到剩余第一个。setActiveId 不能嵌在
       // setSessions updater 里调用 —— updater 必须保持纯函数（StrictMode
@@ -391,8 +486,24 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         const next = sessionsRef.current.filter((s) => s.id !== id);
         return next[0]?.id ?? null;
       });
+      if (snapshot) {
+        showToast({
+          message: `已删除「${snapshot.title}」`,
+          type: 'info',
+          duration: 5000,
+          action: {
+            label: '撤销',
+            onClick: () => {
+              setSessions((list) =>
+                list.some((s) => s.id === snapshot.id) ? list : [snapshot, ...list],
+              );
+              setActiveId((curr) => curr ?? snapshot.id);
+            },
+          },
+        });
+      }
     },
-    [activeId, finalizeStreamingMessage],
+    [activeId, finalizeStreamingMessage, showToast],
   );
 
   const handleModeChange = useCallback(
@@ -448,6 +559,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
     const requestArticles = options?.articles ?? pendingArticles;
     const requestTags = options?.tags ?? pendingTags;
+    const requestKbs = options?.kbs ?? pendingKbs;
+    // selected 但一个库都没勾 —— 等价没有明确指向，落回 auto 让后端自动发现，
+    // 避免发出 kbIds:[]（后端契约里那是"明确不用任何 KB"）。
+    const rawMode = options?.knowledgeMode ?? knowledgeMode;
+    const effectiveKnowledge: KnowledgeContextMode =
+      rawMode === 'selected' && requestKbs.length === 0 ? 'auto' : rawMode;
     let session = options?.session ?? sessionsRef.current.find((s) => s.id === activeId) ?? null;
     if (!session) {
       const now = Date.now();
@@ -466,12 +583,21 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
         contextArticles: requestArticles,
         contextTags: requestTags,
+        contextKbs: requestKbs,
+        knowledgeMode: effectiveKnowledge,
       };
       setSessions((list) => [session as AgentSession, ...list]);
       setActiveId(session.id);
     }
 
     const sessId = session.id;
+    // 本轮实际请求的模型（戳到 assistant 消息上，供元数据 footer 展示）。
+    const requestModelId = sessionModelOverride
+      ? sessionModelOverride.modelId
+      : (session.modelId ?? null);
+    const requestProviderCode = sessionModelOverride
+      ? sessionModelOverride.providerCode
+      : (session.providerCode ?? null);
     const startTs = Date.now();
     const userMsg: AgentMessage = {
       id: newMessageId(),
@@ -480,6 +606,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       createdAt: startTs,
       contextArticles: requestArticles,
       contextTags: requestTags,
+      contextKbs: requestKbs,
+      knowledgeMode: effectiveKnowledge,
     };
     const assistantMsg: AgentMessage = {
       id: newMessageId(),
@@ -488,6 +616,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       createdAt: startTs,
       pending: true,
       startedAt: startTs,
+      modelId: requestModelId,
+      providerCode: requestProviderCode,
+      knowledgeMode: effectiveKnowledge,
     };
     const targetMessageId = assistantMsg.id; // 闭包内 pin 住，rAF 不读 ref（避免被新对话串台）
     streamingMsgIdRef.current = targetMessageId;
@@ -501,6 +632,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               title: s.messages.length === 0 ? deriveSessionTitle(text) : s.title,
               contextArticles: requestArticles,
               contextTags: requestTags,
+              contextKbs: requestKbs,
+              knowledgeMode: effectiveKnowledge,
               updatedAt: Date.now(),
               messages: [...s.messages, userMsg, assistantMsg],
             }
@@ -508,11 +641,19 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       ),
     );
     setBusy(true);
+    // 用户主动发送 = 明确想看回复 —— 无条件恢复粘底（可能被键盘翻页/上滑
+    // 手势释放过），RO 会在新气泡入列后把视口锚到底部。
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
 
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const history = [...(options?.baseMessages ?? session.messages), userMsg].map((m) => ({
+    // 上下文断点：断点之前的消息不进请求（消息仍保留可回看）。
+    const history = [
+      ...sliceContextMessages(options?.baseMessages ?? session.messages, session.contextBreakId),
+      userMsg,
+    ].map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -645,17 +786,21 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         sessionId: sessId,
         mode: effectiveMode,
         messages: history,
-        // 三元而非 ??：override = { modelId: null, ... } 表示用户主动选了
-        // "自动选择"，应该原样发送（让后端走默认路由）。?? 会把 null 当 missing
-        // 然后回退到 session.modelId（旧值），导致用户看到的"已切换"被静默忽略。
-        modelId: sessionModelOverride
-          ? sessionModelOverride.modelId
-          : (session.modelId ?? null),
-        providerCode: sessionModelOverride
-          ? sessionModelOverride.providerCode
-          : (session.providerCode ?? null),
+        // requestModelId/ProviderCode 已按"override 优先、否则会话存档"结算
+        // （override 含 null/null 的"主动选自动"真值，不能被 ?? 吞掉）——
+        // 与 assistant 消息上的模型戳记保证同源。
+        modelId: requestModelId,
+        providerCode: requestProviderCode,
         articleIds: articleIds.length ? articleIds : null,
         tagSlugs: tagSlugs.length ? tagSlugs : null,
+        // 知识检索契约：auto → 省略 kbIds（后端自动注入可用库）；
+        // selected → 只带勾选的库；none → 显式 null 表示本轮不检索。
+        knowledgeContextMode: effectiveKnowledge,
+        ...(effectiveKnowledge === 'selected'
+          ? { kbIds: requestKbs.map((k) => k.id) }
+          : effectiveKnowledge === 'none'
+          ? { kbIds: null }
+          : {}),
       },
       {
         onDelta: (chunk) => {
@@ -681,6 +826,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           pendingMisc.sources = sources;
           schedule();
         },
+        onRetrieval: (receipt) => {
+          // 检索回执先于正文抵达 —— 立即挂到消息上，让"已检索 N 条依据"
+          // 在等待首字时就可见（回答编排的第一步不再是黑盒）。
+          pendingMisc.retrieval = receipt;
+          schedule();
+        },
         onDone: () => {
           streamDone = true;
           finalPatch = { pending: false, finishedAt: Date.now() };
@@ -691,8 +842,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           }
           schedule();
         },
-        onError: (msg) => {
-          // error 立即 flush 给用户看，不再等下一帧合并。
+        onError: (msg, meta) => {
+          // error 立即 flush 给用户看，不再等下一帧合并。注意必须把 pendingMisc
+          // 一并落账：selected_context_not_grounded 场景下 retrieval 回执与
+          // error 事件背靠背同帧抵达（ai-service 测试断言 events[0]=receipt、
+          // events[1]=error），若只写 error 补丁，解释"检索到了什么/为何未命中"
+          // 的回执会被静默丢弃 —— 而那正是该错误最需要的上下文。
           if (rafId) {
             cancelAnimationFrame(rafId);
             rafId = 0;
@@ -706,11 +861,14 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                       m.id === targetMessageId && m.pending
                         ? {
                             ...m,
+                            ...pendingMisc,
                             content: acc,
                             think: thinkAcc || m.think,
                             firstTokenAt: firstTokenAt ?? m.firstTokenAt,
                             pending: false,
                             error: msg,
+                            errorCode: meta?.code,
+                            retryable: meta?.retryable,
                             finishedAt: Date.now(),
                           }
                         : m,
@@ -731,7 +889,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       streamAccRef.current = null;
     }
     setBusy(false);
-  }, [busy, state, activeId, pendingArticles, pendingTags, sessionModelOverride]);
+  }, [busy, state, activeId, pendingArticles, pendingTags, pendingKbs, knowledgeMode, sessionModelOverride]);
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
@@ -757,17 +915,35 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           if (s.id !== activeId) return s;
           const idx = s.messages.findIndex((m) => m.id === message.id);
           if (idx < 0) return s;
-          return { ...s, messages: s.messages.slice(0, idx), updatedAt: Date.now() };
+          const nextMessages = s.messages.slice(0, idx);
+          return {
+            ...s,
+            messages: nextMessages,
+            // 截断可能砍掉断点消息 —— 悬空断点会让 slice 静默失效，立即归一化。
+            contextBreakId: normalizeContextBreak(nextMessages, s.contextBreakId),
+            updatedAt: Date.now(),
+          };
         }),
       );
       const nextArticles = message.contextArticles ?? activeSession?.contextArticles ?? [];
       const nextTags = message.contextTags ?? activeSession?.contextTags ?? [];
+      const nextKbs = message.contextKbs ?? activeSession?.contextKbs ?? [];
+      const nextMode = message.knowledgeMode ?? activeSession?.knowledgeMode ?? 'auto';
       setPendingArticles(nextArticles);
       setPendingTags(nextTags);
+      setPendingKbs(nextKbs);
+      setKnowledgeMode(nextMode);
       setDraft(message.content);
       requestAnimationFrame(() => composerRef.current?.focus());
     },
-    [busy, activeId, activeSession?.contextArticles, activeSession?.contextTags],
+    [
+      busy,
+      activeId,
+      activeSession?.contextArticles,
+      activeSession?.contextTags,
+      activeSession?.contextKbs,
+      activeSession?.knowledgeMode,
+    ],
   );
 
   // assistant 消息「重试」：找到该消息上一条 user msg，把 assistant（含自身）
@@ -776,7 +952,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // sendText 闭包里的 activeSession 仍是截断前的旧快照，靠它组 history 会把
   // 被截掉的旧回复重复发给模型。
   const handleRetryAssistantMessage = useCallback(
-    (message: AgentMessage) => {
+    (message: AgentMessage, options?: RetryOptions) => {
       if (busy) return;
       if (message.role !== 'assistant') return;
       // 经 sessionsRef 查会话：直接依赖 sessions 会让本回调在流式期间每帧
@@ -790,17 +966,27 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       if (prior.role !== 'user') return;
       const retryArticles = prior.contextArticles ?? sess.contextArticles ?? [];
       const retryTags = prior.contextTags ?? sess.contextTags ?? [];
+      const retryKbs = prior.contextKbs ?? sess.contextKbs ?? [];
+      // "改用自动检索重试"（selected_context_not_grounded 的一键出路）会带
+      // knowledgeMode 覆盖 —— 覆盖同时固化到会话，用户的切换是持续意图。
+      const retryMode: KnowledgeContextMode =
+        options?.knowledgeMode ?? prior.knowledgeMode ?? sess.knowledgeMode ?? 'auto';
       // 截断到上一条 user 之前（不含 user 本身）—— sendText 会重新把它 push 回去。
       const base = sess.messages.slice(0, idx - 1);
       const retrySession: AgentSession = {
         ...sess,
         contextArticles: retryArticles,
         contextTags: retryTags,
+        contextKbs: retryKbs,
+        knowledgeMode: retryMode,
         messages: base,
+        contextBreakId: normalizeContextBreak(base, sess.contextBreakId),
         updatedAt: Date.now(),
       };
       setPendingArticles(retryArticles);
       setPendingTags(retryTags);
+      setPendingKbs(retryKbs);
+      setKnowledgeMode(retryMode);
       setSessions((list) =>
         list.map((s) =>
           s.id === sess.id
@@ -811,6 +997,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       void sendText(prior.content, {
         articles: retryArticles,
         tags: retryTags,
+        kbs: retryKbs,
+        knowledgeMode: retryMode,
         session: retrySession,
         baseMessages: base,
       });
@@ -824,12 +1012,24 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   }, []);
 
   const persistActiveContext = useCallback(
-    (articles: AgentArticle[], tags: AgentTag[]) => {
+    (
+      articles: AgentArticle[],
+      tags: AgentTag[],
+      kbs?: AgentKbRef[],
+      mode?: KnowledgeContextMode,
+    ) => {
       if (!activeId) return;
       setSessions((list) =>
         list.map((s) =>
           s.id === activeId
-            ? { ...s, contextArticles: articles, contextTags: tags, updatedAt: Date.now() }
+            ? {
+                ...s,
+                contextArticles: articles,
+                contextTags: tags,
+                ...(kbs !== undefined ? { contextKbs: kbs } : {}),
+                ...(mode !== undefined ? { knowledgeMode: mode } : {}),
+                updatedAt: Date.now(),
+              }
             : s,
         ),
       );
@@ -858,6 +1058,42 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     persistActiveContext(pendingArticles, next);
   }, [pendingArticles, pendingTags, persistActiveContext]);
 
+  // ---- 知识库三态 + 选择 ----
+  // 勾选任何库 → 隐含切到 selected；清空 → 回落 auto。模式与列表都随会话持久化。
+  const handleToggleKb = useCallback(
+    (kb: AgentKnowledgeBase) => {
+      const ref = toKbRef(kb);
+      const exists = pendingKbs.some((k) => k.id === ref.id);
+      const next = exists ? pendingKbs.filter((k) => k.id !== ref.id) : [...pendingKbs, ref];
+      const nextMode: KnowledgeContextMode = next.length > 0 ? 'selected' : 'auto';
+      setPendingKbs(next);
+      setKnowledgeMode(nextMode);
+      persistActiveContext(pendingArticles, pendingTags, next, nextMode);
+    },
+    [pendingKbs, pendingArticles, pendingTags, persistActiveContext],
+  );
+
+  const handleRemoveKb = useCallback(
+    (id: number) => {
+      const next = pendingKbs.filter((k) => k.id !== id);
+      const nextMode: KnowledgeContextMode = next.length > 0 ? 'selected' : 'auto';
+      setPendingKbs(next);
+      setKnowledgeMode(nextMode);
+      persistActiveContext(pendingArticles, pendingTags, next, nextMode);
+    },
+    [pendingKbs, pendingArticles, pendingTags, persistActiveContext],
+  );
+
+  const handleKnowledgeModeChange = useCallback(
+    (mode: KnowledgeContextMode) => {
+      setKnowledgeMode(mode);
+      // 切走 selected 时保留已选库（chips 只在 selected 态展示）——
+      // 用户切回"指定"还能找回上次的选择。
+      persistActiveContext(pendingArticles, pendingTags, pendingKbs, mode);
+    },
+    [pendingArticles, pendingTags, pendingKbs, persistActiveContext],
+  );
+
   // remove handler 同时清理 draft 中可能残留的旧 "@title" / "#tag" 文本 ——
   // 兼容此前版本 insert 到 textarea 的会话草稿。
   const handleRemoveArticle = useCallback(
@@ -885,6 +1121,299 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     [pendingArticles, pendingTags, persistActiveContext],
   );
 
+  // ---- 消息级操作：翻译 / 引用 / 分支 / 删除 ----
+
+  // 翻译是独立的辅助流：不进对话历史、不占 busy 状态机，结果流式写入
+  // message.translation。同一消息重译先断旧流；组件卸载统一 abort。
+  const handleTranslateMessage = useCallback(
+    (message: AgentMessage) => {
+      if (state.status !== 'authed' || !activeId) return;
+      const sessId = activeId;
+      const target = detectTranslationTarget(message.content);
+      const prompt =
+        target === 'en'
+          ? `Translate the following content into natural, fluent English. Preserve the Markdown structure (headings, lists, tables, code fences). Keep code inside code blocks untouched. Output ONLY the translation with no preface:\n\n${message.content}`
+          : `请把以下内容翻译成自然流畅的中文。保留 Markdown 结构（标题、列表、表格、代码块），代码块内的代码保持原样。只输出译文，不要任何前言或解释：\n\n${message.content}`;
+
+      translationControllersRef.current.get(message.id)?.abort();
+      const controller = new AbortController();
+      translationControllersRef.current.set(message.id, controller);
+
+      const patchTranslation = (
+        updater: (prev: AgentMessage) => Partial<AgentMessage>,
+      ) => {
+        setSessions((list) =>
+          list.map((s) =>
+            s.id === sessId
+              ? {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id === message.id ? { ...m, ...updater(m) } : m,
+                  ),
+                }
+              : s,
+          ),
+        );
+      };
+
+      patchTranslation(() => ({
+        translation: { lang: target, content: '', pending: true },
+      }));
+
+      let acc = '';
+      let flushTimer: number | null = null;
+      const flush = () => {
+        flushTimer = null;
+        patchTranslation((prev) =>
+          prev.translation?.pending
+            ? { translation: { lang: target, content: acc, pending: true } }
+            : {},
+        );
+      };
+      // 译文不做逐字动画（它是辅助层，不该抢正文的注意力）—— 90ms 节流批量写。
+      const scheduleFlush = () => {
+        if (flushTimer == null) flushTimer = window.setTimeout(flush, 90);
+      };
+
+      const sess = sessionsRef.current.find((s) => s.id === sessId);
+      void streamAgentChat(
+        {
+          sessionId: sessId,
+          mode: 'chat',
+          knowledgeContextMode: 'none',
+          kbIds: null,
+          messages: [{ role: 'user', content: prompt }],
+          modelId: sess?.modelId ?? null,
+          providerCode: sess?.providerCode ?? null,
+        },
+        {
+          onDelta: (chunk) => {
+            acc += chunk;
+            scheduleFlush();
+          },
+          onDone: () => {
+            if (flushTimer != null) {
+              window.clearTimeout(flushTimer);
+              flushTimer = null;
+            }
+            patchTranslation(() =>
+              acc.trim()
+                ? { translation: { lang: target, content: acc.trim() } }
+                : {
+                    translation: {
+                      lang: target,
+                      content: '',
+                      error: '模型未返回译文，请重试',
+                    },
+                  },
+            );
+          },
+          onError: (msg) => {
+            if (flushTimer != null) {
+              window.clearTimeout(flushTimer);
+              flushTimer = null;
+            }
+            patchTranslation(() => ({
+              translation: { lang: target, content: acc.trim(), error: msg },
+            }));
+          },
+        },
+        controller.signal,
+      ).finally(() => {
+        if (translationControllersRef.current.get(message.id) === controller) {
+          translationControllersRef.current.delete(message.id);
+        }
+      });
+    },
+    [state.status, activeId],
+  );
+
+  const handleDismissTranslation = useCallback(
+    (message: AgentMessage) => {
+      translationControllersRef.current.get(message.id)?.abort();
+      translationControllersRef.current.delete(message.id);
+      if (!activeId) return;
+      setSessions((list) =>
+        list.map((s) =>
+          s.id === activeId
+            ? {
+                ...s,
+                messages: s.messages.map((m) =>
+                  m.id === message.id ? { ...m, translation: undefined } : m,
+                ),
+              }
+            : s,
+        ),
+      );
+    },
+    [activeId],
+  );
+
+  // 组件卸载时中断所有进行中的翻译流。
+  useEffect(() => {
+    const controllers = translationControllersRef.current;
+    return () => {
+      controllers.forEach((c) => c.abort());
+      controllers.clear();
+    };
+  }, []);
+
+  // 引用：以 blockquote 形式插到 composer 草稿前部，光标落到末尾。
+  const handleQuoteMessage = useCallback((message: AgentMessage) => {
+    const quoted = message.content
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    setDraft((d) => `${quoted}\n\n${d ? `${d}` : ''}`);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, []);
+
+  // 分支：复制到该消息为止的对话开一条新会话 —— 原会话完整保留，
+  // 新会话从分叉点继续（Cherry Studio 同款心智）。
+  const handleForkMessage = useCallback(
+    (message: AgentMessage) => {
+      const sess = sessionsRef.current.find((s) => s.id === activeId);
+      if (!sess) return;
+      const idx = sess.messages.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      if (streamingMsgIdRef.current) {
+        finalizeStreamingMessage('已中断');
+      }
+      const now = Date.now();
+      const slice = sess.messages.slice(0, idx + 1).map((m) => ({ ...m, pending: false }));
+      const forked: AgentSession = {
+        ...sess,
+        id: newSessionId(),
+        title: `${sess.title} · 分支`,
+        pinned: false,
+        createdAt: now,
+        updatedAt: now,
+        messages: slice,
+        contextBreakId: normalizeContextBreak(slice, sess.contextBreakId),
+      };
+      setSessions((list) => [forked, ...list]);
+      setActiveId(forked.id);
+      showToast({ message: '已从此处创建分支会话', type: 'success' });
+    },
+    [activeId, finalizeStreamingMessage, showToast],
+  );
+
+  // 删除单条消息 —— 立即移除 + 5s 撤销 toast（记住原位置以便还原）。
+  const handleDeleteMessage = useCallback(
+    (message: AgentMessage) => {
+      const sessId = activeId;
+      if (!sessId) return;
+      const sess = sessionsRef.current.find((s) => s.id === sessId);
+      if (!sess) return;
+      const index = sess.messages.findIndex((m) => m.id === message.id);
+      if (index < 0) return;
+      // 断点若恰好锚在被删消息上会被归一化清掉 —— 记下来供撤销一并还原。
+      const prevBreakId = sess.contextBreakId ?? null;
+      setSessions((list) =>
+        list.map((s) => {
+          if (s.id !== sessId) return s;
+          const nextMessages = s.messages.filter((m) => m.id !== message.id);
+          return {
+            ...s,
+            messages: nextMessages,
+            contextBreakId: normalizeContextBreak(nextMessages, s.contextBreakId),
+            updatedAt: Date.now(),
+          };
+        }),
+      );
+      showToast({
+        message: '消息已删除',
+        type: 'info',
+        duration: 5000,
+        action: {
+          label: '撤销',
+          onClick: () => {
+            setSessions((list) =>
+              list.map((s) => {
+                if (s.id !== sessId) return s;
+                if (s.messages.some((m) => m.id === message.id)) return s;
+                const msgs = [...s.messages];
+                msgs.splice(Math.min(index, msgs.length), 0, message);
+                return {
+                  ...s,
+                  messages: msgs,
+                  // 断点锚回来了就还原（其它情况保持现值，尊重删除后的手动变更）。
+                  contextBreakId:
+                    prevBreakId === message.id && !s.contextBreakId
+                      ? prevBreakId
+                      : s.contextBreakId,
+                  updatedAt: Date.now(),
+                };
+              }),
+            );
+          },
+        },
+      });
+    },
+    [activeId, showToast],
+  );
+
+  // ---- 会话级操作：置顶 / 导出 ----
+  const handleTogglePin = useCallback((id: string) => {
+    // 不 bump updatedAt —— 置顶不该顺带打乱时间分组里的排序。
+    setSessions((list) => list.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)));
+  }, []);
+
+  const handleExportSession = useCallback(
+    (id: string) => {
+      const sess = sessionsRef.current.find((s) => s.id === id);
+      if (!sess) return;
+      if (sess.messages.length === 0) {
+        showToast({ message: '会话还没有消息，无可导出内容', type: 'warning' });
+        return;
+      }
+      const markdown = sessionToMarkdown(sess);
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFileName(sess);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast({ message: '已导出为 Markdown 文件', type: 'success' });
+    },
+    [showToast],
+  );
+
+  // ---- 上下文断点（清除上下文，保留消息） ----
+  const handleClearContext = useCallback(() => {
+    const sess = sessionsRef.current.find((s) => s.id === activeId);
+    if (!sess || sess.messages.length === 0) return;
+    const lastId = sess.messages[sess.messages.length - 1].id;
+    if (sess.contextBreakId === lastId) return;
+    const prevBreak = sess.contextBreakId ?? null;
+    setSessions((list) =>
+      list.map((s) => (s.id === sess.id ? { ...s, contextBreakId: lastId } : s)),
+    );
+    showToast({
+      message: '上下文已清除，新对话从这里重新开始',
+      type: 'info',
+      duration: 5000,
+      action: {
+        label: '撤销',
+        onClick: () => {
+          setSessions((list) =>
+            list.map((s) => (s.id === sess.id ? { ...s, contextBreakId: prevBreak } : s)),
+          );
+        },
+      },
+    });
+  }, [activeId, showToast]);
+
+  const handleRemoveContextBreak = useCallback(() => {
+    if (!activeId) return;
+    setSessions((list) =>
+      list.map((s) => (s.id === activeId ? { ...s, contextBreakId: null } : s)),
+    );
+  }, [activeId]);
+
   // ---- 斜杠命令 ----
   // /clear 与 /regen 是本地命令，不走 LLM；/summarize /explain /translate 把模板
   // 插入 composer 让用户补全后再发送。
@@ -903,42 +1432,61 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         setClearConfirmOpen(true);
         return;
       }
-      if (cmd.command === '/regen') {
-        // 删掉最后一条 assistant，把上一条 user 重新塞回 draft 让用户决定要不要重发
+      if (cmd.command === '/context') {
+        handleClearContext();
+        return;
+      }
+      if (cmd.command === '/export') {
         if (!activeId) return;
+        handleExportSession(activeId);
+        return;
+      }
+      if (cmd.command === '/regen') {
+        // 删掉最后一条 assistant，把上一条 user 重新塞回 draft 让用户决定要不要重发。
+        // 全部计算基于 sessionsRef 在 updater 之外完成 —— setSessions 的 updater
+        // 必须保持纯函数（StrictMode 双调用，内嵌 setState 会跑两遍）。
+        if (!activeId) return;
+        const sess = sessionsRef.current.find((s) => s.id === activeId);
+        if (!sess || sess.messages.length === 0) return;
+        const msgs = [...sess.messages];
+        if (msgs[msgs.length - 1]?.role === 'assistant') msgs.pop();
+        const u = msgs.length > 0 && msgs[msgs.length - 1].role === 'user' ? msgs.pop() : null;
+        const nextArticles = u?.contextArticles ?? sess.contextArticles ?? [];
+        const nextTags = u?.contextTags ?? sess.contextTags ?? [];
+        const nextKbs = u?.contextKbs ?? sess.contextKbs ?? [];
+        const nextMode = u?.knowledgeMode ?? sess.knowledgeMode ?? 'auto';
+        if (u) {
+          setPendingArticles(nextArticles);
+          setPendingTags(nextTags);
+          setPendingKbs(nextKbs);
+          setKnowledgeMode(nextMode);
+          setDraft(u.content);
+        }
         setSessions((list) =>
-          list.map((s) => {
-            if (s.id !== activeId) return s;
-            const msgs = [...s.messages];
-            if (msgs.length === 0) return s;
-            const last = msgs[msgs.length - 1];
-            if (last.role === 'assistant') msgs.pop();
-            // 同时把它对应的 user 提取出来回到 draft
-            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'user') {
-              const u = msgs.pop();
-              if (u) {
-                const nextArticles = u.contextArticles ?? s.contextArticles ?? [];
-                const nextTags = u.contextTags ?? s.contextTags ?? [];
-                setPendingArticles(nextArticles);
-                setPendingTags(nextTags);
-                setDraft(u.content);
-                return {
+          list.map((s) =>
+            s.id === activeId
+              ? {
                   ...s,
-                  contextArticles: nextArticles,
-                  contextTags: nextTags,
+                  ...(u
+                    ? {
+                        contextArticles: nextArticles,
+                        contextTags: nextTags,
+                        contextKbs: nextKbs,
+                        knowledgeMode: nextMode,
+                      }
+                    : {}),
                   messages: msgs,
+                  contextBreakId: normalizeContextBreak(msgs, s.contextBreakId),
                   updatedAt: Date.now(),
-                };
-              }
-            }
-            return { ...s, messages: msgs, updatedAt: Date.now() };
-          }),
+                }
+              : s,
+          ),
         );
         requestAnimationFrame(() => composerRef.current?.focus());
         return;
       }
     },
-    [activeId],
+    [activeId, handleClearContext, handleExportSession],
   );
 
   const closeClearConfirm = useCallback(() => {
@@ -956,6 +1504,17 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     if (clearTargetSessionId === activeId && streamingMsgIdRef.current) {
       finalizeStreamingMessage('已中断');
     }
+    // 被清空消息上的翻译流一并中止（与删除会话同理，防孤儿流）。
+    const clearing = sessionsRef.current.find((s) => s.id === clearTargetSessionId);
+    if (clearing) {
+      for (const m of clearing.messages) {
+        const c = translationControllersRef.current.get(m.id);
+        if (c) {
+          c.abort();
+          translationControllersRef.current.delete(m.id);
+        }
+      }
+    }
     setSessions((list) =>
       list.map((s) =>
         s.id === clearTargetSessionId
@@ -964,6 +1523,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               messages: [],
               contextArticles: [],
               contextTags: [],
+              contextKbs: [],
+              knowledgeMode: 'auto',
+              contextBreakId: null,
               updatedAt: Date.now(),
             }
           : s,
@@ -972,6 +1534,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     if (activeId === clearTargetSessionId) {
       setPendingArticles([]);
       setPendingTags([]);
+      setPendingKbs([]);
+      setKnowledgeMode('auto');
     }
     closeClearConfirm();
   }, [activeId, clearTargetSessionId, closeClearConfirm, finalizeStreamingMessage]);
@@ -980,7 +1544,68 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   useEffect(() => {
     setPendingArticles(activeSession?.contextArticles ?? []);
     setPendingTags(activeSession?.contextTags ?? []);
-  }, [activeSession?.id, activeSession?.contextArticles, activeSession?.contextTags]);
+    setPendingKbs(activeSession?.contextKbs ?? []);
+    setKnowledgeMode(activeSession?.knowledgeMode ?? 'auto');
+  }, [
+    activeSession?.id,
+    activeSession?.contextArticles,
+    activeSession?.contextTags,
+    activeSession?.contextKbs,
+    activeSession?.knowledgeMode,
+  ]);
+
+  // ---- 上下文用量估算 ----
+  // 当前生效模型的上下文窗口（选了具体模型才有；自动路由未知 → null）。
+  const currentModelWindow = useMemo(() => {
+    if (modelsState.status !== 'ready') return null;
+    const mid = sessionModelOverride
+      ? sessionModelOverride.modelId
+      : activeSession?.modelId ?? null;
+    const pc = sessionModelOverride
+      ? sessionModelOverride.providerCode
+      : activeSession?.providerCode ?? null;
+    if (!mid) return null;
+    const found = modelsState.items.find(
+      (m) => m.modelId === mid && (!pc || m.providerCode === pc),
+    );
+    return found?.contextWindow ?? null;
+  }, [modelsState, sessionModelOverride, activeSession?.modelId, activeSession?.providerCode]);
+
+  // 历史 token 估算 —— 流式期间冻结（每帧全量扫描没有意义，完成后再刷新）。
+  const historyStatsRef = useRef<{ count: number; tokens: number } | null>(null);
+  const historyTokenStats = useMemo(() => {
+    if (!activeSession || activeSession.messages.length === 0) {
+      historyStatsRef.current = null;
+      return null;
+    }
+    if (busy && historyStatsRef.current) return historyStatsRef.current;
+    const msgs = sliceContextMessages(
+      activeSession.messages,
+      activeSession.contextBreakId,
+    ).filter((m) => !m.pending);
+    const value = {
+      count: msgs.length,
+      tokens: estimateMessagesTokens(msgs.map((m) => m.content)),
+    };
+    historyStatsRef.current = value;
+    return value;
+  }, [activeSession, busy]);
+
+  const contextStats = useMemo<ComposerContextStats | null>(() => {
+    if (!historyTokenStats) return null;
+    return {
+      messages: historyTokenStats.count,
+      tokens: historyTokenStats.tokens + estimateTokens(draft),
+      window: currentModelWindow,
+    };
+  }, [historyTokenStats, draft, currentModelWindow]);
+
+  const canClearContext =
+    !busy &&
+    !!activeSession &&
+    activeSession.messages.length > 0 &&
+    activeSession.contextBreakId !==
+      activeSession.messages[activeSession.messages.length - 1].id;
 
   // 智能滚动 —— 对齐 ChatGPT / Claude / Codex 的"流式跟随"心智模型：
   //   · 用户在底部 → 新消息 / 流式增量自动跟随；
@@ -992,28 +1617,75 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   //   · 回到底部附近 → 自动重新粘底；浮出的 "↓ 最新" 可一键平滑回底。
   const stickToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // 程序性锚定的"忽略窗口"截止时间戳。scroll 事件是异步派发的:RO 把
+  // scrollTop 锚到底部(此刻 distance=0)之后、事件处理器真正执行之前,快速
+  // 流式可能又长高了几十上百 px —— 处理器读到的 distance ≥64 并不是用户
+  // 上滑,而是"锚定 + 增量"的竞态残影。窗口内跳过脱离判定,粘底交给下一次
+  // RO 锚定收敛。用户的真实意图另有直达通道(wheel / touch / 滚动条拖拽)。
+  const ignoreScrollUntilRef = useRef(0);
+  const markProgrammaticScroll = useCallback((ms: number = 150) => {
+    ignoreScrollUntilRef.current = performance.now() + ms;
+  }, []);
 
   // 滚动监听:双阈值迟滞(hysteresis)判定粘底,避免临界处因一帧增量在
   // "粘底 / 脱离"间反复横跳 —— 关键是给手势 release() 留出生效窗口:
   //   · 仅在极贴底(<16px)时才重新自动粘底;
-  //   · 仅在彻底离底(>=64px)时才自动脱离;
+  //   · 仅在彻底离底(>=64px)且不在程序性锚定窗口内时才自动脱离;
   //   · 16–64px 的微调滚动不主动改粘底状态。
   // 旧的单阈值(distance < 64 直接赋值)会把刚被 release() 的小幅上滑(如 30px)
   // 又判回粘底,使手势脱离在小幅滚动时失效、用户被后续 token 拽回底部。
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
+    // 划选拖拽期间浏览器的 selection auto-scroll 只发 scroll 事件 —— 指针按下
+    // 时段内的显著离底视为用户意图,穿透程序性忽略窗口。
+    let pointerHeld = false;
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const programmatic =
+        performance.now() < ignoreScrollUntilRef.current && !pointerHeld;
       if (distance < 16) {
         stickToBottomRef.current = true;
-      } else if (distance >= 64) {
+      } else if (distance >= 64 && !programmatic) {
         stickToBottomRef.current = false;
       }
-      setShowJumpToBottom(distance >= 64);
+      // 粘底中的程序性事件不闪"↓ 最新"按钮 —— 下一帧 RO 就会重新贴底。
+      setShowJumpToBottom(distance >= 64 && !(programmatic && stickToBottomRef.current));
+    };
+    // 滚动条拖拽没有 wheel / touch 事件 —— 命中滚动条区域(offsetX 超出
+    // clientWidth)的按压视为"想回看历史"的显式手势,立即脱离粘底。
+    const onPointerDown = (e: PointerEvent) => {
+      pointerHeld = true;
+      if (e.target === el && e.offsetX > el.clientWidth && el.scrollTop > 0) {
+        stickToBottomRef.current = false;
+        setShowJumpToBottom(true);
+      }
+    };
+    const onPointerEnd = () => {
+      pointerHeld = false;
+    };
+    // 键盘翻页（PageUp/↑/Home）同样只产出 scroll 事件 —— 显式释放粘底。
+    // 输入类元素中的方向键是光标移动语义,跳过。
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'PageUp' && e.key !== 'ArrowUp' && e.key !== 'Home') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (el.scrollHeight - el.clientHeight > 0) {
+        stickToBottomRef.current = false;
+      }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    el.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointerup', onPointerEnd, { passive: true });
+    window.addEventListener('pointercancel', onPointerEnd, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [activeId]);
 
   // 用户"想回看历史"的手势意图 → 立刻松手(早于 scroll 事件与增量的赛跑)。
@@ -1058,8 +1730,9 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     if (!el) return;
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
+    markProgrammaticScroll();
     el.scrollTop = el.scrollHeight;
-  }, [activeId]);
+  }, [activeId, markProgrammaticScroll]);
 
   // 跟随内容高度变化 —— ResizeObserver 在「布局完成后」触发,且浏览器每帧最多
   // 回调一次(自动去重)。这比"每个流式增量 setState 后手写 scrollTop"更稳、更省:
@@ -1072,19 +1745,25 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     const el = threadRef.current;
     if (!content || !el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
-      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+      if (stickToBottomRef.current) {
+        markProgrammaticScroll();
+        el.scrollTop = el.scrollHeight;
+      }
     });
     ro.observe(content);
     return () => ro.disconnect();
-  }, [activeId]);
+  }, [activeId, markProgrammaticScroll]);
 
   const handleJumpToBottom = useCallback(() => {
     const el = threadRef.current;
     if (!el) return;
+    // smooth 动画期间会持续派发 distance≥64 的事件 —— 给足忽略窗口，
+    // 避免动画自己把刚恢复的粘底又打断。
+    markProgrammaticScroll(700);
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
-  }, []);
+  }, [markProgrammaticScroll]);
 
   // 快捷键：⌘/Ctrl + Shift + O 新建对话 —— 对齐 ChatGPT 的肌肉记忆，键盘党
   // 不必摸鼠标去点侧栏。e.key 在 Shift 按下时是大写 'O'，两种都接。
@@ -1109,6 +1788,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     );
   }
 
+  // DB 存的是大写 'ADMIN'（chk_users_role 约束），后端鉴权也是 lowercase 后
+  // 再比较 —— 这里同样大小写不敏感，否则 /admin/ 来源链接永远不可点。
+  const allowAdminHref = state.user.role?.toLowerCase() === 'admin';
+
   return (
     <div className="h-screen [height:100dvh] min-h-[600px] bg-[var(--bg-substrate)] flex overflow-hidden">
       <Sidebar
@@ -1122,6 +1805,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         onCreate={handleCreate}
         onRename={handleRename}
         onDelete={handleDelete}
+        onTogglePin={handleTogglePin}
+        onExport={handleExportSession}
         onLogout={async () => {
           await logout();
           router.replace('/agent');
@@ -1221,7 +1906,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           <div
             ref={threadRef}
             className="agent-thumb-scroll absolute inset-0 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
-            style={{ WebkitOverflowScrolling: 'touch' }}
+            // overflow-anchor: none —— 锚定权完全归我们的 ResizeObserver。浏览器
+            // 原生 scroll anchoring 会在"流式轻渲染 → 完整渲染切换 / 思考面板
+            // 折叠"这类大高度变化时自行调整 scrollTop 并触发 scroll 事件,被
+            // 双阈值判定误读成"用户上滑"而解除粘底 —— 表现为回答刚结束视口
+            // 停在半中腰、浮出"↓ 最新"。
+            style={{ WebkitOverflowScrolling: 'touch', overflowAnchor: 'none' }}
           >
             {/* 稳定容器 —— 不随空态/对话态切换而换节点,ResizeObserver 始终能观察到它,
                 因此 Shiki 异步高亮、流式增量、思考面板展开等"事后高度变化"都能被捕获并
@@ -1236,18 +1926,49 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               ) : (
                 <div className="px-3 sm:px-6 py-6 sm:py-8">
                   <div className="mx-auto w-full max-w-[820px] space-y-6 sm:space-y-7">
-                    {activeSession.messages.map((m) => (
-                      <MessageBubble
-                        key={m.id}
-                        message={m}
-                        busy={busy}
-                        displayMode={displayMode}
-                        streamAnimation={streamAnimation}
-                        fontSize={fontSize}
-                        onEdit={handleEditUserMessage}
-                        onRetry={handleRetryAssistantMessage}
-                      />
-                    ))}
+                    {(() => {
+                      // 日期分隔线 + 上下文断点分隔线与消息一起线性铺开。
+                      // 首条就是"今天"时不渲染日期（全新对话没必要标注今天）。
+                      const nodes: React.ReactNode[] = [];
+                      let lastDay = '';
+                      for (const m of activeSession.messages) {
+                        const day = threadDayLabel(m.createdAt);
+                        if (day !== lastDay) {
+                          if (lastDay !== '' || day !== '今天') {
+                            nodes.push(<ThreadDayDivider key={`day-${m.id}`} label={day} />);
+                          }
+                          lastDay = day;
+                        }
+                        nodes.push(
+                          <MessageBubble
+                            key={m.id}
+                            message={m}
+                            busy={busy}
+                            displayMode={displayMode}
+                            streamAnimation={streamAnimation}
+                            fontSize={fontSize}
+                            onEdit={handleEditUserMessage}
+                            onRetry={handleRetryAssistantMessage}
+                            onTranslate={handleTranslateMessage}
+                            onDismissTranslation={handleDismissTranslation}
+                            onQuote={handleQuoteMessage}
+                            onFork={handleForkMessage}
+                            onDelete={handleDeleteMessage}
+                            resolveModelLabel={resolveModelLabel}
+                            allowAdminHref={allowAdminHref}
+                          />,
+                        );
+                        if (activeSession.contextBreakId === m.id) {
+                          nodes.push(
+                            <ContextBreakDivider
+                              key={`break-${m.id}`}
+                              onRestore={busy ? undefined : handleRemoveContextBreak}
+                            />,
+                          );
+                        }
+                      }
+                      return nodes;
+                    })()}
                     {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
                     <div className="h-2" aria-hidden="true" />
                   </div>
@@ -1320,6 +2041,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                   enabled={state.status === 'authed'}
                   placement="top-start"
                   compact
+                  modelsState={modelsState}
                 />
               }
               selectedArticles={pendingArticles}
@@ -1329,6 +2051,20 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               onSlashCommand={handleSlashCommand}
               onRemoveArticle={handleRemoveArticle}
               onRemoveTag={handleRemoveTag}
+              knowledgeMode={knowledgeMode}
+              selectedKbs={pendingKbs}
+              onKnowledgeModeChange={handleKnowledgeModeChange}
+              onToggleKb={handleToggleKb}
+              onRemoveKb={handleRemoveKb}
+              contextStats={contextStats}
+              // 空会话没有可清的上下文 —— 直接不渲染剪刀按钮(会话内则常驻,
+              // 流式期间仅置灰,避免布局抖动)。
+              onClearContext={
+                activeSession && activeSession.messages.length > 0
+                  ? handleClearContext
+                  : undefined
+              }
+              canClearContext={canClearContext}
             />
           </div>
         </div>
@@ -1343,6 +2079,79 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         zIndex={1000}
         onConfirm={handleConfirmClear}
         onCancel={closeClearConfirm}
+      />
+    </div>
+  );
+}
+
+// ============================================================================
+// Thread 分隔线 —— 日期 / 上下文断点
+// ============================================================================
+
+/** "今天 / 昨天 / M月D日"（跨年补年份）。仅客户端渲染，本地时区安全。 */
+function threadDayLabel(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ts >= startOfToday) return '今天';
+  if (ts >= startOfToday - 24 * 60 * 60 * 1000) return '昨天';
+  return d.getFullYear() === now.getFullYear()
+    ? `${d.getMonth() + 1}月${d.getDate()}日`
+    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function ThreadDayDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-0.5" role="separator" aria-label={label}>
+      <span
+        aria-hidden="true"
+        className="h-px flex-1 bg-gradient-to-r from-transparent to-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]"
+      />
+      <span className="font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]/85 tnum">
+        {label}
+      </span>
+      <span
+        aria-hidden="true"
+        className="h-px flex-1 bg-gradient-to-l from-transparent to-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]"
+      />
+    </div>
+  );
+}
+
+/**
+ * ContextBreakDivider —— 上下文断点分隔线。
+ * 断点之上的消息不再随请求发送；点「恢复」撤销断点重新携带全部历史。
+ */
+function ContextBreakDivider({ onRestore }: { onRestore?: () => void }) {
+  return (
+    <div
+      className="group/break flex items-center gap-3 py-0.5"
+      role="separator"
+      aria-label="上下文已清除"
+    >
+      <span
+        aria-hidden="true"
+        className="h-px flex-1 border-t border-dashed border-[color-mix(in_oklch,var(--aurora-3)_38%,transparent)]"
+      />
+      <span className="inline-flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.24em] text-[color-mix(in_oklch,var(--aurora-3)_80%,var(--ink-muted))]">
+        <Scissors className="h-3 w-3" aria-hidden="true" />
+        上下文已清除
+        {onRestore && (
+          <button
+            type="button"
+            onClick={onRestore}
+            className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 tracking-[0.18em] text-[var(--ink-muted)] opacity-0 transition-opacity hover:bg-[color-mix(in_oklch,var(--aurora-3)_10%,transparent)] hover:text-[var(--aurora-3)] focus-visible:opacity-100 group-hover/break:opacity-100"
+            aria-label="恢复上下文"
+            title="恢复上下文（重新携带全部历史）"
+          >
+            <Undo2 className="h-3 w-3" aria-hidden="true" />
+            恢复
+          </button>
+        )}
+      </span>
+      <span
+        aria-hidden="true"
+        className="h-px flex-1 border-t border-dashed border-[color-mix(in_oklch,var(--aurora-3)_38%,transparent)]"
       />
     </div>
   );
@@ -1419,7 +2228,7 @@ function EmptyState({
         transition={{ duration: 0.6, ease, delay: 0.05 }}
         className="mt-3.5 max-w-md font-editorial text-[15px] italic leading-relaxed text-[var(--ink-secondary)] sm:text-base"
       >
-        随手发问，或以 @ 引用文章 · # 圈定标签 · / 调用命令。
+        随手发问，灵境会自动检索知识库；@ 引用文章 · # 圈定标签 · / 调用命令。
       </motion.p>
 
       <motion.ul
@@ -1498,6 +2307,8 @@ function RenderingPreferencesButton({
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // 发送方式（Enter / ⌘Enter）—— 与 Composer 经 lib/sendShortcut 同源同步。
+  const [sendShortcut, setSendShortcut] = useSendShortcut();
 
   useEffect(() => {
     if (!open) return;
@@ -1615,6 +2426,26 @@ function RenderingPreferencesButton({
               />
               <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
                 节流模型 SSE 颗粒，平滑越好阅读节奏越稳。
+              </p>
+            </motion.div>
+
+            {/* 发送方式 —— 从发送按钮的分裂式下拉迁来:主键保持单一纯粹,
+                低频偏好统一收进本面板。 */}
+            <motion.div variants={sectionVariants} className="mb-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">发送方式</span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  SEND
+                </span>
+              </div>
+              <AgentSegmentedControl
+                ariaLabel="发送方式"
+                value={sendShortcut}
+                options={SEND_SHORTCUT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                onChange={(v) => setSendShortcut(v as typeof sendShortcut)}
+              />
+              <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
+                {SEND_SHORTCUT_OPTIONS.find((o) => o.value === sendShortcut)?.description}
               </p>
             </motion.div>
 
