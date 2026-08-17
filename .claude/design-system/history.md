@@ -73,3 +73,16 @@ Round 3 之后存在「仅在 `/design` 上呈现」的风险，Round 4 分四�
 - **域内排印**:`[data-music-skin] .tnum` 统一走 `--font-mono`(+0.02em 字距),时长/序号/进度数字全域对齐「metadata = mono」规范。
 - **SeekBar**:hover/active 高度过渡(3px→5px 档),填充保持纯平 aurora(评审门禁:seek 语言必须 flat)。
 - 门禁:129/129 音乐测试全绿(含修复基线上 2 个既有失败)、`design-system:check` 维持 0 error、`tsc --noEmit` 干净。
+
+---
+
+## Round 8 · AI 工坊「Ink Bleed」签名时刻落地(2026-08-17)
+
+签名时刻 #5(06-signature-moments.md)首次在 `apps/admin` AI 协同写作工作区(`/posts/:id/ai-writing`)完整落地。零新增 token,全部消费既有 aurora / ink / surface / motion 体系。
+
+- **流式书写语言**:AI 对话回复用 `--font-editorial`(Instrument Serif)渲染 markdown(新增 `.writing-chat-md`,范式对齐 AetherHub 的 `hub-agent-md`),`useSmoothStream` 匀速吐字 + `.writing-stream-fade` 纸面浮起,流式末尾复用全局 `.ink-cursor` 墨水光标;思考流为 mono caption + aurora 左光条的折叠面板(流式自动展开/收起)。
+- **按句 ink-bleed**:选区工具结果预览卡(`AiResultPreview`)按规范用 `.ai-stream .delta` 句级分片入场(220ms `var(--ease-out)`,animationDelay 按句递增,禁逐字符动画)。
+- **等待态语言**:三颗极光呼吸点 `.writing-typing-dot`(对话)与 pulse 骨架行(预览卡/Atlas 参考)—— 修复该页两处违反红线 3.6 的 spinner 遗留。
+- **legacy 清零**:`AiChatPanel` / `FloatingAiToolbar` 原为全量 legacy token(`--text-*`/`--bg-card`/`shadow-2xl`),按红线 3.7 同 commit 迁移至 Codex;页面内全部裸 bezier / spring 数值收编为 `@aetherblog/ui` `transition.quick` / `spring.precise`。
+- **admin「锐」补全**:底部状态栏(mono + tabular-nums:字数/阅读时长/保存三态)+ `⌘S` 保存,呼应 04「Admin 控制室」的键盘优先气质。
+- 门禁:`design-system:check` 维持 0 error;全部新增动画带 `prefers-reduced-motion` 降级。
