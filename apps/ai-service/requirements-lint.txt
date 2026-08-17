@@ -1,0 +1,12 @@
+# Lint 工具链的单一事实来源: CI (ai-test 的 Run linting 步骤) 与本地开发都从这里取版本。
+#
+# 必须钉死精确版本(== 而非 >=): ruff 会在小版本里调整「内置默认规则集」,
+# 0.16.0 就是这么一次 —— 浮动版本意味着上游任何一次例行发版都可能在零代码变更的情况下
+# 把流水线变红(见 run 32047480619)。
+#
+# 升级步骤:
+#   1. 改这里的版本号
+#   2. cd apps/ai-service && pip install -r requirements-lint.txt && ruff check .
+#   3. 若新版本引入新告警,在同一个 PR 里清理干净或显式调整 pyproject.toml 的
+#      [tool.ruff.lint].select —— 不要把清理工作留给下一个人的 CI
+ruff==0.16.3

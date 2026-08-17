@@ -12,3 +12,26 @@ requires-python = ">=3.11"
 minversion = "7.0"
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
+
+# Lint 门禁: 规则集必须在这里显式声明,不能继承 ruff 的内置默认值。
+#
+# 事故背景 (run 32047480619): 本节缺失时 `ruff check .` 的检查范围 =
+# 「当前所安装 ruff 版本的内置默认规则集」—— 也就是说门禁范围由上游定义,不由本仓库定义。
+# ruff 0.16.0 大幅扩充了该默认集(新增 I / RUF / B / S / UP / SIM / ASYNC / C4 / DTZ ...),
+# CI 里未钉版本的 `pip install ruff` 于 2026-08-17 拉到 0.16.3,
+# 于是零代码变更的 main 分支当场爆出 507 条 error,流水线变红。
+#
+# 双保险: 规则集钉在本文件,ruff 版本钉在 requirements-lint.txt。
+# 缺任何一半,上游一次例行发版就能再次把流水线变红。
+[tool.ruff]
+# 与 [project].requires-python 对齐,避免 ruff 按默认 target 误判语法可用性。
+target-version = "py311"
+
+[tool.ruff.lint]
+# 等价于 ruff ≤0.15 的内置默认集 —— 本仓库一直以来实际通过的门禁范围,
+# 保持现状即可,本次修复不改变任何被检查的代码。
+#
+# ⚠️ 扩大范围请单独提 PR: 0.16 默认集在存量代码上有 507 条待清理告警,
+# 其中 B008 (200 条) 是 FastAPI `Depends()/Query()` 默认参数的既定误报,
+# 启用 B 时必须同时配 flake8-bugbear.extend-immutable-calls,否则不可能收敛。
+select = ["E4", "E7", "E9", "F"]
