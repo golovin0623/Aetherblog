@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -294,11 +295,30 @@ func (r *ChatRepo) FindOrCreateDirect(ctx context.Context, a, b int64, createdBy
 	return &out, true, nil
 }
 
+// GetTeamName 返回团队名称（不存在时返回空串）。
+func (r *ChatRepo) GetTeamName(ctx context.Context, teamID int64) (string, error) {
+	var name string
+	err := r.db.GetContext(ctx, &name, `SELECT name FROM teams WHERE id=$1`, teamID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
 // EnsureTeamConversation 查找或创建团队群聊会话，并把团队的活跃成员同步进会话成员表。
 func (r *ChatRepo) EnsureTeamConversation(ctx context.Context, teamID int64, title string, createdBy int64) (*model.ChatConversation, error) {
 	var conv model.ChatConversation
 	err := r.db.GetContext(ctx, &conv,
 		`SELECT * FROM chat_conversations WHERE kind='TEAM' AND team_id=$1`, teamID)
+	if err == nil && (conv.Title == nil || *conv.Title == "") && title != "" {
+		// 懒回填：早期创建的团队会话标题为空（前端只能显示「团队群聊」占位），
+		// 现在拿到团队名就补上，让选人入口与会话头标题一致。
+		if _, uerr := r.db.ExecContext(ctx,
+			`UPDATE chat_conversations SET title=$1 WHERE id=$2 AND (title IS NULL OR title='')`,
+			title, conv.ID); uerr == nil {
+			conv.Title = &title
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		txErr := r.withTx(ctx, func(tx *sqlx.Tx) error {
 			return tx.QueryRowxContext(ctx, `
@@ -344,6 +364,79 @@ func (r *ChatRepo) IsTeamMember(ctx context.Context, teamID, userID int64) (bool
 		`SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id=$1 AND user_id=$2 AND status='ACTIVE')`,
 		teamID, userID)
 	return exists, err
+}
+
+// SharedActiveTeamExists 判断两名用户是否同时是至少一个团队的活跃成员。
+// DM 可达性策略 chat_dm_scope='team' 的服务端判据（参考 Mattermost RestrictDirectMessage）。
+func (r *ChatRepo) SharedActiveTeamExists(ctx context.Context, userA, userB int64) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `
+		SELECT EXISTS(
+			SELECT 1 FROM team_members ta
+			JOIN team_members tb ON tb.team_id = ta.team_id
+			WHERE ta.user_id = $1 AND tb.user_id = $2
+			  AND ta.status = 'ACTIVE' AND tb.status = 'ACTIVE')`,
+		userA, userB)
+	return exists, err
+}
+
+// ChatUserRow 是私聊选人搜索的用户投影（仅公开展示字段，绝不含邮箱等敏感列）。
+type ChatUserRow struct {
+	UserID   int64   `db:"user_id"`
+	Username string  `db:"username"`
+	Nickname *string `db:"nickname"`
+	Avatar   *string `db:"avatar"`
+}
+
+// SearchDMTargets 按用户名 / 昵称模糊搜索可私聊对象（排除自己与非 ACTIVE 账号）。
+// sharedTeamOnly=true 时仅返回与 callerID 至少共享一个活跃团队的用户 ——
+// 与 OpenDirect 的可达性策略同源，保证「搜得到 ⇔ 打得开」。
+func (r *ChatRepo) SearchDMTargets(ctx context.Context, callerID int64, q string, limit int, sharedTeamOnly bool) ([]ChatUserRow, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 20
+	}
+	// ILIKE 前置转义 % _ \，避免用户输入被当通配符。
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
+	pattern := "%" + esc + "%"
+	scopeClause := ""
+	if sharedTeamOnly {
+		scopeClause = `AND EXISTS(
+			SELECT 1 FROM team_members ta
+			JOIN team_members tb ON tb.team_id = ta.team_id
+			WHERE ta.user_id = $1 AND tb.user_id = u.id
+			  AND ta.status = 'ACTIVE' AND tb.status = 'ACTIVE')`
+	}
+	rows := []ChatUserRow{}
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT u.id AS user_id, u.username, u.nickname, u.avatar
+		FROM users u
+		WHERE u.id <> $1 AND u.status = 'ACTIVE'
+		  AND (u.username ILIKE $2 OR COALESCE(u.nickname, '') ILIKE $2)
+		  `+scopeClause+`
+		ORDER BY COALESCE(NULLIF(u.nickname, ''), u.username)
+		LIMIT $3`, callerID, pattern, limit)
+	return rows, err
+}
+
+// ChatTeamRow 是「我的团队」列表投影，供群聊入口直接点选。
+type ChatTeamRow struct {
+	TeamID      int64  `db:"team_id"`
+	Name        string `db:"name"`
+	MemberCount int    `db:"member_count"`
+}
+
+// ListUserTeams 返回用户作为活跃成员所在的团队及活跃成员数。
+func (r *ChatRepo) ListUserTeams(ctx context.Context, userID int64) ([]ChatTeamRow, error) {
+	rows := []ChatTeamRow{}
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT t.id AS team_id, t.name,
+		       (SELECT COUNT(*) FROM team_members c
+		        WHERE c.team_id = t.id AND c.status = 'ACTIVE') AS member_count
+		FROM teams t
+		JOIN team_members tm ON tm.team_id = t.id
+		WHERE tm.user_id = $1 AND tm.status = 'ACTIVE'
+		ORDER BY t.name`, userID)
+	return rows, err
 }
 
 // PeerUserIDs 返回与某用户共享至少一条会话的其他用户 ID（去重）——

@@ -995,7 +995,10 @@ export default function TeamChatClient() {
         </header>
 
         <div className="px-3 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 transition-colors focus-within:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]">
+          <div
+            data-field
+            className="flex items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-substrate)] px-3 py-2 transition-colors focus-within:border-[color-mix(in_oklch,var(--aurora-1)_45%,transparent)]"
+          >
             <Search size={15} className="shrink-0 text-[var(--ink-muted)]" />
             <input
               ref={searchRef}

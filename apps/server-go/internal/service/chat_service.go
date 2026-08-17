@@ -22,11 +22,17 @@ var (
 	ErrChatEditWindow = errors.New("只能在发出 2 分钟内编辑或撤回自己的消息")
 )
 
+// ChatSettingReader 抽象站点配置读取，避免 ChatService 直接依赖 SiteSettingService。
+type ChatSettingReader interface {
+	GetValue(ctx context.Context, key string) (string, error)
+}
+
 // ChatService 编排团队聊天的会话 / 消息 / 偏好逻辑，并通过 realtime.Hub 实时扇出。
 type ChatService struct {
 	repo     *repository.ChatRepo
 	userRepo *repository.UserRepo
-	hub      *realtime.Hub // 可为 nil（无实时层时仅落库 + REST 轮询）
+	hub      *realtime.Hub     // 可为 nil（无实时层时仅落库 + REST 轮询）
+	settings ChatSettingReader // 可为 nil（读不到配置时策略回退 'any'）
 }
 
 // NewChatService 创建 ChatService。
@@ -36,6 +42,28 @@ func NewChatService(repo *repository.ChatRepo, userRepo *repository.UserRepo) *C
 
 // AttachHub 注入实时分发 Hub。
 func (s *ChatService) AttachHub(h *realtime.Hub) { s.hub = h }
+
+// AttachSettings 注入站点配置读取器（chat_dm_scope 可达性策略来源）。
+func (s *ChatService) AttachSettings(r ChatSettingReader) { s.settings = r }
+
+// DMScopeAny / DMScopeTeam 是 chat_dm_scope 的两档取值，语义对齐
+// Mattermost TeamSettings.RestrictDirectMessage（any | team）。
+const (
+	DMScopeAny  = "any"  // 默认：任意已登录成员互相可私聊（Slack / Mattermost 默认模型）
+	DMScopeTeam = "team" // 严格：仅与至少共享一个活跃团队的成员可私聊（admin 豁免）
+)
+
+// dmScope 读取当前 DM 可达性档位；配置缺失 / 非法 / 读取失败一律回退 'any'（不改变既有行为）。
+func (s *ChatService) dmScope(ctx context.Context) string {
+	if s.settings == nil {
+		return DMScopeAny
+	}
+	v, err := s.settings.GetValue(ctx, "chat_dm_scope")
+	if err == nil && strings.EqualFold(strings.TrimSpace(v), DMScopeTeam) {
+		return DMScopeTeam
+	}
+	return DMScopeAny
+}
 
 // ListConversations 返回用户的会话列表（含未读数与最后一条消息），并填充展示标题。
 func (s *ChatService) ListConversations(ctx context.Context, userID int64) ([]dto.ChatConversationVO, error) {
@@ -60,7 +88,10 @@ func (s *ChatService) ListConversations(ctx context.Context, userID int64) ([]dt
 }
 
 // OpenDirect 查找或创建与目标用户的私聊会话。
-func (s *ChatService) OpenDirect(ctx context.Context, userID, targetID int64) (*dto.ChatConversationVO, error) {
+// callerIsAdmin 为 true 时豁免 chat_dm_scope='team' 的同团队限制（管理员可触达全员）。
+// 安全性：策略拒绝与「目标不存在」返回同一个 ErrChatBadTarget ——
+// 对调用方不可区分，scope='team' 下不构成用户存在性 oracle。
+func (s *ChatService) OpenDirect(ctx context.Context, userID, targetID int64, callerIsAdmin bool) (*dto.ChatConversationVO, error) {
 	if targetID == userID || targetID <= 0 {
 		return nil, ErrChatBadTarget
 	}
@@ -71,6 +102,15 @@ func (s *ChatService) OpenDirect(ctx context.Context, userID, targetID int64) (*
 	if target == nil {
 		return nil, ErrChatBadTarget
 	}
+	if s.dmScope(ctx) == DMScopeTeam && !callerIsAdmin {
+		shared, err := s.repo.SharedActiveTeamExists(ctx, userID, targetID)
+		if err != nil {
+			return nil, err
+		}
+		if !shared {
+			return nil, ErrChatBadTarget
+		}
+	}
 	conv, _, err := s.repo.FindOrCreateDirect(ctx, userID, targetID, userID)
 	if err != nil {
 		return nil, err
@@ -78,7 +118,45 @@ func (s *ChatService) OpenDirect(ctx context.Context, userID, targetID int64) (*
 	return s.loadConversationVO(ctx, conv.ID, userID)
 }
 
+// SearchDMTargets 私聊选人搜索：与 OpenDirect 同一可达性策略，保证「搜得到 ⇔ 打得开」。
+// 空查询返回空列表（目录浏览须由用户主动输入触发，不做全量 dump）。
+func (s *ChatService) SearchDMTargets(ctx context.Context, userID int64, callerIsAdmin bool, q string) ([]dto.ChatDMTargetVO, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return []dto.ChatDMTargetVO{}, nil
+	}
+	sharedTeamOnly := s.dmScope(ctx) == DMScopeTeam && !callerIsAdmin
+	rows, err := s.repo.SearchDMTargets(ctx, userID, q, 10, sharedTeamOnly)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ChatDMTargetVO, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, dto.ChatDMTargetVO{
+			UserID:   r.UserID,
+			Username: r.Username,
+			Nickname: r.Nickname,
+			Avatar:   r.Avatar,
+		})
+	}
+	return out, nil
+}
+
+// ListMyTeams 返回用户作为活跃成员所在的团队，供群聊入口直接点选。
+func (s *ChatService) ListMyTeams(ctx context.Context, userID int64) ([]dto.ChatMyTeamVO, error) {
+	rows, err := s.repo.ListUserTeams(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ChatMyTeamVO, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, dto.ChatMyTeamVO{TeamID: r.TeamID, Name: r.Name, MemberCount: r.MemberCount})
+	}
+	return out, nil
+}
+
 // EnsureTeamConversation 校验调用者是团队成员后，查找或创建团队群聊会话。
+// 会话标题取团队名（创建时写入；存量空标题懒回填），与选人入口显示一致。
 func (s *ChatService) EnsureTeamConversation(ctx context.Context, userID, teamID int64) (*dto.ChatConversationVO, error) {
 	member, err := s.repo.IsTeamMember(ctx, teamID, userID)
 	if err != nil {
@@ -87,7 +165,11 @@ func (s *ChatService) EnsureTeamConversation(ctx context.Context, userID, teamID
 	if !member {
 		return nil, ErrChatNotMember
 	}
-	conv, err := s.repo.EnsureTeamConversation(ctx, teamID, "", userID)
+	teamName, err := s.repo.GetTeamName(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	conv, err := s.repo.EnsureTeamConversation(ctx, teamID, teamName, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -77,6 +77,21 @@ type OpenDirectRequest struct {
 	UserID int64 `json:"userId" validate:"required,gt=0"`
 }
 
+// ChatDMTargetVO 私聊选人搜索结果（仅公开展示字段）。
+type ChatDMTargetVO struct {
+	UserID   int64   `json:"userId"`
+	Username string  `json:"username"`
+	Nickname *string `json:"nickname,omitempty"`
+	Avatar   *string `json:"avatar,omitempty"`
+}
+
+// ChatMyTeamVO 「我的团队」条目，供群聊入口直接点选。
+type ChatMyTeamVO struct {
+	TeamID      int64  `json:"teamId"`
+	Name        string `json:"name"`
+	MemberCount int    `json:"memberCount"`
+}
+
 // SendMessageRequest 发送消息（REST 兜底通道，与 WebSocket 等价）。
 type SendMessageRequest struct {
 	MessageType    string         `json:"messageType" validate:"omitempty,oneof=TEXT IMAGE FILE VOICE"`
