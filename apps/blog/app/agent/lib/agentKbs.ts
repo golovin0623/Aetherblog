@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useDebounce } from '@aetherblog/hooks';
 
 /**
  * Agent 知识库 picker 数据源
@@ -57,7 +58,7 @@ export function useAgentKnowledgeBases(enabled: boolean, query: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const debounced = useDebouncedValue(query, 200);
+  const debounced = useDebounce(query, 200);
 
   useEffect(() => {
     if (!enabled) return;
@@ -90,13 +91,4 @@ export function useAgentKnowledgeBases(enabled: boolean, query: string) {
   }, [enabled, debounced]);
 
   return { items, loading, error };
-}
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setV(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return v;
 }

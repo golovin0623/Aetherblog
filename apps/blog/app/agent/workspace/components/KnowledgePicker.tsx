@@ -142,9 +142,10 @@ export default function KnowledgePicker({
       {/* KB 列表 */}
       <div
         className={`agent-thumb-scroll max-h-[min(300px,48dvh)] overflow-y-auto py-1 transition-opacity sm:max-h-[300px] ${
-          listDimmed ? 'pointer-events-none opacity-40' : ''
+          listDimmed ? 'pointer-events-none opacity-40' : loading && items.length > 0 ? 'opacity-60' : ''
         }`}
         aria-disabled={listDimmed}
+        aria-busy={loading}
       >
         {loading && items.length === 0 && (
           <div className="space-y-2 px-3 py-3" aria-label="知识库加载中">
@@ -172,8 +173,10 @@ export default function KnowledgePicker({
           </div>
         )}
 
-        {!loading &&
-          !error &&
+        {/* 重取期间保留旧列表可见（轻微降透明），不闪空白（§3.6 零延迟感知）；
+            骨架屏只在首载（items 为空）时出现。 */}
+        {!error &&
+          visible.length > 0 &&
           visible.map((kb) => {
             const checked = selectedIds.has(kb.id);
             const ready = isKbReady(kb);

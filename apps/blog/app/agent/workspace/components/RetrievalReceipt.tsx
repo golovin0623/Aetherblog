@@ -2,6 +2,7 @@
 
 import { forwardRef, memo, useImperativeHandle, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { ease } from '@aetherblog/ui';
 import {
   BookMarked,
   ChevronDown,
@@ -175,7 +176,7 @@ const RetrievalReceipt = forwardRef<RetrievalReceiptHandle, Props>(function Retr
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.22, ease: ease.out }}
             className="overflow-hidden"
           >
             <div className="border-t border-[color-mix(in_oklch,var(--aurora-2)_14%,transparent)] px-3 py-2.5">

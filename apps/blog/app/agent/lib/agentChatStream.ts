@@ -242,6 +242,54 @@ export async function streamAgentChat(
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
+  // 处理一段 SSE 事件文本；返回 true 表示收到终态事件（done/error），流应结束。
+  const processEvent = (event: string): boolean => {
+    const dataLines = event
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart());
+    if (dataLines.length === 0) return false;
+    const payload = dataLines.join('\n');
+    if (!payload) return false;
+
+    try {
+      const parsed = JSON.parse(payload) as { type?: string; [k: string]: unknown };
+      switch (parsed.type) {
+        case 'delta':
+          if (typeof parsed.content === 'string') handlers.onDelta?.(parsed.content);
+          break;
+        case 'think':
+          if (typeof parsed.content === 'string') handlers.onThink?.(parsed.content);
+          break;
+        case 'sources':
+          if (Array.isArray(parsed.sources)) handlers.onSources?.(parsed.sources as never);
+          break;
+        case 'retrieval': {
+          const receipt = parseAgentRetrievalReceipt(parsed);
+          if (receipt) handlers.onRetrieval?.(receipt);
+          break;
+        }
+        case 'done':
+          handlers.onDone?.();
+          return true;
+        case 'error':
+          handlers.onError?.(
+            typeof parsed.message === 'string' ? parsed.message : '未知错误',
+            {
+              code: typeof parsed.code === 'string' ? parsed.code : undefined,
+              retryable: typeof parsed.retryable === 'boolean' ? parsed.retryable : undefined,
+            },
+          );
+          return true;
+        default:
+          break;
+      }
+    } catch {
+      /* 非 JSON 心跳行，忽略 */
+    }
+    return false;
+  };
+
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -253,51 +301,14 @@ export async function streamAgentChat(
       while ((idx = buffer.indexOf('\n\n')) >= 0) {
         const event = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
-        const dataLines = event
-          .split('\n')
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart());
-        if (dataLines.length === 0) continue;
-        const payload = dataLines.join('\n');
-        if (!payload) continue;
-
-        try {
-          const parsed = JSON.parse(payload) as { type?: string; [k: string]: unknown };
-          switch (parsed.type) {
-            case 'delta':
-              if (typeof parsed.content === 'string') handlers.onDelta?.(parsed.content);
-              break;
-            case 'think':
-              if (typeof parsed.content === 'string') handlers.onThink?.(parsed.content);
-              break;
-            case 'sources':
-              if (Array.isArray(parsed.sources)) handlers.onSources?.(parsed.sources as never);
-              break;
-            case 'retrieval': {
-              const receipt = parseAgentRetrievalReceipt(parsed);
-              if (receipt) handlers.onRetrieval?.(receipt);
-              break;
-            }
-            case 'done':
-              handlers.onDone?.();
-              return;
-            case 'error':
-              handlers.onError?.(
-                typeof parsed.message === 'string' ? parsed.message : '未知错误',
-                {
-                  code: typeof parsed.code === 'string' ? parsed.code : undefined,
-                  retryable: typeof parsed.retryable === 'boolean' ? parsed.retryable : undefined,
-                },
-              );
-              return;
-            default:
-              break;
-          }
-        } catch {
-          /* 非 JSON 心跳行，忽略 */
-        }
+        if (processEvent(event)) return;
       }
     }
+    // EOF：冲洗解码器并处理缓冲区里没有尾随空行的最后一个事件 —— 部分
+    // 服务端/代理会在 `data:{"type":"done"}\n` 后直接断开，不发终止空行；
+    // 若不在这里补处理，完整收到的回答会被误报成"意外中断"。
+    buffer += decoder.decode();
+    if (buffer.includes('data:') && processEvent(buffer)) return;
     // 流被服务端关闭但从未收到 done/error —— 这是异常中断（网关重启、上游
     // 断连），不能伪装成正常完成：已收到的内容保留，状态标记为可重试错误。
     if (!signal?.aborted) {

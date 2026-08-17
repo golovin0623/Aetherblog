@@ -39,12 +39,19 @@ const TYPE_META = {
 } as const;
 
 export function Toast({ message, type = 'info', duration = 3000, onClose, action }: ToastProps) {
+  // onClose 走 ref：provider 每次渲染都会重建内联 onClose，若把它放进
+  // effect 依赖，任何兄弟 toast 的增删都会重置本条的自动关闭计时 ——
+  // 「5 秒撤销窗口」会被无关操作任意拉长。
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  });
   React.useEffect(() => {
     if (duration > 0) {
-      const timer = setTimeout(() => onClose?.(), duration);
+      const timer = setTimeout(() => onCloseRef.current?.(), duration);
       return () => clearTimeout(timer);
     }
-  }, [duration, onClose]);
+  }, [duration]);
 
   const { Icon, color } = TYPE_META[type];
 

@@ -27,6 +27,13 @@ export function linkifyCitations(
   maxRank: number,
 ): string {
   if (!markdown || maxRank <= 0) return markdown;
+  // 全文预扫参考式链接定义（`[1]: https://…`）—— 定义过的数字标签属于
+  // 作者的 reference-style 链接体系（`[text][1]`），整组跳过，避免把
+  // 引用部件改写成 `[text][1](#cite-…)` 的碎链接。
+  const definedLabels = new Set<number>();
+  for (const m of markdown.matchAll(/^ {0,3}\[(\d{1,2})\]:/gm)) {
+    definedLabels.add(Number(m[1]));
+  }
   const replaceIn = (segment: string): string =>
     segment
       .replace(/\[(\d{1,2})\]/g, (match, numStr: string, offset: number, whole: string) => {
@@ -34,7 +41,7 @@ export function linkifyCitations(
         const after = whole[offset + match.length];
         if (after === '(' || after === ':' || after === '[') return match; // 真链接 / 定义 / 引用式
         const n = Number(numStr);
-        if (n < 1 || n > maxRank) return match;
+        if (n < 1 || n > maxRank || definedLabels.has(n)) return match;
         return `[${n}](#cite-${messageId}-${n})`;
       })
       .replace(/【(\d{1,2})】/g, (match, numStr: string) => {

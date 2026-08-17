@@ -447,7 +447,36 @@ function WorkspaceInner({ siteTitle }: Props) {
         finalizeStreamingMessage('已中断');
       }
       // 记快照供撤销 —— 菜单里已有 inline 双击确认，这里再给 5 秒后悔药。
-      const snapshot = sessionsRef.current.find((s) => s.id === id) ?? null;
+      // sessionsRef 在下一次 commit 才同步（finalize 的 setSessions 尚未落地），
+      // 快照里可能残留 pending:true 的流式消息 —— 采集时就地定格为"已中断"，
+      // 撤销恢复后不会出现一条永远"正在生成"的幽灵消息。
+      const raw = sessionsRef.current.find((s) => s.id === id) ?? null;
+      const snapshot = raw
+        ? {
+            ...raw,
+            messages: raw.messages.map((m) =>
+              m.pending
+                ? {
+                    ...m,
+                    pending: false,
+                    error: m.error || '已中断',
+                    finishedAt: m.finishedAt ?? Date.now(),
+                  }
+                : m,
+            ),
+          }
+        : null;
+      // 该会话消息上进行中的翻译流一并中止 —— 否则孤儿流白烧 token，
+      // 每 90ms 往一个已不存在的会话 id 空 patch。
+      if (raw) {
+        for (const m of raw.messages) {
+          const c = translationControllersRef.current.get(m.id);
+          if (c) {
+            c.abort();
+            translationControllersRef.current.delete(m.id);
+          }
+        }
+      }
       setSessions((list) => list.filter((s) => s.id !== id));
       // 如果删的是当前活跃会话，自动切到剩余第一个。setActiveId 不能嵌在
       // setSessions updater 里调用 —— updater 必须保持纯函数（StrictMode
@@ -612,6 +641,10 @@ function WorkspaceInner({ siteTitle }: Props) {
       ),
     );
     setBusy(true);
+    // 用户主动发送 = 明确想看回复 —— 无条件恢复粘底（可能被键盘翻页/上滑
+    // 手势释放过），RO 会在新气泡入列后把视口锚到底部。
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -810,7 +843,11 @@ function WorkspaceInner({ siteTitle }: Props) {
           schedule();
         },
         onError: (msg, meta) => {
-          // error 立即 flush 给用户看，不再等下一帧合并。
+          // error 立即 flush 给用户看，不再等下一帧合并。注意必须把 pendingMisc
+          // 一并落账：selected_context_not_grounded 场景下 retrieval 回执与
+          // error 事件背靠背同帧抵达（ai-service 测试断言 events[0]=receipt、
+          // events[1]=error），若只写 error 补丁，解释"检索到了什么/为何未命中"
+          // 的回执会被静默丢弃 —— 而那正是该错误最需要的上下文。
           if (rafId) {
             cancelAnimationFrame(rafId);
             rafId = 0;
@@ -824,6 +861,7 @@ function WorkspaceInner({ siteTitle }: Props) {
                       m.id === targetMessageId && m.pending
                         ? {
                             ...m,
+                            ...pendingMisc,
                             content: acc,
                             think: thinkAcc || m.think,
                             firstTokenAt: firstTokenAt ?? m.firstTokenAt,
@@ -1269,6 +1307,8 @@ function WorkspaceInner({ siteTitle }: Props) {
       if (!sess) return;
       const index = sess.messages.findIndex((m) => m.id === message.id);
       if (index < 0) return;
+      // 断点若恰好锚在被删消息上会被归一化清掉 —— 记下来供撤销一并还原。
+      const prevBreakId = sess.contextBreakId ?? null;
       setSessions((list) =>
         list.map((s) => {
           if (s.id !== sessId) return s;
@@ -1294,7 +1334,16 @@ function WorkspaceInner({ siteTitle }: Props) {
                 if (s.messages.some((m) => m.id === message.id)) return s;
                 const msgs = [...s.messages];
                 msgs.splice(Math.min(index, msgs.length), 0, message);
-                return { ...s, messages: msgs, updatedAt: Date.now() };
+                return {
+                  ...s,
+                  messages: msgs,
+                  // 断点锚回来了就还原（其它情况保持现值，尊重删除后的手动变更）。
+                  contextBreakId:
+                    prevBreakId === message.id && !s.contextBreakId
+                      ? prevBreakId
+                      : s.contextBreakId,
+                  updatedAt: Date.now(),
+                };
               }),
             );
           },
@@ -1393,47 +1442,45 @@ function WorkspaceInner({ siteTitle }: Props) {
         return;
       }
       if (cmd.command === '/regen') {
-        // 删掉最后一条 assistant，把上一条 user 重新塞回 draft 让用户决定要不要重发
+        // 删掉最后一条 assistant，把上一条 user 重新塞回 draft 让用户决定要不要重发。
+        // 全部计算基于 sessionsRef 在 updater 之外完成 —— setSessions 的 updater
+        // 必须保持纯函数（StrictMode 双调用，内嵌 setState 会跑两遍）。
         if (!activeId) return;
+        const sess = sessionsRef.current.find((s) => s.id === activeId);
+        if (!sess || sess.messages.length === 0) return;
+        const msgs = [...sess.messages];
+        if (msgs[msgs.length - 1]?.role === 'assistant') msgs.pop();
+        const u = msgs.length > 0 && msgs[msgs.length - 1].role === 'user' ? msgs.pop() : null;
+        const nextArticles = u?.contextArticles ?? sess.contextArticles ?? [];
+        const nextTags = u?.contextTags ?? sess.contextTags ?? [];
+        const nextKbs = u?.contextKbs ?? sess.contextKbs ?? [];
+        const nextMode = u?.knowledgeMode ?? sess.knowledgeMode ?? 'auto';
+        if (u) {
+          setPendingArticles(nextArticles);
+          setPendingTags(nextTags);
+          setPendingKbs(nextKbs);
+          setKnowledgeMode(nextMode);
+          setDraft(u.content);
+        }
         setSessions((list) =>
-          list.map((s) => {
-            if (s.id !== activeId) return s;
-            const msgs = [...s.messages];
-            if (msgs.length === 0) return s;
-            const last = msgs[msgs.length - 1];
-            if (last.role === 'assistant') msgs.pop();
-            // 同时把它对应的 user 提取出来回到 draft
-            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'user') {
-              const u = msgs.pop();
-              if (u) {
-                const nextArticles = u.contextArticles ?? s.contextArticles ?? [];
-                const nextTags = u.contextTags ?? s.contextTags ?? [];
-                const nextKbs = u.contextKbs ?? s.contextKbs ?? [];
-                const nextMode = u.knowledgeMode ?? s.knowledgeMode ?? 'auto';
-                setPendingArticles(nextArticles);
-                setPendingTags(nextTags);
-                setPendingKbs(nextKbs);
-                setKnowledgeMode(nextMode);
-                setDraft(u.content);
-                return {
+          list.map((s) =>
+            s.id === activeId
+              ? {
                   ...s,
-                  contextArticles: nextArticles,
-                  contextTags: nextTags,
-                  contextKbs: nextKbs,
-                  knowledgeMode: nextMode,
+                  ...(u
+                    ? {
+                        contextArticles: nextArticles,
+                        contextTags: nextTags,
+                        contextKbs: nextKbs,
+                        knowledgeMode: nextMode,
+                      }
+                    : {}),
                   messages: msgs,
                   contextBreakId: normalizeContextBreak(msgs, s.contextBreakId),
                   updatedAt: Date.now(),
-                };
-              }
-            }
-            return {
-              ...s,
-              messages: msgs,
-              contextBreakId: normalizeContextBreak(msgs, s.contextBreakId),
-              updatedAt: Date.now(),
-            };
-          }),
+                }
+              : s,
+          ),
         );
         requestAnimationFrame(() => composerRef.current?.focus());
         return;
@@ -1456,6 +1503,17 @@ function WorkspaceInner({ siteTitle }: Props) {
     // 继续往已清空的消息列表里找 target patch（找不到但 busy 一直挂着）。
     if (clearTargetSessionId === activeId && streamingMsgIdRef.current) {
       finalizeStreamingMessage('已中断');
+    }
+    // 被清空消息上的翻译流一并中止（与删除会话同理，防孤儿流）。
+    const clearing = sessionsRef.current.find((s) => s.id === clearTargetSessionId);
+    if (clearing) {
+      for (const m of clearing.messages) {
+        const c = translationControllersRef.current.get(m.id);
+        if (c) {
+          c.abort();
+          translationControllersRef.current.delete(m.id);
+        }
+      }
     }
     setSessions((list) =>
       list.map((s) =>
@@ -1579,9 +1637,13 @@ function WorkspaceInner({ siteTitle }: Props) {
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
+    // 划选拖拽期间浏览器的 selection auto-scroll 只发 scroll 事件 —— 指针按下
+    // 时段内的显著离底视为用户意图,穿透程序性忽略窗口。
+    let pointerHeld = false;
     const onScroll = () => {
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const programmatic = performance.now() < ignoreScrollUntilRef.current;
+      const programmatic =
+        performance.now() < ignoreScrollUntilRef.current && !pointerHeld;
       if (distance < 16) {
         stickToBottomRef.current = true;
       } else if (distance >= 64 && !programmatic) {
@@ -1593,16 +1655,36 @@ function WorkspaceInner({ siteTitle }: Props) {
     // 滚动条拖拽没有 wheel / touch 事件 —— 命中滚动条区域(offsetX 超出
     // clientWidth)的按压视为"想回看历史"的显式手势,立即脱离粘底。
     const onPointerDown = (e: PointerEvent) => {
+      pointerHeld = true;
       if (e.target === el && e.offsetX > el.clientWidth && el.scrollTop > 0) {
         stickToBottomRef.current = false;
         setShowJumpToBottom(true);
       }
     };
+    const onPointerEnd = () => {
+      pointerHeld = false;
+    };
+    // 键盘翻页（PageUp/↑/Home）同样只产出 scroll 事件 —— 显式释放粘底。
+    // 输入类元素中的方向键是光标移动语义,跳过。
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'PageUp' && e.key !== 'ArrowUp' && e.key !== 'Home') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (el.scrollHeight - el.clientHeight > 0) {
+        stickToBottomRef.current = false;
+      }
+    };
     el.addEventListener('scroll', onScroll, { passive: true });
     el.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointerup', onPointerEnd, { passive: true });
+    window.addEventListener('pointercancel', onPointerEnd, { passive: true });
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       el.removeEventListener('scroll', onScroll);
       el.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [activeId]);
 
@@ -1706,7 +1788,9 @@ function WorkspaceInner({ siteTitle }: Props) {
     );
   }
 
-  const allowAdminHref = state.user.role === 'admin';
+  // DB 存的是大写 'ADMIN'（chk_users_role 约束），后端鉴权也是 lowercase 后
+  // 再比较 —— 这里同样大小写不敏感，否则 /admin/ 来源链接永远不可点。
+  const allowAdminHref = state.user.role?.toLowerCase() === 'admin';
 
   return (
     <div className="h-screen [height:100dvh] min-h-[600px] bg-[var(--bg-substrate)] flex overflow-hidden">

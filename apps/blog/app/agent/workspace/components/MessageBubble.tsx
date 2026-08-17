@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { ease } from '@aetherblog/ui';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 import StreamMarkdown from './StreamMarkdown';
 import RetrievalReceipt, { type RetrievalReceiptHandle } from './RetrievalReceipt';
@@ -155,8 +156,14 @@ function MessageBubbleBase({
   const canEditUser = isUser && !!onEdit && !busy && !!message.content;
   // assistant 消息允许「重试/复制」；重试同样会触发 streaming，自然要等当前
   // 流跑完。pending 自身不可重试（要么等完成、要么按 abort 后再点重试）。
+  // 服务端显式标记 retryable:false 的错误不亮重试（重试注定同样失败）。
   const canRetryAssistant =
-    !isUser && !!onRetry && !busy && !message.pending && (!!message.content || !!message.error);
+    !isUser &&
+    !!onRetry &&
+    !busy &&
+    !message.pending &&
+    (!!message.content || !!message.error) &&
+    (!message.error || message.retryable !== false);
   const canTranslate =
     !isUser &&
     !!onTranslate &&
@@ -384,7 +391,7 @@ function MessageBubbleBase({
       <motion.article
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.32, ease: ease.out }}
         className="group/msg relative mx-auto w-full max-w-[820px]"
         aria-label={isUser ? '用户消息' : 'Agent 回复'}
       >
@@ -502,7 +509,7 @@ function MessageBubbleBase({
     <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.32, ease: ease.out }}
       className={`group/msg relative mx-auto flex w-full min-w-0 max-w-[820px] flex-col ${
         isUser ? 'items-end' : 'items-start'
       }`}
@@ -677,7 +684,7 @@ function TranslationBlock({
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.24, ease: ease.out }}
       className={`relative mt-2 w-full overflow-hidden rounded-xl border ${
         t.pending
           ? 'border-[color-mix(in_oklch,var(--aurora-3)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-3)_6%,transparent)]'
@@ -962,7 +969,7 @@ function ThinkingPanel({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.22, ease: ease.out }}
             className="overflow-hidden"
           >
             <div
