@@ -23,6 +23,40 @@ PR #852 的多视角对抗评审因用量上限中断，仅「指针手势」视
 - 验证：Playwright 实测四条路径——书外松手后悬停扫过书面无叶片/页码不变/随后点击正常翻页；掀角静置后滚轮成功翻页；透视 A/B（787px→854px）；`matrix3d` 含真实 z 分量。reader gate 19/19、admin 350/350、blog `tsc --noEmit` 干净、`next build` 通过、`design-system:check` 0 error。
 - 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更。
 
+### Changed — AI 协同写作工坊精修:真流式对话 / 结果预览卡 / 签名时刻 #5「Ink Bleed」落地 (2026-08-17, branch claude/ai-writing-design-polish-apdkb6)
+
+对标主流 AI 辅助创作工具(Notion AI / 飞书),把 `/posts/:id/ai-writing` 工作区从「粗略可用」升级到设计系统签名级交互。零新增色相/字号/曲线,全部消费既有 Codex token 与 `@aetherblog/ui` 动效预设。
+
+- **AI 对话面板(`AiChatPanel` 全量重写 + 新增 `useWritingChat` hook)：**
+  - 回复从 `setTimeout` mock 换成 `/api/v1/agent/chat` 真 SSE(复用 AetherHub 的 `streamAgentChat` 协议,delta / think 事件),支持流式中断(停止按钮)、失败重试、迟到事件序号守卫;对话状态持在页面层,面板开关不丢历史。
+  - 签名时刻 #5「AI 工坊 · Ink Bleed」落地:AI 回复用 Instrument Serif(`--font-editorial`)渲染 markdown(`.writing-chat-md`,`MarkdownPreview` + CJK bold 修正),`useSmoothStream` 匀速吐字 + 整段纸面浮起(`.writing-stream-fade`),流式末尾墨水光标(`.ink-cursor`),等待态三颗极光呼吸点(`.writing-typing-dot`,非 spinner)。
+  - 思考流独立折叠面板:流式中自动展开、结束自动收起(用户手动干预后不再抢状态),mono caption + aurora 左光条。
+  - 新交互:空状态 editorial 邀请语 + 4 枚快捷指令 chips(续写/修改建议/拟标题/提炼大纲,stagger 入场);「引用全文」开关移入 composer(默认开,显示实时字数);AI 回复可 复制 / **一键插入正文**(光标处,带历史快照)/ 重新生成;清空历史两段式确认(替代原生 confirm 缺失确认的隐患)。
+  - Codex 迁移:原组件全量 legacy token(`--text-*` / `--bg-card` / `border-subtle` / spinner)按红线 3.7 同 commit 清零。
+- **选区 AI 工具(`FloatingAiToolbar` 重写 + 新增 `AiResultPreview`)：**
+  - 结果不再直接改写正文 —— 先进 `surface-overlay` 预览卡:原文 vs AI 结果对照,结果文字按句分片 `.ai-stream .delta` ink-bleed 入场;作者决定「替换选中 / 插入其后 / 复制 / 舍弃」,Esc 舍弃,就绪自动聚焦主操作。
+  - **修复替换错位 bug**:旧实现 `content.replace(selectedText, …)` 只替换首个匹配,选中重复段落时会改错位置;现经 CodeMirror `dispatch` 按精确选区落笔,期间文档若被编辑则按原文重定位、定位失败则拒绝写入(可复制兜底),应用前后各建历史快照。
+  - 工具栏迁 Codex:`surface-overlay` + mono 标签 + aurora hover,去 `shadow-2xl`(禁忌 #9)/ spinner / legacy token;底部显示选区字数与当前写作阶段。
+- **工作区页面打磨(`AiWritingWorkspacePage`)：**
+  - 新增底部状态栏(admin「锐」气质):字数 / 预计阅读时长 / 引导模式工作流进度 / 保存状态三态(未保存 warn 点 · 已保存 HH:MM success 点 · 本地草稿),mono + tabular-nums。
+  - 新增 `⌘S` 手动保存快捷键;自动/手动保存回写状态栏时间戳。
+  - 动效收编:页面内全部裸 bezier(`[0.16,1,0.3,1]`)与裸 spring 数值替换为 `@aetherblog/ui` 的 `transition.quick` / `spring.precise`(红线 3.4-4)。
+  - Atlas 参考骨架屏补 pulse 呼吸 + 错落高度/延迟(红线 3.6);标题输入极光 caret + 选区着色。
+- **对抗式自评审采纳 16 项**(Codex 额度耗尽,本轮由 Claude 五维评审 + 独立怀疑者对抗验证补位:30 条原始发现 → 20 条经验证确认 → 逐条修复):
+  - **P1 · 413 死局**:`useWritingChat` 对历史**每条** user 消息都重发携带 6000 字全文的 outbound,文章 ≳4800 字时 5-6 轮后必撞后端 `_enforce_message_limits` 的 32000 字符封顶,且关掉「全文」开关也救不回(历史里存的仍是胖文本),只能清空重来。改为**全文只随本轮注入**,历史轮回落展示文本 + 30K 客户端预算兜底。
+  - **P1 · 孤儿 assistant**:`slice(-12)` 作用在消息数上会切出打头的 assistant,严格交替的 provider(Anthropic / deepseek-reasoner)直接 400。改为**按 (user, assistant) 轮配对截断**,保证首条永远是 user。抽出纯函数 `buildOutboundMessages` + 5 条单测。
+  - **P1 · 双重落笔**:`applyToolResult` / `insertChatReply` 在 `await createSnapshot`(IndexedDB 写入)的异步间隙里可被双击 / 连按回车重入(主按钮还被自动聚焦),第二次拿**基于旧文档的偏移**二次 dispatch 把正文改烂。加写入互斥锁 + `applying` 态禁用按钮,并把定位移到 await **之后**基于最新文档执行。
+  - **P1 · 重定位仍是首个匹配**:预览落笔的 `doc.indexOf(original)` 回退把「只替换首个匹配」的老 bug 原样带了回来。抽出 `relocateOriginal`:原偏移精确命中优先 → 否则取**距原选区最近**的匹配 → 等距歧义拒绝落笔并提示改用复制(8 条单测)。
+  - **P1 · 触控红线**:对话面板与预览卡全部按钮在移动端仅 24-32px(面板在底抽屉里渲染,消息操作条 `opacity-60` 常驻可见不可豁免),违反 AGENTS.md「≥44×44px」。按仓库先例统一 `min-h-11 md:min-h-0` / `h-11 md:h-8`。
+  - **P1 · 焦点陷阱缺失**:预览卡声明 `aria-modal` 却无 Tab 循环,焦点可逃到被遮罩盖住的编辑器;loading 期完全不接管焦点,键盘按键继续打进正文。复用 `ConfirmDialog` 范式(接管焦点 / Tab 首尾循环 / 关闭恢复原焦点)。
+  - **P2 · 自动保存被饿死**:防抖 effect 依赖 `historyManager`(每次渲染新对象),而本 PR 把流式状态提到页面层 —— 每个 SSE delta 都重置 3 秒计时器,整段流式期间自动保存一次都不触发。依赖经 ref 收敛,⌘S 监听同样不再每帧重挂。
+  - **P2 · 保存状态说谎**:`handleSave` 不 await 落盘即宣告成功(IndexedDB 失败时底栏仍绿灯);`createSnapshot` 只按 content 去重,只改标题/摘要时被静默短路但 UI 仍报「已保存」;保存回调无条件 `setIsDirty(false)` 会把期间的新编辑误标已保存;`mountedRef` 首帧守卫在 StrictMode 下失效导致页面一打开就显示「未保存」。统一重做:**isDirty 由文档指纹派生**(免疫 StrictMode 与竞态)、落盘传 `force`、await 成功才置状态、失败保留 dirty 并提示。
+  - **P2 · 滚动跟随脱节**:跟随只随原始 delta 触发,而 DOM 由 `useSmoothStream` 的 rAF 逐帧增长 —— 流末尾一次性 flush 的内容落在视口外无人跟随,且平滑释放期的高度增量会被误判成「用户上翻」而永久停跟。改为 scroll 事件维护贴底意图 + `ResizeObserver` 驱动跟随。
+  - **P2 · 读屏噪音**:整个消息流挂 `role=log aria-live` 会被逐帧变异的流式文本刷爆(最高 60 次/秒重排队)。改为视觉隐藏 live region,只在开始/完成各播报一次。
+  - **P2 · 其余**:framer-motion 四处动画接 `useReducedMotion`(JS 动画不吃 CSS 媒体查询);预览卡 Esc 补 `isComposing` 守卫(中文输入法取消候选会误关并丢弃在途结果);快捷指令路径不再把用户多行草稿折叠成单行;插入正文按块级 Markdown 补 `\n\n` 分隔(裸插会让 `## ` / `- ` 因不在行首而失效);移动端不再自动聚焦输入框(软键盘遮住消息区);10px 元信息从 `--ink-subtle` 提到 `--ink-muted` 补对比度;墨水光标改 CSS `::after` 内联长在最后一个文本块末尾(复用前台 `agent-stream-caret` 范式,不再孤零零占一行)。
+- **验证：** admin `tsc --noEmit` 干净、`vite build` 通过、vitest **363/363** 全绿(新增 13 条:`buildOutboundMessages` 5 条 + `relocateOriginal`/`padBlockInsert` 8 条)、`pnpm design-system:check` 保持 0 error;全部动效带 `prefers-reduced-motion` 降级。
+- 📄 文档影响:已更新 `CHANGELOG.md`、`.claude/design-system/history.md`(Round 8);无新增 API / migration / 共享包导出,故 architecture 与 api-handlers 无需更新。
+
 ### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
 
 对标 Kindle / 真书翻页体验，把阅读器从「能翻页」升级为「一本安静躺在书桌上的实体书」。保持 `readerLogic` 既有契约（皮肤解析 / 光标映射 / 偏好钳制）与移动端满幅单页布局不变。

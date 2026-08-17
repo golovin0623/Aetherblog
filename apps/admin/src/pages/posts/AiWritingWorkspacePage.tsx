@@ -7,6 +7,8 @@
  * ✅ Phase 3: 批注/批量优化/对话面板
  * ✅ Phase 4: 工作流优化（自由/引导模式切换）
  * ✅ Phase 5: 移动端重构 —— Aether Codex 四层表面 + 双排头部 + 底抽屉面板
+ * ✅ Phase 6: 真流式对话（SSE delta/think + ink-bleed）+ 选区工具结果预览卡
+ *            + 底部状态栏（字数/阅读时长/保存状态）·签名时刻 #5「AI 工坊」
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
@@ -36,19 +38,23 @@ import {
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
+import { spring, transition } from '@aetherblog/ui';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
+import { padBlockInsert, relocateOriginal } from '@/lib/editorSelection';
 
 // Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
 import { useAiPrediction } from '@/hooks/useAiPrediction';
+import { useWritingChat } from '@/hooks/useWritingChat';
 
 // 组件
-import { FloatingAiToolbar } from '@/components/ai/FloatingAiToolbar';
+import { FloatingAiToolbar, type SelectionRange } from '@/components/ai/FloatingAiToolbar';
 import { WorkflowNavigation } from '@/components/ai/WorkflowNavigation';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { DiffView } from '@/components/history/DiffView';
 import { AiChatPanel } from '@/components/ai/AiChatPanel';
+import { AiResultPreview, type AiToolPreviewState } from '@/components/ai/AiResultPreview';
 
 // 类型定义
 import type { AiCapability } from '@/types/writing-workflow';
@@ -191,6 +197,23 @@ export function AiWritingWorkspacePage() {
     snapshot2: ContentSnapshot;
   } | null>(null);
 
+  // 选区 AI 工具:结果先预览再落笔
+  const [toolPreview, setToolPreview] = useState<AiToolPreviewState | null>(null);
+  const toolSeqRef = useRef(0);
+  /** 正文写入互斥锁 —— 落笔路径含 await 快照,无锁会被双击/连按回车重入。 */
+  const writeLockRef = useRef(false);
+
+  // 保存状态(底部状态栏)。isDirty 由指纹派生,见下方 docSignature。
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+
+  // AI 对话 —— 状态持在页面层,面板开关不丢历史
+  const chat = useWritingChat();
+  const chatDocument = useMemo(() => ({ title, content }), [title, content]);
+
+  // 底部状态栏数据
+  const charCount = useMemo(() => content.replace(/\s+/g, '').length, [content]);
+  const readingMinutes = Math.max(1, Math.round(charCount / 400));
+
   // 过 mobile 边界时自动迁移编辑器视图：移动端 split 不可用 → edit
   useEffect(() => {
     if (isMobile && editorViewMode === 'split') {
@@ -220,7 +243,8 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // 历史管理
+  // 历史管理。useHistoryManager 每次渲染返回新对象字面量,直接进 effect 依赖会
+  // 让防抖/监听每帧重挂 —— 需要长期持有的地方一律走 ref。
   const historyManager = useHistoryManager({
     postId: postId?.toString(),
     onEvent: (event) => {
@@ -230,6 +254,10 @@ export function AiWritingWorkspacePage() {
         setSummary(event.snapshot.summary);
       }
     },
+  });
+  const historyManagerRef = useRef(historyManager);
+  useEffect(() => {
+    historyManagerRef.current = historyManager;
   });
 
   // Ghost Text 编辑器扩展
@@ -253,24 +281,28 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // AI 工具执行
-  const handleToolExecute = useCallback(
-    async (toolId: string, selectedText: string) => {
+  // 选区 AI 工具执行 —— 结果进预览卡,由作者决定替换/插入/舍弃
+  const runSelectionTool = useCallback(
+    async (toolId: string, selectedText: string, range: SelectionRange) => {
+      const capability = AI_CAPABILITIES.find((item) => item.id === toolId);
+      if (!capability) {
+        toast.error(`未知的 AI 工具：${toolId}`);
+        return;
+      }
       workflow.recordToolUsage(toolId);
 
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'user-edit',
-          sourceName: '修改前',
-        });
-      }
+      const seq = ++toolSeqRef.current;
+      setToolPreview({
+        toolId,
+        toolLabel: capability.label,
+        original: selectedText,
+        range,
+        status: 'loading',
+        result: '',
+      });
 
       try {
-        let result: string = '';
-
+        let result = '';
         if (toolId === 'polish') {
           const polishParams = loadToolParams('polish');
           const res = await aiService.polishContent({
@@ -289,17 +321,86 @@ export function AiWritingWorkspacePage() {
           if (res.code === 200 && res.data) {
             result = res.data.summary;
           }
-        } else {
-          toast.error(`未知的 AI 工具：${toolId}`);
-          return;
         }
 
+        if (seq !== toolSeqRef.current) return; // 预览已被关闭,丢弃迟到结果
         if (!result.trim()) {
-          toast.error('AI 未返回有效内容');
+          setToolPreview((p) => (p ? { ...p, status: 'error', error: 'AI 未返回有效内容' } : p));
+          return;
+        }
+        setToolPreview((p) => (p ? { ...p, status: 'ok', result } : p));
+      } catch (error) {
+        console.error('AI 工具执行失败:', error);
+        if (seq !== toolSeqRef.current) return;
+        setToolPreview((p) =>
+          p ? { ...p, status: 'error', error: extractApiErrorMessage(error, 'AI 处理失败') } : p
+        );
+      }
+    },
+    [workflow]
+  );
+
+  const closeToolPreview = useCallback(() => {
+    toolSeqRef.current += 1;
+    setToolPreview(null);
+    editorViewRef.current?.focus();
+  }, []);
+
+  const retryToolPreview = useCallback(() => {
+    if (!toolPreview) return;
+    void runSelectionTool(toolPreview.toolId, toolPreview.original, toolPreview.range);
+  }, [toolPreview, runSelectionTool]);
+
+  // 应用预览结果:优先原选区;若期间文档已变化则按原文重新定位(取最近匹配,
+  // 等距歧义时拒绝落笔 —— 不能退回 indexOf 首个匹配的老 bug)
+  //
+  // 重入保护:落笔前有 await createSnapshot 的真实异步间隙(IndexedDB 写入),
+  // 期间预览卡按钮仍可点(主按钮还被自动聚焦,连按回车即触发)。没有 in-flight
+  // 守卫时,第二次调用会拿着基于旧文档算出的偏移二次 dispatch,把正文改烂。
+  const applyToolResult = useCallback(
+    async (mode: 'replace' | 'append') => {
+      if (!toolPreview || toolPreview.status !== 'ok') return;
+      if (writeLockRef.current) return;
+      const view = editorViewRef.current;
+      if (!view) {
+        toast.error('编辑器未就绪,请改用复制');
+        return;
+      }
+
+      writeLockRef.current = true;
+      setToolPreview((p) => (p ? { ...p, status: 'applying' } : p));
+      try {
+        const { range, original, result, toolLabel } = toolPreview;
+
+        if (postId) {
+          await historyManager.createSnapshot({
+            title,
+            content,
+            summary,
+            source: 'user-edit',
+            sourceName: `AI ${toolLabel}前`,
+          });
+        }
+
+        // 快照落盘期间文档可能又变了 —— 定位必须基于 await 之后的最新文档
+        const located = relocateOriginal(view.state.doc.toString(), original, range);
+        if (located.kind !== 'ok') {
+          toast.error(
+            located.kind === 'ambiguous'
+              ? '原文在正文中多处等距出现,无法唯一定位;请改用复制'
+              : '原文已被修改,无法定位选区;请改用复制'
+          );
+          setToolPreview((p) => (p ? { ...p, status: 'ok' } : p));
           return;
         }
 
-        const newContent = content.replace(selectedText, result);
+        const { from, to } = located.range;
+        const insert = mode === 'replace' ? result : `${original}\n\n${result}`;
+        view.dispatch({
+          changes: { from, to, insert },
+          selection: { anchor: from + insert.length },
+        });
+        const newContent = view.state.doc.toString();
         setContent(newContent);
 
         if (postId) {
@@ -308,73 +409,179 @@ export function AiWritingWorkspacePage() {
             content: newContent,
             summary,
             source: 'ai-suggestion',
-            sourceName: `AI ${toolId}`,
+            sourceName: `AI ${toolLabel}`,
           });
         }
 
-        toast.success(`AI ${toolId} 完成`);
-      } catch (error) {
-        toast.error('AI 处理失败');
-        console.error('AI 工具执行失败:', error);
+        setToolPreview(null);
+        view.focus();
+        toast.success(
+          mode === 'replace' ? `已替换为 AI ${toolLabel}结果` : `已在原文后插入 AI ${toolLabel}结果`
+        );
+      } finally {
+        writeLockRef.current = false;
       }
     },
-    [workflow, historyManager, title, content, summary, postId]
+    [toolPreview, postId, historyManager, title, content, summary]
   );
 
-  // 自动保存
-  useEffect(() => {
-    if (!postId || !content) return;
+  // 把 AI 对话回复插入正文(光标处;编辑器未挂载时追加到文末)
+  //
+  // 回复是块级 Markdown,按需补 \n\n 分隔 —— 裸插到段落中间会让 `## ` / `- `
+  // 因不在行首而失效。同样需要重入守卫:按钮点击后不禁用,双击会插两遍。
+  const insertChatReply = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || writeLockRef.current) return;
 
-    const timer = setTimeout(() => {
-      historyManager.createSnapshot({
-        title,
-        content,
-        summary,
-        source: 'auto-save',
-        sourceName: '自动保存',
+      writeLockRef.current = true;
+      try {
+        if (postId) {
+          await historyManager.createSnapshot({
+            title,
+            content,
+            summary,
+            source: 'user-edit',
+            sourceName: '插入 AI 回复前',
+          });
+        }
+        const view = editorViewRef.current;
+        if (view) {
+          const { from, to } = view.state.selection.main;
+          const insert = padBlockInsert(view.state.doc.toString(), from, trimmed);
+          view.dispatch({
+            changes: { from, to, insert },
+            selection: { anchor: from + insert.length },
+          });
+          setContent(view.state.doc.toString());
+          view.focus();
+        } else {
+          setContent((current) => {
+            const separator = current.trim() ? '\n\n' : '';
+            return `${current}${separator}${trimmed}`;
+          });
+        }
+        toast.success('已插入 AI 回复');
+      } finally {
+        writeLockRef.current = false;
+      }
+    },
+    [content, historyManager, postId, summary, title]
+  );
+
+  /**
+   * 保存状态由「当前文档指纹 vs 已落盘指纹」推导,而不是用 effect 打标记。
+   *
+   * 旧写法用 mountedRef 跳过首帧,但 StrictMode 会 setup→cleanup→setup 双跑,
+   * ref 跨模拟卸载保留 → 第二次 setup 直接标脏,页面刚打开就显示「未保存」。
+   * 派生值天然免疫这个问题,也不会出现「保存回调把期间的新编辑误标为已保存」。
+   */
+  const docSignature = useMemo(
+    () => `${title}\u0000${summary}\u0000${content}`,
+    [title, summary, content]
+  );
+  const [savedSignature, setSavedSignature] = useState(docSignature);
+  const isDirty = docSignature !== savedSignature;
+
+  /**
+   * 落一条快照并同步保存状态。
+   *
+   * `force: true` 是必需的 —— createSnapshot 只按 content 去重(useHistoryManager
+   * :119),只改标题/摘要时会被静默短路,而 UI 却宣告「已保存」,新值从未进快照。
+   * 落盘失败(隐私模式 / 配额耗尽,IndexedDB reject)必须把 dirty 保持住。
+   */
+  const persistSnapshot = useCallback(
+    async (
+      doc: { title: string; content: string; summary: string; signature: string },
+      source: 'auto-save' | 'manual-save',
+      sourceName: string
+    ): Promise<boolean> => {
+      if (!postId) return false;
+      await historyManagerRef.current.createSnapshot({
+        title: doc.title,
+        content: doc.content,
+        summary: doc.summary,
+        source,
+        sourceName,
+        force: true,
+      });
+      setSavedSignature(doc.signature);
+      setLastSavedAt(Date.now());
+      return true;
+    },
+    [postId]
+  );
+
+  // 自动保存 —— 依赖里**不能**放 historyManager:它每次渲染都是新对象,而本 PR
+  // 把流式对话状态提到了页面层,每个 SSE delta 都会重渲染 → 3 秒防抖被无限重置,
+  // 整段流式期间自动保存一次都不会触发(经 ref 取用即可稳定依赖)。
+  useEffect(() => {
+    if (!postId || !content || !isDirty) return;
+
+    const timer = window.setTimeout(() => {
+      void persistSnapshot(
+        { title, content, summary, signature: docSignature },
+        'auto-save',
+        '自动保存'
+      ).catch((error) => {
+        console.error('自动保存失败:', error);
       });
     }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [title, content, summary, postId, historyManager]);
+    return () => window.clearTimeout(timer);
+  }, [title, content, summary, docSignature, isDirty, postId, persistSnapshot]);
 
-  // 快捷键
+  const handleSave = useCallback(async () => {
+    if (!postId) {
+      toast.error('文章尚未创建,无法保存快照');
+      return;
+    }
+    try {
+      await persistSnapshot(
+        { title, content, summary, signature: docSignature },
+        'manual-save',
+        '手动保存'
+      );
+      toast.success('保存成功');
+    } catch (error) {
+      console.error('保存失败:', error);
+      toast.error(extractApiErrorMessage(error, '保存失败,请重试'));
+    }
+  }, [postId, persistSnapshot, title, content, summary, docSignature]);
+
+  // 快捷键:⌘Z 撤销 · ⌘⇧Z 重做 · ⌘H 历史 · ⌘S 保存
+  // 处理器经 ref 取用,避免因 historyManager / handleSave 每帧变化而反复重挂监听。
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        historyManager.undo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        historyManagerRef.current.undo();
+      } else if (key === 'z' && e.shiftKey) {
         e.preventDefault();
-        historyManager.redo();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        historyManagerRef.current.redo();
+      } else if (key === 'h') {
         e.preventDefault();
         if (isMobile) {
           setMobilePanel((p) => (p === 'history' ? null : 'history'));
         } else {
           setShowHistoryPanel((prev) => !prev);
         }
+      } else if (key === 's') {
+        e.preventDefault();
+        void handleSaveRef.current();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyManager, isMobile]);
-
-  const handleSave = useCallback(() => {
-    if (postId) {
-      historyManager.createSnapshot({
-        title,
-        content,
-        summary,
-        source: 'manual-save',
-        sourceName: '手动保存',
-      });
-    }
-    toast.success('保存成功');
-  }, [postId, historyManager, title, content, summary]);
+  }, [isMobile]);
 
   const runArticleAuditWorkflow = useCallback(async () => {
     if (!postId) {
@@ -545,7 +752,7 @@ export function AiWritingWorkspacePage() {
                 <Network className="w-[18px] h-[18px]" />
               </MobileIconButton>
               <button
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
               >
                 <Save className="w-3.5 h-3.5" />
@@ -767,7 +974,7 @@ export function AiWritingWorkspacePage() {
             )}
 
             <button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
               className="flex items-center gap-2 h-9 px-4 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium hover:opacity-90 transition-opacity"
             >
               <Save className="w-4 h-4" />
@@ -787,7 +994,7 @@ export function AiWritingWorkspacePage() {
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: 280, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+                transition={transition.quick}
                 className="border-r border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
               >
                 <div className="h-full flex flex-col w-[280px]">
@@ -834,6 +1041,8 @@ export function AiWritingWorkspacePage() {
                 'w-full bg-transparent font-display tracking-tight text-[var(--ink-primary)]',
                 'placeholder:text-[var(--ink-subtle)] placeholder:font-editorial placeholder:italic',
                 'focus:outline-none',
+                // 极光墨水光标 + 选区着色 —— 写作台的"光"落在输入处
+                'caret-[var(--aurora-1)] selection:bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
                 // 移动端 h4(24px) · 桌面端 h3(30px)
                 'text-[var(--fs-h4)] md:text-[var(--fs-h3)] leading-[var(--lh-tight)]'
               )}
@@ -878,13 +1087,14 @@ export function AiWritingWorkspacePage() {
               additionalExtensions={ghostTextExtensions}
             />
 
-            {/* 浮动 AI 工具栏：仅桌面。移动端靠选中 → 长按原生菜单或 AI 对话面板触发 */}
-            {!isMobile && (
+            {/* 浮动 AI 工具栏：仅桌面。移动端靠选中 → 长按原生菜单或 AI 对话面板触发。
+                预览卡打开期间隐藏,避免双层浮层。 */}
+            {!isMobile && !toolPreview && (
               <FloatingAiToolbar
                 editorViewRef={editorViewRef}
                 currentStage={workflow.context.currentStage}
                 availableTools={AI_CAPABILITIES}
-                onToolExecute={handleToolExecute}
+                onToolExecute={(toolId, text, range) => void runSelectionTool(toolId, text, range)}
               />
             )}
           </div>
@@ -916,28 +1126,26 @@ export function AiWritingWorkspacePage() {
           </AnimatePresence>
         )}
 
-        {/* 桌面端：AI 对话面板（侧栏） */}
+        {/* 桌面端：AI 对话面板（侧栏,真流式） */}
         {!isMobile && (
           <AnimatePresence>
             {showChatPanel && (
-              <AiChatPanel
-                messages={workflow.context.conversationHistory || []}
-                onSendMessage={async (message, _includeContext) => {
-                  workflow.addConversation('user', message);
-                  setTimeout(() => {
-                    workflow.addConversation('ai', '这是 AI 的回复示例');
-                  }, 1000);
-                }}
-                onClearHistory={() => {
-                  // 清空对话历史
-                }}
-                onClose={() => setShowChatPanel(false)}
-                currentDocumentContext={{
-                  title,
-                  content,
-                  wordCount: content.length,
-                }}
-              />
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 400, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={transition.quick}
+                className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] overflow-hidden flex-shrink-0"
+              >
+                <div className="h-full w-[400px] max-w-full">
+                  <AiChatPanel
+                    chat={chat}
+                    document={chatDocument}
+                    onInsertToEditor={(text) => void insertChatReply(text)}
+                    onClose={() => setShowChatPanel(false)}
+                  />
+                </div>
+              </motion.aside>
             )}
           </AnimatePresence>
         )}
@@ -949,7 +1157,7 @@ export function AiWritingWorkspacePage() {
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: 340, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                transition={transition.quick}
                 className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
               >
                 <AtlasReferencePanel
@@ -964,6 +1172,42 @@ export function AiWritingWorkspacePage() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* ============ 底部状态栏:字数 / 阅读时长 / 工作流 / 保存状态 ============ */}
+      <footer className="flex items-center justify-between gap-3 px-4 md:px-6 h-8 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] flex-shrink-0 font-mono text-[10px] md:text-[var(--fs-micro)] text-[var(--ink-muted)]">
+        <div className="flex items-center gap-3 tabular-nums min-w-0">
+          <span>{charCount.toLocaleString('zh-CN')} 字</span>
+          {charCount > 0 && <span className="hidden sm:inline">约 {readingMinutes} 分钟</span>}
+          {workflowMode === 'guided' && (
+            <span className="hidden md:inline uppercase tracking-[0.14em]">
+              工作流 {workflow.progress.percentage}%
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 tabular-nums flex-shrink-0">
+          {!postId ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_25%,transparent)]" />
+              本地草稿
+            </>
+          ) : isDirty ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--signal-warn)]" />
+              未保存
+            </>
+          ) : lastSavedAt ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--signal-success)]" />
+              已保存 {new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_25%,transparent)]" />
+              待编辑
+            </>
+          )}
+        </div>
+      </footer>
 
       {/* ============ 移动端：底部抽屉面板 ============ */}
       {isMobile && (
@@ -994,20 +1238,13 @@ export function AiWritingWorkspacePage() {
           )}
           {mobilePanel === 'chat' && (
             <AiChatPanel
-              messages={workflow.context.conversationHistory || []}
-              onSendMessage={async (message, _includeContext) => {
-                workflow.addConversation('user', message);
-                setTimeout(() => {
-                  workflow.addConversation('ai', '这是 AI 的回复示例');
-                }, 1000);
+              chat={chat}
+              document={chatDocument}
+              onInsertToEditor={(text) => {
+                void insertChatReply(text);
+                closeMobilePanel();
               }}
-              onClearHistory={() => {}}
               onClose={closeMobilePanel}
-              currentDocumentContext={{
-                title,
-                content,
-                wordCount: content.length,
-              }}
             />
           )}
           {mobilePanel === 'workflow' && (
@@ -1053,6 +1290,18 @@ export function AiWritingWorkspacePage() {
           )}
         </MobileBottomSheet>
       )}
+
+      {/* 选区 AI 工具结果预览 */}
+      <AnimatePresence>
+        {toolPreview && (
+          <AiResultPreview
+            state={toolPreview}
+            onApply={(mode) => void applyToolResult(mode)}
+            onRetry={retryToolPreview}
+            onClose={closeToolPreview}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 差异对比 */}
       <AnimatePresence>
@@ -1133,9 +1382,13 @@ function AtlasReferencePanel({
         {state.kind === 'idle' ? (
           <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">等待检索。</div>
         ) : state.kind === 'loading' ? (
-          <div className="space-y-3 px-4 py-4">
+          <div className="space-y-3 px-4 py-4" role="status" aria-label="正在检索 Atlas 参考">
             {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-20 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+              <div
+                key={index}
+                className="rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] animate-pulse"
+                style={{ height: index % 2 === 0 ? 84 : 68, animationDelay: `${index * 120}ms` }}
+              />
             ))}
           </div>
         ) : state.kind === 'error' ? (
@@ -1339,7 +1592,7 @@ function MobileBottomSheet({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={transition.quick}
             onClick={onClose}
             className="fixed inset-0 z-40 bg-[color-mix(in_oklch,var(--ink-primary)_40%,transparent)] backdrop-blur-sm"
             aria-hidden="true"
@@ -1348,7 +1601,7 @@ function MobileBottomSheet({
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.8 }}
+            transition={spring.precise}
             className={cn(
               'surface-overlay',
               'fixed left-0 right-0 bottom-0 z-50',
