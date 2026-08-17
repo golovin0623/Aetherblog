@@ -52,7 +52,8 @@ export interface FriendLink {
   url: string;
   logo?: string;
   description?: string;
-  themeColor?: string;
+  // 后端 DTO 为 *string 且无 omitempty:legacy 行会序列化出 null,消费端必须兜底
+  themeColor?: string | null;
 }
 
 export interface Comment {
