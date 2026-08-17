@@ -179,6 +179,17 @@ import { formatDate, slugify } from '@aetherblog/utils';
 
 每完成一个功能模块运行 `/doc` 触发文档校准；release 前对照 `docs/architecture.md` ↔ migrations、`go.mod` / `package.json` ↔ 实际依赖、`CHANGELOG.md` ↔ HEAD 对齐检查。
 
+### 6.3 追加型文档的合并策略（`merge=union`）
+
+`CHANGELOG.md` 与 `.claude/design-system/history.md` 是**只追加**的日志文件：每个分支都往同一锚点（`## [Unreleased]` 正下方 / 文件末尾）写自己的条目。Git 判定「同一行位置写入不同内容」= 冲突，于是**每合入一个 PR，其余在途分支都要为同一处再解一次冲突** —— 但语义上这从来不是冲突，两条条目都该保留。
+
+`.gitattributes` 已为这两个文件声明 Git 内置的 `merge=union` 策略（非自定义 driver，无需任何本地配置）：合并时不产生冲突标记，两侧条目按「本方在前、对方在后」全部保留。
+
+- **不要**因为「怕冲突」而不写 CHANGELOG 条目，也**不要**把条目改追加到别处 —— 冲突问题已在工具层解决。
+- **接缝少一个空行是正常的**（该空行被 Git 判为上下文行）。CommonMark 的 ATX 标题会自动闭合上方列表，渲染产物与带空行版本完全一致，无需手工补。
+- **唯一需要人工核对的场景**：发版把 `## [Unreleased]` 改名为版本号时，并发分支的新条目可能落进刚发布的章节。发版请单独提交并核对结果。
+- 代码文件**不适用**该策略（`.gitattributes` 只列了这两个文档），代码冲突仍必须逐处人工判断。
+
 ---
 
 ## 7. 默认凭据
