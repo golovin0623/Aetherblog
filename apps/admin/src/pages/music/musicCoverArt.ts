@@ -195,7 +195,9 @@ export function buildResonantCoverComposition(
     const ring = rings[ringIndex];
     const theta = random() * Math.PI * 2;
     // 旋臂调制:角向密度随谐波起伏,保留少量本底密度
-    const armWave = 0.5 + 0.5 * Math.sin(theta * armCount + armPhase + ring.radius * 0.012);
+    // 相位必须用归一化半径 —— 用绝对像素会让下面的 accept/reject 判定随画幅变化,
+    // 同一颗 seed 在缩略图与导出图上长出结构完全不同的流丝。
+    const armWave = 0.5 + 0.5 * Math.sin(theta * armCount + armPhase + (ring.radius / minDimension) * 8.64);
     const armDensity = 0.18 + 0.82 * Math.pow(armWave, 1.7);
     if (random() > armDensity) continue;
     // 半径贴轨道,少量近高斯抖动 —— 碎屑在共振带里
@@ -215,12 +217,18 @@ export function buildResonantCoverComposition(
     // 二次曲线穿过椭圆中点 → 微弧与轨道曲率完全一致
     const cx = 2 * pm.x - (p0.x + p1.x) / 2;
     const cy = 2 * pm.y - (p0.y + p1.y) / 2;
+    // 出界的候选直接丢弃 —— clamp 会把笔触折成贴边实线,大量堆叠后导出图边缘出现亮边,
+    // 且被折的端点也不再贴合轨道曲率。
+    if (
+      p0.x < 0 || p0.x > width || p0.y < 0 || p0.y > height ||
+      p1.x < 0 || p1.x > width || p1.y < 0 || p1.y > height
+    ) continue;
 
     strokes.push({
-      x1: clamp(p0.x, 0, width),
-      y1: clamp(p0.y, 0, height),
-      x2: clamp(p1.x, 0, width),
-      y2: clamp(p1.y, 0, height),
+      x1: p0.x,
+      y1: p0.y,
+      x2: p1.x,
+      y2: p1.y,
       cx,
       cy,
       energy: Number((longTail ? 0.55 + random() * 0.45 : 0.22 + random() * 0.6).toFixed(4)),
@@ -261,8 +269,8 @@ export function buildResonantCoverComposition(
         featureRandom() * Math.PI * 2
       );
       return {
-        x: clamp(point.x, 0, width),
-        y: clamp(point.y, 0, height),
+        x: point.x,
+        y: point.y,
         r: 0.4 + featureRandom() * 0.9,
         alpha: 0.12 + featureRandom() * 0.4,
       };
@@ -550,7 +558,9 @@ export function paintResonantCover(
 export function resolveCoverParticleCount(size: number): number {
   const BASE_SIZE = 720;
   const BASE_PARTICLES = 1_400;
-  return Math.max(120, Math.round(BASE_PARTICLES * (size / BASE_SIZE) ** 2));
+  // 下限只保证极小画幅不至于空白;定得过高会让缩略图比导出稠密数倍,
+  // 那正是「同一实体不同尺寸看起来是两张画」的另一半原因。
+  return Math.max(24, Math.round(BASE_PARTICLES * (size / BASE_SIZE) ** 2));
 }
 
 export async function renderResonantCoverBlob({

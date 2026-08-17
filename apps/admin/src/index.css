@@ -6955,15 +6955,37 @@ html[data-theme-transition] .codex-ambient-blob {
 .music-range {
   appearance: none;
   -webkit-appearance: none;
-  height: 4px;
+  /* 触控目标必须是整条控件而不是 4px 轨道 —— 轨道画在伪元素上,
+     input 本身留出 44px 高的透明命中区(桌面收窄到 28px)。 */
+  height: 44px;
   width: 100%;
   cursor: pointer;
+  background: transparent;
+  outline: none;
+}
+
+@media (min-width: 769px) {
+  .music-range {
+    height: 28px;
+  }
+}
+
+.music-range::-webkit-slider-runnable-track {
+  height: 4px;
   border-radius: 999px;
   background:
     linear-gradient(90deg,
       var(--aurora-1) var(--range-fill, 50%),
       color-mix(in oklch, var(--ink-primary) 12%, transparent) var(--range-fill, 50%));
-  outline: none;
+}
+
+.music-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      var(--aurora-1) var(--range-fill, 50%),
+      color-mix(in oklch, var(--ink-primary) 12%, transparent) var(--range-fill, 50%));
 }
 
 .music-range::-webkit-slider-thumb {
@@ -6971,6 +6993,8 @@ html[data-theme-transition] .codex-ambient-blob {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
+  /* runnable-track 高 4px,拇指需上移 (14-4)/2 才能居中 */
+  margin-top: -5px;
   border: 3px solid var(--bg-raised);
   border-radius: 50%;
   background: var(--ink-primary);

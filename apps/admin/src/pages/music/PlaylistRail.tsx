@@ -66,9 +66,16 @@ export function PlaylistRail({
   const [composerName, setComposerName] = useState('');
   const composerInputRef = useRef<HTMLInputElement>(null);
 
+  const composerTriggerRef = useRef<HTMLButtonElement>(null);
+
   const openComposer = () => {
     setComposerOpen(true);
     window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+
+  const closeComposer = () => {
+    setComposerOpen(false);
+    window.requestAnimationFrame(() => composerTriggerRef.current?.focus({ preventScroll: true }));
   };
 
   const submitComposer = async () => {
@@ -77,7 +84,7 @@ export function PlaylistRail({
     try {
       await onCreate(name);
       setComposerName('');
-      setComposerOpen(false);
+      closeComposer();
     } catch {
       // 创建失败:错误已由 mutation toast,保留输入让用户直接重试。
     }
@@ -95,7 +102,7 @@ export function PlaylistRail({
               onClick={onToggleFavoriteFilter}
               aria-pressed={favoriteFilter === 'FAVORITE'}
               className={cn(
-                'inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-black transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
+                'inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-xs font-black min-[769px]:min-h-9 transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]',
                 favoriteFilter === 'FAVORITE'
                   ? 'bg-[color-mix(in_oklch,var(--aurora-4)_14%,transparent)] text-[var(--aurora-4)]'
                   : 'bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
@@ -105,10 +112,11 @@ export function PlaylistRail({
               <Heart className={cn('h-3.5 w-3.5', favoriteFilter === 'FAVORITE' && 'fill-current')} />
               喜爱
             </button>
-            <AdminSectionCount>{playlists.length}/{totalCount} 个</AdminSectionCount>
+            <AdminSectionCount>{loading ? '载入中' : `${playlists.length}/${totalCount} 个`}</AdminSectionCount>
             <button
               type="button"
-              onClick={() => (composerOpen ? setComposerOpen(false) : openComposer())}
+              ref={composerTriggerRef}
+              onClick={() => (composerOpen ? closeComposer() : openComposer())}
               className={iconButtonClass(false, 'primary', 'sm')}
               aria-expanded={composerOpen}
               aria-label="新建歌单"
@@ -135,6 +143,12 @@ export function PlaylistRail({
                 event.preventDefault();
                 void submitComposer();
               }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  closeComposer();
+                }
+              }}
             >
               <input
                 ref={composerInputRef}
@@ -159,7 +173,7 @@ export function PlaylistRail({
       </AnimatePresence>
 
       {loading ? (
-        <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" aria-hidden="true">
+        <div role="status" aria-label="正在载入歌单列表" className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="flex items-center gap-3 px-3 py-2.5">
               <Skeleton variant="rectangular" width={44} height={44} />

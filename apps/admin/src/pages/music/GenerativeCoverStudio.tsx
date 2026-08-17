@@ -11,7 +11,7 @@ import { Dices, Loader2, RefreshCcw, Sparkles, X, Sliders } from 'lucide-react';
 import { toast } from 'sonner';
 import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn } from '@/lib/utils';
-import { solidButtonClass, textButtonClass } from './musicUi';
+import { iconButtonClass, solidButtonClass, textButtonClass } from './musicUi';
 import {
   buildResonantCoverComposition,
   hashMusicCoverSeed,
@@ -251,7 +251,7 @@ export default function GenerativeCoverStudio({
                 type="button"
                 onClick={onClose}
                 disabled={applying}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                className={cn(iconButtonClass(), 'shrink-0')}
                 aria-label="关闭"
               >
                 <X className="h-4 w-4" />
@@ -271,6 +271,7 @@ export default function GenerativeCoverStudio({
                     <button
                       key={preset.id}
                       type="button"
+                      aria-pressed={isActive}
                       onClick={() => {
                         setActivePresetId(preset.id);
                         setOrbitCount(preset.orbits);
@@ -305,14 +306,14 @@ export default function GenerativeCoverStudio({
             {/* 核心参数微调 */}
             <div className="space-y-4 pt-2">
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                <p className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                   <Sliders className="w-3.5 h-3.5 text-[var(--aurora-1)]" />
                   声场参数
-                </label>
+                </p>
                 <button
                   type="button"
                   onClick={randomizeSeed}
-                  className="flex items-center gap-1 text-xs font-semibold text-[var(--aurora-1)] hover:underline"
+                  className="inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-semibold text-[var(--aurora-1)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] min-[769px]:min-h-9"
                 >
                   <Dices className="w-3.5 h-3.5" />
                   随机种子
@@ -336,6 +337,7 @@ export default function GenerativeCoverStudio({
                     setActivePresetId(null);
                   }}
                   className="music-range"
+                  aria-label="谐波轨道密度"
                   style={{ '--range-fill': `${((orbitCount - 4) / 14) * 100}%` } as CSSProperties}
                 />
               </div>
@@ -357,6 +359,7 @@ export default function GenerativeCoverStudio({
                     setActivePresetId(null);
                   }}
                   className="music-range"
+                  aria-label="流场引力扰动"
                   style={{ '--range-fill': `${((turbulence - 0.1) / 1.7) * 100}%` } as CSSProperties}
                 />
               </div>
