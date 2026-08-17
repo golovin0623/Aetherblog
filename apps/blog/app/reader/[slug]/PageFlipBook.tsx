@@ -273,7 +273,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const [headingPages, setHeadingPages] = useState<Array<{ id: string; text: string; page: number }>>([]);
   const [positionReady, setPositionReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
+  const [mediaTimedOut, setMediaTimedOut] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [chromeHovered, setChromeHovered] = useState(false);
   const [skeletonGone, setSkeletonGone] = useState(false);
 
   const measureRef = useRef<HTMLDivElement>(null);
@@ -291,6 +293,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const rafRef = useRef<number>(0);
   const cursorRef = useRef(0);
   const wheelAccRef = useRef(0);
+  const zoomAccRef = useRef(0);
   const wheelResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reducedMotionRef = useRef(false);
 
@@ -329,10 +332,11 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   }, []);
 
   useEffect(() => {
-    if (tocOpen || settingsOpen || !chromeVisible) return;
+    // 指针停在浮层工具条上时不自动隐藏，否则按钮会在光标下消失。
+    if (tocOpen || settingsOpen || chromeHovered || !chromeVisible) return;
     const timer = window.setTimeout(() => setChromeVisible(false), 2400);
     return () => window.clearTimeout(timer);
-  }, [chromeVisible, settingsOpen, tocOpen, cursor]);
+  }, [chromeHovered, chromeVisible, settingsOpen, tocOpen, cursor]);
 
   useEffect(() => {
     setPreferences(readStoredPreferences());
@@ -672,8 +676,16 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     setSkeletonGone(false);
   }, [book.slug]);
 
+  // 悬挂的图片不应把读者锁在骨架书上：2.5s 后强制放行（图片就位后仍会重排分页）。
   useEffect(() => {
-    if (!dims || positionReady || !mediaReady) return;
+    setMediaTimedOut(false);
+    if (!dims) return;
+    const timer = window.setTimeout(() => setMediaTimedOut(true), 2500);
+    return () => window.clearTimeout(timer);
+  }, [dims, book.slug]);
+
+  useEffect(() => {
+    if (!dims || positionReady || (!mediaReady && !mediaTimedOut)) return;
     const storedPage = readStoredPage(book.slug);
     if (storedPage !== null) {
       const restored = absolutePageToCursor(storedPage, dims.cols, totalPages);
@@ -682,7 +694,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     }
     const frame = window.requestAnimationFrame(() => setPositionReady(true));
     return () => window.cancelAnimationFrame(frame);
-  }, [book.slug, dims, mediaReady, positionReady, totalPages]);
+  }, [book.slug, dims, mediaReady, mediaTimedOut, positionReady, totalPages]);
 
   // 骨架书在实书升起后再退场，避免生硬切换。
   useEffect(() => {
@@ -717,6 +729,8 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const handleBookPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (tocOpen || settingsOpen) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 已有活跃指针（如拖拽中落下第二根手指）时忽略新指针，避免抢走 pointerRef 令拖拽悬死。
+    if (pointerRef.current) return;
     // 注意：此处不 setPointerCapture —— 提前捕获会把后续 click 重定向到书容器，
     // 导致翻页热区按钮与正文链接永远收不到点击。捕获推迟到拖拽确立时。
     pointerRef.current = {
@@ -750,7 +764,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
     const absX = Math.abs(dx);
     const absY = Math.abs(dy);
-    if (absX < 12 || absX < absY * 1.2) return;
+    // 从链接/按钮起手保留较大容差，手滑 12px 不应吞掉点击。
+    const slop = pointer.startedOnInteractive ? 42 : 12;
+    if (absX < slop || absX < absY * 1.2) return;
 
     const dir: 'next' | 'prev' = dx < 0 ? 'next' : 'prev';
     pointer.handled = true;
@@ -778,19 +794,22 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     if (!job?.dragging) return;
     job.dragging = false;
     // 用最近 ~90ms 的采样估计松手速度，快速甩动小位移也能翻过去。
+    // 最后一次采样距松手超过 120ms 说明手指已停驻，按静止（v=0）裁决，不吃几秒前的甩动速度。
     const samples = job.samples;
     let v = 0;
     if (samples.length >= 2) {
       const last = samples[samples.length - 1];
-      let first = samples[0];
-      for (const s of samples) {
-        if (timeStamp - s.t <= 90) {
-          first = s;
-          break;
+      if (timeStamp - last.t <= 120) {
+        let first = samples[0];
+        for (const s of samples) {
+          if (timeStamp - s.t <= 90) {
+            first = s;
+            break;
+          }
         }
+        const dt = Math.max(last.t - first.t, 1) / 1000;
+        v = (last.p - first.p) / dt;
       }
-      const dt = Math.max(last.t - first.t, 1) / 1000;
-      v = (last.p - first.p) / dt;
     }
     job.v = v;
     job.target = resolveFlipRelease(job.p, v);
@@ -895,6 +914,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
         if (settingsOpen) setSettingsOpen(false);
         else if (tocOpen) setTocOpen(false);
         else close();
+      } else if (e.ctrlKey || e.metaKey || e.altKey) {
+        // 带修饰键的组合（Alt+← 后退、Ctrl+0 浏览器缩放等）交还给浏览器。
+        return;
       } else if (settingsOpen || tocOpen || isInteractiveKeyTarget(e.target)) {
         return;
       } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
@@ -926,14 +948,23 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     const stage = stageRef.current;
     if (!stage) return;
     const onWheel = (e: WheelEvent) => {
+      // deltaMode 归一：Firefox 鼠标滚轮按「行」（≈3/格）上报，不换算永远到不了阈值。
+      const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 320 : 1;
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        adjustZoom(e.deltaY < 0 ? READER_ZOOM_STEP : -READER_ZOOM_STEP);
+        // 触控板捏合是高频小增量事件流：按位移比例累积，攒满一档再步进，
+        // 否则每个事件各走一整档 5%，一次捏合直接打满 70%/140%。
+        zoomAccRef.current += -e.deltaY * unit * 0.0009;
+        while (Math.abs(zoomAccRef.current) >= READER_ZOOM_STEP) {
+          const dir = Math.sign(zoomAccRef.current);
+          adjustZoom(dir * READER_ZOOM_STEP);
+          zoomAccRef.current -= dir * READER_ZOOM_STEP;
+        }
         return;
       }
       e.preventDefault();
       if (jobRef.current) return;
-      const dominant = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const dominant = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * unit;
       wheelAccRef.current += dominant;
       if (wheelResetTimer.current) clearTimeout(wheelResetTimer.current);
       wheelResetTimer.current = setTimeout(() => {
@@ -1027,12 +1058,20 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   const jumpToHeading = useCallback(
     (id: string) => {
-      const entry = headingPages.find((h) => h.id === id);
-      if (!entry) return;
-      jumpTo(cols === 2 ? Math.floor(entry.page / 2) : entry.page);
+      let page = headingPages.find((h) => h.id === id)?.page ?? null;
+      if (page === null && dims && measureRef.current) {
+        // 图片未就绪时映射表尚空：退回点击时现场测量锚点，目录不因慢图而失效。
+        const target = measureRef.current.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
+        if (target) {
+          const measureRect = measureRef.current.getBoundingClientRect();
+          page = horizontalOffsetToPage(target.getBoundingClientRect().left, measureRect.left, dims.contentW);
+        }
+      }
+      if (page === null) return;
+      jumpTo(cols === 2 ? Math.floor(page / 2) : page);
       setTocOpen(false);
     },
-    [cols, headingPages, jumpTo],
+    [cols, dims, headingPages, jumpTo],
   );
 
   // 给定页索引渲染一个完整页面（含运行头/页码/正文窗口）。
@@ -1194,7 +1233,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       style={overlayStyle}
     >
       {/* 顶栏 */}
-      <div className={styles.topbar} onPointerDown={revealChrome}>
+      <div
+        className={styles.topbar}
+        onPointerDown={revealChrome}
+        onPointerEnter={() => setChromeHovered(true)}
+        onPointerLeave={() => setChromeHovered(false)}
+      >
         <button className={styles.iconBtn} onClick={close} aria-label="退出阅读">
           <X size={17} />
           <span>退出</span>
@@ -1334,7 +1378,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       </div>
 
       {/* 底部控制条 */}
-      <div className={styles.controls} onPointerDown={revealChrome}>
+      <div
+        className={styles.controls}
+        onPointerDown={revealChrome}
+        onPointerEnter={() => setChromeHovered(true)}
+        onPointerLeave={() => setChromeHovered(false)}
+      >
         <button className={styles.navBtn} onClick={goPrev} disabled={!canPrev} aria-label="上一页">
           <ChevronLeft size={18} />
         </button>

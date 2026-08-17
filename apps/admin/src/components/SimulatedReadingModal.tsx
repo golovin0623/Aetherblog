@@ -81,7 +81,8 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
   const [books, setBooks] = useState<ReadingBookListItem[]>([]);
   const [shelfLoading, setShelfLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
+  // 允许多本书并发重制，各自独立跟踪，互不清除对方的进行中状态。
+  const [regeneratingIds, setRegeneratingIds] = useState<ReadonlySet<number>>(new Set());
   const [shelfError, setShelfError] = useState<string | null>(null);
 
   const loadShelf = useCallback(async () => {
@@ -118,7 +119,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
 
   /** 用原来源与主题重跑一次成书渲染（内容更新后刷新缓存）。 */
   const handleRegenerate = async (b: ReadingBookListItem) => {
-    setRegeneratingId(b.id);
+    setRegeneratingIds((prev) => new Set(prev).add(b.id));
     setShelfError(null);
     try {
       const theme = (['paper', 'sepia', 'night'].includes(b.theme) ? b.theme : 'paper') as 'paper' | 'sepia' | 'night';
@@ -132,7 +133,11 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
       logger.error('重新生成拟真阅读失败:', err);
       setShelfError(err instanceof Error ? err.message : `《${b.title}》重新生成失败`);
     } finally {
-      setRegeneratingId(null);
+      setRegeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(b.id);
+        return next;
+      });
     }
   };
 
@@ -272,7 +277,7 @@ export function SimulatedReadingModal({ isOpen, onClose }: SimulatedReadingModal
 
   const renderBookCard = (b: ReadingBookListItem) => {
     const cover = coverForTheme(b.theme);
-    const regenerating = regeneratingId === b.id;
+    const regenerating = regeneratingIds.has(b.id);
     const ready = b.status === 'READY';
     return (
       <div key={b.id} className="group flex flex-col gap-2">
