@@ -299,6 +299,21 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 
 `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等。down `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
 
+### 000085 · `note_knowledge_readiness` / 000086 · `music_curation_studio`
+
+补记（随各自功能合入）：000085 给 `notes` 加 embedding 就绪指纹五列（`embedding_fingerprint/profile_id/indexed_at/error/attempt_id`）+ 就绪索引，fail-closed 判定当前修订可检索性；000086 新建 `music_lyrics`（歌词资产，LRC/PLAIN + 状态机）并给 `music_tracks` / `music_playlists` 加 `is_favorite`。均全幂等（`ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`），无 dirty 自愈条目。
+
+### 000087 · `chat_interactions`
+
+团队聊天交互增强（设计提案「夜航信札」P1，`docs/design/team-chat-redesign/`）。取空号 000087（当前最大 000086 +1，**不顺移**）。建立在 000082/000083 chat 表族之上：
+
+- `chat_message_reactions`（表情回应；PK `(message_id, user_id, emoji)` 天然幂等去重 + `message_id` 索引；聚合按 emoji 合并 userIds 下发）
+- `chat_conversation_members.pinned_at`（`ADD COLUMN IF NOT EXISTS`；NULL=未置顶，本人视图排序用）
+- `chat_messages.mentions BIGINT[]`（@提及集合，service 层过滤为会话真实成员；部分 GIN 索引 `idx_chat_messages_mentions` 支撑「@我」未读计数 `$user = ANY(mentions)`）
+- `chat_messages.recalled_at`（软撤回：置位并清空 content/attachment_*，保留占位行；与 `deleted_at` 硬删除语义区分。编辑/撤回 2 分钟窗口在 UPDATE SQL 内联 `created_at > now() - INTERVAL '2 minutes'` 保证原子性）
+
+全部 `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等。down 逆序 `DROP INDEX/COLUMN/TABLE IF EXISTS`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
+
 ---
 
 ## 部署期 migration 自愈机制
