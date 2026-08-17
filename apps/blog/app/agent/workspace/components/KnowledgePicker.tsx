@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { BookMarked, Check, Library, Search, Sparkles } from 'lucide-react';
+import { spring } from '@aetherblog/ui';
 import PickerPopover from './PickerPopover';
 import {
   isKbReady,
@@ -106,14 +108,25 @@ export default function KnowledgePicker({
                 role="radio"
                 aria-checked={active}
                 onClick={() => onModeChange(opt.value)}
-                className={`relative z-10 flex h-8 flex-1 items-center justify-center rounded-[9px] text-[12px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-2)_45%,transparent)] ${
+                className={`relative flex h-8 flex-1 items-center justify-center rounded-[9px] text-[12px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-2)_45%,transparent)] ${
                   active
-                    ? 'bg-[var(--bg-raised)] text-[var(--ink-primary)] shadow-[0_2px_6px_rgba(0,0,0,0.14),inset_0_0_0_0.5px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)]'
+                    ? 'text-[var(--ink-primary)]'
                     : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
                 }`}
               >
-                {opt.value === 'auto' && <Sparkles className="mr-1 h-3 w-3 opacity-70" aria-hidden="true" />}
-                {opt.label}
+                {/* 滑动 thumb —— layoutId 共享元素在三个按钮间滑移（spring.precise = Toggle 语义） */}
+                {active && (
+                  <motion.span
+                    layoutId="kb-mode-thumb"
+                    aria-hidden="true"
+                    transition={spring.precise}
+                    className="absolute inset-0 rounded-[9px] bg-[var(--bg-raised)] shadow-[0_2px_6px_rgba(0,0,0,0.14),inset_0_0_0_0.5px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
+                  />
+                )}
+                <span className="relative z-10 inline-flex items-center">
+                  {opt.value === 'auto' && <Sparkles className="mr-1 h-3 w-3 opacity-70" aria-hidden="true" />}
+                  {opt.label}
+                </span>
               </button>
             );
           })}

@@ -368,7 +368,7 @@ export default function ModelPicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索模型、供应商或能力 ..."
-          className="h-7 min-w-0 flex-1 bg-transparent text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none"
+          className="h-7 min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent text-sm text-[var(--ink-primary)] shadow-none outline-none placeholder:text-[var(--ink-muted)] focus:outline-none focus-visible:outline-none"
           autoFocus={!isMobile}
         />
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
@@ -398,12 +398,6 @@ export default function ModelPicker({
             : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]',
         )}
       >
-        {!value.modelId && (
-          <span
-            aria-hidden="true"
-            className="absolute bottom-3 left-0 top-3 w-[2px] rounded-full bg-[var(--aurora-1)] shadow-[0_0_10px_color-mix(in_oklch,var(--aurora-1)_65%,transparent)]"
-          />
-        )}
         <ModelGlyph item={triggerModel} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium">自动选择</div>
@@ -491,12 +485,6 @@ export default function ModelPicker({
                           : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] hover:text-[var(--ink-primary)]',
                       )}
                     >
-                      {isActive && (
-                        <span
-                          aria-hidden="true"
-                          className="absolute bottom-3 left-0 top-3 w-[2px] rounded-full bg-[var(--aurora-1)] shadow-[0_0_10px_color-mix(in_oklch,var(--aurora-1)_65%,transparent)]"
-                        />
-                      )}
                       <ModelGlyph item={m} />
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-2">
