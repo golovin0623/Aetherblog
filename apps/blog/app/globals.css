@@ -2151,6 +2151,28 @@ body {
   }
 }
 
+/* 友链星群 · 待机漂浮(Apple Watch 表盘的呼吸感)。
+   transform 独立分层:与 Framer 的入场缩放 / 磁吸缩放互不覆盖。
+   时长/相位由组件按气泡索引以 --dur-ambient 的倍数错开。 */
+@keyframes friend-bubble-drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+.friend-bubble-drift {
+  animation: friend-bubble-drift calc(var(--dur-ambient) * 3) var(--ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .friend-bubble-drift {
+    animation: none;
+  }
+}
+
 /* 首页 Hero 大标题专用整体呼吸。
    使用独立 keyframes，避免覆盖共享 breath-soft，也不影响 Framer Motion 的入场 transform。 */
 @keyframes hero-title-breath {
