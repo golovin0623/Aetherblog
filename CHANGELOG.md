@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **验证：** Go 单测 9 项（策略回退/拒绝/放行/admin 豁免/搜索 SQL 范围）+ API 层 E2E 19 项（any/team 两档全矩阵）+ Playwright UI 流程 5 项全过。
 
 ### Changed — 模型中心 + 全局价格「模型工作台」重设计 (2026-08-17, branch claude/admin-model-pricing-design-u8vr1y)
+### Fixed — 灵境模型/知识库选择器视觉一致性修复 (2026-08-17, branch claude/homepage-lingscape-selector-ui-977483)
+
+- **模型下拉选中项移除极光左侧光带竖线**（ModelPicker「自动选择」+ 模型行两处）—— 亮色主题下渲染为一道突兀的深色竖条；选中态语义由极光底色 + 右侧对勾承担已足够。
+- **模型搜索输入框补齐原生外观重置**（`appearance-none` + `border-0` + `outline-none` 等）—— Safari 等引擎会给未显式重置的文本输入绘制原生灰色边框/聚焦框，叠在自定义搜索胶囊内形成「框中框」。
+- **修复 PickerPopover 弹层宽度被内容驱动的根因：** 基类的 `sm:w-auto` 在生成的样式表中压过了四个消费方（知识库/文章/标签/命令 picker）各自传入的 `sm:w-[min(320|360px,…)]` 固定宽度，弹层实际随内容伸缩 —— 切换检索模式（提示文案长短不同）、勾选知识库（行尾追加对勾图标）都会引发整框尺寸变化；同时移除 `layout` 动画属性，它把每次内容变化渲染成整框缩放形变，放大了「大小在变」的观感。修复后弹层宽度锁定为设计值，三态切换与勾选操作全程尺寸零变化（实测 360×326px 恒定）。
+- **知识检索三态开关（自动/指定/关闭）补上滑动 thumb 动画** —— 原实现只是给激活按钮换背景色（瞬移无过渡）；改为 framer-motion `layoutId` 共享元素滑块，走 `@aetherblog/ui` 的 `spring.precise`（Toggle 切换语义），激活态背景在三个选项间物理滑移。
+- 验证：`tsc` 0 错误；`pnpm design-system:check` 保持 0 error；浏览器实测明暗双主题下拉/弹层交互与几何尺寸。
+- **评审回合修复（/code-review xhigh：10 角度并行查找 × 逐条独立核实）：** 恢复被误顶掉的上一条 CHANGELOG 章节标题；滑动 thumb 补 `pointer-events-none`（滑移中不再截胡相邻按钮点击）、`layoutDependency={mode}`（消除搜索逐键强制回流）、`prefers-reduced-motion` 门控与逐开启周期 layoutId（杜绝 framer 全局快照跨开合存活导致的"陈旧位置飞入"）；三态开关补齐 WAI-ARIA radio 方向键 + roving tabindex；知识库弹层移动端不再自动聚焦弹软键盘（对齐 ModelPicker 的 `!isMobile` 守卫）；`globals.css` base 层统一重置 `type="search"` 原生取消按钮（修复灵境 5 个搜索输入的原生灰色 ✕）；PickerPopover 改用 `cn()`（tailwind-merge）确定性合并类名、裸 bezier 换 `ease.out` 令牌；清理 ModelPicker 残留死 `relative` 与冗余重置类。 (2026-08-17, branch claude/admin-model-pricing-design-u8vr1y)
 
 **背景：** 模型中心与全局价格页此前只是「功能可用」：配置弹窗是一条平铺到底的长表单（黑/白反色焦点、8 行堆叠开关），模型卡片价格是纯文本碎片，价格表状态徽章用内联 amber/emerald/orange，动效多处裸值 —— 与主流对话 Agent 后台的模型配置体验差距明显。本次以「工作台」立意整体精修，全部走 Codex 令牌与 `@aetherblog/ui` 动效预设。
 
