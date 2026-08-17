@@ -44,6 +44,9 @@ var allowedSettingKeys = map[string]bool{
 	// ai_enabled、ai_provider，及遗留孤儿键 social_github/twitter/linkedin/weibo）
 	"upload_max_size":                        true,
 	"editor_image_smart_compression_enabled": true,
+	// chat_dm_scope：私聊可达范围（any=全站成员默认 | team=仅同团队成员，admin 豁免）。
+	// 服务端在 ChatService.OpenDirect / SearchDMTargets 强制，非法值回退 any。
+	"chat_dm_scope": true,
 }
 
 // SiteSettingHandler 处理站点设置的管理端 CRUD 接口。

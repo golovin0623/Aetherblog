@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 发起会话弹窗取消后整页不可点击 + framer-motion 12 升级 (2026-08-17, branch claude/homepage-dialog-button-security-5a8720)
+
+**根因：** framer-motion 11 已知缺陷 —— `layoutId` 共享布局元素（发起会话弹窗的私聊/群聊分段指示器）在 AnimatePresence 退出子树中重挂载时，退出流程死锁：弹窗以 `opacity: 0` 永久残留在 `document.body` 门户内（`fixed inset-0` z-100），隐形拦截全页点击，仅刷新可恢复。Playwright A/B 复现确认：fm11「切 tab 后取消」100% 卡死，fm12 正常。
+
+- **framer-motion `^11.15.0` → `^12.23.0`**（blog / admin / ui / editor；hooks peer 放宽为 `>=11 <13`）。v12 修复该死锁且正式支持 React 19；同时消除与 `@lobehub/ui`（motion v12）的双版本共存。适配 v12 收紧的 `Easing` 类型：12 处独立 variants 定义的 `ease: [...]` 补 `as const`（about/agent sections、agent login、admin CreatePostPage TOC）。
+- **NewConversationModal 分段控制器弃用 `layoutId`：** 改为单元素 `transform x` 滑动指示器（仍走 `spring.precise`），视觉不变；共享布局元素放进会被 AnimatePresence 卸载的子树是已知反模式，防御性根除。
+- **组合输入框「框中框」焦点环根除（`data-field` 机制）：** 外壳+`bg-transparent` 内层控件的组合输入框里，内层控件命中 tokens.css 全局 `*:focus-visible`，聚焦时在外壳内叠出一圈异色光环/圆角 —— 反复发生的视觉事故，此前只有逐组件补丁。tokens.css 新增 `[data-field] :is(input,textarea,select):focus-visible` 豁免，聚焦态由外壳 `focus-within` 全权表达；team-chat 侧栏搜索 / 发起会话搜索 / 消息 Composer / 博客 ⌘K SearchPanel 四处落地。规则固化为 CLAUDE.md §3.4 硬规则 #7 + `05-components.md` 禁忌 #7 + history.md 记录。
+
+### Security — DM 可达性策略 + 选人式发起会话（反用户枚举，主流方案对齐） (2026-08-17, branch claude/homepage-dialog-button-security-5a8720)
+
+**背景：** `POST /v1/chat/conversations/direct` 按任意数字 ID 定位用户，成功/失败差异构成用户存在性 oracle（响应还携带 username/nickname/avatar），自增 ID 可遍历枚举全部账号并对任意人发起未经同意的私聊。经主流方案调研（Mattermost `RestrictDirectMessage: any|team`、Slack 工作区目录选人、Mattermost「仅 UI 过滤被判为 bug、须服务端强制」的教训）落地：
+
+- **站点设置 `chat_dm_scope`（服务端强制，admin 后台「高级设置→私聊可达范围」下拉）：** `any`（默认，全站成员互相可私聊）| `team`（仅可与至少共享一个活跃团队的成员私聊，admin 豁免）。策略拒绝与「用户不存在」统一返回「无效的私聊对象」——scope=team 下枚举 oracle 消失。非法/缺失值回退 `any`，不改变存量行为。
+- **新端点 `GET /v1/chat/dm-targets?q=`：** 私聊选人搜索（昵称/用户名 ILIKE，输入转义防通配符注入，≤10 条，空查询拒绝目录 dump），结果按与 OpenDirect 同源的策略过滤（搜得到 ⇔ 打得开）。限流 `rate:chat:dmsearch` 60/min/user。
+- **新端点 `GET /v1/chat/teams`：** 我的团队列表（含活跃成员数），群聊入口点选。
+- **发起会话弹窗弃用裸数字 ID 输入：** 私聊改为防抖搜索选人（头像+昵称+@用户名，骨架屏加载），群聊改为点选我的团队 —— 数字 ID 不再出现在任何用户输入面。团队会话标题回填团队名（创建时写入 + 存量空标题懒回填），入口与会话头一致。
+- **限流：** 会话创建（direct+team）独立 `rate:chat:open` 桶 **15/min/user**（实测第 16 次 429）；通用写桶维持 120/min。
+- **验证：** Go 单测 9 项（策略回退/拒绝/放行/admin 豁免/搜索 SQL 范围）+ API 层 E2E 19 项（any/team 两档全矩阵）+ Playwright UI 流程 5 项全过。
+
+### Changed — 模型中心 + 全局价格「模型工作台」重设计 (2026-08-17, branch claude/admin-model-pricing-design-u8vr1y)
 ### Fixed — 灵境模型/知识库选择器视觉一致性修复 (2026-08-17, branch claude/homepage-lingscape-selector-ui-977483)
 
 - **模型下拉选中项移除极光左侧光带竖线**（ModelPicker「自动选择」+ 模型行两处）—— 亮色主题下渲染为一道突兀的深色竖条；选中态语义由极光底色 + 右侧对勾承担已足够。

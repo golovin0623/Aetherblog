@@ -86,7 +86,7 @@ import { formatDate, slugify } from '@aetherblog/utils';
 
 完整导出清单 → `.claude/docs/dependencies-and-stack.md` §5。
 
-### 3.4 设计系统六硬规则（Aether Codex）
+### 3.4 设计系统七硬规则（Aether Codex）
 
 > 任何 UI 工作前**先看** `apps/blog/app/design/`（活样板）+ `apps/blog/app/about/`（Apple-grade 落地参考）。完整规范 → `.claude/design-system/`。
 
@@ -96,6 +96,7 @@ import { formatDate, slugify } from '@aetherblog/utils';
 4. **不要写裸 bezier / spring 数值。** 从 `@aetherblog/ui` 导入 `{ spring, transition, variants, stagger }`。短交互 `transition.quick`（260ms）、入场 `spring.soft`、按钮按下 `spring.precise`。
 5. **不要在 Codex 已迁移的表面写 `dark:` 变体。** Token 通过 `:root.light` 自动翻转。新颜色须加到 `tokens.css`，不要 inline。
 6. **新增组件 / 页面前先看 `/design` 与 `/about`。** 找不到对应模式 → 设计规范该升级，**不是**你该即兴发挥。
+7. **组合输入框（外壳 + `bg-transparent` 内层控件）外壳必须加 `data-field`。** 否则内层控件命中全局 `*:focus-visible` 焦点环，在外壳里叠出异色「框中框」（已反复发生的视觉事故）。聚焦反馈只准出现在外壳（`focus-within`）上，禁止给内层控件任何第二层可见底色 / 描边 / 光环。机制与范例 → `05-components.md`「Input / Textarea → 组合输入框」。
 
 ### 3.5 共享组件位置
 

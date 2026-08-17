@@ -15,6 +15,21 @@ export interface ChatMember {
   lastReadMessageId?: number;
 }
 
+/** 私聊选人搜索结果（GET /dm-targets，已按 chat_dm_scope 策略过滤）。 */
+export interface ChatDMTarget {
+  userId: number;
+  username: string;
+  nickname?: string;
+  avatar?: string;
+}
+
+/** 「我的团队」条目（GET /teams），群聊入口直接点选。 */
+export interface ChatMyTeam {
+  teamId: number;
+  name: string;
+  memberCount: number;
+}
+
 /** 单条消息上同一表情的聚合回应。 */
 export interface ChatReaction {
   emoji: string;

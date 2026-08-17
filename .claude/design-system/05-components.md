@@ -111,6 +111,23 @@
 - focus:极光边 + `--focus-ring`
 - 字体:`font-sans`,禁止衬线
 
+### 组合输入框(外壳 + 内层裸控件) —— 强制 `data-field`
+
+外壳 div 承担视觉(边框/底色/`focus-within` 聚焦态)、内层 `<input>`/`<textarea>` 走 `bg-transparent` 的组合模式,**外壳必须加 `data-field` 属性**:
+
+```tsx
+<div data-field className="flex items-center gap-2 rounded-xl border ... focus-within:border-...">
+  <Search size={15} />
+  <input className="flex-1 bg-transparent outline-none ..." />
+</div>
+```
+
+原因:`tokens.css` 的全局 `*:focus-visible` 会给聚焦元素画 `--focus-ring` 光环 + `--radius-sm` 圆角。内层裸控件命中它时,会在外壳内部再叠出一圈异色光环/底色 ——「框中框」。`[data-field] :is(input,textarea,select):focus-visible` 已豁免全局环,聚焦态由外壳的 `focus-within` 全权表达。
+
+- **禁止**给内层控件自绘第二层可见的底色/描边/光环;聚焦反馈只允许出现在外壳上。
+- 独立输入框(无外壳,如 `packages/ui` 的 `<Input>` 本体)不加 `data-field`,保留全局焦点环(a11y)。
+- 历史逐个组件的豁免(如 `.agent-composer-textarea:focus-visible`)已被本机制取代,新代码一律用 `data-field`。
+
 ---
 
 ## Modal
@@ -380,3 +397,4 @@
 4. ❌ 创建"一次性" Modal 变体(所有 Modal 必须走 `@aetherblog/ui` 的 Modal)
 5. ❌ 自写 loading spinner
 6. ❌ 浏览器原生 `confirm()` / `alert()`(必须用 ConfirmModal)
+7. ❌ 组合输入框(外壳+`bg-transparent` 内层控件)漏加 `data-field` —— 内层控件会命中全局 `*:focus-visible` 焦点环,在外壳里叠出异色「框中框」(反复出现过的视觉事故;机制见「Input / Textarea → 组合输入框」)

@@ -136,6 +136,16 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
       //  · ai_enabled / ai_provider —— 已由「AI 配置」页 + 后端 config.AI 取代。
       { key: 'upload_max_size', label: '最大上传 (MB)', type: 'number', placeholder: '10', description: '单文件上传大小上限（MB），对图库与文章配图均生效。绝对硬上限 100MB；留空或填 0 视为 100MB。' },
       { key: 'editor_image_smart_compression_enabled', label: '编辑器图片智能压缩', type: 'boolean', description: '开启后，文章编辑器上传超过 5MB 的图片会自动压缩，并在活动记录中展示压缩效果。' },
+      {
+        key: 'chat_dm_scope',
+        label: '私聊可达范围',
+        type: 'select',
+        description: '控制团队聊天里谁可以和谁发起私聊（服务端强制，管理员始终豁免）。选人搜索结果按同一策略过滤。',
+        options: [
+          { value: 'any', label: '全站成员（默认）', description: '任意已登录成员可互相私聊，与 Slack / Mattermost 默认一致' },
+          { value: 'team', label: '仅同团队成员', description: '仅可与至少共享一个团队的成员私聊；不同团队的成员互相不可见、不可达' },
+        ],
+      },
     ]
   },
   migration: {

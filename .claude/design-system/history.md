@@ -86,3 +86,11 @@ Round 3 之后存在「仅在 `/design` 上呈现」的风险，Round 4 分四�
 - **legacy 清零**:`AiChatPanel` / `FloatingAiToolbar` 原为全量 legacy token(`--text-*`/`--bg-card`/`shadow-2xl`),按红线 3.7 同 commit 迁移至 Codex;页面内全部裸 bezier / spring 数值收编为 `@aetherblog/ui` `transition.quick` / `spring.precise`。
 - **admin「锐」补全**:底部状态栏(mono + tabular-nums:字数/阅读时长/保存三态)+ `⌘S` 保存,呼应 04「Admin 控制室」的键盘优先气质。
 - 门禁:`design-system:check` 维持 0 error;全部新增动画带 `prefers-reduced-motion` 降级。
+
+## 2026-08-17 · 组合输入框 data-field 机制（框中框焦点环根除）
+
+**问题（反复发生）：** 外壳 div 承担边框/底色/`focus-within` 聚焦态、内层 `<input>` `bg-transparent` 的组合输入框里，内层控件仍命中 `tokens.css` 全局 `*:focus-visible`（`--focus-ring` 光环 + `--radius-sm` 圆角），在外壳内部叠出一圈异色「框中框」。此前只有逐组件补丁（`.agent-composer-textarea:focus-visible` 等），没有机制，持续复发。
+
+**机制：** `tokens.css` 新增 `[data-field] :is(input,textarea,select):focus-visible { box-shadow:none; border-radius:0 }`；组合输入框外壳一律加 `data-field`，聚焦反馈由外壳 `focus-within` 全权表达。独立输入框不加，保留全局焦点环（a11y）。
+
+**落地：** team-chat 侧栏搜索、发起会话弹窗搜索、消息 Composer、博客 ⌘K SearchPanel 四处外壳已标注。规则固化为 CLAUDE.md §3.4 硬规则 #7 + `05-components.md` 禁忌 #7。

@@ -510,9 +510,17 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	chatSvc.AttachHub(chatHub)
 	// WebSocket 复用 authMW(同源握手携带 ab_access_token Cookie)。
 	// 写路径(发送/已读/上传)每用户 120/min；读路径与 WS 不计桶。typing 走 WS 不经此限流。
+	// DM 可达性策略（chat_dm_scope: any|team，服务端强制，语义对齐 Mattermost RestrictDirectMessage）。
+	chatSvc.AttachSettings(settingSvc)
 	chatWriteLimit := onlyMutating(middleware.RateLimitByUser(s.Redis, "rate:chat:write", 120, time.Minute))
 	chatGroup := api.Group("/v1/chat", authMW, pwdRotated, chatWriteLimit)
-	handler.NewChatHandler(chatSvc, mediaSvc, settingSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup)
+	handler.NewChatHandler(chatSvc, mediaSvc, settingSvc, chatHub, chatWSOriginPatterns(s.Config.CORS.AllowedOrigins)).Mount(chatGroup, handler.ChatRouteLimits{
+		// 会话创建收紧到 15/min/user：open-direct 以任意数字 ID 定位用户，
+		// 命中/未命中差异构成用户枚举 oracle，120/min 的通用写桶对枚举太宽松。
+		Open: middleware.RateLimitByUser(s.Redis, "rate:chat:open", 15, time.Minute),
+		// 选人搜索独立计桶（输入防抖后的目录查询），不与会话创建共享额度。
+		Search: middleware.RateLimitByUser(s.Redis, "rate:chat:dmsearch", 60, time.Minute),
+	})
 
 	// --- Agent 纳入与管理（Phase 2，migration 000083） ---
 	// Agent 定义 CRUD + 入座会话 + 以 Agent 身份发言（人工操作；Phase 3 的 AI 自动回复复用同一路径）。

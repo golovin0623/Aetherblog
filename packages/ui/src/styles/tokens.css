@@ -227,6 +227,14 @@ html {
   transition: box-shadow var(--dur-instant) var(--ease-out);
 }
 
+/* 组合输入框退出机制 —— 外壳（带 data-field）用 focus-within 承担聚焦态时，
+   内层裸控件必须免除全局焦点环，否则「外壳描边 + 内层光环」叠成框中框异色区
+   （规范：05-components.md「Input / Textarea → 组合输入框」+ 禁忌 #7）。 */
+[data-field] :is(input, textarea, select):focus-visible {
+  box-shadow: none;
+  border-radius: 0;
+}
+
 /* 数字表格列默认等宽 */
 .tnum,
 [data-tnum] {

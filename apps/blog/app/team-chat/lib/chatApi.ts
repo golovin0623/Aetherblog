@@ -4,8 +4,10 @@ import type {
   AttachmentResult,
   ChatAgent,
   ChatConversation,
+  ChatDMTarget,
   ChatMember,
   ChatMessage,
+  ChatMyTeam,
   ChatReaction,
   ChatSettings,
 } from './types';
@@ -62,6 +64,13 @@ export const chatApi = {
 
   openTeam: (teamId: number) =>
     post<ChatConversation>(`/conversations/team/${teamId}`),
+
+  /** 私聊选人搜索：结果已按服务端 chat_dm_scope 策略过滤（搜得到 ⇔ 打得开）。 */
+  searchDMTargets: (q: string) =>
+    get<ChatDMTarget[]>(`/dm-targets?q=${encodeURIComponent(q)}`),
+
+  /** 当前用户所在团队列表，群聊入口直接点选（不再手输团队 ID）。 */
+  listMyTeams: () => get<ChatMyTeam[]>('/teams'),
 
   getHistory: (conversationId: number, before?: number, limit = 30) => {
     const q = new URLSearchParams();
