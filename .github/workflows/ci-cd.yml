@@ -392,9 +392,12 @@ jobs:
           find app -name "*.py" -exec python -m py_compile {} \;
 
       - name: Run linting
+        # ruff 版本必须从 requirements-lint.txt 取(钉死的 ==),不要改回裸 `pip install ruff`:
+        # 浮动版本会随上游发版改变「内置默认规则集」,曾在零代码变更下让 main 爆 507 条 error。
+        # 规则集本身钉在 apps/ai-service/pyproject.toml 的 [tool.ruff.lint].select。
         working-directory: apps/ai-service
         run: |
-          pip install ruff
+          pip install -r requirements-lint.txt
           ruff check .
 
       - name: Verify app can start
