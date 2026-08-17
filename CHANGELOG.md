@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — CI 流水线红：ruff 未钉版本导致门禁范围被上游改写 (2026-08-17, branch claude/pr-pipeline-failure-fix-tm2pnw)
+
+**现象：** main 分支 `ci-cd.yml` 的 `ai-test` job 在 **Run linting** 步骤失败（run 32047480619），`ruff check .` 报 507 条 error —— 但该 commit 没有改动任何被报告的文件，本地跑同一命令是 `All checks passed!`。
+
+**根因：** `apps/ai-service` 既无 `[tool.ruff]` 配置，CI 又裸跑 `pip install ruff`（浮动版本）。二者叠加使「检查哪些规则」完全由所安装的 ruff 版本决定，**门禁范围由上游定义而非本仓库定义**。ruff 0.16.0 大幅扩充了内置默认规则集（新增 `I` / `RUF` / `B` / `S` / `UP` / `SIM` / `ASYNC` / `C4` / `DTZ` …），CI 于 2026-08-17 解析到 0.16.3，存量代码里的既有风格问题一次性全部变成 error。本地绿是因为本地装的是旧版 ruff（0.15.8）。
+
+- **钉死规则集：** `apps/ai-service/pyproject.toml` 新增 `[tool.ruff]`（`target-version = "py311"`，与 `requires-python` 对齐）+ `[tool.ruff.lint].select = ["E4", "E7", "E9", "F"]` —— 等价于 ruff ≤0.15 的内置默认集，即本仓库一直以来实际通过的门禁范围。**本次修复不改变任何被检查的代码，也不降低既有门禁强度**（`F821` undefined-name、`F401` unused-import、`E722` bare-except 等仍在）。
+- **钉死工具版本：** 新增 `apps/ai-service/requirements-lint.txt`（`ruff==0.16.3`，精确 `==`）作为 lint 工具链单一事实来源；`requirements-dev.txt` 通过 `-r` 引用，CI 改为 `pip install -r requirements-lint.txt`，本地与 CI 从此同版本。
+- **顺带修掉 checkout 后置清理的 exit 128：** `.claude/worktrees/frosty-goldwasser` 是 PR #780 误提交的 git worktree，在索引里留下 mode 160000 的 gitlink 而 `.gitmodules` 无对应条目，导致**每个 job** 的 `git submodule foreach` 都报 `fatal: No url found for submodule path ...` 警告。已从索引移除，并将 `.claude/worktrees/` 加入 `.gitignore` 防复发。
+- **文档：** `.claude/docs/deployment-cicd.md` §7.1 新增「Lint 工具链必须钉版本」红线（含 ruff 升级流程）；`.claude/docs/troubleshooting.md` §6.1 新增「Actions 突然变红但没人改过相关代码」诊断条目（先比工具版本，别 diff 业务代码）。
+
+> **未处理（有意留作独立 PR）：** ruff 0.16 默认集在存量代码上暴露的 507 条告警本身未清理 —— 其中 `B008`（200 条）是 FastAPI `Depends()/Query()` 默认参数的既定误报，启用 `B` 时必须同时配 `flake8-bugbear.extend-immutable-calls` 才可能收敛；`BLE001`(79) / `UP045`(79) / `I001`(51) 等属于风格与类型标注现代化。把这些混进「修流水线」的 PR 会让一个 4 文件的修复变成 100+ 文件的改动，故单列。已抽查最高信号的 7 条（`RUF012`×3 / `S110`×2 / `FURB162` / `SIM103`），**无正确性缺陷被本次配置掩盖**。
+
 ### Changed — 后台灵境 AI 对话系统性重做（渲染管线 / 消息操作 / 会话管理 / 上下文 / 图片）(2026-08-17, branch claude/lingxing-ai-chat-optimization-8a620b)
 
 **背景：** 后台灵境（`/admin/aetherhub`）此前与 LobeHub / Cherry Studio / ChatGPT 存在体感差距：双层打字机互相竞争把可见吐字速率钉死在 45 字/秒、流式期间跑全量 marked+shiki+DOMPurify 重渲染、上下文零裁剪长会话必然 413、消息操作只有增删改查四件套。本次对照前台灵境已验证的流式技术与顶尖工具的交互语言整体重做，前后端联动（后端条目见下一节）。

@@ -118,6 +118,33 @@ ValueError: Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: ...
 
 ---
 
+## 6.1 GitHub Actions 突然变红，但没人改过相关代码
+
+**典型症状：** `ai-test` job 的 **Run linting** 步骤爆出成百上千条 error（先例：507 条 / run 32047480619），而 diff 里根本没碰这些文件；把同一个 commit 拉到本地跑 `ruff check .` 却是 `All checks passed!`。
+
+**根因：CI 工具链没钉版本，上游一次例行发版改了默认行为。**
+
+`apps/ai-service` 当时既没有 `[tool.ruff]` 配置，CI 又裸跑 `pip install ruff` —— 于是「检查哪些规则」完全由所安装的 ruff 版本决定。ruff 0.16.0 大幅扩充了内置默认规则集（新增 `I` / `RUF` / `B` / `S` / `UP` / `SIM` / `ASYNC` / `C4` / `DTZ` …），CI 拉到 0.16.3 后存量代码里的风格问题一次性全变成 error。本地之所以是绿的，只是因为本地装的是旧版 ruff。
+
+**诊断顺序（先比工具版本，别 diff 业务代码）：**
+
+```bash
+# 1. CI 里工具的实际版本 —— 到 job 日志的 install 步骤看解析到了哪个版本
+# 2. 本地对齐同一版本复现（用独立目录，别污染现有环境）
+pip install --target /tmp/ruff-repro 'ruff==<CI 里的版本>'
+cd apps/ai-service && /tmp/ruff-repro/bin/ruff check . --statistics   # 按规则聚合，一眼看出是哪个规则族新进来的
+
+# 3. 确认当前生效的规则集是不是自己声明的
+/tmp/ruff-repro/bin/ruff check . --show-settings | sed -n '/linter.rules.enabled/,/^]/p'
+```
+
+**修复：钉死两处**（详见 `.claude/docs/deployment-cicd.md` §7.1）——
+规则集钉 `apps/ai-service/pyproject.toml` 的 `[tool.ruff.lint].select`，工具版本钉 `apps/ai-service/requirements-lint.txt` 的 `ruff==`。
+
+> ⚠️ **不要用 `--exit-zero` / 删 lint 步骤 / 大范围 `# noqa` 糊过去** —— 那是把门禁关掉，不是修好。也不要顺手把新暴露的几百条告警混进「修流水线」的 PR 里：清理存量告警是独立工作，单开 PR。
+
+---
+
 ## 7. JWT 验签失败 / 登录后 401
 
 可能场景：

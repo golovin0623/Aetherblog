@@ -83,6 +83,11 @@ issues/**
 *.tsbuildinfo
 scripts/vanblog-test/output/
 
+# Claude Code 的 git worktree 工作区。误提交时会在索引里留下一个 mode 160000 的
+# gitlink,而 .gitmodules 里并没有对应条目,于是每个 job 的 checkout 后置清理都会报
+# `fatal: No url found for submodule path ...` + exit 128 警告(曾由 PR #780 带入)。
+.claude/worktrees/
+
 # Stale build/test artifacts
 *.class
 verify_mobile_menu*.py
