@@ -3,7 +3,6 @@ import {
   PLAYLIST_MEMBER_TRACK_PAGE_SIZE,
   PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE,
   buildPlaylistTrackIdSet,
-  buildPlaylistTrackOptions,
   getMissingPlaylistMemberPageNumbers,
   type PlaylistTrackOptionSource,
 } from './playlistTrackOptions';
@@ -13,40 +12,21 @@ describe('playlist track candidate options', () => {
     expect(PLAYLIST_TRACK_CANDIDATE_PAGE_SIZE).toBeGreaterThan(10);
   });
 
-  it('keeps every fetched candidate available instead of slicing to ten', () => {
-    const tracks: PlaylistTrackOptionSource[] = Array.from({ length: 17 }, (_, index) => ({
-      id: index + 1,
-      title: `Song ${index + 1}`,
-      artist: 'Artist',
-      media: { originalName: `song-${index + 1}.mp3` },
-    }));
-
-    expect(buildPlaylistTrackOptions(tracks)).toHaveLength(17);
-  });
-
-  it('does not offer tracks already present in the selected playlist', () => {
-    const options = buildPlaylistTrackOptions(
-      [
-        { id: 1, title: 'Already Added', media: { originalName: 'a.mp3' } },
-        { id: 2, title: 'Candidate', artist: 'Singer', media: { originalName: 'b.mp3' } },
-      ],
-      new Set([1])
-    );
-
-    expect(options).toEqual([
-      {
-        value: '2',
-        label: 'Candidate',
-        description: 'Singer · b.mp3',
-      },
-    ]);
-  });
-
-  it('filters tracks already present beyond the first playlist detail page', () => {
-    const candidates: PlaylistTrackOptionSource[] = [
-      { id: 101, title: 'Already Added After First Page', media: { originalName: 'a.mp3' } },
-      { id: 102, title: 'Candidate', artist: 'Singer', media: { originalName: 'b.mp3' } },
+  // 候选歌曲改为整表渲染(AddTracksPanel):不再过滤掉已加入的曲目,
+  // 而是让它们保持可见并标记「已加入」—— 去重依据就是这个 id 集合。
+  it('marks every track already in the playlist so the panel can disable re-adding', () => {
+    const members: PlaylistTrackOptionSource[] = [
+      { id: 1, title: 'Already Added', media: { originalName: 'a.mp3' } },
+      { id: 2, title: 'Also Added', artist: 'Singer', media: { originalName: 'b.mp3' } },
     ];
+    const existing = buildPlaylistTrackIdSet(members);
+
+    expect(existing.has(1)).toBe(true);
+    expect(existing.has(2)).toBe(true);
+    expect(existing.has(3)).toBe(false);
+  });
+
+  it('covers playlist members beyond the first detail page so late pages still dedupe', () => {
     const existing = buildPlaylistTrackIdSet(
       Array.from({ length: 101 }, (_, index) => ({
         id: index + 1,
@@ -54,13 +34,10 @@ describe('playlist track candidate options', () => {
       }))
     );
 
-    expect(buildPlaylistTrackOptions(candidates, existing)).toEqual([
-      {
-        value: '102',
-        label: 'Candidate',
-        description: 'Singer · b.mp3',
-      },
-    ]);
+    expect(existing.size).toBe(101);
+    // 第 101 首落在第二页,只有聚合全部分页后才会被判为「已加入」
+    expect(existing.has(101)).toBe(true);
+    expect(existing.has(102)).toBe(false);
   });
 
   it('requests the remaining playlist member pages when a playlist has more than one page', () => {
