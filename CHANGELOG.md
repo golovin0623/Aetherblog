@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 媒体库大文件（PPT/视频）上传失败 + 新建文件夹弹窗主题失配 (2026-08-17, branch claude/media-library-ppt-upload-eqwtxj)
+
+**上传失败**（症状：`.pptx` 卡在 99%「服务器处理中」后失败，几十 KB 的 `.docx`/`.txt` 一切正常）。这不是文件类型问题 —— `.pptx` 早就在后端 MIME 白名单里，`resolveMimeWithFallback` 也会把 OOXML 的 `application/zip` 嗅探结果按扩展名抬升。真正的原因是**体积链路上两处独立缺陷叠加**：
+
+- **网关上传 location 一次都没命中（`nginx/nginx.conf` + `nginx.dev.conf`）。** 正则写的是 `^/api/(upload|media|file|v1/chat/attachments)`，而媒体库上传的真实 URL 是 `/api/v1/admin/media/upload` —— `media` 落在第 4 段而不是第 2 段。于是**所有**媒体上传都掉进通用 `location /api`：`client_max_body_size 50m`（>50MB → 413，且常在收完 body 前断连，浏览器只报 `Network Error`）+ `proxy_read_timeout 60s`（写存储后端超时 → 504）+ `limit_req zone=edge_api`。现补上后端真实注册的上传路径（media upload/batch、`media/{id}/content`、`kbs/{id}/files`、`migrations/vanblog`），并刻意**不用** `^/api/v1/admin/media` 整段前缀 —— 那会把 GET 列表/删除也一并移出限流。
+- **`upload_max_size` 停在 2023 年的种子值 10MB**（migration `000013`）。媒体库早已扩成图片/视频/音频/文档工作台（网关 10G、后端硬顶 100MB、设置页文案写"留空视为 100MB"），只剩这个值在默认拦掉一切 >10MB 的文件。新增 **migration `000088`** 前向修复：仅把仍是旧种子 `'10'` 的行抬到 `'100'`（管理员显式调过的值不覆盖），并对极老实例补 `INSERT ... ON CONFLICT DO NOTHING`。
+
+顺带把失败路径做得说得清、来得快：
+
+- **后端**（`media_handler.go`）：上传三个入口（`/upload`、`/upload/batch`、`/{id}/content`）在解析 multipart **之前**用 `http.MaxBytesReader` 装闸（单文件 = 上限 + 1MB multipart 余量，批量 = 20×）。此前 `c.FormFile` 会先把整个请求体读完（>32MB 落临时盘）才轮到 `fh.Size > max` 校验 —— 声称传 5GB 的请求会先写满磁盘再被礼貌拒绝。超限文案统一带上实际生效 MB 数与「设置 → 高级 → 最大上传」的去处。
+- **前端**（`mediaService.ts` + `MediaPage.tsx`）：上传前按 `upload_max_size` 本地预校验（与后端 `maxUploadBytes` 逐条同构：非法/超硬顶一律回落 100MB；查询失败也回落，绝不因辅助查询挡住合法上传），超限文件直接以终态 error 落到上传浮窗、根本不进网络；413 从"无响应 → 可重试"里摘出来（原先一个必然被拒的文件要完整重传三遍）；新增 `resolveUploadErrorMessage` 把拿不到 R 信封的 413 / 504 / 连接重置翻译成人话，替代原来那句 `Network Error`。
+
+**新建文件夹弹窗主题失配**（`pages/media/components/FolderDialog.tsx`）：弹窗底色写的是 `bg-[var(--bg-card)]`，而 `--bg-card` 在亮主题下是 `rgba(0,0,0,0.02)` —— 它是"叠在 `--bg-primary` 上的 2% 压深"，**不是实底**。当成 Modal 背景用等于弹窗几乎全透明，底下 `bg-black/50` 遮罩直接透上来成一片灰；再叠上按亮主题取色的 `--text-primary`(#0f172a 近黑) 标签与 `--bg-secondary`(#F4F2EC 米色) 输入框，就是截图里"和主题没适配、字看不清"的样子。现整体迁到 Aether Codex：`.surface-overlay` 弹层 + `--ink-*` / `--bg-substrate` / `--aurora-1` / `--signal-danger`，标签走 font-mono + `tracking-[0.2em]` uppercase 阶梯，动效从 `@aetherblog/ui` 取 `spring`/`transition`，去掉全部 `dark:` 变体与 `from-primary to-accent` 品牌渐变（Codex 硬规则 #1/#2/#3/#4/#5）。同时补上 modal 该有的基本功：`createPortal` 脱离父级 stacking context、Esc 关闭、打开即聚焦名称输入框、`acquireOverlayScrollLock` 锁背景滚动、`role="dialog"` + `aria-modal` + `aria-labelledby`。
+
+**验证：** `go build ./...` + `go test ./internal/handler/ ./internal/service/`（新增 `media_upload_guard_test.go` 4 组）通过；admin `tsc --noEmit` + `vitest run` 461 项通过（新增 `mediaUploadLimit.test.ts` 16 项）+ `pnpm build` 通过；`pnpm design-system:check` 保持 **0 error**，且本次改动让 `naked-white-glass` 少 1 个文件、`legacy-ink-aliases` 少 1 个文件。
+
+📄 文档影响：[已更新 `.claude/docs/database-migrations.md`（000088 + 基线 88）、`.claude/docs/deployment-cicd.md` §6、`.claude/docs/troubleshooting.md` §8.1（新增故障条目）、`.agent/rules/nginx-guide.md` §4.3（新增陷阱条目）、`docs/architecture.md` site_settings 行]
+
 ### Fixed — blog Tailwind `boxShadow` 误嵌套致 shadow 工具类失效 (2026-08-18, branch claude/confident-cori-78cd56)
 
 - `apps/blog/tailwind.config.ts` 的 `boxShadow` 块此前误嵌在 `theme.extend.colors` 内（被 Tailwind 当成 `colors.boxShadow.*` 颜色定义），`shadow-sm/md/lg/xl` → `var(--shadow-*)` 映射整体失效，工具类一直落在 Tailwind 内置硬编码阴影上。现移出为 `theme.extend.boxShadow`（与 admin 结构对齐），并补齐 `xs` / `primary` / `primary-lg` 三档（blog `globals.css` 明暗两套 token 均已定义，此前组件只能靠 `shadow-[var(--shadow-primary)]` 任意值绕行）。已验证 `pnpm --filter @aetherblog/blog build` 通过，产物 CSS 中 `.shadow-sm/.shadow-lg` 现编译为 `--tw-shadow:var(--shadow-*)`。

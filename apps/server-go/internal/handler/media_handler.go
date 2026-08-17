@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -75,6 +77,52 @@ func (h *MediaHandler) maxUploadBytes(ctx context.Context) int64 {
 		return maxUploadHardCeilingBytes
 	}
 	return limit
+}
+
+// multipartOverheadSlack 是 multipart 封装相对于纯文件字节的余量:
+// boundary、每个 part 的头、folderId / smartCompression* 等文本字段。
+// 实际只有几 KB,给 1MB 是为了"绝不误伤刚好卡在上限的合法文件"。
+const multipartOverheadSlack int64 = 1 * 1024 * 1024
+
+// batchUploadBodyMultiplier 是批量上传请求体相对单文件上限的放宽倍数。
+// 批量端点一次收多个文件,按单文件上限卡总体积会误伤正常批量;但完全不设上界
+// 又会让 /upload/batch 成为绕过体积管控的后门。取 20 倍作为总体积硬闸。
+const batchUploadBodyMultiplier int64 = 20
+
+// guardUploadBody 在解析 multipart **之前**给请求体套上硬闸。
+//
+// 为什么需要:c.FormFile 会先把整个请求体读完(>32MB 的部分落到系统临时目录),
+// 之后才轮到 `fh.Size > maxUploadSize` 这道业务校验。也就是说在此之前,一个
+// 声称传 5GB 的请求会先把 5GB 写满磁盘,再被礼貌地告知"超过限制"。
+// http.MaxBytesReader 让读取在越界处直接失败,并置位 requestTooLarge 让
+// net/http 正确收尾连接,避免临时盘被打爆。
+//
+// 闸门取 maxUploadSize + multipartOverheadSlack:精确的单文件判定仍由下游的
+// `fh.Size > maxUploadSize` 负责(错误信息更友好),这里只挡住数量级上的滥用。
+func guardUploadBody(c echo.Context, maxUploadSize int64) {
+	req := c.Request()
+	req.Body = http.MaxBytesReader(c.Response(), req.Body, maxUploadSize+multipartOverheadSlack)
+}
+
+// isBodyTooLarge 判断错误是否来自 guardUploadBody 装的 MaxBytesReader。
+//
+// mime/multipart 在部分路径上会把底层错误重新包一层文本,errors.As 拿不到
+// *http.MaxBytesError,所以补一条字符串兜底(net/http 的措辞是稳定的)。
+func isBodyTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return true
+	}
+	return strings.Contains(err.Error(), "http: request body too large")
+}
+
+// uploadSizeExceededMsg 是单文件超限时回给前端的统一文案。
+// 带上"去哪改"—— 否则用户只知道被拒,不知道 100MB 这个数字是后台设置项决定的。
+func uploadSizeExceededMsg(maxUploadSize int64) string {
+	return fmt.Sprintf("文件大小超过限制 (最大 %d MB)，可在「设置 → 高级 → 最大上传」调整", maxUploadSize/(1024*1024))
 }
 
 type mediaBackupScheduler interface {
@@ -148,13 +196,20 @@ func (h *MediaHandler) Mount(g *echo.Group) {
 // Upload 处理 POST /admin/media/upload 请求，接受单个 multipart 文件上传。
 // 可选查询参数：folderId — 将文件放入指定文件夹。
 func (h *MediaHandler) Upload(c echo.Context) error {
+	// 先取上限再解析 multipart —— guardUploadBody 必须在 c.FormFile 之前装,
+	// 否则超大请求已经把临时盘写满了才轮到校验。
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
+	guardUploadBody(c, maxUploadSize)
+
 	fh, err := c.FormFile("file")
 	if err != nil {
+		if isBodyTooLarge(err) {
+			return response.FailWith(c, response.BadRequest, uploadSizeExceededMsg(maxUploadSize))
+		}
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
-	maxUploadSize := h.maxUploadBytes(c.Request().Context())
 	if fh.Size > maxUploadSize {
-		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
+		return response.FailWith(c, response.BadRequest, uploadSizeExceededMsg(maxUploadSize))
 	}
 	lu := middleware.GetLoginUser(c)
 	var uploaderID *int64
@@ -188,8 +243,20 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 // UploadBatch 处理 POST /admin/media/upload/batch 请求，接受 "files" 表单字段下的多个文件。
 // 返回混合结果数组：成功的文件返回 MediaFileVO，失败的返回 {"error": "...", "filename": "..."}。
 func (h *MediaHandler) UploadBatch(c echo.Context) error {
+	// 批量路径的总体积天然可以超过单文件上限(一次 N 个文件),所以闸门按
+	// batchUploadBodyMultiplier 倍放宽 —— 仍然给出一个有限上界,避免"批量"
+	// 变成绕过体积管控的后门。单文件的精确判定仍在下面的循环里逐个做。
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
+	maxBatchBody := maxUploadSize * batchUploadBodyMultiplier
+	guardUploadBody(c, maxBatchBody)
+
 	form, err := c.MultipartForm()
 	if err != nil {
+		if isBodyTooLarge(err) {
+			return response.FailWith(c, response.BadRequest,
+				fmt.Sprintf("本次批量上传的总体积超过限制 (单次最大 %d MB，单文件最大 %d MB)",
+					maxBatchBody/(1024*1024), maxUploadSize/(1024*1024)))
+		}
 		return response.FailWith(c, response.BadRequest, "无效的表单")
 	}
 	lu := middleware.GetLoginUser(c)
@@ -211,14 +278,14 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 
 	// 批量路径同样按 upload_max_size 校验单文件大小（此前批量上传完全不校验大小，
 	// 连 100MB 硬上限都被绕过）。超限文件计为失败项，不中断其余文件。
-	maxUploadSize := h.maxUploadBytes(c.Request().Context())
+	// maxUploadSize 已在函数开头解析（guardUploadBody 需要它），此处直接复用。
 
 	// 逐个上传，失败的文件不中断整体流程
 	var results []interface{}
 	for _, fh := range files {
 		if fh.Size > maxUploadSize {
 			results = append(results, map[string]interface{}{
-				"error":    fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)),
+				"error":    uploadSizeExceededMsg(maxUploadSize),
 				"filename": fh.Filename,
 			})
 			continue
@@ -633,13 +700,18 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 		return err
 	}
 
+	maxUploadSize := h.maxUploadBytes(c.Request().Context())
+	guardUploadBody(c, maxUploadSize)
+
 	fh, err := c.FormFile("file")
 	if err != nil {
+		if isBodyTooLarge(err) {
+			return response.FailWith(c, response.BadRequest, uploadSizeExceededMsg(maxUploadSize))
+		}
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
-	maxUploadSize := h.maxUploadBytes(c.Request().Context())
 	if fh.Size > maxUploadSize {
-		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
+		return response.FailWith(c, response.BadRequest, uploadSizeExceededMsg(maxUploadSize))
 	}
 
 	ctx := c.Request().Context()

@@ -183,6 +183,38 @@ docker logs aetherblog-backend --tail 500 | grep -i sync
 
 ---
 
+## 8.1 媒体库"传大文件失败、传小文档正常"（PPT / 视频 / 带图 PDF）
+
+**典型症状：** 上传浮窗走到 99% 停在「服务器处理中…」，然后失败；toast 只给一句 `Network Error` 或「文件大小超过限制」。同一时刻几十 KB 的 `.docx` / `.txt` 一切正常。
+
+这是**体积链路**问题，不是文件类型问题（`.pptx` 早就在后端 MIME 白名单里）。上传要穿过三道独立的体积闸，任何一道最紧就是实际生效值：
+
+| 闸门 | 位置 | 默认 | 触发表现 |
+| --- | --- | --- | --- |
+| ① 网关 `client_max_body_size` | `nginx/nginx.conf` 上传 location = 10G；**通用 `/api` 块 = 50m** | 取决于 location 是否命中 | 413；常在收完 body 前断连 → 浏览器只报 `Network Error` |
+| ② 网关 `proxy_read_timeout` | 上传 location = 3600s；通用 `/api` 块 = 60s | 同上 | 504，前端卡在"服务器处理中"后失败 |
+| ③ 后端 `site_settings.upload_max_size` | `MediaHandler.maxUploadBytes`，硬上限 100MB | 曾长期是 **10**（MB） | 400 +「文件大小超过限制 (最大 N MB)」 |
+
+排查顺序：
+
+```bash
+# ③ 先看后端生效上限（最常见）——历史种子值是 10MB
+docker exec -it aetherblog-postgres psql -U aetherblog -d aetherblog -c \
+  "SELECT setting_value FROM site_settings WHERE setting_key='upload_max_size';"
+
+# ①② 确认上传请求命中的是上传 location 而不是通用 /api
+docker logs aetherblog-nginx --tail 200 | grep -E "413|504|client intended to send too large body"
+```
+
+**已修复（本仓库）：**
+- 迁移 `000088` 把 `upload_max_size` 的陈旧种子值 `'10'` 抬到 `'100'`（只动仍是旧种子的行）。
+- 上传 location 正则补上后端真实路径 `/api/v1/admin/media/upload` 等 —— 此前 `^/api/(upload|media|file|…)` 匹配不到第 4 段的 `media`，**所有媒体上传都掉在通用 `/api` 块里**（50MB + 60s）。详见 `.agent/rules/nginx-guide.md` §4.3。
+- 前端在推流前按 `upload_max_size` 预校验并直接给出可读原因；413 不再自动重试三次。
+
+自查一句话：**如果只有大文件失败，永远先量三道闸的最小值，别去查 MIME 白名单。**
+
+---
+
 ## 9. Codex 设计违规扫描出 error
 
 ```bash

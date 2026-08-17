@@ -2,6 +2,7 @@ import api from './api';
 import axios, { type AxiosError, type AxiosProgressEvent } from 'axios';
 import { R, PageResult } from '@/types';
 import type { SmartCompressionMetrics } from '@/lib/imageCompression';
+import { settingsService } from './settingsService';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'OTHER';
 export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
@@ -51,6 +52,43 @@ export interface StorageStats {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+/**
+ * 单文件上传的绝对硬上限,必须与后端 `maxUploadHardCeilingBytes` 保持同一个数字。
+ *
+ * 后端逻辑:`upload_max_size`(MB) 在 (0, 硬上限] 内才生效,缺失/非法/超限一律回落到
+ * 硬上限。前端沿用同一套判定,保证"本地预校验放过的文件,服务端不会再以体积为由拒绝"。
+ * 改这里时同步改 apps/server-go/internal/handler/media_handler.go。
+ */
+export const UPLOAD_HARD_CEILING_BYTES = 100 * 1024 * 1024;
+
+/**
+ * 读取后台「设置 → 高级 → 最大上传 (MB)」并换算成字节。
+ *
+ * 存在的意义是**上传前**就把超限文件拦下来:没有它,用户要先把几十上百 MB
+ * 完整推上去,才在"服务器处理中"卡住半天后收到一句"超过限制"。
+ *
+ * 读不到就返回硬上限 —— 任何情况下都不能因为这个辅助查询失败而挡住合法上传,
+ * 真正的裁决权始终在服务端。
+ */
+export async function fetchUploadLimitBytes(): Promise<number> {
+  try {
+    const raw = await settingsService.get('upload_max_size');
+    const mb = Number.parseFloat(raw);
+    if (!Number.isFinite(mb) || mb <= 0) return UPLOAD_HARD_CEILING_BYTES;
+    const limit = Math.floor(mb * 1024 * 1024);
+    if (limit <= 0 || limit > UPLOAD_HARD_CEILING_BYTES) return UPLOAD_HARD_CEILING_BYTES;
+    return limit;
+  } catch {
+    return UPLOAD_HARD_CEILING_BYTES;
+  }
+}
+
+/** 把字节数格式化成 MB 文案(整数则不带小数,便于和后端提示对齐)。 */
+export function formatUploadLimitMB(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return Number.isInteger(mb) ? String(mb) : mb.toFixed(1);
+}
 
 /**
  * 上传阶段:
@@ -118,9 +156,41 @@ function isRetriableError(err: unknown): boolean {
   const ax = err as AxiosError;
   if (!ax.response) return true; // 无响应 = 网络/DNS/超时
   const status = ax.response.status;
+  // 413 = 网关/后端判定体积超限。重试同一个文件必然同样被拒 —— 不但白费一次
+  // 完整上传,还会让用户多等两轮才看到错误。
+  if (status === 413) return false;
   if (status === 408 || status === 425 || status === 429) return true;
   if (status >= 500 && status < 600) return true;
   return false;
+}
+
+/**
+ * 把上传失败的原始错误翻译成给用户看的一句话。
+ *
+ * 上传失败有三种"说不清楚"的形态,直接把 err.message 丢给用户等于什么都没说:
+ *  1. 413 —— nginx 直接拒收时回的是 HTML 错误页,拿不到后端的 R.message;
+ *  2. 无响应 —— 网关在收完请求体前就 413 + 断连,浏览器只报 "Network Error";
+ *  3. 504 —— 后端处理超过网关 read timeout。
+ * 后端正常返回 R 信封时优先用它的 message(那是最精确的,含实际生效的 MB 数)。
+ */
+export function resolveUploadErrorMessage(err: unknown): string {
+  const envelope = (err as { response?: { data?: { message?: string; msg?: string } } })?.response?.data;
+  const serverMsg = envelope?.msg || envelope?.message;
+  if (serverMsg) return serverMsg;
+
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    if (status === 413) {
+      return '文件体积超过网关上限，已被拒收 —— 请压缩后重试，或调高「设置 → 高级 → 最大上传」与网关 client_max_body_size';
+    }
+    if (status === 504) {
+      return '服务器处理超时 —— 大文件写入存储后端耗时过长，请稍后重试或改用更小的文件';
+    }
+    if (!err.response) {
+      return '网络中断或被网关拒绝（大文件常见于体积超限），请检查文件大小与网络后重试';
+    }
+  }
+  return (err as { message?: string })?.message || '上传失败';
 }
 
 function backoffMs(attempt: number): number {

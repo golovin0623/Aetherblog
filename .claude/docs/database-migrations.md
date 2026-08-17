@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 69
-- **最新：** `000069_agent_workflow_full_iteration`（补齐智能编排 runtime 元数据、治理、审批、限流、eval、marketplace、human input、cowork handoff 与 notifications 边界）
-- **次新：** `000068_agent_workflow_run_simulated`（为智能编排 run 增加 `simulated` 标记，显式区分真实运行与模拟执行）
+- **总数：** 88
+- **最新：** `000088_raise_stale_upload_max_size_default`（把 `upload_max_size` 的陈旧种子值 10MB 抬到 100MB —— 纯数据迁移，不改 schema）
+- **次新：** `000087_chat_interactions`（团队聊天表情回应 / 置顶 / @提及 / 软撤回）
 
 ---
 
@@ -313,6 +313,20 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 - `chat_messages.recalled_at`（软撤回：置位并清空 content/attachment_*，保留占位行；与 `deleted_at` 硬删除语义区分。编辑/撤回 2 分钟窗口在 UPDATE SQL 内联 `created_at > now() - INTERVAL '2 minutes'` 保证原子性）
 
 全部 `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等。down 逆序 `DROP INDEX/COLUMN/TABLE IF EXISTS`。无 dirty 自愈条目（纯新增，失败 fail-closed 中止）。
+
+### 000088 · `raise_stale_upload_max_size_default`
+
+**纯数据迁移，不改 schema。** 取空号 000088（当前最大 000087 +1，**不顺移**）。
+
+`000013_add_missing_settings` 把 `site_settings.upload_max_size` 的种子值写成 `'10'`（MB）。那时媒体库只放文章配图，10MB 够用；此后媒体库扩成"图片/视频/音频/文档"统一工作台（nginx 上传 location 给到 10G、后端 `maxUploadHardCeilingBytes` 是 100MB、设置页文案写的是"绝对硬上限 100MB；留空或填 0 视为 100MB"），只剩这个种子值仍在默认拦掉一切 >10MB 的文件 —— 任何真实 PPTX / 视频 / 带图 PDF 都会被 `MediaHandler.Upload` 以「文件大小超过限制 (最大 10 MB)」拒绝，而几十 KB 的 docx/txt 一切正常。
+
+- `UPDATE ... WHERE setting_key='upload_max_size' AND setting_value='10'` → `'100'`。**只动仍是旧种子的行**：管理员显式调过的值（5/20/50…）是运维决定，不能被升级脚本覆盖。
+- 兜底 `INSERT ... ON CONFLICT DO NOTHING`：极老实例可能压根没有这一行（handler 会回落到硬上限，行为已正确，但补齐能让设置页显示真实生效值）。
+- 幂等：重跑第二次 `WHERE setting_value='10'` 已无匹配行，no-op。
+- down 把 `'100'` 压回 `'10'`；**无法区分"本迁移抬上去的 100"与"管理员自己填的 100"**，回滚前需人工确认。
+- 无 dirty 自愈条目（纯 UPDATE/INSERT，失败 fail-closed 中止）。
+
+> 配套改动（同一 PR）：`nginx/nginx.conf` 与 `nginx.dev.conf` 的上传 location 正则此前匹配不到 `/api/v1/admin/media/upload`，媒体上传一直落在通用 `/api` 块的 50MB + 60s 超时里 —— 只抬 `upload_max_size` 不改网关，>50MB 的文件仍会被网关 413。两者必须一起上。
 
 ---
 

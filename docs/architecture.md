@@ -527,7 +527,7 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 
 | 表名 | 说明 |
 |------|------|
-| `site_settings` | 站点设置（分组键值对；含 `editor_image_smart_compression_enabled` 等功能开关） |
+| `site_settings` | 站点设置（分组键值对；含 `editor_image_smart_compression_enabled` 等功能开关；`upload_max_size` = 单文件上传上限 MB，后端硬顶 100MB，migration 000088 已把 000013 遗留的 10MB 种子值抬到 100） |
 | `social_links` | 社交链接 |
 | `friend_links` | 友链（含排序 / 状态） |
 | `storage_providers` | 云存储提供商配置 |
