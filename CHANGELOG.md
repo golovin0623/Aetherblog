@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — blog Tailwind `boxShadow` 误嵌套致 shadow 工具类失效 (2026-08-18, branch claude/confident-cori-78cd56)
+
+- `apps/blog/tailwind.config.ts` 的 `boxShadow` 块此前误嵌在 `theme.extend.colors` 内（被 Tailwind 当成 `colors.boxShadow.*` 颜色定义），`shadow-sm/md/lg/xl` → `var(--shadow-*)` 映射整体失效，工具类一直落在 Tailwind 内置硬编码阴影上。现移出为 `theme.extend.boxShadow`（与 admin 结构对齐），并补齐 `xs` / `primary` / `primary-lg` 三档（blog `globals.css` 明暗两套 token 均已定义，此前组件只能靠 `shadow-[var(--shadow-primary)]` 任意值绕行）。已验证 `pnpm --filter @aetherblog/blog build` 通过，产物 CSS 中 `.shadow-sm/.shadow-lg` 现编译为 `--tw-shadow:var(--shadow-*)`。
+
 ### Changed — 后台灵境 AI 对话系统性重做（渲染管线 / 消息操作 / 会话管理 / 上下文 / 图片）(2026-08-17, branch claude/lingxing-ai-chat-optimization-8a620b)
 
 **背景：** 后台灵境（`/admin/aetherhub`）此前与 LobeHub / Cherry Studio / ChatGPT 存在体感差距：双层打字机互相竞争把可见吐字速率钉死在 45 字/秒、流式期间跑全量 marked+shiki+DOMPurify 重渲染、上下文零裁剪长会话必然 413、消息操作只有增删改查四件套。本次对照前台灵境已验证的流式技术与顶尖工具的交互语言整体重做，前后端联动（后端条目见下一节）。
