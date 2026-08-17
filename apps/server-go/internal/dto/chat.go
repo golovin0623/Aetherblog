@@ -3,6 +3,7 @@ package dto
 import "time"
 
 // ChatConversationVO 是会话列表 / 详情的对外视图。
+// Pinned / Muted 为**当前调用者**在该会话的偏好；MentionCount 是未读中 @我 的条数（000087）。
 type ChatConversationVO struct {
 	ID            int64          `json:"id"`
 	Kind          string         `json:"kind"`
@@ -10,19 +11,39 @@ type ChatConversationVO struct {
 	Title         string         `json:"title"`
 	LastMessageAt *time.Time     `json:"lastMessageAt,omitempty"`
 	UnreadCount   int64          `json:"unreadCount"`
+	MentionCount  int64          `json:"mentionCount"`
+	Pinned        bool           `json:"pinned"`
+	Muted         bool           `json:"muted"`
 	Members       []ChatMemberVO `json:"members,omitempty"`
 	LastMessage   *ChatMessageVO `json:"lastMessage,omitempty"`
 	CreatedAt     time.Time      `json:"createdAt"`
 }
 
-// ChatMemberVO 是会话成员视图。
+// ChatMemberVO 是会话成员视图。LastReadMessageID 供前端渲染已读回执（✓✓）。
 type ChatMemberVO struct {
-	UserID     int64   `json:"userId"`
-	Username   string  `json:"username"`
-	Nickname   *string `json:"nickname,omitempty"`
-	Avatar     *string `json:"avatar,omitempty"`
-	MemberRole string  `json:"memberRole"`
-	Muted      bool    `json:"muted"`
+	UserID            int64   `json:"userId"`
+	Username          string  `json:"username"`
+	Nickname          *string `json:"nickname,omitempty"`
+	Avatar            *string `json:"avatar,omitempty"`
+	MemberRole        string  `json:"memberRole"`
+	Muted             bool    `json:"muted"`
+	LastReadMessageID *int64  `json:"lastReadMessageId,omitempty"`
+}
+
+// ChatReactionVO 是单条消息上同一表情的聚合回应。
+type ChatReactionVO struct {
+	Emoji   string  `json:"emoji"`
+	UserIDs []int64 `json:"userIds"`
+}
+
+// ChatReplyPreviewVO 是被引用消息的预览快照 —— 引用可能落在前端已加载
+// 历史页之外，快照让引用块始终可渲染（不可跳转时仅展示）。
+type ChatReplyPreviewVO struct {
+	SenderName  string `json:"senderName"`
+	MessageType string `json:"messageType"`
+	Content     string `json:"content,omitempty"`
+	Recalled    bool   `json:"recalled,omitempty"`
+	Sticker     bool   `json:"sticker,omitempty"`
 }
 
 // ChatMessageVO 是消息视图。
@@ -41,10 +62,14 @@ type ChatMessageVO struct {
 	AttachmentMime *string        `json:"attachmentMime,omitempty"`
 	AttachmentSize *int64         `json:"attachmentSize,omitempty"`
 	AttachmentMeta map[string]any `json:"attachmentMeta,omitempty"`
-	ReplyToID      *int64         `json:"replyToId,omitempty"`
-	ClientMsgID    *string        `json:"clientMsgId,omitempty"`
-	EditedAt       *time.Time     `json:"editedAt,omitempty"`
-	CreatedAt      time.Time      `json:"createdAt"`
+	ReplyToID      *int64              `json:"replyToId,omitempty"`
+	ReplyPreview   *ChatReplyPreviewVO `json:"replyPreview,omitempty"`
+	ClientMsgID    *string             `json:"clientMsgId,omitempty"`
+	Mentions       []int64             `json:"mentions,omitempty"`
+	Reactions      []ChatReactionVO    `json:"reactions,omitempty"`
+	EditedAt       *time.Time          `json:"editedAt,omitempty"`
+	RecalledAt     *time.Time          `json:"recalledAt,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
 }
 
 // OpenDirectRequest 打开 / 创建一条私聊会话。
@@ -63,6 +88,31 @@ type SendMessageRequest struct {
 	AttachmentMeta map[string]any `json:"attachmentMeta"`
 	ReplyToID      *int64         `json:"replyToId"`
 	ClientMsgID    string         `json:"clientMsgId"`
+	Mentions       []int64        `json:"mentions" validate:"omitempty,max=32,dive,gt=0"`
+}
+
+// EditMessageRequest 编辑消息正文（2 分钟窗口，仅本人文本消息）。
+// Mentions 随新文本整体覆盖旧值（service 层过滤为会话真实成员）。
+type EditMessageRequest struct {
+	Content  string  `json:"content" validate:"required,max=8000"`
+	Mentions []int64 `json:"mentions" validate:"omitempty,max=32,dive,gt=0"`
+}
+
+// ChatReactionRequest 添加 / 移除消息回应。
+type ChatReactionRequest struct {
+	Emoji string `json:"emoji" validate:"required,max=32"`
+}
+
+// UpdateConvPrefsRequest 更新当前用户的会话偏好；nil 字段不变。
+type UpdateConvPrefsRequest struct {
+	Pinned *bool `json:"pinned"`
+	Muted  *bool `json:"muted"`
+}
+
+// ChatConvPrefsVO 返回更新后的会话偏好。
+type ChatConvPrefsVO struct {
+	Pinned bool `json:"pinned"`
+	Muted  bool `json:"muted"`
 }
 
 // MarkReadRequest 标记已读位点。
