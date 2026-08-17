@@ -19,6 +19,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* type="search" 的原生取消按钮(webkit 灰色 ✕)会撕破自定义搜索胶囊的视觉 ——
+   Tailwind preflight 只重置了 ::-webkit-search-decoration,没有覆盖
+   ::-webkit-search-cancel-button;这里在 base 层一次性补齐,站内搜索输入
+   (灵境各 picker / 侧栏会话搜索等)全部自定义样式,不依赖任何原生外观。 */
+@layer base {
+  input[type='search'] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
 @keyframes music-eq-pulse {
   0%, 100% {
     transform: scaleY(0.42);
