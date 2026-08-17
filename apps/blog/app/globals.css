@@ -2611,6 +2611,103 @@ body {
 }
 
 /* ----------------------------------------
+ · Agent · 内联流式光标（agent-stream-caret）
+   旧实现是独立 <span class="agent-caret"> 挂在整个 markdown 容器之后 ——
+   光标永远孤零零落在下一行，与 ChatGPT"光标贴着最后一个字闪"的体感差一截。
+   改为 CSS ::after 直接长在最后一个文本块的行内末尾。覆盖 p / 标题 /
+   blockquote 末段 / 列表末项；pre、table 结尾不加（代码块有独立视觉体系）。
+ ---------------------------------------- */
+.agent-stream-caret .agent-md-stream > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.agent-stream-caret .agent-md-stream > blockquote:last-child > p:last-child::after,
+.agent-stream-caret .agent-md-stream > :is(ul, ol):last-child li:last-child::after,
+.agent-stream-caret .agent-md-stream:empty::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--aurora-1);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--aurora-1) 45%, transparent);
+  animation: agent-caret-blink 1.05s steps(1, end) infinite;
+}
+
+/* ----------------------------------------
+ · Agent · 完成态落定（agent-md-settle）
+   流式轻渲染 → 完整 MarkdownRenderer（shiki / KaTeX 上色）切换瞬间的
+   "内容跳变"用一层 260ms 透明度落定抹平 —— 高亮颜色是"浮现"而非"闪现"。
+ ---------------------------------------- */
+@keyframes agent-settle-fade {
+  from { opacity: 0.5; }
+  to   { opacity: 1; }
+}
+.agent-md-settle {
+  animation: agent-settle-fade 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ----------------------------------------
+ · Agent · 内联引用胶囊（[n] → 检索回执锚点）
+   正文中的 [1]/【2】被链接化为 a[href^="#cite-"] —— 渲染成上标数字胶囊，
+   aurora-2 与知识检索回执同色系。点击行为由 MessageBubble 委托拦截
+   （展开回执 + 滚动 + 高亮），CSS 只负责形态。
+ ---------------------------------------- */
+.agent-md .markdown-body a[href^="#cite-"],
+.agent-md-stream a[href^="#cite-"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.3em;
+  margin: 0 0.14em;
+  vertical-align: 0.24em;
+  border-radius: 0.45em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.66em;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  border-bottom: none;
+  color: color-mix(in oklch, var(--aurora-2) 88%, var(--ink-primary));
+  background: color-mix(in oklch, var(--aurora-2) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--aurora-2) 26%, transparent);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.agent-md .markdown-body a[href^="#cite-"]:hover,
+.agent-md-stream a[href^="#cite-"]:hover {
+  background: color-mix(in oklch, var(--aurora-2) 22%, transparent);
+  border-color: color-mix(in oklch, var(--aurora-2) 46%, transparent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+/* 检索回执命中 snippet —— 3 行截断 */
+.agent-receipt-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Composer 岛内 textarea：焦点指示由浮岛容器统一承担（极光发丝双描边），
+   textarea 天然永远命中 :focus-visible，再叠全局焦点环会形成"框中框"。 */
+.agent-composer-textarea:focus-visible {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-stream-caret .agent-md-stream > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+  .agent-stream-caret .agent-md-stream > blockquote:last-child > p:last-child::after,
+  .agent-stream-caret .agent-md-stream > :is(ul, ol):last-child li:last-child::after,
+  .agent-stream-caret .agent-md-stream:empty::after,
+  .agent-md-settle {
+    animation: none !important;
+  }
+}
+
+/* ----------------------------------------
  · Agent · 版书模式（engraved）
  把对话从"塑料 SaaS 气泡"切到"宋版书 / Apple-grade 文章详情"质感：
    - 没有气泡背景，文字直接落在画布上
