@@ -23,6 +23,9 @@ export interface AgentModelItem {
   releasedAt?: string | null;
   description?: string | null;
   scope?: 'user' | 'system';
+  /** 每百万 token 定价（USD），/agent/models 下发；缺省时前端不展示成本。 */
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
 }
 
 interface ModelsResponse {

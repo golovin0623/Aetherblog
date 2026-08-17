@@ -26,15 +26,24 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   FileText,
   GitBranch,
+  GitFork,
   Hash,
+  ImagePlus,
+  Languages,
   Layers3,
   LayoutDashboard,
   MessageCircle,
   Moon,
+  MoreHorizontal,
   Pencil,
+  Pin,
+  PinOff,
+  Quote,
   RefreshCcw,
+  Scissors,
   Search,
   Send,
   Settings,
@@ -50,8 +59,8 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { AetherMark } from '@aetherblog/ui';
-import { MarkdownPreview } from '@aetherblog/editor';
+import { AetherMark, ConfirmModal } from '@aetherblog/ui';
+import { MarkdownPreview, MarkdownStreamPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
 import { useMediaQuery, useTheme } from '@/hooks';
@@ -71,6 +80,7 @@ import { CachedAvatar } from '@/components/common/CachedAvatar';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
   type AgentArticle,
+  type AgentAttachment,
   type AgentModelItem,
   type AgentModelParams,
   type AgentTag,
@@ -78,27 +88,44 @@ import {
   type AgentRetrievalReceipt,
   type AgentRequestSnapshotV1,
   type AgentSession,
+  type AgentTranslation,
   type ChatStreamRequest,
   type SlashCommand,
   type StreamAnimationMode,
   ARTICLE_PAGE_SIZE,
+  attachmentTokenEstimate,
+  attachmentsWithinBudget,
+  budgetHistory,
+  CONTEXT_CHAR_BUDGET,
   createEmptySession,
   deriveSessionTitle,
+  estimateMessagesTokens,
+  exportFileName,
+  fileToAttachment,
   filterSlashCommands,
   filterTags,
+  flushSaveSessions,
+  formatTokenCount,
   groupSessionsByRecency,
+  linkifyCitations,
   loadSessions,
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_TOTAL_ATTACHMENT_DATAURL_BYTES,
   modelLabel,
   newMessageId,
   normalizeCjkInlineMarkdown,
+  normalizeContextBreak,
+  parseCitationRank,
   readAgentSessionDraft,
   resolveAgentSessionDraftAfterRequestStart,
-  saveSessions,
+  scheduleSaveSessions,
+  sessionToMarkdown,
+  sliceContextMessages,
   streamAgentChat,
   useAgentModels,
   useAllTags,
   useArticleSearch,
-  useSmoothStream,
+  validateImageFile,
   withAgentSessionDraft,
 } from '@/services/agent';
 import {
@@ -122,11 +149,18 @@ function workflowErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+// 附件原图的内存缓存 —— localStorage 有 ~5MB 配额，base64 原图必然挤爆并
+// 连带毁掉整份会话持久化；所以会话里只存去掉 dataUrl 的附件元信息，原图在
+// 这里按 id 缓存，刷新后消息降级为「图片仅发送当次可见」的占位卡片。
+const attachmentDataUrlCache = new Map<string, string>();
+
+// 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
+// 前两条依赖知识检索（auto 模式自动召回），后两条是纯写作/整理任务。
 const promptChips = [
-  '总结 AetherBlog 项目的整体结构',
-  '帮我修复最近的构建错误',
-  '生成部署检查清单',
-  '解释 pgvector 半自动调优策略',
+  '检索知识库，总结本站内容策略的核心要点',
+  '把我最近的一篇草稿提炼成 200 字发布预告',
+  '为上个月发布的文章各写一句推荐语',
+  '用表格整理当前可用 AI 模型的能力差异',
 ];
 
 type DisplayMode = 'bubble' | 'engraved';
@@ -468,10 +502,14 @@ export default function AetherHubWorkspacePage() {
     setHydrated(true);
   }, [currentUser.id]);
 
+  // 落盘走尾沿节流：流式期间每个 delta 都会触发本 effect，直接同步
+  // JSON.stringify 整个会话数组等于每秒几十次全量序列化（主线程可感知卡顿）。
+  // scheduleSaveSessions 合并写请求，并在 pagehide 时强制 flush 防丢。
   useEffect(() => {
     if (!hydrated) return;
-    saveSessions(currentUser.id, sessions);
+    scheduleSaveSessions(currentUser.id, sessions);
   }, [hydrated, currentUser.id, sessions]);
+  useEffect(() => flushSaveSessions, []);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -507,8 +545,30 @@ export default function AetherHubWorkspacePage() {
     },
     [activeId, updateSession],
   );
-  const [streaming, setStreaming] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  // ----- 每会话独立流 -----
+  // 流式状态从「全局单布尔」升级为「会话 id 集合」：A 会话生成时可以自由切到
+  // B 会话继续提问（对齐 ChatGPT / LobeHub），只有同一会话内不允许并发两条流。
+  // rAF 管线的所有写入都以闭包里 pin 住的 sessionId/messageId 为准，天然防串台。
+  const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const streamingIdsRef = useRef<Set<string>>(new Set());
+  const abortControllersRef = useRef(new Map<string, AbortController>());
+  const markStreaming = useCallback((id: string, on: boolean) => {
+    const live = streamingIdsRef.current;
+    if (on) live.add(id);
+    else live.delete(id);
+    setStreamingIds((prev) => {
+      if (prev.has(id) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  // 当前活跃会话视角的 streaming —— 旧 UI 契约（Composer 停止按钮等）继续可用。
+  const streaming = activeId ? streamingIds.has(activeId) : false;
+
+  // ----- 待发送的图片附件（仅随下一条消息发出，切换会话即清空）-----
+  const [composerAttachments, setComposerAttachments] = useState<AgentAttachment[]>([]);
   const [selectedArticles, setSelectedArticles] = useState<AgentArticle[]>([]);
   const [selectedTags, setSelectedTags] = useState<AgentTag[]>([]);
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
@@ -532,6 +592,7 @@ export default function AetherHubWorkspacePage() {
     setSelectedTags([]);
     setSelectedKbs([]);
     setSelectedAtlasKps([]);
+    setComposerAttachments([]);
   }, [activeId]);
 
   useEffect(() => {
@@ -585,6 +646,11 @@ export default function AetherHubWorkspacePage() {
 
   // ----- 流式吐字动画：none / fade / smooth -----
   const [streamAnimation, setStreamAnimation] = useState<StreamAnimationMode>('smooth');
+  // rAF 管线在闭包外读当前档位（切档立即生效，不需要重启流）。
+  const streamAnimationRef = useRef<StreamAnimationMode>(streamAnimation);
+  useEffect(() => {
+    streamAnimationRef.current = streamAnimation;
+  }, [streamAnimation]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem('aetherblog.admin.aetherhub.streamAnimation');
@@ -617,35 +683,45 @@ export default function AetherHubWorkspacePage() {
     window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
   }, [sendShortcut]);
 
+  // 新建 / 切换会话不再被生成中的流阻塞 —— 旧流在自己的会话里继续写，
+  // 由闭包 pin 住的 sessionId 保证不串台。
   const handleNewSession = useCallback(() => {
-    if (streaming) {
-      toast.info('请先停止当前回答再新建对话');
-      return;
-    }
     const fresh = createEmptySession('chat');
     setSessions((prev) => [fresh, ...prev]);
     setActiveId(fresh.id);
-  }, [streaming]);
+  }, []);
 
+  // 侧栏「当前对话配置」入口按视口分流：紧凑视口给底部配置抽屉（字号 / 快捷
+  // 操作只在这里），桌面给右侧空间与参数面板。历史版本从未打开过配置抽屉，
+  // 字号调节等能力因此完全不可达。
+  const isCompactViewport = useMediaQuery('(max-width: 1279px)');
   const handleOpenCurrentConfig = useCallback(() => {
+    if (isCompactViewport) {
+      setMobileConfigOpen(true);
+      return;
+    }
     setPanelCollapsed(false);
     setMobileConfigOpen(false);
-  }, []);
+  }, [isCompactViewport]);
 
   const handleSelectSession = useCallback(
     (id: string) => {
-      if (streaming) {
-        toast.info('正在生成回答，请稍候或先停止');
-        return;
-      }
       if (id === activeId) return;
       setActiveId(id);
     },
-    [activeId, streaming],
+    [activeId],
   );
 
   const handleDeleteSession = useCallback(
     (id: string) => {
+      // 删除正在流式的会话前先掐断它的流，避免 rAF 管线继续往已删除的
+      // 会话里写（map 找不到目标只是空转，但计时器与网络流会白跑）。
+      const controller = abortControllersRef.current.get(id);
+      if (controller) {
+        controller.abort();
+        abortControllersRef.current.delete(id);
+        markStreaming(id, false);
+      }
       setPendingSessionKnowledgeHandoff((current) =>
         clearSessionKnowledgeHandoff(current, id),
       );
@@ -665,6 +741,44 @@ export default function AetherHubWorkspacePage() {
       toast.success('对话已删除');
     },
     [activeId],
+  );
+
+  const handleTogglePinSession = useCallback(
+    (id: string) => {
+      updateSession(id, (s) => ({ ...s, pinned: !s.pinned }));
+    },
+    [updateSession],
+  );
+
+  const handleRenameSession = useCallback(
+    (id: string, title: string) => {
+      const trimmed = title.trim().slice(0, 60);
+      if (!trimmed) return;
+      updateSession(id, (s) => ({ ...s, title: trimmed }));
+    },
+    [updateSession],
+  );
+
+  const handleExportSession = useCallback(
+    (id: string) => {
+      const session = sessions.find((s) => s.id === id);
+      if (!session || session.messages.length === 0) {
+        toast.info('这个对话还没有消息，无需导出');
+        return;
+      }
+      const markdown = sessionToMarkdown(session);
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = exportFileName(session);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success('对话已导出为 Markdown');
+    },
+    [sessions],
   );
 
   const handleSetModel = useCallback(
@@ -711,28 +825,35 @@ export default function AetherHubWorkspacePage() {
   }, [activeSession, updateSession]);
 
   const handleAbort = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setStreaming(false);
+    const targetId = activeId;
+    if (!targetId) return;
+    abortControllersRef.current.get(targetId)?.abort();
+    abortControllersRef.current.delete(targetId);
+    markStreaming(targetId, false);
     // 关键修复：abort 走 AbortError 分支不会触发 onDone/onError，pending 永远不会被
     // 清掉，导致思考状态计时的 100ms tick 一直滚（你看到的 "正在生成 · 1413s"）。
-    // 这里手动把"还在 pending 的 assistant 消息"全部落定到完成态。
+    // 这里手动把"该会话还在 pending 的 assistant 消息"落定到完成态 —— 只处理
+    // 当前会话，别的会话可能正有自己的流在跑。
     setSessions((prev) =>
-      prev.map((s) => ({
-        ...s,
-        messages: s.messages.map((m) =>
-          m.role === 'assistant' && m.pending
-            ? {
-                ...m,
-                pending: false,
-                finishedAt: Date.now(),
-                error: m.content ? undefined : '已停止生成',
-              }
-            : m,
-        ),
-      })),
+      prev.map((s) =>
+        s.id !== targetId
+          ? s
+          : {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.role === 'assistant' && m.pending
+                  ? {
+                      ...m,
+                      pending: false,
+                      finishedAt: Date.now(),
+                      error: m.content ? undefined : '已停止生成',
+                    }
+                  : m,
+              ),
+            },
+      ),
     );
-  }, []);
+  }, [activeId, markStreaming]);
 
   const handleSend = useCallback(
     async (
@@ -747,7 +868,12 @@ export default function AetherHubWorkspacePage() {
       const text = rawText.trim();
       const baseSession = override?.session ?? activeSession;
       const baseMessages = override?.messages ?? baseSession?.messages ?? [];
-      if (!text || streaming || !baseSession) return;
+      if (!text || !baseSession) return;
+      // 只挡「同一会话并发两条流」，不再全局冻结 —— 其他会话照常可发。
+      if (streamingIdsRef.current.has(baseSession.id)) {
+        toast.info('这个对话正在生成回答，请先停止或稍候');
+        return;
+      }
 
       const isFirstMessage = baseMessages.length === 0;
       const sessionId = baseSession.id;
@@ -755,6 +881,18 @@ export default function AetherHubWorkspacePage() {
       const providerCode = baseSession.providerCode ?? null;
       const requestModel = currentModelFromSession(baseSession, modelsState);
       const modelParams = buildModelParamsForRequest(requestModel, baseSession.modelParams);
+
+      // 图片附件只随手动发送走（重试 / 编辑重放不重复携带），且必须有
+      // 明确声明 vision 能力的模型 —— 自动路由不知道会落到谁，直接拦下。
+      const requestAttachments = override ? [] : composerAttachments;
+      if (requestAttachments.length > 0 && !requestModel?.abilities?.vision) {
+        toast.error(
+          requestModel
+            ? '当前模型不支持图片输入，请换一个带「视觉」能力的模型'
+            : '发送图片前请先在模型选择器中指定一个支持视觉能力的模型',
+        );
+        return;
+      }
       const replaySnapshot = override?.requestSnapshot ?? null;
       const requestArticles = replaySnapshot ? [] : selectedArticles;
       const requestTags = replaySnapshot ? [] : selectedTags;
@@ -794,6 +932,15 @@ export default function AetherHubWorkspacePage() {
         content: text,
         requestSnapshot,
         createdAt: now,
+        // 原图只进内存缓存（localStorage 5MB 配额装不下 base64 原图）；
+        // 会话里存的是去掉 dataUrl 的元信息，刷新后降级为占位卡片。
+        attachments:
+          requestAttachments.length > 0
+            ? requestAttachments.map((a) => {
+                attachmentDataUrlCache.set(a.id, a.dataUrl);
+                return { ...a, dataUrl: '' };
+              })
+            : undefined,
       };
       const assistantId = newMessageId();
       const assistantMsg: AgentMessage = {
@@ -803,11 +950,38 @@ export default function AetherHubWorkspacePage() {
         createdAt: now,
         startedAt: now,
         pending: true,
+        // 模型戳记：这条回复实际请求的模型（null = 后端自动路由），供元数据
+        // footer 展示与「重试时换模型」参考。
+        modelId,
+        providerCode,
       };
-      const historyForRequest = [...baseMessages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+
+      // 上下文断点之前的消息不随请求发送（消息保留可回看）；随后按后端硬限
+      // （单条 8000 / 总 32000 / 64 条）做预算裁剪 —— 旧版全量发送，长会话
+      // 必然 413，用户只能清空自救。
+      const contextMessages = sliceContextMessages(baseMessages, baseSession.contextBreakId);
+      const budget = budgetHistory([
+        ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
+        { role: 'user' as const, content: text },
+      ]);
+      if (budget.droppedMessages > 0) {
+        toast.info(`上下文较长，已省略最早的 ${budget.droppedMessages} 条消息`, {
+          id: `budget-${sessionId}`,
+        });
+      }
+      const historyForRequest: ChatStreamRequest['messages'] = budget.history.map((m, idx) =>
+        idx === budget.history.length - 1 && requestAttachments.length > 0
+          ? {
+              role: m.role,
+              content: [
+                ...(m.content ? ([{ type: 'text', text: m.content }] as const) : []),
+                ...requestAttachments.map(
+                  (a) => ({ type: 'image_url', image_url: { url: a.dataUrl } }) as const,
+                ),
+              ],
+            }
+          : m,
+      );
 
       updateSession(sessionId, (s) => ({
         ...s,
@@ -816,6 +990,7 @@ export default function AetherHubWorkspacePage() {
         draft: resolveAgentSessionDraftAfterRequestStart(s, Boolean(override)),
         updatedAt: now,
       }));
+      if (!override) setComposerAttachments([]);
       const clearRequestContext = () => {
         const sentKnowledgeBaseIds =
           requestSnapshot.knowledgeContext.mode === 'selected'
@@ -861,10 +1036,10 @@ export default function AetherHubWorkspacePage() {
           preserveSessionKnowledgeHandoffAfterSuccess(current, requestHandoffSnapshot),
         );
       };
-      setStreaming(true);
+      markStreaming(sessionId, true);
 
       const controller = new AbortController();
-      abortRef.current = controller;
+      abortControllersRef.current.set(sessionId, controller);
 
       const patchAssistant = (patch: Partial<AgentMessage>) => {
         setSessions((prev) =>
@@ -880,6 +1055,130 @@ export default function AetherHubWorkspacePage() {
                 },
           ),
         );
+      };
+
+      // === 流式累加 + rAF 平滑显示（唯一管线） ===
+      // MessageRow 直接渲染 message.content，气泡内不再二次节流。历史版本在
+      // 这条管线之外，AssistantContent 里又叠了一层 useSmoothStream（固定
+      // 45 chars/s），两个 typewriter 互相竞争：实际可见速率被钉死在 45 字/秒，
+      // 长回答 lag 滚雪球，流结束瞬间整段瞬移 —— 这正是「卡顿 + 内容跳变」的
+      // 根因。单管线后速率自适应、终态平滑收尾（平移自 blog 端已验证实现）。
+      let acc = '';                                // server 正文累加
+      let thinkAcc = '';                           // server 思考段累加
+      let displayed = '';                          // UI 实际显示的正文
+      let displayedThink = '';                     // UI 实际显示的思考段
+      let firstTokenAt: number | null = null;
+      let streamDone = false;                      // server 已发 done/error
+      let finalPatch: Partial<AgentMessage> | null = null;
+      let pendingMisc: Partial<AgentMessage> = {}; // sources/retrieval/usage 等待写
+      let rafId = 0;
+      let lastPaintAt = 0;                         // 长文降帧的上次提交时间
+
+      // stride —— lag 越大追得越激进；流结束后再加速一档，收尾利落不拖沓。
+      const computeStride = (lag: number, finishing: boolean): number => {
+        if (finishing) return Math.max(8, Math.ceil(lag / 5));
+        if (lag > 600) return Math.ceil(lag / 12);
+        if (lag > 200) return Math.ceil(lag / 18);
+        if (lag > 60) return 5;
+        if (lag > 20) return 3;
+        return 2;
+      };
+
+      // 长内容降帧：每帧 setState 都会让流式渲染器全量重 parse（O(文档长度)），
+      // 60fps × 长文档 = 主线程被 parse 吃满。按长度把提交频率降到 ~30/20fps，
+      // 阅读节奏无感知，CPU 直接砍半以上。
+      const minPaintInterval = (len: number): number => {
+        if (len > 6000) return 48; // ~20fps
+        if (len > 2500) return 32; // ~30fps
+        return 0;
+      };
+
+      const tick = () => {
+        rafId = 0;
+
+        const nowTs = performance.now();
+        const interval = minPaintInterval(acc.length);
+        if (interval > 0 && nowTs - lastPaintAt < interval && displayed.length < acc.length) {
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+        lastPaintAt = nowTs;
+
+        // 推进 displayed —— '无动画'档直接对齐，其余按 stride 匀速追赶。
+        // 思考段与正文共享同一帧提交，但各自独立追进度。
+        if (streamAnimationRef.current === 'none') {
+          displayed = acc;
+          displayedThink = thinkAcc;
+        } else {
+          if (displayed.length < acc.length) {
+            const lag = acc.length - displayed.length;
+            displayed = acc.slice(0, Math.min(displayed.length + computeStride(lag, streamDone), acc.length));
+          }
+          if (displayedThink.length < thinkAcc.length) {
+            const lag = thinkAcc.length - displayedThink.length;
+            displayedThink = thinkAcc.slice(
+              0,
+              Math.min(displayedThink.length + computeStride(lag, streamDone), thinkAcc.length),
+            );
+          }
+        }
+
+        const patch: Partial<AgentMessage> = { content: displayed };
+        if (displayedThink) patch.think = displayedThink;
+        if (Object.keys(pendingMisc).length > 0) {
+          Object.assign(patch, pendingMisc);
+          pendingMisc = {};
+        }
+
+        // 仅当目标消息仍在 pending 才写入 —— 防止 abort 已落定 pending:false
+        // 后又被本帧覆盖回流式状态。
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id !== sessionId
+              ? s
+              : {
+                  ...s,
+                  updatedAt: Date.now(),
+                  messages: s.messages.map((m) =>
+                    m.id === assistantId && m.pending ? { ...m, ...patch } : m,
+                  ),
+                },
+          ),
+        );
+
+        const caughtUp = displayed.length >= acc.length && displayedThink.length >= thinkAcc.length;
+        if (!caughtUp) {
+          rafId = requestAnimationFrame(tick);
+        } else if (streamDone && finalPatch) {
+          // 显示追平 + 流已结束 → 应用终态（content/think 用累加值兜底，保证完整）
+          const fp = finalPatch;
+          finalPatch = null;
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id !== sessionId
+                ? s
+                : {
+                    ...s,
+                    messages: s.messages.map((m) =>
+                      m.id === assistantId && m.pending
+                        ? { ...m, ...fp, content: acc, think: thinkAcc || m.think }
+                        : m,
+                    ),
+                  },
+            ),
+          );
+        }
+        // else：已追平但流未结束 → 等下一个 onDelta 再唤醒
+      };
+
+      const schedule = () => {
+        if (rafId) return;
+        rafId = requestAnimationFrame(tick);
+      };
+      const finishStream = (patch: Partial<AgentMessage>) => {
+        streamDone = true;
+        finalPatch = patch;
+        schedule();
       };
 
       const auditMatch = text.match(/^\/audit\s+(\d+)\s*$/i);
@@ -905,8 +1204,8 @@ export default function AetherHubWorkspacePage() {
             finishedAt: Date.now(),
           });
         } finally {
-          setStreaming(false);
-          abortRef.current = null;
+          markStreaming(sessionId, false);
+          abortControllersRef.current.delete(sessionId);
         }
         return;
       }
@@ -929,45 +1228,29 @@ export default function AetherHubWorkspacePage() {
           req,
           {
             onDelta: (chunk) => {
-              setSessions((prev) =>
-                prev.map((s) =>
-                  s.id !== sessionId
-                    ? s
-                    : {
-                        ...s,
-                        messages: s.messages.map((m) => {
-                          if (m.id !== assistantId) return m;
-                          return {
-                            ...m,
-                            content: m.content + chunk,
-                            firstTokenAt: m.firstTokenAt ?? Date.now(),
-                          };
-                        }),
-                        updatedAt: Date.now(),
-                      },
-                ),
-              );
+              acc += chunk;
+              if (firstTokenAt == null) {
+                firstTokenAt = Date.now();
+                pendingMisc.firstTokenAt = firstTokenAt;
+              }
+              schedule();
             },
             onThink: (chunk) => {
-              setSessions((prev) =>
-                prev.map((s) =>
-                  s.id !== sessionId
-                    ? s
-                    : {
-                        ...s,
-                        messages: s.messages.map((m) =>
-                          m.id === assistantId
-                            ? { ...m, think: (m.think ?? '') + chunk }
-                            : m,
-                        ),
-                      },
-                ),
-              );
+              thinkAcc += chunk;
+              schedule();
             },
-            onSources: (sources) => patchAssistant({ sources }),
+            onSources: (sources) => {
+              pendingMisc.sources = sources;
+              schedule();
+            },
             onRetrieval: (receipt) => {
               retrievalReceipt = receipt;
+              // 回执在正文前一次性到达 —— 直接落消息，不等吐字管线。
               patchAssistant({ retrieval: receipt });
+            },
+            onUsage: (usage) => {
+              pendingMisc.usage = usage;
+              schedule();
             },
             onDone: () => {
               const citationCount =
@@ -979,46 +1262,250 @@ export default function AetherHubWorkspacePage() {
                 description: `${describeAetherHubAtlasScope(contextPayload.value.atlasScope?.kpIds ?? [])}; citation_count=${citationCount}; retrieval_status=${retrievalReceipt?.status ?? 'not_requested'}`,
                 status: retrievalReceipt?.status === 'matched' ? 'SUCCESS' : 'WARNING',
               }).catch(() => undefined);
-              patchAssistant({ pending: false, finishedAt: Date.now() });
+              finishStream({ pending: false, finishedAt: Date.now() });
               clearRequestContext();
             },
-            onError: (message) =>
-              patchAssistant({ pending: false, error: message, finishedAt: Date.now() }),
+            onError: (message, meta) =>
+              finishStream({
+                pending: false,
+                error: message,
+                errorCode: meta?.code,
+                retryable: meta?.retryable,
+                finishedAt: Date.now(),
+              }),
           },
           controller.signal,
         );
       } catch (err) {
         if ((err as { name?: string })?.name !== 'AbortError') {
-          patchAssistant({
+          finishStream({
             pending: false,
             error: err instanceof Error ? err.message : '请求失败',
+            retryable: true,
             finishedAt: Date.now(),
           });
+        } else if (rafId) {
+          // abort：handleAbort 已把消息落定，掐掉还在排队的帧防止覆盖。
+          cancelAnimationFrame(rafId);
+          rafId = 0;
         }
       } finally {
-        if (abortRef.current === controller) {
-          abortRef.current = null;
+        if (abortControllersRef.current.get(sessionId) === controller) {
+          abortControllersRef.current.delete(sessionId);
         }
-        setStreaming(false);
+        markStreaming(sessionId, false);
       }
     },
-    [streaming, activeSession, updateSession, selectedArticles, selectedTags, selectedKbs, selectedAtlasKps, modelsState, pendingSessionKnowledgeHandoff],
+    [
+      activeSession,
+      composerAttachments,
+      markStreaming,
+      modelsState,
+      pendingSessionKnowledgeHandoff,
+      selectedArticles,
+      selectedAtlasKps,
+      selectedKbs,
+      selectedTags,
+      updateSession,
+    ],
   );
 
+  // 编辑 = 回填输入框 + 截断该消息之后的所有回复。截断不可逆，先过
+  // ConfirmModal（浏览器原生 confirm 是设计系统红线）。
+  const [confirmEditTarget, setConfirmEditTarget] = useState<AgentMessage | null>(null);
+  const applyEditMessage = useCallback(
+    (message: AgentMessage) => {
+      if (!activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      updateSession(activeSession.id, (s) => {
+        const nextMessages = s.messages.slice(0, idx);
+        return {
+          ...s,
+          messages: nextMessages,
+          contextBreakId: normalizeContextBreak(nextMessages, s.contextBreakId),
+          draft: message.content,
+          updatedAt: Date.now(),
+        };
+      });
+    },
+    [activeSession, updateSession],
+  );
   const handleEditMessage = useCallback(
     (message: AgentMessage) => {
       if (streaming || message.role !== 'user' || !activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
-      updateSession(activeSession.id, (s) => ({
-        ...s,
-        messages: s.messages.slice(0, idx),
-        draft: message.content,
-        updatedAt: Date.now(),
-      }));
+      if (activeSession.messages.length > idx + 1) {
+        setConfirmEditTarget(message);
+        return;
+      }
+      applyEditMessage(message);
     },
-    [activeSession, streaming, updateSession],
+    [activeSession, applyEditMessage, streaming],
   );
+
+  // 翻译 —— 复用 /agent/chat（knowledgeContextMode:'none' 不触发检索），流式
+  // 写进 message.translation。再点一次已完成的翻译 = 收起。
+  const handleTranslateMessage = useCallback(
+    (message: AgentMessage) => {
+      if (!activeSession) return;
+      const sessionId = activeSession.id;
+      const source = message.content;
+      if (!source.trim()) return;
+      const existing = activeSession.messages.find((m) => m.id === message.id)?.translation;
+      if (existing?.pending) return;
+      const writeTranslation = (t: AgentTranslation | undefined) => {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id !== sessionId
+              ? s
+              : {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id !== message.id ? m : { ...m, translation: t },
+                  ),
+                },
+          ),
+        );
+      };
+      if (existing && !existing.error && existing.content) {
+        writeTranslation(undefined);
+        return;
+      }
+      // 目标语言按源文本主导语种取反：CJK 占比超过 1/4 → 译英，否则译中。
+      const cjkCount = source.match(/[一-鿿]/g)?.length ?? 0;
+      const lang: 'en' | 'zh' = cjkCount > source.length / 4 ? 'en' : 'zh';
+      writeTranslation({ lang, content: '', pending: true });
+      let acc = '';
+      void streamAgentChat(
+        {
+          sessionId,
+          mode: 'chat',
+          knowledgeContextMode: 'none',
+          kbIds: null,
+          messages: [
+            {
+              role: 'user',
+              content:
+                lang === 'en'
+                  ? `Translate the following content into natural, fluent English. Preserve the Markdown structure and keep code blocks unchanged. Output only the translation.\n\n${source}`
+                  : `把下面的内容翻译成自然流畅的中文。保留 Markdown 结构，代码块原样不动。只输出译文。\n\n${source}`,
+            },
+          ],
+        },
+        {
+          onDelta: (chunk) => {
+            acc += chunk;
+            writeTranslation({ lang, content: acc, pending: true });
+          },
+          onDone: () => writeTranslation({ lang, content: acc, pending: false }),
+          onError: (msg) =>
+            writeTranslation({ lang, content: acc, pending: false, error: msg }),
+        },
+      ).catch(() => writeTranslation({ lang, content: acc, pending: false, error: '翻译请求失败' }));
+    },
+    [activeSession],
+  );
+
+  // 引用 —— 把消息以 Markdown 引用块追加到输入框。
+  const handleQuoteMessage = useCallback(
+    (message: AgentMessage) => {
+      if (!activeSession) return;
+      const quoted = message.content
+        .trim()
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+      const draft = readAgentSessionDraft(activeSession);
+      setComposer(draft.trim() ? `${draft.replace(/\s+$/, '')}\n\n${quoted}\n\n` : `${quoted}\n\n`);
+      toast.success('已引用到输入框');
+    },
+    [activeSession, setComposer],
+  );
+
+  // 分支 —— 以该消息（含）为止复制出一个新会话，模型与参数随行。
+  const handleForkMessage = useCallback(
+    (message: AgentMessage) => {
+      if (!activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      const fresh: AgentSession = {
+        ...createEmptySession(activeSession.mode),
+        title: `${activeSession.title || '对话'} · 分支`,
+        modelId: activeSession.modelId ?? null,
+        providerCode: activeSession.providerCode ?? null,
+        modelParams: activeSession.modelParams,
+        messages: activeSession.messages
+          .slice(0, idx + 1)
+          .map((m) => ({ ...m, pending: false })),
+      };
+      setSessions((prev) => [fresh, ...prev]);
+      setActiveId(fresh.id);
+      toast.success('已从此处创建分支对话');
+    },
+    [activeSession],
+  );
+
+  // 上下文断点 —— Cherry Studio「清除上下文」心智：断点前的消息保留可回看，
+  // 但不再随请求发送；再点一次（或点分隔线上的恢复）即撤销。
+  const handleToggleContextBreak = useCallback(() => {
+    if (!activeSession || activeSession.messages.length === 0) return;
+    const lastId = activeSession.messages[activeSession.messages.length - 1].id;
+    const clearing = activeSession.contextBreakId === lastId;
+    updateSession(activeSession.id, (s) => ({
+      ...s,
+      contextBreakId: clearing ? null : lastId,
+    }));
+    toast.success(clearing ? '已恢复完整上下文' : '已清除上下文（消息保留，可随时恢复）');
+  }, [activeSession, updateSession]);
+  const handleClearContextBreak = useCallback(() => {
+    if (!activeSession) return;
+    updateSession(activeSession.id, (s) => ({ ...s, contextBreakId: null }));
+    toast.success('已恢复完整上下文');
+  }, [activeSession, updateSession]);
+
+  // 图片附件：选择 / 粘贴 / 拖入统一走这里，校验类型与体积后转 dataURL。
+  const handleAddAttachments = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const room = MAX_IMAGES_PER_MESSAGE - composerAttachments.length;
+      if (room <= 0) {
+        toast.info(`每条消息最多携带 ${MAX_IMAGES_PER_MESSAGE} 张图片`);
+        return;
+      }
+      const accepted: AgentAttachment[] = [];
+      for (const file of files.slice(0, room)) {
+        const problem = validateImageFile(file);
+        if (problem) {
+          toast.error(problem);
+          continue;
+        }
+        try {
+          const attachment = await fileToAttachment(file);
+          // 总量预算：Go 侧 body 上限 24MB ≈ 3 张满额图，前端用 16MB dataURL
+          // 预算提前拦截，避免用户攒满 4 张后收到不透明的「请求体过大」。
+          if (!attachmentsWithinBudget([...composerAttachments, ...accepted], attachment)) {
+            toast.error(`图片总体积超出预算（约 ${Math.round(MAX_TOTAL_ATTACHMENT_DATAURL_BYTES / 1024 / 1024)}MB），请压缩或减少图片`);
+            continue;
+          }
+          accepted.push(attachment);
+        } catch {
+          toast.error(`读取「${file.name}」失败，请重试`);
+        }
+      }
+      if (files.length > room) {
+        toast.info(`每条消息最多携带 ${MAX_IMAGES_PER_MESSAGE} 张图片，多余的已忽略`);
+      }
+      if (accepted.length > 0) {
+        setComposerAttachments((prev) => [...prev, ...accepted]);
+      }
+    },
+    [composerAttachments.length],
+  );
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setComposerAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   const retryUserTurn = useCallback(
     (prior: AgentMessage, baseMessages: AgentMessage[], session: AgentSession) => {
@@ -1051,16 +1538,45 @@ export default function AetherHubWorkspacePage() {
     [activeSession, retryUserTurn, streaming],
   );
 
+  // 「改用自动检索重试」—— selected 模式 0 命中被拒（selected_context_not_grounded）
+  // 时的定向出路：同一问题换 auto 契约重放，让后端自动发现有权限的知识来源。
+  const handleRetryMessageAuto = useCallback(
+    (message: AgentMessage) => {
+      if (streaming || message.role !== 'assistant' || !activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx <= 0) return;
+      const prior = activeSession.messages[idx - 1];
+      if (prior.role !== 'user') return;
+      const baseMessages = activeSession.messages.slice(0, idx - 1);
+      void handleSend(prior.content, {
+        session: { ...activeSession, messages: baseMessages },
+        messages: baseMessages,
+        requestSnapshot: {
+          schemaVersion: 1,
+          knowledgeContext: { mode: 'auto' },
+          articleIds: null,
+          tagSlugs: null,
+        },
+        handoffSnapshot: null,
+      });
+    },
+    [activeSession, handleSend, streaming],
+  );
+
   const handleDeleteMessage = useCallback(
     (message: AgentMessage) => {
       if (streaming || !activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
-      updateSession(activeSession.id, (s) => ({
-        ...s,
-        messages: s.messages.slice(0, idx),
-        updatedAt: Date.now(),
-      }));
+      updateSession(activeSession.id, (s) => {
+        const nextMessages = s.messages.slice(0, idx);
+        return {
+          ...s,
+          messages: nextMessages,
+          contextBreakId: normalizeContextBreak(nextMessages, s.contextBreakId),
+          updatedAt: Date.now(),
+        };
+      });
       toast.success('已删除此处及后续消息');
     },
     [activeSession, streaming, updateSession],
@@ -1151,11 +1667,14 @@ export default function AetherHubWorkspacePage() {
             currentUser={currentUser}
             sessions={sessions}
             activeId={activeId}
-            streaming={streaming}
+            streamingIds={streamingIds}
             onBack={() => navigate('/dashboard')}
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
+            onTogglePinSession={handleTogglePinSession}
+            onRenameSession={handleRenameSession}
+            onExportSession={handleExportSession}
             onOpenConfig={handleOpenCurrentConfig}
             onToggleCollapsed={() => setSessionSidebarCollapsed((v) => !v)}
           />
@@ -1165,19 +1684,21 @@ export default function AetherHubWorkspacePage() {
             currentUser={currentUser}
             sessions={sessions}
             activeId={activeId}
-            streaming={streaming}
+            streamingIds={streamingIds}
             onClose={() => setMobileSessionOpen(false)}
             onBack={() => navigate('/dashboard')}
             onNewSession={handleNewSession}
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
+            onTogglePinSession={handleTogglePinSession}
+            onRenameSession={handleRenameSession}
+            onExportSession={handleExportSession}
             onOpenConfig={handleOpenCurrentConfig}
           />
 
           <section className="flex h-full min-h-0 min-w-0 flex-col border-x border-[var(--hub-border)]">
             <TopBar
               activeSession={activeSession}
-              streaming={streaming}
               displayMode={displayMode}
               onSetDisplayMode={setDisplayMode}
               onNewSession={handleNewSession}
@@ -1274,7 +1795,16 @@ export default function AetherHubWorkspacePage() {
               onSlashCommand={handleSlashCommand}
               onEditMessage={handleEditMessage}
               onRetryMessage={handleRetryMessage}
+              onRetryAutoMessage={handleRetryMessageAuto}
               onDeleteMessage={handleDeleteMessage}
+              onTranslateMessage={handleTranslateMessage}
+              onQuoteMessage={handleQuoteMessage}
+              onForkMessage={handleForkMessage}
+              onToggleContextBreak={handleToggleContextBreak}
+              onClearContextBreak={handleClearContextBreak}
+              attachments={composerAttachments}
+              onAddAttachments={handleAddAttachments}
+              onRemoveAttachment={handleRemoveAttachment}
             />
           </section>
 
@@ -1290,6 +1820,8 @@ export default function AetherHubWorkspacePage() {
             onSetDisplayMode={setDisplayMode}
             streamAnimation={streamAnimation}
             onSetStreamAnimation={setStreamAnimation}
+            fontSize={fontSize}
+            onSetFontSize={setFontSize}
             onSetModelParam={handleSetModelParam}
             onResetModelParams={handleResetModelParams}
             onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
@@ -1336,6 +1868,20 @@ export default function AetherHubWorkspacePage() {
               toast.success('已清空当前对话');
             }}
           />
+
+          <ConfirmModal
+            isOpen={!!confirmEditTarget}
+            title="编辑这条消息？"
+            message="编辑会把这条消息填回输入框，并删除它之后的所有回复。此操作无法撤销。"
+            confirmText="编辑并截断"
+            cancelText="取消"
+            variant="warning"
+            onConfirm={() => {
+              if (confirmEditTarget) applyEditMessage(confirmEditTarget);
+              setConfirmEditTarget(null);
+            }}
+            onCancel={() => setConfirmEditTarget(null)}
+          />
         </div>
       </div>
     </div>
@@ -1350,12 +1896,10 @@ function SidebarTopControls({
   sidebarLabel,
   onSidebarAction,
   onNewSession,
-  streaming,
 }: {
   sidebarLabel: string;
   onSidebarAction: () => void;
   onNewSession: () => void;
-  streaming: boolean;
 }) {
   return (
     <div className="inline-flex h-12 items-center gap-1.5 rounded-[26px] border border-[var(--hub-border)] bg-[color-mix(in_oklch,var(--hub-control)_78%,var(--ink-primary)_8%)] p-1 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent),0_14px_34px_-28px_rgba(0,0,0,0.42)]">
@@ -1371,13 +1915,9 @@ function SidebarTopControls({
       <button
         type="button"
         onClick={onNewSession}
-        disabled={streaming}
         aria-label="新建对话"
         title="新建对话"
-        className={cn(
-          'grid h-10 w-10 place-items-center rounded-[22px] text-[var(--ink-secondary)] transition-[background-color,color,transform] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] active:scale-[0.97]',
-          streaming && 'cursor-not-allowed opacity-60',
-        )}
+        className="grid h-10 w-10 place-items-center rounded-[22px] text-[var(--ink-secondary)] transition-[background-color,color,transform] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] active:scale-[0.97]"
       >
         <SquarePen className="h-5 w-5" strokeWidth={2.15} />
       </button>
@@ -1390,11 +1930,14 @@ function WorkspaceSidebar({
   currentUser,
   sessions,
   activeId,
-  streaming,
+  streamingIds,
   onBack,
   onNewSession,
   onSelectSession,
   onDeleteSession,
+  onTogglePinSession,
+  onRenameSession,
+  onExportSession,
   onOpenConfig,
   onToggleCollapsed,
 }: {
@@ -1402,11 +1945,14 @@ function WorkspaceSidebar({
   currentUser: CurrentUser;
   sessions: AgentSession[];
   activeId: string | null;
-  streaming: boolean;
+  streamingIds: ReadonlySet<string>;
   onBack: () => void;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onTogglePinSession: (id: string) => void;
+  onRenameSession: (id: string, title: string) => void;
+  onExportSession: (id: string) => void;
   onOpenConfig: () => void;
   onToggleCollapsed: () => void;
 }) {
@@ -1425,7 +1971,6 @@ function WorkspaceSidebar({
           sidebarLabel="收起侧边栏"
           onSidebarAction={onToggleCollapsed}
           onNewSession={onNewSession}
-          streaming={streaming}
         />
       </div>
 
@@ -1470,8 +2015,12 @@ function WorkspaceSidebar({
                   key={session.id}
                   session={session}
                   active={session.id === activeId}
+                  streaming={streamingIds.has(session.id)}
                   onSelect={() => onSelectSession(session.id)}
                   onDelete={() => onDeleteSession(session.id)}
+                  onTogglePin={() => onTogglePinSession(session.id)}
+                  onRename={(title) => onRenameSession(session.id, title)}
+                  onExport={() => onExportSession(session.id)}
                 />
               ))}
             </div>
@@ -1518,24 +2067,30 @@ function MobileSessionDrawer({
   currentUser,
   sessions,
   activeId,
-  streaming,
+  streamingIds,
   onClose,
   onBack,
   onNewSession,
   onSelectSession,
   onDeleteSession,
+  onTogglePinSession,
+  onRenameSession,
+  onExportSession,
   onOpenConfig,
 }: {
   open: boolean;
   currentUser: CurrentUser;
   sessions: AgentSession[];
   activeId: string | null;
-  streaming: boolean;
+  streamingIds: ReadonlySet<string>;
   onClose: () => void;
   onBack: () => void;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onTogglePinSession: (id: string) => void;
+  onRenameSession: (id: string, title: string) => void;
+  onExportSession: (id: string) => void;
   onOpenConfig: () => void;
 }) {
   const [query, setQuery] = useState('');
@@ -1586,7 +2141,6 @@ function MobileSessionDrawer({
                   onNewSession();
                   onClose();
                 }}
-                streaming={streaming}
               />
             </div>
 
@@ -1631,12 +2185,16 @@ function MobileSessionDrawer({
                         key={session.id}
                         session={session}
                         active={session.id === activeId}
-                        showDelete
+                        streaming={streamingIds.has(session.id)}
+                        showActions
                         onSelect={() => {
                           onSelectSession(session.id);
                           onClose();
                         }}
                         onDelete={() => onDeleteSession(session.id)}
+                        onTogglePin={() => onTogglePinSession(session.id)}
+                        onRename={(title) => onRenameSession(session.id, title)}
+                        onExport={() => onExportSession(session.id)}
                       />
                     ))}
                   </div>
@@ -1690,56 +2248,190 @@ function MobileSessionDrawer({
 function SessionRow({
   session,
   active,
+  streaming = false,
   onSelect,
   onDelete,
-  showDelete = false,
+  onTogglePin,
+  onRename,
+  onExport,
+  showActions = false,
 }: {
   session: AgentSession;
   active: boolean;
+  /** 该会话正在流式生成 —— 行尾显示呼吸点。 */
+  streaming?: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  showDelete?: boolean;
+  onTogglePin: () => void;
+  onRename: (title: string) => void;
+  onExport: () => void;
+  /** 触屏（无 hover）场景下常显操作入口。 */
+  showActions?: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(session.title);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!renaming) return;
+    setDraftTitle(session.title);
+    const raf = requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
+    // 依赖刻意只挂 renaming：进入重命名态时取一次快照，编辑期间外部改名不打断输入。
+  }, [renaming]);
+
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const id = window.setTimeout(() => setConfirmDelete(false), 1800);
+    return () => window.clearTimeout(id);
+  }, [confirmDelete]);
+
+  const commitRename = () => {
+    setRenaming(false);
+    const next = draftTitle.trim();
+    if (next && next !== session.title) onRename(next);
+  };
+
+  if (renaming) {
+    return (
+      <div className="flex h-10 w-full items-center rounded-xl bg-[var(--hub-control-hover)] px-2">
+        <input
+          ref={renameInputRef}
+          value={draftTitle}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          maxLength={60}
+          aria-label="重命名对话"
+          className="h-8 w-full rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] bg-transparent px-2 text-sm text-[var(--ink-primary)] outline-none"
+        />
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={cn(
-        'group relative flex h-10 w-full items-center gap-2 rounded-xl px-3 text-sm transition-colors',
-        active
-          ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
-          : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
-      )}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center text-left"
-      >
-        <span className="min-w-0 truncate pr-8">{session.title || '新对话'}</span>
-        <span className="sr-only">
-          最近更新：{formatRelativeShort(session.updatedAt)}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (confirmDelete) onDelete();
-          else setConfirmDelete(true);
-        }}
-        onBlur={() => setConfirmDelete(false)}
-        title={confirmDelete ? '再次点击确认删除' : '删除对话'}
-        aria-label="删除对话"
+    <div className="group">
+      <div
         className={cn(
-          'absolute right-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)]',
-          confirmDelete
-            ? 'text-[var(--signal-danger)] opacity-100'
-            : showDelete
-              ? 'opacity-80 hover:text-[var(--signal-danger)]'
-              : 'opacity-0 group-hover:opacity-100 hover:text-[var(--signal-danger)]',
+          'relative flex h-10 w-full items-center gap-1.5 rounded-xl px-3 text-sm transition-colors',
+          active
+            ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+            : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
         )}
       >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+        {session.pinned && (
+          <Pin className="h-3 w-3 shrink-0 text-[var(--aurora-1)]" aria-label="已置顶" />
+        )}
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex min-w-0 flex-1 items-center text-left"
+        >
+          <span className="min-w-0 truncate pr-6">{session.title || '新对话'}</span>
+          <span className="sr-only">
+            最近更新：{formatRelativeShort(session.updatedAt)}
+          </span>
+        </button>
+        {streaming && (
+          <span
+            className="hub-think-live-dot shrink-0"
+            aria-label="正在生成回答"
+            title="正在生成回答"
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-expanded={menuOpen}
+          aria-label="对话操作"
+          title="对话操作"
+          className={cn(
+            'absolute right-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition-all hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+            menuOpen || showActions ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+          )}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* 行内展开操作条 —— 不用浮层，避免在滚动容器里被裁剪 */}
+      <AnimatePresence initial={false}>
+        {menuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mx-1 mt-0.5 flex items-center gap-0.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onTogglePin();
+                  setMenuOpen(false);
+                }}
+                className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-[11px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                {session.pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                {session.pinned ? '取消置顶' : '置顶'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setRenaming(true);
+                }}
+                className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-[11px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <Pencil className="h-3 w-3" />
+                重命名
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onExport();
+                  setMenuOpen(false);
+                }}
+                className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-[11px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <Download className="h-3 w-3" />
+                导出
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmDelete) {
+                    setConfirmDelete(false);
+                    setMenuOpen(false);
+                    onDelete();
+                  } else {
+                    setConfirmDelete(true);
+                  }
+                }}
+                className={cn(
+                  'flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-[11px] transition-colors',
+                  confirmDelete
+                    ? 'bg-[color-mix(in_oklch,var(--signal-danger)_14%,transparent)] text-[var(--signal-danger)]'
+                    : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--signal-danger)]',
+                )}
+              >
+                <Trash2 className="h-3 w-3" />
+                {confirmDelete ? '确认？' : '删除'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1750,7 +2442,6 @@ function SessionRow({
 
 function TopBar({
   activeSession,
-  streaming,
   displayMode,
   onSetDisplayMode,
   onNewSession,
@@ -1761,7 +2452,6 @@ function TopBar({
   onToggleCapabilityPanel,
 }: {
   activeSession: AgentSession | null;
-  streaming: boolean;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
   onNewSession: () => void;
@@ -1836,13 +2526,9 @@ function TopBar({
         <button
           type="button"
           onClick={onNewSession}
-          disabled={streaming}
           aria-label="新建对话"
           title="新建对话"
-          className={cn(
-            'grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden',
-            streaming && 'cursor-not-allowed opacity-60',
-          )}
+          className="grid h-8 w-8 place-items-center rounded-full text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)] md:hidden"
         >
           <SquarePen className="h-4 w-4" />
         </button>
@@ -2172,7 +2858,16 @@ function WorkspaceCanvas({
   onSlashCommand,
   onEditMessage,
   onRetryMessage,
+  onRetryAutoMessage,
   onDeleteMessage,
+  onTranslateMessage,
+  onQuoteMessage,
+  onForkMessage,
+  onToggleContextBreak,
+  onClearContextBreak,
+  attachments,
+  onAddAttachments,
+  onRemoveAttachment,
 }: {
   greeting: string;
   nickname: string;
@@ -2206,7 +2901,16 @@ function WorkspaceCanvas({
   onSlashCommand: (cmd: SlashCommand) => void;
   onEditMessage: (message: AgentMessage) => void;
   onRetryMessage: (message: AgentMessage) => void;
+  onRetryAutoMessage: (message: AgentMessage) => void;
   onDeleteMessage: (message: AgentMessage) => void;
+  onTranslateMessage: (message: AgentMessage) => void;
+  onQuoteMessage: (message: AgentMessage) => void;
+  onForkMessage: (message: AgentMessage) => void;
+  onToggleContextBreak: () => void;
+  onClearContextBreak: () => void;
+  attachments: AgentAttachment[];
+  onAddAttachments: (files: File[]) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
   const isEmpty = !activeSession || activeSession.messages.length === 0;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -2286,20 +2990,42 @@ function WorkspaceCanvas({
                 'flex flex-col pb-6',
                 displayMode === 'engraved' ? 'gap-2' : 'gap-6',
               )}
+              role="log"
+              aria-label="对话消息"
+              aria-busy={streaming}
             >
               {messages.map((m) => (
-                <MessageRow
-                  key={m.id}
-                  message={m}
-                  displayMode={displayMode}
-                  streamAnimation={streamAnimation}
-                  fontSize={fontSize}
-                  currentUser={currentUser}
-                  busy={streaming}
-                  onEdit={onEditMessage}
-                  onRetry={onRetryMessage}
-                  onDelete={onDeleteMessage}
-                />
+                <React.Fragment key={m.id}>
+                  <MessageRow
+                    message={m}
+                    displayMode={displayMode}
+                    streamAnimation={streamAnimation}
+                    fontSize={fontSize}
+                    currentUser={currentUser}
+                    modelsState={modelsState}
+                    busy={streaming}
+                    onEdit={onEditMessage}
+                    onRetry={onRetryMessage}
+                    onRetryAuto={onRetryAutoMessage}
+                    onDelete={onDeleteMessage}
+                    onTranslate={onTranslateMessage}
+                    onQuote={onQuoteMessage}
+                    onFork={onForkMessage}
+                  />
+                  {activeSession?.contextBreakId === m.id && (
+                    <div className="hub-context-break mx-auto flex w-full max-w-3xl items-center justify-center py-1">
+                      <button
+                        type="button"
+                        onClick={onClearContextBreak}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-warn)_32%,transparent)] bg-[var(--hub-panel-strong)] px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--signal-warn)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)]"
+                        title="断点之前的消息不再随请求发送，点击恢复"
+                      >
+                        <Scissors className="h-3 w-3" aria-hidden="true" />
+                        新上下文从这里开始 · 点击恢复
+                      </button>
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
             </div>
           )}
@@ -2349,6 +3075,10 @@ function WorkspaceCanvas({
         onRemoveKb={onRemoveKb}
         onRemoveAtlasKp={onRemoveAtlasKp}
         onSlashCommand={onSlashCommand}
+        attachments={attachments}
+        onAddAttachments={onAddAttachments}
+        onRemoveAttachment={onRemoveAttachment}
+        onToggleContextBreak={onToggleContextBreak}
       />
     </main>
   );
@@ -2401,24 +3131,36 @@ function MessageRow({
   streamAnimation,
   fontSize,
   currentUser,
+  modelsState,
   busy,
   onEdit,
   onRetry,
+  onRetryAuto,
   onDelete,
+  onTranslate,
+  onQuote,
+  onFork,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
   streamAnimation: StreamAnimationMode;
   fontSize: number;
   currentUser: CurrentUser;
+  modelsState: ReturnType<typeof useAgentModels>;
   busy: boolean;
   onEdit: (message: AgentMessage) => void;
   onRetry: (message: AgentMessage) => void;
+  onRetryAuto: (message: AgentMessage) => void;
   onDelete: (message: AgentMessage) => void;
+  onTranslate: (message: AgentMessage) => void;
+  onQuote: (message: AgentMessage) => void;
+  onFork: (message: AgentMessage) => void;
 }) {
   const { isDark } = useTheme();
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 正文引用标记 [n] 被点击 → 传给回执卡展开并高亮对应命中（nonce 允许连点）。
+  const [citeSpotlight, setCiteSpotlight] = useState<{ rank: number; nonce: number } | null>(null);
   const isUser = message.role === 'user';
   const hasThink = !isUser && !!message.think?.trim();
   const showThinkStatus = !isUser && (!!message.pending || hasThink);
@@ -2427,6 +3169,9 @@ function MessageRow({
   const canEdit = isUser && !busy && !!message.content;
   const canRetry = !isUser && !busy && !message.pending && (!!message.content || !!message.error);
   const canDelete = !busy && !message.pending;
+  const canTranslate = !isUser && !message.pending && !!message.content;
+  const canQuote = !!message.content && !message.pending;
+  const canFork = !busy && !message.pending && !!message.content;
 
   useEffect(() => {
     if (!confirmDelete) return;
@@ -2453,10 +3198,17 @@ function MessageRow({
       canEdit={canEdit}
       canRetry={canRetry}
       canDelete={canDelete}
+      canTranslate={canTranslate}
+      canQuote={canQuote}
+      canFork={canFork}
+      translated={!!message.translation && !message.translation.pending}
       confirmDelete={confirmDelete}
       onCopy={handleCopy}
       onEdit={() => onEdit(message)}
       onRetry={() => onRetry(message)}
+      onTranslate={() => onTranslate(message)}
+      onQuote={() => onQuote(message)}
+      onFork={() => onFork(message)}
       onDelete={() => {
         if (!confirmDelete) {
           setConfirmDelete(true);
@@ -2490,6 +3242,9 @@ function MessageRow({
       isDark={isDark}
       isStreaming={isStreaming}
       showThinkStatus={showThinkStatus}
+      onCiteClick={(rank) => setCiteSpotlight({ rank, nonce: Date.now() })}
+      onRetry={canRetry ? () => onRetry(message) : undefined}
+      onRetryAuto={canRetry ? () => onRetryAuto(message) : undefined}
     />
   );
 
@@ -2506,7 +3261,13 @@ function MessageRow({
       <div className={cn(displayMode === 'bubble' && (isUser ? 'flex justify-end' : 'flex justify-start'))}>
         {body}
       </div>
-      {!isUser && message.retrieval && <RetrievalReceiptCard receipt={message.retrieval} />}
+      {!isUser && message.retrieval && (
+        <RetrievalReceiptCard
+          receipt={message.retrieval}
+          messageId={message.id}
+          spotlight={citeSpotlight}
+        />
+      )}
       {message.sources && message.sources.length > 0 && (
         <div className="mt-3 max-w-full">
           <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]">
@@ -2528,7 +3289,79 @@ function MessageRow({
           </ul>
         </div>
       )}
+      {!isUser && !message.pending && !!message.startedAt && (
+        <MessageMetaFooter message={message} modelsState={modelsState} />
+      )}
     </motion.article>
+  );
+}
+
+/**
+ * MessageMetaFooter —— 回复完成后的一行元数据：模型 · 首字延迟 · 总用时 ·
+ * token 用量（后端 usage 事件的真值不带 ~，估算带 ~）· 成本（有定价才显示）。
+ */
+function MessageMetaFooter({
+  message,
+  modelsState,
+}: {
+  message: AgentMessage;
+  modelsState: ReturnType<typeof useAgentModels>;
+}) {
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const model = message.modelId
+    ? items.find((m) => m.modelId === message.modelId && m.providerCode === message.providerCode) ?? null
+    : null;
+  const modelName = message.modelId ? (model ? modelLabel(model) : message.modelId) : '自动路由';
+  const totalSec =
+    message.finishedAt && message.startedAt
+      ? Math.max(0, message.finishedAt - message.startedAt) / 1000
+      : null;
+  const ttftSec =
+    message.firstTokenAt && message.startedAt
+      ? Math.max(0, message.firstTokenAt - message.startedAt) / 1000
+      : null;
+  const usage = message.usage;
+  const tokenLabel = usage
+    ? `${usage.estimated ? '~' : ''}${formatTokenCount(usage.totalTokens)} tok（${formatTokenCount(usage.promptTokens)}↑ ${formatTokenCount(usage.completionTokens)}↓）`
+    : message.content
+      ? `~${formatTokenCount(estimateMessagesTokens([message.content]))} tok`
+      : null;
+  const cost =
+    usage && model && model.inputCostPer1M != null && model.outputCostPer1M != null
+      ? (usage.promptTokens * model.inputCostPer1M + usage.completionTokens * model.outputCostPer1M) /
+        1_000_000
+      : null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 font-mono text-[10px] tnum text-[var(--ink-muted)]">
+      <span className="max-w-[14rem] truncate" title={modelName}>
+        {modelName}
+      </span>
+      {ttftSec != null && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>首字 {ttftSec.toFixed(1)}s</span>
+        </>
+      )}
+      {totalSec != null && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>用时 {totalSec.toFixed(1)}s</span>
+        </>
+      )}
+      {tokenLabel && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>{tokenLabel}</span>
+        </>
+      )}
+      {cost != null && cost > 0 && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>≈ ${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -2606,10 +3439,17 @@ function MessageActions({
   canEdit,
   canRetry,
   canDelete,
+  canTranslate,
+  canQuote,
+  canFork,
+  translated,
   confirmDelete,
   onCopy,
   onEdit,
   onRetry,
+  onTranslate,
+  onQuote,
+  onFork,
   onDelete,
 }: {
   isUser: boolean;
@@ -2618,16 +3458,24 @@ function MessageActions({
   canEdit: boolean;
   canRetry: boolean;
   canDelete: boolean;
+  canTranslate: boolean;
+  canQuote: boolean;
+  canFork: boolean;
+  translated: boolean;
   confirmDelete: boolean;
   onCopy: () => void;
   onEdit: () => void;
   onRetry: () => void;
+  onTranslate: () => void;
+  onQuote: () => void;
+  onFork: () => void;
   onDelete: () => void;
 }) {
   return (
     <span
       className={cn(
-        'ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100',
+        // hub-touch-show：无 hover 设备（触屏）常显 —— 否则这些操作在手机上不可达。
+        'hub-touch-show ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100',
         isUser && 'flex-row-reverse',
       )}
     >
@@ -2670,6 +3518,42 @@ function MessageActions({
           title="重新生成"
         >
           <RefreshCcw className="h-3 w-3" /> 重试
+        </button>
+      )}
+      {canTranslate && (
+        <button
+          type="button"
+          onClick={onTranslate}
+          className={cn(
+            'inline-flex items-center gap-1 hover:text-[var(--aurora-3)]',
+            translated && 'text-[var(--aurora-3)]',
+          )}
+          aria-label={translated ? '收起译文' : '翻译这条消息'}
+          title={translated ? '收起译文' : '翻译（中 ⇄ 英）'}
+        >
+          <Languages className="h-3 w-3" /> {translated ? '收起译文' : '翻译'}
+        </button>
+      )}
+      {canQuote && (
+        <button
+          type="button"
+          onClick={onQuote}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="引用到输入框"
+          title="引用到输入框"
+        >
+          <Quote className="h-3 w-3" /> 引用
+        </button>
+      )}
+      {canFork && (
+        <button
+          type="button"
+          onClick={onFork}
+          className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+          aria-label="从此处创建分支对话"
+          title="从此处创建分支对话"
+        >
+          <GitFork className="h-3 w-3" /> 分支
         </button>
       )}
       {canDelete && (
@@ -2752,6 +3636,45 @@ function Avatar({
   );
 }
 
+/** 用户消息里的图片附件条 —— 原图走内存缓存；刷新后缓存失效则降级为占位。 */
+function UserAttachments({
+  attachments,
+  align,
+}: {
+  attachments: AgentAttachment[];
+  align: 'end' | 'center';
+}) {
+  return (
+    <div
+      className={cn(
+        'mb-2 flex max-w-full flex-wrap gap-2',
+        align === 'end' ? 'justify-end' : 'justify-center',
+      )}
+    >
+      {attachments.map((a) => {
+        const url = a.dataUrl || attachmentDataUrlCache.get(a.id) || '';
+        return url ? (
+          <img
+            key={a.id}
+            src={url}
+            alt={a.name}
+            className="h-28 max-w-[13rem] rounded-xl border border-[var(--hub-border)] object-cover"
+          />
+        ) : (
+          <span
+            key={a.id}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[11px] text-[var(--ink-muted)]"
+            title="原图只在发送当次保留，刷新页面后不再显示"
+          >
+            <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
+            {a.name}（图片已随刷新释放）
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function UserContent({
   message,
   displayMode,
@@ -2761,22 +3684,29 @@ function UserContent({
   displayMode: DisplayMode;
   fontSize: number;
 }) {
+  const attachments = message.attachments ?? [];
   if (displayMode === 'engraved') {
     return (
-      <div
-        className="hub-engraved-text mx-auto max-w-full whitespace-pre-wrap leading-[1.85] text-[var(--ink-primary)]"
-        style={{ fontSize: `${fontSize + 1}px` }}
-      >
-        {message.content}
+      <div className="mx-auto max-w-full">
+        {attachments.length > 0 && <UserAttachments attachments={attachments} align="center" />}
+        <div
+          className="hub-engraved-text mx-auto max-w-full whitespace-pre-wrap leading-[1.85] text-[var(--ink-primary)]"
+          style={{ fontSize: `${fontSize + 1}px` }}
+        >
+          {message.content}
+        </div>
       </div>
     );
   }
   return (
-    <div
-      className="inline-block max-w-[85%] rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-4 py-3 leading-relaxed text-[var(--ink-primary)] whitespace-pre-wrap break-words"
-      style={{ fontSize: `${fontSize}px` }}
-    >
-      {message.content}
+    <div className="flex max-w-[85%] flex-col items-end">
+      {attachments.length > 0 && <UserAttachments attachments={attachments} align="end" />}
+      <div
+        className="inline-block max-w-full rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-4 py-3 leading-relaxed text-[var(--ink-primary)] whitespace-pre-wrap break-words"
+        style={{ fontSize: `${fontSize}px` }}
+      >
+        {message.content}
+      </div>
     </div>
   );
 }
@@ -2828,6 +3758,9 @@ function AssistantContent({
   isDark,
   isStreaming,
   showThinkStatus,
+  onCiteClick,
+  onRetry,
+  onRetryAuto,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
@@ -2836,14 +3769,36 @@ function AssistantContent({
   isDark: boolean;
   isStreaming: boolean;
   showThinkStatus: boolean;
+  onCiteClick: (rank: number) => void;
+  onRetry?: () => void;
+  onRetryAuto?: () => void;
 }) {
-  // 节流后的内容 —— 流式中按用户选择的速率匀速吐字；完成态立即同步到完整文本。
-  const smoothed = useSmoothStream(message.content, !!message.pending, streamAnimation);
-  // CJK 友好预处理 —— 修正 `**xx：**汉字` 这类中文标点 + bold 闭合失败的盲点。
-  const renderableContent = useMemo(
-    () => normalizeCjkInlineMarkdown(smoothed),
-    [smoothed],
+  // 吐字平滑由页面级 rAF 管线完成（message.content 已是节流后的值），这里
+  // 不再叠第二层 typewriter —— 双管线互相竞争正是历史卡顿的根因。
+  // CJK 预处理修正 `**xx：**汉字` 的 flanking 失败；再把 [n] 链接到回执命中。
+  const maxRank = message.retrieval?.hits.length ?? 0;
+  const renderableContent = useMemo(() => {
+    const normalized = normalizeCjkInlineMarkdown(message.content);
+    return maxRank > 0 ? linkifyCitations(normalized, message.id, maxRank) : normalized;
+  }, [message.content, message.id, maxRank]);
+
+  // 引用标记点击：markdown 是 innerHTML 渲染，onClick 委托到容器上拦 #cite-。
+  const handleContentClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const anchor = (event.target as HTMLElement).closest?.('a');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') ?? '';
+      if (!href.startsWith('#cite-')) return;
+      event.preventDefault();
+      const rank = parseCitationRank(href);
+      if (rank != null) onCiteClick(rank);
+    },
+    [onCiteClick],
   );
+
+  const translation = message.translation;
+  const showErrorActions =
+    !message.pending && !!message.error && (message.retryable || !!message.errorCode);
 
   return (
     <div className="w-full">
@@ -2877,16 +3832,30 @@ function AssistantContent({
                 streamAnimation === 'smooth' && 'hub-stream-fade--smooth',
               )}
               style={{ fontSize: `${fontSize}px` }}
+              onClick={handleContentClick}
             >
-              <MarkdownPreview
-                content={renderableContent}
-                theme={isDark ? 'dark' : 'light'}
-                className={cn(
-                  'hub-agent-md leading-relaxed',
-                  displayMode === 'engraved' && 'hub-engraved-md',
-                )}
-                style={{ fontSize: `${fontSize}px` }}
-              />
+              {message.pending ? (
+                // 流式期间用轻渲染器：不引 shiki/KaTeX/mermaid（每帧全文重
+                // parse，重型管线会把主线程吃满且半截公式/图会闪烁），并内置
+                // 未闭合围栏稳定化，代码块单调生长、滚动不再乱窜。
+                <MarkdownStreamPreview
+                  content={renderableContent}
+                  className={cn(
+                    'hub-agent-md leading-relaxed',
+                    displayMode === 'engraved' && 'hub-engraved-md',
+                  )}
+                />
+              ) : (
+                <MarkdownPreview
+                  content={renderableContent}
+                  theme={isDark ? 'dark' : 'light'}
+                  className={cn(
+                    'hub-agent-md leading-relaxed',
+                    displayMode === 'engraved' && 'hub-engraved-md',
+                  )}
+                  style={{ fontSize: `${fontSize}px` }}
+                />
+              )}
             </div>
             {message.pending && (
               <span
@@ -2902,7 +3871,64 @@ function AssistantContent({
             )}
           </>
         )}
+        {showErrorActions && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {message.errorCode === 'selected_context_not_grounded' && onRetryAuto && (
+              <button
+                type="button"
+                onClick={onRetryAuto}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[color-mix(in_oklch,var(--aurora-1)_36%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-2.5 text-[12px] font-medium text-[var(--aurora-1)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]"
+              >
+                <Sparkles className="h-3 w-3" />
+                改用自动检索重试
+              </button>
+            )}
+            {message.retryable && onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--hub-border)] px-2.5 text-[12px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+              >
+                <RefreshCcw className="h-3 w-3" />
+                重试
+              </button>
+            )}
+          </div>
+        )}
       </AssistantSurface>
+
+      {/* 内联译文面板 —— 流式期间轻渲染器，完成后交回全量渲染。 */}
+      {translation && (
+        <div className="mt-2 max-w-full rounded-xl border border-[color-mix(in_oklch,var(--aurora-3)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-3)_5%,transparent)] p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+            <Languages className="h-3 w-3 text-[var(--aurora-3)]" aria-hidden="true" />
+            {translation.lang === 'en' ? '译文 · English' : '译文 · 中文'}
+            {translation.pending && <span className="hub-think-live-dot" aria-label="翻译中" />}
+          </div>
+          {translation.content ? (
+            translation.pending ? (
+              <MarkdownStreamPreview
+                content={normalizeCjkInlineMarkdown(translation.content)}
+                className="hub-agent-md leading-relaxed"
+              />
+            ) : (
+              <MarkdownPreview
+                content={normalizeCjkInlineMarkdown(translation.content)}
+                theme={isDark ? 'dark' : 'light'}
+                className="hub-agent-md leading-relaxed"
+                style={{ fontSize: `${fontSize}px` }}
+              />
+            )
+          ) : translation.pending ? (
+            <TypingDots />
+          ) : null}
+          {translation.error && (
+            <div className="mt-2 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+              {translation.error}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2927,22 +3953,21 @@ function ThinkingPanel({
   const userToggledRef = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const isStreaming = !!message.pending;
+  // 吐字节流已在页面级 rAF 管线完成（message.think 就是节流后的值），这里
+  // 直接渲染 —— 旧版在此再叠一层 useSmoothStream，与主管线互相竞争。
   const think = message.think ?? '';
-  // 独立于正文的平滑流：思考内容可以继续柔和吐字，但正文 delta 不需要等
-  // reasoning 追帧结束才显示。
-  const smoothedThink = useSmoothStream(think, isStreaming, streamAnimation);
   const hasThink = !!think.trim();
   const expandable = hasThink;
   const renderableThink = useMemo(
-    () => normalizeCjkInlineMarkdown(smoothedThink),
-    [smoothedThink],
+    () => normalizeCjkInlineMarkdown(think),
+    [think],
   );
   const tail = useMemo(() => {
-    const trimmed = markdownToPreviewText(smoothedThink);
+    const trimmed = markdownToPreviewText(think);
     if (!trimmed) return '';
     if (trimmed.length <= 86) return trimmed;
     return `${trimmed.slice(0, 86)}…`;
-  }, [smoothedThink]);
+  }, [think]);
 
   useEffect(() => {
     if (!message.pending) return;
@@ -2965,7 +3990,7 @@ function ThinkingPanel({
     const el = previewRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [open, isStreaming, expandable, smoothedThink]);
+  }, [open, isStreaming, expandable, think]);
 
   if (!message.startedAt) return null;
 
@@ -3096,16 +4121,25 @@ function ThinkingPanel({
                   : 'border-[var(--hub-border)] bg-[var(--hub-control)]',
               )}
             >
-              <MarkdownPreview
-                content={renderableThink}
-                theme={isDark ? 'dark' : 'light'}
-                className={cn(
-                  'hub-think-md hub-stream-fade leading-relaxed',
-                  streamAnimation === 'fade' && 'hub-stream-fade--fade',
-                  streamAnimation === 'smooth' && 'hub-stream-fade--smooth',
-                )}
-                style={{ fontSize: `${fontSize}px` }}
-              />
+              {isStreaming ? (
+                // 思考段流式期间同样走轻渲染器 —— 重型管线每帧重 parse 是
+                // 历史卡顿的一半来源（另一半是双 typewriter）。
+                <MarkdownStreamPreview
+                  content={renderableThink}
+                  className={cn(
+                    'hub-think-md hub-stream-fade leading-relaxed',
+                    streamAnimation === 'fade' && 'hub-stream-fade--fade',
+                    streamAnimation === 'smooth' && 'hub-stream-fade--smooth',
+                  )}
+                />
+              ) : (
+                <MarkdownPreview
+                  content={renderableThink}
+                  theme={isDark ? 'dark' : 'light'}
+                  className="hub-think-md leading-relaxed"
+                  style={{ fontSize: `${fontSize}px` }}
+                />
+              )}
               {isStreaming && (
                 <span className="hub-caret text-[var(--aurora-1)]" aria-hidden="true" />
               )}
@@ -3166,6 +4200,10 @@ function Composer({
   onRemoveKb,
   onRemoveAtlasKp,
   onSlashCommand,
+  attachments,
+  onAddAttachments,
+  onRemoveAttachment,
+  onToggleContextBreak,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -3190,6 +4228,10 @@ function Composer({
   onRemoveKb: (id: number) => void;
   onRemoveAtlasKp: (id: number) => void;
   onSlashCommand: (cmd: SlashCommand) => void;
+  attachments: AgentAttachment[];
+  onAddAttachments: (files: File[]) => void;
+  onRemoveAttachment: (id: string) => void;
+  onToggleContextBreak: () => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chipTrayRef = useRef<HTMLDivElement | null>(null);
@@ -3204,6 +4246,29 @@ function Composer({
   const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'atlas' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 图片按钮按当前模型的 vision 能力门控 —— 自动路由或非视觉模型都禁用并给提示。
+  const currentModel = useMemo(
+    () => currentModelFromSession(activeSession, modelsState),
+    [activeSession, modelsState],
+  );
+  const visionReady = !!currentModel?.abilities?.vision;
+
+  // 上下文用量计：断点之后的历史 + 草稿 + 附件的估算 token，进度按后端字符
+  // 预算（28K，含安全余量）折算 —— 满则提示会自动省略较早消息。
+  const contextStats = useMemo(() => {
+    const history = activeSession
+      ? sliceContextMessages(activeSession.messages, activeSession.contextBreakId)
+      : [];
+    const chars =
+      history.reduce((sum, m) => sum + m.content.length, 0) + value.length;
+    const tokens =
+      estimateMessagesTokens([...history.map((m) => m.content), value]) +
+      attachments.reduce((sum, a) => sum + attachmentTokenEstimate(a), 0);
+    return { chars, tokens, percent: Math.min(999, Math.round((chars / CONTEXT_CHAR_BUDGET) * 100)) };
+  }, [activeSession, value, attachments]);
+  const hasContextBreak = !!activeSession?.contextBreakId;
 
   const autosize = useCallback(() => {
     const el = textareaRef.current;
@@ -3528,6 +4593,41 @@ function Composer({
             )}
           </AnimatePresence>
 
+          {/* 待发送图片托盘 */}
+          <AnimatePresence initial={false}>
+            {attachments.length > 0 && (
+              <motion.div
+                key="attachment-tray"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="flex flex-wrap gap-2 px-1 pb-2 pt-0.5" aria-label="待发送图片">
+                  {attachments.map((a) => (
+                    <span key={a.id} className="group/att relative">
+                      <img
+                        src={a.dataUrl}
+                        alt={a.name}
+                        className="h-16 w-16 rounded-xl border border-[var(--hub-border)] object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onRemoveAttachment(a.id)}
+                        aria-label={`移除图片 ${a.name}`}
+                        title="移除图片"
+                        className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] text-[var(--ink-muted)] opacity-0 shadow-sm transition-opacity hover:text-[var(--signal-danger)] focus-visible:opacity-100 group-hover/att:opacity-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -3535,9 +4635,31 @@ function Composer({
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
+                f.type.startsWith('image/'),
+              );
+              if (files.length > 0) {
+                e.preventDefault();
+                onAddAttachments(files);
+              }
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+                f.type.startsWith('image/'),
+              );
+              if (files.length > 0) {
+                e.preventDefault();
+                onAddAttachments(files);
+              }
+            }}
             rows={1}
-            disabled={streaming}
-            placeholder="问灵境，知识库 · Atlas · @ 文章 · # 标签 · / 命令"
+            placeholder={
+              streaming
+                ? '正在生成回答 —— 可以先起草下一条问题'
+                : '问灵境，知识库 · Atlas · @ 文章 · # 标签 · / 命令'
+            }
             spellCheck={false}
             autoComplete="off"
             className={cn(
@@ -3545,16 +4667,17 @@ function Composer({
               picker ? 'py-1.5' : 'py-2',
               'placeholder:text-[var(--ink-muted)] placeholder:opacity-70',
               'border-0 outline-none focus:border-0 focus:outline-none focus:ring-0',
-              'disabled:opacity-60 md:text-[var(--fs-body)]',
+              'md:text-[var(--fs-body)]',
             )}
             style={{ boxShadow: 'none' }}
           />
           <div className="mt-1.5 grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-[var(--hub-border)]/80 pt-2 md:mt-2 md:min-h-10">
             <div className="agent-thumb-scroll flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain pr-1 sm:overflow-visible sm:pr-0">
+              {/* 流式期间也可换模型 —— 只影响下一轮请求，当前流由闭包 pin 住不受影响。 */}
               <ModelPickerButton
                 activeSession={activeSession}
                 modelsState={modelsState}
-                disabled={streaming}
+                disabled={false}
                 onSetModel={onSetModel}
                 placement="top"
                 align="start"
@@ -3607,6 +4730,63 @@ function Composer({
               >
                 <SlashSquare className="h-3.5 w-3.5" />
               </ToolButton>
+              <span
+                aria-hidden="true"
+                className="mx-1 hidden h-4 w-px bg-[var(--hub-border)] sm:inline-block"
+              />
+              <ToolButton
+                title={
+                  visionReady
+                    ? '发送图片（也可直接粘贴 / 拖入）'
+                    : '当前模型不支持图片输入 —— 请先选择带「视觉」能力的模型'
+                }
+                count={attachments.length}
+                disabled={!visionReady}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+              </ToolButton>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  onAddAttachments(files);
+                }}
+              />
+              <ToolButton
+                title={
+                  hasContextBreak
+                    ? '已设置上下文断点 —— 再点一次或点分隔线恢复'
+                    : '清除上下文（消息保留，模型从此处重新开始记忆）'
+                }
+                active={hasContextBreak}
+                disabled={!activeSession || activeSession.messages.length === 0}
+                onClick={onToggleContextBreak}
+              >
+                <Scissors className="h-3.5 w-3.5" />
+              </ToolButton>
+              {(activeSession?.messages.length ?? 0) > 0 && (
+                <span
+                  className={cn(
+                    'ml-auto hidden shrink-0 items-center gap-1 pl-2 font-mono text-[10px] tnum sm:inline-flex',
+                    contextStats.percent >= 100
+                      ? 'text-[var(--signal-warn)]'
+                      : 'text-[var(--ink-muted)]',
+                  )}
+                  title={
+                    contextStats.percent >= 100
+                      ? '上下文已满：发送时会自动省略最早的消息（可用剪刀清除上下文）'
+                      : '当前上下文占用（估算）'
+                  }
+                >
+                  ~{formatTokenCount(contextStats.tokens)} tok · {contextStats.percent}%
+                </span>
+              )}
             </div>
 
             {streaming ? (
@@ -3770,9 +4950,10 @@ const ToolButton = forwardRef<
     title: string;
     active?: boolean;
     count?: number;
+    disabled?: boolean;
     onClick?: () => void;
   }
->(function ToolButton({ children, title, active, count, onClick }, ref) {
+>(function ToolButton({ children, title, active, count, disabled, onClick }, ref) {
   return (
     <button
       ref={ref}
@@ -3780,12 +4961,14 @@ const ToolButton = forwardRef<
       title={title}
       aria-label={title}
       aria-pressed={active}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         'relative inline-flex !h-9 !w-9 !min-h-0 !min-w-0 shrink-0 items-center justify-center rounded-full p-0 transition-all duration-200 before:absolute before:-inset-1 before:content-[""] active:scale-95',
         active
           ? 'bg-[var(--hub-control)] text-[var(--ink-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_26%,transparent)]'
           : 'text-[var(--ink-muted)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]',
+        disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[var(--ink-muted)] active:scale-100',
       )}
     >
       {children}
@@ -4656,6 +5839,8 @@ function ContextPanel({
   onSetDisplayMode,
   streamAnimation,
   onSetStreamAnimation,
+  fontSize,
+  onSetFontSize,
   onSetModelParam,
   onResetModelParams,
   onToggleCollapsed,
@@ -4675,6 +5860,8 @@ function ContextPanel({
   onSetDisplayMode: (mode: DisplayMode) => void;
   streamAnimation: StreamAnimationMode;
   onSetStreamAnimation: (mode: StreamAnimationMode) => void;
+  fontSize: number;
+  onSetFontSize: (n: number) => void;
   onSetModelParam: (key: string, value: AgentModelParams[string] | undefined) => void;
   onResetModelParams: () => void;
   onToggleCollapsed: () => void;
@@ -4968,6 +6155,34 @@ function ContextPanel({
                                 ]}
                                 onChange={(value) => onSetStreamAnimation(value as StreamAnimationMode)}
                               />
+                            </CapabilityControl>
+                            <CapabilityControl
+                              icon={<FileText className="h-4 w-4" />}
+                              label="字号"
+                              value={`${fontSize}px`}
+                            >
+                              <div className="px-0.5">
+                                <input
+                                  type="range"
+                                  min={12}
+                                  max={18}
+                                  step={0.5}
+                                  value={fontSize}
+                                  onChange={(e) => onSetFontSize(Number(e.target.value))}
+                                  className="hub-range w-full"
+                                  aria-label="消息字体大小"
+                                  style={
+                                    {
+                                      '--hub-range-progress': `${(fontSize - 12) / (18 - 12)}`,
+                                    } as React.CSSProperties
+                                  }
+                                />
+                                <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                                  <span>A</span>
+                                  <span>标准</span>
+                                  <span>A</span>
+                                </div>
+                              </div>
                             </CapabilityControl>
                           </div>
                         </PanelBlock>
@@ -5935,14 +7150,16 @@ function HubSegmentedControl({
 }) {
   const activeIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
 
+  // 视觉全部走 Codex token（--hub-* 派生自 ink/bg/aurora），亮暗主题靠
+  // :root.light 翻转 —— 不写 dark: 变体，也不硬编码 hex/rgba 底色。
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="relative flex items-center rounded-[14px] bg-black/[0.08] p-[3px] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] backdrop-blur-2xl dark:bg-white/[0.08] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]"
+      className="relative flex items-center rounded-[14px] border border-[var(--hub-border)] bg-[var(--hub-control)] p-[3px] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
     >
       <div
-        className="absolute bottom-[3px] top-[3px] rounded-[11px] transition-[transform] duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)] motion-reduce:transition-none"
+        className="absolute bottom-[3px] top-[3px] rounded-[11px] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--hub-panel-strong)] shadow-[0_3px_10px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-transform duration-quick ease-aether motion-reduce:transition-none"
         style={{
           left: 3,
           width: `calc((100% - 6px) / ${options.length})`,
@@ -5950,24 +7167,7 @@ function HubSegmentedControl({
           willChange: 'transform',
         }}
         aria-hidden="true"
-      >
-        <div
-          className="absolute inset-0 rounded-[11px] opacity-100 transition-opacity duration-200 dark:opacity-0"
-          style={{
-            background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
-            boxShadow:
-              '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
-          }}
-        />
-        <div
-          className="absolute inset-0 rounded-[11px] opacity-0 transition-opacity duration-200 dark:opacity-100"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 100%)',
-            boxShadow:
-              '0 3px 8px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.16), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
-          }}
-        />
-      </div>
+      />
 
       {options.map((opt) => {
         const active = opt.value === value;
@@ -5980,10 +7180,10 @@ function HubSegmentedControl({
             title={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
+              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-quick ease-aether focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
               active
-                ? 'text-black dark:text-white'
-                : 'text-black/55 hover:text-black/70 dark:text-white/55 dark:hover:text-white/70',
+                ? 'text-[var(--ink-primary)]'
+                : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]',
             )}
           >
             {opt.label}
@@ -6089,12 +7289,16 @@ function filterSessions(sessions: AgentSession[], query: string): AgentSession[]
   const keyword = query.trim().toLowerCase();
   if (!keyword) return sessions;
 
+  // 全量消息检索（对齐 ChatGPT / LobeHub 的历史搜索）—— 早期版本只搜最后
+  // 8 条，长对话的早期内容搜不到。纯内存 includes，几百条消息量级无压力。
   return sessions.filter((session) => {
-    const messages = session.messages
-      .slice(-8)
-      .map((message) => [message.content, message.think, ...(message.sources?.map((s) => s.title) ?? [])].join(' '))
-      .join(' ');
-    return [session.title, messages].join(' ').toLowerCase().includes(keyword);
+    if (session.title.toLowerCase().includes(keyword)) return true;
+    return session.messages.some((message) =>
+      [message.content, message.think ?? '', ...(message.sources?.map((s) => s.title) ?? [])]
+        .join(' ')
+        .toLowerCase()
+        .includes(keyword),
+    );
   });
 }
 

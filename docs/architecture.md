@@ -353,6 +353,7 @@ packages/
 | 公开 | `/v1/public/*` | 面向访客的内容 API | 否 |
 | 管理 | `/v1/admin/*` | 后台管理 API | JWT |
 | 智能编排 | `/v1/admin/agent-workflows/*`、`/v1/admin/agent-{tools,definitions,schedules}`、`/v1/agent/workflows/*`、`/v1/agent/published/*`、`/v1/agent/runs/*` | Agent Workflow authoring、catalog、capabilities、governed runtime、run stream/control、published invoke | JWT |
+| Agent 工作台 | `/v1/agent/{chat,models,articles,tags}` | 灵境多轮对话 SSE（事件：`retrieval/think/delta/sources/usage/done/error`，`usage` 在 `done` 前下发真实或估算 token 用量；`messages[].content` 支持 OpenAI content-parts 图片输入，仅内联 data URL、单图 ≤5MB、每请求 ≤8 图、非 vision 模型 400）、模型清单（含 `inputCostPer1M/outputCostPer1M` 定价）、@/# picker | JWT |
 | AI | `/api/v1/ai/*` | AI 服务代理 | JWT |
 
 ### 通用响应格式

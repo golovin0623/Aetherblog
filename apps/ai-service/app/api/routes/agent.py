@@ -21,16 +21,24 @@
   data: {"type":"retrieval","version":1,"status":"matched",...}\\n\\n
   data: {"type":"think","content":"…"}\\n\\n
   data: {"type":"delta","content":"…"}\\n\\n
+  data: {"type":"usage","promptTokens":0,"completionTokens":0,"totalTokens":0,"estimated":false}\\n\\n
   data: {"type":"done"}\\n\\n
   data: {"type":"error","code":"…","message":"…"}\\n\\n
+
+``usage`` 只在成功路径的 ``done`` 之前下发一次：provider 经
+``stream_options.include_usage`` 返回 prompt / completion 两侧真值时
+``estimated`` 为 false；任一侧缺失则该侧用本地 ``estimate_tokens`` 补齐并
+整条标 true；error / 客户端取消不发。
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import asyncio
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -38,7 +46,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from litellm import acompletion
 
 from app.api.deps import (
@@ -69,9 +77,112 @@ settings = get_settings()
 # 请求 / 响应 schema
 # ============================================================================
 
+# ---- 图片输入（vision）硬限制 ----
+# 只接受 data URL 内联 base64，禁止 http(s) 远端地址 —— 服务端替客户端拉取
+# 任意 URL 等于把 SSRF 面直接开在 LLM 入口上。
+_IMAGE_DATA_URL_RE = re.compile(r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$")
+_IMAGE_MAX_DECODED_BYTES = 5 * 1024 * 1024
+_MAX_IMAGES_PER_MESSAGE = 4
+_MAX_IMAGES_PER_REQUEST = 8
+# 单条消息 content-parts 数组的片段总数上限（文本 + 图片合计）。正常前端一条
+# 消息只会拼出「若干文本 + ≤4 图」的个位数片段；16 已经留足余量。
+_MAX_CONTENT_PARTS_PER_MESSAGE = 16
+
+
+class AgentTextPart(BaseModel):
+    """OpenAI content-parts 的文本片段，LiteLLM 原样透传。"""
+
+    type: Literal["text"]
+    text: str
+
+
+class AgentImageUrlPayload(BaseModel):
+    """图片引用体。仅接受内联 base64 data URL（防 SSRF），并做体积硬封顶。"""
+
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def validate_image_data_url(cls, value: str) -> str:
+        if not _IMAGE_DATA_URL_RE.match(value):
+            raise ValueError(
+                "图片必须是 data:image/(png|jpeg|webp|gif);base64 形式的内联 Data URL"
+            )
+        encoded = value.split(",", 1)[1]
+        # 先按 base64 长度粗算解码体积，明显超限直接拒绝，
+        # 避免对几十 MB 的畸形字符串做无谓解码。
+        if len(encoded) * 3 // 4 > _IMAGE_MAX_DECODED_BYTES + 4:
+            raise ValueError("单张图片解码后不能超过 5MB")
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except ValueError as exc:  # binascii.Error 是 ValueError 子类
+            raise ValueError("图片 base64 内容无效") from exc
+        if len(decoded) > _IMAGE_MAX_DECODED_BYTES:
+            raise ValueError("单张图片解码后不能超过 5MB")
+        return value
+
+
+class AgentImagePart(BaseModel):
+    """OpenAI content-parts 的图片片段（image_url + data URL）。"""
+
+    type: Literal["image_url"]
+    image_url: AgentImageUrlPayload
+
+
+AgentContentPart = AgentTextPart | AgentImagePart
+
+
 class AgentChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"] = Field(..., description="角色")
-    content: str = Field(..., description="内容")
+    # 纯文本，或 OpenAI content-parts 数组（文本 + 内联图片）。
+    # 数组形式由 LiteLLM 原样透传给 provider（vision 通道）。
+    content: str | list[AgentContentPart] = Field(..., description="内容")
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def limit_content_part_count(cls, value: Any) -> Any:
+        """片段数硬封顶 —— 必须在逐片段解析之前执行（``mode="before"``）。
+
+        语义等价于 ``Annotated[list[...], Field(max_length=16)]``，但先于
+        pydantic 的 per-part 校验短路并给出中文文案。为什么必须前置：文本
+        长度硬限在 ``_enforce_message_limits``，晚于 schema 解析——没有这道
+        闸，攻击者用 24MB 请求体塞几十万个微型 text part，单 worker 事件循环
+        会在 schema 解析上烧数秒 CPU（DoS）。
+        """
+        if isinstance(value, (list, tuple)) and len(value) > _MAX_CONTENT_PARTS_PER_MESSAGE:
+            raise ValueError(
+                f"消息内容片段过多（单条消息最多 {_MAX_CONTENT_PARTS_PER_MESSAGE} 个片段）"
+            )
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def validate_content_parts(cls, value: str | list[AgentContentPart]) -> str | list[AgentContentPart]:
+        if isinstance(value, str):
+            return value
+        if not value:
+            raise ValueError("content 数组不能为空，至少需要一个文本或图片片段")
+        images = sum(1 for part in value if isinstance(part, AgentImagePart))
+        if images > _MAX_IMAGES_PER_MESSAGE:
+            raise ValueError(f"单条消息最多包含 {_MAX_IMAGES_PER_MESSAGE} 张图片")
+        return value
+
+
+def _message_text(message: AgentChatMessage) -> str:
+    """统一提取消息文本：str 原样返回；content-parts 拼接全部文本片段。
+
+    所有"把消息当文本用"的路径（长度硬限、检索 query 提取、token 估算）都
+    必须走这里，避免把 base64 图片串当作文本计数或塞进检索。
+    """
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(part.text for part in message.content if isinstance(part, AgentTextPart))
+
+
+def _message_image_count(message: AgentChatMessage) -> int:
+    if isinstance(message.content, str):
+        return 0
+    return sum(1 for part in message.content if isinstance(part, AgentImagePart))
 
 
 class AgentAtlasScope(BaseModel):
@@ -112,6 +223,15 @@ class AgentChatRequest(BaseModel):
     # 本轮模型参数覆盖。只允许少量兼容字段进入 LiteLLM 请求，避免把任意 JSON
     # 直接透传给上游。
     modelParams: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def enforce_request_image_budget(self) -> "AgentChatRequest":
+        # 单条消息的 4 张上限在 AgentChatMessage 校验；这里封顶整个请求，
+        # 防止 64 条消息各带 4 图把 provider 请求撑爆。
+        total_images = sum(_message_image_count(m) for m in self.messages)
+        if total_images > _MAX_IMAGES_PER_REQUEST:
+            raise ValueError(f"整个请求最多包含 {_MAX_IMAGES_PER_REQUEST} 张图片")
+        return self
 
     @model_validator(mode="after")
     def normalize_knowledge_context_contract(self) -> "AgentChatRequest":
@@ -204,6 +324,10 @@ class AgentModelItem(BaseModel):
     source: str | None = None
     releasedAt: str | None = None
     description: str | None = None
+    # 定价（美元 / 1M tokens）。数据来源与 provider_registry._build_model_info
+    # 同一优先级：ai_models 的 per_1k 列 ×1000，缺失时回退 capabilities.pricing。
+    inputCostPer1M: float | None = None
+    outputCostPer1M: float | None = None
     # scope 标记: "user" 表示该 provider 在当前用户名下有专属凭证；
     # "system" 表示用的是系统级（user_id IS NULL）凭证。前端可据此显示徽标。
     scope: str = "system"
@@ -325,6 +449,29 @@ def _resolve_agent_max_output_tokens(row: Any, caps: dict[str, Any]) -> int | No
     )
 
 
+def _resolve_agent_model_cost_per_1m(row: Any, caps: dict[str, Any], kind: str) -> float | None:
+    """模型定价（美元 / 1M tokens）；``kind`` 取 ``input`` / ``output``。
+
+    与 ``provider_registry._build_model_info`` 同源：优先 ai_models 的 per_1k
+    列 ×1000（表里没有 per_1m 列），缺失时回退 capabilities.pricing 的
+    直接键或 units 数组。任一来源为 None 时向下传播 None。
+    """
+    per_1k = row[f"{kind}_cost_per_1k"]
+    if per_1k is not None:
+        try:
+            return float(per_1k) * 1000
+        except (TypeError, ValueError):
+            pass
+    if not isinstance(caps, dict):
+        return None
+    pricing = caps.get("pricing")
+    if not isinstance(pricing, dict):
+        return None
+    from app.services.provider_registry import _extract_pricing_rate
+
+    return _extract_pricing_rate(pricing, kind)
+
+
 # 三种 mode 对应的 system prompt。
 _MODE_SYSTEM_PROMPTS = {
     "chat": (
@@ -372,15 +519,20 @@ _AGENT_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh",
 # ============================================================================
 
 def _enforce_message_limits(req: AgentChatRequest) -> None:
-    """对单次请求体做硬封顶，防止 admin token 被滥用做 OOM/费用 DoS。"""
+    """对单次请求体做硬封顶，防止 admin token 被滥用做 OOM/费用 DoS。
+
+    字符计数只统计文本部分 —— 图片有独立的张数 / 解码体积上限
+    （schema 层 fail-closed），base64 串不挤占文本预算。
+    """
     total = 0
     for m in req.messages:
-        if len(m.content) > 8000:
+        text_len = len(_message_text(m))
+        if text_len > 8000:
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"单条消息超过 8000 字符 (实际 {len(m.content)})",
+                detail=f"单条消息超过 8000 字符 (实际 {text_len})",
             )
-        total += len(m.content)
+        total += text_len
     if total > 32000:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -403,7 +555,11 @@ def _build_chat_messages(req: AgentChatRequest, context_block: str | None = None
     if context_block:
         messages.append({"role": "system", "content": context_block})
     for m in req.messages:
-        messages.append({"role": m.role, "content": m.content})
+        content: Any = m.content
+        if not isinstance(content, str):
+            # content-parts 数组按 OpenAI wire 格式原样透传给 LiteLLM（vision）。
+            content = [part.model_dump() for part in content]
+        messages.append({"role": m.role, "content": content})
     return messages
 
 
@@ -561,6 +717,78 @@ def _looks_like_thinking_param_rejection(exc: Exception) -> bool:
             "extra_body",
         )
     )
+
+
+def _looks_like_stream_options_rejection(exc: Exception) -> bool:
+    """判断 provider 报错是否针对 ``stream_options`` 参数。
+
+    不同网关对该参数名的报错写法不一：``stream_options`` / ``streamOptions`` /
+    ``stream-options`` / ``stream options``。只匹配下划线字面会漏掉变体、错失
+    降级重试，用户直接拿到 error 而不是无 usage 的正常回答。归一化策略：
+    小写后去掉 ``-`` / ``_`` / 空格再做包含判断；原字面匹配保留为快捷路径。
+    """
+    text = str(exc).lower()
+    if "stream_options" in text:
+        return True
+    return "streamoptions" in re.sub(r"[-_ ]", "", text)
+
+
+async def _start_agent_stream(
+    *,
+    resolved: Any,
+    chat_messages: list[dict],
+    completion_kwargs: dict[str, Any],
+):
+    """发起 LiteLLM 流式调用；可选参数被 provider 拒绝时按序降级重试。
+
+    降级顺序（各至多一次）：
+      1. ``stream_options``（真实 usage 下发）被拒 → 去掉后重试，usage 走本地估算；
+      2. thinking 相关参数被拒 → 与既有 Gemini 特判一致，剥离后重试。
+    其余异常原样抛出，交由外层 SSE error 路径处理。
+    """
+    kwargs = dict(completion_kwargs)
+    for _ in range(3):
+        try:
+            return await acompletion(
+                model=resolved.model,
+                messages=chat_messages,
+                api_key=resolved.api_key,
+                api_base=resolved.api_base,
+                stream=True,
+                **kwargs,
+            )
+        except Exception as exc:
+            if "stream_options" in kwargs and _looks_like_stream_options_rejection(exc):
+                logger.warning(
+                    "agent.stream_options_rejected",
+                    extra={
+                        "data": {
+                            "provider_code": resolved.provider_code,
+                            "model_id": resolved.model_id,
+                            "error": str(exc)[:300],
+                        }
+                    },
+                )
+                kwargs.pop("stream_options", None)
+                continue
+            has_thinking_kwargs = any(
+                key in kwargs for key in ("reasoning_effort", "extra_body", "allowed_openai_params")
+            )
+            if has_thinking_kwargs and _looks_like_thinking_param_rejection(exc):
+                logger.warning(
+                    "agent.thinking_params_rejected",
+                    extra={
+                        "data": {
+                            "provider_code": resolved.provider_code,
+                            "model_id": resolved.model_id,
+                            "error": str(exc)[:300],
+                        }
+                    },
+                )
+                kwargs = _without_agent_thinking_kwargs(kwargs)
+                continue
+            raise
+    raise RuntimeError("agent stream start retries exhausted")  # pragma: no cover - 防御性兜底
 
 
 def _coerce_delta_text(value: Any) -> str:
@@ -750,16 +978,105 @@ class _ThinkTagSplitter:
             return
 
 
+def _usage_token_count(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _extract_stream_usage(chunk: Any) -> dict[str, int | None] | None:
+    """从流式 chunk 里提取 provider 返回的真实 token 用量。
+
+    开启 ``stream_options.include_usage`` 后，OpenAI 兼容 provider 会在流末尾
+    追加一条 choices 为空、usage 非空的收尾 chunk；部分 provider 也会把 usage
+    挂在最后一条正常 chunk 上，两种形态都在这里兼容。
+
+    单侧缺失时保留 ``None``，绝不填 0：0 会被下游当成真值直接下发 / 落库，
+    计费口径静默降为半价。缺失侧由 ``_agent_usage_event`` /
+    ``_record_agent_usage`` 逐项回退本地估算并标 ``estimated``。
+    """
+    usage = getattr(chunk, "usage", None)
+    if usage is None and isinstance(chunk, dict):
+        usage = chunk.get("usage")
+    if usage is None:
+        return None
+
+    def read(name: str) -> int | None:
+        if isinstance(usage, dict):
+            return _usage_token_count(usage.get(name))
+        return _usage_token_count(getattr(usage, name, None))
+
+    prompt = read("prompt_tokens")
+    completion = read("completion_tokens")
+    if prompt is None and completion is None:
+        return None
+    total = read("total_tokens")
+    if total is None and prompt is not None and completion is not None:
+        # 只有两侧都是真值才敢代 provider 补 total；任一侧缺失时保持 None，
+        # 交给下游用「真值 + 估算」重算，避免半真半零的 total。
+        total = prompt + completion
+    return {
+        "promptTokens": prompt,
+        "completionTokens": completion,
+        "totalTokens": total,
+    }
+
+
+def _agent_usage_event(
+    provider_usage: dict[str, int | None] | None,
+    *,
+    request_text: str,
+    output_text: str,
+) -> dict[str, Any]:
+    """构造 done 前下发的 ``usage`` 事件。
+
+    真值优先、缺失侧逐项回退本地估算：部分网关只回单侧 usage（例如只有
+    completion_tokens），此时缺失侧用 ``estimate_tokens`` 补齐。只要任一字段
+    是估算值，整条事件就必须标 ``estimated=true`` —— 前端据此加 "~" 前缀，
+    不能把估算冒充成 provider 真值。两侧都是真值才 ``estimated=false``。
+    """
+    prompt = provider_usage.get("promptTokens") if provider_usage else None
+    completion = provider_usage.get("completionTokens") if provider_usage else None
+    estimated = prompt is None or completion is None
+    prompt_tokens = prompt if prompt is not None else estimate_tokens(request_text)
+    completion_tokens = completion if completion is not None else estimate_tokens(output_text)
+    total = provider_usage.get("totalTokens") if provider_usage else None
+    if estimated or total is None:
+        # provider total 只有在两侧都为真值时才可信（可能含 reasoning 等附加
+        # 计数）；任一侧走了估算就用「真值 + 估算」重新求和。
+        total = prompt_tokens + completion_tokens
+    return {
+        "type": "usage",
+        "promptTokens": prompt_tokens,
+        "completionTokens": completion_tokens,
+        "totalTokens": total,
+        "estimated": estimated,
+    }
+
+
 async def _stream_litellm_agent_events(stream):
     """把 LiteLLM streaming chunk 转成 Agent SSE 事件。
 
     - provider 显式返回 ``reasoning_content`` 等字段时，直接映射为 ``think``；
     - provider 把推理轨迹混在正文 ``<think>...</think>`` 中时，拆分为 ``think``；
-    - 普通正文继续作为 ``delta``。
+    - 普通正文继续作为 ``delta``；
+    - 流末尾拿到的真实 token 用量在所有正文事件之后映射为一条 ``usage``。
     """
     splitter = _ThinkTagSplitter()
+    usage_payload: dict[str, int] | None = None
     async for part in stream:
-        delta = part.choices[0].delta
+        extracted_usage = _extract_stream_usage(part)
+        if extracted_usage is not None:
+            usage_payload = extracted_usage
+        choices = getattr(part, "choices", None) or []
+        if not choices:
+            # include_usage 的收尾 chunk 只带 usage，没有 delta。
+            continue
+        delta = choices[0].delta
 
         reasoning = _extract_reasoning_content(delta)
         if reasoning:
@@ -777,6 +1094,8 @@ async def _stream_litellm_agent_events(stream):
 
     for event in splitter.flush():
         yield event
+    if usage_payload is not None:
+        yield {"type": "usage", **usage_payload}
 
 
 # 单篇正文截断阈值。MVP 期间整本博文塞进 prompt 不现实——按字符数硬截断让
@@ -811,7 +1130,8 @@ _RETRIEVAL_TITLE_MAX_CHARS = 240
 def _last_user_query(messages: list[AgentChatMessage] | None) -> str:
     for message in reversed(messages or []):
         if message.role == "user":
-            return (message.content or "").strip()
+            # 只取文本部分做检索 query —— 图片 base64 不可进入语义召回。
+            return _message_text(message).strip()
     return ""
 
 
@@ -1440,14 +1760,80 @@ async def _resolve_for_agent(
     )
 
 
+_VISION_NOT_SUPPORTED_MESSAGE = "所选模型不支持图片输入，请更换支持视觉能力的模型"
+
+
+async def _ensure_vision_capability(pool, resolved: Any, payload: AgentChatRequest) -> None:
+    """请求携带图片时校验最终解析出的模型具备视觉能力（fail-closed）。
+
+    路由解析（``_resolve_for_agent``）只关心凭证与启用状态，不携带
+    capabilities；这里按最终 (provider_code, model_id) 反查 ai_models 的
+    capabilities 判定 ``abilities.vision``。模型行缺失、capabilities 缺失或
+    查询失败一律按"不支持"拒绝 —— 宁可 400 也不把图片喂给纯文本模型。
+    必须在真正调用 provider 之前执行。
+    """
+    if sum(_message_image_count(m) for m in payload.messages) == 0:
+        return
+    caps: dict[str, Any] = {}
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT m.capabilities
+                FROM ai_models m
+                JOIN ai_providers p ON m.provider_id = p.id
+                WHERE m.model_id = $1 AND p.code = $2
+                ORDER BY m.is_enabled DESC, m.id ASC
+                LIMIT 1
+                """,
+                resolved.model_id,
+                resolved.provider_code,
+            )
+        if row is not None:
+            raw = row["capabilities"]
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(parsed, dict):
+                caps = parsed
+    except Exception:
+        logger.warning(
+            "agent.vision_capability_lookup_failed",
+            extra={
+                "data": {
+                    "provider_code": resolved.provider_code,
+                    "model_id": resolved.model_id,
+                }
+            },
+        )
+        caps = {}
+    if not _resolve_agent_model_abilities(caps).get("vision"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_VISION_NOT_SUPPORTED_MESSAGE,
+        )
+
+
 def _agent_usage_request_text(messages: list[dict[str, Any]]) -> str:
-    """把实际发给 LLM 的多轮消息压成稳定文本，用于 token 估算。"""
+    """把实际发给 LLM 的多轮消息压成稳定文本，用于 token 估算。
+
+    content-parts 数组只取文本片段；图片以占位符计入 —— 把 base64 当文本
+    会让估算凭空多出数万 token。
+    """
     parts: list[str] = []
     for message in messages:
         role = str(message.get("role") or "unknown")
         content = message.get("content")
         if isinstance(content, str):
             text = content
+        elif isinstance(content, list):
+            fragments: list[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    fragments.append(str(item))
+                elif item.get("type") == "text":
+                    fragments.append(str(item.get("text") or ""))
+                elif item.get("type") == "image_url":
+                    fragments.append("[image]")
+            text = "\n".join(fragments)
         else:
             text = json.dumps(content, ensure_ascii=False)
         parts.append(f"{role}: {text}")
@@ -1466,12 +1852,19 @@ async def _record_agent_usage(
     start_time: float,
     success: bool,
     error_code: str | None,
+    usage_tokens_in: int | None = None,
+    usage_tokens_out: int | None = None,
 ) -> None:
-    """把灵境问答写入 ai_usage_logs，供后台数据分析统计。"""
+    """把灵境问答写入 ai_usage_logs，供后台数据分析统计。
+
+    provider 通过 ``stream_options.include_usage`` 返回了真实 usage 时优先
+    落真实值（``usage_tokens_in/out``）；两侧独立判断——任一侧为 None 只
+    回退该侧的本地估算，另一侧真值照常入库（与 SSE usage 事件同口径）。
+    """
     endpoint = getattr(getattr(request, "url", None), "path", None) or "/api/v1/agent/chat"
     duration_ms = (time.perf_counter() - start_time) * 1000
-    tokens_in = estimate_tokens(request_text)
-    tokens_out = estimate_tokens(response_text)
+    tokens_in = usage_tokens_in if usage_tokens_in is not None else estimate_tokens(request_text)
+    tokens_out = usage_tokens_out if usage_tokens_out is not None else estimate_tokens(response_text)
     metrics.record(
         endpoint=endpoint,
         duration_ms=duration_ms,
@@ -1672,6 +2065,8 @@ async def list_agent_models(
                     else None
                 ),
                 description=caps.get("description") if isinstance(caps.get("description"), str) else None,
+                inputCostPer1M=_resolve_agent_model_cost_per_1m(row, caps, "input"),
+                outputCostPer1M=_resolve_agent_model_cost_per_1m(row, caps, "output"),
                 scope="user" if row["has_user_cred"] else "system",
             )
         )
@@ -1725,6 +2120,9 @@ async def agent_chat(
             }
         },
     )
+
+    # 请求含图片时的视觉能力闸门 —— fail-closed，必须先于任何 provider 调用。
+    await _ensure_vision_capability(pool, resolved, payload)
 
     # 把 @ / # picker 引用的文章 / 标签拼成上下文段（system 消息），让 Agent
     # 真正"看到"用户引用的素材，而不是只看到一句 "@xxx"。
@@ -1802,6 +2200,10 @@ async def agent_chat(
         response_parts: list[str] = []
         think_parts: list[str] = []
         error_code: str | None = None
+        # provider 返回的真实 token 用量（stream_options.include_usage）。
+        # 单侧可能为 None（部分网关只回一侧）；成功路径在 done 前下发一条
+        # usage 事件，缺失侧回退估算并标 estimated。
+        provider_usage: dict[str, int | None] | None = None
         # The receipt is emitted before provider output in both real and mock
         # modes, so clients can render grounding state before any answer text.
         if retrieval_event is not None:
@@ -1835,6 +2237,12 @@ async def agent_chat(
             ]:
                 response_parts.append(chunk)
                 yield f'data: {json.dumps({"type": "delta", "content": chunk}, ensure_ascii=False)}\n\n'
+            mock_usage = _agent_usage_event(
+                None,
+                request_text=request_text,
+                output_text="".join(response_parts),
+            )
+            yield f"data: {json.dumps(mock_usage, ensure_ascii=False)}\n\n"
             yield 'data: {"type": "done"}\n\n'
             await _record_agent_usage(
                 request=request,
@@ -1860,37 +2268,25 @@ async def agent_chat(
                 model_params=payload.modelParams,
                 disabled_params=resolved.disabled_params,
             )
-            try:
-                stream = await acompletion(
-                    model=resolved.model,
-                    messages=chat_messages,
-                    api_key=resolved.api_key,
-                    api_base=resolved.api_base,
-                    stream=True,
-                    **completion_kwargs,
-                )
-            except Exception as exc:
-                if not _looks_like_thinking_param_rejection(exc):
-                    raise
-                logger.warning(
-                    "agent.thinking_params_rejected",
-                    extra={
-                        "data": {
-                            "provider_code": resolved.provider_code,
-                            "model_id": resolved.model_id,
-                            "error": str(exc)[:300],
-                        }
-                    },
-                )
-                stream = await acompletion(
-                    model=resolved.model,
-                    messages=chat_messages,
-                    api_key=resolved.api_key,
-                    api_base=resolved.api_base,
-                    stream=True,
-                    **_without_agent_thinking_kwargs(completion_kwargs),
-                )
+            # 让支持的 provider 在流末尾追加真实 token 用量 chunk；
+            # 被拒时 _start_agent_stream 会自动去掉该参数降级重试。
+            completion_kwargs["stream_options"] = {"include_usage": True}
+            stream = await _start_agent_stream(
+                resolved=resolved,
+                chat_messages=chat_messages,
+                completion_kwargs=completion_kwargs,
+            )
             async for event in _stream_litellm_agent_events(stream):
+                if event.get("type") == "usage":
+                    # 真实用量不立刻透传 —— 统一在 done 前按协议格式下发。
+                    # 保留单侧 None 语义（不要用 0 兜底）：缺失侧由
+                    # _agent_usage_event / _record_agent_usage 逐项回退估算。
+                    provider_usage = {
+                        "promptTokens": event.get("promptTokens"),
+                        "completionTokens": event.get("completionTokens"),
+                        "totalTokens": event.get("totalTokens"),
+                    }
+                    continue
                 content = event.get("content", "") or ""
                 if event.get("type") == "think":
                     think_chars += len(content)
@@ -1908,9 +2304,16 @@ async def agent_chat(
                         "model_id": resolved.model_id,
                         "response_chars": response_chars,
                         "think_chars": think_chars,
+                        "provider_usage": provider_usage,
                     }
                 },
             )
+            usage_event = _agent_usage_event(
+                provider_usage,
+                request_text=request_text,
+                output_text="".join(think_parts) + "".join(response_parts),
+            )
+            yield f"data: {json.dumps(usage_event, ensure_ascii=False)}\n\n"
             yield 'data: {"type": "done"}\n\n'
         except asyncio.CancelledError:
             error_code = "client_cancelled"
@@ -1959,6 +2362,8 @@ async def agent_chat(
                     start_time=start_time,
                     success=error_code is None,
                     error_code=error_code,
+                    usage_tokens_in=(provider_usage or {}).get("promptTokens"),
+                    usage_tokens_out=(provider_usage or {}).get("completionTokens"),
                 )
             )
 

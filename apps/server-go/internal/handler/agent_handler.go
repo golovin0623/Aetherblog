@@ -9,7 +9,7 @@
 //   - 由于下游 ai-service 的 /api/v1/agent/chat 走 require_admin_or_internal，
 //     这里强制注入 X-Internal-Service token 让后端以"内部服务"身份代理。
 //   - 走 streamClient（StreamReadTimeout 较长），SSE 行级转发，复用
-//     validateSSELine 白名单（已加入 think / sources）。
+//     validateSSELine 白名单（已加入 think / sources / retrieval / usage）。
 //
 // 端点：
 //
@@ -44,10 +44,31 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// agentChatBodyLimit 限制 /agent/chat 请求体上限。Python 侧已对单条 8K /
-// 总长 32K 做了硬封顶；这里给 64KB 余量覆盖头部 + JSON 编码膨胀，
-// 同时给 articleIds / tagSlugs context 留缓冲。
-const agentChatBodyLimit = 96 * 1024
+// agentChatBodyLimit 限制 /agent/chat 请求体上限。文本部分 Python 侧已对单条
+// 8K / 总长 32K 做硬封顶；图片输入走 data URL 内联 base64：单图解码后 ≤5MB，
+// base64 膨胀 4/3 后 ≈6.67MB/张，24MB ≈ 3 张满额图片 + 文本与 JSON 编码开销。
+// 注意 schema 层「每请求 ≤8 张」只是张数上限而非体积包络——8 张满额图
+// ≈53MB 本来就过不了这道闸；前端在选图阶段另有 16MB dataUrl 总预算
+// （apps/admin attachments.ts 的 MAX_TOTAL_ATTACHMENT_DATAURL_BYTES）把总
+// 体积兜在 24MB 之内，避免用户攒满一批图后才收到不透明的 4xx。解析大 body
+// 的 CPU/内存开销由 chat 专属 30/min/user 限流兜底。
+const agentChatBodyLimit = 24 * 1024 * 1024
+
+// agentChatTextOnlyBodyLimit 是「看起来不含图片」的请求体上限。纯文本消息
+// 本来就被 Python 侧 8000 字符/条、32000 字符/对话的硬限约束，一个不含
+// image_url 片段的 body 超过 256KB 一定非法——不值得为它进入后续三次全量
+// JSON 解析（normalizeAgentKnowledgeContextBody / filterBodyKBIDs /
+// filterBodyAtlasScope），在任何 Unmarshal 之前直接 413 短路。
+const agentChatTextOnlyBodyLimit = 256 * 1024
+
+// agentChatBodyExceedsTextBudget 判断 body 是否「超纯文本预算且不含图片片段」。
+// bytes.Contains 是 O(n) 单遍扫描，代价远低于一次 Unmarshal，作为廉价结构
+// 闸门足够。误放行无害：正文里恰好出现 "image_url" 字样的超大纯文本请求会
+// 继续走全量解析，最终仍被 Python 侧字符硬限拒绝——本闸只求在解析前挡住
+// 绝大多数纯文本洪水（DoS 面：24MB 微型 text part 洪水会烧数秒单核 CPU）。
+func agentChatBodyExceedsTextBudget(body []byte) bool {
+	return len(body) > agentChatTextOnlyBodyLimit && !bytes.Contains(body, []byte("image_url"))
+}
 
 var (
 	errAgentAtlasReadDenied   = errors.New("agent atlas scope requires content.atlas.read")
@@ -129,7 +150,7 @@ func (h *AgentHandler) Mount(g *echo.Group, chatLimit, pickerLimit echo.Middlewa
 //
 // 安全：
 //   - 中间件已校验 JWT，确保上下文里有 LoginUser（任意 role）；
-//   - body 上限 96KB，避免 admin token 被滥用做 OOM；
+//   - body 上限 24MB（图片走 data URL 内联 base64），避免 admin token 被滥用做 OOM；
 //   - SSE 输出复用 validateSSELine 白名单，不放未知 type 透传。
 //
 // 审计：每次 /chat 调用写一条 ai.agent_chat 事件 (流开始时入库一次)。
@@ -151,6 +172,17 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 	if err != nil {
 		h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "请求体过大或无法读取")
 		return response.FailWith(c, response.BadRequest, "请求体过大或无法读取")
+	}
+
+	// DoS 闸门：任何 JSON 解析之前先做廉价结构判定。超过纯文本预算且不含
+	// image_url 的 body 一定非法（见 agentChatTextOnlyBodyLimit 注释），直接
+	// 413，不进入下方三次全量 parse。
+	if agentChatBodyExceedsTextBudget(bodyBytes) {
+		h.recordChatActivity(c, len(bodyBytes), http.StatusRequestEntityTooLarge, "请求体过大")
+		return c.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			"code":    http.StatusRequestEntityTooLarge,
+			"message": "请求体过大",
+		})
 	}
 
 	contextContract, err := normalizeAgentKnowledgeContextBody(bodyBytes)
