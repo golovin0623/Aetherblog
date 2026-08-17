@@ -16,7 +16,7 @@ const stagger = {
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] as const } },
 };
 
 // 模块级作用域：icon JSX 引用在重渲染间保持稳定，

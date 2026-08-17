@@ -830,7 +830,7 @@ export function CreatePostPage() {
         x: 0,
         transition: {
           duration: enterDuration,
-          ease: [0.22, 1, 0.36, 1],
+          ease: [0.22, 1, 0.36, 1] as const,
           when: 'beforeChildren',
           delayChildren: prefersReducedMotion ? 0 : 0.04,
           staggerChildren: prefersReducedMotion ? 0 : 0.018,
@@ -842,7 +842,7 @@ export function CreatePostPage() {
         x: prefersReducedMotion ? 0 : 24,
         transition: {
           duration: exitDuration,
-          ease: [0.4, 0, 1, 1],
+          ease: [0.4, 0, 1, 1] as const,
           when: 'afterChildren',
           staggerChildren: prefersReducedMotion ? 0 : 0.01,
           staggerDirection: -1,
@@ -863,7 +863,7 @@ export function CreatePostPage() {
       scale: 1,
       transition: {
         duration: prefersReducedMotion ? 0.08 : 0.16,
-        ease: [0.22, 1, 0.36, 1],
+        ease: [0.22, 1, 0.36, 1] as const,
       },
     },
     exit: {

@@ -339,3 +339,19 @@ AI 工具箱：`AIToolsPage` → `AIToolsWorkspace` → `ToolResultRenderer` 按
 - `legacy_author_name`
 - `legacy_visited_count`
 - `legacy_copyright`
+
+## 6. 团队聊天 DM 可达性策略（chat_dm_scope，2026-08-17）
+
+站点设置 `chat_dm_scope` 控制「谁能和谁发起私聊」，语义对齐 Mattermost `TeamSettings.RestrictDirectMessage`：
+
+- `any`（默认 / 缺失 / 非法值回退）：任意已登录成员互相可私聊 —— Slack / Mattermost 默认模型。
+- `team`：仅可与「至少共享一个活跃团队」的成员私聊；`admin` 角色豁免（大小写不敏感比较）。
+
+**强制点在服务端**（Mattermost 早期只做 UI 过滤被当 bug 修复，引以为鉴）：
+`ChatService.OpenDirect`（创建私聊）与 `ChatService.SearchDMTargets`（选人搜索 `GET /v1/chat/dm-targets`）共用同一判据（`chat_repo.SharedActiveTeamExists`），保证「搜得到 ⇔ 打得开」。策略拒绝与「用户不存在」统一返回 `无效的私聊对象`，避免用户存在性 oracle。
+
+注入方式：`chatSvc.AttachSettings(settingSvc)`（`ChatSettingReader` 接口）；admin 后台「高级设置 → 私聊可达范围」下拉可切换，即时生效（每次请求实时读取）。
+
+限流分桶：会话创建 `rate:chat:open` 15/min/user；选人搜索 `rate:chat:dmsearch` 60/min/user；普通写路径维持 `rate:chat:write` 120/min/user。
+
+已知边界：策略只作用于**新建**私聊；已存在的 DIRECT 会话不受影响（Mattermost MM-61899 式的存量会话封禁未实现，需要时在 `assertMember` 层追加）。

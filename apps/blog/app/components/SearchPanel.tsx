@@ -684,7 +684,10 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
               </div>
 
               <form onSubmit={handleSubmit} className="px-4 pb-4 sm:px-5">
-                <div className="group/search flex min-h-[3.25rem] items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 transition-colors focus-within:border-primary/60 focus-within:bg-[var(--bg-card-hover)]">
+                <div
+                  data-field
+                  className="group/search flex min-h-[3.25rem] items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 transition-colors focus-within:border-primary/60 focus-within:bg-[var(--bg-card-hover)]"
+                >
                   {activeMode === 'ask' ? (
                     <MessageCircle className="h-5 w-5 flex-shrink-0 text-[var(--text-muted)] transition-colors group-focus-within/search:text-primary" />
                   ) : (

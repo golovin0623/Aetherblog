@@ -529,7 +529,10 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       )}
 
-      <div className="flex items-end gap-1 rounded-[1.5rem] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-2 py-1.5 transition-all focus-within:border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_10%,transparent)]">
+      <div
+        data-field
+        className="flex items-end gap-1 rounded-[1.5rem] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] bg-[var(--bg-leaf)] px-2 py-1.5 transition-all focus-within:border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)] focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
+      >
         <input
           ref={fileRef}
           type="file"

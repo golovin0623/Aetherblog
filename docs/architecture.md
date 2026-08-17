@@ -566,7 +566,9 @@ REST：`/v1/admin/qa-documents/*`（22 端点，见 `.claude/docs/api-handlers.m
 | `chat_agents` / `chat_conversation_agents` | 智能体定义与入座关系（000083） |
 | `chat_user_settings` | 用户聊天皮肤偏好（气泡样式等） |
 
-REST：`/v1/chat/*`（19 端点，含 000087 新增的消息编辑/撤回、回应增删、会话偏好；见 `.claude/docs/api-handlers.md`）。实时：WebSocket `/v1/chat/ws`，事件 message / message-updated / reaction / typing / read / presence，跨实例经 Redis Pub/Sub `chat:fanout` 扇出。编辑/撤回 2 分钟窗口由 UPDATE SQL 内联校验；@提及在 service 层过滤为会话真实成员后落库。
+REST：`/v1/chat/*`（21 端点，含 000087 新增的消息编辑/撤回、回应增删、会话偏好，及选人搜索 `GET /dm-targets?q=`、我的团队 `GET /teams`；见 `.claude/docs/api-handlers.md`）。实时：WebSocket `/v1/chat/ws`，事件 message / message-updated / reaction / typing / read / presence，跨实例经 Redis Pub/Sub `chat:fanout` 扇出。编辑/撤回 2 分钟窗口由 UPDATE SQL 内联校验；@提及在 service 层过滤为会话真实成员后落库。
+
+**DM 可达性策略（站点设置 `chat_dm_scope`，语义对齐 Mattermost RestrictDirectMessage）：** `any`（默认，任意已登录成员互相可私聊）| `team`（仅与至少共享一个活跃团队的成员可私聊，admin 豁免）。服务端在 `ChatService.OpenDirect` 与 `SearchDMTargets` 同源强制（搜得到 ⇔ 打得开）；策略拒绝与「用户不存在」同为 `无效的私聊对象`，不构成用户存在性 oracle。限流：会话创建 `rate:chat:open` 15/min/user，选人搜索 `rate:chat:dmsearch` 60/min/user（通用写桶 120/min 之外的独立桶）。团队会话标题取团队名（创建时写入，存量空标题在下次打开时懒回填）。
 
 ---
 

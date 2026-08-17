@@ -53,13 +53,37 @@ func (h *ChatHandler) maxUploadBytes(ctx context.Context) int64 {
 	return limit
 }
 
+// ChatRouteLimits 聚合按端点定制的限流中间件（nil 项跳过）。
+//   - Open：会话创建（direct/team）。按 ID 定位用户，存在性差异可被枚举，须比普通写路径更紧。
+//   - Search：私聊选人搜索。输入防抖后的目录查询，独立计桶避免占用创建额度。
+type ChatRouteLimits struct {
+	Open   echo.MiddlewareFunc
+	Search echo.MiddlewareFunc
+}
+
+func (l ChatRouteLimits) open() []echo.MiddlewareFunc {
+	if l.Open == nil {
+		return nil
+	}
+	return []echo.MiddlewareFunc{l.Open}
+}
+
+func (l ChatRouteLimits) search() []echo.MiddlewareFunc {
+	if l.Search == nil {
+		return nil
+	}
+	return []echo.MiddlewareFunc{l.Search}
+}
+
 // Mount 注册 /v1/chat 路由。整组已挂 authMW + pwdRotated，
 // WebSocket 复用同一鉴权（浏览器同源握手会自动携带 ab_access_token Cookie）。
-func (h *ChatHandler) Mount(g *echo.Group) {
+func (h *ChatHandler) Mount(g *echo.Group, limits ChatRouteLimits) {
 	g.GET("/ws", h.WS)
 	g.GET("/conversations", h.ListConversations)
-	g.POST("/conversations/direct", h.OpenDirect)
-	g.POST("/conversations/team/:teamId", h.OpenTeam)
+	g.GET("/dm-targets", h.SearchDMTargets, limits.search()...)
+	g.GET("/teams", h.MyTeams)
+	g.POST("/conversations/direct", h.OpenDirect, limits.open()...)
+	g.POST("/conversations/team/:teamId", h.OpenTeam, limits.open()...)
 	g.GET("/conversations/:id/messages", h.History)
 	g.POST("/conversations/:id/messages", h.SendMessage)
 	g.PATCH("/conversations/:id/messages/:msgId", h.EditMessage)
@@ -151,11 +175,35 @@ func (h *ChatHandler) OpenDirect(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	vo, err := h.svc.OpenDirect(c.Request().Context(), lu.UserID, req.UserID)
+	vo, err := h.svc.OpenDirect(c.Request().Context(), lu.UserID, req.UserID, isAdminRole(lu.Role))
 	if err != nil {
 		return h.chatError(c, err)
 	}
 	return response.OK(c, vo)
+}
+
+// isAdminRole 与 kb_service 同款判定：角色比较大小写不敏感。
+func isAdminRole(role string) bool { return strings.EqualFold(role, "admin") }
+
+// SearchDMTargets 私聊选人搜索（GET /dm-targets?q=）。
+// 结果按 chat_dm_scope 策略过滤，与 OpenDirect 同源判据。
+func (h *ChatHandler) SearchDMTargets(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	list, err := h.svc.SearchDMTargets(c.Request().Context(), lu.UserID, isAdminRole(lu.Role), c.QueryParam("q"))
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, list)
+}
+
+// MyTeams 返回当前用户所在的团队列表（GET /teams），供群聊入口点选。
+func (h *ChatHandler) MyTeams(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	list, err := h.svc.ListMyTeams(c.Request().Context(), lu.UserID)
+	if err != nil {
+		return h.chatError(c, err)
+	}
+	return response.OK(c, list)
 }
 
 // OpenTeam 查找 / 创建团队群聊会话。

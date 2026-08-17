@@ -126,7 +126,7 @@ AetherBlog/
 | @tanstack/react-query | 5.62.8 | 5.62.8 |
 | react-router-dom | 7.1.1 | — |
 | zustand | 5.0.2 | — |
-| framer-motion | 11.15.0 | 11.15.0 |
+| framer-motion | 12.23.0+ | 12.23.0+ |
 | recharts | 2.15.0 | — |
 | zod | 4.3.5 | — |
 | @lobehub/icons | 4.1.0 | — |
