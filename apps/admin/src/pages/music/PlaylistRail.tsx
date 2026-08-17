@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Heart, ListMusic, Loader2, Plus, Radio, Trash2 } from 'lucide-react';
 import { Skeleton, stagger, transition, variants } from '@aetherblog/ui';
 import type { MusicPlaylist } from '@aetherblog/types';
@@ -61,6 +61,7 @@ export function PlaylistRail({
   creating,
   onCreate,
 }: PlaylistRailProps) {
+  const prefersReducedMotion = useReducedMotion();
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerName, setComposerName] = useState('');
   const composerInputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +109,7 @@ export function PlaylistRail({
             <button
               type="button"
               onClick={() => (composerOpen ? setComposerOpen(false) : openComposer())}
-              className={cn(iconButtonClass(false, 'primary'), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+              className={iconButtonClass(false, 'primary', 'sm')}
               aria-expanded={composerOpen}
               aria-label="新建歌单"
               title="新建歌单"
@@ -192,7 +193,7 @@ export function PlaylistRail({
         </div>
       ) : (
         <motion.ol
-          initial="initial"
+          initial={prefersReducedMotion ? false : 'initial'}
           animate="animate"
           variants={{ animate: { transition: stagger(30) } }}
           className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
@@ -273,7 +274,7 @@ export function PlaylistRail({
                         }
                         onToggleFavorite(playlist);
                       }}
-                      className={cn(iconButtonClass(displayedFavorite), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+                      className={iconButtonClass(displayedFavorite, 'default', 'sm')}
                       disabled={writeBusy}
                       aria-pressed={displayedFavorite}
                       aria-label={displayedFavorite ? `取消喜爱歌单「${playlist.name}」` : `喜爱歌单「${playlist.name}」`}
@@ -295,7 +296,7 @@ export function PlaylistRail({
                       <button
                         type="button"
                         onClick={() => onPublish(playlist.id)}
-                        className={cn(iconButtonClass(false, 'primary'), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+                        className={iconButtonClass(false, 'primary', 'sm')}
                         title={
                           isDraftSource && draftDirty
                             ? '请先保存当前歌单的修改'
@@ -314,7 +315,7 @@ export function PlaylistRail({
                     <button
                       type="button"
                       onClick={() => onDelete(playlist)}
-                      className={cn(iconButtonClass(false, 'danger'), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+                      className={iconButtonClass(false, 'danger', 'sm')}
                       disabled={writeBusy}
                       aria-label={`删除歌单「${playlist.name}」`}
                       title="删除歌单"

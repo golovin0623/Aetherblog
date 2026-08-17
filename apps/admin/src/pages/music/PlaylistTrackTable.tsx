@@ -4,10 +4,9 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Reorder, motion, useDragControls } from 'framer-motion';
+import { Reorder, motion, useDragControls, useReducedMotion } from 'framer-motion';
 import {
   ArrowDown,
   ArrowUp,
@@ -38,11 +37,10 @@ interface PlaylistTrackTableProps {
   isPlaying: boolean;
   onPlayAt: (index: number) => void;
   onTogglePlayback: () => void;
-  onCommitOrder: (tracks: MusicTrack[]) => void;
+  /** 返回 false 表示本次提交被拒(忙碌/详情缺失),表格需把本地顺序回滚到服务端顺序 */
+  onCommitOrder: (tracks: MusicTrack[]) => boolean;
   onMove: (index: number, direction: -1 | 1) => void;
   onRemove: (trackId: number) => void;
-  /** 空态时的主 CTA(通常是「添加歌曲」) */
-  addAction?: ReactNode;
 }
 
 export function PlaylistTrackTable({
@@ -56,20 +54,27 @@ export function PlaylistTrackTable({
   onCommitOrder,
   onMove,
   onRemove,
-  addAction,
 }: PlaylistTrackTableProps) {
+  const prefersReducedMotion = useReducedMotion();
   const [orderedTracks, setOrderedTracks] = useState(tracks);
+  const [syncedTracks, setSyncedTracks] = useState(tracks);
   const orderedRef = useRef(tracks);
   const draggingRef = useRef(false);
-  orderedRef.current = orderedTracks;
 
-  useEffect(() => {
+  // 渲染期同步(React 官方的 props 变化调整 state 范式):放到 effect 里会先画出一帧
+  // 旧数据 —— 首次载入时那一帧正好是「这个歌单还是空的」空态。
+  if (tracks !== syncedTracks) {
+    setSyncedTracks(tracks);
     // 拖拽进行中以本地顺序为准;结束后由乐观更新的 query 数据接管。
-    if (draggingRef.current) return;
-    setOrderedTracks(tracks);
-  }, [tracks]);
+    if (!draggingRef.current) {
+      setOrderedTracks(tracks);
+      orderedRef.current = tracks;
+    }
+  }
 
   const handleReorder = useCallback((next: MusicTrack[]) => {
+    // ref 与 state 一起写:渲染期写 ref 在并发渲染下可能留下从未提交的中间顺序
+    orderedRef.current = next;
     setOrderedTracks(next);
   }, []);
 
@@ -79,10 +84,15 @@ export function PlaylistTrackTable({
 
   // 注意事件顺序:快速拖拽时 onReorder 可能先于 onDragStart 触发,
   // 所以不用「脏标记」判断是否提交 —— 结束时一律上交,父级用「顺序未变则不提交」守卫。
+  // 提交被拒(忙碌/详情缺失)时必须回滚,否则本地顺序与父级 index 语义永久错位。
   const handleDragEnd = useCallback(() => {
     draggingRef.current = false;
-    onCommitOrder(orderedRef.current);
-  }, [onCommitOrder]);
+    const accepted = onCommitOrder(orderedRef.current);
+    if (!accepted) {
+      orderedRef.current = tracks;
+      setOrderedTracks(tracks);
+    }
+  }, [onCommitOrder, tracks]);
 
   if (loading) return <PlaylistTrackTableSkeleton />;
 
@@ -93,14 +103,18 @@ export function PlaylistTrackTable({
           <ListPlus className="h-5 w-5" />
         </span>
         <p className="text-sm font-semibold text-[var(--ink-primary)]">这个歌单还是空的</p>
-        <p className="text-xs leading-5 text-[var(--ink-muted)]">从曲库挑几首歌,给它一个开场。</p>
-        {addAction && <div className="mt-3">{addAction}</div>}
+        <p className="text-xs leading-5 text-[var(--ink-muted)]">用上方的「添加歌曲」从曲库挑几首,给它一个开场。</p>
       </div>
     );
   }
 
   return (
-    <motion.div variants={variants.fadeUp} initial="initial" animate="animate" transition={transition.quick}>
+    <motion.div
+      variants={variants.fadeUp}
+      initial={prefersReducedMotion ? false : 'initial'}
+      animate="animate"
+      transition={transition.quick}
+    >
       <div className={cn(ROW_GRID, 'border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]')} aria-hidden="true">
         <span className="text-center">#</span>
         <span />
@@ -201,7 +215,7 @@ function PlaylistTrackRow({
             <>
               <span
                 className={cn(
-                  'music-eq transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] group-hover:opacity-0 group-focus-within:opacity-0',
+                  'music-eq hidden transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] group-hover:opacity-0 group-focus-within:opacity-0 min-[769px]:inline-flex',
                   isPlaying && 'is-playing'
                 )}
                 aria-hidden="true"
@@ -211,7 +225,7 @@ function PlaylistTrackRow({
               <button
                 type="button"
                 onClick={onTogglePlayback}
-                className="absolute inset-0 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--aurora-1)] opacity-0 transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] group-hover:opacity-100"
+                className="absolute inset-0 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--aurora-1)] transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] group-hover:opacity-100 group-focus-within:opacity-100 min-[769px]:opacity-0"
                 aria-label={isPlaying ? `暂停「${track.title}」` : `继续播放「${track.title}」`}
               >
                 {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
@@ -219,13 +233,13 @@ function PlaylistTrackRow({
             </>
           ) : (
             <>
-              <span className="tnum text-xs font-semibold text-[var(--ink-muted)] transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] group-hover:opacity-0 group-focus-within:opacity-0">
+              <span className="tnum hidden text-xs font-semibold text-[var(--ink-muted)] transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] group-hover:opacity-0 group-focus-within:opacity-0 min-[769px]:block">
                 {index + 1}
               </span>
               <button
                 type="button"
                 onClick={() => onPlayAt(index)}
-                className="absolute inset-0 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--aurora-1)] opacity-0 transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] group-hover:opacity-100 group-focus-within:opacity-100"
+                className="absolute inset-0 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--aurora-1)] transition-opacity duration-[var(--dur-instant)] ease-[var(--ease-out)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] group-hover:opacity-100 group-focus-within:opacity-100 min-[769px]:opacity-0"
                 aria-label={`从「${track.title}」开始播放`}
               >
                 <Play className="h-4 w-4 fill-current" />
@@ -261,7 +275,7 @@ function PlaylistTrackRow({
             <button
               type="button"
               onClick={() => onRemove(track.id)}
-              className={cn(iconButtonClass(false, 'danger'), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+              className={iconButtonClass(false, 'danger', 'sm')}
               disabled={busy}
               aria-label={`从歌单移除「${track.title}」`}
               title="从歌单移除"
@@ -276,18 +290,16 @@ function PlaylistTrackRow({
                 dragControls.start(event);
               }}
               onKeyDown={(event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                // 到边界也要吃掉按键,否则方向键会滚动页面
+                event.preventDefault();
                 if (busy) return;
-                if (event.key === 'ArrowUp' && index > 0) {
-                  event.preventDefault();
-                  onMove(index, -1);
-                } else if (event.key === 'ArrowDown' && index < total - 1) {
-                  event.preventDefault();
-                  onMove(index, 1);
-                }
+                if (event.key === 'ArrowUp' && index > 0) onMove(index, -1);
+                if (event.key === 'ArrowDown' && index < total - 1) onMove(index, 1);
               }}
+              disabled={busy}
               className={cn(
-                iconButtonClass(),
-                'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9',
+                iconButtonClass(false, 'default', 'sm'),
                 busy ? 'cursor-not-allowed opacity-40' : 'cursor-grab active:cursor-grabbing'
               )}
               aria-label={`调整「${track.title}」的位置:拖拽,或聚焦后按上下方向键`}
@@ -428,7 +440,7 @@ function PlaylistTrackActionMenu({
   const itemClass = 'flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-[var(--ink-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--aurora-1)] disabled:opacity-40';
 
   return (
-    <div className="min-[769px]:hidden">
+    <div>
       <button
         ref={triggerRef}
         type="button"

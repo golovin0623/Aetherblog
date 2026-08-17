@@ -66,7 +66,6 @@ export interface ResonantCoverComposition {
   center: { x: number; y: number };
   /** 轨道系整体倾角 */
   baseRotation: number;
-  rings: Array<{ radius: number; squash: number; phase: number }>;
   arcs: ResonantCoverArc[];
   strokes: ResonantCoverStroke[];
   comets: ResonantCoverComet[];
@@ -229,46 +228,50 @@ export function buildResonantCoverComposition(
     });
   }
 
-  // 彗尾:1-3 条重音长弧
-  const cometCount = 1 + Math.floor(random() * 2.4);
+  // 彗尾与星尘走独立随机流 —— 上面的流丝循环长度随 particleCount(即画幅尺寸)变化,
+  // 若继续共用 random(),同一颗 seed 在缩略图与 Hero 上会长出不同数量/位置的彗尾,
+  // 破坏「同一实体永远同一张脸」的契约。
+  const featureRandom = mulberry32((options.seed ^ 0x9e3779b9) >>> 0);
+  const cometCount = 1 + Math.floor(featureRandom() * 2.4);
   const comets: ResonantCoverComet[] = Array.from({ length: cometCount }, () => {
-    const ring = rings[Math.floor(rings.length * (0.3 + random() * 0.6))] ?? rings[rings.length - 1];
+    const ring = rings[Math.floor(rings.length * (0.3 + featureRandom() * 0.6))] ?? rings[rings.length - 1];
     return {
-      radius: ring.radius * (0.94 + random() * 0.1),
+      radius: ring.radius * (0.94 + featureRandom() * 0.1),
       squash: ring.squash,
       rotation: baseRotation,
-      start: random() * Math.PI * 2,
-      span: (0.45 + random() * 0.5) * Math.PI,
-      clockwise: random() < 0.5,
+      start: featureRandom() * Math.PI * 2,
+      span: (0.45 + featureRandom() * 0.5) * Math.PI,
+      clockwise: featureRandom() < 0.5,
     };
   });
 
   // 星尘:沿轨道散布为主,少量自由漂浮
-  const dustCount = Math.max(8, Math.round(particleCount / 5));
+  // 星尘密度按面积给,而非挂在 particleCount 上(同样是为了跨尺寸稳定)
+  const dustCount = Math.max(8, Math.round(resolveCoverParticleCount(minDimension) / 5));
   const dust: ResonantCoverDust[] = Array.from({ length: dustCount }, () => {
-    if (random() < 0.72) {
-      const ring = rings[Math.floor(random() * rings.length)];
-      const jitter = minDimension * 0.02 * (random() - 0.5);
+    if (featureRandom() < 0.72) {
+      const ring = rings[Math.floor(featureRandom() * rings.length)];
+      const jitter = minDimension * 0.02 * (featureRandom() - 0.5);
       const point = ellipsePoint(
         center.x,
         center.y,
         ring.radius + jitter,
         ring.squash,
         baseRotation,
-        random() * Math.PI * 2
+        featureRandom() * Math.PI * 2
       );
       return {
         x: clamp(point.x, 0, width),
         y: clamp(point.y, 0, height),
-        r: 0.4 + random() * 0.9,
-        alpha: 0.12 + random() * 0.4,
+        r: 0.4 + featureRandom() * 0.9,
+        alpha: 0.12 + featureRandom() * 0.4,
       };
     }
     return {
-      x: random() * width,
-      y: random() * height,
-      r: 0.3 + random() * 0.7,
-      alpha: 0.05 + random() * 0.22,
+      x: featureRandom() * width,
+      y: featureRandom() * height,
+      r: 0.3 + featureRandom() * 0.7,
+      alpha: 0.05 + featureRandom() * 0.22,
     };
   });
 
@@ -276,7 +279,6 @@ export function buildResonantCoverComposition(
     seed: normalizeSeed(options.seed),
     center,
     baseRotation,
-    rings,
     arcs,
     strokes,
     comets,
@@ -332,6 +334,17 @@ function lighten(hex: string, amount: number): string {
   return `rgb(${Math.round(r + (255 - r) * t)},${Math.round(g + (255 - g) * t)},${Math.round(b + (255 - b) * t)})`;
 }
 
+/**
+ * 提亮 + 透明度一次算完。
+ * 注意不要写成 rgba(lighten(hex, t), a):lighten 返回的是 rgb(...) 字符串,
+ * 再喂给按 hex 解析的 rgba() 会解析失败并落到兜底奶油色 —— 那会让所有调色板画出同一种颜色。
+ */
+function lightenRgba(hex: string, amount: number, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const t = clamp(amount, 0, 1);
+  return `rgba(${Math.round(r + (255 - r) * t)},${Math.round(g + (255 - g) * t)},${Math.round(b + (255 - b) * t)},${clamp(alpha, 0, 1)})`;
+}
+
 export function paintResonantCover(
   context: CanvasRenderingContext2D,
   composition: ResonantCoverComposition,
@@ -370,7 +383,7 @@ export function paintResonantCover(
     const color = orbitColors[arc.paletteIndex] ?? palette.primary;
     context.beginPath();
     context.strokeStyle = arc.emphasis
-      ? rgba(lighten(color, 0.55), Math.min(1, arc.alpha + 0.1))
+      ? lightenRgba(color, 0.55, Math.min(1, arc.alpha + 0.1))
       : rgba(color, arc.alpha);
     context.lineWidth = Math.max(0.5, arc.width * unit * (arc.emphasis ? 1.25 : 1));
     context.lineCap = 'round';
@@ -426,14 +439,15 @@ export function paintResonantCover(
   /* 4 · 星尘 */
   for (const grain of composition.dust) {
     context.beginPath();
-    context.fillStyle = rgba(lighten(palette.secondary, 0.5), grain.alpha);
+    context.fillStyle = lightenRgba(palette.secondary, 0.5, grain.alpha);
     context.arc(grain.x, grain.y, grain.r * unit, 0, Math.PI * 2);
     context.fill();
   }
 
   /* 5 · 彗尾:头亮尾隐的长弧(辉光底 + 锐利主线) */
   for (const comet of composition.comets) {
-    const segments = 46;
+    // 分段数随画幅缩放:小缩略图上 46 段几乎完全重叠,纯属浪费
+    const segments = Math.max(8, Math.min(46, Math.round(minDimension / 12)));
     for (let pass = 0; pass < 2; pass += 1) {
       for (let i = 0; i < segments; i += 1) {
         const t0 = i / segments;
@@ -447,7 +461,7 @@ export function paintResonantCover(
           context.strokeStyle = rgba(palette.accent, 0.16 * fade);
           context.lineWidth = Math.max(2, (2 + 7 * fade) * unit);
         } else {
-          context.strokeStyle = rgba(lighten(palette.accent, 0.25), 0.92 * fade);
+          context.strokeStyle = lightenRgba(palette.accent, 0.25, 0.92 * fade);
           context.lineWidth = Math.max(0.6, (0.6 + 2.1 * fade) * unit);
         }
         context.lineCap = 'round';
@@ -464,7 +478,7 @@ export function paintResonantCover(
     const headAngle = comet.start + comet.span * (comet.clockwise ? 1 : -1);
     const head = ellipsePoint(center.x, center.y, comet.radius, comet.squash, comet.rotation, headAngle);
     const headGlow = context.createRadialGradient(head.x, head.y, 0, head.x, head.y, 9 * unit);
-    headGlow.addColorStop(0, rgba(lighten(palette.accent, 0.55), 0.95));
+    headGlow.addColorStop(0, lightenRgba(palette.accent, 0.55, 0.95));
     headGlow.addColorStop(0.35, rgba(palette.accent, 0.5));
     headGlow.addColorStop(1, 'rgba(0,0,0,0)');
     context.fillStyle = headGlow;
@@ -481,7 +495,7 @@ export function paintResonantCover(
   context.arc(center.x, center.y, coreR, 0, Math.PI * 2);
   context.stroke();
   context.beginPath();
-  context.strokeStyle = rgba(lighten(palette.primary, 0.78), 0.95);
+  context.strokeStyle = lightenRgba(palette.primary, 0.78, 0.95);
   context.lineWidth = Math.max(0.7, 1.25 * unit);
   context.arc(center.x, center.y, coreR, 0, Math.PI * 2);
   context.stroke();
@@ -494,7 +508,7 @@ export function paintResonantCover(
     const inner = coreR + 2.5 * unit;
     const outer = coreR + 6.5 * unit;
     context.beginPath();
-    context.strokeStyle = rgba(lighten(palette.primary, 0.7), 0.7);
+    context.strokeStyle = lightenRgba(palette.primary, 0.7, 0.7);
     context.lineWidth = Math.max(0.5, 0.9 * unit);
     context.moveTo(center.x + Math.cos(tickAngle) * inner, center.y + Math.sin(tickAngle) * inner);
     context.lineTo(center.x + Math.cos(tickAngle) * outer, center.y + Math.sin(tickAngle) * outer);

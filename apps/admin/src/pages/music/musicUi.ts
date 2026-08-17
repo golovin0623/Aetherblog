@@ -13,9 +13,18 @@ export const shellClass = cn(
   'surface-leaf overflow-hidden rounded-[var(--radius-lg)]'
 );
 
-export function iconButtonClass(active = false, tone: 'default' | 'primary' | 'danger' = 'default') {
+/**
+ * size 决定桌面端密度,移动端一律保持 44px 触控目标 —— 这是模块的既定标准
+ * (musicInteractionPolish 对标签按钮有同款断言),不允许调用方用 cn 覆盖掉。
+ */
+export function iconButtonClass(
+  active = false,
+  tone: 'default' | 'primary' | 'danger' = 'default',
+  size: 'md' | 'sm' = 'md'
+) {
   return cn(
-    'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent transition-[background-color,color,box-shadow,opacity] duration-[var(--dur-instant)] ease-[var(--ease-out)] active:opacity-60 min-[769px]:h-10 min-[769px]:w-10',
+    'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-transparent transition-[background-color,color,box-shadow,opacity] duration-[var(--dur-instant)] ease-[var(--ease-out)] active:opacity-60',
+    size === 'md' ? 'min-[769px]:h-10 min-[769px]:w-10' : 'min-[769px]:h-9 min-[769px]:w-9',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-leaf)]',
     active && 'bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] text-[var(--aurora-1)]',
     tone === 'primary' &&

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Check, Loader2, Plus, Search, X } from 'lucide-react';
 import { Skeleton, transition } from '@aetherblog/ui';
 import type { MusicTrack } from '@aetherblog/types';
@@ -39,6 +39,7 @@ export function AddTracksPanel({
   onAdd,
   onClose,
 }: AddTracksPanelProps) {
+  const prefersReducedMotion = useReducedMotion();
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export function AddTracksPanel({
 
   return (
     <motion.div
-      initial={{ height: 0, opacity: 0 }}
+      initial={prefersReducedMotion ? false : { height: 0, opacity: 0 }}
       animate={{ height: 'auto', opacity: 1 }}
       exit={{ height: 0, opacity: 0 }}
       transition={transition.quick}
@@ -72,7 +73,7 @@ export function AddTracksPanel({
           <button
             type="button"
             onClick={onClose}
-            className={cn(iconButtonClass(), 'h-10 w-10')}
+            className={iconButtonClass()}
             aria-label="收起添加歌曲面板"
           >
             <X className="h-4 w-4" />
@@ -133,7 +134,7 @@ export function AddTracksPanel({
                       <button
                         type="button"
                         onClick={() => onAdd(track.id)}
-                        className={cn(iconButtonClass(false, 'primary'), 'h-9 w-9 min-[769px]:h-9 min-[769px]:w-9')}
+                        className={iconButtonClass(false, 'primary', 'sm')}
                         disabled={addDisabled || adding}
                         aria-label={`把「${track.title}」加入歌单`}
                         title="加入歌单"

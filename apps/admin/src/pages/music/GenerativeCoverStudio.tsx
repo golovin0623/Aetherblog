@@ -53,7 +53,7 @@ function PresetThumb({ seed, orbits, turbulence, palette }: {
       width: px,
       height: px,
       particleCount: 300,
-      orbitCount: Math.min(orbits, 8),
+      orbitCount: orbits,
       turbulence,
     });
     paintResonantCover(context, composition, palette, px, px);
@@ -157,11 +157,13 @@ export default function GenerativeCoverStudio({
     if (applying) return;
     setApplying(true);
     try {
+      // 必须导出预览正在显示的那一组参数(deferred),否则拖动滑杆后立刻点应用,
+      // 上传的是画布尚未画出来的新参数 —— 又一条所见非所得。
       const blob = await renderResonantCoverBlob({
-        seed,
-        orbitCount,
-        turbulence,
-        palette,
+        seed: deferredSeed,
+        orbitCount: deferredOrbitCount,
+        turbulence: deferredTurbulence,
+        palette: deferredPalette,
       });
       const applied = await onApply(blob, sanitizeMusicCoverFileName(title));
       if (applied) onClose();
@@ -174,7 +176,7 @@ export default function GenerativeCoverStudio({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-[color-mix(in_oklch,var(--bg-void)_78%,transparent)] p-4 sm:p-6 backdrop-blur-md animate-in fade-in duration-[var(--dur-quick)]"
       role="presentation"
     >
       <button
@@ -197,7 +199,7 @@ export default function GenerativeCoverStudio({
         <div className="relative flex flex-col items-center justify-center overflow-hidden bg-[#0a0c10] p-6 sm:p-10 border-b min-[820px]:border-b-0 min-[820px]:border-r border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]">
           {/* 细腻环境光晕背景 */}
           <div
-            className="pointer-events-none absolute inset-0 opacity-40 blur-3xl transition-all duration-700"
+            className="pointer-events-none absolute inset-0 opacity-40 blur-3xl transition-all duration-[var(--dur-ambient)] ease-[var(--ease-out)]"
             style={{
               background: `radial-gradient(circle at 40% 30%, ${palette.primary} 0%, transparent 60%), radial-gradient(circle at 80% 80%, ${palette.secondary} 0%, transparent 50%)`
             }}
@@ -218,7 +220,7 @@ export default function GenerativeCoverStudio({
                 ref={canvasRef}
                 width={PREVIEW_SIZE}
                 height={PREVIEW_SIZE}
-                className="h-full w-full object-cover transition-transform duration-500 ease-out"
+                className="h-full w-full object-cover transition-transform duration-[var(--dur-flow)] ease-[var(--ease-out)]"
                 aria-label="计算艺术封面画幅"
               />
               <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl" />
@@ -284,7 +286,7 @@ export default function GenerativeCoverStudio({
                     >
                       <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg ring-1 ring-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]">
                         <PresetThumb
-                          seed={seed}
+                          seed={deferredSeed}
                           orbits={preset.orbits}
                           turbulence={preset.turbulence}
                           palette={preset.palette}

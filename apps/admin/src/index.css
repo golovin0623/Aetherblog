@@ -6995,6 +6995,11 @@ html[data-theme-transition] .codex-ambient-blob {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
+/* Firefox 的原生焦点提示画在 input 的 outline 上,上面已置 none —— 必须补回拇指上的焦点环 */
+.music-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 35%, transparent);
+}
+
 /* 歌单曲目表「正在播放」均衡器 —— 三根极光柱,播放时跳动,暂停时静止在中位。 */
 .music-eq {
   display: inline-flex;

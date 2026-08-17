@@ -3059,9 +3059,12 @@ export default function MusicPage() {
     const hasMorePlaylistCandidates = playlistCandidateTotal > playlistCandidateLoaded;
     const isPlaylistMemberTrackLoading = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isLoading;
     const isPlaylistMemberTrackUnavailable = Boolean(selectedPlaylistId) && playlistMemberTracksQuery.isError;
-    let addTracksStatusText = playlistCandidateTotal
-      ? `曲库匹配 ${playlistCandidateTotal} 首`
-      : '输入关键词搜索曲库';
+    // 注意 total 为 0 是「搜过但没命中」,不能与「还没开始搜」共用 falsy 分支
+    let addTracksStatusText = playlistTrackKeyword.trim()
+      ? `匹配到 ${playlistCandidateTotal} 首`
+      : playlistCandidateTotal
+        ? `曲库共 ${playlistCandidateTotal} 首可选`
+        : '输入关键词搜索曲库';
     if (isPlaylistMemberTrackLoading) {
       addTracksStatusText = '正在核对歌单内全部歌曲，避免重复加入已存在曲目...';
     } else if (isPlaylistMemberTrackUnavailable) {
@@ -3082,12 +3085,15 @@ export default function MusicPage() {
       if (next === detailTracks) return;
       reorderPlaylistMutation.mutate({ playlistId: selectedPlaylistId, tracks: next });
     };
-    const commitTrackOrder = (next: MusicTrack[]) => {
-      if (!selectedPlaylistId || !detail || trackActionsBusy) return;
+    // 返回值即「本地顺序是否被接受」:被守卫挡下时表格必须回滚,
+    // 否则本地顺序与父级按 detailTracks 计算的 index 会永久错位。
+    const commitTrackOrder = (next: MusicTrack[]): boolean => {
+      if (!selectedPlaylistId || !detail || trackActionsBusy) return false;
       const unchanged = next.length === detailTracks.length
         && next.every((track, index) => track.id === detailTracks[index]?.id);
-      if (unchanged) return;
+      if (unchanged) return true;
       reorderPlaylistMutation.mutate({ playlistId: selectedPlaylistId, tracks: next });
+      return true;
     };
     const nowPlayingTrackId =
       selectedPlaylistId != null
@@ -3108,7 +3114,13 @@ export default function MusicPage() {
       if (detailTracks.length === 0) return;
       playFromIndex(Math.floor(Math.random() * detailTracks.length));
     };
-    const playingThisPlaylist = nowPlayingTrackId != null && isPlaying;
+    // 队列归属与出声状态必须分开:合并成一个布尔会让「暂停后再点」退化成从第一首重开
+    const queueIsThisPlaylist =
+      selectedPlaylistId != null
+      && queueSource.type === 'playlist'
+      && queueSource.playlistId === selectedPlaylistId
+      && currentTrack != null;
+    const playingThisPlaylist = queueIsThisPlaylist && isPlaying;
     const totalDurationSeconds = detailTracks.reduce((sum, track) => sum + (track.durationSeconds ?? 0), 0);
     const draftLoaded = playlistDraftSourceId === selectedPlaylistId;
     const heroTitle = draftLoaded
@@ -3154,7 +3166,7 @@ export default function MusicPage() {
         <PlaylistRail
           playlists={visiblePlaylists}
           totalCount={playlists.length}
-          loading={playlistsQuery.isLoading}
+          loading={playlistFavoriteFilter === 'FAVORITE' ? favoritePlaylistsQuery.isLoading : playlistsQuery.isLoading}
           selectedId={selectedPlaylistId}
           favoriteFilter={playlistFavoriteFilter}
           onToggleFavoriteFilter={() => setPlaylistFavoriteFilter((value) => value === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
@@ -3266,13 +3278,13 @@ export default function MusicPage() {
                       <p className="mt-1 text-sm text-[var(--ink-subtle)]">还没有描述 —— 在「编辑详情」里补一句。</p>
                     )}
                     <p className="tnum mt-1.5 text-xs text-[var(--ink-muted)]">
-                      {detailTracks.length || selectedPlaylist.trackCount} 首
+                      {isPlaylistMemberTrackLoading ? selectedPlaylist.trackCount : detailTracks.length} 首
                       {totalDurationSeconds > 0 ? ` · ${formatClock(totalDurationSeconds)}` : ''}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2 min-[769px]:mt-auto min-[769px]:pt-3">
                       <button
                         type="button"
-                        onClick={() => (playingThisPlaylist ? void togglePlayback() : playFromIndex(0))}
+                        onClick={() => (queueIsThisPlaylist ? void togglePlayback() : playFromIndex(0))}
                         className={solidButtonClass()}
                         disabled={detailTracks.length === 0 || isPlaylistMemberTrackLoading}
                       >
@@ -3416,8 +3428,11 @@ export default function MusicPage() {
               </AnimatePresence>
 
               <div className="flex items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] px-4 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                <p className="min-w-0 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                   曲目 · <span className="tnum">{detailTracks.length}</span>
+                  <span className="ml-2 hidden normal-case tracking-normal min-[900px]:inline">
+                    拖拽调序 —— 歌单顺序独立于媒体库与曲库
+                  </span>
                 </p>
                 {addTracksToggle}
               </div>
@@ -3452,7 +3467,6 @@ export default function MusicPage() {
                 onCommitOrder={commitTrackOrder}
                 onMove={moveTrack}
                 onRemove={(trackId) => selectedPlaylistId && removePlaylistTrackMutation.mutate({ playlistId: selectedPlaylistId, trackId })}
-                addAction={addTracksToggle}
               />
             </>
           )}
