@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
+import { spring, transition, variants } from '@aetherblog/ui';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import type {
   PricingSyncProposal,
@@ -21,26 +23,15 @@ interface Props {
 // 同步对象只覆盖「供应商启用」的模型，与覆盖率视图默认口径一致。
 const ENABLED_ONLY = true;
 
+// 状态 → 信号语义:新增=success / 更新=accent(将写入) / 已一致=neutral / 无匹配=warn(需手动)
 const STATUS_META: Record<
   PricingSyncStatus,
-  { label: string; className: string }
+  { label: string; tone: 'success' | 'accent' | 'neutral' | 'warn' }
 > = {
-  new: {
-    label: '新增',
-    className: 'bg-emerald-500/10 text-emerald-500',
-  },
-  update: {
-    label: '更新',
-    className: 'bg-orange-500/10 text-orange-500',
-  },
-  unchanged: {
-    label: '已一致',
-    className: 'bg-[var(--bg-card)] text-[var(--text-muted)]',
-  },
-  no_match: {
-    label: '无匹配',
-    className: 'bg-amber-500/10 text-amber-500',
-  },
+  new: { label: '新增', tone: 'success' },
+  update: { label: '更新', tone: 'accent' },
+  unchanged: { label: '已一致', tone: 'neutral' },
+  no_match: { label: '无匹配', tone: 'warn' },
 };
 
 // 排序：可写入的排前面，便于一眼看到将要同步的内容
@@ -56,6 +47,24 @@ function formatPrice(value: number | null | undefined): string {
   const v = Number(value);
   if (v >= 1) return `$${v.toFixed(2)}`;
   return `$${v.toFixed(4)}`;
+}
+
+// 价差标注:目录价 vs 当前价,涨=warn ↑ / 降=success ↓
+function PriceDelta({
+  current,
+  next,
+}: {
+  current: number | null | undefined;
+  next: number | null | undefined;
+}) {
+  if (current == null || next == null || next === current) return null;
+  const direction = next > current ? 'up' : 'down';
+  return (
+    <span className="gp-delta font-mono" data-direction={direction}>
+      <s>{formatPrice(current)}</s>
+      {direction === 'up' ? '↑' : '↓'}
+    </span>
+  );
 }
 
 export function PricingSyncDialog({ onClose }: Props) {
@@ -96,6 +105,9 @@ export function PricingSyncDialog({ onClose }: Props) {
   useEffect(() => {
     runPreview(false);
   }, []);
+
+  // 焦点管理 + Esc(含 IME 组合态守卫) + 滚动锁
+  const dialogRef = useModalDialog<HTMLDivElement>({ onClose });
 
   const handleToggleOverwrite = (next: boolean) => {
     setOverwriteExisting(next);
@@ -145,28 +157,37 @@ export function PricingSyncDialog({ onClose }: Props) {
 
   return createPortal(
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="global-pricing-sync-overlay fixed inset-0 z-[55] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4"
+      variants={variants.fade}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={transition.quick}
+      className="global-pricing-sync-overlay aiw-overlay sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.96, y: 18 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.96, opacity: 0, y: 18 }}
+        variants={variants.scaleIn}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="从 LiteLLM 同步价格"
         className="global-pricing-sync-dialog w-full border shadow-2xl sm:max-w-4xl"
       >
         <div className="global-pricing-sync-header">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <Sparkles className="h-5 w-5 text-[var(--aurora-1)]" />
-              <h2 className="truncate text-lg font-semibold text-[var(--text-primary)]">
+              <h2 className="truncate text-lg font-semibold text-[var(--ink-primary)]">
                 从 LiteLLM 同步价格
               </h2>
             </div>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
+            <p className="mt-1 text-xs text-[var(--ink-muted)]">
               {preview
                 ? `数据源 ${preview.source} · ${preview.source_model_count} 条定价 · 命中 ${preview.matched_count}/${preview.total_candidates} 个 model_id`
                 : '正在加载最新价格目录…'}
@@ -191,7 +212,7 @@ export function PricingSyncDialog({ onClose }: Props) {
             />
             <span>
               覆盖已配置的全局价格
-              <span className="block text-xs text-[var(--text-muted)]">
+              <span className="block text-xs text-[var(--ink-muted)]">
                 取消勾选时只为「未配置」的 model_id 写入，不动你手填的价格。
               </span>
             </span>
@@ -200,12 +221,18 @@ export function PricingSyncDialog({ onClose }: Props) {
 
         <div className="global-pricing-sync-table-wrap">
           {isLoadingPreview ? (
-            <div className="flex items-center justify-center h-48 gap-2 text-[var(--text-muted)] text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              正在比对价格…
+            <div className="space-y-2 p-4" aria-busy="true" aria-label="正在比对价格">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="global-pricing-skeleton-block h-4 w-4 rounded" />
+                  <div className="global-pricing-skeleton-block h-3.5 w-1/3 rounded" />
+                  <div className="global-pricing-skeleton-block h-4 w-14 rounded-full" />
+                  <div className="global-pricing-skeleton-block ml-auto h-3.5 w-32 rounded" />
+                </div>
+              ))}
             </div>
           ) : proposals.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-[var(--text-muted)] text-sm">
+            <div className="flex items-center justify-center h-48 text-[var(--ink-muted)] text-sm">
               没有可同步的启用模型
             </div>
           ) : (
@@ -252,36 +279,35 @@ export function PricingSyncDialog({ onClose }: Props) {
                       </td>
                       <td>
                         <span
-                          className={`global-pricing-status-badge inline-flex items-center rounded-full px-2 py-1 text-xs ${meta.className}`}
+                          className="aiw-signal-badge global-pricing-status-badge"
+                          data-tone={meta.tone}
                         >
                           {meta.label}
                         </span>
                       </td>
-                      <td>
+                      <td className="font-mono">
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_input_per_1m)}
-                        {p.status === 'update' &&
-                          p.current_input_per_1m != null &&
-                          p.source_input_per_1m !== p.current_input_per_1m && (
-                            <div className="text-[10px] text-[var(--text-muted)] line-through">
-                              {formatPrice(p.current_input_per_1m)}
-                            </div>
-                          )}
+                        {p.status === 'update' && (
+                          <PriceDelta
+                            current={p.current_input_per_1m}
+                            next={p.source_input_per_1m}
+                          />
+                        )}
                       </td>
-                      <td>
+                      <td className="font-mono">
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_output_per_1m)}
-                        {p.status === 'update' &&
-                          p.current_output_per_1m != null &&
-                          p.source_output_per_1m !== p.current_output_per_1m && (
-                            <div className="text-[10px] text-[var(--text-muted)] line-through">
-                              {formatPrice(p.current_output_per_1m)}
-                            </div>
-                          )}
+                        {p.status === 'update' && (
+                          <PriceDelta
+                            current={p.current_output_per_1m}
+                            next={p.source_output_per_1m}
+                          />
+                        )}
                       </td>
-                      <td>
+                      <td className="font-mono">
                         {p.status === 'no_match'
                           ? '—'
                           : formatPrice(p.source_cached_input_per_1m)}
@@ -295,7 +321,7 @@ export function PricingSyncDialog({ onClose }: Props) {
         </div>
 
         <div className="global-pricing-sync-footer">
-          <div className="text-xs text-[var(--text-muted)]">
+          <div className="text-xs text-[var(--ink-muted)]">
             已选 {selected.size} 项
             {preview && preview.matched_count < preview.total_candidates && (
               <span className="ml-2">
@@ -306,8 +332,8 @@ export function PricingSyncDialog({ onClose }: Props) {
           <div className="flex items-center gap-3">
             <motion.button
               onClick={onClose}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.97 }}
+              transition={spring.precise}
               className="global-pricing-sync-secondary"
             >
               取消
@@ -315,8 +341,8 @@ export function PricingSyncDialog({ onClose }: Props) {
             <motion.button
               onClick={handleApply}
               disabled={isApplying || isLoadingPreview || selected.size === 0}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.96 }}
+              transition={spring.precise}
               className="global-pricing-sync-primary"
             >
               {isApplying && <Loader2 className="w-4 h-4 animate-spin" />}

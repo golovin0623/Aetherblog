@@ -61,27 +61,47 @@ function formatPrice(value: number | null | undefined, currency = 'USD'): string
   return `${symbol}${value.toFixed(4)}`;
 }
 
+// 覆盖状态徽章 —— 语义与顶部指标一致:未配置=warn / 全部同步=success / 脱锚=danger
 function CoverageBadge({ row }: { row: GlobalPricingCoverageRow }) {
   if (!row.has_global) {
     return (
-      <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">
-        <XCircle className="w-3 h-3" />
+      <span className="aiw-signal-badge global-pricing-status-badge" data-tone="warn">
+        <XCircle />
         未配置
       </span>
     );
   }
   if (row.out_of_sync_count === 0 && row.missing_count === 0) {
     return (
-      <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500">
-        <CheckCircle2 className="w-3 h-3" />
+      <span className="aiw-signal-badge global-pricing-status-badge" data-tone="success">
+        <CheckCircle2 />
         全部同步
       </span>
     );
   }
   return (
-    <span className="global-pricing-status-badge inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-xs text-orange-500">
-      <AlertCircle className="w-3 h-3" />
+    <span className="aiw-signal-badge global-pricing-status-badge" data-tone="danger">
+      <AlertCircle />
       {row.out_of_sync_count + row.missing_count} 行待同步
+    </span>
+  );
+}
+
+// 同步进度光条:已同步供应商行 / 总行
+function SyncMeter({ row }: { row: GlobalPricingCoverageRow }) {
+  if (!row.has_global || row.provider_count <= 0) return null;
+  const ratio = Math.max(0, Math.min(1, row.in_sync_count / row.provider_count));
+  const complete = row.in_sync_count === row.provider_count;
+  return (
+    <span
+      className="gp-meter mt-1.5 !flex w-fit"
+      data-complete={complete ? 'true' : 'false'}
+      title={`${row.in_sync_count}/${row.provider_count} 个供应商行已同步`}
+    >
+      <span className="gp-meter-track">
+        <span className="gp-meter-fill" style={{ width: `${ratio * 100}%` }} />
+      </span>
+      {row.in_sync_count}/{row.provider_count}
     </span>
   );
 }
@@ -286,20 +306,34 @@ export default function GlobalPricingPage() {
           {isInitialLoading ? (
             <GlobalPricingTableSkeleton rows={8} />
           ) : filteredRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)] gap-2">
-              <div className="text-sm">没有符合条件的模型</div>
+            <div className="aiw-empty !py-16">
+              <div className="aiw-empty-icon">
+                <Search />
+              </div>
+              <div className="aiw-empty-title">没有符合条件的模型</div>
+              <p className="aiw-empty-hint">试试调整搜索词或切换筛选条件。</p>
             </div>
           ) : (
             <table className="global-pricing-table tnum w-full min-w-[1400px] text-sm">
+              {/* 列宽声明与骨架屏保持一致,避免加载完成后的布局跳变 */}
+              <colgroup>
+                <col className="global-pricing-col-model" />
+                <col className="global-pricing-col-provider" />
+                <col className="global-pricing-col-price" />
+                <col className="global-pricing-col-price" />
+                <col className="global-pricing-col-price" />
+                <col className="global-pricing-col-status" />
+                <col className="global-pricing-col-actions" />
+              </colgroup>
               <thead className="sticky top-0 z-10">
-                <tr className="text-left text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
-                  <th className="font-medium">Model ID</th>
-                  <th className="font-medium">供应商</th>
-                  <th className="font-medium">输入 / 1M</th>
-                  <th className="font-medium">输出 / 1M</th>
-                  <th className="font-medium">缓存 / 1M</th>
-                  <th className="font-medium">状态</th>
-                  <th className="font-medium text-right">操作</th>
+                <tr className="text-left uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  <th>Model ID</th>
+                  <th>供应商</th>
+                  <th data-col="price">输入 / 1M</th>
+                  <th data-col="price">输出 / 1M</th>
+                  <th data-col="price">缓存 / 1M</th>
+                  <th>状态</th>
+                  <th className="text-right">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,11 +343,11 @@ export default function GlobalPricingPage() {
                     className="global-pricing-row"
                   >
                     <td className="align-top">
-                      <div className="font-mono text-[var(--text-primary)] break-all">
+                      <div className="font-mono text-[var(--ink-primary)] break-all">
                         {row.model_id}
                       </div>
                       {row.display_name && (
-                        <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                        <div className="text-xs text-[var(--ink-muted)] mt-0.5">
                           {row.display_name}
                         </div>
                       )}
@@ -323,37 +357,45 @@ export default function GlobalPricingPage() {
                         {row.providers.slice(0, 4).map((p) => (
                           <span
                             key={p}
-                            className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] font-mono"
+                            className="rounded-md border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] px-1.5 py-0.5 font-mono text-micro text-[var(--ink-secondary)]"
                           >
                             {p}
                           </span>
                         ))}
                         {row.providers.length > 4 && (
-                          <span className="text-[10px] text-[var(--text-muted)]">
+                          <span className="font-mono text-micro text-[var(--ink-muted)]">
                             +{row.providers.length - 4}
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                      <div className="mt-1 font-mono text-micro tnum text-[var(--ink-muted)]">
                         {row.provider_count} 个供应商行
                       </div>
                     </td>
-                    <td className="align-top text-[var(--text-primary)] font-mono">
+                    <td
+                      className="align-top text-[var(--ink-primary)]"
+                      data-col="price"
+                      data-empty={row.global_input_per_1m == null ? 'true' : 'false'}
+                    >
                       {formatPrice(row.global_input_per_1m, row.currency || 'USD')}
                     </td>
-                    <td className="align-top text-[var(--text-primary)] font-mono">
+                    <td
+                      className="align-top text-[var(--ink-primary)]"
+                      data-col="price"
+                      data-empty={row.global_output_per_1m == null ? 'true' : 'false'}
+                    >
                       {formatPrice(row.global_output_per_1m, row.currency || 'USD')}
                     </td>
-                    <td className="align-top text-[var(--text-primary)] font-mono">
+                    <td
+                      className="align-top text-[var(--ink-primary)]"
+                      data-col="price"
+                      data-empty={row.global_cached_input_per_1m == null ? 'true' : 'false'}
+                    >
                       {formatPrice(row.global_cached_input_per_1m, row.currency || 'USD')}
                     </td>
                     <td className="align-top">
                       <CoverageBadge row={row} />
-                      {row.has_global && (
-                        <div className="text-[10px] text-[var(--text-muted)] mt-1">
-                          {row.in_sync_count}/{row.provider_count} 已同步
-                        </div>
-                      )}
+                      <SyncMeter row={row} />
                     </td>
                     <td className="align-top text-right">
                       <div className="inline-flex flex-wrap items-center justify-end gap-1">

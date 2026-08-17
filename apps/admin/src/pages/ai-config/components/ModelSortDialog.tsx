@@ -69,6 +69,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
         className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden max-h-[80vh] sm:max-h-[90vh]"
       >
         {/* 头部 */}

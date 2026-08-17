@@ -1,5 +1,6 @@
-// 模型卡片组件
+// 模型卡片组件 —— 模型工作台的最小信息单元
 // ref: §5.1 - AI Service 架构
+// 设计: .claude/design-system/ · 排印 mono+tnum · hover 左侧极光轨(见 index.css .ai-model-card)
 
 import { useState, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,7 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Toggle, spring } from '@aetherblog/ui';
+import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import type { AiModel } from '@/services/aiProviderService';
 import { useToggleModel } from '../hooks/useModels';
 import {
@@ -34,6 +35,23 @@ interface ModelCardProps {
   onEdit: () => void;
   readOnly?: boolean;
 }
+
+// 能力徽章的视觉语义(data-kind → aurora / signal 着色,见 index.css .aiw-ability)
+const ABILITY_BADGES: Array<{
+  key: 'functionCall' | 'vision' | 'reasoning' | 'search' | 'imageOutput' | 'video' | 'files' | 'structuredOutput';
+  label: string;
+  kind?: 'tools' | 'vision' | 'reasoning' | 'search' | 'image';
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  { key: 'functionCall', label: '工具', kind: 'tools', icon: Wand2 },
+  { key: 'vision', label: '视觉', kind: 'vision', icon: Eye },
+  { key: 'reasoning', label: '推理', kind: 'reasoning', icon: Brain },
+  { key: 'search', label: '搜索', kind: 'search', icon: Globe },
+  { key: 'imageOutput', label: '绘画', kind: 'image', icon: Image },
+  { key: 'video', label: '视频', icon: Video },
+  { key: 'files', label: '文件', icon: Paperclip },
+  { key: 'structuredOutput', label: '结构化', icon: Braces },
+];
 
 export default function ModelCard({ model, onEdit, readOnly = false }: ModelCardProps) {
   const [copied, setCopied] = useState(false);
@@ -56,7 +74,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
   const legacy = extra.legacy as boolean | undefined;
   const isNew = isRecentRelease(releaseAt);
 
-  const priceTags = formatPricing(pricing, model);
+  const pricePairs = resolvePricePairs(pricing, model);
 
   const copyModelId = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -66,54 +84,47 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
       toast.success(`模型 ID 已复制: ${model.model_id}`);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // 忽略错误
       toast.error('复制失败');
     }
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 5 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`ai-model-card relative group flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all overflow-hidden ${model.is_enabled
-        ? 'border-[var(--border-default)]/60 bg-[var(--bg-card)] shadow-sm'
-        : 'border-transparent bg-transparent opacity-70 hover:bg-[var(--bg-card-hover)]'
-        }`}
-      style={{
-        transform: 'translateZ(0)',
-        WebkitBackfaceVisibility: 'hidden',
-      }}
+      variants={variants.fadeUp}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={transition.quick}
+      data-enabled={model.is_enabled ? 'true' : 'false'}
+      className="ai-model-card group flex items-start gap-3 rounded-xl border px-3.5 py-3 overflow-hidden"
     >
-      {/* 顶部光泽效果 */}
-      {model.is_enabled && (
-        <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
-          <div
-            className="absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
-            style={{
-              maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-            }}
-          />
-        </div>
-      )}
       {/* 状态点 */}
-      <div
-        className={`w-2 h-2 rounded-full flex-shrink-0 ${model.is_enabled ? 'bg-status-success' : 'bg-[var(--border-default)]'
-          }`}
+      <span
+        aria-hidden="true"
+        className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full transition-colors duration-quick ease-aether"
+        style={
+          model.is_enabled
+            ? {
+                background: 'var(--signal-success)',
+                boxShadow: '0 0 8px color-mix(in oklch, var(--signal-success) 55%, transparent)',
+              }
+            : { background: 'var(--ink-subtle)' }
+        }
       />
 
       {/* 信息区 */}
       <motion.div
-        className="flex-1 min-w-0 cursor-pointer lg:cursor-default"
+        className="min-w-0 flex-1 cursor-pointer lg:cursor-default"
         whileTap={window.innerWidth < 1024 ? { scale: 0.98 } : {}}
+        transition={spring.precise}
         onClick={(e) => {
           if (window.innerWidth < 1024) copyModelId(e);
         }}
       >
-        <div className="flex flex-col gap-0.5 min-w-0">
+        <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
             <span
-              className="font-bold text-sm text-[var(--text-primary)] truncate"
+              className="truncate text-sm font-semibold text-[var(--ink-primary)]"
               title={description || model.display_name || model.model_id}
             >
               {model.display_name || model.model_id}
@@ -123,30 +134,38 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
                 initial={{ scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={spring.bouncy}
-                className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/20"
+                className="aiw-signal-badge shrink-0"
+                data-tone="accent"
                 title={releaseAt ? `发布于 ${releaseAt}` : '近期发布'}
               >
                 NEW
               </motion.span>
             )}
+            {legacy && (
+              <span className="aiw-signal-badge shrink-0" data-tone="warn" title="已标记为旧版模型">
+                Legacy
+              </span>
+            )}
             {source && (
-              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
+              <span className="aiw-signal-badge shrink-0" data-tone="neutral">
                 {source === 'remote' ? '远程' : source === 'custom' ? '自定义' : '内置'}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 h-4">
-            <AnimatePresence mode="wait">
+          {/* 模型 ID(mono),复制反馈原位切换 */}
+          <div className="flex h-4 items-center gap-1.5">
+            <AnimatePresence mode="wait" initial={false}>
               {copied ? (
                 <motion.span
                   key="check"
-                  initial={{ scale: 0, opacity: 0 }}
+                  initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  className="flex items-center gap-1 text-status-success text-[10px]"
+                  exit={{ scale: 0.6, opacity: 0 }}
+                  transition={spring.precise}
+                  className="flex items-center gap-1 text-micro font-mono text-[var(--signal-success)]"
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  <Check className="h-3 w-3" />
                   已复制 ID
                 </motion.span>
               ) : (
@@ -154,7 +173,8 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
                   key="id"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-[10px] text-[var(--text-muted)] font-mono truncate opacity-60"
+                  transition={transition.quick}
+                  className="truncate font-mono text-micro text-[var(--ink-muted)]"
                 >
                   {model.model_id}
                 </motion.span>
@@ -163,51 +183,70 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-[var(--text-muted)]">
-          {contextWindow && <span className="bg-[var(--bg-card)] px-1 rounded">CW {formatContextWindow(contextWindow)}</span>}
-          {maxOutputTokens && <span className="bg-[var(--bg-card)] px-1 rounded">Out {formatContextWindow(maxOutputTokens)}</span>}
-          {legacy && <span className="text-status-warning font-medium">Legacy</span>}
-          {releaseAt && <span>{releaseAt}</span>}
-          {priceTags.map((tag) => (
-            <span key={tag} className="opacity-80 ">{tag}</span>
-          ))}
-        </div>
+        {/* 规格行:上下文 / 输出 / 发布时间 —— mono + tnum */}
+        {(contextWindow || maxOutputTokens || releaseAt) && (
+          <div className="aiw-model-meta mt-1.5">
+            {contextWindow && (
+              <span title="最大上下文窗口">
+                CTX <b>{formatContextWindow(contextWindow)}</b>
+              </span>
+            )}
+            {maxOutputTokens && (
+              <span title="最大输出 Tokens">
+                OUT <b>{formatContextWindow(maxOutputTokens)}</b>
+              </span>
+            )}
+            {releaseAt && <span title="发布时间">{releaseAt}</span>}
+          </div>
+        )}
+
+        {/* 价格行:mono + tnum,与全局价格页同一套排印 */}
+        {pricePairs.length > 0 && (
+          <div className="aiw-price mt-1">
+            {pricePairs.map((pair) => (
+              <span key={pair.label} className="aiw-price-pair" title={pair.title}>
+                <span>{pair.label}</span>
+                <b>{pair.value}</b>
+              </span>
+            ))}
+          </div>
+        )}
 
         {description && (
-          <div className="mt-1 text-[11px] text-[var(--text-muted)] line-clamp-1 opacity-70">
+          <div className="mt-1.5 line-clamp-1 text-micro text-[var(--ink-muted)]">
             {description}
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          {abilities.functionCall && <CapabilityBadge icon={Wand2} title="工具" color="text-status-info bg-status-info-light" />}
-          {abilities.vision && <CapabilityBadge icon={Eye} title="视觉" color="text-status-success bg-status-success-light" />}
-          {abilities.reasoning && <CapabilityBadge icon={Brain} title="推理" color="text-accent bg-accent/10" />}
-          {abilities.imageOutput && <CapabilityBadge icon={Image} title="绘画" color="text-[var(--signal-info)] bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]" />}
-          {abilities.search && <CapabilityBadge icon={Globe} title="搜索" color="text-[var(--signal-info)] bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]" />}
-          {abilities.video && <CapabilityBadge icon={Video} title="视频" />}
-          {abilities.files && <CapabilityBadge icon={Paperclip} title="文件" />}
-          {abilities.structuredOutput && <CapabilityBadge icon={Braces} title="结构化" />}
+        {/* 能力徽章 */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {ABILITY_BADGES.filter(({ key }) => abilities[key]).map(({ key, label, kind, icon: Icon }) => (
+            <span key={key} className="aiw-ability" data-kind={kind} title={label}>
+              <Icon />
+              {label}
+            </span>
+          ))}
         </div>
       </motion.div>
 
       {/* 操作 */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-1.5">
         <button
           onClick={copyModelId}
-          className="hidden lg:flex p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          className="hidden rounded-lg p-1.5 text-[var(--ink-muted)] opacity-0 transition-all duration-quick ease-aether hover:bg-[var(--intelligence-control-hover)] hover:text-[var(--ink-primary)] focus-visible:opacity-100 group-hover:opacity-100 lg:flex"
           title="复制模型 ID"
         >
-          <Copy className="w-4 h-4" />
+          <Copy className="h-4 w-4" />
         </button>
         <button
           onClick={onEdit}
           disabled={readOnly}
-          className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all ${readOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--bg-card-hover)]'
-            }`}
+          className={`rounded-lg p-1.5 text-[var(--ink-muted)] transition-all duration-quick ease-aether hover:text-[var(--ink-primary)] ${
+            readOnly ? 'cursor-not-allowed opacity-50' : 'hover:bg-[var(--intelligence-control-hover)]'
+          }`}
           title="配置模型"
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="h-4 w-4" />
         </button>
         <Toggle
           checked={model.is_enabled}
@@ -220,52 +259,43 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
   );
 }
 
-function formatPricing(pricing: Record<string, unknown>, model: AiModel): string[] {
-  const currency = (pricing?.currency as string) || 'USD';
-  const input = pricing?.input as number | undefined;
-  const output = pricing?.output as number | undefined;
-  const cachedInput = pricing?.cachedInput as number | undefined;
-
-  const tags: string[] = [];
-  if (typeof input === 'number') {
-    tags.push(`${currency} ${input}/1M 入`);
-  } else if (model.input_cost_per_1m !== null && model.input_cost_per_1m !== undefined) {
-    tags.push(`${currency} ${model.input_cost_per_1m}/1M 入`);
-  }
-  if (typeof output === 'number') {
-    tags.push(`${currency} ${output}/1M 出`);
-  } else if (model.output_cost_per_1m !== null && model.output_cost_per_1m !== undefined) {
-    tags.push(`${currency} ${model.output_cost_per_1m}/1M 出`);
-  }
-  if (typeof cachedInput === 'number') {
-    tags.push(`${currency} ${cachedInput}/1M 缓存入`);
-  } else if (model.cached_input_cost_per_1m !== null && model.cached_input_cost_per_1m !== undefined) {
-    tags.push(`${currency} ${model.cached_input_cost_per_1m}/1M 缓存入`);
-  }
-
-  return tags;
+interface PricePair {
+  label: string;
+  value: string;
+  title: string;
 }
 
-// 能力徽章
-// 能力徽章
-function CapabilityBadge({
-  icon: Icon,
-  title,
-  color = "text-[var(--text-muted)] bg-[var(--bg-card)]",
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  color?: string;
-}) {
-  return (
-    <div
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-transparent ${color}`}
-      title={title}
-    >
-      <Icon className="w-3 h-3" />
-      {title}
-    </div>
-  );
+// 归一化三档单价 → [入/出/缓存] 展示对;capabilities.pricing 优先,列回退到平铺字段
+function resolvePricePairs(pricing: Record<string, unknown>, model: AiModel): PricePair[] {
+  const currency = (pricing?.currency as string) || 'USD';
+  const symbol = currency === 'CNY' ? '¥' : '$';
+
+  const input =
+    typeof pricing?.input === 'number' ? (pricing.input as number) : model.input_cost_per_1m ?? null;
+  const output =
+    typeof pricing?.output === 'number' ? (pricing.output as number) : model.output_cost_per_1m ?? null;
+  const cachedInput =
+    typeof pricing?.cachedInput === 'number'
+      ? (pricing.cachedInput as number)
+      : model.cached_input_cost_per_1m ?? null;
+
+  const pairs: PricePair[] = [];
+  if (input != null) {
+    pairs.push({ label: '入', value: `${symbol}${formatCost(input)}`, title: `输入 ${symbol}${formatCost(input)} / 1M Tokens` });
+  }
+  if (output != null) {
+    pairs.push({ label: '出', value: `${symbol}${formatCost(output)}`, title: `输出 ${symbol}${formatCost(output)} / 1M Tokens` });
+  }
+  if (cachedInput != null) {
+    pairs.push({ label: '缓存', value: `${symbol}${formatCost(cachedInput)}`, title: `缓存读取 ${symbol}${formatCost(cachedInput)} / 1M Tokens` });
+  }
+  return pairs;
+}
+
+// 价格数值:≥1 保留两位,<1 保留至多四位有效小数,去掉尾零
+function formatCost(value: number): string {
+  if (value >= 1) return value.toFixed(2).replace(/\.00$/, '');
+  return String(parseFloat(value.toFixed(4)));
 }
 
 // 判断模型是否「近期发布」（默认 45 天内）—— 用于 NEW 徽章
@@ -280,7 +310,7 @@ function isRecentRelease(releaseAt: string | null, withinDays = 45): boolean {
 // 格式化上下文窗口
 function formatContextWindow(tokens: number): string {
   if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
+    return `${(tokens / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
   }
   if (tokens >= 1000) {
     return `${Math.round(tokens / 1000)}K`;

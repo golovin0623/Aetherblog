@@ -1,5 +1,7 @@
-// 模型列表组件
+// 模型列表组件 —— 供应商详情内的「模型工作台」
 // ref: §5.1 - AI Service 架构
+// 设计: 工具栏 aiw-tool-button · 类型分段 IntelligenceSegmented · 分组眉 aiw-group-label
+//      键盘 `/` 聚焦搜索,筛选态显示命中数,加载态骨架屏(禁 spinner)
 
 import { useEffect, useState, useMemo, useRef, type ComponentType } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -14,9 +16,11 @@ import {
   Brain,
   Wand2,
   Globe,
+  SearchX,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { spring } from '@aetherblog/ui';
+import { IntelligenceSegmented } from '@/components/intelligence';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import type { AiModel } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelType, type ModelAbility } from '../types';
@@ -51,20 +55,20 @@ function filterByAbilities(list: AiModel[], abilities: Set<AbilityKey>): AiModel
   });
 }
 
-// 模型行骨架屏 —— 加载态遵循「骨架 + pulse」而非 spinner
+// 模型行骨架屏 —— 加载态遵循「骨架 + shimmer」而非 spinner
 function ModelRowSkeleton() {
   return (
-    <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-[var(--border-default)]/40">
-      <div className="w-2 h-2 rounded-full bg-[var(--bg-secondary)] animate-pulse mt-1" />
+    <div className="flex items-start gap-3 rounded-xl border border-[var(--intelligence-border)] px-3.5 py-3">
+      <div className="global-pricing-skeleton-block mt-1 h-2 w-2 rounded-full" />
       <div className="flex-1 min-w-0 space-y-2">
-        <div className="h-3.5 w-32 rounded bg-[var(--bg-secondary)] animate-pulse" />
-        <div className="h-2.5 w-20 rounded bg-[var(--bg-secondary)]/70 animate-pulse" />
+        <div className="global-pricing-skeleton-block h-3.5 w-36 rounded" />
+        <div className="global-pricing-skeleton-block h-2.5 w-24 rounded" />
         <div className="flex gap-1.5">
-          <div className="h-4 w-12 rounded bg-[var(--bg-secondary)]/60 animate-pulse" />
-          <div className="h-4 w-12 rounded bg-[var(--bg-secondary)]/60 animate-pulse" />
+          <div className="global-pricing-skeleton-block h-4 w-12 rounded-full" />
+          <div className="global-pricing-skeleton-block h-4 w-12 rounded-full" />
         </div>
       </div>
-      <div className="h-5 w-9 rounded-full bg-[var(--bg-secondary)] animate-pulse" />
+      <div className="global-pricing-skeleton-block h-5 w-9 rounded-full" />
     </div>
   );
 }
@@ -99,6 +103,7 @@ export default function ModelList({
   // 否则陈旧的过滤条件会被重新应用，导致列表看起来为空。
   const [search, setSearch] = useState(initialSearch ?? '');
   const seededRef = useRef(!!initialSearch);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [editingModel, setEditingModel] = useState<AiModel | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSortDialog, setShowSortDialog] = useState(false);
@@ -115,6 +120,24 @@ export default function ModelList({
     }
   }, [initialSearch]);
 
+  // 工作台快捷键:`/` 聚焦模型搜索(输入态不劫持)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      // 有弹窗打开时不抢焦点 —— 否则会把焦点从模态层拽到背景的搜索框,
+      // 既击穿弹窗的焦点陷阱,又让用户对着看不见的输入框打字。
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // 统计各类型数量
   const typeCounts = useMemo(() => countModelsByType(models), [models]);
 
@@ -128,6 +151,7 @@ export default function ModelList({
   const enabledFiltered = useMemo(() => filterByAbilities(enabled, activeAbilities), [enabled, activeAbilities]);
   const disabledFiltered = useMemo(() => filterByAbilities(disabled, activeAbilities), [disabled, activeAbilities]);
   const hasActiveFilter = activeAbilities.size > 0 || search.trim().length > 0;
+  const matchedCount = enabledFiltered.length + disabledFiltered.length;
 
   const toggleAbility = (key: AbilityKey) => {
     setActiveAbilities((prev) => {
@@ -150,11 +174,17 @@ export default function ModelList({
       : allowRemote;
   const canFetchRemote = showModelFetcher && allowRemote && !!credentialId;
 
-  // Tab 列表
-  const tabs = [
-    { value: 'all' as const, label: '全部' },
-    ...MODEL_TYPES.filter((t) => typeCounts[t.value] > 0),
-  ];
+  // 类型分段选项(只保留有模型的类型)
+  const typeOptions = useMemo(
+    () => [
+      { value: 'all' as const, label: `全部 ${typeCounts.all}` },
+      ...MODEL_TYPES.filter((t) => typeCounts[t.value] > 0).map((t) => ({
+        value: t.value,
+        label: `${t.label} ${typeCounts[t.value]}`,
+      })),
+    ],
+    [typeCounts]
+  );
 
   const handleFetchRemote = () => {
     syncRemoteModels.mutate({ providerCode, credentialId: credentialId ?? null });
@@ -180,24 +210,25 @@ export default function ModelList({
 
   return (
     <div className="ai-model-list space-y-4">
-      {/* 头部 */}
+      {/* 工具栏 */}
       <div className="ai-model-list-toolbar flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <h2 className="text-sm font-semibold text-[var(--text-secondary)] whitespace-nowrap">模型列表</h2>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
-            {models.length}
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h2 className="whitespace-nowrap text-sm font-semibold text-[var(--ink-primary)]">模型列表</h2>
+          <span className="font-mono text-micro text-[var(--ink-muted)]">
+            {hasActiveFilter ? `${matchedCount} / ${models.length}` : models.length}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap flex-1 sm:flex-none justify-end">
-          {/* 搜索 */}
-          <div className="relative group flex-1 sm:flex-none sm:w-40 min-w-[100px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-1.5 sm:flex-none sm:flex-nowrap">
+          {/* 搜索(`/` 聚焦) */}
+          <div className="group relative min-w-[110px] flex-1 sm:w-44 sm:flex-none">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)] transition-colors duration-quick ease-aether group-focus-within:text-[var(--aurora-1)]" />
             <input
+              ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)]/40 focus:outline-none focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all"
+              placeholder="搜索模型  /"
+              className="aiw-input h-9 w-full !py-0 !pl-8 !pr-3 text-xs"
             />
           </div>
 
@@ -206,10 +237,10 @@ export default function ModelList({
             <button
               onClick={handleFetchRemote}
               disabled={isLoading || syncRemoteModels.isPending}
-              title="拉取模型"
-              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] transition-all disabled:opacity-50"
+              title="从供应商拉取模型目录"
+              className="aiw-tool-button"
             >
-              <RefreshCw className={cn("w-3.5 h-3.5", syncRemoteModels.isPending && "animate-spin")} />
+              <RefreshCw className={cn('h-3.5 w-3.5', syncRemoteModels.isPending && 'animate-spin')} />
               <span className="hidden sm:inline">拉取</span>
             </button>
           )}
@@ -219,10 +250,11 @@ export default function ModelList({
             <button
               onClick={() => setConfirmAction('clearRemote')}
               disabled={clearProviderModels.isPending}
-              title="清空远程"
-              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-status-danger-border text-xs text-status-danger bg-[var(--bg-primary)] hover:bg-status-danger/5 transition-all disabled:opacity-50"
+              title="清空远程拉取的模型"
+              className="aiw-tool-button"
+              data-tone="danger"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">清空远程</span>
             </button>
           )}
@@ -231,10 +263,10 @@ export default function ModelList({
           <button
             onClick={() => setConfirmAction('resetAll')}
             disabled={clearProviderModels.isPending || !modelEditable}
-            title="重置全部"
-            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            title="重置全部模型"
+            className="aiw-tool-button"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">重置</span>
           </button>
 
@@ -243,9 +275,9 @@ export default function ModelList({
             onClick={() => setShowSortDialog(true)}
             disabled={!modelEditable}
             title="手动排序"
-            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            className="aiw-tool-button"
           >
-            <ArrowDownUp className="w-3.5 h-3.5" />
+            <ArrowDownUp className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">排序</span>
           </button>
 
@@ -253,80 +285,72 @@ export default function ModelList({
           <button
             onClick={handleDisableAll}
             disabled={batchToggleModels.isPending || enabled.length === 0 || !modelEditable}
-            title="全部禁用"
-            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            title="下架全部已启用模型"
+            className="aiw-tool-button"
           >
-            <ToggleLeft className="w-3.5 h-3.5" />
+            <ToggleLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">下架</span>
           </button>
 
           {/* 添加 */}
           {allowAddModel && (
-            <button
+            <motion.button
               onClick={() => setShowAddDialog(true)}
-              className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
+              whileTap={{ scale: 0.96 }}
+              transition={spring.precise}
+              className="aiw-tool-button"
+              data-tone="primary"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="inline">添加</span>
+              <Plus className="h-3.5 w-3.5" />
+              添加
+            </motion.button>
+          )}
+        </div>
+      </div>
+
+      {/* 类型分段 + 能力分面 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <IntelligenceSegmented
+          value={activeTab}
+          options={typeOptions}
+          onChange={setActiveTab}
+          ariaLabel="按模型类型筛选"
+          className="ai-model-list-tabs max-w-full"
+        />
+        <div className="ai-model-list-abilities flex flex-wrap items-center gap-1.5">
+          <span className="aiw-eyebrow !gap-2 mr-0.5">能力</span>
+          {ABILITY_FILTERS.map(({ key, label, icon: Icon }) => {
+            const active = activeAbilities.has(key);
+            return (
+              <motion.button
+                key={key}
+                type="button"
+                whileTap={{ scale: 0.94 }}
+                transition={spring.precise}
+                onClick={() => toggleAbility(key)}
+                className="aiw-preset inline-flex items-center gap-1 !font-sans !tracking-normal"
+                data-active={active ? 'true' : 'false'}
+                aria-pressed={active}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+              </motion.button>
+            );
+          })}
+          {activeAbilities.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveAbilities(new Set())}
+              className="text-micro text-[var(--ink-muted)] underline-offset-2 transition-colors duration-quick ease-aether hover:text-[var(--ink-secondary)] hover:underline"
+            >
+              清除
             </button>
           )}
         </div>
       </div>
 
-      {/* Tab 筛选 */}
-      <div className="ai-model-list-tabs flex items-center gap-1 overflow-x-auto pb-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-              activeTab === tab.value
-                ? 'bg-primary/15 text-primary'
-                : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-secondary)]'
-            }`}
-          >
-            {tab.label}
-            <span className="opacity-60">({tab.value === 'all' ? typeCounts.all : typeCounts[tab.value] || 0})</span>
-          </button>
-        ))}
-      </div>
-
-      {/* 能力分面筛选 */}
-      <div className="ai-model-list-abilities flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-muted)] mr-0.5">能力</span>
-        {ABILITY_FILTERS.map(({ key, label, icon: Icon }) => {
-          const active = activeAbilities.has(key);
-          return (
-            <motion.button
-              key={key}
-              type="button"
-              whileTap={{ scale: 0.94 }}
-              transition={spring.precise}
-              onClick={() => toggleAbility(key)}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] font-medium transition-colors ${
-                active
-                  ? 'border-accent/40 bg-accent/10 text-accent'
-                  : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
-              }`}
-            >
-              <Icon className="w-3 h-3" />
-              {label}
-            </motion.button>
-          );
-        })}
-        {activeAbilities.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setActiveAbilities(new Set())}
-            className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline-offset-2 hover:underline ml-0.5"
-          >
-            清除
-          </button>
-        )}
-      </div>
-
       {/* 模型列表 */}
-      <div className="ai-model-list-body space-y-4">
+      <div className="ai-model-list-body space-y-5">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -334,15 +358,29 @@ export default function ModelList({
             ))}
           </div>
         ) : enabledFiltered.length === 0 && disabledFiltered.length === 0 ? (
-          <div className="text-center py-10 text-[var(--text-muted)] text-sm">
-            {hasActiveFilter ? '没有符合筛选条件的模型' : '暂无模型'}
+          <div className="aiw-empty !py-12">
+            <div className="aiw-empty-icon">
+              <SearchX />
+            </div>
+            <div className="aiw-empty-title">
+              {hasActiveFilter ? '没有命中的模型' : '暂无模型'}
+            </div>
+            <p className="aiw-empty-hint">
+              {hasActiveFilter
+                ? '试试放宽搜索词或取消能力筛选。'
+                : canFetchRemote
+                  ? '可以从供应商拉取模型目录，或手动添加自定义模型。'
+                  : '手动添加一个自定义模型即可开始。'}
+            </p>
           </div>
         ) : (
           <>
             {/* 已启用 */}
             {enabledFiltered.length > 0 && (
               <div className="space-y-2">
-                <div className="text-xs text-[var(--text-muted)] font-medium">已启用</div>
+                <div className="aiw-group-label">
+                  已启用 <b>{enabledFiltered.length}</b>
+                </div>
                 <div className="space-y-2">
                   <AnimatePresence>
                     {enabledFiltered.map((model) => (
@@ -361,7 +399,9 @@ export default function ModelList({
             {/* 未启用 */}
             {disabledFiltered.length > 0 && (
               <div className="space-y-2">
-                <div className="text-xs text-[var(--text-muted)] font-medium">未启用</div>
+                <div className="aiw-group-label">
+                  未启用 <b>{disabledFiltered.length}</b>
+                </div>
                 <div className="space-y-2">
                   <AnimatePresence>
                     {disabledFiltered.map((model) => (

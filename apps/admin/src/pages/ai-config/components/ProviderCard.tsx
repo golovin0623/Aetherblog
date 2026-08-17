@@ -1,9 +1,10 @@
-// 供应商卡片组件
+// 供应商卡片组件 —— 品牌光晕 + Codex 排印
 // ref: §5.1 - AI Service 架构 · 模型中心
+// 设计: 底衬/边框由 index.css .ai-provider-card 提供;品牌色仅作为数据驱动的光晕点缀
 
 import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';
-import { Toggle } from '@aetherblog/ui';
+import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import type { AiProvider } from '@/services/aiProviderService';
 import { getPresetProvider } from '../types';
 import ProviderIcon from './ProviderIcon';
@@ -33,15 +34,13 @@ export default function ProviderCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      variants={variants.fadeUp}
+      initial="initial"
+      animate="animate"
+      exit="exit"
       whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
-      className={`ai-provider-card group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${provider.is_enabled
-        ? 'bg-[var(--bg-card)] border-[var(--border-default)] shadow-xl z-10'
-        : 'bg-[var(--bg-secondary)] border-[var(--border-subtle)] opacity-80 hover:opacity-100 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-default)]'
-        }`}
+      transition={spring.soft}
+      className="ai-provider-card group relative cursor-pointer overflow-hidden rounded-2xl border p-5"
       style={
         provider.is_enabled
           ? {
@@ -52,7 +51,6 @@ export default function ProviderCard({
             WebkitBackfaceVisibility: 'hidden',
           }
           : {
-            borderColor: 'var(--intelligence-border)',
             transform: 'translateZ(0)',
             willChange: 'transform',
             WebkitBackfaceVisibility: 'hidden',
@@ -60,17 +58,17 @@ export default function ProviderCard({
       }
       onClick={onClick}
     >
-      {/* 启用状态背景光晕 - 增强透明感 */}
+      {/* 启用状态背景光晕 - 品牌色透出 */}
       {provider.is_enabled && (
         <>
           <div
-            className="absolute -inset-[10%] opacity-[0.08] pointer-events-none blur-3xl transition-opacity group-hover:opacity-[0.12]"
+            className="pointer-events-none absolute -inset-[10%] opacity-[0.08] blur-3xl transition-opacity duration-quick ease-aether group-hover:opacity-[0.12]"
             style={{
               background: `radial-gradient(circle at 20% 20%, ${brand.gradientFrom}, transparent 70%), radial-gradient(circle at 80% 80%, ${brand.gradientTo}, transparent 70%)`
             }}
           />
-          <div className="absolute -inset-[1px] rounded-[inherit] pointer-events-none z-10 overflow-hidden">
-            {/* 特色光带：极简边框 */}
+          <div className="pointer-events-none absolute -inset-[1px] z-10 overflow-hidden rounded-[inherit]">
+            {/* 特色光带：顶部品牌色细线 */}
             <div
               className="absolute inset-x-0 top-0 h-[2px]"
               style={{
@@ -82,14 +80,15 @@ export default function ProviderCard({
         </>
       )}
 
-      <div className={`relative z-10 flex items-start justify-between mb-4 ${!provider.is_enabled ? 'filter grayscale opacity-60' : ''}`}>
+      <div className={`relative z-10 mb-4 flex items-start justify-between ${!provider.is_enabled ? 'opacity-60 grayscale' : ''}`}>
         {/* 图标和名称 */}
-        <div className="flex items-center gap-4 min-w-0">
+        <div className="flex min-w-0 items-center gap-4">
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform duration-500 group-hover:scale-110 flex-shrink-0 ${provider.is_enabled
-              ? 'bg-[var(--bg-primary)] text-[var(--text-primary)]'
-              : 'bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
-              }`}
+            className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl transition-transform duration-quick ease-aether group-hover:scale-110 ${
+              provider.is_enabled
+                ? 'bg-[var(--bg-raised)] text-[var(--ink-primary)]'
+                : 'bg-[var(--intelligence-control)] text-[var(--ink-muted)]'
+            }`}
             style={provider.is_enabled ? {
               boxShadow: `0 4px 20px -4px ${brand.primary}40`,
             } : undefined}
@@ -103,43 +102,52 @@ export default function ProviderCard({
             />
           </div>
           <div className="min-w-0 pr-8">
-            <h3 className="font-extrabold text-[var(--text-primary)] text-base tracking-tight truncate">
+            <h3 className="truncate text-base font-bold tracking-tight text-[var(--ink-primary)]">
               {provider.display_name || provider.name}
             </h3>
-            <p className="text-[10px] font-mono text-[var(--text-muted)] font-bold opacity-60 tracking-wider uppercase truncate">{provider.code}</p>
+            <p className="truncate font-mono text-micro uppercase tracking-wider text-[var(--ink-muted)]">
+              {provider.code}
+            </p>
           </div>
         </div>
 
-        {/* 状态指示器 - 移至右上角 */}
-        <div className="absolute top-0 right-0 h-12 flex items-center">
+        {/* 状态指示器 - 右上角 */}
+        <div className="absolute right-0 top-0 flex h-12 items-center">
           <div
-            className={`w-2 h-2 rounded-full transition-all duration-500 ${provider.is_enabled ? 'scale-125' : 'opacity-30 shadow-none scale-100'}`}
-            style={provider.is_enabled ? { backgroundColor: 'var(--color-success)', boxShadow: '0 0 12px rgba(34,197,94,0.6)' } : { backgroundColor: 'var(--text-muted)' }}
+            className={`h-2 w-2 rounded-full transition-all duration-flow ease-aether ${provider.is_enabled ? 'scale-125' : 'scale-100 opacity-30'}`}
+            style={
+              provider.is_enabled
+                ? {
+                    backgroundColor: 'var(--signal-success)',
+                    boxShadow: '0 0 12px color-mix(in oklch, var(--signal-success) 60%, transparent)',
+                  }
+                : { backgroundColor: 'var(--ink-muted)' }
+            }
           />
         </div>
       </div>
 
-      {/* 描述 - 提升可读性 - 严格截断 */}
-      <p className="relative z-10 text-[13px] text-[var(--text-primary)] opacity-80 group-hover:opacity-100 transition-opacity line-clamp-2 h-[2.5rem] overflow-hidden leading-relaxed font-medium">
+      {/* 描述 - 严格两行截断 */}
+      <p className="relative z-10 line-clamp-2 h-[2.5rem] overflow-hidden text-caption leading-relaxed text-[var(--ink-secondary)] transition-colors duration-quick ease-aether group-hover:text-[var(--ink-primary)]">
         {description}
       </p>
 
-      {/* 底部信息 - 更加微妙但清晰 */}
-      <div className="relative z-10 flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-subtle)]">
+      {/* 底部信息 */}
+      <div className="relative z-10 mt-5 flex items-center justify-between border-t border-[var(--intelligence-border)] pt-4">
         <div className="flex items-center gap-2 overflow-hidden">
-          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-[var(--bg-card-hover)] text-[var(--text-secondary)] font-bold tracking-wide uppercase whitespace-nowrap">
+          <span className="aiw-signal-badge" data-tone="neutral">
             {provider.api_type === 'OPENAI_COMPAT' ? 'OpenAI' : (provider.api_type === 'ANTHROPIC' ? 'Anthropic' : provider.api_type)}
           </span>
           {provider.priority > 0 && provider.priority < 100 && (
-            <span className="text-[10px] px-2.5 py-1 rounded-lg bg-[var(--bg-card-hover)] text-[var(--text-secondary)] font-bold tracking-wide uppercase whitespace-nowrap">
-              PRIORITY {provider.priority}
+            <span className="aiw-signal-badge" data-tone="neutral">
+              Priority {provider.priority}
             </span>
           )}
         </div>
       </div>
 
       {/* 启用开关 */}
-      <div className="ai-provider-card-toggle relative z-10 flex justify-end mt-4" onClick={(e) => e.stopPropagation()}>
+      <div className="ai-provider-card-toggle relative z-10 flex justify-end" onClick={(e) => e.stopPropagation()}>
         <Toggle
           checked={provider.is_enabled}
           onChange={(en) => onToggle(en)}
@@ -147,10 +155,9 @@ export default function ProviderCard({
         />
       </div>
 
-
-      {/* Hover 效果 - 仅在未启用时显示简单的边框高亮，启用后已有阴影 */}
+      {/* Hover 效果 - 未启用时的极光描边提示 */}
       {!provider.is_enabled && (
-        <div className="absolute inset-0 rounded-2xl border-2 border-primary/0 group-hover:border-primary/10 transition-colors pointer-events-none" />
+        <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-transparent transition-colors duration-quick ease-aether group-hover:border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]" />
       )}
     </motion.div>
   );
@@ -172,14 +179,13 @@ export function ProviderGrid({
   className = '',
   tone = 'primary',
 }: ProviderGridProps) {
-  const toneClass = tone === 'secondary' ? 'text-[var(--color-secondary)]' : 'text-primary';
   return (
     <div className={`ai-provider-grid-section ${className}`}>
-      <div className="ai-provider-grid-heading flex items-center gap-2 mb-4">
-        <h2 className={`text-sm font-medium ${toneClass}`}>{title}</h2>
-        <span className="text-xs text-[var(--text-muted)]">{count}</span>
+      <div className="ai-provider-grid-heading flex items-center gap-2 mb-4" data-tone={tone}>
+        <h2 className="text-sm">{title}</h2>
+        <span>{count}</span>
       </div>
-      <div className="ai-provider-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="ai-provider-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {children}
       </div>
     </div>
@@ -189,22 +195,23 @@ export function ProviderGrid({
 // 空状态
 export function EmptyProviderState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-[var(--bg-card)] flex items-center justify-center mb-4">
-        <Power className="w-8 h-8 text-[var(--text-muted)]" />
+    <motion.div
+      variants={variants.fadeUp}
+      initial="initial"
+      animate="animate"
+      transition={transition.flow}
+      className="aiw-empty"
+    >
+      <div className="aiw-empty-icon">
+        <Power />
       </div>
-      <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">
-        暂无服务商
-      </h3>
-      <p className="text-sm text-[var(--text-muted)] mb-6 max-w-sm">
-        添加 AI 服务商以开始使用智能功能
+      <h3 className="aiw-empty-title">暂无服务商</h3>
+      <p className="aiw-empty-hint">
+        接入 OpenAI、Anthropic、Google 等 AI 服务商，即可为写作、搜索与对话提供模型算力。
       </p>
-      <button
-        onClick={onAdd}
-        className="px-4 py-2 rounded-xl bg-primary text-[var(--bg-primary)] font-medium hover:bg-primary/90 transition-colors"
-      >
+      <button onClick={onAdd} className="aiw-button-primary mt-3">
         添加服务商
       </button>
-    </div>
+    </motion.div>
   );
 }
