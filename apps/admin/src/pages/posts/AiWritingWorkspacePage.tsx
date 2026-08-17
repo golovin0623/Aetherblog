@@ -7,6 +7,8 @@
  * ✅ Phase 3: 批注/批量优化/对话面板
  * ✅ Phase 4: 工作流优化（自由/引导模式切换）
  * ✅ Phase 5: 移动端重构 —— Aether Codex 四层表面 + 双排头部 + 底抽屉面板
+ * ✅ Phase 6: 真流式对话（SSE delta/think + ink-bleed）+ 选区工具结果预览卡
+ *            + 底部状态栏（字数/阅读时长/保存状态）·签名时刻 #5「AI 工坊」
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
@@ -36,19 +38,22 @@ import {
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
+import { spring, transition } from '@aetherblog/ui';
 import { cn, extractApiErrorMessage } from '@/lib/utils';
 
 // Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
 import { useAiPrediction } from '@/hooks/useAiPrediction';
+import { useWritingChat } from '@/hooks/useWritingChat';
 
 // 组件
-import { FloatingAiToolbar } from '@/components/ai/FloatingAiToolbar';
+import { FloatingAiToolbar, type SelectionRange } from '@/components/ai/FloatingAiToolbar';
 import { WorkflowNavigation } from '@/components/ai/WorkflowNavigation';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { DiffView } from '@/components/history/DiffView';
 import { AiChatPanel } from '@/components/ai/AiChatPanel';
+import { AiResultPreview, type AiToolPreviewState } from '@/components/ai/AiResultPreview';
 
 // 类型定义
 import type { AiCapability } from '@/types/writing-workflow';
@@ -191,6 +196,23 @@ export function AiWritingWorkspacePage() {
     snapshot2: ContentSnapshot;
   } | null>(null);
 
+  // 选区 AI 工具:结果先预览再落笔
+  const [toolPreview, setToolPreview] = useState<AiToolPreviewState | null>(null);
+  const toolSeqRef = useRef(0);
+
+  // 保存状态(底部状态栏)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const mountedRef = useRef(false);
+
+  // AI 对话 —— 状态持在页面层,面板开关不丢历史
+  const chat = useWritingChat();
+  const chatDocument = useMemo(() => ({ title, content }), [title, content]);
+
+  // 底部状态栏数据
+  const charCount = useMemo(() => content.replace(/\s+/g, '').length, [content]);
+  const readingMinutes = Math.max(1, Math.round(charCount / 400));
+
   // 过 mobile 边界时自动迁移编辑器视图：移动端 split 不可用 → edit
   useEffect(() => {
     if (isMobile && editorViewMode === 'split') {
@@ -253,24 +275,28 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // AI 工具执行
-  const handleToolExecute = useCallback(
-    async (toolId: string, selectedText: string) => {
+  // 选区 AI 工具执行 —— 结果进预览卡,由作者决定替换/插入/舍弃
+  const runSelectionTool = useCallback(
+    async (toolId: string, selectedText: string, range: SelectionRange) => {
+      const capability = AI_CAPABILITIES.find((item) => item.id === toolId);
+      if (!capability) {
+        toast.error(`未知的 AI 工具：${toolId}`);
+        return;
+      }
       workflow.recordToolUsage(toolId);
 
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'user-edit',
-          sourceName: '修改前',
-        });
-      }
+      const seq = ++toolSeqRef.current;
+      setToolPreview({
+        toolId,
+        toolLabel: capability.label,
+        original: selectedText,
+        range,
+        status: 'loading',
+        result: '',
+      });
 
       try {
-        let result: string = '';
-
+        let result = '';
         if (toolId === 'polish') {
           const polishParams = loadToolParams('polish');
           const res = await aiService.polishContent({
@@ -289,56 +315,175 @@ export function AiWritingWorkspacePage() {
           if (res.code === 200 && res.data) {
             result = res.data.summary;
           }
-        } else {
-          toast.error(`未知的 AI 工具：${toolId}`);
-          return;
         }
 
+        if (seq !== toolSeqRef.current) return; // 预览已被关闭,丢弃迟到结果
         if (!result.trim()) {
-          toast.error('AI 未返回有效内容');
+          setToolPreview((p) => (p ? { ...p, status: 'error', error: 'AI 未返回有效内容' } : p));
           return;
         }
-
-        const newContent = content.replace(selectedText, result);
-        setContent(newContent);
-
-        if (postId) {
-          await historyManager.createSnapshot({
-            title,
-            content: newContent,
-            summary,
-            source: 'ai-suggestion',
-            sourceName: `AI ${toolId}`,
-          });
-        }
-
-        toast.success(`AI ${toolId} 完成`);
+        setToolPreview((p) => (p ? { ...p, status: 'ok', result } : p));
       } catch (error) {
-        toast.error('AI 处理失败');
         console.error('AI 工具执行失败:', error);
+        if (seq !== toolSeqRef.current) return;
+        setToolPreview((p) =>
+          p ? { ...p, status: 'error', error: extractApiErrorMessage(error, 'AI 处理失败') } : p
+        );
       }
     },
-    [workflow, historyManager, title, content, summary, postId]
+    [workflow]
   );
+
+  const closeToolPreview = useCallback(() => {
+    toolSeqRef.current += 1;
+    setToolPreview(null);
+    editorViewRef.current?.focus();
+  }, []);
+
+  const retryToolPreview = useCallback(() => {
+    if (!toolPreview) return;
+    void runSelectionTool(toolPreview.toolId, toolPreview.original, toolPreview.range);
+  }, [toolPreview, runSelectionTool]);
+
+  // 应用预览结果:优先原选区;若期间文档已变化则按原文重新定位(修复
+  // 旧实现 content.replace 只替换首个匹配的错位问题)
+  const applyToolResult = useCallback(
+    async (mode: 'replace' | 'append') => {
+      if (!toolPreview || toolPreview.status !== 'ok') return;
+      const view = editorViewRef.current;
+      if (!view) {
+        toast.error('编辑器未就绪,请改用复制');
+        return;
+      }
+      const { range, original, result, toolLabel } = toolPreview;
+      const doc = view.state.doc.toString();
+      let { from, to } = range;
+      if (doc.slice(from, to) !== original) {
+        const located = doc.indexOf(original);
+        if (located < 0) {
+          toast.error('原文已被修改,无法定位选区;请改用复制');
+          return;
+        }
+        from = located;
+        to = located + original.length;
+      }
+
+      if (postId) {
+        await historyManager.createSnapshot({
+          title,
+          content,
+          summary,
+          source: 'user-edit',
+          sourceName: `AI ${toolLabel}前`,
+        });
+      }
+
+      const insert = mode === 'replace' ? result : `${original}\n\n${result}`;
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: { anchor: from + insert.length },
+      });
+      const newContent = view.state.doc.toString();
+      setContent(newContent);
+
+      if (postId) {
+        await historyManager.createSnapshot({
+          title,
+          content: newContent,
+          summary,
+          source: 'ai-suggestion',
+          sourceName: `AI ${toolLabel}`,
+        });
+      }
+
+      setToolPreview(null);
+      view.focus();
+      toast.success(mode === 'replace' ? `已替换为 AI ${toolLabel}结果` : `已在原文后插入 AI ${toolLabel}结果`);
+    },
+    [toolPreview, postId, historyManager, title, content, summary]
+  );
+
+  // 把 AI 对话回复插入正文(光标处;编辑器未挂载时追加到文末)
+  const insertChatReply = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (postId) {
+        await historyManager.createSnapshot({
+          title,
+          content,
+          summary,
+          source: 'user-edit',
+          sourceName: '插入 AI 回复前',
+        });
+      }
+      const view = editorViewRef.current;
+      if (view) {
+        const { from, to } = view.state.selection.main;
+        view.dispatch({
+          changes: { from, to, insert: trimmed },
+          selection: { anchor: from + trimmed.length },
+        });
+        setContent(view.state.doc.toString());
+        view.focus();
+      } else {
+        setContent((current) => {
+          const separator = current.trim() ? '\n\n' : '';
+          return `${current}${separator}${trimmed}`;
+        });
+      }
+      toast.success('已插入 AI 回复');
+    },
+    [content, historyManager, postId, summary, title]
+  );
+
+  // 内容变更标脏(首帧初始化不算)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    setIsDirty(true);
+  }, [title, content, summary]);
 
   // 自动保存
   useEffect(() => {
     if (!postId || !content) return;
 
     const timer = setTimeout(() => {
-      historyManager.createSnapshot({
-        title,
-        content,
-        summary,
-        source: 'auto-save',
-        sourceName: '自动保存',
+      void Promise.resolve(
+        historyManager.createSnapshot({
+          title,
+          content,
+          summary,
+          source: 'auto-save',
+          sourceName: '自动保存',
+        })
+      ).then(() => {
+        setLastSavedAt(Date.now());
+        setIsDirty(false);
       });
     }, 3000);
 
     return () => clearTimeout(timer);
   }, [title, content, summary, postId, historyManager]);
 
-  // 快捷键
+  const handleSave = useCallback(() => {
+    if (postId) {
+      historyManager.createSnapshot({
+        title,
+        content,
+        summary,
+        source: 'manual-save',
+        sourceName: '手动保存',
+      });
+    }
+    setLastSavedAt(Date.now());
+    setIsDirty(false);
+    toast.success('保存成功');
+  }, [postId, historyManager, title, content, summary]);
+
+  // 快捷键:⌘Z 撤销 · ⌘⇧Z 重做 · ⌘H 历史 · ⌘S 保存
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -357,24 +502,15 @@ export function AiWritingWorkspacePage() {
           setShowHistoryPanel((prev) => !prev);
         }
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyManager, isMobile]);
-
-  const handleSave = useCallback(() => {
-    if (postId) {
-      historyManager.createSnapshot({
-        title,
-        content,
-        summary,
-        source: 'manual-save',
-        sourceName: '手动保存',
-      });
-    }
-    toast.success('保存成功');
-  }, [postId, historyManager, title, content, summary]);
+  }, [historyManager, isMobile, handleSave]);
 
   const runArticleAuditWorkflow = useCallback(async () => {
     if (!postId) {
@@ -787,7 +923,7 @@ export function AiWritingWorkspacePage() {
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: 280, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+                transition={transition.quick}
                 className="border-r border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
               >
                 <div className="h-full flex flex-col w-[280px]">
@@ -834,6 +970,8 @@ export function AiWritingWorkspacePage() {
                 'w-full bg-transparent font-display tracking-tight text-[var(--ink-primary)]',
                 'placeholder:text-[var(--ink-subtle)] placeholder:font-editorial placeholder:italic',
                 'focus:outline-none',
+                // 极光墨水光标 + 选区着色 —— 写作台的"光"落在输入处
+                'caret-[var(--aurora-1)] selection:bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
                 // 移动端 h4(24px) · 桌面端 h3(30px)
                 'text-[var(--fs-h4)] md:text-[var(--fs-h3)] leading-[var(--lh-tight)]'
               )}
@@ -878,13 +1016,14 @@ export function AiWritingWorkspacePage() {
               additionalExtensions={ghostTextExtensions}
             />
 
-            {/* 浮动 AI 工具栏：仅桌面。移动端靠选中 → 长按原生菜单或 AI 对话面板触发 */}
-            {!isMobile && (
+            {/* 浮动 AI 工具栏：仅桌面。移动端靠选中 → 长按原生菜单或 AI 对话面板触发。
+                预览卡打开期间隐藏,避免双层浮层。 */}
+            {!isMobile && !toolPreview && (
               <FloatingAiToolbar
                 editorViewRef={editorViewRef}
                 currentStage={workflow.context.currentStage}
                 availableTools={AI_CAPABILITIES}
-                onToolExecute={handleToolExecute}
+                onToolExecute={(toolId, text, range) => void runSelectionTool(toolId, text, range)}
               />
             )}
           </div>
@@ -916,28 +1055,26 @@ export function AiWritingWorkspacePage() {
           </AnimatePresence>
         )}
 
-        {/* 桌面端：AI 对话面板（侧栏） */}
+        {/* 桌面端：AI 对话面板（侧栏,真流式） */}
         {!isMobile && (
           <AnimatePresence>
             {showChatPanel && (
-              <AiChatPanel
-                messages={workflow.context.conversationHistory || []}
-                onSendMessage={async (message, _includeContext) => {
-                  workflow.addConversation('user', message);
-                  setTimeout(() => {
-                    workflow.addConversation('ai', '这是 AI 的回复示例');
-                  }, 1000);
-                }}
-                onClearHistory={() => {
-                  // 清空对话历史
-                }}
-                onClose={() => setShowChatPanel(false)}
-                currentDocumentContext={{
-                  title,
-                  content,
-                  wordCount: content.length,
-                }}
-              />
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 400, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={transition.quick}
+                className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] overflow-hidden flex-shrink-0"
+              >
+                <div className="h-full w-[400px] max-w-full">
+                  <AiChatPanel
+                    chat={chat}
+                    document={chatDocument}
+                    onInsertToEditor={(text) => void insertChatReply(text)}
+                    onClose={() => setShowChatPanel(false)}
+                  />
+                </div>
+              </motion.aside>
             )}
           </AnimatePresence>
         )}
@@ -949,7 +1086,7 @@ export function AiWritingWorkspacePage() {
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: 340, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                transition={transition.quick}
                 className="border-l border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
               >
                 <AtlasReferencePanel
@@ -964,6 +1101,42 @@ export function AiWritingWorkspacePage() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* ============ 底部状态栏:字数 / 阅读时长 / 工作流 / 保存状态 ============ */}
+      <footer className="flex items-center justify-between gap-3 px-4 md:px-6 h-8 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] flex-shrink-0 font-mono text-[10px] md:text-[var(--fs-micro)] text-[var(--ink-muted)]">
+        <div className="flex items-center gap-3 tabular-nums min-w-0">
+          <span>{charCount.toLocaleString('zh-CN')} 字</span>
+          {charCount > 0 && <span className="hidden sm:inline">约 {readingMinutes} 分钟</span>}
+          {workflowMode === 'guided' && (
+            <span className="hidden md:inline uppercase tracking-[0.14em]">
+              工作流 {workflow.progress.percentage}%
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 tabular-nums flex-shrink-0">
+          {!postId ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_25%,transparent)]" />
+              本地草稿
+            </>
+          ) : isDirty ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--signal-warn)]" />
+              未保存
+            </>
+          ) : lastSavedAt ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--signal-success)]" />
+              已保存 {new Date(lastSavedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_25%,transparent)]" />
+              待编辑
+            </>
+          )}
+        </div>
+      </footer>
 
       {/* ============ 移动端：底部抽屉面板 ============ */}
       {isMobile && (
@@ -994,20 +1167,13 @@ export function AiWritingWorkspacePage() {
           )}
           {mobilePanel === 'chat' && (
             <AiChatPanel
-              messages={workflow.context.conversationHistory || []}
-              onSendMessage={async (message, _includeContext) => {
-                workflow.addConversation('user', message);
-                setTimeout(() => {
-                  workflow.addConversation('ai', '这是 AI 的回复示例');
-                }, 1000);
+              chat={chat}
+              document={chatDocument}
+              onInsertToEditor={(text) => {
+                void insertChatReply(text);
+                closeMobilePanel();
               }}
-              onClearHistory={() => {}}
               onClose={closeMobilePanel}
-              currentDocumentContext={{
-                title,
-                content,
-                wordCount: content.length,
-              }}
             />
           )}
           {mobilePanel === 'workflow' && (
@@ -1053,6 +1219,18 @@ export function AiWritingWorkspacePage() {
           )}
         </MobileBottomSheet>
       )}
+
+      {/* 选区 AI 工具结果预览 */}
+      <AnimatePresence>
+        {toolPreview && (
+          <AiResultPreview
+            state={toolPreview}
+            onApply={(mode) => void applyToolResult(mode)}
+            onRetry={retryToolPreview}
+            onClose={closeToolPreview}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 差异对比 */}
       <AnimatePresence>
@@ -1133,9 +1311,13 @@ function AtlasReferencePanel({
         {state.kind === 'idle' ? (
           <div className="px-4 py-6 text-sm text-[var(--ink-secondary)]">等待检索。</div>
         ) : state.kind === 'loading' ? (
-          <div className="space-y-3 px-4 py-4">
+          <div className="space-y-3 px-4 py-4" role="status" aria-label="正在检索 Atlas 参考">
             {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-20 rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]" />
+              <div
+                key={index}
+                className="rounded-lg bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] animate-pulse"
+                style={{ height: index % 2 === 0 ? 84 : 68, animationDelay: `${index * 120}ms` }}
+              />
             ))}
           </div>
         ) : state.kind === 'error' ? (
@@ -1339,7 +1521,7 @@ function MobileBottomSheet({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={transition.quick}
             onClick={onClose}
             className="fixed inset-0 z-40 bg-[color-mix(in_oklch,var(--ink-primary)_40%,transparent)] backdrop-blur-sm"
             aria-hidden="true"
@@ -1348,7 +1530,7 @@ function MobileBottomSheet({
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.8 }}
+            transition={spring.precise}
             className={cn(
               'surface-overlay',
               'fixed left-0 right-0 bottom-0 z-50',

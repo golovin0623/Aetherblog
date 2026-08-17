@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — AI 协同写作工坊精修:真流式对话 / 结果预览卡 / 签名时刻 #5「Ink Bleed」落地 (2026-08-17, branch claude/ai-writing-design-polish-apdkb6)
+
+对标主流 AI 辅助创作工具(Notion AI / 飞书),把 `/posts/:id/ai-writing` 工作区从「粗略可用」升级到设计系统签名级交互。零新增色相/字号/曲线,全部消费既有 Codex token 与 `@aetherblog/ui` 动效预设。
+
+- **AI 对话面板(`AiChatPanel` 全量重写 + 新增 `useWritingChat` hook)：**
+  - 回复从 `setTimeout` mock 换成 `/api/v1/agent/chat` 真 SSE(复用 AetherHub 的 `streamAgentChat` 协议,delta / think 事件),支持流式中断(停止按钮)、失败重试、迟到事件序号守卫;对话状态持在页面层,面板开关不丢历史。
+  - 签名时刻 #5「AI 工坊 · Ink Bleed」落地:AI 回复用 Instrument Serif(`--font-editorial`)渲染 markdown(`.writing-chat-md`,`MarkdownPreview` + CJK bold 修正),`useSmoothStream` 匀速吐字 + 整段纸面浮起(`.writing-stream-fade`),流式末尾墨水光标(`.ink-cursor`),等待态三颗极光呼吸点(`.writing-typing-dot`,非 spinner)。
+  - 思考流独立折叠面板:流式中自动展开、结束自动收起(用户手动干预后不再抢状态),mono caption + aurora 左光条。
+  - 新交互:空状态 editorial 邀请语 + 4 枚快捷指令 chips(续写/修改建议/拟标题/提炼大纲,stagger 入场);「引用全文」开关移入 composer(默认开,显示实时字数);AI 回复可 复制 / **一键插入正文**(光标处,带历史快照)/ 重新生成;清空历史两段式确认(替代原生 confirm 缺失确认的隐患)。
+  - Codex 迁移:原组件全量 legacy token(`--text-*` / `--bg-card` / `border-subtle` / spinner)按红线 3.7 同 commit 清零。
+- **选区 AI 工具(`FloatingAiToolbar` 重写 + 新增 `AiResultPreview`)：**
+  - 结果不再直接改写正文 —— 先进 `surface-overlay` 预览卡:原文 vs AI 结果对照,结果文字按句分片 `.ai-stream .delta` ink-bleed 入场;作者决定「替换选中 / 插入其后 / 复制 / 舍弃」,Esc 舍弃,就绪自动聚焦主操作。
+  - **修复替换错位 bug**:旧实现 `content.replace(selectedText, …)` 只替换首个匹配,选中重复段落时会改错位置;现经 CodeMirror `dispatch` 按精确选区落笔,期间文档若被编辑则按原文重定位、定位失败则拒绝写入(可复制兜底),应用前后各建历史快照。
+  - 工具栏迁 Codex:`surface-overlay` + mono 标签 + aurora hover,去 `shadow-2xl`(禁忌 #9)/ spinner / legacy token;底部显示选区字数与当前写作阶段。
+- **工作区页面打磨(`AiWritingWorkspacePage`)：**
+  - 新增底部状态栏(admin「锐」气质):字数 / 预计阅读时长 / 引导模式工作流进度 / 保存状态三态(未保存 warn 点 · 已保存 HH:MM success 点 · 本地草稿),mono + tabular-nums。
+  - 新增 `⌘S` 手动保存快捷键;自动/手动保存回写状态栏时间戳。
+  - 动效收编:页面内全部裸 bezier(`[0.16,1,0.3,1]`)与裸 spring 数值替换为 `@aetherblog/ui` 的 `transition.quick` / `spring.precise`(红线 3.4-4)。
+  - Atlas 参考骨架屏补 pulse 呼吸 + 错落高度/延迟(红线 3.6);标题输入极光 caret + 选区着色。
+- **验证：** admin `tsc --noEmit` 干净、`vite build` 通过、vitest 351/351 全绿、`pnpm design-system:check` 保持 0 error;全部动效带 `prefers-reduced-motion` 降级。
+- 📄 文档影响:已更新 `CHANGELOG.md`、`.claude/design-system/history.md`(Round 8);无新增 API / migration / 共享包导出,故 architecture 与 api-handlers 无需更新。
+
 ### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
 
 按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：
