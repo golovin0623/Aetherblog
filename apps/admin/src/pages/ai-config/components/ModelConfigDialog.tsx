@@ -1,14 +1,32 @@
-// 模型配置弹窗组件
+// 模型配置弹窗组件 —— 工作台式分区配置面板
 // ref: §5.1 - AI Service 架构 · 模型中心
+// 设计: aiw-dialog 骨架(粘性头/锚点导航/粘性尾) · 能力 chip 网格 · 价格 mono+tnum
+//      滚动联动分区导航,Esc 关闭,焦点态走极光光环(见 index.css .aiw-*)
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
-import { X, Loader2, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Sparkles } from 'lucide-react';
+import {
+  X,
+  Loader2,
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Sparkles,
+  Check,
+  Wand2,
+  Eye,
+  Brain,
+  Globe,
+  Image as ImageIcon,
+  Video,
+  Paperclip,
+  Braces,
+} from 'lucide-react';
 import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
+import { useQuery } from '@tanstack/react-query';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing, type SamplingParam } from '../types';
 import { groupParamControls, SAMPLING_PARAMS } from '../utils/modelParams';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
@@ -63,6 +81,36 @@ const OUTPUT_TOKENS_PRESETS: Array<{ value: number; label: string }> = [
   { value: 32768, label: '32K' },
   { value: 65536, label: '64K' },
   { value: 131072, label: '128K' },
+];
+
+// 分区锚点(渲染顺序即导航顺序)
+const DIALOG_SECTIONS = [
+  { id: 'identity', label: '基础' },
+  { id: 'spec', label: '规格' },
+  { id: 'abilities', label: '能力' },
+  { id: 'params', label: '参数' },
+  { id: 'search', label: '搜索' },
+  { id: 'pricing', label: '价格' },
+  { id: 'advanced', label: '高级' },
+] as const;
+
+type SectionId = (typeof DIALOG_SECTIONS)[number]['id'];
+
+// 能力目录:与 ModelCard 徽章同一套语义
+const ABILITY_OPTIONS: Array<{
+  key: keyof ModelAbility;
+  label: string;
+  desc: string;
+  icon: typeof Wand2;
+}> = [
+  { key: 'functionCall', label: '函数调用', desc: '可调用工具 / 函数', icon: Wand2 },
+  { key: 'vision', label: '视觉识别', desc: '接受图片输入', icon: Eye },
+  { key: 'reasoning', label: '深度思考', desc: '具备链式推理能力', icon: Brain },
+  { key: 'search', label: '联网搜索', desc: '内置搜索增强', icon: Globe },
+  { key: 'imageOutput', label: '图片输出', desc: '可生成图像', icon: ImageIcon },
+  { key: 'video', label: '视频输出', desc: '可生成视频', icon: Video },
+  { key: 'files', label: '文件上传', desc: '可处理文件输入', icon: Paperclip },
+  { key: 'structuredOutput', label: '结构化输出', desc: '可返回结构化 JSON', icon: Braces },
 ];
 
 // 空串 → null（未设置），数字串 → number；保留 "0" 为合法值。
@@ -124,6 +172,11 @@ export default function ModelConfigDialog({
     pricing_json: '',
   });
   const [jsonError, setJsonError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // 分区滚动联动
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>('identity');
 
   const createMutation = useCreateModel();
   const updateMutation = useUpdateModel();
@@ -213,6 +266,37 @@ export default function ModelConfigDialog({
       pricing_json: extra.pricing ? JSON.stringify(extra.pricing, null, 2) : '',
     });
   }, [initial]);
+
+  // Esc 关闭(确认弹窗打开时让确认层自己处理)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showDeleteConfirm) onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose, showDeleteConfirm]);
+
+  // 滚动联动:取视口上缘 100px 内最后一个越过的分区
+  const handleBodyScroll = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const bodyTop = body.getBoundingClientRect().top;
+    let current: SectionId = 'identity';
+    body.querySelectorAll<HTMLElement>('[data-aiw-section]').forEach((el) => {
+      if (el.getBoundingClientRect().top - bodyTop <= 100) {
+        current = (el.dataset.aiwSection as SectionId) || current;
+      }
+    });
+    setActiveSection(current);
+  }, []);
+
+  const scrollToSection = (id: SectionId) => {
+    const body = bodyRef.current;
+    const el = body?.querySelector<HTMLElement>(`[data-aiw-section='${id}']`);
+    if (!el) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  };
 
   const handleSubmit = () => {
     setJsonError('');
@@ -325,8 +409,6 @@ export default function ModelConfigDialog({
     }
   };
 
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
   const handleDelete = () => {
     if (!initial) return;
     deleteMutation.mutate(initial.id, { onSuccess: onClose });
@@ -339,6 +421,18 @@ export default function ModelConfigDialog({
     () => groupParamControls(form.settings.extendParams, form.abilities),
     [form.settings.extendParams, form.abilities]
   );
+
+  const enabledAbilityCount = useMemo(
+    () => ABILITY_OPTIONS.filter(({ key }) => form.abilities[key]).length,
+    [form.abilities]
+  );
+
+  const toggleAbility = (key: keyof ModelAbility) => {
+    setForm((prev) => ({
+      ...prev,
+      abilities: { ...prev.abilities, [key]: !prev.abilities[key] },
+    }));
+  };
 
   const toggleExtendParam = (id: string) => {
     setForm((prev) => {
@@ -359,6 +453,9 @@ export default function ModelConfigDialog({
     });
   };
 
+  const currencySymbol = form.pricing_currency === 'CNY' ? '¥' : '$';
+  const typeLabel = MODEL_TYPES.find((t) => t.value === form.model_type)?.label || form.model_type;
+
   return createPortal(
     <motion.div
       variants={variants.fade}
@@ -366,7 +463,7 @@ export default function ModelConfigDialog({
       animate="animate"
       exit="exit"
       transition={transition.quick}
-      className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
+      className="aiw-overlay sm:p-4"
       onClick={onClose}
     >
       <motion.div
@@ -376,114 +473,149 @@ export default function ModelConfigDialog({
         exit="exit"
         transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
+        className="aiw-dialog surface-overlay sm:max-w-3xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'create' ? '添加自定义模型' : '模型配置'}
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-            {mode === 'create' ? '添加自定义模型' : '模型配置'}
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="关闭"
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            <X className="w-5 h-5" />
+        <div className="aiw-dialog-header">
+          <div className="min-w-0">
+            <div className="aiw-eyebrow">
+              Model · {mode === 'create' ? 'Create' : 'Configure'}
+            </div>
+            <h2 className="aiw-dialog-title mt-1.5 truncate">
+              {mode === 'create'
+                ? '添加自定义模型'
+                : form.display_name || initial?.display_name || initial?.model_id || '模型配置'}
+            </h2>
+            <div className="aiw-dialog-subtitle">
+              {mode === 'edit' && initial && <span>{initial.model_id}</span>}
+              <span className="aiw-signal-badge" data-tone="neutral">{providerCode}</span>
+              <span className="aiw-signal-badge" data-tone="neutral">{typeLabel}</span>
+              {enabledAbilityCount > 0 && (
+                <span className="aiw-signal-badge" data-tone="accent">
+                  {enabledAbilityCount} 项能力
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="关闭" className="aiw-dialog-close">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* 表单 */}
-        <div className="p-5 space-y-6">
-          {/* 基础信息 */}
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">基础信息</div>
+        {/* 分区锚点导航 */}
+        <nav className="aiw-dialog-nav" aria-label="配置分区导航">
+          {DIALOG_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              data-active={activeSection === section.id ? 'true' : 'false'}
+              onClick={() => scrollToSection(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
 
-            {/* 模型 ID */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">
+        {/* 表单主体 */}
+        <div ref={bodyRef} onScroll={handleBodyScroll} className="aiw-dialog-body">
+          {/* —— 基础信息 —— */}
+          <section data-aiw-section="identity" className="aiw-section">
+            <div className="aiw-eyebrow">基础信息</div>
+
+            <div className="aiw-field">
+              <label className="aiw-label" htmlFor="aiw-model-id">
                 模型 ID
-                {mode === 'edit' && (
-                  <span className="text-xs opacity-60 ml-1">(不可修改)</span>
-                )}
+                {mode === 'edit' && <small>创建后不可修改</small>}
               </label>
               <input
+                id="aiw-model-id"
                 type="text"
                 value={form.model_id}
                 onChange={(e) => setForm((prev) => ({ ...prev, model_id: e.target.value }))}
                 disabled={mode === 'edit'}
                 placeholder="gpt-5-mini"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all disabled:opacity-50"
+                data-mono="true"
+                className="aiw-input"
               />
-              <p className="text-xs text-[var(--text-muted)]">
-                创建后不可修改，调用 AI 时将作为模型 ID 使用
-              </p>
+              {mode === 'create' && (
+                <p className="aiw-helper">调用 AI 时作为模型 ID 使用，创建后不可修改。</p>
+              )}
             </div>
 
-            {/* 显示名称 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">模型展示名称</label>
-              <input
-                type="text"
-                value={form.display_name}
-                onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                placeholder="GPT-5.2 / Claude 4.5 Thinking"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-display-name">展示名称</label>
+                <input
+                  id="aiw-display-name"
+                  type="text"
+                  value={form.display_name}
+                  onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                  placeholder="GPT-5.2 / Claude 4.5 Thinking"
+                  className="aiw-input"
+                />
+              </div>
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-organization">发布组织</label>
+                <input
+                  id="aiw-organization"
+                  type="text"
+                  value={form.organization}
+                  onChange={(e) => setForm((prev) => ({ ...prev, organization: e.target.value }))}
+                  placeholder="OpenAI / Anthropic / Google"
+                  className="aiw-input"
+                />
+              </div>
             </div>
 
-            {/* 模型描述 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">模型描述</label>
+            <div className="aiw-field">
+              <label className="aiw-label" htmlFor="aiw-description">模型描述</label>
               <textarea
-                rows={3}
+                id="aiw-description"
+                rows={2}
                 value={form.description}
                 onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="简要描述模型特性"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                className="aiw-textarea"
               />
             </div>
 
-            {/* 归属组织 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">发布组织</label>
-              <input
-                type="text"
-                value={form.organization}
-                onChange={(e) => setForm((prev) => ({ ...prev, organization: e.target.value }))}
-                placeholder="OpenAI / Anthropic / Google"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
-              />
-            </div>
-
-            {/* 模型类型 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">模型类型</label>
-              <select
-                value={form.model_type}
-                onChange={(e) => setForm((prev) => ({ ...prev, model_type: e.target.value }))}
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
-              >
-                {MODEL_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* 旧版标记 */}
-            <CapabilityToggle
-              label="标记为旧版模型"
-              description="用于标记已弃用但仍保留的模型"
-              checked={!!form.legacy}
-              onChange={(v) => setForm((prev) => ({ ...prev, legacy: v }))}
-            />
-
-            {/* 部署名 */}
-            {showDeployName && (
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">部署名称 (Azure)</label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-model-type">模型类型</label>
+                <select
+                  id="aiw-model-type"
+                  value={form.model_type}
+                  onChange={(e) => setForm((prev) => ({ ...prev, model_type: e.target.value }))}
+                  className="aiw-select"
+                >
+                  {MODEL_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-released-at">发布时间</label>
                 <input
+                  id="aiw-released-at"
+                  type="date"
+                  value={form.released_at}
+                  onChange={(e) => setForm((prev) => ({ ...prev, released_at: e.target.value }))}
+                  data-mono="true"
+                  className="aiw-input"
+                />
+              </div>
+            </div>
+
+            {showDeployName && (
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-deploy-name">部署名称<small>Azure</small></label>
+                <input
+                  id="aiw-deploy-name"
                   type="text"
                   value={form.config.deploymentName}
                   onChange={(e) =>
@@ -493,51 +625,44 @@ export default function ModelConfigDialog({
                     }))
                   }
                   placeholder="gpt-5-2-deploy"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                  data-mono="true"
+                  className="aiw-input"
                 />
               </div>
             )}
 
-            {/* 发布时间 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">发布时间</label>
-              <input
-                type="date"
-                value={form.released_at}
-                onChange={(e) => setForm((prev) => ({ ...prev, released_at: e.target.value }))}
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
-              />
+            <CapabilityToggle
+              label="标记为旧版模型"
+              description="用于标记已弃用但仍保留的模型"
+              checked={!!form.legacy}
+              onChange={(v) => setForm((prev) => ({ ...prev, legacy: v }))}
+            />
+          </section>
+
+          {/* —— 规格(Tokens) —— */}
+          <section data-aiw-section="spec" className="aiw-section">
+            <div className="aiw-eyebrow">
+              规格
+              <span className="aiw-eyebrow-meta">Tokens</span>
             </div>
-          </div>
 
-          {/* Tokens */}
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Tokens</div>
-
-            {/* 上下文窗口 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">最大上下文窗口</label>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex flex-wrap gap-1.5 flex-1">
-                  {CONTEXT_PRESETS.map((preset) => {
-                    const active = String(preset.value) === form.context_window;
-                    return (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() =>
-                          setForm((prev) => ({ ...prev, context_window: String(preset.value) }))
-                        }
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                          active
-                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
-                            : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
+            <div className="aiw-field">
+              <span className="aiw-label">最大上下文窗口</span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-1 flex-wrap gap-1.5">
+                  {CONTEXT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      className="aiw-preset"
+                      data-active={String(preset.value) === form.context_window ? 'true' : 'false'}
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, context_window: String(preset.value) }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
                 <input
                   type="number"
@@ -547,52 +672,30 @@ export default function ModelConfigDialog({
                     setForm((prev) => ({ ...prev, context_window: e.target.value }))
                   }
                   placeholder="自定义"
-                  className="w-full sm:w-28 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm sm:text-right text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+                  data-mono="true"
+                  data-align="right"
+                  className="aiw-input h-9 w-full py-0 sm:w-28"
                 />
               </div>
             </div>
 
-            {form.model_type === 'embedding' && (
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">最大向量维度</label>
-                <input
-                  type="number"
-                  value={form.max_dimension}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      max_dimension: parseInt(e.target.value) || '',
-                    }))
-                  }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
-                />
-              </div>
-            )}
-
-            {/* 最大输出 */}
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">最大输出 Tokens</label>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex flex-wrap gap-1.5 flex-1">
-                  {OUTPUT_TOKENS_PRESETS.map((preset) => {
-                    const active = String(preset.value) === form.max_output_tokens;
-                    return (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() =>
-                          setForm((prev) => ({ ...prev, max_output_tokens: String(preset.value) }))
-                        }
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                          active
-                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
-                            : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
+            <div className="aiw-field">
+              <span className="aiw-label">最大输出 Tokens</span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-1 flex-wrap gap-1.5">
+                  {OUTPUT_TOKENS_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      className="aiw-preset"
+                      data-active={String(preset.value) === form.max_output_tokens ? 'true' : 'false'}
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, max_output_tokens: String(preset.value) }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
                 <input
                   type="number"
@@ -602,136 +705,103 @@ export default function ModelConfigDialog({
                     setForm((prev) => ({ ...prev, max_output_tokens: e.target.value }))
                   }
                   placeholder="自定义"
-                  className="w-full sm:w-28 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm sm:text-right text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+                  data-mono="true"
+                  data-align="right"
+                  className="aiw-input h-9 w-full py-0 sm:w-28"
                 />
               </div>
             </div>
 
-            {form.model_type === 'image' && (
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">支持分辨率</label>
+            {form.model_type === 'embedding' && (
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-max-dimension">最大向量维度</label>
                 <input
+                  id="aiw-max-dimension"
+                  type="number"
+                  value={form.max_dimension}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      max_dimension: parseInt(e.target.value) || '',
+                    }))
+                  }
+                  data-mono="true"
+                  className="aiw-input"
+                />
+              </div>
+            )}
+
+            {form.model_type === 'image' && (
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-resolutions">支持分辨率</label>
+                <input
+                  id="aiw-resolutions"
                   type="text"
                   value={form.resolutions}
                   onChange={(e) => setForm((prev) => ({ ...prev, resolutions: e.target.value }))}
                   placeholder="1024x1024, 1536x1024"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                  data-mono="true"
+                  className="aiw-input"
                 />
+                <p className="aiw-helper">逗号分隔多个分辨率档位。</p>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* 能力 */}
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">模型能力</div>
-            <CapabilityToggle
-              label="支持函数调用"
-              description="模型可调用工具/函数"
-              checked={!!form.abilities.functionCall}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, functionCall: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持视觉识别"
-              description="开启图片输入能力"
-              checked={!!form.abilities.vision}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, vision: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持深度思考"
-              description="模型具备推理能力"
-              checked={!!form.abilities.reasoning}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, reasoning: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持联网搜索"
-              description="模型内置搜索能力"
-              checked={!!form.abilities.search}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, search: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持图片输出"
-              description="模型可输出图像"
-              checked={!!form.abilities.imageOutput}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, imageOutput: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持视频输出"
-              description="模型可输出视频"
-              checked={!!form.abilities.video}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, video: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持文件上传"
-              description="模型可处理文件"
-              checked={!!form.abilities.files}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, files: v },
-                }))
-              }
-            />
-            <CapabilityToggle
-              label="支持结构化输出"
-              description="模型可返回结构化 JSON"
-              checked={!!form.abilities.structuredOutput}
-              onChange={(v) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilities: { ...prev.abilities, structuredOutput: v },
-                }))
-              }
-            />
-          </div>
+          {/* —— 能力 —— */}
+          <section data-aiw-section="abilities" className="aiw-section">
+            <div className="aiw-eyebrow">
+              模型能力
+              <span className="aiw-eyebrow-meta">
+                已启用 {enabledAbilityCount} / {ABILITY_OPTIONS.length}
+              </span>
+            </div>
+            <div className="aiw-chip-grid">
+              {ABILITY_OPTIONS.map(({ key, label, desc, icon: Icon }) => {
+                const active = !!form.abilities[key];
+                return (
+                  <motion.button
+                    key={key}
+                    type="button"
+                    whileTap={{ scale: 0.97 }}
+                    transition={spring.precise}
+                    className="aiw-chip"
+                    data-active={active ? 'true' : 'false'}
+                    aria-pressed={active}
+                    onClick={() => toggleAbility(key)}
+                  >
+                    <span className="aiw-chip-icon">
+                      <Icon />
+                    </span>
+                    <span className="aiw-chip-copy">
+                      <span className="aiw-chip-title">{label}</span>
+                      <span className="aiw-chip-desc">{desc}</span>
+                    </span>
+                    <span className="aiw-chip-check">
+                      <Check />
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </section>
 
-          {/* 参数与推理 */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">参数与推理</div>
+          {/* —— 参数与推理 —— */}
+          <section data-aiw-section="params" className="aiw-section">
+            <div className="aiw-eyebrow">
+              参数与推理
               {form.settings.extendParams.length > 0 && (
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  已启用 {form.settings.extendParams.length} 项
-                </span>
+                <span className="aiw-eyebrow-meta">已启用 {form.settings.extendParams.length} 项</span>
               )}
             </div>
 
             {paramSections.map((section) => (
-              <div key={section.group.key} className="space-y-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium text-[var(--text-secondary)]">{section.group.label}</span>
-                  <span className="text-[10px] text-[var(--text-muted)]">{section.group.hint}</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div key={section.group.key} className="aiw-field">
+                <span className="aiw-label">
+                  {section.group.label}
+                  <small>{section.group.hint}</small>
+                </span>
+                <div className="aiw-chip-grid !grid-cols-1 sm:!grid-cols-2">
                   {section.controls.map((control) => {
                     const active = control.selected;
                     return (
@@ -740,25 +810,26 @@ export default function ModelConfigDialog({
                         type="button"
                         whileTap={{ scale: 0.97 }}
                         transition={spring.precise}
+                        className="aiw-chip"
+                        data-active={active ? 'true' : 'false'}
+                        aria-pressed={active}
                         onClick={() => toggleExtendParam(control.id)}
-                        className={`px-3 py-2 rounded-lg border text-left transition-colors ${
-                          active
-                            ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
-                            : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)]'
-                        }`}
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium">{control.label}</span>
-                          {control.recommended && !active && (
-                            <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded-full bg-accent/10 text-accent">
-                              <Sparkles className="w-2.5 h-2.5" />
-                              推荐
-                            </span>
-                          )}
-                        </div>
-                        <div className={`text-[10px] mt-0.5 ${active ? 'opacity-70' : 'text-[var(--text-muted)]'}`}>
-                          {control.desc}
-                        </div>
+                        <span className="aiw-chip-copy">
+                          <span className="aiw-chip-title">
+                            {control.label}
+                            {control.recommended && !active && (
+                              <span className="aiw-signal-badge" data-tone="accent">
+                                <Sparkles />
+                                推荐
+                              </span>
+                            )}
+                          </span>
+                          <span className="aiw-chip-desc">{control.desc}</span>
+                        </span>
+                        <span className="aiw-chip-check">
+                          <Check />
+                        </span>
                       </motion.button>
                     );
                   })}
@@ -767,11 +838,11 @@ export default function ModelConfigDialog({
             ))}
 
             {/* 屏蔽采样参数（disabledParams） */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-medium text-[var(--text-secondary)]">屏蔽采样参数</span>
-                <span className="text-[10px] text-[var(--text-muted)]">勾选后调用时省略，常用于推理模型</span>
-              </div>
+            <div className="aiw-field">
+              <span className="aiw-label">
+                屏蔽采样参数
+                <small>勾选后调用时省略，常用于推理模型</small>
+              </span>
               <div className="flex flex-wrap gap-1.5">
                 {SAMPLING_PARAMS.map((p) => {
                   const active = form.settings.disabledParams?.includes(p.id) ?? false;
@@ -783,11 +854,10 @@ export default function ModelConfigDialog({
                       transition={spring.precise}
                       onClick={() => toggleDisabledParam(p.id)}
                       title={p.desc}
-                      className={`px-2.5 py-1 rounded-lg border text-xs transition-colors ${
-                        active
-                          ? 'border-status-warning/50 bg-status-warning/10 text-status-warning line-through'
-                          : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
-                      }`}
+                      className="aiw-preset !font-sans !tracking-normal"
+                      data-variant="block"
+                      data-active={active ? 'true' : 'false'}
+                      aria-pressed={active}
                     >
                       {p.label}
                     </motion.button>
@@ -795,11 +865,11 @@ export default function ModelConfigDialog({
                 })}
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* 搜索配置 */}
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">搜索配置</div>
+          {/* —— 搜索配置 —— */}
+          <section data-aiw-section="search" className="aiw-section">
+            <div className="aiw-eyebrow">搜索配置</div>
             <CapabilityToggle
               label="启用内置搜索"
               description="部分模型需要显式开启搜索能力"
@@ -811,10 +881,11 @@ export default function ModelConfigDialog({
                 }))
               }
             />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">搜索实现方式</label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-search-impl">搜索实现方式</label>
                 <select
+                  id="aiw-search-impl"
                   value={form.settings.searchImpl || ''}
                   onChange={(e) =>
                     setForm((prev) => ({
@@ -825,7 +896,7 @@ export default function ModelConfigDialog({
                       },
                     }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="aiw-select"
                 >
                   <option value="">自动</option>
                   {SEARCH_IMPL_OPTIONS.map((opt) => (
@@ -835,9 +906,10 @@ export default function ModelConfigDialog({
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">搜索服务商</label>
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-search-provider">搜索服务商</label>
                 <input
+                  id="aiw-search-provider"
                   type="text"
                   value={form.settings.searchProvider}
                   onChange={(e) =>
@@ -847,107 +919,120 @@ export default function ModelConfigDialog({
                     }))
                   }
                   placeholder="perplexity / serpapi"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  data-mono="true"
+                  className="aiw-input"
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* 价格 */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                价格
-              </div>
-              {mode === 'edit' && initial && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={!hasGlobalPricing || syncFromGlobalMutation.isPending}
-                    onClick={async () => {
-                      try {
-                        await syncFromGlobalMutation.mutateAsync(initial.id);
-                        const fresh = await globalPricingQuery.refetch();
-                        const g = fresh.data;
-                        if (g) {
-                          // 把全局价格立即回填进表单，避免用户在保存前还看到旧值
-                          const extraPricing: Record<string, unknown> = {};
-                          Object.entries(g.pricing || {}).forEach(([k, v]) => {
-                            if (
-                              ['input', 'output', 'cachedInput', 'currency', 'units'].includes(k)
-                            )
-                              return;
-                            extraPricing[k] = v;
-                          });
-                          setForm((prev) => ({
-                            ...prev,
-                            input_cost_per_1m: costToString(g.input_cost_per_1m),
-                            output_cost_per_1m: costToString(g.output_cost_per_1m),
-                            cached_input_cost_per_1m: costToString(g.cached_input_cost_per_1m),
-                            pricing_currency: (g.currency ||
-                              'USD') as ModelPricing['currency'],
-                            // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
-                            // 等字段，导致回填后仍与全局基准不一致
-                            pricing_json: Object.keys(extraPricing).length
-                              ? JSON.stringify(extraPricing, null, 2)
-                              : '',
-                          }));
-                        }
-                      } catch {
-                        // 错误已在 hook 中 toast
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title={
-                      hasGlobalPricing
-                        ? '从全局价格回填到本模型'
-                        : '尚未配置该 model_id 的全局价格'
-                    }
-                  >
-                    {syncFromGlobalMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ArrowDownToLine className="w-3 h-3" />
-                    )}
-                    从全局回填
-                  </button>
-                  <button
-                    type="button"
-                    disabled={syncToGlobalMutation.isPending}
-                    onClick={async () => {
-                      try {
-                        await syncToGlobalMutation.mutateAsync(initial.id);
-                        await globalPricingQuery.refetch();
-                      } catch {
-                        // toast 已在 hook 中处理
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="把本模型当前价格写入全局表"
-                  >
-                    {syncToGlobalMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ArrowUpFromLine className="w-3 h-3" />
-                    )}
-                    写入全局
-                  </button>
-                </div>
-              )}
+          {/* —— 价格 —— */}
+          <section data-aiw-section="pricing" className="aiw-section">
+            <div className="aiw-eyebrow">
+              价格
+              <span className="aiw-eyebrow-meta">单位 / 1M Tokens</span>
             </div>
-            {mode === 'edit' && hasGlobalPricing && globalPricingQuery.data && (
-              <div className="text-[11px] text-[var(--text-muted)] -mt-2">
-                全局基准：输入 {globalPricingQuery.data.input_cost_per_1m ?? '—'} ·
-                输出 {globalPricingQuery.data.output_cost_per_1m ?? '—'} ·
-                缓存 {globalPricingQuery.data.cached_input_cost_per_1m ?? '—'}
-                {' '}
-                ({globalPricingQuery.data.currency})
+
+            {mode === 'edit' && initial && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!hasGlobalPricing || syncFromGlobalMutation.isPending}
+                  onClick={async () => {
+                    try {
+                      await syncFromGlobalMutation.mutateAsync(initial.id);
+                      const fresh = await globalPricingQuery.refetch();
+                      const g = fresh.data;
+                      if (g) {
+                        // 把全局价格立即回填进表单，避免用户在保存前还看到旧值
+                        const extraPricing: Record<string, unknown> = {};
+                        Object.entries(g.pricing || {}).forEach(([k, v]) => {
+                          if (
+                            ['input', 'output', 'cachedInput', 'currency', 'units'].includes(k)
+                          )
+                            return;
+                          extraPricing[k] = v;
+                        });
+                        setForm((prev) => ({
+                          ...prev,
+                          input_cost_per_1m: costToString(g.input_cost_per_1m),
+                          output_cost_per_1m: costToString(g.output_cost_per_1m),
+                          cached_input_cost_per_1m: costToString(g.cached_input_cost_per_1m),
+                          pricing_currency: (g.currency ||
+                            'USD') as ModelPricing['currency'],
+                          // 全局没有扩展键时显式清空，避免本地保留陈旧的 audioInput
+                          // 等字段，导致回填后仍与全局基准不一致
+                          pricing_json: Object.keys(extraPricing).length
+                            ? JSON.stringify(extraPricing, null, 2)
+                            : '',
+                        }));
+                      }
+                    } catch {
+                      // 错误已在 hook 中 toast
+                    }
+                  }}
+                  className="aiw-tool-button"
+                  title={
+                    hasGlobalPricing
+                      ? '从全局价格回填到本模型'
+                      : '尚未配置该 model_id 的全局价格'
+                  }
+                >
+                  {syncFromGlobalMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ArrowDownToLine className="h-3 w-3" />
+                  )}
+                  从全局回填
+                </button>
+                <button
+                  type="button"
+                  disabled={syncToGlobalMutation.isPending}
+                  onClick={async () => {
+                    try {
+                      await syncToGlobalMutation.mutateAsync(initial.id);
+                      await globalPricingQuery.refetch();
+                    } catch {
+                      // toast 已在 hook 中处理
+                    }
+                  }}
+                  className="aiw-tool-button"
+                  title="把本模型当前价格写入全局表"
+                >
+                  {syncToGlobalMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ArrowUpFromLine className="h-3 w-3" />
+                  )}
+                  写入全局
+                </button>
+                {hasGlobalPricing && globalPricingQuery.data && (
+                  <span className="aiw-price">
+                    <span className="aiw-price-pair">
+                      <span>全局基准 · 入</span>
+                      <b>{globalPricingQuery.data.input_cost_per_1m ?? '—'}</b>
+                    </span>
+                    <span className="aiw-price-pair">
+                      <span>出</span>
+                      <b>{globalPricingQuery.data.output_cost_per_1m ?? '—'}</b>
+                    </span>
+                    <span className="aiw-price-pair">
+                      <span>缓存</span>
+                      <b>{globalPricingQuery.data.cached_input_cost_per_1m ?? '—'}</b>
+                    </span>
+                    <span className="aiw-price-pair">
+                      <span>{globalPricingQuery.data.currency}</span>
+                    </span>
+                  </span>
+                )}
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">币种</label>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="aiw-currency">币种</label>
                 <select
+                  id="aiw-currency"
                   value={form.pricing_currency || 'USD'}
                   onChange={(e) =>
                     setForm((prev) => ({
@@ -955,133 +1040,134 @@ export default function ModelConfigDialog({
                       pricing_currency: e.target.value as ModelPricing['currency'],
                     }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="aiw-select"
                 >
-                  <option value="USD">USD</option>
-                  <option value="CNY">CNY</option>
+                  <option value="USD">USD $</option>
+                  <option value="CNY">CNY ¥</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输入成本 / 1M Tokens</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={form.input_cost_per_1m}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, input_cost_per_1m: e.target.value }))
-                  }
-                  placeholder="0"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输出成本 / 1M Tokens</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={form.output_cost_per_1m}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, output_cost_per_1m: e.target.value }))
-                  }
-                  placeholder="0"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">缓存输入读取 / 1M Tokens</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={form.cached_input_cost_per_1m}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, cached_input_cost_per_1m: e.target.value }))
-                  }
-                  placeholder="0"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
-                />
-              </div>
+              <PriceInput
+                id="aiw-cost-input"
+                label="输入成本"
+                symbol={currencySymbol}
+                value={form.input_cost_per_1m}
+                onChange={(v) => setForm((prev) => ({ ...prev, input_cost_per_1m: v }))}
+              />
+              <PriceInput
+                id="aiw-cost-output"
+                label="输出成本"
+                symbol={currencySymbol}
+                value={form.output_cost_per_1m}
+                onChange={(v) => setForm((prev) => ({ ...prev, output_cost_per_1m: v }))}
+              />
+              <PriceInput
+                id="aiw-cost-cached"
+                label="缓存读取"
+                symbol={currencySymbol}
+                value={form.cached_input_cost_per_1m}
+                onChange={(v) => setForm((prev) => ({ ...prev, cached_input_cost_per_1m: v }))}
+              />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">高级价格 JSON (可选)</label>
+
+            <div className="aiw-field">
+              <label className="aiw-label" htmlFor="aiw-pricing-json">
+                高级价格 JSON
+                <small>可选,音频 / 视频等其它单价键</small>
+              </label>
               <textarea
+                id="aiw-pricing-json"
                 rows={4}
                 value={form.pricing_json}
                 onChange={(e) => setForm((prev) => ({ ...prev, pricing_json: e.target.value }))}
                 placeholder='{"audioInput": 3.0, "cachedInput": 0.3}'
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                data-mono="true"
+                className="aiw-textarea text-xs"
               />
             </div>
-          </div>
+          </section>
 
-          {/* 高级参数 */}
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">高级参数</div>
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">模型参数 JSON</label>
+          {/* —— 高级参数 —— */}
+          <section data-aiw-section="advanced" className="aiw-section">
+            <div className="aiw-eyebrow">高级参数</div>
+            <div className="aiw-field">
+              <label className="aiw-label" htmlFor="aiw-parameters-json">
+                模型参数 JSON
+                <small>参数约束与默认值声明</small>
+              </label>
               <textarea
+                id="aiw-parameters-json"
                 rows={5}
                 value={form.parameters_json}
                 onChange={(e) => setForm((prev) => ({ ...prev, parameters_json: e.target.value }))}
                 placeholder='{"temperature": {"min": 0, "max": 2}}'
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                data-mono="true"
+                className="aiw-textarea text-xs"
               />
             </div>
-          </div>
+          </section>
 
           {jsonError && (
-            <div className="text-sm text-status-danger bg-status-danger-light border border-status-danger-border px-3 py-2 rounded-lg">
+            <div
+              className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
+              style={{
+                color: 'var(--signal-danger)',
+                borderColor: 'color-mix(in oklch, var(--signal-danger) 30%, transparent)',
+                background: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
+              }}
+              role="alert"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
               {jsonError}
+            </div>
+          )}
+
+          {/* 搜索路由警告 */}
+          {isUsedBySearch && (
+            <div
+              className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
+              style={{
+                color: 'var(--signal-warn)',
+                borderColor: 'color-mix(in oklch, var(--signal-warn) 30%, transparent)',
+                background: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
+              }}
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              此模型已关联搜索功能的向量化配置，删除或禁用将导致语义搜索不可用
             </div>
           )}
         </div>
 
-        {/* 搜索路由警告 */}
-        {isUsedBySearch && (
-          <div className="mx-5 mb-0 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-            <span className="text-sm text-amber-400">
-              此模型已关联搜索功能的向量化配置，删除或禁用将导致语义搜索不可用
-            </span>
-          </div>
-        )}
-
         {/* 底部操作 */}
-        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 p-5 border-t border-[var(--border-default)]">
-          {mode === 'edit' && initial && (
+        <div className="aiw-dialog-footer">
+          {mode === 'edit' && initial ? (
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isPending}
-              className="px-4 py-2 rounded-xl border border-status-danger-border text-status-danger text-sm font-medium hover:bg-status-danger-light transition-colors disabled:opacity-50"
+              className="aiw-button-danger"
             >
               删除模型
             </button>
+          ) : (
+            <span />
           )}
-          <div className={`flex gap-3 ${mode === 'create' ? 'ml-auto' : ''}`}>
+          <div className="flex gap-3">
             <motion.button
               onClick={onClose}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.97 }}
               transition={spring.precise}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
+              className="aiw-button flex-1 sm:flex-none"
             >
               取消
             </motion.button>
             <motion.button
               onClick={handleSubmit}
               disabled={isPending || (mode === 'create' && !form.model_id)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.96 }}
               transition={spring.precise}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+              className="aiw-button-primary flex-1 sm:flex-none"
             >
-              {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              确认
+              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mode === 'create' ? '创建模型' : '保存配置'}
             </motion.button>
           </div>
         </div>
@@ -1105,6 +1191,48 @@ export default function ModelConfigDialog({
   );
 }
 
+// 价格输入:货币符号前缀 + mono 右对齐
+function PriceInput({
+  id,
+  label,
+  symbol,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  symbol: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="aiw-field">
+      <label className="aiw-label" htmlFor={id}>{label}</label>
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-[var(--ink-muted)]"
+        >
+          {symbol}
+        </span>
+        <input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min="0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="未配置"
+          data-mono="true"
+          data-align="right"
+          className="aiw-input pl-7"
+        />
+      </div>
+    </div>
+  );
+}
+
 // 能力开关组件
 function CapabilityToggle({
   label,
@@ -1118,11 +1246,11 @@ function CapabilityToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 cursor-pointer group">
+    <label className="group flex cursor-pointer items-start gap-3">
       <Toggle checked={checked} onChange={onChange} size="sm" className="mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-[var(--text-primary)]">{label}</div>
-        <div className="text-xs text-[var(--text-muted)] mt-0.5">{description}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-[var(--ink-primary)]">{label}</div>
+        <div className="mt-0.5 text-micro text-[var(--ink-muted)]">{description}</div>
       </div>
     </label>
   );

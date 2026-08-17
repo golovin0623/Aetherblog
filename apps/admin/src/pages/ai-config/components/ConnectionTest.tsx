@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Loader2, CheckCircle2, XCircle, Zap, ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { spring, transition } from '@aetherblog/ui';
 import type { AiModel } from '@/services/aiProviderService';
 import { useTestCredential, useTestEmbeddingCredential } from '../hooks/useCredentials';
 import type { ConnectionTestResult } from '../types';
@@ -95,9 +96,9 @@ export default function ConnectionTest({
     <div className="space-y-3">
       {!simpleMode && (
         <div className="flex items-center gap-3">
-          <label className="text-sm text-[var(--text-muted)]">连通性检查</label>
+          <label className="text-sm text-[var(--ink-muted)]">连通性检查</label>
           {/* 模式切换 */}
-          <div className="inline-flex rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] p-0.5">
+          <div className="inline-flex rounded-lg border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] p-0.5">
             {([
               { key: 'chat' as const, label: '对话' },
               { key: 'embedding' as const, label: '向量化' },
@@ -107,15 +108,15 @@ export default function ConnectionTest({
                 onClick={() => handleModeChange(key)}
                 className={`relative px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                   testMode === key
-                    ? 'text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    ? 'text-[var(--ink-primary)]'
+                    : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]'
                 }`}
               >
                 {testMode === key && (
                   <motion.span
                     layoutId="test-mode-indicator"
-                    className="absolute inset-0 bg-[var(--bg-card-hover)] rounded-md"
-                    transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }}
+                    className="absolute inset-0 rounded-md border border-[var(--intelligence-border)] bg-[var(--intelligence-panel-strong)]"
+                    transition={spring.precise}
                   />
                 )}
                 <span className="relative z-10">{label}</span>
@@ -128,7 +129,7 @@ export default function ConnectionTest({
       <div className="flex items-center gap-2">
         {/* simpleMode 下内联模式切换 */}
         {simpleMode && (
-          <div className="inline-flex rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] p-0.5 shrink-0">
+          <div className="inline-flex rounded-lg border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] p-0.5 shrink-0">
             {([
               { key: 'chat' as const, label: '对话' },
               { key: 'embedding' as const, label: '向量化' },
@@ -138,15 +139,15 @@ export default function ConnectionTest({
                 onClick={() => handleModeChange(key)}
                 className={`relative px-2 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   testMode === key
-                    ? 'text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    ? 'text-[var(--ink-primary)]'
+                    : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]'
                 }`}
               >
                 {testMode === key && (
                   <motion.span
                     layoutId="test-mode-indicator-simple"
-                    className="absolute inset-0 bg-[var(--bg-card-hover)] rounded-md"
-                    transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }}
+                    className="absolute inset-0 rounded-md border border-[var(--intelligence-border)] bg-[var(--intelligence-panel-strong)]"
+                    transition={spring.precise}
                   />
                 )}
                 <span className="relative z-10">{label}</span>
@@ -159,10 +160,10 @@ export default function ConnectionTest({
         <div className="relative flex-1 min-w-0" ref={dropdownRef}>
            <button
              onClick={() => setIsOpen(!isOpen)}
-             className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] hover:border-primary/40 transition-colors"
+             className="aiw-input flex w-full items-center justify-between gap-1 !py-2 text-sm"
            >
              <span className="truncate min-w-0 flex-1 text-left">{displayModelName}</span>
-             <ChevronDown className={`w-4 h-4 shrink-0 text-[var(--text-muted)] opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+             <ChevronDown className={`w-4 h-4 shrink-0 text-[var(--ink-muted)] opacity-70 transition-transform duration-quick ease-aether ${isOpen ? 'rotate-180' : ''}`} />
            </button>
 
            <AnimatePresence>
@@ -171,8 +172,8 @@ export default function ConnectionTest({
                  initial={{ opacity: 0, scale: 0.95, y: 5 }}
                  animate={{ opacity: 1, scale: 1, y: 0 }}
                  exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                 transition={{ duration: 0.1 }}
-                 className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-lg py-1"
+                 transition={transition.quick}
+                 className="surface-raised absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto !rounded-lg py-1"
                >
                  {filteredModels.length > 0 ? (
                    filteredModels.map((model) => (
@@ -182,16 +183,16 @@ export default function ConnectionTest({
                          setSelectedModelId(model.model_id);
                          setIsOpen(false);
                        }}
-                       className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-[var(--bg-card-hover)] transition-colors"
+                       className="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors duration-quick ease-aether hover:bg-[var(--intelligence-control-hover)]"
                      >
-                       <span className="truncate pr-2 text-[var(--text-primary)]">{model.display_name || model.model_id}</span>
+                       <span className="truncate pr-2 text-[var(--ink-primary)]">{model.display_name || model.model_id}</span>
                        {model.model_id === selectedModelId && (
-                         <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                         <Check className="w-3.5 h-3.5 text-[var(--aurora-1)] flex-shrink-0" />
                        )}
                      </button>
                    ))
                  ) : (
-                   <div className="px-3 py-2 text-xs text-[var(--text-muted)] text-center">
+                   <div className="px-3 py-2 text-xs text-[var(--ink-muted)] text-center">
                      {emptyModelHint}
                    </div>
                  )}
@@ -204,11 +205,7 @@ export default function ConnectionTest({
         <button
           onClick={handleTest}
           disabled={!credentialId || !selectedModelId || activeMutation.isPending}
-          className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium text-sm transition-all border ${
-            credentialId && selectedModelId
-              ? 'bg-[var(--bg-primary)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/30'
-              : 'bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-muted)] cursor-not-allowed'
-          }`}
+          className="aiw-tool-button shrink-0 !min-h-[2.4rem]"
         >
           {activeMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -222,11 +219,12 @@ export default function ConnectionTest({
       {/* 测试结果 */}
       {result && (
         <div
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-            result.success
-              ? 'bg-status-success-light text-status-success'
-              : 'bg-status-danger-light text-status-danger'
-          }`}
+          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+          style={{
+            color: result.success ? 'var(--signal-success)' : 'var(--signal-danger)',
+            borderColor: `color-mix(in oklch, ${result.success ? 'var(--signal-success)' : 'var(--signal-danger)'} 26%, transparent)`,
+            background: `color-mix(in oklch, ${result.success ? 'var(--signal-success)' : 'var(--signal-danger)'} 8%, transparent)`,
+          }}
         >
           {result.success ? (
             <CheckCircle2 className="w-4 h-4" />
@@ -235,7 +233,7 @@ export default function ConnectionTest({
           )}
           <span className="flex-1 truncate">{result.message}</span>
           {result.success && result.latency_ms && (
-            <span className="text-xs opacity-75 shrink-0">
+            <span className="font-mono text-xs tnum opacity-75 shrink-0">
               {result.latency_ms.toFixed(0)}ms
             </span>
           )}
@@ -244,7 +242,7 @@ export default function ConnectionTest({
 
       {/* 提示信息 */}
       {!credentialId && (
-        <p className="text-xs text-[var(--text-muted)] italic">
+        <p className="text-xs text-[var(--ink-muted)]">
           请先保存 API Key 后再进行连通性测试
         </p>
       )}

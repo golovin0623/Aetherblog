@@ -47,8 +47,8 @@ export function GlobalPricingToolbarSkeleton() {
   return (
     <div className="global-pricing-toolbar" aria-hidden="true">
       <div className="global-pricing-search relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-        <div className="intelligence-input flex w-full items-center pl-10 pr-3 text-sm text-[var(--text-muted)]">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)]" />
+        <div className="intelligence-input flex w-full items-center pl-10 pr-3 text-sm text-[var(--ink-muted)]">
           搜索 model_id / 展示名称 / 供应商
         </div>
       </div>
@@ -112,9 +112,13 @@ export function GlobalPricingTableSkeleton({ rows = 8 }: { rows?: number }) {
         <col className="global-pricing-col-actions" />
       </colgroup>
       <thead className="sticky top-0 z-10">
-        <tr className="text-left text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
+        <tr className="text-left uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           {TABLE_HEADERS.map((header) => (
-            <th key={header} className={header === '操作' ? 'font-medium text-right' : 'font-medium'}>
+            <th
+              key={header}
+              className={header === '操作' ? 'text-right' : undefined}
+              data-col={header.includes('/ 1M') ? 'price' : undefined}
+            >
               {header}
             </th>
           ))}

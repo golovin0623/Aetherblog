@@ -1,20 +1,21 @@
-// 供应商详情面板组件
+// 供应商详情面板组件 —— 接入配置 + 模型工作台
 // ref: §5.1 - AI Service 架构 · 模型中心
+// 设计: 品牌头部(logo 光晕 + mono 元数据行) · 配置 kv 面板(aiw-kv) · 危险区(aiw-danger)
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ExternalLink,
   Pencil,
-  XCircle,
   SlidersHorizontal,
   Eye,
   EyeOff,
   Settings,
   Brain,
   Loader2,
+  Trash2,
 } from 'lucide-react';
-import { Tooltip, Toggle } from '@aetherblog/ui';
+import { Tooltip, Toggle, transition, variants } from '@aetherblog/ui';
 import type { AiProvider } from '@/services/aiProviderService';
 import { getPresetProvider, type PresetProvider } from '../types';
 import { useToggleProvider, useDeleteProvider, useUpdateProvider } from '../hooks/useProviders';
@@ -60,7 +61,7 @@ export default function ProviderDetail({
   const preset = propPreset || getPresetProvider(provider.code);
   // 优先使用数据库中的用户覆盖值，而非预设默认值
   const rawDocUrl = provider.doc_url || preset?.docUrl || undefined;
-  
+
   // 安全验证：只允许 http:// 或 https:// 协议，防止 javascript: XSS 攻击
   const isSafeUrl = (url: string | undefined): boolean => {
     if (!url) return false;
@@ -72,13 +73,18 @@ export default function ProviderDetail({
     }
   };
   const docUrl = isSafeUrl(rawDocUrl) ? rawDocUrl : undefined;
-  
+
   const brand = getProviderBrand(provider.code);
 
   // 数据
   const { data: credentials = [] } = useProviderCredentials(provider.code);
   const defaultCredential = credentials.find((c) => c.is_default) || credentials[0];
   const { data: models = [], isLoading: modelsLoading } = useProviderModels(provider.code);
+
+  const enabledModelCount = useMemo(
+    () => models.filter((m) => m.is_enabled).length,
+    [models]
+  );
 
   // 数据变更操作
   const toggleMutation = useToggleProvider();
@@ -164,7 +170,6 @@ export default function ProviderDetail({
   const showChecker = providerSettings.showChecker !== false;
   const checkModel =
     (provider.capabilities?.checkModel as string | undefined) ||
-
     (provider.capabilities?.check_model as string | undefined);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -175,24 +180,136 @@ export default function ProviderDetail({
     });
   }, [deleteMutation, provider.id, onBack]);
 
+  // 接入配置 kv 面板(移动端 tab 与桌面端共用)
+  const configPanel = (
+    <div className="aiw-kv-panel">
+      {/* 1. API Key */}
+      <div className="aiw-kv">
+        <div className="aiw-kv-copy">
+          <div className="aiw-kv-title">API Key</div>
+          <div className="aiw-kv-desc">用于鉴权的密钥，失焦自动保存</div>
+        </div>
+        <div className="aiw-kv-control">
+          <div className="group relative">
+            <input
+              type={showKey ? "text" : "password"}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              onBlur={handleSaveKey}
+              onFocus={() => {
+                if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
+                  setKeyInput('');
+                }
+              }}
+              placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
+              data-mono="true"
+              className="aiw-input pr-10"
+              aria-label="API Key"
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+              <Tooltip content="点击获取并显示真实的 API Key" position="top" delay={0}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRevealKey(); }}
+                  disabled={revealMutation.isPending}
+                  className="rounded p-1 text-[var(--ink-muted)] transition-colors duration-quick ease-aether hover:bg-[var(--intelligence-control-hover)] hover:text-[var(--ink-primary)] disabled:opacity-50"
+                  title={showKey ? "隐藏" : "显示真实密钥"}
+                >
+                  {revealMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : showKey ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. API 代理地址 */}
+      <div className="aiw-kv">
+        <div className="aiw-kv-copy">
+          <div className="aiw-kv-title">API 代理地址</div>
+          <div className="aiw-kv-desc">接口请求的 Base URL，留空恢复默认</div>
+        </div>
+        <div className="aiw-kv-control">
+          <div className="group relative">
+            <input
+              type="text"
+              value={proxyInput}
+              onChange={(e) => setProxyInput(e.target.value)}
+              onBlur={handleSaveProxy}
+              placeholder={preset?.baseUrl || "默认地址"}
+              data-mono="true"
+              className="aiw-input pr-8"
+              aria-label="API 代理地址"
+            />
+            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-quick ease-aether group-hover:opacity-100 group-focus-within:opacity-100">
+              <Pencil className="h-3.5 w-3.5 text-[var(--ink-muted)]" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. 连通性检查 */}
+      {showChecker && (
+        <div className="aiw-kv">
+          <div className="aiw-kv-copy">
+            <div className="aiw-kv-title">连通性检查</div>
+            <div className="aiw-kv-desc">验证 API Key 与代理地址是否可用</div>
+          </div>
+          <div className="aiw-kv-control">
+            <ConnectionTest
+              credentialId={defaultCredential?.id ?? null}
+              models={models}
+              defaultModelId={checkModel}
+              simpleMode={true}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // 危险区
+  const dangerZone = (
+    <div className="aiw-danger">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-[var(--signal-danger)]">删除服务商配置</div>
+        <div className="mt-0.5 text-micro text-[var(--ink-muted)]">
+          将同时删除该服务商下的全部模型与凭证，且不可恢复。
+        </div>
+      </div>
+      <button onClick={() => setShowDeleteConfirm(true)} className="aiw-button-danger">
+        <Trash2 className="h-3.5 w-3.5" />
+        删除
+      </button>
+    </div>
+  );
+
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="ai-provider-detail h-full flex flex-col bg-[var(--bg-primary)] lg:bg-[var(--bg-secondary)] overflow-hidden"
+      variants={variants.fade}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={transition.quick}
+      className="ai-provider-detail flex h-full flex-col overflow-hidden"
     >
       {/* 头部区域 */}
-      <div className="ai-provider-detail-header flex-none px-6 py-4 lg:px-8 bg-[var(--bg-primary)] border-b border-[var(--border-default)] z-20">
+      <div className="ai-provider-detail-header z-20 flex-none border-b px-6 py-4 lg:px-8">
         <div className="flex items-start gap-4">
-          {/* Logo */}
+          {/* Logo:品牌色光晕 */}
           <div
-            className={`flex-none w-12 h-12 rounded-[14px] flex items-center justify-center shadow-md shrink-0 ${provider.is_enabled
-              ? 'bg-white dark:bg-[var(--bg-secondary)]'
-              : 'bg-black/5 dark:bg-white/5 opacity-60 grayscale'
-              }`}
+            className={`flex h-12 w-12 flex-none shrink-0 items-center justify-center rounded-[14px] transition-all duration-quick ease-aether ${
+              provider.is_enabled
+                ? 'bg-[var(--bg-raised)]'
+                : 'bg-[var(--intelligence-control)] opacity-60 grayscale'
+            }`}
             style={provider.is_enabled ? {
-              boxShadow: `0 4px 12px -2px ${brand.primary}30`,
+              boxShadow: `0 4px 16px -2px ${brand.primary}38, inset 0 1px 0 rgb(from var(--bg-raised) r g b / 0.5)`,
             } : undefined}
           >
             <ProviderIcon
@@ -203,26 +320,41 @@ export default function ProviderDetail({
             />
           </div>
 
-          <div className="flex-1 min-w-0 pt-0.5">
+          <div className="min-w-0 flex-1 pt-0.5">
             <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight truncate flex items-center gap-2">
-                  {provider.display_name || provider.name}
-                  <span className="px-2 py-0.5 rounded text-[10px] font-normal bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-default)] font-mono">
+              <div className="min-w-0">
+                <h1 className="flex items-center gap-2 truncate text-lg font-bold tracking-tight text-[var(--ink-primary)]">
+                  <span className="truncate">{provider.display_name || provider.name}</span>
+                  <span className="aiw-signal-badge shrink-0" data-tone="neutral">
                     {provider.code}
                   </span>
-                </h1>
-                {/* 链接 */}
-                {docUrl && (
-                  <a
-                    href={docUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-primary transition-colors mt-1"
+                  <span
+                    className="aiw-signal-badge shrink-0"
+                    data-tone={provider.is_enabled ? 'success' : 'neutral'}
                   >
-                    访问官网 <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                )}
+                    {provider.is_enabled ? '运行中' : '未启用'}
+                  </span>
+                </h1>
+                {/* 元数据行:模型统计 + 凭证 + 官网 —— mono 秩序 */}
+                <div className="aiw-model-meta mt-1.5">
+                  <span>
+                    模型 <b>{models.length}</b>
+                  </span>
+                  <span>
+                    已启用 <b>{enabledModelCount}</b>
+                  </span>
+                  <span>凭证 <b>{defaultCredential ? '已配置' : '未配置'}</b></span>
+                  {docUrl && (
+                    <a
+                      href={docUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[var(--ink-muted)] transition-colors duration-quick ease-aether hover:text-[var(--aurora-1)]"
+                    >
+                      访问官网 <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
@@ -230,9 +362,10 @@ export default function ProviderDetail({
                 <Tooltip content="更新服务商基础配置" position="top" delay={0}>
                   <button
                     onClick={onEdit}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all shadow-sm"
+                    className="aiw-tool-button !min-w-9 !px-0"
+                    aria-label="更新服务商基础配置"
                   >
-                    <SlidersHorizontal className="w-4 h-4" />
+                    <SlidersHorizontal className="h-4 w-4" />
                   </button>
                 </Tooltip>
 
@@ -248,167 +381,61 @@ export default function ProviderDetail({
 
         {/* 移动端 Tab 切换器 */}
         <div className="mt-4 lg:hidden">
-          <div className="relative flex p-1 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-subtle)] overflow-hidden">
-            <button
-              onClick={() => setActiveTab('config')}
-              className={`relative flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all z-10 ${activeTab === 'config'
-                ? 'text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+          <div className="relative flex overflow-hidden rounded-xl border border-[var(--intelligence-border)] bg-[var(--intelligence-control)] p-1">
+            {([
+              { key: 'config' as const, label: '配置', icon: Settings },
+              { key: 'models' as const, label: '模型', icon: Brain },
+            ]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-lg py-1.5 text-sm font-medium transition-colors duration-quick ease-aether ${
+                  activeTab === key
+                    ? 'text-[var(--ink-primary)]'
+                    : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]'
                 }`}
-            >
-              <Settings className="w-4 h-4" />
-              配置
-              {activeTab === 'config' && (
-                <motion.div
-                  layoutId="mobile-tab-bg"
-                  className="absolute inset-0 bg-[var(--bg-primary)] rounded-lg shadow-sm border border-[var(--border-subtle)] -z-10"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('models')}
-              className={`relative flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-all z-10 ${activeTab === 'models'
-                ? 'text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                }`}
-            >
-              <Brain className="w-4 h-4" />
-              模型
-              {activeTab === 'models' && (
-                <motion.div
-                  layoutId="mobile-tab-bg"
-                  className="absolute inset-0 bg-[var(--bg-primary)] rounded-lg shadow-sm border border-[var(--border-subtle)] -z-10"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                />
-              )}
-            </button>
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {activeTab === key && (
+                  <motion.div
+                    layoutId="mobile-tab-bg"
+                    className="absolute inset-0 -z-10 rounded-lg border border-[var(--intelligence-border-strong)] bg-[var(--intelligence-panel-strong)]"
+                    transition={transition.quick}
+                  />
+                )}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       {/* 详情内容区域 */}
-      <div
-        className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rounded-full scrollbar-thumb-[var(--border-hover)] scrollbar-track-transparent relative z-0"
-      >
+      <div className="relative z-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rounded-full scrollbar-thumb-[var(--intelligence-border)] scrollbar-track-transparent">
         {/* 移动端: 使用 Tab 切换 */}
         <div className="lg:hidden">
           <AnimatePresence mode="wait">
             {activeTab === 'config' ? (
               <motion.div
                 key="config"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2 }}
-                className="ai-provider-detail-mobile-section px-6 py-6 space-y-4"
+                variants={variants.slideRight}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={transition.quick}
+                className="ai-provider-detail-mobile-section space-y-4 px-6 py-6"
               >
-                {/* 配置项列表容器 */}
-                <div className="ai-provider-config-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
-
-                  {/* 1. API Key 行 (输入框样式) */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                    <div className="space-y-1 md:w-1/3">
-                      <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
-                      <div className="text-xs text-[var(--text-muted)]">
-                        用于鉴权的 API Key
-                      </div>
-                    </div>
-                    <div className="flex-1 max-w-lg relative">
-                      <div className="relative group">
-                        <input
-                          type={showKey ? "text" : "password"}
-                          value={keyInput}
-                          onChange={(e) => setKeyInput(e.target.value)}
-                          onBlur={handleSaveKey}
-                          onFocus={() => {
-                            if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
-                              setKeyInput('');
-                            }
-                          }}
-                          placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
-                          className="w-full px-3 py-2.5 pr-10 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                        />
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                          <Tooltip content="点击获取并显示真实的 API Key" position="top" delay={0}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRevealKey(); }}
-                              disabled={revealMutation.isPending}
-                              className="p-1 hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] transition-opacity disabled:opacity-50"
-                              title={showKey ? "隐藏" : "显示真实密钥"}
-                            >
-                              {revealMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. API 代理地址行 (输入框样式) */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                    <div className="space-y-1 md:w-1/3">
-                      <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
-                      <div className="text-xs text-[var(--text-muted)]">
-                        接口请求的 Base URL
-                      </div>
-                    </div>
-                    <div className="flex-1 max-w-lg">
-                      <div className="relative group">
-                        <input
-                          type="text"
-                          value={proxyInput}
-                          onChange={(e) => setProxyInput(e.target.value)}
-                          onBlur={handleSaveProxy}
-                          placeholder={preset?.baseUrl || "默认地址"}
-                          className="w-full px-3 py-2.5 pr-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                        />
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 transition-opacity">
-                          <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. 连通性检查行 */}
-                  {showChecker && (
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                      <div className="space-y-1 md:w-1/3">
-                        <div className="font-medium text-sm text-[var(--text-primary)]">连通性检查</div>
-                        <div className="text-xs text-[var(--text-muted)]">
-                          测试 API Key 与代理地址是否正确
-                        </div>
-                      </div>
-                      <div className="flex-1 max-w-lg">
-                        <ConnectionTest
-                          credentialId={defaultCredential?.id ?? null}
-                          models={models}
-                          defaultModelId={checkModel}
-                          simpleMode={true}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 底部删除按钮 */}
-                <div className="flex justify-center pt-2">
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    删除服务商配置
-                  </button>
-                </div>
+                {configPanel}
+                {dangerZone}
               </motion.div>
             ) : (
               <motion.div
                 key="models"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                transition={{ duration: 0.2 }}
+                variants={variants.slideRight}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={transition.quick}
                 className="ai-provider-detail-mobile-section px-6 py-6"
               >
                 <ModelList
@@ -428,101 +455,13 @@ export default function ProviderDetail({
         </div>
 
         {/* PC 端: 同时显示配置和模型列表 */}
-        <div className="ai-provider-detail-content hidden lg:block px-8 py-6 space-y-6">
-          {/* 配置项列表容器 */}
-          <div className="ai-provider-config-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+        <div className="ai-provider-detail-content hidden space-y-6 px-8 py-6 lg:block">
+          <section className="space-y-3">
+            <div className="aiw-eyebrow">接入配置</div>
+            {configPanel}
+          </section>
 
-            {/* 1. API Key 行 (输入框样式) */}
-            <div className="flex items-center justify-between gap-4 p-4">
-              <div className="space-y-1 w-1/3">
-                <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
-                <div className="text-xs text-[var(--text-muted)]">
-                  用于鉴权的 API Key
-                </div>
-              </div>
-              <div className="flex-1 max-w-lg relative">
-                <div className="relative group">
-                  <input
-                    type={showKey ? "text" : "password"}
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    onBlur={handleSaveKey}
-                    onFocus={() => {
-                      if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
-                        setKeyInput('');
-                      }
-                    }}
-                    placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
-                    className="w-full px-3 py-2.5 pr-10 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <Tooltip content="点击获取并显示真实的 API Key" position="top" delay={0}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleRevealKey(); }}
-                        disabled={revealMutation.isPending}
-                        className="p-1 hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-                        title={showKey ? "隐藏" : "显示真实密钥"}
-                      >
-                        {revealMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. API 代理地址行 (输入框样式) */}
-            <div className="flex items-center justify-between gap-4 p-4">
-              <div className="space-y-1 w-1/3">
-                <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
-                <div className="text-xs text-[var(--text-muted)]">
-                  接口请求的 Base URL
-                </div>
-              </div>
-              <div className="flex-1 max-w-lg">
-                <div className="relative group">
-                  <input
-                    type="text"
-                    value={proxyInput}
-                    onChange={(e) => setProxyInput(e.target.value)}
-                    onBlur={handleSaveProxy}
-                    placeholder={preset?.baseUrl || "默认地址"}
-                    className="w-full px-3 py-2.5 pr-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. 连通性检查行 */}
-            {showChecker && (
-              <div className="flex items-center justify-between gap-4 p-4">
-                <div className="space-y-1 w-1/3">
-                  <div className="font-medium text-sm text-[var(--text-primary)]">连通性检查</div>
-                  <div className="text-xs text-[var(--text-muted)]">
-                    测试 API Key 与代理地址是否正确
-                  </div>
-                </div>
-                <div className="flex-1 max-w-lg">
-                  <ConnectionTest
-                    credentialId={defaultCredential?.id ?? null}
-                    models={models}
-                    defaultModelId={checkModel}
-                    simpleMode={true}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* PC 端模型列表 */}
-          <div className="ai-provider-model-panel bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Brain className="w-4 h-4 text-[var(--text-muted)]" />
-              <h3 className="font-medium text-sm text-[var(--text-primary)]">可用模型</h3>
-            </div>
+          <section className="ai-provider-model-panel rounded-xl border p-4">
             <ModelList
               providerCode={provider.code}
               providerApiType={provider.api_type}
@@ -534,18 +473,9 @@ export default function ProviderDetail({
               initialSearch={initialModelSearch}
               variant="simple"
             />
-          </div>
+          </section>
 
-          {/* 底部删除按钮 */}
-          <div className="flex justify-center pt-2">
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              删除服务商配置
-            </button>
-          </div>
+          {dangerZone}
         </div>
       </div>
 

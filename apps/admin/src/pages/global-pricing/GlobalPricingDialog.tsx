@@ -1,10 +1,12 @@
-// 全局价格编辑弹窗
+// 全局价格编辑弹窗 —— 一处基准价,一键回填
 // ref: §5.1 - AI Service / 全局价格管理
+// 设计: aiw-dialog 骨架 · 价格 mono+tnum · 焦点极光光环
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
+import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import type { GlobalPricing } from '@/services/aiProviderService';
 import { useApplyGlobalPricing, useUpsertGlobalPricing } from './hooks';
 
@@ -78,6 +80,15 @@ export function GlobalPricingDialog({
     });
   }, [initial, displayName]);
 
+  // Esc 关闭
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const isPending = upsertMutation.isPending || applyMutation.isPending;
 
   const handleSave = async () => {
@@ -122,204 +133,250 @@ export function GlobalPricingDialog({
     }
   };
 
+  const currencySymbol = form.currency === 'CNY' ? '¥' : '$';
+
   return createPortal(
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
+      variants={variants.fade}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={transition.quick}
+      className="aiw-overlay sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+        variants={variants.scaleIn}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
+        className="aiw-dialog surface-overlay sm:max-w-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={hasGlobal ? '编辑全局价格' : '添加全局价格'}
       >
-        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
-          <div>
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+        <div className="aiw-dialog-header">
+          <div className="min-w-0">
+            <div className="aiw-eyebrow">Pricing · {hasGlobal ? 'Edit' : 'Create'}</div>
+            <h2 className="aiw-dialog-title mt-1.5">
               {hasGlobal ? '编辑全局价格' : '添加全局价格'}
             </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 font-mono break-all">
-              {modelId}
+            <div className="aiw-dialog-subtitle">
+              <span>{modelId}</span>
               {typeof providerCount === 'number' && providerCount > 0 && (
-                <span className="ml-2 text-[var(--text-secondary)]">
-                  · {providerCount} 个供应商共享
+                <span className="aiw-signal-badge" data-tone="accent">
+                  {providerCount} 个供应商共享
                 </span>
               )}
-            </p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="aiw-dialog-close" aria-label="关闭">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-5 space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm text-[var(--text-muted)]">展示名称（可选）</label>
+        <div className="aiw-dialog-body">
+          <div className="aiw-field">
+            <label className="aiw-label" htmlFor="gp-display-name">
+              展示名称
+              <small>可选</small>
+            </label>
             <input
+              id="gp-display-name"
               type="text"
               value={form.display_name}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, display_name: e.target.value }))
               }
               placeholder="GPT-4o mini / Claude 4 Haiku"
-              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+              className="aiw-input"
             />
           </div>
 
-          <div className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">价格</div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">币种</label>
+          <section className="aiw-section">
+            <div className="aiw-eyebrow">
+              价格
+              <span className="aiw-eyebrow-meta">单位 / 1M Tokens</span>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="aiw-field">
+                <label className="aiw-label" htmlFor="gp-currency">币种</label>
                 <select
+                  id="gp-currency"
                   value={form.currency}
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, currency: e.target.value }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="aiw-select"
                 >
-                  <option value="USD">USD</option>
-                  <option value="CNY">CNY</option>
+                  <option value="USD">USD $</option>
+                  <option value="CNY">CNY ¥</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输入 / 1M Tokens</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  placeholder="未配置"
-                  value={form.input_cost_per_1m ?? ''}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setForm((prev) => ({
-                      ...prev,
-                      input_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
-                    }));
-                  }}
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输出 / 1M Tokens</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  placeholder="未配置"
-                  value={form.output_cost_per_1m ?? ''}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setForm((prev) => ({
-                      ...prev,
-                      output_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
-                    }));
-                  }}
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">缓存读取 / 1M Tokens</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  placeholder="未配置"
-                  value={form.cached_input_cost_per_1m ?? ''}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setForm((prev) => ({
-                      ...prev,
-                      cached_input_cost_per_1m: raw === '' ? null : (parseFloat(raw) || 0),
-                    }));
-                  }}
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
-                />
-              </div>
+              <NullablePriceInput
+                id="gp-input-cost"
+                label="输入"
+                symbol={currencySymbol}
+                value={form.input_cost_per_1m}
+                onChange={(v) => setForm((prev) => ({ ...prev, input_cost_per_1m: v }))}
+              />
+              <NullablePriceInput
+                id="gp-output-cost"
+                label="输出"
+                symbol={currencySymbol}
+                value={form.output_cost_per_1m}
+                onChange={(v) => setForm((prev) => ({ ...prev, output_cost_per_1m: v }))}
+              />
+              <NullablePriceInput
+                id="gp-cached-cost"
+                label="缓存读取"
+                symbol={currencySymbol}
+                value={form.cached_input_cost_per_1m}
+                onChange={(v) =>
+                  setForm((prev) => ({ ...prev, cached_input_cost_per_1m: v }))
+                }
+              />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm text-[var(--text-muted)]">高级价格 JSON（可选）</label>
+            <div className="aiw-field">
+              <label className="aiw-label" htmlFor="gp-pricing-json">
+                高级价格 JSON
+                <small>可选</small>
+              </label>
               <textarea
+                id="gp-pricing-json"
                 rows={4}
                 value={form.pricing_json}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, pricing_json: e.target.value }))
                 }
                 placeholder='{"audioInput": 3.0, "audioOutput": 6.0}'
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                data-mono="true"
+                className="aiw-textarea text-xs"
               />
-              <p className="text-xs text-[var(--text-muted)]">
+              <p className="aiw-helper">
                 输入 / 输出 / 缓存读取已由上方独立填写，此处仅放音频、视频等其它单价键。
               </p>
             </div>
-          </div>
+          </section>
 
-          <div className="space-y-2">
-            <label className="text-sm text-[var(--text-muted)]">备注（可选）</label>
+          <div className="aiw-field">
+            <label className="aiw-label" htmlFor="gp-notes">
+              备注
+              <small>可选</small>
+            </label>
             <textarea
+              id="gp-notes"
               rows={2}
               value={form.notes}
               onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
               placeholder="例如：以 OpenAI 官方文档为准，2026-05 更新"
-              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+              className="aiw-textarea"
             />
           </div>
 
-          <div className="space-y-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]/40 px-4 py-3">
-            <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={applyAfterSave}
-                onChange={(e) => setApplyAfterSave(e.target.checked)}
-              />
-              保存后立即批量回填到所有同名供应商模型
-            </label>
+          {/* 保存后的回填策略 */}
+          <div className="aiw-kv-panel">
+            <div className="aiw-kv !flex-row !items-center">
+              <div className="aiw-kv-copy !w-auto flex-1">
+                <div className="aiw-kv-title">保存后立即批量回填</div>
+                <div className="aiw-kv-desc">把基准价下发到所有同名供应商模型</div>
+              </div>
+              <Toggle checked={applyAfterSave} onChange={setApplyAfterSave} size="sm" />
+            </div>
             {applyAfterSave && (
-              <label className="flex items-center gap-2 text-xs text-[var(--text-muted)] cursor-pointer pl-6">
-                <input
-                  type="checkbox"
-                  checked={overwriteExisting}
-                  onChange={(e) => setOverwriteExisting(e.target.checked)}
-                />
-                覆盖已存在的供应商价格（取消则只填补缺失字段）
-              </label>
+              <div className="aiw-kv !flex-row !items-center">
+                <div className="aiw-kv-copy !w-auto flex-1">
+                  <div className="aiw-kv-title">覆盖已存在的供应商价格</div>
+                  <div className="aiw-kv-desc">关闭则只填补缺失字段，不动已手填的价格</div>
+                </div>
+                <Toggle checked={overwriteExisting} onChange={setOverwriteExisting} size="sm" />
+              </div>
             )}
           </div>
 
           {jsonError && (
-            <div className="text-sm text-status-danger bg-status-danger-light border border-status-danger-border px-3 py-2 rounded-lg">
+            <div
+              className="rounded-lg border px-3 py-2 text-sm"
+              style={{
+                color: 'var(--signal-danger)',
+                borderColor: 'color-mix(in oklch, var(--signal-danger) 30%, transparent)',
+                background: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
+              }}
+              role="alert"
+            >
               {jsonError}
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-[var(--border-default)]">
+        <div className="aiw-dialog-footer !flex-row !justify-end">
           <motion.button
             onClick={onClose}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
+            whileTap={{ scale: 0.97 }}
+            transition={spring.precise}
+            className="aiw-button"
           >
             取消
           </motion.button>
           <motion.button
             onClick={handleSave}
             disabled={isPending}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+            whileTap={{ scale: 0.96 }}
+            transition={spring.precise}
+            className="aiw-button-primary"
           >
-            {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             {applyAfterSave ? '保存并应用' : '保存'}
           </motion.button>
         </div>
       </motion.div>
     </motion.div>,
     document.body
+  );
+}
+
+// 可空价格输入:空串 = 未配置(null),0 = 显式免费
+function NullablePriceInput({
+  id,
+  label,
+  symbol,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  symbol: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <div className="aiw-field">
+      <label className="aiw-label" htmlFor={id}>{label}</label>
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-[var(--ink-muted)]"
+        >
+          {symbol}
+        </span>
+        <input
+          id={id}
+          type="number"
+          step="0.000001"
+          placeholder="未配置"
+          value={value ?? ''}
+          onChange={(e) => {
+            const raw = e.target.value;
+            onChange(raw === '' ? null : (parseFloat(raw) || 0));
+          }}
+          data-mono="true"
+          data-align="right"
+          className="aiw-input pl-7"
+        />
+      </div>
+    </div>
   );
 }
 

@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
-### Changed — 友链页「星群与信笺」重设计 · Apple Watch 气泡 + iOS 通知栈 (2026-08-16, branch claude/homepage-links-design-ppbpt8)
+### Changed — 模型中心 + 全局价格「模型工作台」重设计 (2026-08-17, branch claude/admin-model-pricing-design-u8vr1y)
+
+**背景：** 模型中心与全局价格页此前只是「功能可用」：配置弹窗是一条平铺到底的长表单（黑/白反色焦点、8 行堆叠开关），模型卡片价格是纯文本碎片，价格表状态徽章用内联 amber/emerald/orange，动效多处裸值 —— 与主流对话 Agent 后台的模型配置体验差距明显。本次以「工作台」立意整体精修，全部走 Codex 令牌与 `@aetherblog/ui` 动效预设。
+
+- **新增 admin「AI 工作台」CSS 词汇层（`index.css` 尾部 `aiw-*`）：** 表单场（label / input / helper，聚焦极光光环替代黑白反色）、弹窗骨架（粘性头 / 锚点导航 / 粘性尾，底衬 `surface-overlay`）、能力芯片网格（`aiw-chip` + 勾选徽记）、预设档位胶囊（`aiw-preset`，屏蔽型参数为 warn 划线态）、信号徽章（`aiw-signal-badge`，状态语义统一出口）、价格排印（`aiw-price`，mono + tnum）、kv 配置行、危险区、空态。admin Tailwind 补上 04-motion 规定的 `ease-aether` / `duration-{instant,quick,flow,ambient}` 映射。
+- **ModelConfigDialog 重构为工作台式分区面板：** 基础 / 规格 / 能力 / 参数 / 搜索 / 价格 / 高级 七个分区 + 粘性锚点导航（滚动联动高亮、平滑滚动尊重 `prefers-reduced-motion`）；能力从 8 行开关改为图标芯片网格（含启用计数）；上下文/输出档位为极光胶囊；价格输入带币种前缀 + mono 右对齐，全局基准与「从全局回填 / 写入全局」并排呈现；Esc 关闭。
+- **模型卡片（ModelCard）排印秩序化：** 规格行（CTX / OUT / 发布日期）与价格行（入 / 出 / 缓存）全部 mono + tnum；能力徽章统一 `data-kind` 着色（工具=info、视觉=success、推理=aurora-2、搜索=aurora-3、绘画=aurora-4）；NEW / Legacy / 来源徽章走信号徽章；hover 左侧极光轨（CSS `::before`）。
+- **模型列表（ModelList）工作台化：** 工具栏统一 `aiw-tool-button`（主操作极光渐变）；类型筛选改 `IntelligenceSegmented` 分段器（带计数）；能力分面胶囊化；分组眉 mono + 渐隐分隔线；筛选态显示命中数 `N / 总数`；键盘 `/` 聚焦搜索；空态区分「无模型 / 无命中」。
+- **供应商详情（ProviderDetail）：** 品牌头部（logo 品牌色光晕 + 运行状态徽章 + mono 元数据行：模型数 / 已启用 / 凭证状态 / 官网）；接入配置收进 kv 面板（API Key 揭示、Base URL、连通性检查）；居中裸删除按钮改为「危险区」卡片；移动/桌面共用同一配置面板消除重复代码。
+- **全局价格页（GlobalPricingPage）：** 覆盖状态徽章迁移 signal 令牌并与顶部指标语义对齐（未配置=warn / 全部同步=success / 脱锚=danger）；状态列新增同步进度光条（in_sync/provider_count，完成态转 success）；价格列右对齐 + `data-col` 排印；真实表格补上与骨架一致的 `<colgroup>` 列宽（消除加载完成后的布局跳变）；空态升级。
+- **LiteLLM 同步弹窗（PricingSyncDialog）：** 状态语义重排（新增=success / 更新=accent / 已一致=neutral / 无匹配=warn）；更新行价差方向可视化（涨=warn ↑ / 降=success ↓ + 旧价划线）；加载态从 spinner 改骨架行；Esc 关闭。
+- **全局价格编辑弹窗（GlobalPricingDialog）：** aiw 弹窗骨架重写；回填策略两项从原生 checkbox 改共享 Toggle 的 kv 行；价格输入币种前缀 + mono。
+- **Token 迁移（同 commit 清偿）：** ProviderCard / ProviderSidebar / ConnectionTest / AiConfigPage / 骨架屏等 `--text-*` / `--bg-card` / `status-*` / `dark:` 变体 → ink / signal / intelligence 令牌；侧栏激活项改「左侧 2px 极光线」（05-components 导航规范）；列表加载文本改骨架屏。
+- **合规与验证：** `pnpm design-system:check` 保持 0 error（warning 335→331、info 2295→2051）；admin typecheck / lint（所改文件 0 warning）/ 351 项单测 / 完整 build 通过；Playwright + mock API 对两页六个视图（明暗双主题）截图走查。 · Apple Watch 气泡 + iOS 通知栈 (2026-08-16, branch claude/homepage-links-design-ppbpt8)
 
 **背景：** 友链页的列表 / 气泡两种视图与 Apple Watch 表盘、iPhone 通知中心的质感差距明显（列表是三栏杂色渐变卡、气泡只是静态 flex 蜂窝、无页面级排版语言）。本次以「星群与信笺」立意整体重做，全部颜色走 Codex 令牌、动效走 `@aetherblog/ui` 预设。
 
