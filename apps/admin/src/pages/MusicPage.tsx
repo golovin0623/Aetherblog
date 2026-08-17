@@ -1060,6 +1060,8 @@ export default function MusicPage() {
   const [playlistDraftDirty, setPlaylistDraftDirty] = useState(false);
   const playlistDraftRevisionRef = useRef(0);
   const [pendingPlaylistSelectionId, setPendingPlaylistSelectionId] = useState<number | null>(null);
+  // 未保存封面的本地预览(仅用于 Hero 即时回显,不进请求体)
+  const [playlistCoverPreview, setPlaylistCoverPreview] = useState<{ mediaId: number; url: string } | null>(null);
   const [playlistEditOpen, setPlaylistEditOpen] = useState(false);
   const [addTracksPanelOpen, setAddTracksPanelOpen] = useState(false);
   const [playlistTrackKeyword, setPlaylistTrackKeyword] = useState('');
@@ -1106,9 +1108,11 @@ export default function MusicPage() {
     setPlaylistDraftSourceId(null);
     setPlaylistDraftDirty(false);
     setSelectedPlaylistId(playlistId);
-    // 换歌单 = 换策展对象:编辑面板与添加面板都归位,避免上一份歌单的展开态串场。
+    // 换歌单 = 换策展对象:编辑面板与添加面板都归位,避免上一份歌单的展开态串场;
+    // 封面预览同属上一份草稿,一并作废。
     setPlaylistEditOpen(false);
     setAddTracksPanelOpen(false);
+    setPlaylistCoverPreview(null);
   }, []);
   const updatePlaylistDraft = useCallback(
     (updater: (draft: PlaylistDraft) => PlaylistDraft) => {
@@ -3113,8 +3117,16 @@ export default function MusicPage() {
     const heroDescription = draftLoaded
       ? (playlistDraft.description || '')
       : (selectedPlaylist?.description || '');
+    // 刚选中/刚生成的封面尚未落库,服务端 coverUrl 仍指向旧图 ——
+    // 用本地预览 URL 兜住这段窗口,让 Hero 立即反映用户的选择。
+    const pendingCoverUrl =
+      playlistCoverPreview && playlistCoverPreview.mediaId === playlistDraft.coverMediaFileId
+        ? playlistCoverPreview.url
+        : undefined;
     const heroCoverUrl = draftLoaded
-      ? (playlistDraft.coverMediaFileId ? (detail?.coverUrl || selectedPlaylist?.coverUrl) : undefined)
+      ? (playlistDraft.coverMediaFileId
+          ? (pendingCoverUrl || detail?.coverUrl || selectedPlaylist?.coverUrl)
+          : undefined)
       : selectedPlaylist?.coverUrl;
     const heroVisibility = (draftLoaded ? playlistDraft.visibility : selectedPlaylist?.visibility) || 'PUBLIC';
     const heroStatus = (draftLoaded ? playlistDraft.status : selectedPlaylist?.status) || 'ACTIVE';
@@ -3321,14 +3333,19 @@ export default function MusicPage() {
                         ownerKey={`playlist:${selectedPlaylist.id}`}
                         title={playlistDraft.name || selectedPlaylist.name}
                         value={playlistDraft.coverMediaFileId}
-                        currentUrl={playlistDraft.coverMediaFileId ? (detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
+                        currentUrl={playlistDraft.coverMediaFileId ? (pendingCoverUrl || detail?.coverUrl || selectedPlaylist.coverUrl) : undefined}
                         items={coverImagesQuery.data?.list ?? []}
                         loading={coverImagesQuery.isLoading}
                         uploadFolderId={settings.mediaFolderId}
-                        onChange={(media) => updatePlaylistDraft((draft) => ({
-                          ...draft,
-                          coverMediaFileId: media?.id,
-                        }))}
+                        onChange={(media) => {
+                          setPlaylistCoverPreview(
+                            media ? { mediaId: media.id, url: getMediaUrl(media) } : null
+                          );
+                          updatePlaylistDraft((draft) => ({
+                            ...draft,
+                            coverMediaFileId: media?.id,
+                          }));
+                        }}
                       />
                       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
                         <label className="block">
