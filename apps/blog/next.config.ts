@@ -64,7 +64,9 @@ const nextConfig: NextConfig = {
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
+      // microphone=(self)：对话空间语音消息（MediaRecorder）需要同源麦克风；
+      // 保持第三方 iframe 不可用（self 仅放行本站顶层文档）。
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=(), interest-cohort=()' },
       // 现代浏览器已禁用 X-XSS-Protection —— 显式设为 0，
       // 避免触发可能被滥用的旧版 XSS 审计器。
       { key: 'X-XSS-Protection', value: '0' },

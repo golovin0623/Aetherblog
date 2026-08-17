@@ -552,6 +552,21 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 
 REST：`/v1/admin/qa-documents/*`（22 端点，见 `.claude/docs/api-handlers.md`）。AI 服务：`/api/v1/ai/qa/*`（6 个内部端点，可插拔 `OcrProvider`，默认确定性 mock；`AETHERBLOG_QA_PIPELINE_MODE=http` 时后端经 `X-Internal-Service` 调用之，默认 `mock` 走内置确定性流水线）。
 
+### 团队聊天（migration 000082 / 000083 / 000087）
+
+对话空间（`/team-chat`）的数据面。设计基线：`docs/design/team-chat-redesign/`（提案「夜航信札」）。
+
+| 表名 | 说明 |
+|------|------|
+| `chat_conversations` | 会话（TEAM/DIRECT/GROUP；TEAM 每团队唯一、DIRECT 按 `dm_key`="min:max" 每对用户唯一） |
+| `chat_conversation_members` | 成员（角色 CHECK 含 AGENT 预留、`last_read_message_id` 已读位点、`muted` 免打扰、`pinned_at` 置顶 000087） |
+| `chat_messages` | 消息（TEXT/IMAGE/FILE/VOICE/SYSTEM + 附件字段 + `attachment_meta` jsonb〔贴纸协议 `sticker:true`、图片 `width/height/ph` 占位色、语音 `duration/peaks`〕+ `reply_to_id` 引用 + `client_msg_id` 幂等 + `mentions BIGINT[]` @提及 000087 + `edited_at` 编辑 + `recalled_at` 软撤回 000087） |
+| `chat_message_reactions` | 表情回应（PK `(message_id,user_id,emoji)` 幂等，聚合下发，000087） |
+| `chat_agents` / `chat_conversation_agents` | 智能体定义与入座关系（000083） |
+| `chat_user_settings` | 用户聊天皮肤偏好（气泡样式等） |
+
+REST：`/v1/chat/*`（19 端点，含 000087 新增的消息编辑/撤回、回应增删、会话偏好；见 `.claude/docs/api-handlers.md`）。实时：WebSocket `/v1/chat/ws`，事件 message / message-updated / reaction / typing / read / presence，跨实例经 Redis Pub/Sub `chat:fanout` 扇出。编辑/撤回 2 分钟窗口由 UPDATE SQL 内联校验；@提及在 service 层过滤为会话真实成员后落库。
+
 ---
 
 ## 部署与发布链路
