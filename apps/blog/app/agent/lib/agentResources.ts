@@ -187,6 +187,16 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     kind: 'local',
   },
   {
+    command: '/context',
+    description: '清除上下文 —— 保留消息，模型从此处重新开始记忆',
+    kind: 'local',
+  },
+  {
+    command: '/export',
+    description: '把当前会话导出为 Markdown 文件',
+    kind: 'local',
+  },
+  {
     command: '/regen',
     description: '重新生成上一条 Agent 回复',
     kind: 'local',

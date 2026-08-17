@@ -1,17 +1,43 @@
 'use client';
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronRight, Sparkles, User, Copy, Check, Brain, Pencil, RefreshCcw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  User,
+  Copy,
+  Check,
+  Brain,
+  Pencil,
+  RefreshCcw,
+  Languages,
+  TextQuote,
+  GitBranch,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { ease } from '@aetherblog/ui';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 import StreamMarkdown from './StreamMarkdown';
+import RetrievalReceipt, { type RetrievalReceiptHandle } from './RetrievalReceipt';
 import type { AgentMessage } from '../../lib/agentSessions';
+import type { KnowledgeContextMode } from '../../lib/agentChatStream';
 import { normalizeCjkInlineMarkdown } from '../../lib/cjkMarkdown';
+import { linkifyCitations, parseCitationRank } from '../../lib/citations';
+import { estimateTokens, formatTokenCount } from '../../lib/tokenEstimate';
 import { useSmoothStream, type StreamAnimationMode } from '../../lib/smooth';
 
 /** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
 export type DisplayMode = 'bubble' | 'engraved';
+
+/** 重试可携带的编排覆盖 —— 目前只有"改用自动检索"一种（selected 上下文
+ *  未命中时的一键出路）。 */
+export interface RetryOptions {
+  knowledgeMode?: KnowledgeContextMode;
+}
 
 interface Props {
   message: AgentMessage;
@@ -20,7 +46,17 @@ interface Props {
   onEdit?: (message: AgentMessage) => void;
   /** 用户点击「重试」—— 仅 assistant 消息可见；onRetry 用上一条 user 消息
    *  重新发起 streaming。错误态与完成态都展示。 */
-  onRetry?: (message: AgentMessage) => void;
+  onRetry?: (message: AgentMessage, options?: RetryOptions) => void;
+  /** 「翻译」—— 仅 assistant 完成态；流式写入 message.translation。 */
+  onTranslate?: (message: AgentMessage) => void;
+  /** 关闭译文面板（清掉 message.translation）。 */
+  onDismissTranslation?: (message: AgentMessage) => void;
+  /** 「引用」—— 把消息以 blockquote 形式插入 composer。 */
+  onQuote?: (message: AgentMessage) => void;
+  /** 「分支」—— 以该消息为止复制出一条新会话。 */
+  onFork?: (message: AgentMessage) => void;
+  /** 「删除」—— 删除单条消息（带撤销 toast）。 */
+  onDelete?: (message: AgentMessage) => void;
   /** 是否处于全局 streaming busy 状态 —— 此时 edit/retry 应禁用，避免与
    *  另一条进行中的 stream 抢同一会话状态机。 */
   busy?: boolean;
@@ -30,6 +66,10 @@ interface Props {
   streamAnimation?: StreamAnimationMode;
   /** 字体大小（px），默认 14.5 与文章正文同档。 */
   fontSize?: number;
+  /** 把 (providerCode, modelId) 解析成展示名 —— 由父级从模型清单构建。 */
+  resolveModelLabel?: (providerCode: string | null | undefined, modelId: string | null | undefined) => string | null;
+  /** admin 才允许点击 /admin/ 开头的检索来源链接。 */
+  allowAdminHref?: boolean;
 }
 
 /**
@@ -37,41 +77,53 @@ interface Props {
  *
  *  · user 消息靠右紧凑卡（不走 Markdown，原样保留换行）；
  *  · assistant 消息靠左宽栏：
- *    - 流式中：StreamMarkdown 边出边渲染（remark-gfm，无 shiki）+ 闪烁光标；
- *    - 流式完：切换到 MarkdownRenderer 完整渲染（math / code shiki / alert 等）；
- *    - 流式中且 thinking：左侧呼吸光带 + bubble 边沿 aurora 呼吸；
- *  · 顶部"已深度思考 · X.Xs"或"正在思考 · 2.4s"的状态行；
- *  · think 段折叠：流式中默认折叠但可点开看 live preview；流式完同样默认收起；
- *  · 右上 hover 显出 copy。
+ *    - 检索回执（retrieval）挂在正文上方 —— 时间线上先检索后作答；
+ *    - 流式中：StreamMarkdown 边出边渲染（remark-gfm，无 shiki）+ 内联光标；
+ *    - 流式完：切换到 MarkdownRenderer 完整渲染（math / code shiki / alert 等），
+ *      正文里的 [n]/【n】引用标记链接到回执命中条目；
+ *    - 元数据 footer：模型 · 用时 · 首字 · ~token 估算；
+ *    - 译文面板：操作条「翻译」流式写入，可关可复制；
+ *  · think 段折叠：流式中默认展开 live preview；流式完自动收起；
+ *  · hover 浮现操作条：复制 / 引用 / 翻译 / 分支 / 重试 / 删除。
  */
 function MessageBubbleBase({
   message,
   onEdit,
   onRetry,
+  onTranslate,
+  onDismissTranslation,
+  onQuote,
+  onFork,
+  onDelete,
   busy,
   displayMode = 'bubble',
   streamAnimation = 'smooth',
   fontSize,
+  resolveModelLabel,
+  allowAdminHref,
 }: Props) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const receiptRef = useRef<RetrievalReceiptHandle>(null);
 
   // 正文吐字平滑由 WorkspaceClient 的 rAF 管线统一负责 —— 流式期间
   // message.content 已是按"过渡动画"档位匀速推进的屏幕态，这里直接渲染。
-  // 历史版本在此之上又叠了一层 useSmoothStream（固定 45 chars/s），两个
-  // typewriter 互相竞争：可见速率被钉死、lag 滚雪球、流结束整段瞬移。
-  // 思考段（ThinkingPanel）没有父级管线，仍用 useSmoothStream 自平滑。
 
-  // CJK 友好预处理 —— 修正 `**xx：**汉字` 等 CommonMark 闭合盲点。
-  const renderableContent = useMemo(
-    () => normalizeCjkInlineMarkdown(message.content),
-    [message.content],
-  );
+  const citationRankMax = !isUser && message.retrieval ? message.retrieval.hits.length : 0;
 
-  const finalContent = useMemo(
-    () => (isUser ? message.content : normalizeCjkInlineMarkdown(message.content)),
-    [isUser, message.content],
-  );
+  // CJK 友好预处理 + 引用标记链接化（仅 assistant 且有检索回执时）。
+  const renderableContent = useMemo(() => {
+    const normalized = normalizeCjkInlineMarkdown(message.content);
+    return citationRankMax > 0
+      ? linkifyCitations(normalized, message.id, citationRankMax)
+      : normalized;
+  }, [message.content, message.id, citationRankMax]);
+
+  const finalContent = useMemo(() => {
+    if (isUser) return message.content;
+    return renderableContent;
+  }, [isUser, message.content, renderableContent]);
+
   const messageFontStyle = useMemo<CSSProperties | undefined>(() => {
     if (!fontSize) return undefined;
     return {
@@ -90,12 +142,38 @@ function MessageBubbleBase({
     }
   }
 
+  // 引用标记点击 → 展开回执并滚动高亮对应命中（委托监听,链接由 markdown 渲染)。
+  const handleBodyClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const anchor = target.closest?.('a[href^="#cite-"]');
+    if (!anchor) return;
+    e.preventDefault();
+    const rank = parseCitationRank(anchor.getAttribute('href') ?? '');
+    if (rank != null) receiptRef.current?.reveal(rank);
+  }, []);
+
   // user 消息允许「编辑/复制」；编辑会丢弃后续消息，所以 streaming 中禁用。
   const canEditUser = isUser && !!onEdit && !busy && !!message.content;
   // assistant 消息允许「重试/复制」；重试同样会触发 streaming，自然要等当前
   // 流跑完。pending 自身不可重试（要么等完成、要么按 abort 后再点重试）。
+  // 服务端显式标记 retryable:false 的错误不亮重试（重试注定同样失败）。
   const canRetryAssistant =
-    !isUser && !!onRetry && !busy && !message.pending && (!!message.content || !!message.error);
+    !isUser &&
+    !!onRetry &&
+    !busy &&
+    !message.pending &&
+    (!!message.content || !!message.error) &&
+    (!message.error || message.retryable !== false);
+  const canTranslate =
+    !isUser &&
+    !!onTranslate &&
+    !busy &&
+    !message.pending &&
+    !!message.content &&
+    !message.translation?.pending;
+  const canQuote = !!onQuote && !!message.content && !message.pending;
+  const canFork = !!onFork && !busy && !message.pending;
+  const canDelete = !!onDelete && !busy && !message.pending;
 
   const hasThink = !isUser && !!message.think?.trim();
   const showThinkingPanel = !isUser && (!!message.pending || hasThink);
@@ -104,16 +182,46 @@ function MessageBubbleBase({
   // 流式中且已有正文 —— bubble 边沿走呼吸 aurora，让"正在生成"的状态可视化
   const isStreaming = !isUser && message.pending && !!message.content;
   const showMessageBody = isUser || !!message.error || !!message.content || (!showThinkingPanel && showTypingDots);
+  const selectedContextNotGrounded = message.errorCode === 'selected_context_not_grounded';
 
-  // LobeHub 风格操作条：不占用 YOU/AGENT 标题行，默认隐藏，hover/focus 时浮现。
-  const hasActions = !!message.content || canEditUser || canRetryAssistant;
+  // ---- 元数据 footer（assistant 完成态）----
+  const metaLine = useMemo(() => {
+    if (isUser || message.pending || !message.startedAt || !message.finishedAt) return null;
+    const parts: string[] = [];
+    const label = resolveModelLabel?.(message.providerCode, message.modelId);
+    if (label) parts.push(label);
+    else if (message.modelId) parts.push(message.modelId);
+    else if (message.modelId === null) parts.push('自动路由');
+    const total = (message.finishedAt - message.startedAt) / 1000;
+    parts.push(`用时 ${total.toFixed(1)}s`);
+    if (message.firstTokenAt && message.firstTokenAt > message.startedAt) {
+      parts.push(`首字 ${((message.firstTokenAt - message.startedAt) / 1000).toFixed(1)}s`);
+    }
+    if (message.content) {
+      parts.push(`~${formatTokenCount(estimateTokens(message.content))} tok`);
+    }
+    return parts.join(' · ');
+  }, [
+    isUser,
+    message.pending,
+    message.startedAt,
+    message.finishedAt,
+    message.firstTokenAt,
+    message.content,
+    message.modelId,
+    message.providerCode,
+    resolveModelLabel,
+  ]);
+
+  // LobeHub 风格操作条：不占用标题行，默认隐藏，hover/focus 时浮现。
+  const hasActions =
+    !!message.content || canEditUser || canRetryAssistant || canFork || canDelete;
+  // 操作条容器底就是 --bg-raised —— hover 必须走 ink 淡染,否则悬浮不可见。
   const actionButtonClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]';
+    'inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors duration-quick ease-aether hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] hover:text-[var(--ink-primary)]';
   const messageActions = hasActions ? (
     <div
-      className={`mt-1.5 flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)] p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto ${
-        isUser ? 'ml-auto' : 'mr-auto'
-      }`}
+      className={`flex w-fit items-center gap-0.5 rounded-xl border border-[var(--ink-subtle)]/12 bg-[var(--bg-raised)] p-0.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.35)] opacity-0 pointer-events-none transition-opacity duration-150 group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto`}
       aria-label="消息操作"
     >
       {!!message.content && (
@@ -124,7 +232,29 @@ function MessageBubbleBase({
           aria-label={copied ? '已复制' : '复制消息'}
           title={copied ? '已复制' : '复制'}
         >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? <Check className="h-3.5 w-3.5 text-[var(--signal-success)]" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      )}
+      {canQuote && (
+        <button
+          type="button"
+          onClick={() => onQuote?.(message)}
+          className={actionButtonClass}
+          aria-label="引用这条消息"
+          title="引用到输入框"
+        >
+          <TextQuote className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {canTranslate && (
+        <button
+          type="button"
+          onClick={() => onTranslate?.(message)}
+          className={actionButtonClass}
+          aria-label="翻译这条消息"
+          title="翻译（中 ⇄ EN）"
+        >
+          <Languages className="h-3.5 w-3.5" />
         </button>
       )}
       {canEditUser && (
@@ -149,10 +279,87 @@ function MessageBubbleBase({
           <RefreshCcw className="h-3.5 w-3.5" />
         </button>
       )}
+      {canFork && (
+        <button
+          type="button"
+          onClick={() => onFork?.(message)}
+          className={actionButtonClass}
+          aria-label="从此处分支新会话"
+          title="分支会话（复制到此为止的对话）"
+        >
+          <GitBranch className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete?.(message)}
+          className={`${actionButtonClass} hover:text-[var(--signal-danger)]`}
+          aria-label="删除这条消息"
+          title="删除消息"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   ) : null;
 
-  // 共用的 sources 列表
+  // footer 行：assistant 左侧固定 meta（安静的 mono 行），操作条随 hover 浮现。
+  const messageFooter =
+    hasActions || metaLine ? (
+      <div
+        className={`mt-1.5 flex w-full items-center gap-3 ${
+          isUser ? 'flex-row-reverse' : ''
+        }`}
+      >
+        {messageActions}
+        {metaLine && (
+          <span
+            className="min-w-0 truncate font-mono text-[10px] tracking-[0.02em] text-[var(--ink-muted)]/85 tnum"
+            title={metaLine}
+          >
+            {metaLine}
+          </span>
+        )}
+      </div>
+    ) : null;
+
+  // 检索回执（assistant） —— 正文上方。
+  const receiptBlock =
+    !isUser && message.retrieval ? (
+      <RetrievalReceipt
+        ref={receiptRef}
+        receipt={message.retrieval}
+        messageId={message.id}
+        allowAdminHref={allowAdminHref}
+      />
+    ) : null;
+
+  // 译文面板（assistant）。
+  const translationBlock =
+    !isUser && message.translation ? (
+      <TranslationBlock
+        message={message}
+        fontStyle={messageFontStyle}
+        onRetranslate={onTranslate}
+        onDismiss={onDismissTranslation}
+      />
+    ) : null;
+
+  // 错误 footer 的补充编排：selected 上下文未命中 → 一键改自动检索重试。
+  const retryAutoButton =
+    selectedContextNotGrounded && canRetryAssistant ? (
+      <button
+        type="button"
+        onClick={() => onRetry?.(message, { knowledgeMode: 'auto' })}
+        className="inline-flex items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-2)_45%,transparent)] px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.18em] text-[var(--aurora-2)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-2)_10%,transparent)]"
+        aria-label="改用自动检索重试"
+      >
+        <Sparkles className="h-3 w-3" /> 自动检索重试
+      </button>
+    ) : null;
+
+  // 共用的 sources 列表（旧版 SSE `sources` 事件的历史消息兼容渲染）
   const sourcesList =
     !isUser && message.sources && message.sources.length > 0 ? (
       <div className="mt-3 max-w-full">
@@ -184,7 +391,7 @@ function MessageBubbleBase({
       <motion.article
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.32, ease: ease.out }}
         className="group/msg relative mx-auto w-full max-w-[820px]"
         aria-label={isUser ? '用户消息' : 'Agent 回复'}
       >
@@ -231,12 +438,17 @@ function MessageBubbleBase({
           </div>
         )}
 
+        {receiptBlock && (
+          <div className="mx-auto w-full max-w-[680px]">{receiptBlock}</div>
+        )}
+
         {showMessageBody && (
           /* 正文 —— 没有气泡，直接铺在画布上，以 text-shadow 浮印 */
           <div className="mx-auto w-full max-w-[680px]">
             <div
               className="agent-message-font agent-engraved-text break-words"
               style={messageFontStyle}
+              onClick={handleBodyClick}
             >
               {isUser ? (
                 <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
@@ -252,6 +464,7 @@ function MessageBubbleBase({
                     <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
                       ERROR · {message.error}
                     </span>
+                    {retryAutoButton}
                     {canRetryAssistant && (
                       <button
                         type="button"
@@ -268,21 +481,21 @@ function MessageBubbleBase({
                 <TypingDots />
               ) : message.pending ? (
                 <div
-                  className={`agent-engraved-streaming agent-stream-fade${
+                  className={`agent-engraved-streaming agent-stream-caret agent-stream-fade${
                     streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
                   }`}
                 >
                   <StreamMarkdown content={renderableContent} />
-                  <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
                 </div>
               ) : (
-                <div className="agent-md agent-engraved-md">
+                <div className="agent-md agent-engraved-md agent-md-settle">
                   <MarkdownRenderer content={finalContent} />
                 </div>
               )}
             </div>
 
-            {messageActions}
+            {translationBlock}
+            {messageFooter}
           </div>
         )}
 
@@ -296,17 +509,14 @@ function MessageBubbleBase({
     <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.32, ease: ease.out }}
       className={`group/msg relative mx-auto flex w-full min-w-0 max-w-[820px] flex-col ${
         isUser ? 'items-end' : 'items-start'
       }`}
       aria-label={isUser ? '用户消息' : 'Agent 回复'}
     >
-      {/* 元信息 + 状态行。头像放在 header，不再作为正文横向 gutter，
-          这样思考块 / 回答卡 / 输入框共享同一条居中 rail。 */}
-      {/* identity —— Codex 式克制:去掉 8×8 头像 + YOU/AGENT 大写标签,
-          只保留一枚角色圆点(assistant 极光 · user 中性墨)+ 静音时间戳,
-          把视觉权重整体让回正文。 */}
+      {/* identity —— Codex 式克制:一枚角色圆点(assistant 极光 · user 中性墨)
+          + 静音时间戳,把视觉权重整体让回正文。 */}
       <div
         className={`mb-1.5 flex items-center gap-1.5 text-[11px] tnum text-[var(--ink-muted)] ${
           isUser ? 'flex-row-reverse self-end' : 'self-start'
@@ -339,6 +549,8 @@ function MessageBubbleBase({
         </div>
       )}
 
+      {receiptBlock}
+
       {showMessageBody && (
         <>
           {/* 主体气泡 */}
@@ -356,6 +568,7 @@ function MessageBubbleBase({
                   : 'surface-leaf w-full max-w-full border border-[var(--ink-subtle)]/12 text-[var(--ink-primary)] shadow-[0_10px_30px_-26px_rgba(0,0,0,0.5)]'
               }`}
               style={messageFontStyle}
+              onClick={handleBodyClick}
             >
               {isUser ? (
                 message.content
@@ -378,6 +591,7 @@ function MessageBubbleBase({
                     <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
                       ERROR · {message.error}
                     </span>
+                    {retryAutoButton}
                     {canRetryAssistant && (
                       <button
                         type="button"
@@ -393,50 +607,30 @@ function MessageBubbleBase({
               ) : showTypingDots ? (
                 <TypingDots />
               ) : message.pending ? (
-                // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer）
+                // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer），
+                // 光标由 CSS 内联挂在最后一个文本块尾部（agent-stream-caret）。
                 <div
-                  className={`agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
+                  className={`agent-stream-caret agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
                 >
                   <StreamMarkdown content={renderableContent} />
-                  <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
                 </div>
               ) : (
-                // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色
-                <div
-                  className="agent-md"
-                >
+                // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色；
+                // agent-md-settle 让切换以 220ms 淡入落定，不做硬跳。
+                <div className="agent-md agent-md-settle">
                   <MarkdownRenderer content={finalContent} />
                 </div>
               )}
             </div>
           </div>
 
-          {messageActions}
+          {translationBlock && <div className="w-full">{translationBlock}</div>}
+          {messageFooter}
         </>
       )}
 
-      {/* sources */}
-      {!isUser && message.sources && message.sources.length > 0 && (
-        <div className="mt-3 w-full max-w-full">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mb-1.5">
-            § Sources
-          </div>
-          <ul className="flex flex-wrap gap-1.5">
-            {message.sources.map((s) => (
-              <li key={s.slug + s.title}>
-                <a
-                  href={`/posts/${s.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 text-[11.5px] text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] hover:border-[var(--aurora-1)]/40 transition-colors"
-                >
-                  {s.title || s.slug}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* sources（旧事件兼容） */}
+      {sourcesList && <div className="w-full max-w-full">{sourcesList}</div>}
     </motion.article>
   );
 }
@@ -456,27 +650,135 @@ function markdownToPreviewText(markdown: string): string {
 }
 
 /**
+ * TranslationBlock —— 消息内联译文面板
+ *
+ * 由操作条「翻译」触发；translation.pending 期间流式追加并展示 shimmer 光带，
+ * 完成后可复制 / 重新翻译 / 关闭。视觉：aurora-3（cyan）作为"辅助理解层"的
+ * 点色，与正文（aurora-1）、知识（aurora-2）区分开。
+ */
+function TranslationBlock({
+  message,
+  fontStyle,
+  onRetranslate,
+  onDismiss,
+}: {
+  message: AgentMessage;
+  fontStyle?: CSSProperties;
+  onRetranslate?: (message: AgentMessage) => void;
+  onDismiss?: (message: AgentMessage) => void;
+}) {
+  const t = message.translation!;
+  const [copied, setCopied] = useState(false);
+
+  async function copyTranslation() {
+    try {
+      await navigator.clipboard.writeText(t.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, ease: ease.out }}
+      className={`relative mt-2 w-full overflow-hidden rounded-xl border ${
+        t.pending
+          ? 'border-[color-mix(in_oklch,var(--aurora-3)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-3)_6%,transparent)]'
+          : 'border-[color-mix(in_oklch,var(--aurora-3)_20%,transparent)] bg-[color-mix(in_oklch,var(--aurora-3)_4%,transparent)]'
+      }`}
+      aria-label="译文"
+    >
+      {t.pending && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-0 top-0 w-[1.5px] bg-[color-mix(in_oklch,var(--aurora-3)_55%,transparent)]"
+        >
+          <span className="agent-think-shimmer" />
+        </span>
+      )}
+      <div className="flex items-center gap-2 border-b border-[color-mix(in_oklch,var(--aurora-3)_14%,transparent)] py-1.5 pl-3 pr-1.5">
+        <Languages className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-3)]" aria-hidden="true" />
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.28em] text-[color-mix(in_oklch,var(--aurora-3)_82%,var(--ink-secondary))]">
+          译文 · {t.lang === 'en' ? 'English' : '中文'}
+        </span>
+        {t.pending && (
+          <span className="inline-flex items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.18em] text-[var(--aurora-3)]">
+            <span className="agent-thinking-live-dot" aria-hidden="true" />
+            翻译中
+          </span>
+        )}
+        <span className="ml-auto inline-flex items-center gap-0.5">
+          {!t.pending && t.content && (
+            <button
+              type="button"
+              onClick={copyTranslation}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]"
+              aria-label={copied ? '已复制译文' : '复制译文'}
+              title={copied ? '已复制' : '复制译文'}
+            >
+              {copied ? <Check className="h-3 w-3 text-[var(--signal-success)]" /> : <Copy className="h-3 w-3" />}
+            </button>
+          )}
+          {!t.pending && (
+            <button
+              type="button"
+              onClick={() => onDismiss?.(message)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]"
+              aria-label="关闭译文"
+              title="关闭译文"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </span>
+      </div>
+      <div className="px-3.5 py-2.5" style={fontStyle}>
+        {t.error ? (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="font-mono text-[11px] text-[var(--signal-warn)]">{t.error}</span>
+            {onRetranslate && (
+              <button
+                type="button"
+                onClick={() => onRetranslate(message)}
+                className="inline-flex items-center gap-1 rounded-md border border-[color-mix(in_oklch,var(--aurora-3)_40%,transparent)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--aurora-3)] transition-colors hover:bg-[color-mix(in_oklch,var(--aurora-3)_10%,transparent)]"
+              >
+                <RefreshCcw className="h-3 w-3" /> 重试
+              </button>
+            )}
+          </div>
+        ) : t.pending && !t.content ? (
+          <TypingDots />
+        ) : t.pending ? (
+          <div className="agent-stream-caret">
+            <StreamMarkdown content={t.content} />
+          </div>
+        ) : (
+          <div className="agent-md agent-md-settle">
+            <MarkdownRenderer content={t.content} />
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
  * ThinkingPanel —— Lobehub 风格统一思考面板
  *
- * 取代旧的 inline `ThinkingMeta` + 独立 `ThinkingBlock` 双轨实现 —— 把"思考状态行"
- * 和"思考内容折叠卡"合并成一块挂在主回答正文上方的独立 UI，永远不混进 AGENT
- * meta 行（YOU/AGENT · 时间）。这样：
- *
- *  · 移动端不再因为 meta 行被左右 hairline 挤压而把 CJK 标签（"已深度思考"）
- *    逐字纵向断行；
- *  · 视觉层级更接近 LobeChat / Claude / Gemini 等 Agent 工具：思考内容是
- *    "可折叠副面板"，不是"正文标题的一部分"。
+ * 把"思考状态行"和"思考内容折叠卡"合并成一块挂在主回答正文上方的独立 UI。
  *
  * 渲染态：
  *   收起 pill（永远显示一行）
- *     · 流式 + 未首 token  → 左缘 aurora shimmer + Brain + "正在思考" + 实时秒数
- *     · 流式 + 已首 token  → 同上但 label = "正在生成"
- *     · 已完成 + 有 think  → Brain + "已深度思考" + 总秒数 + N chars，可展开
- *     · 已完成 + 无 think  → Brain + "已深度思考" + 总秒数（不可展开）
+ *     · 流式 + 未首 token + 有知识检索 → "正在检索知识"（retrieval 回执还没到）
+ *     · 流式 + 未首 token  → 左缘 aurora shimmer + Brain + "正在思考/等待响应"
+ *     · 流式 + 已首 token  → "正在生成"
+ *     · 已完成 + 有 think  → "已深度思考" + 总秒数 + N chars，可展开
+ *     · 已完成 + 无 think  → "已生成" + 总秒数（不可展开）
  *     · 错误中断           → "已中断" + 秒数
- *
- *   展开（仅在有 think 内容时可用）
- *     · 滚动 pre 框，流式中 stick-to-bottom（终端 tail -f 体验）。
  */
 function ThinkingPanel({
   message,
@@ -546,9 +848,20 @@ function ThinkingPanel({
   const elapsed = Math.max(0, endTs - message.startedAt) / 1000;
   const elapsedStr = `${elapsed.toFixed(1)} 秒`;
 
+  // 知识检索阶段：请求带知识上下文、retrieval 回执与首 token 都还没到 ——
+  // 把"正在检索"显式亮出来，回答编排的第一步不再是黑盒。
+  const searchingKnowledge =
+    isStreaming &&
+    !message.firstTokenAt &&
+    !hasThink &&
+    !message.retrieval &&
+    message.knowledgeMode !== 'none';
+
   let label: string;
   if (isStreaming && hasThink && !message.firstTokenAt) {
     label = '正在思考';
+  } else if (isStreaming && searchingKnowledge) {
+    label = '正在检索知识';
   } else if (isStreaming) {
     label = message.firstTokenAt ? '正在生成' : '等待响应';
   } else if (message.error) {
@@ -656,7 +969,7 @@ function ThinkingPanel({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.22, ease: ease.out }}
             className="overflow-hidden"
           >
             <div
@@ -669,7 +982,7 @@ function ThinkingPanel({
             >
               {isStreaming ? (
                 <div
-                  className={`agent-think-md agent-stream-fade${
+                  className={`agent-think-md agent-stream-caret agent-stream-fade${
                     streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''
                   }`}
                   style={thinkFontStyle}
@@ -683,9 +996,6 @@ function ThinkingPanel({
                 >
                   <MarkdownRenderer content={renderableThink} />
                 </div>
-              )}
-              {isStreaming && (
-                <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
               )}
             </div>
           </motion.div>
@@ -735,9 +1045,20 @@ function areEqual(a: Props, b: Props) {
   if (a.displayMode !== b.displayMode) return false;
   if (a.streamAnimation !== b.streamAnimation) return false;
   if (a.fontSize !== b.fontSize) return false;
-  // 父级用 useCallback 稳定 onEdit / onRetry —— 它们的引用不变就视为等价；
+  if (a.allowAdminHref !== b.allowAdminHref) return false;
+  // 父级用 useCallback 稳定回调 —— 引用不变就视为等价；
   // 真要变（比如父切了 active session）也通常伴随 busy 或 message 变化。
   if (a.onEdit !== b.onEdit || a.onRetry !== b.onRetry) return false;
+  if (
+    a.onTranslate !== b.onTranslate ||
+    a.onDismissTranslation !== b.onDismissTranslation ||
+    a.onQuote !== b.onQuote ||
+    a.onFork !== b.onFork ||
+    a.onDelete !== b.onDelete ||
+    a.resolveModelLabel !== b.resolveModelLabel
+  ) {
+    return false;
+  }
   if (ma === mb) return true;
   if (
     ma.id === mb.id &&
@@ -745,9 +1066,15 @@ function areEqual(a: Props, b: Props) {
     ma.think === mb.think &&
     ma.pending === mb.pending &&
     ma.error === mb.error &&
+    ma.errorCode === mb.errorCode &&
     ma.finishedAt === mb.finishedAt &&
     ma.firstTokenAt === mb.firstTokenAt &&
-    ma.sources === mb.sources
+    ma.sources === mb.sources &&
+    ma.retrieval === mb.retrieval &&
+    ma.translation === mb.translation &&
+    ma.modelId === mb.modelId &&
+    ma.providerCode === mb.providerCode &&
+    ma.knowledgeMode === mb.knowledgeMode
   ) {
     return true;
   }
