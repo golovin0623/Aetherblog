@@ -13,7 +13,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Check, ChevronLeft, ChevronRight, List, Palette, RotateCcw, Settings, Type, X } from 'lucide-react';
+import {
+  Check, ChevronLeft, ChevronRight, List, Minus, Palette, Plus,
+  RotateCcw, Settings, Type, X, ZoomIn,
+} from 'lucide-react';
 import { useTheme } from '@aetherblog/hooks';
 import styles from './PageFlipBook.module.css';
 import {
@@ -22,9 +25,17 @@ import {
   computeReaderDims,
   cursorToAbsolutePage,
   DEFAULT_READER_PREFERENCES,
+  dragToProgress,
+  flipTravel,
   horizontalOffsetToPage,
+  isFlipSettled,
+  READER_ZOOM_MAX,
+  READER_ZOOM_MIN,
+  READER_ZOOM_STEP,
+  resolveFlipRelease,
   resolveReaderPageTurn,
   resolveReaderSkin,
+  stepFlipSpring,
   type ReaderDims as Dims,
   type ReaderFontFamily,
   type ReaderParagraphMode,
@@ -53,17 +64,31 @@ export interface ReadingBook {
   theme?: string;
 }
 
-const FLIP_MS = 660;
-const SLIDE_MS = 260;
-const TURN_ANGLE = -158;
+/** 悬停掀角的静置进度。 */
+const PEEK_PROGRESS = 0.055;
+/** 未裁决拖拽的 target 哨兵。 */
+const TARGET_UNDECIDED = -1;
+/** 滚轮翻页的累计阈值。 */
+const WHEEL_FLIP_THRESHOLD = 110;
 
 interface FlipState {
   dir: 'next' | 'prev';
-  angle: number;
-  progress: 0 | 1;
   from: number;
   to: number;
-  mode: ReaderPageTurn;
+  mode: 'curl' | 'slide';
+}
+
+/** rAF 引擎持有的翻页任务（不进 React state，逐帧写 DOM）。 */
+interface FlipJob extends FlipState {
+  p: number;
+  v: number;
+  /** 0=取消 1=提交 PEEK_PROGRESS=掀角悬停 TARGET_UNDECIDED=拖拽中。 */
+  target: number;
+  dragging: boolean;
+  peeking: boolean;
+  dragBaseP: number;
+  samples: Array<{ t: number; p: number }>;
+  lastT: number;
 }
 
 interface PointerState {
@@ -76,6 +101,9 @@ interface PointerState {
 
 const READER_PREFERENCES_KEY = 'aetherblog.reader.preferences';
 const READER_POSITION_PREFIX = 'aetherblog.reader.position.';
+const READER_SERIF_FONT_ID = 'aetherblog-reader-serif-font';
+const READER_SERIF_FONT_URL =
+  'https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700&display=swap';
 
 function readStoredPreferences(): ReaderPreferences {
   if (typeof window === 'undefined') return DEFAULT_READER_PREFERENCES;
@@ -115,6 +143,17 @@ function readImmediateSiteTheme(fallback: ResolvedSiteTheme): ResolvedSiteTheme 
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 }
 
+/** 成书正文默认衬线需要真实字形支撑；按需注入 webfont（与 FontProvider 相同的 link 注入策略）。 */
+function ensureReaderSerifFont() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(READER_SERIF_FONT_ID)) return;
+  const link = document.createElement('link');
+  link.id = READER_SERIF_FONT_ID;
+  link.rel = 'stylesheet';
+  link.href = READER_SERIF_FONT_URL;
+  document.head.appendChild(link);
+}
+
 const SKIN_OPTIONS: Array<{ value: ReaderSkin; label: string; swatch: string }> = [
   { value: 'auto', label: '跟随', swatch: 'linear-gradient(135deg, #f8f4eb 0 50%, #20242c 50% 100%)' },
   { value: 'paper', label: '白纸', swatch: '#fbfaf6' },
@@ -127,6 +166,7 @@ const SKIN_OPTIONS: Array<{ value: ReaderSkin; label: string; swatch: string }> 
 
 const FONT_OPTIONS: Array<{ value: ReaderFontFamily; label: string }> = [
   { value: 'serif', label: '宋体' },
+  { value: 'kai', label: '楷体' },
   { value: 'sans', label: '黑体' },
   { value: 'system', label: '系统' },
 ];
@@ -135,6 +175,11 @@ const TURN_OPTIONS: Array<{ value: ReaderPageTurn; label: string }> = [
   { value: 'slide', label: '滑动' },
   { value: 'curl', label: '翻页' },
   { value: 'instant', label: '瞬切' },
+];
+
+const PARAGRAPH_OPTIONS: Array<{ value: ReaderParagraphMode; label: string }> = [
+  { value: 'book', label: '缩进' },
+  { value: 'article', label: '间距' },
 ];
 
 function isInteractiveKeyTarget(target: EventTarget | null): boolean {
@@ -147,17 +192,12 @@ function isReaderContentInteractive(target: EventTarget | null): boolean {
   return Boolean(target.closest('a[href], button, input, textarea, select, summary, [role="button"], [role="link"], [contenteditable="true"]'));
 }
 
-const PARAGRAPH_OPTIONS: Array<{ value: ReaderParagraphMode; label: string }> = [
-  { value: 'book', label: '缩进' },
-  { value: 'article', label: '间距' },
-];
-
 interface PageSurfaceProps {
   pageIndex: number;
   side: 'left' | 'right' | 'single';
   dims: Dims;
   totalPages: number;
-  title: string;
+  runningHead: string;
   contentHtml: string;
 }
 
@@ -166,7 +206,7 @@ const PageSurface = memo(function PageSurface({
   side,
   dims,
   totalPages,
-  title,
+  runningHead,
   contentHtml,
 }: PageSurfaceProps) {
   const valid = pageIndex >= 0 && pageIndex < totalPages;
@@ -187,11 +227,11 @@ const PageSurface = memo(function PageSurface({
   };
 
   return (
-    <div className={`${styles.page} ${pageClass}`} style={pageStyle} aria-hidden={!valid}>
+    <div className={`${styles.page} ${pageClass}`} style={pageStyle} data-side={side} aria-hidden={!valid}>
       {valid && (
         <>
-          <div className={styles.pageHeader} style={{ top: dims.padTop * 0.42, paddingInline: dims.padX }}>
-            {title}
+          <div className={styles.pageHeader} style={{ top: dims.padTop * 0.4, paddingInline: dims.padX }}>
+            {runningHead}
           </div>
           <div className={styles.flowWrap} style={wrapStyle}>
             <div
@@ -200,7 +240,7 @@ const PageSurface = memo(function PageSurface({
               dangerouslySetInnerHTML={{ __html: contentHtml }}
             />
           </div>
-          <div className={styles.pageNumber} style={{ bottom: dims.padBottom * 0.4 }}>
+          <div className={styles.pageNumber} style={{ bottom: dims.padBottom * 0.38, paddingInline: dims.padX }}>
             {pageIndex + 1}
           </div>
         </>
@@ -208,6 +248,11 @@ const PageSurface = memo(function PageSurface({
     </div>
   );
 });
+
+/** 单页 curl 的叶片背面：真实纸张的空白反面（不重复印刷内容）。 */
+function BlankLeafFace({ dims }: { dims: Dims }) {
+  return <div className={styles.blankFace} style={{ width: dims.pageW, height: dims.pageH }} />;
+}
 
 export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const router = useRouter();
@@ -225,18 +270,32 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const [flip, setFlip] = useState<FlipState | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  const [headingPages, setHeadingPages] = useState<Array<{ id: string; text: string; page: number }>>([]);
   const [positionReady, setPositionReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [skeletonGone, setSkeletonGone] = useState(false);
 
   const measureRef = useRef<HTMLDivElement>(null);
-  const flipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flipFrames = useRef<number[]>([]);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const leafRef = useRef<HTMLDivElement>(null);
+  const leafShadeFrontRef = useRef<HTMLDivElement>(null);
+  const leafShadeBackRef = useRef<HTMLDivElement>(null);
+  const leafSheenRef = useRef<HTMLDivElement>(null);
+  const castShadowRef = useRef<HTMLDivElement>(null);
+  const slideTrackRef = useRef<HTMLDivElement>(null);
   const prevColsRef = useRef<1 | 2 | null>(null);
   const pointerRef = useRef<PointerState | null>(null);
   const suppressClickRef = useRef(false);
-  const animating = flip !== null;
+  const jobRef = useRef<FlipJob | null>(null);
+  const rafRef = useRef<number>(0);
+  const cursorRef = useRef(0);
+  const wheelAccRef = useRef(0);
+  const wheelResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reducedMotionRef = useRef(false);
+
+  // 供引擎回调读取的最新渲染快照。
+  const latest = useRef({ dims, maxCursor: 0, turnMode: 'curl' as ReaderPageTurn });
 
   useEffect(() => {
     const root = document.documentElement;
@@ -255,13 +314,14 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     };
   }, [resolvedTheme]);
 
-  const clearFlipWork = useCallback(() => {
-    if (flipTimer.current) {
-      clearTimeout(flipTimer.current);
-      flipTimer.current = null;
-    }
-    flipFrames.current.forEach((frame) => cancelAnimationFrame(frame));
-    flipFrames.current = [];
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => {
+      reducedMotionRef.current = query.matches;
+    };
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
   }, []);
 
   const revealChrome = useCallback(() => {
@@ -288,6 +348,11 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     }
   }, [preferences, preferencesLoaded]);
 
+  // 衬线（默认）字族按需加载 webfont；字形就绪后重新分页。
+  useEffect(() => {
+    if (preferences.fontFamily === 'serif') ensureReaderSerifFont();
+  }, [preferences.fontFamily]);
+
   const updatePreferences = useCallback((patch: Partial<ReaderPreferences>) => {
     setPreferences((prev) => clampReaderPreferences({ ...prev, ...patch }));
   }, []);
@@ -296,17 +361,207 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     setPreferences(DEFAULT_READER_PREFERENCES);
   }, []);
 
-  // 响应式尺寸。
+  const commitCursor = useCallback((next: number) => {
+    cursorRef.current = next;
+    setCursor(next);
+  }, []);
+
+  // ----- 翻页引擎（rAF + 临界阻尼弹簧，逐帧直写 DOM） -----
+
+  const applyFlipFrame = useCallback((job: FlipJob) => {
+    const d = latest.current.dims;
+    if (!d) return;
+    const travel = flipTravel(job.dir, job.p);
+    const wave = Math.sin(travel * Math.PI);
+
+    if (job.mode === 'slide') {
+      const track = slideTrackRef.current;
+      if (track) {
+        track.style.transform = `translate3d(${-travel * d.pageW}px, 0, 0)`;
+      }
+      return;
+    }
+
+    const leaf = leafRef.current;
+    if (leaf) {
+      const angle = -180 * travel;
+      const tilt = (job.dir === 'next' ? -0.8 : 0.8) * wave;
+      const skew = (job.dir === 'next' ? 1 : -1) * wave * 3.2;
+      leaf.style.transform = `translateZ(2.5px) rotateY(${angle}deg) rotateZ(${tilt}deg) skewY(${skew}deg)`;
+    }
+    if (leafShadeFrontRef.current) {
+      leafShadeFrontRef.current.style.opacity = String(wave * 0.45);
+    }
+    if (leafShadeBackRef.current) {
+      leafShadeBackRef.current.style.opacity = String(wave * 0.36);
+    }
+    if (leafSheenRef.current) {
+      leafSheenRef.current.style.opacity = String(wave * 0.55);
+      leafSheenRef.current.style.transform = `translate3d(${(1 - travel) * d.pageW * 0.86}px, 0, 0)`;
+    }
+    const cast = castShadowRef.current;
+    if (cast) {
+      const drift = Math.cos(travel * Math.PI) * d.pageW * 0.3;
+      cast.style.opacity = String(wave * 0.5);
+      cast.style.transform = `translate3d(${drift}px, 0, 0) scaleX(${0.22 + wave * 0.78})`;
+    }
+  }, []);
+
+  const stopRaf = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+  }, []);
+
+  /** 结束当前任务：按 target/进度裁决提交或取消，同一批 React 提交里换底页避免闪帧。 */
+  const settleJob = useCallback((job: FlipJob) => {
+    stopRaf();
+    jobRef.current = null;
+    const commit = job.target === 1 || (job.target === TARGET_UNDECIDED && job.p >= 0.5);
+    if (commit) commitCursor(job.to);
+    setFlip(null);
+  }, [commitCursor, stopRaf]);
+
+  /** 立即完结正在进行的任务（快速连翻/外部跳页时调用）。 */
+  const finishJobInstantly = useCallback(() => {
+    const job = jobRef.current;
+    if (!job) return;
+    settleJob(job);
+  }, [settleJob]);
+
+  const runLoop = useCallback(() => {
+    stopRaf();
+    const tick = (t: number) => {
+      const job = jobRef.current;
+      if (!job) {
+        rafRef.current = 0;
+        return;
+      }
+      // 拖拽期间叶片完全跟手，弹簧停表。
+      if (job.dragging) {
+        rafRef.current = 0;
+        job.lastT = 0;
+        return;
+      }
+      const dt = job.lastT ? t - job.lastT : 16;
+      job.lastT = t;
+      const target = job.target === TARGET_UNDECIDED ? 1 : job.target;
+      const next = stepFlipSpring({ p: job.p, v: job.v }, target, dt);
+      job.p = next.p;
+      job.v = next.v;
+      applyFlipFrame(job);
+
+      if (isFlipSettled(next, target)) {
+        if (job.peeking && target === PEEK_PROGRESS) {
+          // 掀角静置：叶片保持微翘，停表等待后续交互。
+          rafRef.current = 0;
+          job.lastT = 0;
+          return;
+        }
+        settleJob(job);
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, [applyFlipFrame, settleJob, stopRaf]);
+
+  /**
+   * 启动一次翻页任务。dragging=true 时叶片跟随指针；peek=true 时仅掀起页角。
+   * 已有任务先立即完结（支持快速连翻与方向反打）。
+   */
+  const beginFlip = useCallback(
+    (dir: 'next' | 'prev', opts?: { dragging?: boolean; peek?: boolean }): FlipJob | null => {
+      const { turnMode, maxCursor } = latest.current;
+      const existing = jobRef.current;
+
+      if (existing) {
+        // 掀角中点击同向 → 顺势翻完；转拖拽时必须停掉在跑的弹簧，否则它会抢走叶片控制权。
+        if (existing.peeking && existing.dir === dir && !opts?.peek) {
+          existing.peeking = false;
+          existing.dragging = Boolean(opts?.dragging);
+          existing.target = opts?.dragging ? TARGET_UNDECIDED : 1;
+          existing.dragBaseP = existing.p;
+          if (existing.dragging) stopRaf();
+          else runLoop();
+          return existing;
+        }
+        finishJobInstantly();
+      }
+
+      const from = cursorRef.current;
+      if (dir === 'next' && from >= maxCursor) return null;
+      if (dir === 'prev' && from <= 0) return null;
+      const to = dir === 'next' ? from + 1 : from - 1;
+
+      if (reducedMotionRef.current || turnMode === 'instant') {
+        if (!opts?.peek) commitCursor(to);
+        return null;
+      }
+
+      const job: FlipJob = {
+        dir,
+        from,
+        to,
+        mode: turnMode === 'slide' ? 'slide' : 'curl',
+        p: 0,
+        v: 0,
+        target: opts?.peek ? PEEK_PROGRESS : opts?.dragging ? TARGET_UNDECIDED : 1,
+        dragging: Boolean(opts?.dragging),
+        peeking: Boolean(opts?.peek),
+        dragBaseP: 0,
+        samples: [],
+        lastT: 0,
+      };
+      jobRef.current = job;
+      setFlip({ dir, from, to, mode: job.mode });
+      if (!job.dragging) runLoop();
+      return job;
+    },
+    [commitCursor, finishJobInstantly, runLoop],
+  );
+
+  // 叶片挂载后写入首帧（React 提交在前，DOM ref 就位在后）。
+  useLayoutEffect(() => {
+    const job = jobRef.current;
+    if (flip && job) applyFlipFrame(job);
+  }, [flip, applyFlipFrame]);
+
+  const goNext = useCallback(() => {
+    beginFlip('next');
+  }, [beginFlip]);
+
+  const goPrev = useCallback(() => {
+    beginFlip('prev');
+  }, [beginFlip]);
+
+  const setPeek = useCallback(
+    (dir: 'next' | 'prev', on: boolean) => {
+      if (typeof window === 'undefined') return;
+      if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      const job = jobRef.current;
+      if (on) {
+        if (job || latest.current.turnMode !== 'curl' || reducedMotionRef.current) return;
+        beginFlip(dir, { peek: true });
+      } else if (job?.peeking && !job.dragging && job.target === PEEK_PROGRESS) {
+        job.target = 0;
+        runLoop();
+      }
+    },
+    [beginFlip, runLoop],
+  );
+
+  // ----- 响应式尺寸 -----
   useLayoutEffect(() => {
     const update = () => {
-      clearFlipWork();
-      setFlip(null);
-      setDims(computeReaderDims({ width: window.innerWidth, height: window.innerHeight }));
+      finishJobInstantly();
+      setDims(computeReaderDims({ width: window.innerWidth, height: window.innerHeight }, preferences.zoom));
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [clearFlipWork]);
+  }, [finishJobInstantly, preferences.zoom]);
 
   const measurePages = useCallback(() => {
     if (!dims || !measureRef.current) return;
@@ -318,7 +573,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     setCursor((c) => {
       const absolutePage = cursorToAbsolutePage(c, prevCols);
       const clamped = absolutePageToCursor(absolutePage, dims.cols, pages);
-      return c === clamped ? c : clamped;
+      const next = c === clamped ? c : clamped;
+      cursorRef.current = next;
+      return next;
     });
     prevColsRef.current = dims.cols;
   }, [dims]);
@@ -335,6 +592,15 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     preferences.paragraphMode,
     readerSkin,
   ]);
+
+  // webfont 字形就绪会改变行宽度量，需重新分页。
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts?.addEventListener) return;
+    const onLoaded = () => measurePages();
+    fonts.addEventListener('loadingdone', onLoaded);
+    return () => fonts.removeEventListener('loadingdone', onLoaded);
+  }, [measurePages]);
 
   // 图片解码后会改变多列 scrollWidth；监听隐藏测量流中的图片并重新分页。
   useEffect(() => {
@@ -403,17 +669,27 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   useEffect(() => {
     setPositionReady(false);
     setMediaReady(false);
+    setSkeletonGone(false);
   }, [book.slug]);
 
   useEffect(() => {
     if (!dims || positionReady || !mediaReady) return;
     const storedPage = readStoredPage(book.slug);
     if (storedPage !== null) {
-      setCursor(absolutePageToCursor(storedPage, dims.cols, totalPages));
+      const restored = absolutePageToCursor(storedPage, dims.cols, totalPages);
+      cursorRef.current = restored;
+      setCursor(restored);
     }
     const frame = window.requestAnimationFrame(() => setPositionReady(true));
     return () => window.cancelAnimationFrame(frame);
   }, [book.slug, dims, mediaReady, positionReady, totalPages]);
+
+  // 骨架书在实书升起后再退场，避免生硬切换。
+  useEffect(() => {
+    if (!positionReady || skeletonGone) return;
+    const timer = window.setTimeout(() => setSkeletonGone(true), 480);
+    return () => window.clearTimeout(timer);
+  }, [positionReady, skeletonGone]);
 
   useEffect(() => {
     if (!dims || !positionReady) return;
@@ -431,54 +707,18 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const cols = dims?.cols ?? 2;
   const unitCount = cols === 2 ? Math.ceil(totalPages / 2) : totalPages; // 翻页单元总数
   const maxCursor = Math.max(0, unitCount - 1);
-  const visibleCursor = flip ? flip.to : cursor;
   const turnMode = resolveReaderPageTurn(preferences.pageTurn, cols);
 
-  const startFlip = useCallback((dir: 'next' | 'prev', from: number, to: number) => {
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    clearFlipWork();
+  latest.current = { dims, maxCursor, turnMode };
+  cursorRef.current = cursor;
 
-    if (prefersReduced || turnMode === 'instant') {
-      setFlip(null);
-      setCursor(to);
-      return;
-    }
-
-    const startAngle = turnMode === 'curl' && dir === 'prev' ? TURN_ANGLE : 0;
-    const endAngle = turnMode === 'curl' && dir === 'next' ? TURN_ANGLE : 0;
-    const duration = turnMode === 'slide' ? SLIDE_MS : FLIP_MS;
-
-    setFlip({ dir, angle: startAngle, progress: 0, from, to, mode: turnMode });
-    const firstFrame = requestAnimationFrame(() => {
-      const secondFrame = requestAnimationFrame(() => {
-        if (flipTimer.current) {
-          setFlip({ dir, angle: endAngle, progress: 1, from, to, mode: turnMode });
-        }
-      });
-      flipFrames.current = [secondFrame];
-    });
-    flipFrames.current = [firstFrame];
-    flipTimer.current = setTimeout(() => {
-      setCursor(to);
-      setFlip(null);
-      flipTimer.current = null;
-      flipFrames.current = [];
-    }, duration);
-  }, [clearFlipWork, turnMode]);
-
-  const goNext = useCallback(() => {
-    if (animating || cursor >= maxCursor) return;
-    startFlip('next', cursor, Math.min(cursor + 1, maxCursor));
-  }, [animating, cursor, maxCursor, startFlip]);
-
-  const goPrev = useCallback(() => {
-    if (animating || cursor <= 0) return;
-    startFlip('prev', cursor, Math.max(cursor - 1, 0));
-  }, [animating, cursor, startFlip]);
+  // ----- 指针交互：拖拽跟手翻页 / 点击半区 / 中央呼出 chrome -----
 
   const handleBookPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (tocOpen || settingsOpen) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 注意：此处不 setPointerCapture —— 提前捕获会把后续 click 重定向到书容器，
+    // 导致翻页热区按钮与正文链接永远收不到点击。捕获推迟到拖拽确立时。
     pointerRef.current = {
       id: e.pointerId,
       startX: e.clientX,
@@ -486,24 +726,77 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       startedOnInteractive: isReaderContentInteractive(e.target),
       handled: false,
     };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
   }, [settingsOpen, tocOpen]);
 
   const handleBookPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const pointer = pointerRef.current;
-    if (!pointer || pointer.id !== e.pointerId || pointer.handled || animating) return;
+    if (!pointer || pointer.id !== e.pointerId) return;
+    const d = latest.current.dims;
+    if (!d) return;
     const dx = e.clientX - pointer.startX;
     const dy = e.clientY - pointer.startY;
+    const job = jobRef.current;
+
+    // 已进入拖拽：叶片/滑轨逐帧跟随指针。
+    if (pointer.handled && job?.dragging) {
+      const dragged = dragToProgress(dx, d.pageW, job.dir);
+      job.p = Math.min(1, Math.max(0, job.dragBaseP + dragged));
+      job.samples.push({ t: e.timeStamp, p: job.p });
+      if (job.samples.length > 6) job.samples.shift();
+      applyFlipFrame(job);
+      return;
+    }
+    if (pointer.handled) return;
+
     const absX = Math.abs(dx);
     const absY = Math.abs(dy);
-    if (absX < 42 || absX < absY * 1.25) return;
+    if (absX < 12 || absX < absY * 1.2) return;
 
+    const dir: 'next' | 'prev' = dx < 0 ? 'next' : 'prev';
     pointer.handled = true;
     suppressClickRef.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     setChromeVisible(false);
-    if (dx < 0) goNext();
-    else goPrev();
-  }, [animating, goNext, goPrev]);
+
+    if (reducedMotionRef.current || latest.current.turnMode === 'instant') {
+      // 无动画路径退化为一次性滑动手势。
+      if (dir === 'next') goNext();
+      else goPrev();
+      return;
+    }
+
+    const started = beginFlip(dir, { dragging: true });
+    if (started) {
+      started.p = Math.min(1, Math.max(0, started.dragBaseP + dragToProgress(dx, d.pageW, dir)));
+      started.samples.push({ t: e.timeStamp, p: started.p });
+      applyFlipFrame(started);
+    }
+  }, [applyFlipFrame, beginFlip, goNext, goPrev]);
+
+  const releaseDrag = useCallback((timeStamp: number) => {
+    const job = jobRef.current;
+    if (!job?.dragging) return;
+    job.dragging = false;
+    // 用最近 ~90ms 的采样估计松手速度，快速甩动小位移也能翻过去。
+    const samples = job.samples;
+    let v = 0;
+    if (samples.length >= 2) {
+      const last = samples[samples.length - 1];
+      let first = samples[0];
+      for (const s of samples) {
+        if (timeStamp - s.t <= 90) {
+          first = s;
+          break;
+        }
+      }
+      const dt = Math.max(last.t - first.t, 1) / 1000;
+      v = (last.p - first.p) / dt;
+    }
+    job.v = v;
+    job.target = resolveFlipRelease(job.p, v);
+    job.lastT = 0;
+    runLoop();
+  }, [runLoop]);
 
   const handleBookPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const pointer = pointerRef.current;
@@ -514,9 +807,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     const wasHandled = pointer.handled;
     const startedOnInteractive = pointer.startedOnInteractive;
     pointerRef.current = null;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
 
-    if (!wasHandled && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+    if (wasHandled) {
+      releaseDrag(e.timeStamp);
+    } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
       if (startedOnInteractive) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -536,7 +833,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
-  }, [goNext, goPrev]);
+  }, [goNext, goPrev, releaseDrag]);
 
   const handleBookClickCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (!suppressClickRef.current) return;
@@ -546,23 +843,28 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   }, []);
 
   const handleBookPointerCancel = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (pointerRef.current?.id === e.pointerId) {
+    const pointer = pointerRef.current;
+    if (pointer?.id === e.pointerId) {
       pointerRef.current = null;
-      e.currentTarget.releasePointerCapture?.(e.pointerId);
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      if (pointer.handled) releaseDrag(e.timeStamp);
     }
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
-  }, []);
+  }, [releaseDrag]);
 
   const handleHitZoneClick = useCallback(
-    (action: () => void) => (e: ReactMouseEvent<HTMLButtonElement>) => {
+    (action: () => void, enabled: boolean) => (e: ReactMouseEvent<HTMLButtonElement>) => {
       if (suppressClickRef.current) {
         e.preventDefault();
         e.stopPropagation();
         suppressClickRef.current = false;
         return;
       }
+      if (!enabled) return;
       action();
     },
     [],
@@ -570,11 +872,11 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   const jumpTo = useCallback(
     (unit: number) => {
-      if (animating) return;
+      finishJobInstantly();
       revealChrome();
-      setCursor(Math.max(0, Math.min(unit, maxCursor)));
+      commitCursor(Math.max(0, Math.min(unit, latest.current.maxCursor)));
     },
-    [animating, maxCursor, revealChrome],
+    [commitCursor, finishJobInstantly, revealChrome],
   );
 
   const close = useCallback(() => {
@@ -582,7 +884,11 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     else router.push('/');
   }, [router]);
 
-  // 键盘导航。
+  const adjustZoom = useCallback((delta: number) => {
+    setPreferences((prev) => clampReaderPreferences({ ...prev, zoom: prev.zoom + delta }));
+  }, []);
+
+  // 键盘导航：翻页 / 首末页 / 版面缩放。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -591,70 +897,168 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
         else close();
       } else if (settingsOpen || tocOpen || isInteractiveKeyTarget(e.target)) {
         return;
-      } else if (e.key === 'ArrowRight' || e.key === ' ') {
+      } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
         e.preventDefault();
         goNext();
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
         goPrev();
+      } else if (e.key === 'Home') {
+        jumpTo(0);
+      } else if (e.key === 'End') {
+        jumpTo(latest.current.maxCursor);
+      } else if (e.key === '+' || e.key === '=') {
+        adjustZoom(READER_ZOOM_STEP);
+      } else if (e.key === '-') {
+        adjustZoom(-READER_ZOOM_STEP);
+      } else if (e.key === '0') {
+        adjustZoom(DEFAULT_READER_PREFERENCES.zoom - preferences.zoom);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, close, tocOpen, settingsOpen]);
+  }, [adjustZoom, close, goNext, goPrev, jumpTo, preferences.zoom, settingsOpen, tocOpen]);
 
-  useEffect(() => () => clearFlipWork(), [clearFlipWork]);
-
-  // 跳转到目录锚点所在页（通过测量容器中锚点元素的水平偏移定位）。
-  const jumpToHeading = useCallback(
-    (id: string) => {
-      if (!dims || !measureRef.current) return;
-      const target = measureRef.current.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
-      if (!target) return;
-      const measureRect = measureRef.current.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const page = horizontalOffsetToPage(targetRect.left, measureRect.left, dims.contentW);
-      const unit = cols === 2 ? Math.floor(page / 2) : page;
-      jumpTo(unit);
-      setTocOpen(false);
-    },
-    [dims, cols, jumpTo],
-  );
-
+  // 滚轮：Ctrl/⌘ + 滚轮缩放版面；普通滚轮/触控板横扫累计后翻页。
+  const hasStage = dims !== null;
   useEffect(() => {
-    if (!dims || !measureRef.current || !book.toc?.length) {
-      setActiveHeadingId(null);
+    if (!hasStage) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        adjustZoom(e.deltaY < 0 ? READER_ZOOM_STEP : -READER_ZOOM_STEP);
+        return;
+      }
+      e.preventDefault();
+      if (jobRef.current) return;
+      const dominant = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      wheelAccRef.current += dominant;
+      if (wheelResetTimer.current) clearTimeout(wheelResetTimer.current);
+      wheelResetTimer.current = setTimeout(() => {
+        wheelAccRef.current = 0;
+      }, 180);
+      if (wheelAccRef.current > WHEEL_FLIP_THRESHOLD) {
+        wheelAccRef.current = 0;
+        goNext();
+      } else if (wheelAccRef.current < -WHEEL_FLIP_THRESHOLD) {
+        wheelAccRef.current = 0;
+        goPrev();
+      }
+    };
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', onWheel);
+  }, [adjustZoom, goNext, goPrev, hasStage]);
+
+  // 桌面：鼠标靠近上下边缘时呼出 chrome。
+  useEffect(() => {
+    let raf = 0;
+    const onMove = (e: MouseEvent) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (e.clientY < 84 || e.clientY > window.innerHeight - 96) revealChrome();
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [revealChrome]);
+
+  useEffect(() => () => {
+    stopRaf();
+    if (wheelResetTimer.current) clearTimeout(wheelResetTimer.current);
+  }, [stopRaf]);
+
+  // ----- 章节页面映射：目录页码 / 运行头 / 进度刻度共用 -----
+  useEffect(() => {
+    if (!dims || !measureRef.current || !book.toc?.length || !mediaReady) {
+      setHeadingPages([]);
       return;
     }
-    const currentPage = cursorToAbsolutePage(visibleCursor, cols);
     const measureRect = measureRef.current.getBoundingClientRect();
-    let active: string | null = null;
+    const mapped: Array<{ id: string; text: string; page: number }> = [];
     for (const h of book.toc) {
       const target = measureRef.current.querySelector<HTMLElement>(`[id="${CSS.escape(h.id)}"]`);
       if (!target) continue;
       const targetRect = target.getBoundingClientRect();
-      const page = horizontalOffsetToPage(targetRect.left, measureRect.left, dims.contentW);
-      if (page <= currentPage) active = h.id;
+      mapped.push({
+        id: h.id,
+        text: h.text,
+        page: horizontalOffsetToPage(targetRect.left, measureRect.left, dims.contentW),
+      });
+    }
+    setHeadingPages(mapped);
+  }, [
+    book.toc,
+    dims,
+    mediaReady,
+    totalPages,
+    preferences.fontSize,
+    preferences.lineHeight,
+    preferences.fontFamily,
+    preferences.paragraphMode,
+  ]);
+
+  const chapterForPage = useCallback(
+    (page: number): string | null => {
+      let text: string | null = null;
+      for (const h of headingPages) {
+        if (h.page <= page) text = h.text;
+        else break;
+      }
+      return text;
+    },
+    [headingPages],
+  );
+
+  const lastVisiblePage = Math.min(cursorToAbsolutePage(cursor, cols) + cols - 1, Math.max(totalPages - 1, 0));
+  const activeHeadingId = useMemo(() => {
+    let active: string | null = null;
+    for (const h of headingPages) {
+      if (h.page <= lastVisiblePage) active = h.id;
       else break;
     }
-    setActiveHeadingId(active);
-  }, [book.toc, cols, dims, visibleCursor]);
+    return active;
+  }, [headingPages, lastVisiblePage]);
 
-  // 给定页索引渲染一个完整页面（含页眉/页码/正文窗口）。
+  const jumpToHeading = useCallback(
+    (id: string) => {
+      const entry = headingPages.find((h) => h.id === id);
+      if (!entry) return;
+      jumpTo(cols === 2 ? Math.floor(entry.page / 2) : entry.page);
+      setTocOpen(false);
+    },
+    [cols, headingPages, jumpTo],
+  );
+
+  // 给定页索引渲染一个完整页面（含运行头/页码/正文窗口）。
   const renderPage = (pageIndex: number, side: 'left' | 'right' | 'single') => {
     if (!dims) return null;
+    const runningHead = side === 'left'
+      ? book.title
+      : chapterForPage(pageIndex) ?? book.title;
     return (
       <PageSurface
         pageIndex={pageIndex}
         side={side}
         dims={dims}
         totalPages={totalPages}
-        title={book.title}
+        runningHead={runningHead}
         contentHtml={book.contentHtml}
       />
     );
   };
 
-  // 计算当前展示的底层页与翻动叶片的页索引。
+  /**
+   * 底层页与叶片的页索引。物理模型：
+   * - next：右页 (2f+1) 掀起，背面是 (2t)，落下时盖住左页；右侧露出 (2t+1)。
+   * - prev：左页折叠叶片（正面 2t+1 / 背面 2f）从书脊落回右侧；右页 (2f+1) 保持可见直到被盖住。
+   * - 单页 curl：叶片背面是空白纸背，prev 时底页保持 from 直到叶片落定。
+   */
   const layout = useMemo(() => {
     if (cols === 2) {
       const s = cursor;
@@ -668,28 +1072,30 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
           leaf: { front: 2 * flip.from + 1, back: 2 * flip.to },
         };
       }
-      // prev：底层显示目标 spread，叶片背面保留原 spread 的左页。
       return {
         baseLeft: 2 * flip.to,
-        baseRight: 2 * flip.to + 1,
+        baseRight: 2 * flip.from + 1,
         leaf: { front: 2 * flip.to + 1, back: 2 * flip.from },
       };
     }
     // 单页模式
     const p = cursor;
     if (!flip) return { single: p, leaf: null as null | { front: number; back: number } };
-    if (flip.dir === 'next') return { single: flip.to, leaf: { front: flip.from, back: flip.to } };
-    return { single: flip.to, leaf: { front: flip.to, back: flip.from } };
+    if (flip.dir === 'next') return { single: flip.to, leaf: { front: flip.from, back: -1 } };
+    return { single: flip.from, leaf: { front: flip.to, back: -1 } };
   }, [cols, cursor, flip]);
 
   const fontFamilyValue = useMemo(() => {
     if (preferences.fontFamily === 'sans') {
-      return "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif";
+      return "'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', Arial, sans-serif";
+    }
+    if (preferences.fontFamily === 'kai') {
+      return "'Kaiti SC', 'STKaiti', KaiTi, 'AR PL UKai CN', 'TW-Kai', 'Noto Serif SC', serif";
     }
     if (preferences.fontFamily === 'system') {
       return "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
     }
-    return "'Noto Serif SC', 'Songti SC', STSong, Georgia, 'Times New Roman', serif";
+    return "'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun, Georgia, 'Times New Roman', serif";
   }, [preferences.fontFamily]);
 
   const overlayStyle = useMemo(() => {
@@ -705,10 +1111,11 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
           '--reader-page': preferences.customPage,
           '--reader-page-edge': preferences.customPage,
           '--reader-ink': preferences.customInk,
-          '--reader-muted': preferences.customInk,
+          '--reader-muted': `color-mix(in srgb, ${preferences.customInk} 56%, ${preferences.customPage})`,
           '--reader-shadow': 'rgba(15, 23, 42, 0.24)',
           '--reader-cover': preferences.customInk,
           '--reader-gutter': 'rgba(15, 23, 42, 0.2)',
+          '--reader-sheen': 'rgba(255, 255, 255, 0.4)',
         }
         : {}),
     } as CSSProperties;
@@ -718,18 +1125,15 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     if (!dims) return null;
     if (flip?.mode === 'slide') {
       const pages = flip.dir === 'next' ? [flip.from, flip.to] : [flip.to, flip.from];
-      const offset = flip.dir === 'next'
-        ? (flip.progress === 1 ? -dims.pageW : 0)
-        : (flip.progress === 1 ? 0 : -dims.pageW);
       return (
         <div className={styles.singleSlider} style={{ width: dims.pageW, height: dims.pageH }}>
           <div
+            ref={slideTrackRef}
             className={styles.singleTrack}
             style={{
               width: dims.pageW * 2,
               height: dims.pageH,
-              transform: `translate3d(${offset}px, 0, 0)`,
-              transition: `transform ${SLIDE_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
+              transform: `translate3d(${flip.dir === 'next' ? 0 : -dims.pageW}px, 0, 0)`,
             }}
           >
             {pages.map((pageIndex, index) => (
@@ -743,6 +1147,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     }
     return renderPage(layout.single!, 'single');
   };
+
   if (!dims) {
     return (
       <div
@@ -756,19 +1161,27 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     );
   }
 
-  const counter =
-    cols === 2
-      ? `${Math.min(visibleCursor * 2 + 1, totalPages)}–${Math.min(visibleCursor * 2 + 2, totalPages)} / ${totalPages}`
-      : `${visibleCursor + 1} / ${totalPages}`;
+  const firstVisiblePage = Math.min(cursorToAbsolutePage(cursor, cols) + 1, totalPages);
+  const lastVisibleLabel = Math.min(cursorToAbsolutePage(cursor, cols) + cols, totalPages);
+  const counter = cols === 2 && lastVisibleLabel > firstVisiblePage
+    ? `${firstVisiblePage}–${lastVisibleLabel} / ${totalPages}`
+    : `${firstVisiblePage} / ${totalPages}`;
+  const percent = totalPages > 0 ? Math.round((lastVisibleLabel / totalPages) * 100) : 0;
 
-  // 叶片几何：双页时叶片位于右页位置、绕书脊（左缘）旋转；单页时占满整页、绕左缘旋转。
+  // 书口厚度：读过的页在左侧堆积，剩余的页在右侧变薄。
+  const progressFrac = maxCursor === 0 ? 1 : cursor / maxCursor;
+  const edgeLeftW = Math.round((2 + progressFrac * 11) * 10) / 10;
+  const edgeRightW = Math.round((2 + (1 - progressFrac) * 11) * 10) / 10;
+
   const leafLeft = cols === 2 ? dims.pageW : 0;
-  const turnProgress = flip ? Math.min(1, Math.abs(flip.angle / TURN_ANGLE)) : 0;
-  const leafTransition = flip ? `transform ${FLIP_MS}ms cubic-bezier(0.28, 0.02, 0.2, 1)` : 'none';
-  const leafTilt = flip?.dir === 'next' ? -0.9 : 0.9;
-  const leafSkew = flip ? (flip.dir === 'next' ? 1 : -1) * Math.sin(turnProgress * Math.PI) * 4.5 : 0;
-  const leafShadeOpacity = flip ? 0.1 + Math.sin(turnProgress * Math.PI) * 0.42 : 0;
   const chromeIsVisible = chromeVisible || tocOpen || settingsOpen;
+  const canPrev = cursor > 0;
+  const canNext = cursor < maxCursor;
+  const tickUnits = headingPages.length > 1 && maxCursor > 3
+    ? [...new Set(headingPages.map((h) => (cols === 2 ? Math.floor(h.page / 2) : h.page)))]
+      .filter((u) => u > 0 && u < maxCursor)
+      .slice(0, 60)
+    : [];
 
   return (
     <div
@@ -783,16 +1196,17 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
       {/* 顶栏 */}
       <div className={styles.topbar} onPointerDown={revealChrome}>
         <button className={styles.iconBtn} onClick={close} aria-label="退出阅读">
-          <X size={18} />
+          <X size={17} />
           <span>退出</span>
         </button>
         <div className={styles.title}>
-          {book.title}
-          {book.sourceRef ? ` · ${book.sourceRef}` : ''}
+          <span className={styles.titleMain}>{book.title}</span>
+          {book.sourceRef ? <span className={styles.titleRef}>{book.sourceRef}</span> : null}
         </div>
         <div className={styles.topbarActions}>
           <button
             className={styles.iconBtn}
+            data-active={tocOpen || undefined}
             onClick={() => {
               setChromeVisible(true);
               setSettingsOpen(false);
@@ -800,11 +1214,12 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
             }}
             aria-label="目录"
           >
-            <List size={18} />
+            <List size={17} />
             <span>目录</span>
           </button>
           <button
             className={styles.iconBtn}
+            data-active={settingsOpen || undefined}
             onClick={() => {
               setChromeVisible(true);
               setTocOpen(false);
@@ -812,16 +1227,34 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
             }}
             aria-label="阅读设置"
           >
-            <Settings size={18} />
+            <Settings size={17} />
             <span>设置</span>
           </button>
         </div>
       </div>
 
       {/* 书台 */}
-      <div className={styles.stage}>
+      <div className={styles.stage} ref={stageRef}>
+        {/* 骨架书：分页与定位就绪前占位（禁 spinner，同构形状 + shimmer） */}
+        {!skeletonGone && (
+          <div
+            className={styles.skeletonBook}
+            data-ready={positionReady ? 'true' : 'false'}
+            style={{ width: dims.pageW * cols, height: dims.pageH }}
+            aria-hidden
+          >
+            {Array.from({ length: cols }, (_, i) => (
+              <div key={i} className={styles.skeletonPage} style={{ padding: `${dims.padTop}px ${dims.padX}px` }}>
+                {[0.92, 1, 0.97, 1, 0.88, 1, 0.95, 0.6].map((w, j) => (
+                  <span key={j} className={styles.skeletonLine} style={{ width: `${w * 100}%` }} />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div
-          className={`${styles.book} ${cols === 1 ? styles.bookSingle : styles.bookSpread}`}
+          className={`${styles.book} ${cols === 1 ? styles.bookSingle : styles.bookSpread} ${positionReady ? styles.bookIn : ''}`}
           style={{ width: dims.pageW * cols, height: dims.pageH }}
           data-turn-mode={turnMode}
           onPointerDown={handleBookPointerDown}
@@ -830,7 +1263,14 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
           onPointerCancel={handleBookPointerCancel}
           onClickCapture={handleBookClickCapture}
         >
-          {/* 点击左右半区翻页 */}
+          {/* 书口：两侧纸叠厚度随阅读进度流动 */}
+          {cols === 2 && (
+            <>
+              <div className={styles.edgeStack} data-side="left" style={{ width: edgeLeftW }} aria-hidden />
+              <div className={styles.edgeStack} data-side="right" style={{ width: edgeRightW }} aria-hidden />
+            </>
+          )}
+
           {cols === 2 ? (
             <>
               {renderPage(layout.baseLeft!, 'left')}
@@ -840,63 +1280,87 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
             renderSingleStage()
           )}
 
+          {/* 叶片扫过底页时的投影 */}
+          {flip?.mode === 'curl' && (
+            <div
+              ref={castShadowRef}
+              className={styles.castShadow}
+              data-cols={cols}
+              aria-hidden
+            />
+          )}
+
           {/* 翻动叶片 */}
           {flip?.mode === 'curl' && layout.leaf && (
             <div
+              ref={leafRef}
               className={styles.leaf}
-              style={{
-                left: leafLeft,
-                width: dims.pageW,
-                height: dims.pageH,
-                transform: `translateZ(2px) rotateY(${flip.angle}deg) rotateZ(${leafTilt}deg) skewY(${leafSkew}deg)`,
-                transition: leafTransition,
-              }}
+              style={{ left: leafLeft, width: dims.pageW, height: dims.pageH }}
             >
               <div className={styles.leafFace}>
                 {renderPage(layout.leaf.front, cols === 2 ? 'right' : 'single')}
-                <div className={styles.leafShade} style={{ opacity: leafShadeOpacity }} />
+                <div ref={leafSheenRef} className={styles.leafSheen} />
+                <div ref={leafShadeFrontRef} className={styles.leafShade} />
               </div>
               <div className={`${styles.leafFace} ${styles.leafBack}`}>
-                {renderPage(layout.leaf.back, cols === 2 ? 'left' : 'single')}
+                {cols === 2 ? renderPage(layout.leaf.back, 'left') : <BlankLeafFace dims={dims} />}
+                <div ref={leafShadeBackRef} className={styles.leafShadeBack} />
               </div>
             </div>
           )}
 
-          {/* 透明点击层 */}
+          {/* 透明点击层：悬停掀角 + 点击翻页 */}
           <button
             aria-label="上一页"
-            onClick={handleHitZoneClick(goPrev)}
-            disabled={cursor <= 0 || animating}
+            aria-disabled={!canPrev}
+            onClick={handleHitZoneClick(goPrev, canPrev)}
+            onPointerEnter={() => canPrev && setPeek('prev', true)}
+            onPointerLeave={() => setPeek('prev', false)}
             tabIndex={-1}
             className={styles.hitZoneLeft}
+            data-disabled={!canPrev || undefined}
           />
           <button
             aria-label="下一页"
-            onClick={handleHitZoneClick(goNext)}
-            disabled={cursor >= maxCursor || animating}
+            aria-disabled={!canNext}
+            onClick={handleHitZoneClick(goNext, canNext)}
+            onPointerEnter={() => canNext && setPeek('next', true)}
+            onPointerLeave={() => setPeek('next', false)}
             tabIndex={-1}
             className={styles.hitZoneRight}
+            data-disabled={!canNext || undefined}
           />
         </div>
       </div>
 
       {/* 底部控制条 */}
       <div className={styles.controls} onPointerDown={revealChrome}>
-        <button className={styles.navBtn} onClick={goPrev} disabled={cursor <= 0 || animating} aria-label="上一页">
+        <button className={styles.navBtn} onClick={goPrev} disabled={!canPrev} aria-label="上一页">
           <ChevronLeft size={18} />
         </button>
-        <input
-          className={styles.slider}
-          type="range"
-          min={0}
-          max={maxCursor}
-          value={visibleCursor}
-          disabled={animating}
-          onChange={(e) => jumpTo(Number(e.target.value))}
-          aria-label="阅读进度"
-        />
-        <span className={styles.counter}>{counter}</span>
-        <button className={styles.navBtn} onClick={goNext} disabled={cursor >= maxCursor || animating} aria-label="下一页">
+        <div className={styles.sliderWrap}>
+          <input
+            className={styles.slider}
+            type="range"
+            min={0}
+            max={maxCursor}
+            value={cursor}
+            onChange={(e) => jumpTo(Number(e.target.value))}
+            aria-label="阅读进度"
+          />
+          {tickUnits.length > 0 && (
+            <div className={styles.sliderTicks} aria-hidden>
+              {tickUnits.map((u) => (
+                <span key={u} style={{ left: `${(u / maxCursor) * 100}%` }} />
+              ))}
+            </div>
+          )}
+        </div>
+        <span className={styles.counter}>
+          {counter}
+          <em>{percent}%</em>
+        </span>
+        <button className={styles.navBtn} onClick={goNext} disabled={!canNext} aria-label="下一页">
           <ChevronRight size={18} />
         </button>
       </div>
@@ -916,18 +1380,23 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
               </button>
             </div>
             {(book.toc ?? []).length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--reader-muted)' }}>本书暂无章节目录。</p>
+              <p className={styles.tocEmpty}>本书暂无章节目录。</p>
             ) : (
-              (book.toc ?? []).map((h, i) => (
-                <button
-                  key={`${h.id}-${i}`}
-                  className={`${styles.tocItem} ${activeHeadingId === h.id ? styles.tocItemActive : ''}`}
-                  style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
-                  onClick={() => jumpToHeading(h.id)}
-                >
-                  {h.text}
-                </button>
-              ))
+              (book.toc ?? []).map((h, i) => {
+                const entry = headingPages.find((m) => m.id === h.id);
+                return (
+                  <button
+                    key={`${h.id}-${i}`}
+                    className={`${styles.tocItem} ${activeHeadingId === h.id ? styles.tocItemActive : ''}`}
+                    style={{ paddingLeft: 10 + (h.level - 1) * 14 }}
+                    onClick={() => jumpToHeading(h.id)}
+                  >
+                    <span className={styles.tocText}>{h.text}</span>
+                    {entry && <span className={styles.tocLeader} aria-hidden />}
+                    {entry && <span className={styles.tocPage}>{entry.page + 1}</span>}
+                  </button>
+                );
+              })
             )}
           </nav>
         </>
@@ -1001,6 +1470,44 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
                 </div>
               )}
             </section>
+
+            {cols === 2 && (
+              <section className={styles.settingSection}>
+                <div className={styles.settingTitle}>
+                  <ZoomIn size={15} />
+                  <span>版面缩放</span>
+                  <strong>{Math.round(preferences.zoom * 100)}%</strong>
+                </div>
+                <div className={styles.stepper}>
+                  <button
+                    type="button"
+                    disabled={preferences.zoom <= READER_ZOOM_MIN}
+                    onClick={() => adjustZoom(-READER_ZOOM_STEP)}
+                    aria-label="缩小版面"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <input
+                    type="range"
+                    min={READER_ZOOM_MIN * 100}
+                    max={READER_ZOOM_MAX * 100}
+                    step={READER_ZOOM_STEP * 100}
+                    value={Math.round(preferences.zoom * 100)}
+                    onChange={(e) => updatePreferences({ zoom: Number(e.target.value) / 100 })}
+                    aria-label="调整版面缩放"
+                  />
+                  <button
+                    type="button"
+                    disabled={preferences.zoom >= READER_ZOOM_MAX}
+                    onClick={() => adjustZoom(READER_ZOOM_STEP)}
+                    aria-label="放大版面"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <p className={styles.settingHint}>Ctrl + 滚轮，或按 + / − / 0 快捷调整。</p>
+              </section>
+            )}
 
             <section className={styles.settingSection}>
               <div className={styles.settingTitle}>
@@ -1089,7 +1596,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
               <div className={styles.settingTitle}>
                 <span>字体</span>
               </div>
-              <div className={styles.segmented}>
+              <div className={`${styles.segmented} ${styles.segmentedQuad}`}>
                 {FONT_OPTIONS.map((option) => (
                   <button
                     key={option.value}

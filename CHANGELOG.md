@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
+
+对标 Kindle / 真书翻页体验，把阅读器从「能翻页」升级为「一本安静躺在书桌上的实体书」。保持 `readerLogic` 既有契约（皮肤解析 / 光标映射 / 偏好钳制）与移动端满幅单页布局不变。
+
+- **翻页引擎重写**：一次性 CSS transition → rAF 临界阻尼弹簧（`stepFlipSpring` 等纯函数落在 `readerLogic`，单测覆盖）。拖拽跟手（叶片/滑轨逐帧随指针）、松手按 160ms 速度投影裁决（快甩小位移也能翻过去）、悬停掀角（hover 热区页角微翘，点击顺势翻完）、快速连翻 fast-forward、后台标签页恢复 dt 钳制 34ms 防跳帧、`prefers-reduced-motion` 全程瞬切。
+- **翻页物理修正**：prev 翻页时右侧底页曾提前换成目标页（真书应保持原右页直到叶片落下盖住）；单页 curl 的叶片背面改为空白纸背（纸张反面不重复印刷）；掀角→拖拽转换时停掉在跑的弹簧（原先弹簧会抢走叶片直接提交）。
+- **关键交互修复**：`pointerdown` 即 `setPointerCapture` 会把后续 click 重定向到书容器——翻页热区按钮与正文链接从未收到点击。捕获推迟到拖拽确立后，点击翻页 / 内容链接恢复正常。
+- **自由缩放**：新偏好 `zoom`（70%–140%，步进 5%，桌面双页生效并受视口钳制）。设置面板滑杆 + Ctrl/⌘+滚轮 + 键盘 `+` / `−` / `0`；普通滚轮与触控板横扫累计翻页。另补 PageUp/PageDown/Home/End。
+- **书籍级排印**：h1/h2 章题居中 + `§ N` 自动编号眉标 + 束尾细线；书籍缩进模式下章从新页起（`break-before: column`）、章首段首字下沉；运行头 verso 书名 / recto 当前章（由章节→页映射驱动）；页码落外角、mono + tabular；`hr` → ⁂ 星群纹样；引用去 CJK 伪斜体改纸面色块；全部灰阶改 `color-mix` 从 `--reader-ink` 派生（自定皮肤同样和谐）；`text-spacing-trim` / `text-autospace` 渐进增强；衬线按需注入 Noto Serif SC webfont 且字形就绪后重排；新增楷体字族（本地楷体栈）。
+- **空间与氛围**：书口纸叠厚度随阅读进度流动（左侧读过的页渐厚、右侧余量变薄）；封面基座厚度 / 书脊沟壑 / 顶部书房灯光 + 桌面暗角 + feTurbulence 纸纹颗粒；飞行叶片动态明暗、折光扫过与底页投影逐帧驱动；入场书体自下升起，分页测量期间为同构骨架书（无 spinner）。
+- **Chrome 与面板**：桌面顶栏/底栏改悬浮层并自动隐藏（鼠标近上下边缘呼出，中央点按切换）；进度条自绘（章节刻度点 + 页码 + 百分比）；目录抽屉印刷式点线引导 + 页码 + 当前章高亮。
+- **admin 书架重设计**（`SimulatedReadingModal`）：列表行 → 主题书封网格（书脊 / 书口纸线 / 悬停浮起），新增「重制」按原来源+主题重跑成书缓存，加载态 spinner → 同构骨架屏（补齐红线 3.6）。
+- 验证：reader gate 19/19（新增缩放钳制与翻页物理用例）、admin 351/351、`design-system:check` 0 error、blog/admin 构建通过、Playwright 14 组状态截图逐帧目检（桌面初始/沉浸/掀角/翻页中帧/拖拽持停/目录/设置/夜读/缩放 + 移动端）。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更，其余子文档无需更新。
+
 ### Changed — 音乐域「留声穹顶」视觉重构：大厅 / 浮岛 / 沉浸台对标 Apple Music (2026-08-16, branch claude/music-hall-redesign-a31788)
 
 保持播放内核(状态机 / 手势 / 断点续播 / A11y)与全部 129 条产品质量门禁不动,重做三个表面的视觉与体验层。核心:**当前封面高斯化后成为音乐域的氛围光源**,与既有 `--music-seed` 作用域四色派生协同,实现「专辑色动态渲染」且零新增色相。
