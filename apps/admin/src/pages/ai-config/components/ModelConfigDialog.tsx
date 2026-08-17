@@ -27,6 +27,7 @@ import { Toggle, spring, transition, variants } from '@aetherblog/ui';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
 import { useQuery } from '@tanstack/react-query';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing, type SamplingParam } from '../types';
 import { groupParamControls, SAMPLING_PARAMS } from '../utils/modelParams';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
@@ -267,14 +268,11 @@ export default function ModelConfigDialog({
     });
   }, [initial]);
 
-  // Esc 关闭(确认弹窗打开时让确认层自己处理)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showDeleteConfirm) onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose, showDeleteConfirm]);
+  // 焦点管理 + Esc(含 IME 组合态守卫) + 滚动锁 —— 删除确认打开时让内层自己处理 Esc
+  const dialogRef = useModalDialog<HTMLDivElement>({
+    onClose,
+    escEnabled: !showDeleteConfirm,
+  });
 
   // 滚动联动:取视口上缘 100px 内最后一个越过的分区
   const handleBodyScroll = useCallback(() => {
@@ -473,6 +471,8 @@ export default function ModelConfigDialog({
         exit="exit"
         transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        tabIndex={-1}
         className="aiw-dialog surface-overlay sm:max-w-3xl"
         role="dialog"
         aria-modal="true"
@@ -674,7 +674,7 @@ export default function ModelConfigDialog({
                   placeholder="自定义"
                   data-mono="true"
                   data-align="right"
-                  className="aiw-input h-9 w-full py-0 sm:w-28"
+                  className="aiw-input h-9 w-full !py-0 sm:w-28"
                 />
               </div>
             </div>
@@ -707,7 +707,7 @@ export default function ModelConfigDialog({
                   placeholder="自定义"
                   data-mono="true"
                   data-align="right"
-                  className="aiw-input h-9 w-full py-0 sm:w-28"
+                  className="aiw-input h-9 w-full !py-0 sm:w-28"
                 />
               </div>
             </div>
@@ -1226,7 +1226,7 @@ function PriceInput({
           placeholder="未配置"
           data-mono="true"
           data-align="right"
-          className="aiw-input pl-7"
+          className="aiw-input !pl-7"
         />
       </div>
     </div>

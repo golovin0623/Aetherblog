@@ -203,7 +203,7 @@ export default function ProviderDetail({
               }}
               placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
               data-mono="true"
-              className="aiw-input pr-10"
+              className="aiw-input !pr-10"
               aria-label="API Key"
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -243,7 +243,7 @@ export default function ProviderDetail({
               onBlur={handleSaveProxy}
               placeholder={preset?.baseUrl || "默认地址"}
               data-mono="true"
-              className="aiw-input pr-8"
+              className="aiw-input !pr-8"
               aria-label="API 代理地址"
             />
             <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-quick ease-aether group-hover:opacity-100 group-focus-within:opacity-100">

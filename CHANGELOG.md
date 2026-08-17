@@ -22,7 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LiteLLM 同步弹窗（PricingSyncDialog）：** 状态语义重排（新增=success / 更新=accent / 已一致=neutral / 无匹配=warn）；更新行价差方向可视化（涨=warn ↑ / 降=success ↓ + 旧价划线）；加载态从 spinner 改骨架行；Esc 关闭。
 - **全局价格编辑弹窗（GlobalPricingDialog）：** aiw 弹窗骨架重写；回填策略两项从原生 checkbox 改共享 Toggle 的 kv 行；价格输入币种前缀 + mono。
 - **Token 迁移（同 commit 清偿）：** ProviderCard / ProviderSidebar / ConnectionTest / AiConfigPage / 骨架屏等 `--text-*` / `--bg-card` / `status-*` / `dark:` 变体 → ink / signal / intelligence 令牌；侧栏激活项改「左侧 2px 极光线」（05-components 导航规范）；列表加载文本改骨架屏。
-- **合规与验证：** `pnpm design-system:check` 保持 0 error（warning 335→331、info 2295→2051）；admin typecheck / lint（所改文件 0 warning）/ 351 项单测 / 完整 build 通过；Playwright + mock API 对两页六个视图（明暗双主题）截图走查。
+- **合规与验证：** `pnpm design-system:check` 保持 0 error（warning 335→328、info 2295→2053）；admin typecheck / lint（所改文件 0 warning）/ 350 项单测 / 完整 build 通过；Playwright + mock API 对两页六个视图（明暗双主题）截图走查。
+- **对抗式评审修复（4 维度并行评审 × 每条 2 名独立怀疑者核实，7 条确认全修）：**
+  - **[HIGH] Portal 弹窗内 `--intelligence-*` 令牌全部无法解析** —— 两个弹窗 `createPortal` 到 `document.body`，继承不到 `.ai-config-page` 等页面作用域，`var()` 解析失败使 `border` 简写整条 invalid（border-style 落回 `none`，**输入框实际无边框**）、`background` 落回 transparent。修复：把 `.aiw-overlay` 纳入令牌定义的选择器组（单一来源，明暗两套同步），并删除 `.global-pricing-sync-overlay` 那份只补两个变量、漏掉 `--intelligence-control` 的冗余补丁。
+  - **`.aiw-input` 的 `padding` 简写压掉调用点的 Tailwind 内边距工具类**（与 utilities 同特异性但更靠后）—— 搜索框图标压住 placeholder、货币符号与右对齐数值重叠等 6 处；统一改用 important modifier（与同 PR 既有的 `!py-2` 模式一致）。
+  - **弹窗输入框边框补丁覆盖了 `:focus` 极光边框**（同特异性、文件末尾）—— 补丁加 `:not(:focus)`。
+  - **`/` 快捷键无模态守卫** —— 弹窗打开时按 `/` 会把焦点从模态层拽到背景搜索框，击穿焦点陷阱；加 `[role="dialog"]` 检测，并为三个旧弹窗补 `role="dialog"` 使检测有统一依据。
+  - **`role="dialog" aria-modal="true"` 声明了却无焦点管理**（比不声明更误导读屏器）—— 抽出共享 `useModalDialog` hook（复用 ConfirmDialog 已验证的范式：初始焦点移入、Tab 困焦、关闭还原、滚动锁），三个弹窗统一接入。
+  - **Esc 关闭不判 IME 组合态** —— 中文输入法按 Esc 取消候选词会连带关掉弹窗、静默丢弃整份未保存表单；守卫内建进 hook（`isComposing || keyCode === 229`），三处一并修复。
+  - **修复验证：** 新增 Playwright 断言脚本对每条修复做行为级校验（令牌解析、边框实存、padding 生效、聚焦变色、初始焦点、Tab 困焦、`/` 守卫、IME Esc 不关窗、普通 Esc 仍关窗、焦点还原、无弹窗时 `/` 未误伤），明暗双主题各 14 项断言全通过。
 
 ### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
 

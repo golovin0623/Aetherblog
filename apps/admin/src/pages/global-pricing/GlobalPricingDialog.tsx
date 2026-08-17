@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
 import { Toggle, spring, transition, variants } from '@aetherblog/ui';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import type { GlobalPricing } from '@/services/aiProviderService';
 import { useApplyGlobalPricing, useUpsertGlobalPricing } from './hooks';
 
@@ -80,14 +81,8 @@ export function GlobalPricingDialog({
     });
   }, [initial, displayName]);
 
-  // Esc 关闭
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  // 焦点管理 + Esc(含 IME 组合态守卫) + 滚动锁
+  const dialogRef = useModalDialog<HTMLDivElement>({ onClose });
 
   const isPending = upsertMutation.isPending || applyMutation.isPending;
 
@@ -152,6 +147,8 @@ export function GlobalPricingDialog({
         exit="exit"
         transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        tabIndex={-1}
         className="aiw-dialog surface-overlay sm:max-w-2xl"
         role="dialog"
         aria-modal="true"
@@ -373,7 +370,7 @@ function NullablePriceInput({
           }}
           data-mono="true"
           data-align="right"
-          className="aiw-input pl-7"
+          className="aiw-input !pl-7"
         />
       </div>
     </div>

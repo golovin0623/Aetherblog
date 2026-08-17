@@ -2837,7 +2837,11 @@
 .ai-config-page,
 .global-pricing-page,
 .analytics-page,
-.search-config-page {
+.search-config-page,
+/* 弹窗经 createPortal 挂到 document.body,继承不到上述页面作用域 ——
+   令牌必须在此同处定义,否则 aiw-* 控件的 var() 解析失败会让 border
+   简写整条失效(无边框)、background 落为 transparent。 */
+.aiw-overlay {
   --intelligence-accent: var(--aurora-1);
   --intelligence-accent-2: var(--aurora-3);
   --intelligence-grid: rgb(from var(--ink-primary) r g b / 0.035);
@@ -2863,7 +2867,8 @@
 :root.dark .ai-config-page,
 :root.dark .global-pricing-page,
 :root.dark .analytics-page,
-:root.dark .search-config-page {
+:root.dark .search-config-page,
+:root.dark .aiw-overlay {
   --intelligence-grid: rgba(255, 255, 255, 0.035);
   --intelligence-panel: rgb(from var(--bg-raised) r g b / 0.74);
   --intelligence-control: rgb(from var(--ink-primary) r g b / 0.055);
@@ -3620,15 +3625,8 @@
   background: color-mix(in oklch, var(--signal-danger) 12%, transparent);
 }
 
-.global-pricing-sync-overlay {
-  --intelligence-border: rgb(from var(--ink-primary) r g b / 0.1);
-  --intelligence-control-hover: rgb(from var(--ink-primary) r g b / 0.075);
-}
-
-:root.dark .global-pricing-sync-overlay {
-  --intelligence-border: rgba(255, 255, 255, 0.1);
-  --intelligence-control-hover: rgba(255, 255, 255, 0.095);
-}
+/* 令牌由 .aiw-overlay 统一提供(同步弹窗根节点已带该类)——
+   此处曾各自补两个变量,漏掉 --intelligence-control 导致「已一致」徽章无底色。 */
 
 .global-pricing-sync-dialog {
   display: flex;
@@ -8732,9 +8730,11 @@ html[data-theme-transition] .codex-ambient-blob {
   font-weight: 650;
 }
 
-/* 弹窗(纯色 overlay 底)内的输入框加重一档边框定义度 */
-.aiw-dialog .aiw-input,
-.aiw-dialog .aiw-select,
-.aiw-dialog .aiw-textarea {
+/* 弹窗(纯色 overlay 底)内的输入框加重一档边框定义度。
+   必须排除 :focus —— 该规则与 .aiw-input:focus 同特异性且更靠后,
+   不排除会把聚焦时的极光边框压回静默灰。 */
+.aiw-dialog .aiw-input:not(:focus),
+.aiw-dialog .aiw-select:not(:focus),
+.aiw-dialog .aiw-textarea:not(:focus) {
   border-color: rgb(from var(--ink-primary) r g b / 0.14);
 }

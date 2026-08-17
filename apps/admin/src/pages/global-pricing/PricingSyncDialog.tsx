@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { spring, transition, variants } from '@aetherblog/ui';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import type {
   PricingSyncProposal,
@@ -105,14 +106,8 @@ export function PricingSyncDialog({ onClose }: Props) {
     runPreview(false);
   }, []);
 
-  // Esc 关闭
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  // 焦点管理 + Esc(含 IME 组合态守卫) + 滚动锁
+  const dialogRef = useModalDialog<HTMLDivElement>({ onClose });
 
   const handleToggleOverwrite = (next: boolean) => {
     setOverwriteExisting(next);
@@ -177,6 +172,11 @@ export function PricingSyncDialog({ onClose }: Props) {
         exit="exit"
         transition={spring.soft}
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="从 LiteLLM 同步价格"
         className="global-pricing-sync-dialog w-full border shadow-2xl sm:max-w-4xl"
       >
         <div className="global-pricing-sync-header">

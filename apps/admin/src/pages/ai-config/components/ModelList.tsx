@@ -128,6 +128,9 @@ export default function ModelList({
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
       }
+      // 有弹窗打开时不抢焦点 —— 否则会把焦点从模态层拽到背景的搜索框,
+      // 既击穿弹窗的焦点陷阱,又让用户对着看不见的输入框打字。
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
       e.preventDefault();
       searchInputRef.current?.focus();
     };
@@ -225,7 +228,7 @@ export default function ModelList({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索模型  /"
-              className="aiw-input h-9 w-full py-0 pl-8 pr-3 text-xs"
+              className="aiw-input h-9 w-full !py-0 !pl-8 !pr-3 text-xs"
             />
           </div>
 
