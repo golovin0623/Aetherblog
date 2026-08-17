@@ -182,6 +182,17 @@ const PARAGRAPH_OPTIONS: Array<{ value: ReaderParagraphMode; label: string }> = 
   { value: 'article', label: '间距' },
 ];
 
+function sameReaderDims(a: Dims, b: Dims): boolean {
+  return a.pageW === b.pageW
+    && a.pageH === b.pageH
+    && a.padX === b.padX
+    && a.padTop === b.padTop
+    && a.padBottom === b.padBottom
+    && a.contentW === b.contentW
+    && a.contentH === b.contentH
+    && a.cols === b.cols;
+}
+
 function isInteractiveKeyTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(target.closest('button, input, textarea, select, [role="button"], [role="slider"], [contenteditable="true"]'));
@@ -292,6 +303,10 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   const jobRef = useRef<FlipJob | null>(null);
   const rafRef = useRef<number>(0);
   const cursorRef = useRef(0);
+  // 书签复位用：原始 storedPage、本次恢复是否发生在临时分页上、用户是否已主动翻页。
+  const storedPageRef = useRef<number | null>(null);
+  const provisionalRestoreRef = useRef(false);
+  const userMovedRef = useRef(false);
   const wheelAccRef = useRef(0);
   const zoomAccRef = useRef(0);
   const wheelResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -365,7 +380,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     setPreferences(DEFAULT_READER_PREFERENCES);
   }, []);
 
+  /** 用户主动翻页/跳页的唯一入口：打上「用户已移动」标记，之后的位置以用户为准。 */
   const commitCursor = useCallback((next: number) => {
+    userMovedRef.current = true;
     cursorRef.current = next;
     setCursor(next);
   }, []);
@@ -560,7 +577,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   useLayoutEffect(() => {
     const update = () => {
       finishJobInstantly();
-      setDims(computeReaderDims({ width: window.innerWidth, height: window.innerHeight }, preferences.zoom));
+      const next = computeReaderDims({ width: window.innerWidth, height: window.innerHeight }, preferences.zoom);
+      // 尺寸未变时复用旧对象：dims 身份是图片测量 effect 的依赖，抖动会导致 mediaReady 无谓回落。
+      setDims((prev) => (prev && sameReaderDims(prev, next) ? prev : next));
     };
     update();
     window.addEventListener('resize', update);
@@ -674,6 +693,10 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     setPositionReady(false);
     setMediaReady(false);
     setSkeletonGone(false);
+    setHeadingPages([]);
+    storedPageRef.current = null;
+    provisionalRestoreRef.current = false;
+    userMovedRef.current = false;
   }, [book.slug]);
 
   // 悬挂的图片不应把读者锁在骨架书上：2.5s 后强制放行（图片就位后仍会重排分页）。
@@ -687,6 +710,9 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
   useEffect(() => {
     if (!dims || positionReady || (!mediaReady && !mediaTimedOut)) return;
     const storedPage = readStoredPage(book.slug);
+    storedPageRef.current = storedPage;
+    // 超时放行时分页仍是「图片未占位」的临时值，此次恢复只是尽力而为，待图片就绪后再按最终分页复位。
+    provisionalRestoreRef.current = !mediaReady;
     if (storedPage !== null) {
       const restored = absolutePageToCursor(storedPage, dims.cols, totalPages);
       cursorRef.current = restored;
@@ -695,6 +721,18 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     const frame = window.requestAnimationFrame(() => setPositionReady(true));
     return () => window.cancelAnimationFrame(frame);
   }, [book.slug, dims, mediaReady, mediaTimedOut, positionReady, totalPages]);
+
+  // 图片就绪后总页数才是最终值：把超时期间被 clamp 掉的书签按真实分页复位（用户已翻页则尊重用户）。
+  useEffect(() => {
+    if (!dims || !mediaReady || !positionReady) return;
+    if (!provisionalRestoreRef.current) return;
+    provisionalRestoreRef.current = false;
+    const storedPage = storedPageRef.current;
+    if (storedPage === null || userMovedRef.current) return;
+    const restored = absolutePageToCursor(storedPage, dims.cols, totalPages);
+    cursorRef.current = restored;
+    setCursor(restored);
+  }, [dims, mediaReady, positionReady, totalPages]);
 
   // 骨架书在实书升起后再退场，避免生硬切换。
   useEffect(() => {
@@ -705,6 +743,8 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   useEffect(() => {
     if (!dims || !positionReady) return;
+    // 分页仍是超时放行的临时值且用户尚未翻页时不落盘，否则会用被 clamp 的页码覆盖真实书签。
+    if (!mediaReady && !userMovedRef.current) return;
     const page = cursorToAbsolutePage(cursor, dims.cols);
     try {
       window.localStorage.setItem(
@@ -714,7 +754,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     } catch {
       // localStorage 不可用时跳过持久化。
     }
-  }, [book.slug, cursor, dims, positionReady, totalPages]);
+  }, [book.slug, cursor, dims, mediaReady, positionReady, totalPages]);
 
   const cols = dims?.cols ?? 2;
   const unitCount = cols === 2 ? Math.ceil(totalPages / 2) : totalPages; // 翻页单元总数
@@ -1038,10 +1078,13 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
 
   // ----- 章节页面映射：目录页码 / 运行头 / 进度刻度共用 -----
   useEffect(() => {
-    if (!dims || !measureRef.current || !book.toc?.length || !mediaReady) {
+    if (!dims || !measureRef.current || !book.toc?.length) {
       setHeadingPages([]);
       return;
     }
+    // 图片未就绪时用超时兜底出一版映射（悬挂图片否则会让目录页码/章节刻度/运行头整场缺席）；
+    // mediaReady 短暂回落（resize/缩放重跑图片 effect）时保留上一版，避免这些元素闪断。
+    if (!mediaReady && !mediaTimedOut) return;
     const measureRect = measureRef.current.getBoundingClientRect();
     const mapped: Array<{ id: string; text: string; page: number }> = [];
     for (const h of book.toc) {
@@ -1059,6 +1102,7 @@ export default function PageFlipBook({ book }: { book: ReadingBook }) {
     book.toc,
     dims,
     mediaReady,
+    mediaTimedOut,
     totalPages,
     preferences.fontSize,
     preferences.lineHeight,

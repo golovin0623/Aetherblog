@@ -229,7 +229,9 @@
     0 34px 80px -30px var(--reader-shadow),
     0 16px 38px -26px rgba(0, 0, 0, 0.5),
     0 2px 8px -4px rgba(0, 0, 0, 0.3);
-  isolation: isolate;
+  /* 不要在此加 isolation / mix-blend-mode / filter / overflow 等 grouping 属性：
+     它们会把 used transform-style 强制降为 flat，令 preserve-3d 与 .stage 的 perspective
+     一起静默失效，翻页退化成 2D 折叠。书脊 multiply 的混合隔离由 .stage 的 paint containment 提供。 */
   contain: layout style;
   user-select: none;
   touch-action: none;
