@@ -280,21 +280,23 @@
   z-index: 1;
 }
 
-.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-side {
+/* 统一几何:带 tab 的模块头,tab 条固定在标题下方一行 —— tab 恒在行左,actions 恒在行右。
+   不随「当前 tab 是否携带 actions」或视口宽度在右上/下方之间跳位,消除切换时的视觉割裂。 */
+.admin-module-header[data-has-tabs='true'] .admin-module-side {
   width: 100%;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
 }
 
-.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-actions {
+.admin-module-header[data-has-tabs='true'] .admin-module-actions {
   order: 2;
   margin-left: auto;
   flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
-.admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-tabs {
+.admin-module-header[data-has-tabs='true'] .admin-module-tabs {
   order: 1;
 }
 
@@ -831,29 +833,19 @@
 }
 
 @media (min-width: 1280px) {
-  .admin-module-header-inner {
+  /* 双列(标题左 · 操作右上)只保留给无 tab 的模块头;
+     带 tab 的模块头保持单列,tab 行的位置在所有断点、所有 tab 之间恒定。 */
+  .admin-module-header[data-has-tabs='false'] .admin-module-header-inner {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
 
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-header-inner {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .admin-module-side {
+  .admin-module-header[data-has-tabs='false'] .admin-module-side {
     align-items: flex-end;
-  }
-
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-side {
-    align-items: center;
   }
 
   .admin-module-actions {
     justify-content: flex-end;
-  }
-
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-actions {
-    flex-wrap: nowrap;
   }
 }
 
@@ -978,17 +970,17 @@
     gap: 0.35rem;
   }
 
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-side {
+  .admin-module-header[data-has-tabs='true'] .admin-module-side {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-actions {
+  .admin-module-header[data-has-tabs='true'] .admin-module-actions {
     width: 100%;
     justify-content: flex-end;
   }
 
-  .admin-module-header[data-has-tabs='true'][data-has-actions='true'] .admin-module-tabs {
+  .admin-module-header[data-has-tabs='true'] .admin-module-tabs {
     width: 100%;
   }
 
@@ -6957,6 +6949,100 @@ html[data-theme-transition] .codex-ambient-blob {
   background: color-mix(in oklch, var(--bg-raised) 92%, transparent);
   box-shadow: 0 18px 44px -38px color-mix(in oklch, black 45%, transparent);
   backdrop-filter: blur(20px) saturate(130%);
+}
+
+/* 封面工坊参数滑杆 —— 极光填充轨道 + 精密拇指,替代原生 accent 样式。 */
+.music-range {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      var(--aurora-1) var(--range-fill, 50%),
+      color-mix(in oklch, var(--ink-primary) 12%, transparent) var(--range-fill, 50%));
+  outline: none;
+}
+
+.music-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--bg-raised);
+  border-radius: 50%;
+  background: var(--ink-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform var(--dur-instant) var(--ease-out);
+}
+
+.music-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.music-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 35%, transparent);
+}
+
+.music-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--bg-raised);
+  border-radius: 50%;
+  background: var(--ink-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Firefox 的原生焦点提示画在 input 的 outline 上,上面已置 none —— 必须补回拇指上的焦点环 */
+.music-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 35%, transparent);
+}
+
+/* 歌单曲目表「正在播放」均衡器 —— 三根极光柱,播放时跳动,暂停时静止在中位。 */
+.music-eq {
+  display: inline-flex;
+  height: 0.875rem;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.music-eq span {
+  width: 3px;
+  height: 32%;
+  border-radius: 1.5px;
+  background: var(--aurora-1);
+}
+
+.music-eq.is-playing span {
+  animation: music-eq-bounce 0.9s var(--ease-in-out) infinite;
+}
+
+.music-eq.is-playing span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.music-eq.is-playing span:nth-child(3) {
+  animation-delay: 0.42s;
+}
+
+@keyframes music-eq-bounce {
+  0%,
+  100% {
+    height: 32%;
+  }
+
+  50% {
+    height: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-eq.is-playing span {
+    animation: none;
+    height: 62%;
+  }
 }
 
 .music-module-header.admin-module-header::after {

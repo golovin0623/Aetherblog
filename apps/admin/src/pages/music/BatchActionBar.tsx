@@ -86,7 +86,7 @@ export function BatchActionBar({
           role="dialog"
           aria-label={panelMode === 'playlist' ? '选择目标歌单' : '选择要添加的标签'}
           className={cn(
-            'w-[min(92vw,340px)] rounded-2xl border border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] bg-[var(--bg-leaf)]/95 p-3 text-[var(--ink-primary)] backdrop-blur-2xl shadow-[0_16px_36px_-8px_rgba(0,0,0,0.18)] dark:shadow-[0_20px_48px_-10px_rgba(0,0,0,0.65)] ring-1 ring-white/10 animate-in fade-in slide-in-from-bottom-2',
+            'surface-raised w-[min(92vw,340px)] p-3 text-[var(--ink-primary)] animate-in fade-in slide-in-from-bottom-2',
             'max-h-[60vh] overflow-y-auto overscroll-contain'
           )}
         >
@@ -174,7 +174,7 @@ export function BatchActionBar({
         </div>
       )}
 
-      <div className="flex items-center gap-2 px-3.5 py-2 bg-[var(--bg-leaf)]/90 text-[var(--ink-primary)] backdrop-blur-2xl border border-[color-mix(in_oklch,var(--ink-primary)_14%,transparent)] rounded-full shadow-[0_16px_36px_-8px_rgba(0,0,0,0.18)] dark:shadow-[0_20px_48px_-10px_rgba(0,0,0,0.65)] ring-1 ring-white/10 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3">
+      <div className="surface-raised flex items-center gap-2 rounded-full px-3.5 py-2 text-[var(--ink-primary)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-out)] animate-in fade-in slide-in-from-bottom-3">
         <div className="flex items-center gap-1.5 pl-1 pr-2.5 border-r border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]">
           <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--aurora-1)] text-white text-[10px] font-mono font-bold">
             {selectedCount}
