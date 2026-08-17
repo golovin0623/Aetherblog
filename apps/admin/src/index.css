@@ -3370,15 +3370,18 @@
   line-height: 1.25rem;
 }
 
+/* 触控目标 ≥44px(AGENTS.md 移动端约定),桌面指针设备回到紧凑密度。
+   静息文字用 --ink-secondary 而非 --ink-muted:后者在暗色卡片上仅约 3.3:1,
+   低于 WCAG AA;这三枚是每条命中的全部后续动作,不是辅助 metadata。 */
 .intelligence-atom-action {
   display: inline-flex;
-  min-height: 1.9rem;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.3rem;
   border: 1px solid transparent;
   border-radius: 0.6rem;
   padding: 0 0.55rem;
-  color: var(--ink-muted);
+  color: var(--ink-secondary);
   font-size: 0.7rem;
   font-weight: 700;
   transition:
@@ -3420,7 +3423,7 @@
 
 .intelligence-lane-filter {
   display: inline-flex;
-  min-height: 1.9rem;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.35rem;
   border: 1px solid var(--intelligence-border);
@@ -3505,6 +3508,27 @@
 .intelligence-tray-chip-remove:hover {
   background: color-mix(in oklch, var(--signal-danger) 12%, transparent);
   color: var(--signal-danger);
+}
+
+/* 触控密度:移动端按 AGENTS.md「按钮触控区域不小于 44x44px」放大,
+   ≥640px 的指针设备回到紧凑排布(与仓库既有 min-h-11 sm:min-h-9 先例一致)。 */
+@media (max-width: 639px) {
+  .intelligence-tray-chip {
+    min-height: 2.75rem;
+    padding-right: 0.35rem;
+  }
+
+  .intelligence-tray-chip-remove {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .intelligence-atom-action,
+  .intelligence-lane-filter {
+    min-height: 1.9rem;
+  }
 }
 
 @media (min-width: 1024px) {

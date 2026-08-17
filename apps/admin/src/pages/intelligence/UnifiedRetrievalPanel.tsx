@@ -35,6 +35,7 @@ import {
   KB_HITS_PER_BASE,
   NOTE_SEARCH_LIMIT,
   buildAskSeed,
+  isCleanEmptyResult,
   planKbRetrievalTargets,
   resolveAtlasLaneOutcome,
   resolveKbLaneOutcome,
@@ -62,6 +63,12 @@ export interface UnifiedRetrievalPanelProps {
   pinnedKeys: ReadonlySet<string>;
   onTogglePin: (ref: KnowledgeContextRef) => void;
   onAskAbout: (seedGoal: string) => void;
+  /**
+   * 固定来源引发来源模式变化时的就近反馈 —— 模式控件在 <xl 视口沉在结果下方,
+   * 不在这里说一声,「自动检索」用户对模式被改毫无感知。
+   */
+  sourceModeNotice?: string | null;
+  onDismissSourceModeNotice?: () => void;
 }
 
 function pinKey(ref: KnowledgeContextRef): string {
@@ -192,6 +199,8 @@ export function UnifiedRetrievalPanel({
   pinnedKeys,
   onTogglePin,
   onAskAbout,
+  sourceModeNotice,
+  onDismissSourceModeNotice,
 }: UnifiedRetrievalPanelProps) {
   const navigate = useNavigate();
   const reducedMotion = useReducedMotion() ?? false;
@@ -205,15 +214,21 @@ export function UnifiedRetrievalPanel({
   const [outcomes, setOutcomes] = useState<RetrievalLaneOutcome[] | null>(null);
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
   const [expandedLanes, setExpandedLanes] = useState<ReadonlySet<RetrievalLane>>(new Set());
+  // 常驻 live region:随结果一起挂载的 aria-live 只播报「挂载之后」的变化,
+  // 初次内容永远静默,读屏用户不知道检索开始/结束。
+  const [statusMessage, setStatusMessage] = useState('');
 
+  // react-hotkeys-hook v5 默认按 event.code 归一化匹配,'/' 永不命中;
+  // 'slash' 与仓库既有 useMediaKeyboardShortcuts 的写法一致。
   useHotkeys(
-    '/',
+    'slash',
     () => inputRef.current?.focus(),
     { preventDefault: true },
     [],
   );
 
   const runSearch = async () => {
+    if (phase === 'loading') return;
     const validation = validateKnowledgeBaseRetrievalQuery(query);
     if (!validation.ok) {
       setValidationError(validation.message);
@@ -227,6 +242,7 @@ export function UnifiedRetrievalPanel({
     setSubmittedQuery(validation.query);
     setLaneFilter('all');
     setExpandedLanes(new Set());
+    setStatusMessage('正在检索知识库、知识图集与笔记…');
 
     const kbPromises = plan.targets.map(
       (target): Promise<KbLaneSettledResult> =>
@@ -241,9 +257,11 @@ export function UnifiedRetrievalPanel({
       .search({ q: validation.query, limit: ATLAS_SEARCH_LIMIT, semantic: true, scope: 'mine' })
       .then((res) => (res.data ? { ok: true as const, response: res.data } : { ok: false as const }))
       .catch(() => ({ ok: false as const }));
+    // 与 kb/atlas 一致用 res.data 守卫:后端业务失败会返回 HTTP 200 + data:null,
+    // 直接取 `?? []` 会把失败伪装成「你的笔记里确实没有」。
     const notesPromise = noteService
       .getList({ pageNum: 1, pageSize: NOTE_SEARCH_LIMIT, keyword: validation.query })
-      .then((res) => ({ ok: true as const, notes: res.data?.list ?? [] }))
+      .then((res) => (res.data ? { ok: true as const, notes: res.data.list ?? [] } : { ok: false as const }))
       .catch(() => ({ ok: false as const }));
 
     const [kbResults, atlasResult, notesResult] = await Promise.all([
@@ -253,12 +271,22 @@ export function UnifiedRetrievalPanel({
     ]);
     if (seq !== requestSeqRef.current) return;
 
-    setOutcomes([
+    const nextOutcomes = [
       resolveKbLaneOutcome(kbResults, plan.skippedReadyCount),
       resolveAtlasLaneOutcome(atlasResult),
       resolveNotesLaneOutcome(notesResult),
-    ]);
+    ];
+    const hits = nextOutcomes.reduce((sum, outcome) => sum + outcome.atoms.length, 0);
+    const failedLanes = nextOutcomes.filter((outcome) => outcome.state === 'error');
+    setOutcomes(nextOutcomes);
     setPhase('done');
+    setStatusMessage(
+      failedLanes.length === nextOutcomes.length
+        ? '检索链路暂时不可用，请稍后重试。'
+        : failedLanes.length > 0
+          ? `找到 ${hits} 个知识原子；${failedLanes.map((outcome) => LANE_LABELS[outcome.lane]).join('、')}检索未完成。`
+          : `找到 ${hits} 个知识原子。`,
+    );
   };
 
   const totalAtoms = useMemo(
@@ -270,6 +298,9 @@ export function UnifiedRetrievalPanel({
     [outcomes, laneFilter],
   );
   const allLanesFailed = outcomes !== null && outcomes.every((outcome) => outcome.state === 'error');
+  // 只有三条泳道都「成功执行且确实无结果」才引导换问法;
+  // 任何失败/降级都必须让泳道自己说话,否则重试才是正确动作却被藏起来。
+  const cleanEmpty = outcomes !== null && isCleanEmptyResult(outcomes);
 
   const toggleLaneExpansion = (lane: RetrievalLane) => {
     setExpandedLanes((current) => {
@@ -298,6 +329,10 @@ export function UnifiedRetrievalPanel({
       </div>
 
       <div className="intelligence-panel-body">
+        {/* 常驻 live region:必须先于内容存在于无障碍树,后续写入才会被播报。 */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {statusMessage}
+        </p>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -322,10 +357,15 @@ export function UnifiedRetrievalPanel({
               className="min-w-0 flex-1 bg-transparent text-sm leading-6 text-[var(--ink-primary)] outline-none placeholder:text-[var(--ink-muted)]"
               aria-label="检索词"
             />
+            {/* 用 aria-disabled 而非 disabled:检索中禁用会把键盘焦点丢回文档顶部,
+                结束后用户得重新 Tab 一遍。提交由 runSearch 自身守卫。 */}
             <button
               type="submit"
-              className="intelligence-action-button-primary min-h-9 shrink-0 px-3.5 text-sm"
-              disabled={phase === 'loading'}
+              className={cn(
+                'intelligence-action-button-primary min-h-11 shrink-0 px-3.5 text-sm sm:min-h-9',
+                phase === 'loading' && 'cursor-wait opacity-55',
+              )}
+              aria-disabled={phase === 'loading'}
             >
               {phase === 'loading' ? '检索中' : '检索'}
               <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -339,6 +379,26 @@ export function UnifiedRetrievalPanel({
           </p>
         )}
 
+        {sourceModeNotice && (
+          <div
+            role="status"
+            className="mt-2 flex min-w-0 items-center gap-2 rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] px-3 py-2"
+          >
+            <Pin className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-1)]" aria-hidden="true" />
+            <span className="min-w-0 flex-1 text-[11px] leading-5 text-[var(--ink-secondary)]">
+              {sourceModeNotice}
+            </span>
+            <button
+              type="button"
+              onClick={onDismissSourceModeNotice}
+              className="intelligence-atom-action shrink-0"
+              aria-label="知道了，关闭提示"
+            >
+              知道了
+            </button>
+          </div>
+        )}
+
         {phase === 'idle' && (
           <p className="mt-3 flex items-center gap-2 text-xs leading-5 text-[var(--ink-muted)]">
             <Atom className="h-3.5 w-3.5 shrink-0 text-[var(--aurora-1)]" aria-hidden="true" />
@@ -347,7 +407,7 @@ export function UnifiedRetrievalPanel({
         )}
 
         {phase === 'loading' && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-3" aria-busy="true" aria-label="正在检索">
+          <div className="mt-4 grid gap-4 lg:grid-cols-3" aria-hidden="true">
             <LaneSkeleton />
             <LaneSkeleton />
             <LaneSkeleton />
@@ -357,32 +417,36 @@ export function UnifiedRetrievalPanel({
         {phase === 'done' && outcomes && (
           <div className="mt-4">
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p aria-live="polite" className="min-w-0 truncate font-mono text-[11px] tabular-nums text-[var(--ink-muted)]">
+              {/* 播报由上方常驻 live region 负责,这里只做视觉展示,避免双重播报。 */}
+              <p className="min-w-0 truncate font-mono text-[11px] tabular-nums text-[var(--ink-muted)]">
                 「{submittedQuery}」 · {totalAtoms} 个知识原子
               </p>
-              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="按来源筛选">
-                {(
-                  [
-                    { value: 'all' as const, label: '全部', count: totalAtoms },
-                    ...outcomes.map((outcome) => ({
-                      value: outcome.lane,
-                      label: LANE_LABELS[outcome.lane],
-                      count: outcome.atoms.length,
-                    })),
-                  ]
-                ).map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    data-active={laneFilter === option.value}
-                    onClick={() => setLaneFilter(option.value)}
-                    className="intelligence-lane-filter"
-                  >
-                    {option.label}
-                    <span className="font-mono tabular-nums opacity-70">{option.count}</span>
-                  </button>
-                ))}
-              </div>
+              {totalAtoms > 0 && (
+                <div className="flex flex-wrap items-center gap-1" role="group" aria-label="按来源筛选">
+                  {(
+                    [
+                      { value: 'all' as const, label: '全部', count: totalAtoms },
+                      ...outcomes.map((outcome) => ({
+                        value: outcome.lane,
+                        label: LANE_LABELS[outcome.lane],
+                        count: outcome.atoms.length,
+                      })),
+                    ]
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={laneFilter === option.value}
+                      data-active={laneFilter === option.value}
+                      onClick={() => setLaneFilter(option.value)}
+                      className="intelligence-lane-filter"
+                    >
+                      {option.label}
+                      <span className="font-mono tabular-nums opacity-70">{option.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {allLanesFailed ? (
@@ -392,7 +456,7 @@ export function UnifiedRetrievalPanel({
                   三条链路本次都未完成，请稍后重试;这不代表你的知识中没有答案。
                 </p>
               </div>
-            ) : totalAtoms === 0 ? (
+            ) : cleanEmpty ? (
               <div className="mt-4 rounded-2xl border border-dashed border-[var(--intelligence-border)] px-4 py-8 text-center">
                 <p className="text-sm font-bold text-[var(--ink-primary)]">没有找到相关的知识原子</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--ink-muted)]">
@@ -441,6 +505,11 @@ export function UnifiedRetrievalPanel({
                             </span>
                           )}
                         </div>
+                        {outcome.atoms.length === 0 && !outcome.detail && (
+                          <p className="px-0.5 text-[11px] leading-5 text-[var(--ink-muted)]">
+                            这条链路已完成检索，没有相关内容。
+                          </p>
+                        )}
                         {outcome.atoms.length > 0 && (
                           <div className="grid gap-2 lg:grid-cols-2">
                             {atoms.map((atom) => (

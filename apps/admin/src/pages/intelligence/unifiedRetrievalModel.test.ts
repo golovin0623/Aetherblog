@@ -8,6 +8,7 @@ import {
   buildAtlasAtoms,
   buildKbAtoms,
   buildNoteAtoms,
+  isCleanEmptyResult,
   isKnowledgeBaseQueryable,
   normalizeRetrievalScore,
   planKbRetrievalTargets,
@@ -17,6 +18,7 @@ import {
   resolveNotesLaneOutcome,
   stripMarkdownLite,
   type KbRetrievalTarget,
+  type RetrievalLaneOutcome,
 } from './unifiedRetrievalModel';
 
 import type { QueryableKnowledgeBaseInput } from './unifiedRetrievalModel';
@@ -329,5 +331,143 @@ describe('ranking and ask seed', () => {
     expect(stripMarkdownLite('# 标题\n> 引用**加粗**与 [链接](https://a.b)')).toBe(
       '标题 引用加粗与 链接',
     );
+  });
+
+  it('never rewrites numeric ranges or snake_case identifiers as emphasis markers', () => {
+    // 单个 ~ / 词中 _ 不构成强调；把「3~5 天」改写成「35 天」会经「就此提问」
+    // 伪装成原文引文送进灵境。
+    expect(stripMarkdownLite('预计 3~5 天完成，偏差 ~2 天')).toBe('预计 3~5 天完成，偏差 ~2 天');
+    expect(stripMarkdownLite('调用 get_user_name 与 max_retry_count 字段')).toBe(
+      '调用 get_user_name 与 max_retry_count 字段',
+    );
+    // 成对且同种的标记仍然剥除
+    expect(stripMarkdownLite('**粗** 与 *斜* 与 ~~删~~ 与 __下__')).toBe('粗 与 斜 与 删 与 下');
+  });
+
+  it('keeps the excerpt and the scaffold when the title is very long', () => {
+    const seed = buildAskSeed({
+      title: '长'.repeat(400),
+      sourceLabel: '产品知识库 · 片段 1',
+      quote: '关键证据句。',
+      snippet: '',
+    });
+    expect(seed).toContain('关键证据句。');
+    expect(seed.endsWith('我想确认:')).toBe(true);
+    expect(seed.length).toBeLessThanOrEqual(600);
+  });
+});
+
+describe('handoff-safe pin refs', () => {
+  it('clamps an over-length knowledge point title so the ref always passes handoff validation', () => {
+    const response = {
+      query: 'q',
+      limit: 8,
+      total: 1,
+      knowledgePoints: [
+        {
+          id: 11,
+          uuid: 'u',
+          title: '标'.repeat(300),
+          bodyMarkdown: 'b',
+          type: 'concept',
+          confidence: 1,
+          status: 'seed',
+          provenance: 'user',
+          archived: false,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+      annotations: [],
+      carriers: [],
+    } as unknown as AtlasSearchResponse;
+
+    const kp = buildAtlasAtoms(response).find((atom) => atom.kind === 'atlas-kp');
+    expect(kp?.pinRef?.label.length).toBeGreaterThan(0);
+    expect(kp?.pinRef?.label.length).toBeLessThanOrEqual(160);
+  });
+
+  it('falls back to an identifiable label when the source title is blank', () => {
+    const response = {
+      query: 'q',
+      limit: 8,
+      total: 1,
+      knowledgePoints: [
+        {
+          id: 42,
+          uuid: 'u',
+          title: '   ',
+          bodyMarkdown: 'b',
+          type: 'concept',
+          confidence: 1,
+          status: 'seed',
+          provenance: 'user',
+          archived: false,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+      annotations: [],
+      carriers: [],
+    } as unknown as AtlasSearchResponse;
+
+    expect(buildAtlasAtoms(response)[0]?.pinRef?.label).toBe('知识点 #42');
+  });
+
+  it('clamps knowledge base labels on the same contract', () => {
+    const atoms = buildKbAtoms(
+      { id: 3, slug: 's', name: '库'.repeat(200) },
+      { status: 'matched', query: 'q', hits: [{ title: 't', snippet: 's', score: 0.5, fileId: 1, chunkIndex: 0 }] },
+    );
+    expect(atoms[0].pinRef?.label.length).toBeLessThanOrEqual(160);
+  });
+
+  it('never leaves a lone surrogate at a truncation boundary', () => {
+    const atoms = buildKbAtoms(
+      { id: 1, slug: 's', name: 'kb' },
+      {
+        status: 'matched',
+        query: 'q',
+        hits: [
+          {
+            title: 't',
+            // 截断点恰好落在 emoji 的代理对中间
+            snippet: `${'a'.repeat(218)}📚${'b'.repeat(20)}`,
+            score: 0.5,
+            fileId: 1,
+            chunkIndex: 0,
+          },
+        ],
+      },
+    );
+    expect(atoms[0].snippet).not.toMatch(/[\uD800-\uDBFF]…?$/);
+    expect(atoms[0].snippet.endsWith('…')).toBe(true);
+  });
+});
+
+describe('clean-empty discrimination', () => {
+  const lane = (
+    name: RetrievalLaneOutcome['lane'],
+    state: RetrievalLaneOutcome['state'],
+    detail: string | null = null,
+  ): RetrievalLaneOutcome => ({ lane: name, state, atoms: [], detail });
+
+  it('only reports a clean empty when every lane succeeded with nothing to say', () => {
+    expect(
+      isCleanEmptyResult([lane('kb', 'empty'), lane('atlas', 'empty'), lane('notes', 'empty')]),
+    ).toBe(true);
+  });
+
+  it('is not clean when a lane failed, degraded, or has something to report', () => {
+    // 这三种情况下正确动作是重试或补资料，不是「换一种问法」
+    expect(
+      isCleanEmptyResult([lane('kb', 'empty'), lane('atlas', 'error', '不可用'), lane('notes', 'empty')]),
+    ).toBe(false);
+    expect(
+      isCleanEmptyResult([lane('kb', 'empty'), lane('atlas', 'degraded', '语义退化'), lane('notes', 'empty')]),
+    ).toBe(false);
+    expect(
+      isCleanEmptyResult([lane('kb', 'empty', '另有 4 个就绪库未参与'), lane('atlas', 'empty'), lane('notes', 'empty')]),
+    ).toBe(false);
   });
 });

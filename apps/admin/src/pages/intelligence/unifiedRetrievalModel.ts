@@ -13,7 +13,10 @@ import type {
   KnowledgeBase,
   KnowledgeBaseRetrievalResponse,
 } from '@/services/knowledgeBaseService';
-import type { KnowledgeContextRef } from '@/services/knowledgeWorkspaceHandoff';
+import {
+  MAX_KNOWLEDGE_HANDOFF_LABEL_LENGTH,
+  type KnowledgeContextRef,
+} from '@/services/knowledgeWorkspaceHandoff';
 import type { NoteListItem } from '@/types/note';
 import { carrierReaderHref } from '@/pages/atlas/carrierReaderHref';
 import { kpTypeLabel } from '@/pages/atlas/atlasLabels';
@@ -70,6 +73,10 @@ export const NOTE_SEARCH_LIMIT = 6;
 const SNIPPET_MAX_LENGTH = 220;
 const QUOTE_MAX_LENGTH = 160;
 const ASK_SEED_MAX_LENGTH = 600;
+// 各组成部分的份额,合计留出脚手架与标点的余量。
+const ASK_SEED_TITLE_MAX_LENGTH = 120;
+const ASK_SEED_SOURCE_MAX_LENGTH = 120;
+const ASK_SEED_EXCERPT_MAX_LENGTH = 320;
 
 export type QueryableKnowledgeBaseInput = Pick<
   KnowledgeBase,
@@ -140,13 +147,50 @@ export function normalizeRetrievalScore(value: unknown): number | null {
   return value;
 }
 
+/**
+ * 按 UTF-16 code unit 切分会切开 surrogate pair(emoji、扩展区汉字),
+ * 留下孤立代理项渲染成「�」。截断后回退一位保证边界完整。
+ */
+function sliceWholeChars(value: string, limit: number): string {
+  const cut = value.slice(0, Math.max(0, limit));
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+}
+
 function clampText(value: string, limit: number): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= limit) return normalized;
-  return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+  return `${sliceWholeChars(normalized, limit - 1).trimEnd()}…`;
 }
 
-/** 摘要场景的轻量 Markdown 去噪 —— 只求可读,不做完整解析。 */
+/** clampText 的多行版本:保留换行,仅限制总长。 */
+function clampMultiline(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${sliceWholeChars(value, limit - 1).trimEnd()}…`;
+}
+
+/**
+ * 交接契约要求 label 为 1–160 字符(见 knowledgeWorkspaceHandoff.normalizeRef)。
+ * pin 出来的 ref 必须一定能通过校验 —— 否则用户在漏斗最后一步才被整体拒绝,
+ * 且错误信息不指明是哪个来源。空标题回退到可识别的占位名。
+ */
+function safeRefLabel(value: string, fallback: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const candidate = normalized || fallback;
+  return candidate.length <= MAX_KNOWLEDGE_HANDOFF_LABEL_LENGTH
+    ? candidate
+    : clampText(candidate, MAX_KNOWLEDGE_HANDOFF_LABEL_LENGTH);
+}
+
+/**
+ * 摘要场景的轻量 Markdown 去噪 —— 只求可读,不做完整解析。
+ *
+ * 强调剥除必须遵守真实的 Markdown 语义,否则会篡改原文:
+ *   · 标记成对且同种      —— 否则「3~5 天」被改写成「35 天」
+ *   · 删除线必须是 ~~     —— 单个 ~ 是普通字符(约数、区间)
+ *   · 下划线不作用于词内  —— 否则 `get_user_name` 被拼成 `getusername`
+ *   · 内容不跨行          —— 否则连续两行 `* 列表项` 会被当成一对 * 强调
+ * 篡改后的文本会经「就此提问」伪装成原文引文送进灵境,必须零容忍。
+ */
 export function stripMarkdownLite(markdown: string): string {
   return markdown
     .replace(/```[\s\S]*?```/g, ' ')
@@ -155,7 +199,12 @@ export function stripMarkdownLite(markdown: string): string {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s{0,3}>\s?/gm, '')
-    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1')
+    .replace(/(\*{1,3})([^*\n]+)\1/g, '$2')
+    .replace(/~~([^~\n]+)~~/g, '$1')
+    .replace(
+      /(^|[^\w一-鿿])(_{1,3})([^_\s\n](?:[^_\n]*[^_\s\n])?)\2(?![\w一-鿿])/g,
+      '$1$3',
+    )
     .replace(/^\s*[-+*]\s+/gm, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -177,7 +226,11 @@ export function buildKbAtoms(
       score: normalizeRetrievalScore(hit.score),
       sourceLabel: `${base.name} · 片段 ${hit.chunkIndex + 1}`,
       href: `/intelligence/knowledge/${base.slug}`,
-      pinRef: { kind: 'knowledge-base', id: base.id, label: base.name },
+      pinRef: {
+        kind: 'knowledge-base',
+        id: base.id,
+        label: safeRefLabel(base.name, `知识库 #${base.id}`),
+      },
       quote: clampText(hit.snippet, QUOTE_MAX_LENGTH) || null,
     };
   });
@@ -211,7 +264,11 @@ export function buildAtlasAtoms(response: AtlasSearchResponse): KnowledgeAtom[] 
         ? `知识点 · ${kpTypeLabel(kp.type)} · 证据自《${evidence.carrierTitle}》`
         : `知识点 · ${kpTypeLabel(kp.type)}`,
       href: `/atlas/kp/${kp.id}`,
-      pinRef: { kind: 'atlas-kp', id: kp.id, label: kp.title },
+      pinRef: {
+        kind: 'atlas-kp',
+        id: kp.id,
+        label: safeRefLabel(kp.title, `知识点 #${kp.id}`),
+      },
       quote: evidence?.quote ? clampText(evidence.quote, QUOTE_MAX_LENGTH) : null,
     };
   });
@@ -390,19 +447,32 @@ export function resolveNotesLaneOutcome(result: NotesLaneSettledResult): Retriev
 }
 
 /**
- * 「就此提问」的目标草稿:引用出处与原文短句,把补完问题留给用户。
- * 不预设结论,不替用户发明意图。
+ * 三条泳道是否「干净地什么都没找到」—— 即每条都成功执行且确实无结果。
+ * 只有这种情况才该引导用户换问法;只要有任何一条失败或降级,
+ * 正确的下一步是重试或补资料,把失败信息藏进通用空态会误导用户。
  */
-export function buildAskSeed(atom: Pick<KnowledgeAtom, 'title' | 'sourceLabel' | 'quote' | 'snippet'>): string {
-  const excerpt = atom.quote ?? atom.snippet;
-  const lines = [`关于「${atom.title}」（${atom.sourceLabel}）:`];
-  if (excerpt) lines.push(`「${excerpt}」`);
-  lines.push('', '我想确认:');
-  return clampText2(lines.join('\n'), ASK_SEED_MAX_LENGTH);
+export function isCleanEmptyResult(outcomes: readonly RetrievalLaneOutcome[]): boolean {
+  return (
+    outcomes.length > 0 &&
+    outcomes.every(
+      (outcome) => outcome.state === 'empty' && outcome.atoms.length === 0 && !outcome.detail,
+    )
+  );
 }
 
-/** clampText 的多行版本:保留换行,仅限制总长。 */
-function clampText2(value: string, limit: number): string {
-  if (value.length <= limit) return value;
-  return `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+/**
+ * 「就此提问」的目标草稿:引用出处与原文短句,把补完问题留给用户。
+ * 不预设结论,不替用户发明意图。
+ *
+ * 先按份额裁掉最长的组成部分(标题 / 引文),再拼装 —— 整体截断会把
+ * 引文和「我想确认:」脚手架一起吞掉,只剩半截标题。
+ */
+export function buildAskSeed(atom: Pick<KnowledgeAtom, 'title' | 'sourceLabel' | 'quote' | 'snippet'>): string {
+  const title = clampText(atom.title, ASK_SEED_TITLE_MAX_LENGTH);
+  const source = clampText(atom.sourceLabel, ASK_SEED_SOURCE_MAX_LENGTH);
+  const excerpt = clampText(atom.quote ?? atom.snippet ?? '', ASK_SEED_EXCERPT_MAX_LENGTH);
+  const lines = [`关于「${title}」（${source}）:`];
+  if (excerpt) lines.push(`「${excerpt}」`);
+  lines.push('', '我想确认:');
+  return clampMultiline(lines.join('\n'), ASK_SEED_MAX_LENGTH);
 }

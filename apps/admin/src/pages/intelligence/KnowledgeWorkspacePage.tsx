@@ -93,6 +93,7 @@ const EMPTY_SOURCES: WorkspaceSources = {
 
 const COLLAPSED_SOURCE_COUNT = 5;
 const CARRIER_LOAD_LIMIT = 24;
+const MAX_GOAL_LENGTH = 4000;
 
 const INITIAL_STATE: WorkspaceState = {
   phase: 'compose',
@@ -303,8 +304,12 @@ export default function KnowledgeWorkspacePage() {
   const [showAllKnowledgeBases, setShowAllKnowledgeBases] = useState(false);
   const [showAllCarriers, setShowAllCarriers] = useState(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
+  const [pinNotice, setPinNotice] = useState<string | null>(null);
+  const [pendingComposerFocus, setPendingComposerFocus] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const taskPanelRef = useRef<HTMLDivElement>(null);
+  /** 记录「因固定来源而自动进入 selected」之前的模式,null 表示是用户手动选的。 */
+  const autoEnteredSelectedFromRef = useRef<'auto' | 'none' | null>(null);
 
   const loadSources = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -360,6 +365,22 @@ export default function KnowledgeWorkspacePage() {
   useEffect(() => {
     void loadSources();
   }, [loadSources]);
+
+  // 「就此提问」的滚动与聚焦要等 compose 面板真正挂载后再做。
+  // 用定时器会与 AnimatePresence mode="wait" 的退场竞态:从 review 态点进来时,
+  // composer 在 60ms 后还没挂上,焦点与光标定位会静默丢失。
+  useEffect(() => {
+    if (!pendingComposerFocus || state.phase !== 'compose') return;
+    const composer = composerRef.current;
+    if (!composer) return;
+    taskPanelRef.current?.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+    composer.focus();
+    composer.setSelectionRange(composer.value.length, composer.value.length);
+    setPendingComposerFocus(false);
+  }, [pendingComposerFocus, state.phase, state.goal, reducedMotion]);
 
   const totals = useMemo(
     () =>
@@ -473,19 +494,45 @@ export default function KnowledgeWorkspacePage() {
         return;
       }
     }
-    // 从统一检索固定来源即视为进入「指定来源」模式。
-    if (sourceMode !== 'selected') setSourceMode('selected');
-    setSelectedRefs((current) =>
-      alreadySelected
-        ? current.filter((item) => sourceRefKey(item) !== key)
-        : [...current, ref]
-    );
+
+    const nextRefs = alreadySelected
+      ? selectedRefs.filter((item) => sourceRefKey(item) !== key)
+      : [...selectedRefs, ref];
+    setSelectedRefs(nextRefs);
+
+    if (!alreadySelected) {
+      // 固定来源即视为进入「指定来源」模式;记下来处,以便撤销时原路还原,
+      // 不把用户显式选择的「自动」或「不用来源」永久改掉。
+      if (sourceMode !== 'selected') {
+        autoEnteredSelectedFromRef.current = sourceMode;
+        setSourceMode('selected');
+        setPinNotice('已切换为「指定来源」：本次只使用你固定的来源。');
+      }
+    } else if (
+      nextRefs.length === 0 &&
+      autoEnteredSelectedFromRef.current !== null
+    ) {
+      // 撤销最后一个由 pin 带来的固定 —— 还原到 pin 之前的模式,
+      // 否则会留下 selected + 空 refs 的卡死态,用户被自己没做过的选择拦住。
+      const previous = autoEnteredSelectedFromRef.current;
+      autoEnteredSelectedFromRef.current = null;
+      setSourceMode(previous);
+      setPinNotice(
+        previous === 'auto'
+          ? '已取消固定，恢复为「自动选择」。'
+          : '已取消固定，恢复为「不用来源」。',
+      );
+    }
+
     invalidatePlanForSourceEdit();
     setHandoffError(null);
   };
 
   const changeSourceMode = (next: KnowledgeContextSelection['mode']) => {
     if (next === sourceMode) return;
+    // 用户手动改模式后,pin 的「原路还原」承诺失效。
+    autoEnteredSelectedFromRef.current = null;
+    setPinNotice(null);
     setSourceMode(next);
     invalidatePlanForSourceEdit();
     setHandoffError(null);
@@ -493,19 +540,14 @@ export default function KnowledgeWorkspacePage() {
   };
 
   const seedGoalFromAtom = (seed: string) => {
-    dispatch({ type: 'change-mode', mode: 'ask' });
-    dispatch({ type: 'change-goal', goal: seed });
-    window.setTimeout(() => {
-      taskPanelRef.current?.scrollIntoView({
-        behavior: reducedMotion ? 'auto' : 'smooth',
-        block: 'start',
-      });
-      const composer = composerRef.current;
-      if (composer) {
-        composer.focus();
-        composer.setSelectionRange(composer.value.length, composer.value.length);
-      }
-    }, 60);
+    const current = state.goal.trim();
+    const isStarterGoal = Object.values(STARTER_GOALS).some((goals) => goals.includes(current));
+    // 用户已手写的目标绝不能被一次误点静默抹掉 —— 追加而不是覆盖。
+    const nextGoal = !current || isStarterGoal ? seed : `${state.goal.replace(/\s+$/, '')}\n\n${seed}`;
+    // 追加时保留用户已选的任务类型;只有从空白起步才预设为「提问求证」。
+    if (!current) dispatch({ type: 'change-mode', mode: 'ask' });
+    dispatch({ type: 'change-goal', goal: nextGoal.slice(0, MAX_GOAL_LENGTH) });
+    setPendingComposerFocus(true);
   };
 
   const generatePlan = () => {
@@ -571,7 +613,7 @@ export default function KnowledgeWorkspacePage() {
         className="flex min-w-0 flex-col gap-4"
         initial="initial"
         animate="animate"
-        variants={{ initial: {}, animate: { transition: reducedMotion ? undefined : stagger(55) } }}
+        variants={{ initial: {}, animate: { transition: reducedMotion ? undefined : stagger(40) } }}
       >
         <motion.div variants={sectionVariants} transition={transition.quick}>
           <IntelligenceHeader
@@ -614,6 +656,7 @@ export default function KnowledgeWorkspacePage() {
           noteTotal={sources.noteTotal}
           readableCarriers={carrierTotals.readable}
           carrierTotal={carrierTotals.total}
+          carrierTotalIsPartial={carrierTotals.total >= CARRIER_LOAD_LIMIT}
           graph={
             sources.graphHealth
               ? {
@@ -633,6 +676,8 @@ export default function KnowledgeWorkspacePage() {
                 pinnedKeys={pinnedKeys}
                 onTogglePin={togglePinnedRef}
                 onAskAbout={seedGoalFromAtom}
+                sourceModeNotice={pinNotice}
+                onDismissSourceModeNotice={() => setPinNotice(null)}
               />
             </motion.div>
 
@@ -897,7 +942,7 @@ export default function KnowledgeWorkspacePage() {
                             animate="animate"
                             variants={{
                               initial: {},
-                              animate: { transition: reducedMotion ? undefined : stagger(70) },
+                              animate: { transition: reducedMotion ? undefined : stagger(40) },
                             }}
                           >
                             {state.plan.steps.map((step, index) => (

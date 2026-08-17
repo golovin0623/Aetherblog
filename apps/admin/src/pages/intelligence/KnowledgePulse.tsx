@@ -25,6 +25,11 @@ export interface KnowledgePulseProps {
   noteTotal: number;
   readableCarriers: number;
   carrierTotal: number;
+  /**
+   * 读物列表接口不返回总数，只能按上限拉取。命中上限时分母是「本次加载数」
+   * 而非真实总量 —— 必须在文案里说清楚，不能把截断值伪装成资产总览。
+   */
+  carrierTotalIsPartial?: boolean;
   /** null = 图谱统计本次不可用。 */
   graph: KnowledgePulseGraphStats | null;
 }
@@ -55,6 +60,7 @@ export function KnowledgePulse(props: KnowledgePulseProps) {
     noteTotal,
     readableCarriers,
     carrierTotal,
+    carrierTotalIsPartial = false,
     graph,
   } = props;
 
@@ -102,9 +108,11 @@ export function KnowledgePulse(props: KnowledgePulseProps) {
       label: '笔记 · 读物',
       value: formatCount(noteTotal),
       detail:
-        carrierTotal > 0
-          ? `${formatCount(readableCarriers)}/${formatCount(carrierTotal)} 份读物可读`
-          : '暂无 Atlas 读物',
+        carrierTotal === 0
+          ? '暂无 Atlas 读物'
+          : carrierTotalIsPartial
+            ? `最近 ${formatCount(carrierTotal)} 份读物中 ${formatCount(readableCarriers)} 份可读`
+            : `${formatCount(readableCarriers)}/${formatCount(carrierTotal)} 份读物可读`,
       tone: 'neutral',
     },
   ];
@@ -115,7 +123,7 @@ export function KnowledgePulse(props: KnowledgePulseProps) {
       className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4"
       initial="initial"
       animate="animate"
-      variants={{ initial: {}, animate: { transition: reducedMotion ? undefined : stagger(45) } }}
+      variants={{ initial: {}, animate: { transition: reducedMotion ? undefined : stagger(40) } }}
     >
       {tiles.map((tile) => (
         <motion.div
