@@ -58,7 +58,7 @@ import { AdminSectionCount, AdminSectionHeader } from '@/components/layout/Admin
 import { AdminPagination } from '@/components/common/AdminPagination';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useAdminMusicPlayer, useAdminMusicPlayerTimeline } from '@/components/music/AdminMusicPlayerProvider';
-import { hasSameAdminMusicQueueTrackIds } from '@/components/music/adminMusicQueueState';
+import { hasSameAdminMusicQueueTrackIds, type AdminMusicQueueSource } from '@/components/music/adminMusicQueueState';
 import { acquireOverlayScrollLock } from '@/lib/overlayScrollLock';
 import { cn, extractApiErrorMessage, formatFileSize } from '@/lib/utils';
 import { folderService } from '@/services/folderService';
@@ -981,7 +981,6 @@ export default function MusicPage() {
   const settingsWriteLockRef = useRef(false);
   const deleteWriteLockRef = useRef(false);
   const batchDeleteInFlightRef = useRef(false);
-  const batchPlaylistInFlightRef = useRef(false);
   const [activeTab, setActiveTab] = useState<MusicTab>('overview');
   const {
     queue,
@@ -1512,6 +1511,23 @@ export default function MusicPage() {
   const isCurrentPageFullySelected =
     currentPageCandidateIds.length > 0 && selectedCurrentPageCount === currentPageCandidateIds.length;
 
+  // 歌单任一写入成功后都必须把结果回填列表缓存:收藏/发布是「读列表快照 → 全字段 PUT」,
+  // 列表滞后一个 RTT 就会把刚保存的改名/封面静默回滚,且回滚结果又会被装载进草稿,用户毫无察觉。
+  const patchPlaylistInList = useCallback((playlist: MusicPlaylist) => {
+    queryClient.setQueryData(
+      ['music-playlists'],
+      (current: typeof playlistsQuery.data) => current
+        ? { ...current, list: current.list.map((item) => item.id === playlist.id ? playlist : item) }
+        : current
+    );
+    queryClient.setQueryData(
+      ['music-playlists', 'favorite'],
+      (current: typeof favoritePlaylistsQuery.data) => current
+        ? { ...current, list: current.list.map((item) => item.id === playlist.id ? playlist : item) }
+        : current
+    );
+  }, [queryClient]);
+
   const invalidateMusic = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['music-summary'] });
     queryClient.invalidateQueries({ queryKey: ['music-overview-tracks'] });
@@ -1721,6 +1737,7 @@ export default function MusicPage() {
     onSuccess: (res, { id, revision }) => {
       toast.success(`已保存歌单：${res.data.name}`);
       queryClient.setQueryData(['music-playlist-detail', id], res.data);
+      patchPlaylistInList(res.data);
       if (shouldApplyPlaylistSaveResult({
         savedPlaylistId: id,
         selectedPlaylistId: selectedPlaylistIdRef.current,
@@ -1752,9 +1769,18 @@ export default function MusicPage() {
     onSuccess: (response) => {
       const updated = response.data;
       toast.success(updated.isFavorite ? '已加入喜爱歌单' : '已取消喜爱歌单');
-      if (selectedPlaylistIdRef.current === updated.id && !playlistDraftDirty) {
+      patchPlaylistInList(updated);
+      queryClient.setQueryData(['music-playlist-detail', updated.id], (current: MusicPlaylist | undefined) =>
+        current ? { ...current, ...updated, tracks: current.tracks } : current
+      );
+      // 只在草稿本来就绑在这个歌单上时才回写 —— 否则会在 detail 尚未到达时
+      // 用列表快照伪造「草稿已载入」,后续 detail 再也落不进来,拖拽也会被永久拒绝。
+      if (
+        selectedPlaylistIdRef.current === updated.id
+        && playlistDraftSourceId === updated.id
+        && !playlistDraftDirty
+      ) {
         setPlaylistDraft(playlistToDraft(updated));
-        setPlaylistDraftSourceId(updated.id);
       }
       invalidateMusic();
     },
@@ -1790,10 +1816,12 @@ export default function MusicPage() {
   });
 
   const playlistTrackMutation = useMutation({
-    mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number }) =>
+    mutationFn: ({ playlistId, trackId }: { playlistId: number; trackId: number; fromBatch?: boolean }) =>
       musicService.addTrackToPlaylist(playlistId, trackId),
-    onSuccess: async (_data, { playlistId }) => {
-      if (batchPlaylistInFlightRef.current) return;
+    // 用 variables 上的来源标记判定,而不是「此刻有没有批量在跑」——
+    // 后者会把批量期间用户手动加的那一首的回调(含三条 invalidate 与 toast)整个吞掉。
+    onSuccess: async (_data, { playlistId, fromBatch }) => {
+      if (fromBatch) return;
       toast.success('已加入歌单');
       try {
         const refreshedTracks = await fetchAllPlaylistTracks(playlistId);
@@ -1807,22 +1835,27 @@ export default function MusicPage() {
       queryClient.invalidateQueries({ queryKey: ['music-playlist-member-tracks', playlistId] });
       queryClient.invalidateQueries({ queryKey: ['music-playlists'] });
     },
-    onError: (error) => {
-      if (!batchPlaylistInFlightRef.current) toast.error(extractApiErrorMessage(error, '加入歌单失败'));
+    onError: (error, { fromBatch }) => {
+      if (!fromBatch) toast.error(extractApiErrorMessage(error, '加入歌单失败'));
     },
   });
 
   const batchPlaylistAddMutation = useMutation({
     mutationFn: async ({ playlistId, trackIds }: { playlistId: number; trackIds: number[] }) => {
-      batchPlaylistInFlightRef.current = true;
-      try {
-        const results = await Promise.allSettled(
-          trackIds.map((trackId) => playlistTrackMutation.mutateAsync({ playlistId, trackId }))
-        );
-        return { playlistId, trackIds, results };
-      } finally {
-        batchPlaylistInFlightRef.current = false;
+      // 顺序提交:后端的 sort_order 取 MAX+1 且在自动提交事务里算,
+      // 并发提交会让 N 首拿到同一个 sort_order,进而使分页不稳定、重排提交出现重复与漏项。
+      const results: PromiseSettledResult<unknown>[] = [];
+      for (const trackId of trackIds) {
+        try {
+          results.push({
+            status: 'fulfilled',
+            value: await playlistTrackMutation.mutateAsync({ playlistId, trackId, fromBatch: true }),
+          });
+        } catch (error) {
+          results.push({ status: 'rejected', reason: error });
+        }
       }
+      return { playlistId, trackIds, results };
     },
     onSuccess: ({ playlistId, trackIds, results }) => {
       const succeeded = results.filter((result) => result.status === 'fulfilled').length;
@@ -2027,6 +2060,7 @@ export default function MusicPage() {
   });
 
   const isPlaylistWriteBusy =
+    batchPlaylistAddMutation.isPending ||
     createPlaylistMutation.isPending ||
     updatePlaylistMutation.isPending ||
     playlistFavoriteMutation.isPending ||
@@ -3074,7 +3108,10 @@ export default function MusicPage() {
     } else if (hasMorePlaylistCandidates) {
       addTracksStatusText = `已载入 ${playlistCandidateLoaded} / ${playlistCandidateTotal} 首，输入关键词可继续定位更多歌曲。`;
     }
+    // 成员列表拉取失败时 detailTracks 只是 detail 的前 100 首截断值,
+    // 拿它算出的顺序提交上去会把 100 名之后的曲目排序打乱。
     const trackActionsBusy =
+      isPlaylistMemberTrackUnavailable ||
       reorderPlaylistMutation.isPending ||
       playlistTrackMutation.isPending ||
       removePlaylistTrackMutation.isPending ||
@@ -3822,16 +3859,27 @@ export default function MusicPage() {
                 type="button"
                 onClick={() => {
                   if (headerPlaybackTracks.length === 0) return;
-                  if (activeTab === 'playlists' && selectedPlaylistId) {
-                    playTracks(
-                      headerPlaybackTracks,
-                      0,
-                      { type: 'playlist', playlistId: selectedPlaylistId },
-                      selectedPlaylist?.name || '歌单播放'
-                    );
+                  // 与 Hero 主按钮同一语义:队列已是当前来源就恢复播放,
+                  // 否则暂停后点这里会从第一首重开,两颗按钮行为互相矛盾。
+                  const headerSource: AdminMusicQueueSource = activeTab === 'playlists' && selectedPlaylistId
+                    ? { type: 'playlist', playlistId: selectedPlaylistId }
+                    : { type: 'library' };
+                  const sameQueue = currentTrack != null
+                    && queueSource.type === headerSource.type
+                    && (headerSource.type !== 'playlist'
+                      || (queueSource.type === 'playlist' && queueSource.playlistId === headerSource.playlistId));
+                  if (sameQueue) {
+                    void togglePlayback();
                     return;
                   }
-                  playTracks(headerPlaybackTracks, 0, { type: 'library' }, '歌曲库 · 当前页');
+                  playTracks(
+                    headerPlaybackTracks,
+                    0,
+                    headerSource,
+                    headerSource.type === 'playlist'
+                      ? (selectedPlaylist?.name || '歌单播放')
+                      : '歌曲库 · 当前页'
+                  );
                 }}
                 className="admin-module-action-button"
                 disabled={headerPlaybackTracks.length === 0}

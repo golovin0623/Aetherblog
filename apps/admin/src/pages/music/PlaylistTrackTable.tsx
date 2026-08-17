@@ -62,13 +62,17 @@ export function PlaylistTrackTable({
   const [syncedTracks, setSyncedTracks] = useState(tracks);
   const orderedRef = useRef(tracks);
   const draggingRef = useRef(false);
+  const staleDuringDragRef = useRef(false);
 
   // 渲染期同步(React 官方的 props 变化调整 state 范式):放到 effect 里会先画出一帧
   // 旧数据 —— 首次载入时那一帧正好是「这个歌单还是空的」空态。
   if (tracks !== syncedTracks) {
     setSyncedTracks(tracks);
-    // 拖拽进行中以本地顺序为准;结束后由乐观更新的 query 数据接管。
-    if (!draggingRef.current) {
+    if (draggingRef.current) {
+      // 拖拽中服务端成员集合变了(如别处批量加曲):本地这份已是陈旧快照,
+      // 松手时不能拿它去提交,否则会把新成员从列表与服务端排序里一起抹掉。
+      staleDuringDragRef.current = true;
+    } else {
       setOrderedTracks(tracks);
       orderedRef.current = tracks;
     }
@@ -82,6 +86,7 @@ export function PlaylistTrackTable({
 
   const handleDragStart = useCallback(() => {
     draggingRef.current = true;
+    staleDuringDragRef.current = false;
   }, []);
 
   const announceMove = useCallback((title: string, position: number, total: number) => {
@@ -93,6 +98,14 @@ export function PlaylistTrackTable({
   // 提交被拒(忙碌/详情缺失)时必须回滚,否则本地顺序与父级 index 语义永久错位。
   const handleDragEnd = useCallback(() => {
     draggingRef.current = false;
+    // 拖拽期间数据被刷新过:放弃这次拖拽结果,回到服务端最新顺序,
+    // 提交陈旧快照的代价是成员丢失 + 服务端排序被打乱,远大于让用户重拖一次。
+    if (staleDuringDragRef.current) {
+      staleDuringDragRef.current = false;
+      orderedRef.current = tracks;
+      setOrderedTracks(tracks);
+      return;
+    }
     const accepted = onCommitOrder(orderedRef.current);
     if (!accepted) {
       orderedRef.current = tracks;
