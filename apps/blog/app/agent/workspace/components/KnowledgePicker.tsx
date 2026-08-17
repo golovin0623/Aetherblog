@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { BookMarked, Check, Library, Search, Sparkles } from 'lucide-react';
 import { spring } from '@aetherblog/ui';
 import PickerPopover from './PickerPopover';
@@ -57,6 +57,24 @@ export default function KnowledgePicker({
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const { items, loading, error } = useAgentKnowledgeBases(open, query);
+  const reduceMotion = useReducedMotion();
+  // layoutId 快照挂在 framer 全局 projection root 上跨开合存活：重开弹层时新 thumb
+  // 会从上一次关闭时的陈旧坐标 resume（键盘收起/滚动后表现为"飞入"，160ms 退场窗口内
+  // 快速开合还会双挂载同名节点）。每个开启周期换一个 id 后缀，共享元素只在当次会话内滑移。
+  const [thumbCycle, setThumbCycle] = useState(0);
+  const modeBtnRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // WAI-ARIA radio group 键盘契约：方向键在选项间移动、选中跟随焦点（roving tabindex）。
+  const handleModeKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, idx: number) => {
+    let next: number | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % MODE_OPTIONS.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+      next = (idx + MODE_OPTIONS.length - 1) % MODE_OPTIONS.length;
+    if (next === null) return;
+    e.preventDefault();
+    onModeChange(MODE_OPTIONS[next].value);
+    modeBtnRefs.current[next]?.focus();
+  };
 
   // SYSTEM_POSTS 优先、然后按 chunkCount 倒序 —— "最有料"的库靠前。
   const visible = useMemo(() => {
@@ -69,7 +87,11 @@ export default function KnowledgePicker({
   useEffect(() => {
     if (open) {
       setQuery('');
-      const id = requestAnimationFrame(() => inputRef.current?.focus());
+      setThumbCycle((c) => c + 1);
+      // 移动端不自动聚焦 —— 会弹软键盘盖住弹层（与 ModelPicker 的 !isMobile 守卫同语义）。
+      const id = requestAnimationFrame(() => {
+        if (!window.matchMedia('(max-width: 768px)').matches) inputRef.current?.focus();
+      });
       return () => cancelAnimationFrame(id);
     }
   }, [open]);
@@ -99,28 +121,37 @@ export default function KnowledgePicker({
           aria-label="知识检索模式"
           className="relative flex items-center rounded-[12px] bg-[color-mix(in_oklch,var(--ink-primary)_7%,transparent)] p-[3px]"
         >
-          {MODE_OPTIONS.map((opt) => {
+          {MODE_OPTIONS.map((opt, idx) => {
             const active = opt.value === mode;
             return (
               <button
                 key={opt.value}
+                ref={(el) => {
+                  modeBtnRefs.current[idx] = el;
+                }}
                 type="button"
                 role="radio"
                 aria-checked={active}
+                tabIndex={active ? 0 : -1}
                 onClick={() => onModeChange(opt.value)}
+                onKeyDown={(e) => handleModeKeyDown(e, idx)}
                 className={`relative flex h-8 flex-1 items-center justify-center rounded-[9px] text-[12px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--aurora-2)_45%,transparent)] ${
                   active
                     ? 'text-[var(--ink-primary)]'
                     : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
                 }`}
               >
-                {/* 滑动 thumb —— layoutId 共享元素在三个按钮间滑移（spring.precise = Toggle 语义） */}
+                {/* 滑动 thumb —— layoutId 共享元素在三个按钮间滑移（spring.precise = Toggle 语义）。
+                    pointer-events-none：滑移中 thumb 的命中区跟随 transform 掠过相邻按钮，不挡点击；
+                    layoutDependency：只在 mode 变化时让 framer 重新测量（否则每次输入都强制回流）；
+                    减动效偏好下退回无动画的静态背景（layoutId=undefined）。 */}
                 {active && (
                   <motion.span
-                    layoutId="kb-mode-thumb"
+                    layoutId={reduceMotion ? undefined : `kb-mode-thumb-${thumbCycle}`}
+                    layoutDependency={mode}
                     aria-hidden="true"
                     transition={spring.precise}
-                    className="absolute inset-0 rounded-[9px] bg-[var(--bg-raised)] shadow-[0_2px_6px_rgba(0,0,0,0.14),inset_0_0_0_0.5px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
+                    className="pointer-events-none absolute inset-0 rounded-[9px] bg-[var(--bg-raised)] shadow-[0_2px_6px_rgba(0,0,0,0.14),inset_0_0_0_0.5px_color-mix(in_oklch,var(--ink-primary)_10%,transparent)]"
                   />
                 )}
                 <span className="relative z-10 inline-flex items-center">
