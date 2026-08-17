@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 知识工作台「聚合重铸」：统一检索 · 知识脉搏 · 来源托盘 (2026-08-17, branch claude/knowledge-workbench-design-q8n7rq)
+
+把 `/intelligence` 从「目标表单 + 交接」补齐为名副其实的聚合工作台：资产状态、跨域检索、来源治理、任务交接四件事同屏完成。零后端改动 —— 全部复用既有端点（`kbs/:id/retrieve` 向量检索、`atlas/search` 关键词+语义、`notes?keyword` 关键词、`atlas/graph/health` 图谱统计）。
+
+- **统一检索（新 `UnifiedRetrievalPanel` + 纯模型 `unifiedRetrievalModel.ts`，17 条单测）：** 一句话并行探询三条链路 —— 就绪知识库逐库向量检索（按最近活跃取前 6 个，超出上限如实计数展示）、Atlas 语义/关键词（知识点带证据预览与相似度）、笔记关键词。命中归一为「知识原子」卡片：mono 出处眉标 + 相似度墨条（只信任 0..1 量纲，未知量纲不显示臆造数字）+ 三个动作（打开原文 / 固定为来源 / 就此提问）。泳道级降级：任何一路失败都转成可见状态（部分库失败点名、语义退化提示、全链路失败与「无结果」严格区分）。`/` 聚焦检索框，Enter 检索，请求带竞态序号守卫。
+- **打通 atlas-kp 契约缺口：** handoff 与灵境侧本就支持 `atlas-kp` refs（上限 12），但工作台一直没有选择入口 —— 现在检索命中的知识点可直接固定进本次任务来源，与知识库引用同池治理（跨类限额、去重、刷新时保留）。
+- **知识脉搏（新 `KnowledgePulse`）：** 四块 mono/tabular-nums 指标 —— 可检索片段（含就绪库数）、资料就绪率（墨条 + 失败待处理警示）、知识图谱（活跃知识点/关系/孤点，统计不可用时如实显示占位而非伪造 0）、笔记与读物。
+- **来源托盘（右栏新面板）：** 「指定来源」模式下已固定 refs 以可移除芯片呈现（scaleIn 入场 + layout 重排），限额实时显示 `知识库 n/10 · 知识点 m/12`；「来源就绪度」面板改为逐库状态行（就绪点 + 片段数/索引进度）。
+- **动效编排（全部走 `@aetherblog/ui` motion 预设，零裸 bezier/spring）：** 页面区块 stagger 入场；compose↔review 以 `AnimatePresence mode="wait"` 切换；方案步骤连线 scaleY 生长 + 逐步 stagger；固定来源按钮 `spring.precise` 按压；来源清单高度展开动画；`useReducedMotion` 全程降级为纯淡入。
+- **合规清理：** 页内硬编码路由字面量全部改走 `INTELLIGENCE_ROUTES` 契约；`isKnowledgeBaseQueryable` 下沉到 `unifiedRetrievalModel.ts` 并由页面 re-export（既有模型测试导入路径不变）；准备中的知识库在来源清单显示索引进度墨条。
+- **验证：** admin 全量 368 测试通过（新增 17）、`tsc --noEmit` 干净、ESLint 0 告警、`pnpm design-system:check` 保持 0 error、`vite build` 通过。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无新增 API / DB / 共享组件，`docs/architecture.md` 与 `.claude/docs/*` 无需变更。
+
 ### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
 
 按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：
