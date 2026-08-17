@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/lib/pq"
+)
 
 // 会话类型常量。
 const (
@@ -61,12 +65,13 @@ type ChatConversation struct {
 
 // ChatConversationMember 对应 chat_conversation_members 表。
 type ChatConversationMember struct {
-	ConversationID    int64     `db:"conversation_id"`
-	UserID            int64     `db:"user_id"`
-	MemberRole        string    `db:"member_role"`
-	LastReadMessageID *int64    `db:"last_read_message_id"`
-	Muted             bool      `db:"muted"`
-	JoinedAt          time.Time `db:"joined_at"`
+	ConversationID    int64      `db:"conversation_id"`
+	UserID            int64      `db:"user_id"`
+	MemberRole        string     `db:"member_role"`
+	LastReadMessageID *int64     `db:"last_read_message_id"`
+	Muted             bool       `db:"muted"`
+	PinnedAt          *time.Time `db:"pinned_at"` // 会话置顶时间（NULL = 未置顶），000087
+	JoinedAt          time.Time  `db:"joined_at"`
 }
 
 // ChatMessage 对应 chat_messages 表。
@@ -82,12 +87,22 @@ type ChatMessage struct {
 	AttachmentMime *string    `db:"attachment_mime"`
 	AttachmentSize *int64     `db:"attachment_size"`
 	AttachmentMeta *string    `db:"attachment_meta"` // 原始 JSON 文本，service 层按需解析。
-	ReplyToID      *int64     `db:"reply_to_id"`
-	ClientMsgID    *string    `db:"client_msg_id"`
-	AgentID        *int64     `db:"agent_id"` // sender_type='AGENT' 时归属的 Agent
-	EditedAt       *time.Time `db:"edited_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
-	CreatedAt      time.Time  `db:"created_at"`
+	ReplyToID      *int64        `db:"reply_to_id"`
+	ClientMsgID    *string       `db:"client_msg_id"`
+	AgentID        *int64        `db:"agent_id"` // sender_type='AGENT' 时归属的 Agent
+	Mentions       pq.Int64Array `db:"mentions"` // @提及的用户 id 集合，000087
+	EditedAt       *time.Time    `db:"edited_at"`
+	RecalledAt     *time.Time    `db:"recalled_at"` // 软撤回时间（保留占位行），000087
+	DeletedAt      *time.Time    `db:"deleted_at"`
+	CreatedAt      time.Time     `db:"created_at"`
+}
+
+// ChatMessageReaction 对应 chat_message_reactions 表，一条 = 某用户对某消息的一个表情回应。
+type ChatMessageReaction struct {
+	MessageID int64     `db:"message_id"`
+	UserID    int64     `db:"user_id"`
+	Emoji     string    `db:"emoji"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 // ChatAgent 对应 chat_agents 表，表示一个可被纳入聊天的智能体。

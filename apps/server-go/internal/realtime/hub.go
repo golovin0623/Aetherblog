@@ -27,7 +27,7 @@ const fanoutChannel = "chat:fanout"
 
 // Event 是投递给客户端的统一事件信封。
 type Event struct {
-	Type           string `json:"type"`                     // message | typing | read | presence | ack | error
+	Type           string `json:"type"`                     // message | message-updated | reaction | typing | read | presence | ack | error
 	ConversationID int64  `json:"conversationId,omitempty"` // 关联会话
 	Payload        any    `json:"payload,omitempty"`        // 事件载荷
 }

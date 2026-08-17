@@ -24,6 +24,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 验证：reader gate 19/19（新增缩放钳制与翻页物理用例）、admin 351/351、`design-system:check` 0 error、blog/admin 构建通过、Playwright 14 组状态截图逐帧目检（桌面初始/沉浸/掀角/翻页中帧/拖拽持停/目录/设置/夜读/缩放 + 移动端）。
 - 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更，其余子文档无需更新。
 
+### Changed — 友链页「星群与信笺」重设计 · Apple Watch 气泡 + iOS 通知栈 (2026-08-16, branch claude/homepage-links-design-ppbpt8)
+
+**背景：** 友链页的列表 / 气泡两种视图与 Apple Watch 表盘、iPhone 通知中心的质感差距明显（列表是三栏杂色渐变卡、气泡只是静态 flex 蜂窝、无页面级排版语言）。本次以「星群与信笺」立意整体重做，全部颜色走 Codex 令牌、动效走 `@aetherblog/ui` 预设。
+
+- **列表视图 = iOS 通知栈（`FriendCard` 重写）：** 居中 `max-w-2xl` 单列玻璃信笺（`surface-leaf` + `data-interactive`），squircle 头像 + 品牌色底晕、右上角域名充当 iOS 时间戳位、`spring.soft` 逐条弹落 + `whileTap` 按压；友链 ≥10 条时折叠为 **iOS 通知堆**（顶卡 + 两层背卡 + 迷你头像扇列,展开/收起带弹簧编排,修复过一次展开区间重复渲染的切分 bug）。
+- **气泡视图 = Apple Watch 表盘（新组件 `FriendBubbleField`，替代删除的 `FriendIconBubble`）：** 数学蜂窝布局按 `√N` 收拢成近圆星簇；**指针鱼眼磁吸**（余弦衰减 + `spring.precise` 弹簧,Dock 手感）、**边缘球面衰减**、**从中心涟漪绽放入场**、**待机错相位漂浮**（`--dur-ambient` 倍数,新增 `friend-bubble-drift` keyframes）；桌面 hover 呼出 watchOS 式单行名称胶囊（`surface-overlay`）,移动端改为图标下名字;`prefers-reduced-motion` 全部降级为淡入。
+- **页面级：** 页头对齐 `/about` 的 Apple 式居中排版（`.eyebrow` + Fraunces 标题 + Instrument Serif lede + mono 计数）；视图切换器改为 `layoutId` 弹簧滑块胶囊；背景环境光从 `bg-primary/bg-blue-500` 迁移到 aurora 令牌；底部交换友链 CTA 卡片化。
+- **加载体验：** `FriendsLoading` 重写为镜像新布局的骨架屏（Codex 令牌骨骼色,顺带清掉 `bg-white/5` 等 legacy 玻璃）,并新增路由级 `friends/loading.tsx` 接管导航等待。
+- **合规：** `pnpm design-system:check` 保持 0 error;无 `dark:` 变体、无裸 bezier/spring 数值、无任意字号。
+- **产线回归修复（对照线上截图）：** ① `themeColor` 为空字符串时默认参数不生效,头像加载失败的友链渲染成「黑洞球」(线上旧版可见的历史 bug) —— `FriendCard` / `FriendBubbleField` / `DeckAvatar` 三处统一空值归一化;② 移动端页头过高把星群压出首屏 —— 导语改 `hidden sm:block`(与旧版隐藏副标题的行为一致)并收紧移动端间距,骨架屏同步镜像。
+- **Codex 评审采纳（2 条 P1）：** ① 后端 DTO `ThemeColor *string` 无 omitempty,`themeColor: null` 会让 `FriendCard` 的 `.trim()` 崩掉整棵 `/friends` 客户端树 —— `FriendLink` 类型改 `string | null` 并统一归一化;② 视图切换与「收起」按钮触控区约 36px,不满足 AGENTS.md 移动端 ≥44×44px 约定 —— 按仓库先例补 `min-h-[44px]`(md 起还原紧凑,不影响桌面)。
+### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
+
+按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：
+
+- **后端（migration 000087 `chat_interactions`）：**
+  - 新表 `chat_message_reactions`（PK 幂等）+ `chat_conversation_members.pinned_at` + `chat_messages.mentions BIGINT[]`（部分 GIN 索引）+ `chat_messages.recalled_at`。
+  - 新端点：`PATCH/DELETE /v1/chat/conversations/:id/messages/:msgId`（编辑 / 软撤回，2 分钟窗口在 UPDATE SQL 内联校验）、`POST/DELETE …/messages/:msgId/reactions`（回应增删返回聚合）、`PUT …/:id/prefs`（本人置顶 / 免打扰）。
+  - WS 新事件 `message-updated` / `reaction`；会话列表新增 `mentionCount`（@我 未读，SECURITY：mentions 落库前过滤为会话真实成员）与本人 `pinned/muted`；成员带 `lastReadMessageId` 供 ✓✓ 回执。
+- **前端（`app/team-chat/` 全面升级）：**
+  - **表情三层**：emoji 面板（分类 + 最近使用 localStorage）→ 悬停快捷条 / 菜单回应（气泡下聚合 chip，本人高亮）→ 原创「星灵 Aeti」贴纸包（8 枚 SVG，`attachmentMeta.sticker` 协议零后端）。
+  - **引用回复**：闲置的 `replyToId` 接通 —— 引用条、气泡内引用块、点击滚回原文 + 极光闪烁定位。
+  - **已读回执**：消费闲置的 WS `read` 事件 —— 私聊 钟面→✓→极光✓✓ 三态（列表预览同步）。
+  - **消息菜单**：右键 / 触屏长按 480ms —— 回应排 + 回复 / 复制 / 编辑（↑ 快捷）/ 撤回（撤回后占位行带「重新编辑」回填）。
+  - **图片管线**：按钮 / 粘贴 / 拖拽全帧遮罩三入口 → canvas 压缩（≤2560px WebP、EXIF 纠正剥离）→ 托盘预览 + XHR 进度环 → 均色占位淡入 → 灯箱（←/→ 切换、Esc、媒体墙共用）。
+  - **语音**：MediaRecorder 录制（AnalyserNode 采样 32 段波形写 `meta.peaks`），接收端波形逐段点亮播放。
+  - **提示链 L2–L5**：会话徽标（免打扰降级灰点、@我 信号红穿透）、rail 未读总数、跨会话页内 Toast（点击跳转）、标题闪烁 + Notification API + Web Audio 合成「墨滴」音（默认关）。
+  - **结构**：新增图标 rail（会话 / 联系人 / 提示音 / 桌面通知）、联系人视图（成员目录 + 智能体席位聚合，零新后端）、会话信息面板（成员 / 媒体墙 / 置顶 / 免打扰 / 气泡样式直连 settings）、未读与 @我 筛选 chips、[草稿] 保留、「以下为新消息」分隔线、⌘K 聚焦搜索。
+- **Fixed（顺带）：** `apps/blog/Dockerfile` 修正 monorepo standalone 的 public 拷贝路径（`./public` → `./apps/blog/public`）—— 旧路径不会被 `server.js` 服务，此前 public 为空未暴露，贴纸静态资产上线即会 404。
+- **Fixed（评审第一轮，Codex 13 项全采纳）：**
+  - 安全：回应端点绑定会话 —— `React()` 先过 `MessageInConversation` 守卫 + `RemoveReaction` SQL 内联 EXISTS，堵住「有权 convID + 他人会话 msgID」越权读删外部消息回应的信息泄露。
+  - 正确性：编辑消息同步覆盖 `mentions`（删 @ 后徽标不误留）；会话列表末条投影带 `attachment_meta`（贴纸预览不再显示 [图片]）；消息 VO 新增 `replyPreview` 引用快照（被引用消息在已加载历史页之外时引用块兜底渲染）；「以下为新消息」锚点改用自身 `last_read_message_id`（深未读不丢分隔线）；@提及完整定界匹配（`@Anna` 不再误中前缀成员 `Ann`）。
+  - 交互：切会话**同步**清空托盘/录音/面板并回填目标草稿（历史慢加载窗口内不再可能把旧草稿/托盘图片发进新会话）；取消编辑按钮清空回填正文（防重复发送）；联系人视图接入顶部搜索。
+  - 移动端：信息面板改为 <md 右缘滑出抽屉（375px 不再被 270px 侧栏挤压）；列表头新增「会话/联系人」切换（rail 隐藏时联系人可达）。
+  - 语音可用性：`next.config.ts` 与 `nginx/security-headers.conf` 的 Permissions-Policy 改 `microphone=(self)`（原 `microphone=()` 会让 MediaRecorder 生产直接被拒），并给麦克风失败加可见 Toast 提示。
+- **验证：** `go build` + 全部后端测试通过；blog `tsc --noEmit` / ESLint（0 警告）/ `next build` 通过；`pnpm design-system:check` 保持 0 error。
+
 ### Changed — 音乐域「留声穹顶」视觉重构：大厅 / 浮岛 / 沉浸台对标 Apple Music (2026-08-16, branch claude/music-hall-redesign-a31788)
 
 保持播放内核(状态机 / 手势 / 断点续播 / A11y)与全部 129 条产品质量门禁不动,重做三个表面的视觉与体验层。核心:**当前封面高斯化后成为音乐域的氛围光源**,与既有 `--music-seed` 作用域四色派生协同,实现「专辑色动态渲染」且零新增色相。
