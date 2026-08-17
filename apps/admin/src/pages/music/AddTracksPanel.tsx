@@ -41,9 +41,17 @@ export function AddTracksPanel({
 }: AddTracksPanelProps) {
   const prefersReducedMotion = useReducedMotion();
   const searchRef = useRef<HTMLInputElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    // 面板夺走焦点后必须还回去,否则关闭时焦点掉到 <body>,
+    // 键盘用户要从文档开头重新 Tab 回来。
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     searchRef.current?.focus();
+    return () => {
+      const target = returnFocusRef.current;
+      window.requestAnimationFrame(() => target?.focus({ preventScroll: true }));
+    };
   }, []);
 
   const addDisabled = busy || memberCheckPending;
@@ -56,6 +64,12 @@ export function AddTracksPanel({
       exit={{ height: 0, opacity: 0 }}
       transition={transition.quick}
       className="overflow-hidden border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_3%,transparent)]"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <div className="space-y-3 p-4">
         <div className="flex items-center gap-2">

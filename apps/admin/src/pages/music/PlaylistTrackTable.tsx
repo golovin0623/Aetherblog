@@ -56,6 +56,8 @@ export function PlaylistTrackTable({
   onRemove,
 }: PlaylistTrackTableProps) {
   const prefersReducedMotion = useReducedMotion();
+  // 调序对屏幕阅读器此前完全静默(只有失败 toast),这里补一条礼貌播报
+  const [reorderAnnouncement, setReorderAnnouncement] = useState('');
   const [orderedTracks, setOrderedTracks] = useState(tracks);
   const [syncedTracks, setSyncedTracks] = useState(tracks);
   const orderedRef = useRef(tracks);
@@ -82,6 +84,10 @@ export function PlaylistTrackTable({
     draggingRef.current = true;
   }, []);
 
+  const announceMove = useCallback((title: string, position: number, total: number) => {
+    setReorderAnnouncement(`「${title}」已移动到第 ${position} 位,共 ${total} 首`);
+  }, []);
+
   // 注意事件顺序:快速拖拽时 onReorder 可能先于 onDragStart 触发,
   // 所以不用「脏标记」判断是否提交 —— 结束时一律上交,父级用「顺序未变则不提交」守卫。
   // 提交被拒(忙碌/详情缺失)时必须回滚,否则本地顺序与父级 index 语义永久错位。
@@ -94,7 +100,13 @@ export function PlaylistTrackTable({
     }
   }, [onCommitOrder, tracks]);
 
-  if (loading) return <PlaylistTrackTableSkeleton />;
+  if (loading) {
+    return (
+      <div role="status" aria-label="正在载入歌单曲目">
+        <PlaylistTrackTableSkeleton />
+      </div>
+    );
+  }
 
   if (orderedTracks.length === 0) {
     return (
@@ -122,6 +134,7 @@ export function PlaylistTrackTable({
         <span className="hidden text-right min-[769px]:block">时长</span>
         <span className="w-16 min-[769px]:w-24" />
       </div>
+      <span className="sr-only" role="status" aria-live="polite">{reorderAnnouncement}</span>
       <Reorder.Group
         as="ol"
         axis="y"
@@ -140,7 +153,10 @@ export function PlaylistTrackTable({
             isPlaying={isPlaying}
             onPlayAt={onPlayAt}
             onTogglePlayback={onTogglePlayback}
-            onMove={onMove}
+            onMove={(from, direction) => {
+              onMove(from, direction);
+              announceMove(track.title, from + direction + 1, orderedTracks.length);
+            }}
             onRemove={onRemove}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -297,7 +313,9 @@ function PlaylistTrackRow({
                 if (event.key === 'ArrowUp' && index > 0) onMove(index, -1);
                 if (event.key === 'ArrowDown' && index < total - 1) onMove(index, 1);
               }}
-              disabled={busy}
+              // 用 aria-disabled 而非 disabled:调序会让 mutation 立刻 pending,
+              // 真 disabled 会在同一帧夺走焦点,键盘用户按一次就被踢回文档开头。
+              aria-disabled={busy}
               className={cn(
                 iconButtonClass(false, 'default', 'sm'),
                 busy ? 'cursor-not-allowed opacity-40' : 'cursor-grab active:cursor-grabbing'
