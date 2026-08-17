@@ -1,7 +1,7 @@
 export type ResolvedSiteTheme = 'light' | 'dark';
 export type ReaderSkin = 'auto' | 'paper' | 'sepia' | 'night' | 'sage' | 'rose' | 'custom';
 export type ResolvedReaderSkin = Exclude<ReaderSkin, 'auto'>;
-export type ReaderFontFamily = 'serif' | 'sans' | 'system';
+export type ReaderFontFamily = 'serif' | 'sans' | 'kai' | 'system';
 export type ReaderPageTurn = 'slide' | 'curl' | 'instant';
 export type ReaderParagraphMode = 'book' | 'article';
 
@@ -13,6 +13,8 @@ export interface ReaderPreferences {
   paragraphMode: ReaderParagraphMode;
   pageTurn: ReaderPageTurn;
   brightness: number;
+  /** 版面缩放（桌面双页布局的整书尺寸系数），0.7–1.4，步进 0.05。 */
+  zoom: number;
   customBg: string;
   customPage: string;
   customInk: string;
@@ -36,6 +38,10 @@ export interface ReaderDims {
 
 export const MOBILE_BREAKPOINT = 768;
 
+export const READER_ZOOM_MIN = 0.7;
+export const READER_ZOOM_MAX = 1.4;
+export const READER_ZOOM_STEP = 0.05;
+
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   skin: 'auto',
   fontSize: 17,
@@ -44,13 +50,14 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   paragraphMode: 'book',
   pageTurn: 'slide',
   brightness: 100,
+  zoom: 1,
   customBg: '#ecebe7',
   customPage: '#fbfaf6',
   customInk: '#2b2b2b',
 };
 
 const SKINS = new Set<ReaderSkin>(['auto', 'paper', 'sepia', 'night', 'sage', 'rose', 'custom']);
-const FONT_FAMILIES = new Set<ReaderFontFamily>(['serif', 'sans', 'system']);
+const FONT_FAMILIES = new Set<ReaderFontFamily>(['serif', 'sans', 'kai', 'system']);
 const PAGE_TURNS = new Set<ReaderPageTurn>(['slide', 'curl', 'instant']);
 const PARAGRAPH_MODES = new Set<ReaderParagraphMode>(['book', 'article']);
 
@@ -74,6 +81,12 @@ function normalizeHexColor(value: unknown, fallback: string): string {
   return fallback;
 }
 
+export function clampReaderZoom(value: unknown): number {
+  const clamped = clampNumber(value, READER_ZOOM_MIN, READER_ZOOM_MAX, DEFAULT_READER_PREFERENCES.zoom);
+  // 步进取整后归约到两位小数，避免 28 × 0.05 = 1.4000000000000001 类浮点漂移。
+  return Math.round(Math.round(clamped / READER_ZOOM_STEP) * READER_ZOOM_STEP * 100) / 100;
+}
+
 export function clampReaderPreferences(input: Partial<ReaderPreferences> | null | undefined): ReaderPreferences {
   const src = input ?? {};
   const skin = SKINS.has(src.skin as ReaderSkin) ? (src.skin as ReaderSkin) : DEFAULT_READER_PREFERENCES.skin;
@@ -95,6 +108,7 @@ export function clampReaderPreferences(input: Partial<ReaderPreferences> | null 
     paragraphMode,
     pageTurn,
     brightness: Math.round(clampNumber(src.brightness, 70, 100, DEFAULT_READER_PREFERENCES.brightness)),
+    zoom: clampReaderZoom(src.zoom),
     customBg: normalizeHexColor(src.customBg, DEFAULT_READER_PREFERENCES.customBg),
     customPage: normalizeHexColor(src.customPage, DEFAULT_READER_PREFERENCES.customPage),
     customInk: normalizeHexColor(src.customInk, DEFAULT_READER_PREFERENCES.customInk),
@@ -117,7 +131,7 @@ export function resolveReaderPageTurn(preferredPageTurn: ReaderPageTurn, cols: 1
   return preferredPageTurn;
 }
 
-export function computeReaderDims(viewport: ReaderViewport): ReaderDims {
+export function computeReaderDims(viewport: ReaderViewport, zoom = 1): ReaderDims {
   const vw = Math.max(320, Math.round(viewport.width));
   const vh = Math.max(480, Math.round(viewport.height));
   const isMobile = vw <= MOBILE_BREAKPOINT;
@@ -142,12 +156,15 @@ export function computeReaderDims(viewport: ReaderViewport): ReaderDims {
   }
 
   const cols: 1 | 2 = 2;
-  const reservedV = 156;
+  const zoomFactor = clampReaderZoom(zoom);
+  // 桌面 chrome（顶栏/底栏）为悬浮层，只需为运行头与页脚留出呼吸空间。
+  const reservedV = 128;
   const maxPageH = Math.max(vh - reservedV, 240);
-  let pageH = Math.max(Math.min(maxPageH, 860), 240);
+  const preferredH = Math.round(860 * zoomFactor);
+  let pageH = Math.max(Math.min(maxPageH, preferredH), 240);
   let pageW = Math.round(pageH * 0.66);
 
-  const maxBookW = Math.max(vw - 28, 240);
+  const maxBookW = Math.max(vw - 48, 240);
   const bookW = cols * pageW;
   if (bookW > maxBookW) {
     pageW = Math.floor(maxBookW / cols);
@@ -192,4 +209,59 @@ export function horizontalOffsetToPage(targetLeft: number, containerLeft: number
     return 0;
   }
   return Math.max(0, Math.floor((targetLeft - containerLeft) / contentW));
+}
+
+// ---------------------------------------------------------------------------
+// 翻页物理（纯函数，供 rAF 引擎逐帧积分；单测覆盖于 reader gate）
+// ---------------------------------------------------------------------------
+
+export interface FlipSpringState {
+  /** 翻页进度 0（原页）→ 1（目标页）。 */
+  p: number;
+  /** 进度速度，单位 progress/s。 */
+  v: number;
+}
+
+/** 临界阻尼弹簧的半隐式欧拉积分：纸张落下不回弹。dt 超过 34ms 按 34ms 截断，后台标签页恢复时不跳帧。 */
+export function stepFlipSpring(
+  state: FlipSpringState,
+  target: number,
+  dtMs: number,
+  stiffness = 170,
+  damping = 26,
+): FlipSpringState {
+  const dt = Math.min(Math.max(dtMs, 0), 34) / 1000;
+  const accel = stiffness * (target - state.p) - damping * state.v;
+  const v = state.v + accel * dt;
+  const p = state.p + v * dt;
+  return { p, v };
+}
+
+export function isFlipSettled(state: FlipSpringState, target: number): boolean {
+  return Math.abs(target - state.p) < 0.003 && Math.abs(state.v) < 0.05;
+}
+
+/**
+ * 归一化的叶片行程：next 方向 progress 即行程；prev 方向叶片从对侧（行程 1）落回 0。
+ * 叶片角度 = -180° × 行程。
+ */
+export function flipTravel(dir: 'next' | 'prev', p: number): number {
+  const clamped = Math.min(1, Math.max(0, p));
+  return dir === 'next' ? clamped : 1 - clamped;
+}
+
+/** 拖拽位移 → 翻页进度。next 需向左拖（dx<0），prev 需向右拖（dx>0）。 */
+export function dragToProgress(dx: number, pageW: number, dir: 'next' | 'prev'): number {
+  const travel = Math.max(pageW * 1.05, 1);
+  const raw = dir === 'next' ? -dx / travel : dx / travel;
+  return Math.min(1, Math.max(0, raw));
+}
+
+/**
+ * 松手裁决：按 160ms 的速度投影判断落向哪一侧。
+ * 快速甩动即便位移很小也应完成翻页；缓慢拖过半即提交。
+ */
+export function resolveFlipRelease(p: number, v: number): 0 | 1 {
+  const projected = p + v * 0.16;
+  return projected >= 0.5 ? 1 : 0;
 }

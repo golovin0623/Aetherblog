@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 拟真阅读器「纸与物理」重构：rAF 弹簧翻页 / 自由缩放 / 书籍级排印 (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
+
+对标 Kindle / 真书翻页体验，把阅读器从「能翻页」升级为「一本安静躺在书桌上的实体书」。保持 `readerLogic` 既有契约（皮肤解析 / 光标映射 / 偏好钳制）与移动端满幅单页布局不变。
+
+- **翻页引擎重写**：一次性 CSS transition → rAF 临界阻尼弹簧（`stepFlipSpring` 等纯函数落在 `readerLogic`，单测覆盖）。拖拽跟手（叶片/滑轨逐帧随指针）、松手按 160ms 速度投影裁决（快甩小位移也能翻过去）、悬停掀角（hover 热区页角微翘，点击顺势翻完）、快速连翻 fast-forward、后台标签页恢复 dt 钳制 34ms 防跳帧、`prefers-reduced-motion` 全程瞬切。
+- **翻页物理修正**：prev 翻页时右侧底页曾提前换成目标页（真书应保持原右页直到叶片落下盖住）；单页 curl 的叶片背面改为空白纸背（纸张反面不重复印刷）；掀角→拖拽转换时停掉在跑的弹簧（原先弹簧会抢走叶片直接提交）。
+- **关键交互修复**：`pointerdown` 即 `setPointerCapture` 会把后续 click 重定向到书容器——翻页热区按钮与正文链接从未收到点击。捕获推迟到拖拽确立后，点击翻页 / 内容链接恢复正常。
+- **自由缩放**：新偏好 `zoom`（70%–140%，步进 5%，桌面双页生效并受视口钳制）。设置面板滑杆 + Ctrl/⌘+滚轮 + 键盘 `+` / `−` / `0`；普通滚轮与触控板横扫累计翻页。另补 PageUp/PageDown/Home/End。
+- **书籍级排印**：h1/h2 章题居中 + `§ N` 自动编号眉标 + 束尾细线；书籍缩进模式下章从新页起（`break-before: column`）、章首段首字下沉；运行头 verso 书名 / recto 当前章（由章节→页映射驱动）；页码落外角、mono + tabular；`hr` → ⁂ 星群纹样；引用去 CJK 伪斜体改纸面色块；全部灰阶改 `color-mix` 从 `--reader-ink` 派生（自定皮肤同样和谐）；`text-spacing-trim` / `text-autospace` 渐进增强；衬线按需注入 Noto Serif SC webfont 且字形就绪后重排；新增楷体字族（本地楷体栈）。
+- **空间与氛围**：书口纸叠厚度随阅读进度流动（左侧读过的页渐厚、右侧余量变薄）；封面基座厚度 / 书脊沟壑 / 顶部书房灯光 + 桌面暗角 + feTurbulence 纸纹颗粒；飞行叶片动态明暗、折光扫过与底页投影逐帧驱动；入场书体自下升起，分页测量期间为同构骨架书（无 spinner）。
+- **Chrome 与面板**：桌面顶栏/底栏改悬浮层并自动隐藏（鼠标近上下边缘呼出，中央点按切换）；进度条自绘（章节刻度点 + 页码 + 百分比）；目录抽屉印刷式点线引导 + 页码 + 当前章高亮。
+- **admin 书架重设计**（`SimulatedReadingModal`）：列表行 → 主题书封网格（书脊 / 书口纸线 / 悬停浮起），新增「重制」按原来源+主题重跑成书缓存，加载态 spinner → 同构骨架屏（补齐红线 3.6）。
+- **自评审采纳 10 项**（Codex 额度耗尽，本轮由 Claude 自评审补位）：滚轮 `deltaMode` 归一（Firefox 行模式滚轮翻页失效）；捏合缩放改比例累积步进（原先事件流每个都走整档 5%，一次捏合打满边界）；骨架书 2.5s 超时放行（悬挂图片不再永锁）；多点触控守卫（第二根手指不再抢走拖拽令叶片悬死）；键盘修饰键交还浏览器（Alt+← 后退 / Ctrl+0 不再被劫持）；松手速度 120ms 陈旧守卫（快甩后停驻按静止裁决）；目录点击回退现场测量（慢图期间目录不失效）；从链接起手的拖拽容差保留 42px（手滑不吞点击）；chrome 悬停期间不自动隐藏（按钮不在光标下消失）；admin 并发重制改 Set 跟踪（互不清除状态、不再重复提交）。
+- 验证：reader gate 19/19（新增缩放钳制与翻页物理用例）、admin 351/351、`design-system:check` 0 error、blog/admin 构建通过、Playwright 14 组状态截图逐帧目检（桌面初始/沉浸/掀角/翻页中帧/拖拽持停/目录/设置/夜读/缩放 + 移动端）。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更，其余子文档无需更新。
+
 ### Changed — 音乐大厅·歌单策展重设计 + 模块头部布局统一 (2026-08-16, branch claude/music-hall-admin-design-43c8f1)
 
 对标主流音乐软件(Apple Music 级交互模式,Aether Codex 材质实现)重做后台音乐大厅的歌单管理,并修复全后台模块头部 tab 条随宽度/actions 跳位的割裂感。

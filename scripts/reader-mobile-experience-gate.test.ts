@@ -4,9 +4,14 @@ import {
   clampReaderPreferences,
   computeReaderDims,
   cursorToAbsolutePage,
+  dragToProgress,
+  flipTravel,
   horizontalOffsetToPage,
+  isFlipSettled,
+  resolveFlipRelease,
   resolveReaderPageTurn,
   resolveReaderSkin,
+  stepFlipSpring,
 } from '../apps/blog/app/reader/[slug]/readerLogic';
 
 describe('reader mobile experience gate', () => {
@@ -37,8 +42,31 @@ describe('reader mobile experience gate', () => {
     const dims = computeReaderDims({ width: 1440, height: 900 });
 
     expect(dims.cols).toBe(2);
-    expect(dims.pageW * 2).toBeLessThanOrEqual(1412);
-    expect(dims.pageH).toBeLessThanOrEqual(744);
+    expect(dims.pageW * 2).toBeLessThanOrEqual(1392);
+    // chrome 改为悬浮层后书页可用高度上限为 vh - 128。
+    expect(dims.pageH).toBeLessThanOrEqual(772);
+  });
+
+  it('scales the desktop book with layout zoom while staying viewport-bound', () => {
+    const base = computeReaderDims({ width: 1440, height: 900 }, 1);
+    const shrunk = computeReaderDims({ width: 1440, height: 900 }, 0.7);
+    const grown = computeReaderDims({ width: 2560, height: 1440 }, 1.4);
+    const clamped = computeReaderDims({ width: 1440, height: 900 }, 1.4);
+
+    expect(shrunk.pageH).toBeLessThan(base.pageH);
+    expect(shrunk.pageH).toBe(602);
+    expect(grown.pageH).toBe(1204);
+    // 放大不允许溢出视口：仍受 vh - 128 约束。
+    expect(clamped.pageH).toBeLessThanOrEqual(772);
+    // 移动端保持满幅单页，缩放不参与。
+    expect(computeReaderDims({ width: 390, height: 844 }, 0.7).pageW).toBe(390);
+  });
+
+  it('clamps layout zoom preference into 0.7–1.4 with 0.05 steps', () => {
+    expect(clampReaderPreferences({ zoom: 3 }).zoom).toBe(1.4);
+    expect(clampReaderPreferences({ zoom: 0.1 }).zoom).toBe(0.7);
+    expect(clampReaderPreferences({ zoom: 1.03 }).zoom).toBe(1.05);
+    expect(clampReaderPreferences({}).zoom).toBe(1);
   });
 
   it('clamps reader preferences into ergonomic ranges', () => {
@@ -105,5 +133,60 @@ describe('reader mobile experience gate', () => {
     expect(absolutePageToCursor(6, 2, 12)).toBe(3);
     expect(absolutePageToCursor(99, 1, 12)).toBe(11);
     expect(absolutePageToCursor(99, 2, 12)).toBe(5);
+  });
+
+  it('accepts the kai reading font and falls back to serif for unknown families', () => {
+    expect(clampReaderPreferences({ fontFamily: 'kai' }).fontFamily).toBe('kai');
+    expect(clampReaderPreferences({ fontFamily: 'wingdings' }).fontFamily).toBe('serif');
+  });
+});
+
+describe('reader flip physics gate', () => {
+  it('maps progress to leaf travel symmetrically for both directions', () => {
+    expect(flipTravel('next', 0)).toBe(0);
+    expect(flipTravel('next', 1)).toBe(1);
+    expect(flipTravel('prev', 0)).toBe(1);
+    expect(flipTravel('prev', 1)).toBe(0);
+    expect(flipTravel('next', 1.6)).toBe(1);
+    expect(flipTravel('prev', -0.4)).toBe(1);
+  });
+
+  it('converts drag displacement into direction-aware progress', () => {
+    expect(dragToProgress(-210, 400, 'next')).toBeCloseTo(0.5, 2);
+    expect(dragToProgress(210, 400, 'prev')).toBeCloseTo(0.5, 2);
+    // 反方向拖拽不产生负进度。
+    expect(dragToProgress(120, 400, 'next')).toBe(0);
+    expect(dragToProgress(-120, 400, 'prev')).toBe(0);
+    expect(dragToProgress(-9999, 400, 'next')).toBe(1);
+  });
+
+  it('commits slow drags past the midpoint and cancels early releases', () => {
+    expect(resolveFlipRelease(0.62, 0)).toBe(1);
+    expect(resolveFlipRelease(0.38, 0)).toBe(0);
+  });
+
+  it('lets a fast fling commit even with a small displacement', () => {
+    expect(resolveFlipRelease(0.14, 2.6)).toBe(1);
+    expect(resolveFlipRelease(0.86, -2.6)).toBe(0);
+  });
+
+  it('integrates the critically damped spring to a settle without oscillation', () => {
+    let state = { p: 0, v: 0 };
+    let frames = 0;
+    let overshoot = 0;
+    while (!isFlipSettled(state, 1) && frames < 240) {
+      state = stepFlipSpring(state, 1, 16.7);
+      overshoot = Math.max(overshoot, state.p - 1);
+      frames += 1;
+    }
+    expect(frames).toBeLessThan(120); // 2s 内落定
+    expect(frames).toBeGreaterThan(10); // 不是瞬移
+    expect(overshoot).toBeLessThan(0.06); // 纸张不回弹
+    expect(state.p).toBeCloseTo(1, 2);
+  });
+
+  it('clamps runaway frame gaps so background tabs cannot teleport the leaf', () => {
+    const jumped = stepFlipSpring({ p: 0, v: 0 }, 1, 5000);
+    expect(jumped.p).toBeLessThan(0.35);
   });
 });
