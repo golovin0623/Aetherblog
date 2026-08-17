@@ -19,33 +19,68 @@ type ChatRepo struct{ db *sqlx.DB }
 // NewChatRepo 创建 ChatRepo。
 func NewChatRepo(db *sqlx.DB) *ChatRepo { return &ChatRepo{db: db} }
 
-// ChatConversationListRow 是会话列表查询的内部投影：会话本体 + 未读数 + 最后一条消息摘要。
+// ChatConversationListRow 是会话列表查询的内部投影：会话本体 + 未读数 + 最后一条消息摘要
+// + 当前用户自己的偏好（置顶 / 免打扰）与「@我」未读计数（000087）。
 type ChatConversationListRow struct {
 	model.ChatConversation
-	UnreadCount      int64      `db:"unread_count"`
-	LastMsgID        *int64     `db:"last_msg_id"`
-	LastMsgType      *string    `db:"last_msg_type"`
-	LastMsgContent   *string    `db:"last_msg_content"`
-	LastMsgSenderID  *int64     `db:"last_msg_sender_id"`
-	LastMsgCreatedAt *time.Time `db:"last_msg_created_at"`
+	UnreadCount       int64      `db:"unread_count"`
+	MentionCount      int64      `db:"mention_count"`
+	MyMuted           bool       `db:"my_muted"`
+	MyPinnedAt        *time.Time `db:"my_pinned_at"`
+	LastMsgID         *int64     `db:"last_msg_id"`
+	LastMsgType       *string    `db:"last_msg_type"`
+	LastMsgContent    *string    `db:"last_msg_content"`
+	LastMsgSenderID   *int64     `db:"last_msg_sender_id"`
+	LastMsgCreatedAt  *time.Time `db:"last_msg_created_at"`
+	LastMsgRecalledAt *time.Time `db:"last_msg_recalled_at"`
+	// 末条消息的 attachment_meta —— 列表预览需要它区分「[星灵贴纸]」与「[图片]」。
+	LastMsgAttachmentMeta *string `db:"last_msg_attachment_meta"`
 }
 
 // ChatMemberRow 是会话成员查询的内部投影（join users）。
+// LastReadMessageID 暴露给前端渲染已读回执（✓✓）。
 type ChatMemberRow struct {
-	UserID     int64   `db:"user_id"`
-	Username   string  `db:"username"`
-	Nickname   *string `db:"nickname"`
-	Avatar     *string `db:"avatar"`
-	MemberRole string  `db:"member_role"`
-	Muted      bool    `db:"muted"`
+	UserID            int64   `db:"user_id"`
+	Username          string  `db:"username"`
+	Nickname          *string `db:"nickname"`
+	Avatar            *string `db:"avatar"`
+	MemberRole        string  `db:"member_role"`
+	Muted             bool    `db:"muted"`
+	LastReadMessageID *int64  `db:"last_read_message_id"`
 }
 
-// ChatMessageRow 是消息查询的内部投影：消息本体 + 发送者展示名 / 头像。
+// ChatMessageRow 是消息查询的内部投影：消息本体 + 发送者展示名 / 头像
+// + 被引用消息的预览快照（引用可能落在已加载历史页之外，前端需要快照兜底渲染）。
 type ChatMessageRow struct {
 	model.ChatMessage
 	SenderName   *string `db:"sender_name"`
 	SenderAvatar *string `db:"sender_avatar"`
+
+	ReplyContent        *string    `db:"reply_content"`
+	ReplyMessageType    *string    `db:"reply_message_type"`
+	ReplySenderName     *string    `db:"reply_sender_name"`
+	ReplyRecalledAt     *time.Time `db:"reply_recalled_at"`
+	ReplyAttachmentMeta *string    `db:"reply_attachment_meta"`
 }
+
+// chatMessageSelect 是消息查询共用的 SELECT/JOIN 片段：发送者展示信息 + 引用预览。
+const chatMessageSelect = `
+	SELECT msg.*,
+	       COALESCE(ag.name, u.nickname, u.username,
+	                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
+	       COALESCE(ag.avatar, u.avatar) AS sender_avatar,
+	       rp.content         AS reply_content,
+	       rp.message_type    AS reply_message_type,
+	       rp.recalled_at     AS reply_recalled_at,
+	       rp.attachment_meta AS reply_attachment_meta,
+	       COALESCE(rpa.name, rpu.nickname, rpu.username,
+	                CASE WHEN rp.sender_type = 'AGENT' THEN '已删除智能体' END) AS reply_sender_name
+	FROM chat_messages msg
+	LEFT JOIN users u ON u.id = msg.sender_id
+	LEFT JOIN chat_agents ag ON ag.id = msg.agent_id
+	LEFT JOIN chat_messages rp ON rp.id = msg.reply_to_id
+	LEFT JOIN users rpu ON rpu.id = rp.sender_id
+	LEFT JOIN chat_agents rpa ON rpa.id = rp.agent_id`
 
 // FindConversation 按 ID 查询会话。未找到返回 (nil, nil)。
 func (r *ChatRepo) FindConversation(ctx context.Context, id int64) (*model.ChatConversation, error) {
@@ -123,7 +158,7 @@ func (r *ChatRepo) ActiveMemberUserIDs(ctx context.Context, convID int64) ([]int
 func (r *ChatRepo) ListMembers(ctx context.Context, convID int64) ([]ChatMemberRow, error) {
 	var rows []ChatMemberRow
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT m.user_id, u.username, u.nickname, u.avatar, m.member_role, m.muted
+		SELECT m.user_id, u.username, u.nickname, u.avatar, m.member_role, m.muted, m.last_read_message_id
 		FROM chat_conversation_members m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.conversation_id = $1
@@ -144,7 +179,7 @@ func (r *ChatRepo) ListMembersForConversations(ctx context.Context, convIDs []in
 	}
 	var rows []row
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT m.conversation_id, m.user_id, u.username, u.nickname, u.avatar, m.member_role, m.muted
+		SELECT m.conversation_id, m.user_id, u.username, u.nickname, u.avatar, m.member_role, m.muted, m.last_read_message_id
 		FROM chat_conversation_members m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.conversation_id = ANY($1)
@@ -165,16 +200,21 @@ func (r *ChatRepo) ListConversationsForUser(ctx context.Context, userID int64) (
 	err := r.db.SelectContext(ctx, &rows, `
 		SELECT c.*,
 		       COALESCE(uc.cnt, 0)   AS unread_count,
+		       COALESCE(mc.cnt, 0)   AS mention_count,
+		       m.muted               AS my_muted,
+		       m.pinned_at           AS my_pinned_at,
 		       lm.id                 AS last_msg_id,
 		       lm.message_type       AS last_msg_type,
 		       lm.content            AS last_msg_content,
 		       lm.sender_id          AS last_msg_sender_id,
-		       lm.created_at         AS last_msg_created_at
+		       lm.created_at         AS last_msg_created_at,
+		       lm.recalled_at        AS last_msg_recalled_at,
+		       lm.attachment_meta    AS last_msg_attachment_meta
 		FROM chat_conversations c
 		JOIN chat_conversation_members m
 		  ON m.conversation_id = c.id AND m.user_id = $1
 		LEFT JOIN LATERAL (
-		    SELECT id, message_type, content, sender_id, created_at
+		    SELECT id, message_type, content, sender_id, created_at, recalled_at, attachment_meta
 		    FROM chat_messages msg
 		    WHERE msg.conversation_id = c.id AND msg.deleted_at IS NULL
 		    ORDER BY msg.id DESC LIMIT 1
@@ -187,6 +227,17 @@ func (r *ChatRepo) ListConversationsForUser(ctx context.Context, userID int64) (
 		      AND msg.id > COALESCE(m.last_read_message_id, 0)
 		      AND msg.sender_id IS DISTINCT FROM $1
 		) uc ON true
+		-- 「@我」未读计数：GIN(mentions) 支撑；穿透免打扰的红色 @ 徽标数据源（000087）。
+		LEFT JOIN LATERAL (
+		    SELECT COUNT(*) AS cnt
+		    FROM chat_messages msg
+		    WHERE msg.conversation_id = c.id
+		      AND msg.deleted_at IS NULL
+		      AND msg.recalled_at IS NULL
+		      AND msg.id > COALESCE(m.last_read_message_id, 0)
+		      AND msg.sender_id IS DISTINCT FROM $1
+		      AND $1 = ANY(msg.mentions)
+		) mc ON true
 		-- SECURITY: 对 TEAM 会话过滤掉已被移出 / 禁用团队的陈旧成员，
 		-- 否则被踢出团队的用户仍能在列表里看到群聊及其最后消息预览。
 		WHERE c.kind <> 'TEAM'
@@ -319,18 +370,22 @@ func (r *ChatRepo) InsertMessage(ctx context.Context, m *model.ChatMessage) (*mo
 		}
 	}
 
+	var mentions any
+	if len(m.Mentions) > 0 {
+		mentions = m.Mentions
+	}
 	var out model.ChatMessage
 	err := r.db.QueryRowxContext(ctx, `
 		INSERT INTO chat_messages (
 			conversation_id, sender_id, sender_type, message_type, content,
 			attachment_url, attachment_name, attachment_mime, attachment_size, attachment_meta,
-			reply_to_id, client_msg_id, agent_id, created_at
+			reply_to_id, client_msg_id, agent_id, mentions, created_at
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,CURRENT_TIMESTAMP)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CURRENT_TIMESTAMP)
 		RETURNING *`,
 		m.ConversationID, m.SenderID, m.SenderType, m.MessageType, m.Content,
 		m.AttachmentURL, m.AttachmentName, m.AttachmentMime, m.AttachmentSize, m.AttachmentMeta,
-		m.ReplyToID, m.ClientMsgID, m.AgentID,
+		m.ReplyToID, m.ClientMsgID, m.AgentID, mentions,
 	).StructScan(&out)
 	if err != nil {
 		if isUniqueViolation(err) && m.ClientMsgID != nil {
@@ -353,18 +408,10 @@ func (r *ChatRepo) findByClientMsgID(ctx context.Context, convID int64, clientMs
 	return &m, err
 }
 
-// GetMessageRow 按 ID 拉取单条消息（含发送者展示信息），用于广播组装。
+// GetMessageRow 按 ID 拉取单条消息（含发送者展示信息与引用预览），用于广播组装。
 func (r *ChatRepo) GetMessageRow(ctx context.Context, id int64) (*ChatMessageRow, error) {
 	var row ChatMessageRow
-	err := r.db.GetContext(ctx, &row, `
-		SELECT msg.*,
-		       COALESCE(ag.name, u.nickname, u.username,
-		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
-		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
-		FROM chat_messages msg
-		LEFT JOIN users u ON u.id = msg.sender_id
-		LEFT JOIN chat_agents ag ON ag.id = msg.agent_id
-		WHERE msg.id = $1`, id)
+	err := r.db.GetContext(ctx, &row, chatMessageSelect+` WHERE msg.id = $1`, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -377,20 +424,26 @@ func (r *ChatRepo) ListMessages(ctx context.Context, convID int64, beforeID *int
 		limit = 30
 	}
 	var rows []ChatMessageRow
-	err := r.db.SelectContext(ctx, &rows, `
-		SELECT msg.*,
-		       COALESCE(ag.name, u.nickname, u.username,
-		                CASE WHEN msg.sender_type = 'AGENT' THEN '已删除智能体' END) AS sender_name,
-		       COALESCE(ag.avatar, u.avatar) AS sender_avatar
-		FROM chat_messages msg
-		LEFT JOIN users u ON u.id = msg.sender_id
-		LEFT JOIN chat_agents ag ON ag.id = msg.agent_id
+	err := r.db.SelectContext(ctx, &rows, chatMessageSelect+`
 		WHERE msg.conversation_id = $1
 		  AND msg.deleted_at IS NULL
 		  AND ($2::bigint IS NULL OR msg.id < $2)
 		ORDER BY msg.id DESC
 		LIMIT $3`, convID, beforeID, limit)
 	return rows, err
+}
+
+// MessageInConversation 校验消息真实属于该会话（未硬删除）。
+// SECURITY: 回应等按 (convID, msgID) 双参寻址的操作必须先过此判定，
+// 否则可用「自己有权的 convID + 他人会话的 msgID」越权读写外部消息的回应。
+func (r *ChatRepo) MessageInConversation(ctx context.Context, convID, msgID int64) (bool, error) {
+	var ok bool
+	err := r.db.GetContext(ctx, &ok, `
+		SELECT EXISTS(
+		    SELECT 1 FROM chat_messages
+		    WHERE id = $2 AND conversation_id = $1 AND deleted_at IS NULL
+		)`, convID, msgID)
+	return ok, err
 }
 
 // TouchConversation 更新会话的 last_message_at（消息发出后调用）。
@@ -415,6 +468,129 @@ func (r *ChatRepo) MarkRead(ctx context.Context, convID, userID, messageID int64
 		      WHERE msg.id = $3 AND msg.conversation_id = $1
 		  )`, convID, userID, messageID)
 	return err
+}
+
+// --- 000087 交互增强：编辑 / 撤回 / 回应 / 会话偏好 ---
+
+// chatEditWindow 是编辑 / 撤回的服务端窗口（与前端提示一致，SQL 内联校验保证原子性）。
+const chatEditWindow = "2 minutes"
+
+// EditMessage 在窗口期内编辑自己的文本消息，并同步覆盖 mentions（编辑增删 @ 时
+// 徽标随文本走）。越权 / 超窗 / 类型不符时返回 (nil, nil)。
+func (r *ChatRepo) EditMessage(ctx context.Context, convID, msgID, userID int64, content string, mentions []int64) (*model.ChatMessage, error) {
+	var mv any
+	if len(mentions) > 0 {
+		mv = pq.Int64Array(mentions)
+	}
+	var out model.ChatMessage
+	err := r.db.QueryRowxContext(ctx, `
+		UPDATE chat_messages
+		SET content = $4, mentions = $5, edited_at = CURRENT_TIMESTAMP
+		WHERE id = $2 AND conversation_id = $1
+		  AND sender_id = $3 AND sender_type = 'USER'
+		  AND message_type = 'TEXT'
+		  AND recalled_at IS NULL AND deleted_at IS NULL
+		  AND created_at > CURRENT_TIMESTAMP - INTERVAL '`+chatEditWindow+`'
+		RETURNING *`, convID, msgID, userID, content, mv).StructScan(&out)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &out, err
+}
+
+// RecallMessage 在窗口期内软撤回自己的消息：置 recalled_at 并清空内容与附件（隐私），
+// 保留占位行供前端渲染「已撤回」。越权 / 超窗时返回 (nil, nil)。
+func (r *ChatRepo) RecallMessage(ctx context.Context, convID, msgID, userID int64) (*model.ChatMessage, error) {
+	var out model.ChatMessage
+	err := r.db.QueryRowxContext(ctx, `
+		UPDATE chat_messages
+		SET recalled_at = CURRENT_TIMESTAMP,
+		    content = NULL, attachment_url = NULL, attachment_name = NULL,
+		    attachment_mime = NULL, attachment_size = NULL, attachment_meta = NULL
+		WHERE id = $2 AND conversation_id = $1
+		  AND sender_id = $3 AND sender_type = 'USER'
+		  AND recalled_at IS NULL AND deleted_at IS NULL
+		  AND created_at > CURRENT_TIMESTAMP - INTERVAL '`+chatEditWindow+`'
+		RETURNING *`, convID, msgID, userID).StructScan(&out)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return &out, err
+}
+
+// AddReaction 给消息添加一个表情回应；主键冲突（重复回应）静默幂等。
+// 仅当消息真实属于该会话且未撤回 / 未删除时写入，返回是否发生了写入。
+func (r *ChatRepo) AddReaction(ctx context.Context, convID, msgID, userID int64, emoji string) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		INSERT INTO chat_message_reactions (message_id, user_id, emoji)
+		SELECT $2, $3, $4
+		WHERE EXISTS(
+		    SELECT 1 FROM chat_messages msg
+		    WHERE msg.id = $2 AND msg.conversation_id = $1
+		      AND msg.recalled_at IS NULL AND msg.deleted_at IS NULL
+		)
+		ON CONFLICT (message_id, user_id, emoji) DO NOTHING`, convID, msgID, userID, emoji)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// RemoveReaction 移除自己的某个表情回应，返回是否确有删除。
+// SECURITY: 与 AddReaction 对称地绑定 convID —— 防止用有权会话的 ID 配他人会话的
+// 消息 ID 删除自己遗留在旧会话的回应（service 层的 MessageInConversation 为第一道闸，
+// 此处 EXISTS 为纵深防御）。
+func (r *ChatRepo) RemoveReaction(ctx context.Context, convID, msgID, userID int64, emoji string) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		DELETE FROM chat_message_reactions
+		WHERE message_id = $2 AND user_id = $3 AND emoji = $4
+		  AND EXISTS(
+		      SELECT 1 FROM chat_messages msg
+		      WHERE msg.id = $2 AND msg.conversation_id = $1
+		  )`, convID, msgID, userID, emoji)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// ListReactionsForMessages 批量拉取多条消息的回应（按创建顺序），供 service 聚合进 VO。
+func (r *ChatRepo) ListReactionsForMessages(ctx context.Context, msgIDs []int64) ([]model.ChatMessageReaction, error) {
+	if len(msgIDs) == 0 {
+		return nil, nil
+	}
+	var rows []model.ChatMessageReaction
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT message_id, user_id, emoji, created_at
+		FROM chat_message_reactions
+		WHERE message_id = ANY($1)
+		ORDER BY created_at, emoji`, pq.Array(msgIDs))
+	return rows, err
+}
+
+// UpdateMemberPrefs 更新当前用户在会话内的偏好（置顶 / 免打扰）。nil 字段保持不变。
+// 返回更新后的 (pinnedAt, muted)。
+func (r *ChatRepo) UpdateMemberPrefs(ctx context.Context, convID, userID int64, pinned, muted *bool) (*time.Time, bool, error) {
+	var out struct {
+		PinnedAt *time.Time `db:"pinned_at"`
+		Muted    bool       `db:"muted"`
+	}
+	err := r.db.QueryRowxContext(ctx, `
+		UPDATE chat_conversation_members
+		SET pinned_at = CASE
+		        WHEN $3::boolean IS NULL THEN pinned_at
+		        WHEN $3 THEN COALESCE(pinned_at, CURRENT_TIMESTAMP)
+		        ELSE NULL
+		    END,
+		    muted = COALESCE($4::boolean, muted)
+		WHERE conversation_id = $1 AND user_id = $2
+		RETURNING pinned_at, muted`, convID, userID, pinned, muted).StructScan(&out)
+	if err != nil {
+		return nil, false, err
+	}
+	return out.PinnedAt, out.Muted, nil
 }
 
 // GetUserSettings 读取用户聊天偏好。未设置返回 (nil, nil)，由 service 层填默认值。

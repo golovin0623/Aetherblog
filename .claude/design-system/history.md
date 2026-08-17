@@ -53,3 +53,23 @@ Round 3 之后存在「仅在 `/design` 上呈现」的风险，Round 4 分四�
 - **可复用机制**：这是站点首个「局部主题/皮肤」范式 —— 在不污染全站 `--aurora-source` 的前提下,给某个子树一套独立的派生光源。后续其他模块若需独立色彩身份(而非全站统一),复用 `[data-skin-scope]` 思路即可。
 - **预设常量单一来源**：`packages/utils/src/musicSkins.ts` 的 `MUSIC_SKIN_PRESETS` 与 `music-skin.css` 的预设选择器一一对应,前台切换器(`MusicSkinSwitcher`)与后台 picker(`MusicPage`)共用,杜绝两处硬编码漂移。
 - **音乐大厅去硬编码**：前台 Hall 页 / 全站 dock + 沉浸层 / Profile 卡 / 后台中控台 + 浮层 mini-player 全量从内联 `#ff4d4f`/`rgba(255,77,79)`/暗红死底迁到 Codex token,Hero 改用 `.surface-luminous` 签名卡。`design-system:check` 维持 0 error。
+
+---
+
+## Round 7 · 音乐域「留声穹顶 Resonant Vault」视觉重构（2026-08-16）
+
+在 Round 6 作用域皮肤地基上,把音乐三表面(大厅 / 浮岛 / 沉浸台)从「功能正确但视觉扁平」升级为 Apple Music 级质感。核心理念:**唱片是房间里唯一的光源** —— 当前封面高斯化后成为域内氛围光,种子色派生的 aurora 继续为控件/描边/辉光着色,零新增色相。
+
+- **音乐大厅(`MusicHallExperience` 全量重写)**:
+  - `.music-hall-ambient` 影院式封面氛围场(fixed 全视口,封面 blur 110px + 种子径向补光 + 收光罩,52s 极缓漂移),播放中光源跟随当前曲目封面。
+  - Hero:mono 微大写 eyebrow(播放中切换为「正在播放」)+ 流体 display 标题(`--music-fs-hall-title`,fs-h2→fs-h1 区间)+ `.music-hall-hero-art` 种子 underglow 碑座。
+  - 曲目表对齐 Apple Music:列头(#/标题/专辑/时长,mono 微大写)、序号 hover 换播放符、行 hover 极光签名光带(`.music-hall-row::before`)、当前行种子染色、时长 tnum mono、`stagger(30)` 入场。
+  - 新增「精选放送」主打卡片轨(`isFeatured`):snap 横滚,hover 只做封面缓推 + 描边点亮(卡片本体不位移不缩放,遵守评审门禁)。
+  - 正在播放光带(`HallNowPlayingStrip`):订阅高频 timeline context,与整页低频渲染隔离;可拖 SeekBar + 「打开播放台」。
+  - 加载态从 spinner 改为同构骨架屏 `.music-skeleton`(修复违反红线 3.6 的历史遗留)。
+- **浮岛材质升级(几何/形变骨架不动,全部测试门禁保持)**:壳体四层渐变玻璃 + 顶部内高光 + 种子描边;`.music-floating-ambient` 壳体内封面氛围光(orb 态退场);`data-music-playing` 播放态静态辉光;传输区主播放键实心墨面(与 `music-primary-play-button` 同语法);展开态大封面种子 underglow。
+- **沉浸台**:封面背景 0.14→0.26 + saturate-150,收光罩变薄;`--music-shadow-artwork` 域内覆写为种子色碑座投影;歌词 active 行加 `.music-lyric-line-active` 种子微光;歌词空态文案统一为「这首歌暂时没有歌词，先让旋律继续。」;桌面展开态工具行补第三个显式关闭键(语义测试要求)。
+- **`musicMotion` 动效预设(`packages/ui/src/motion.ts`)**:浮岛/沉浸台的 6 组实机调优 spring/ease/duration 从组件内裸数值收编为语义化预设,组件内禁再写裸参数(04-motion.md §音乐域)。
+- **域内排印**:`[data-music-skin] .tnum` 统一走 `--font-mono`(+0.02em 字距),时长/序号/进度数字全域对齐「metadata = mono」规范。
+- **SeekBar**:hover/active 高度过渡(3px→5px 档),填充保持纯平 aurora(评审门禁:seek 语言必须 flat)。
+- 门禁:129/129 音乐测试全绿(含修复基线上 2 个既有失败)、`design-system:check` 维持 0 error、`tsc --noEmit` 干净。

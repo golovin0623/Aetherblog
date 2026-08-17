@@ -130,3 +130,43 @@ export const cssMotion = {
   durFlow: 'var(--dur-flow)',
   durAmbient: 'var(--dur-ambient)',
 } as const;
+
+/* -----------------------------------------------------------
+ * 音乐域动效 —— 播放器浮岛 / 沉浸台专属物理参数
+ * -----------------------------------------------------------
+ * 这些数值经过浮岛手势多轮实机调优(见 scripts/verify-music-player-motion.mjs
+ * 的 Playwright 门禁),从 MusicPlayerProvider 收编至此,禁止在组件内
+ * 重新散落裸数值。语义:
+ *   orbSnap  —— 下滑收起后,壳体回吸成灵动音乐元的收势
+ *   rebound  —— 手势未达阈值时,卡片弹回原位
+ *   reanchor —— 沉浸台拖拽未达阈值的回锚
+ *   sheet    —— 移动端沉浸台共享布局形变(layoutId 过渡)
+ *   glide    —— 音乐域内容出入的柔和曲线(pane 切换、封面轮换)
+ *   fling    —— 沉浸台下滑离场的顺势加速曲线
+ */
+export const musicMotion = {
+  ease: {
+    glide: [0.22, 1, 0.36, 1] as const,
+    fling: [0.32, 0.72, 0, 1] as const,
+  },
+  spring: {
+    orbSnap:  { type: 'spring', stiffness: 460, damping: 40, mass: 0.68 } as const,
+    rebound:  { type: 'spring', stiffness: 440, damping: 38, mass: 0.72 } as const,
+    reanchor: { type: 'spring', stiffness: 420, damping: 40, mass: 0.8 } as const,
+    sheet:    { type: 'spring', stiffness: 360, damping: 36, mass: 0.82 } as const,
+  },
+  duration: {
+    /** prefers-reduced-motion 下的极短淡入淡出 */
+    reduced: 0.08,
+    /** 沉浸台 pane(播放/歌词/队列)切换 */
+    pane: 0.16,
+    /** 背景遮罩淡入 */
+    veil: 0.18,
+    /** 对话框整体淡入 */
+    dialog: 0.2,
+    /** 沉浸台缩放入场 */
+    zoom: 0.22,
+    /** 封面横向轮换 */
+    swap: 0.24,
+  },
+} as const;
