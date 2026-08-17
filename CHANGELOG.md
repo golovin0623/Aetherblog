@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **验证：** admin 全量 368 测试通过（新增 17）、`tsc --noEmit` 干净、ESLint 0 告警、`pnpm design-system:check` 保持 0 error、`vite build` 通过。
 - 📄 文档影响：已更新 `CHANGELOG.md`；无新增 API / DB / 共享组件，`docs/architecture.md` 与 `.claude/docs/*` 无需变更。
 
+### Changed — 友链页「星群与信笺」重设计 · Apple Watch 气泡 + iOS 通知栈 (2026-08-16, branch claude/homepage-links-design-ppbpt8)
+
+**背景：** 友链页的列表 / 气泡两种视图与 Apple Watch 表盘、iPhone 通知中心的质感差距明显（列表是三栏杂色渐变卡、气泡只是静态 flex 蜂窝、无页面级排版语言）。本次以「星群与信笺」立意整体重做，全部颜色走 Codex 令牌、动效走 `@aetherblog/ui` 预设。
+
+- **列表视图 = iOS 通知栈（`FriendCard` 重写）：** 居中 `max-w-2xl` 单列玻璃信笺（`surface-leaf` + `data-interactive`），squircle 头像 + 品牌色底晕、右上角域名充当 iOS 时间戳位、`spring.soft` 逐条弹落 + `whileTap` 按压；友链 ≥10 条时折叠为 **iOS 通知堆**（顶卡 + 两层背卡 + 迷你头像扇列,展开/收起带弹簧编排,修复过一次展开区间重复渲染的切分 bug）。
+- **气泡视图 = Apple Watch 表盘（新组件 `FriendBubbleField`，替代删除的 `FriendIconBubble`）：** 数学蜂窝布局按 `√N` 收拢成近圆星簇；**指针鱼眼磁吸**（余弦衰减 + `spring.precise` 弹簧,Dock 手感）、**边缘球面衰减**、**从中心涟漪绽放入场**、**待机错相位漂浮**（`--dur-ambient` 倍数,新增 `friend-bubble-drift` keyframes）；桌面 hover 呼出 watchOS 式单行名称胶囊（`surface-overlay`）,移动端改为图标下名字;`prefers-reduced-motion` 全部降级为淡入。
+- **页面级：** 页头对齐 `/about` 的 Apple 式居中排版（`.eyebrow` + Fraunces 标题 + Instrument Serif lede + mono 计数）；视图切换器改为 `layoutId` 弹簧滑块胶囊；背景环境光从 `bg-primary/bg-blue-500` 迁移到 aurora 令牌；底部交换友链 CTA 卡片化。
+- **加载体验：** `FriendsLoading` 重写为镜像新布局的骨架屏（Codex 令牌骨骼色,顺带清掉 `bg-white/5` 等 legacy 玻璃）,并新增路由级 `friends/loading.tsx` 接管导航等待。
+- **合规：** `pnpm design-system:check` 保持 0 error;无 `dark:` 变体、无裸 bezier/spring 数值、无任意字号。
+- **产线回归修复（对照线上截图）：** ① `themeColor` 为空字符串时默认参数不生效,头像加载失败的友链渲染成「黑洞球」(线上旧版可见的历史 bug) —— `FriendCard` / `FriendBubbleField` / `DeckAvatar` 三处统一空值归一化;② 移动端页头过高把星群压出首屏 —— 导语改 `hidden sm:block`(与旧版隐藏副标题的行为一致)并收紧移动端间距,骨架屏同步镜像。
+- **Codex 评审采纳（2 条 P1）：** ① 后端 DTO `ThemeColor *string` 无 omitempty,`themeColor: null` 会让 `FriendCard` 的 `.trim()` 崩掉整棵 `/friends` 客户端树 —— `FriendLink` 类型改 `string | null` 并统一归一化;② 视图切换与「收起」按钮触控区约 36px,不满足 AGENTS.md 移动端 ≥44×44px 约定 —— 按仓库先例补 `min-h-[44px]`(md 起还原紧凑,不影响桌面)。
+
 ### Added — 对话空间「夜航信札」落地 · 表情/回应/引用/撤回/图片管线/提示链 (2026-08-16, branch claude/homepage-chat-module-design-9k7sl4)
 
 按设计提案 `docs/design/team-chat-redesign/`（含可交互原型）把 `/team-chat` 从「能收发」补齐到微信 / Telegram 级交互完成度。P0 纯前端 + P1 后端一次迁移（000087）全部落地：
