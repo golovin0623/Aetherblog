@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`role="dialog" aria-modal="true"` 声明了却无焦点管理**（比不声明更误导读屏器）—— 抽出共享 `useModalDialog` hook（复用 ConfirmDialog 已验证的范式：初始焦点移入、Tab 困焦、关闭还原、滚动锁），三个弹窗统一接入。
   - **Esc 关闭不判 IME 组合态** —— 中文输入法按 Esc 取消候选词会连带关掉弹窗、静默丢弃整份未保存表单；守卫内建进 hook（`isComposing || keyCode === 229`），三处一并修复。
   - **修复验证：** 新增 Playwright 断言脚本对每条修复做行为级校验（令牌解析、边框实存、padding 生效、聚焦变色、初始焦点、Tab 困焦、`/` 守卫、IME Esc 不关窗、普通 Esc 仍关窗、焦点还原、无弹窗时 `/` 未误伤），明暗双主题各 14 项断言全通过。
+### Fixed — 拟真阅读器指针残留与掀角吞滚轮（PR #852 合并后补修） (2026-08-17, branch claude/article-reading-design-polish-cu5h10)
+
+PR #852 的多视角对抗评审因用量上限中断，仅「指针手势」视角跑完且其发现未经核实即随 PR 合入。本次逐条核实并修复，均在浏览器内复现验证。
+
+- **指针残留 → 幽灵翻页 / 笔输入永久失效（critical）：** #852 把 `setPointerCapture` 从 pointerdown 推迟到拖拽确立，触摸有隐式捕获兜底，鼠标/笔没有——在书内按下、未跨拖拽阈值就移出书外松手时，元素级 `pointerup` 永不触发，`pointerRef` 永久残留。随后 (a) 鼠标无按键悬停扫过书面会用陈旧 `startX` 判定越阈，凭空掀起叶片跟随光标并吞掉下一次点击；(b) 笔每次接触分配新 `pointerId`，而同批修复引入的 `if (pointerRef.current) return` 活跃指针守卫会丢弃其后全部输入，阅读器对笔**永久无响应，只能刷新**。修法：`pointermove` 中对非触摸指针加 `e.buttons === 0` 陈旧清理，并挂 window 级 `pointerup` / `pointercancel` 兜底结算（元素级已接管时 `pointerRef` 已为 null，不重复结算）。
+- **静置掀角吞掉滚轮翻页（minor）：** 悬停掀角在静置分支让 `jobRef` 长期非空，而滚轮 handler 在 `preventDefault()` 后一刀切 `if (jobRef.current) return`——光标停在左右命中区（各 38%，合计占书宽 76%）时滚轮既不翻页也不回落浏览器默认行为，完全哑掉。修法：放行 `peeking && !dragging` 的静置任务，`beginFlip` 已有的同向顺势翻完 / 反向先完结逻辑会正确接管。
+补充四视角评审（React 生命周期 / 翻页数学 / CSS 跨浏览器 / admin，12 个 Agent 全部完成，8 项发现经对抗核实后 3 项成立、5 项被推翻）后再修三项：
+
+- **「3D 翻页」其实一直是平的（major）：** `.book` 同时写了 `transform-style: preserve-3d` 与 `isolation: isolate`，而 isolation 属于 grouping 属性，会把 **used** transform-style 强制降为 `flat` —— `.stage` 的 `perspective: 2600px`、JS 每帧写的 `translateZ`、叶片正反面的 `translateZ(0.6px)` 全部成为死代码，签名的掀页退化成 2D 折叠。阴险之处在于 `getComputedStyle` 仍报 `preserve-3d`（降级发生在 used value），肉眼与 DevTools 都不易察觉。移除 isolation 后同页 A/B 实测：翻页中叶片轴对齐包围盒 787px（≈页高，平面）→ 854px（近边放大溢出书体上下缘，真透视）。书脊 multiply 的混合隔离改由 `.stage` 既有的 paint containment 提供，观感不变。
+- **超时放行会永久覆盖用户书签（major）：** 2.5s 兜底放行时总页数还是「图片未占位」的临时值，`absolutePageToCursor` 把 storedPage 截断到临时末页，随后保存 effect 立刻把截断值写回 localStorage，而恢复 effect 因 `positionReady` 早退再也不会重跑 —— 真实书签被永久覆盖，刷新也回不去。改为：原始 storedPage 存 ref，图片就绪后按最终分页复位；临时分页期间且用户未主动翻页时不落盘（用户翻过则以用户为准）。
+- **慢图期间目录页码/章节刻度/运行头集体缺席（major）：** 章节映射 effect 只认 `mediaReady`、没有超时逃生口，而 `mediaReady` 会被图片 effect 每次重跑打回 false（`computeReaderDims` 每次返回新对象 → dims 身份必变 → resize/缩放必重跑）。图片悬挂时整场会话都没有页码、leader 点、当前章高亮、章节刻度与 recto 运行头（重构前本可用，属回归）。改为接受 `mediaTimedOut` 兜底、`mediaReady` 短暂回落时保留上一版映射，并让 `setDims` 在尺寸全等时复用旧对象，从源头掐掉身份抖动。
+- 验证：Playwright 实测四条路径——书外松手后悬停扫过书面无叶片/页码不变/随后点击正常翻页；掀角静置后滚轮成功翻页；透视 A/B（787px→854px）；`matrix3d` 含真实 z 分量。reader gate 19/19、admin 350/350、blog `tsc --noEmit` 干净、`next build` 通过、`design-system:check` 0 error。
+- 📄 文档影响：已更新 `CHANGELOG.md`；无 API / schema / 共享组件变更。
 
 ### Changed — 知识工作台「聚合重铸」：统一检索 · 知识脉搏 · 来源托盘 (2026-08-17, branch claude/knowledge-workbench-design-q8n7rq)
 
