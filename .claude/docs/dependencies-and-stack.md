@@ -199,7 +199,7 @@ AetherBlog/
 
 CodeMirror 版 Markdown 编辑器：
 
-- 组件：`MarkdownEditor`、`MarkdownPreview`、`EditorWithPreview`、`UploadProgress`、`ImageSizePopover`
+- 组件：`MarkdownEditor`、`MarkdownPreview`、`MarkdownStreamPreview`（AI 流式专用轻渲染器：marked+DOMPurify、无 shiki/KaTeX/mermaid、内置未闭合围栏稳定化 `stabilizeStreamingFences`）、`EditorWithPreview`、`UploadProgress`、`ImageSizePopover`
 - Hooks：`useEditorCommands`、`useTableCommands`、`useImageUpload`
 
 ### Import 模板

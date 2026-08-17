@@ -274,3 +274,22 @@ func TestAgentHandlerChatRejectsInvalidKnowledgeContextModeBeforeProxying(t *tes
 		t.Fatalf("HTTP status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+// vision 内容通道依赖 normalizeAgentKnowledgeContextBody 对 messages 的无损透传：
+// map[string]json.RawMessage 全量解析 + 重编码时，content-parts 数组（含 base64
+// data URL）必须逐字节保留，任何选择性重建都会静默丢图。
+func TestNormalizeAgentKnowledgeContextBodyPreservesContentParts(t *testing.T) {
+	messagesJSON := `[{"role":"user","content":[{"type":"text","text":"看这张图"},` +
+		`{"type":"image_url","image_url":{"url":"data:image/png;base64,QUJDRA=="}}]}]`
+	body := `{"sessionId":"s1","messages":` + messagesJSON +
+		`,"knowledgeContextMode":"none","kbIds":null,"atlasScope":null}`
+
+	normalized, err := normalizeAgentKnowledgeContextBody([]byte(body))
+	if err != nil {
+		t.Fatalf("normalize returned error: %v", err)
+	}
+	raw := decodeAgentContextBody(t, normalized.Body)
+	if string(raw["messages"]) != messagesJSON {
+		t.Fatalf("messages = %s, want verbatim %s", raw["messages"], messagesJSON)
+	}
+}

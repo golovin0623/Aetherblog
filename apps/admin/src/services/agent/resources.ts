@@ -178,6 +178,14 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     kind: 'local',
   },
   {
+    // 早期是隐藏彩蛋（只在 handleSend 里模式匹配），用户无从发现 —— 转正进
+    // 清单；kind 'remote' 只负责把用法模板填进输入框，真正触发仍在发送时。
+    command: '/audit',
+    description: '对指定文章启动质量审计工作流（用法：/audit 文章ID）',
+    kind: 'remote',
+    template: '/audit ',
+  },
+  {
     command: '/summarize',
     description: '让 Agent 总结当前对话',
     kind: 'remote',

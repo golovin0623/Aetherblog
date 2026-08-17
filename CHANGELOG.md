@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 后台灵境 AI 对话系统性重做（渲染管线 / 消息操作 / 会话管理 / 上下文 / 图片）(2026-08-17, branch claude/lingxing-ai-chat-optimization-8a620b)
+
+**背景：** 后台灵境（`/admin/aetherhub`）此前与 LobeHub / Cherry Studio / ChatGPT 存在体感差距：双层打字机互相竞争把可见吐字速率钉死在 45 字/秒、流式期间跑全量 marked+shiki+DOMPurify 重渲染、上下文零裁剪长会话必然 413、消息操作只有增删改查四件套。本次对照前台灵境已验证的流式技术与顶尖工具的交互语言整体重做，前后端联动（后端条目见下一节）。
+
+- **流式渲染管线重构（体感核心）：** 页面级单管线 rAF 吐字（自适应 stride + lag 指数追赶 + 流结束加速收尾，平移自 blog 端已验证实现），删除 `AssistantContent`/`ThinkingPanel` 内层的第二个 `useSmoothStream`；长文按长度降帧到 ~30/20fps；流式期间切换到新的 `MarkdownStreamPreview` 轻渲染器（`packages/editor` 新导出：marked+DOMPurify、不引 shiki/KaTeX/mermaid、内置未闭合围栏稳定化 —— 代码块单调生长、滚动不再乱窜），完成态交回全量 `MarkdownPreview` 上色。
+- **上下文管理：** 发送前按后端硬限（单条 8000 / 总 32000 / 64 条）预算裁剪（`contextBudget.ts`，按轮配对丢弃 + 单条截断 + 一次性提示），根治长会话 413；新增上下文断点（剪刀 —— 消息保留可回看、模型从断点重新记忆，分隔线可一键恢复）；Composer 常驻 `~token · 百分比` 用量计。
+- **消息操作与元数据：** 新增 翻译（中⇄英流式内联面板，复用 `/agent/chat` none 契约）/ 引用到输入框 / 分支会话；编辑改为 ConfirmModal 确认（原先无确认直接截断）；错误消息带结构化 `errorCode/retryable`，`selected_context_not_grounded` 亮「改用自动检索重试」定向出路；回复完成后新增元数据 footer（模型 · 首字延迟 · 用时 · token 用量[后端 usage 真值/估算] · 成本[有定价时]）；操作条在触屏设备常显（原 hover-only 不可达）。
+- **知识引用编排：** 正文 `[n]`/`【n】` 引用标记链接化为上标胶囊（`citations.ts` 平移 + `hub-agent-md` 引用胶囊样式），点击展开检索回执并滚动高亮对应命中条目（回执卡新增 `messageId/spotlight` 锚点协议）。
+- **会话管理：** 置顶（分组置顶区）/ 重命名（行内编辑）/ 导出 Markdown（含思考过程与知识来源脚注）；搜索改全量消息命中（原先只搜最后 8 条）；行内展开式操作条避免滚动容器裁剪浮层。
+- **每会话独立流：** 流式状态从全局单布尔改为会话 id 集合 —— 生成中可自由新建/切换会话、在其他会话继续提问（闭包 pin 住 sessionId/messageId 防串台）；停止/删除只作用于所在会话；侧栏会话行显示生成中呼吸点；流式期间输入框、模型选择器不再禁用。
+- **图片发送（配合后端 vision 通道）：** Composer 支持选择/粘贴/拖入图片（≤4 张/条、单张 ≤5MB、总量 16MB dataURL 预算），按当前模型 `abilities.vision` 门控；原图只进内存缓存（localStorage 5MB 配额保护），会话内存附件元信息，刷新后降级占位卡片。
+- **持久化与性能：** localStorage 落盘改 800ms 尾沿节流 + pagehide 强制 flush（原先每个 delta 全量 JSON.stringify）；quota 失败从静默吞掉改为去重告警。
+- **死代码复活与体验修补：** `MobileContextSheet`（含全页唯一字号滑块）此前从未被打开过 —— 侧栏配置入口按视口分流接通，字号滑块同时补进桌面 ContextPanel；`/audit` 隐藏命令转正进斜杠清单；空态推荐提示词从开发者自测语改为博客管理员任务；`HubSegmentedControl` 遗留孤岛（5 处 `dark:` 变体 + 硬编码 hex）迁移 Codex token；消息列表加 `role="log"` 无障碍语义。
+- **验证：** admin `tsc --noEmit` / eslint（所改文件 0 告警）/ vitest 73 项（新增 citations 11 + contextBudget 9 + sessions 扩 27 + chat 扩 17）/ 完整 build 通过；`pnpm design-system:check` 保持 0 error。
+
+### Added — 灵境 AI 对话后端能力补齐（usage 事件 / 图片输入 / 模型定价下发）(2026-08-17, branch claude/lingxing-ai-chat-optimization-8a620b)
+
+仅后端（ai-service + server-go），前端由并行分支承接。
+
+- **usage SSE 事件（真实 token 用量）：** `/api/v1/agent/chat` 启用 LiteLLM `stream_options={"include_usage": true}`（参数被 provider 拒绝时自动降级重试，风格同既有 Gemini thinking 特判）；成功路径在 `done` 前必发一条 `{"type":"usage","promptTokens","completionTokens","totalTokens","estimated"}` —— 拿到 provider 真实用量时 `estimated:false`，否则本地 `estimate_tokens` 估算标 `true`；error / 客户端取消不发。`_record_agent_usage` 落库优先真实 usage，回退估算。Go `allowedSSETypes` 白名单加入 `usage`。
+- **图片输入（vision）内容通道：** `AgentChatMessage.content` 放宽为 `str | list[TextPart|ImagePart]`（OpenAI content-parts，LiteLLM 原样透传）。fail-closed 校验全部在 schema 层：仅接受 `data:image/(png|jpeg|webp|gif);base64` 内联 Data URL（禁 http(s)，防 SSRF）、单图解码后 ≤5MB、单条消息 ≤4 图、每请求 ≤8 图、空数组拒绝。新增 `_message_text()` 统一文本提取，8K/32K 字符硬限、检索 query、token 估算均只计文本部分。请求含图但模型 `abilities.vision` 不为 true → 400（provider 调用前反查 ai_models.capabilities，行缺失同样拒绝）。Go `agentChatBodyLimit` 96KB → 24MB；`normalizeAgentKnowledgeContextBody` 对 content 数组无损透传（新增回归测试钉死）；nginx 两套配置 server 级 `client_max_body_size 50m` 已覆盖，无需改动。
+- **/agent/models 下发定价：** `AgentModelItem` 增加 `inputCostPer1M / outputCostPer1M`（USD/1M tokens）；来源与 `provider_registry._build_model_info` 同优先级：`ai_models` per_1k 列 ×1000，缺失回退 `capabilities.pricing`，均无则 null（不杜撰 0）。
+- **测试：** ai-service 新增 `tests/test_agent_vision_and_usage.py`（28 项：data URL 合法/非法、体积/张数上限、`_message_text`、vision 闸门、真实/估算 usage 事件、stream_options 降级、models 定价）；全套 506 项通过。server-go `go build/vet/test ./internal/handler/...` 通过。
 ### Fixed — 发起会话弹窗取消后整页不可点击 + framer-motion 12 升级 (2026-08-17, branch claude/homepage-dialog-button-security-5a8720)
 
 **根因：** framer-motion 11 已知缺陷 —— `layoutId` 共享布局元素（发起会话弹窗的私聊/群聊分段指示器）在 AnimatePresence 退出子树中重挂载时，退出流程死锁：弹窗以 `opacity: 0` 永久残留在 `document.body` 门户内（`fixed inset-0` z-100），隐形拦截全页点击，仅刷新可恢复。Playwright A/B 复现确认：fm11「切 tab 后取消」100% 卡死，fm12 正常。

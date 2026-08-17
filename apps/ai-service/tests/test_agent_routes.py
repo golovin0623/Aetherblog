@@ -1074,7 +1074,7 @@ async def test_agent_chat_auto_mode_keeps_generating_when_automatic_retrieval_is
 
     events = await _collect_sse_events(response)
 
-    assert [event["type"] for event in events] == ["retrieval", "delta", "done"]
+    assert [event["type"] for event in events] == ["retrieval", "delta", "usage", "done"]
     assert events[0]["status"] == "empty"
     assert recall_calls[0]["strict"] is False
     assert len(provider_calls) == 1
@@ -1112,7 +1112,7 @@ async def test_agent_chat_none_mode_never_calls_private_retrieval(
 
     events = await _collect_sse_events(response)
 
-    assert [event["type"] for event in events] == ["delta", "done"]
+    assert [event["type"] for event in events] == ["delta", "usage", "done"]
 
 
 @pytest.mark.asyncio
@@ -1281,7 +1281,7 @@ async def test_agent_chat_emits_versioned_retrieval_before_first_content_event(
 
     events = await _collect_sse_events(response)
 
-    assert [event["type"] for event in events] == ["retrieval", "think", "delta", "done"]
+    assert [event["type"] for event in events] == ["retrieval", "think", "delta", "usage", "done"]
     receipt = events[0]
     assert receipt["version"] == 1
     assert receipt["status"] == "matched"
@@ -1492,7 +1492,7 @@ async def test_agent_chat_omits_retrieval_event_without_kb_or_atlas_scope(
 
     events = await _collect_sse_events(response)
 
-    assert [event["type"] for event in events] == ["delta", "done"]
+    assert [event["type"] for event in events] == ["delta", "usage", "done"]
 
 
 @pytest.mark.asyncio
@@ -1539,7 +1539,9 @@ async def test_agent_chat_keeps_retrieval_first_and_usage_logging_in_mock_mode(
     assert events[0]["type"] == "retrieval"
     assert events[0]["status"] == "empty"
     assert events[-1] == {"type": "done"}
-    assert all(event["type"] == "delta" for event in events[1:-1])
+    assert events[-2]["type"] == "usage"
+    assert events[-2]["estimated"] is True
+    assert all(event["type"] == "delta" for event in events[1:-2])
     assert usage_logger.calls[0]["success"] is True
     assert usage_logger.calls[0]["response_chars"] > 0
     assert metrics.calls[0]["success"] is True

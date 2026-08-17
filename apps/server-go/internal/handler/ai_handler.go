@@ -552,6 +552,8 @@ var allowedSSETypes = map[string]bool{
 	// agent 多轮对话：think 段折叠展示；sources 为旧文章引用；retrieval 是
 	// 带版本、命中与退化状态的结构化知识检索回执。
 	"think": true, "sources": true, "retrieval": true,
+	// usage 在 done 前下发本轮真实/估算 token 用量（estimated 标记区分），供前端展示。
+	"usage": true,
 }
 
 // sseEvent 用于解析 SSE data 行中的 JSON 负载以提取 type 字段。

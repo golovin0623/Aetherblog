@@ -5662,6 +5662,77 @@
   cursor: grab;
 }
 
+/* --- 内联引用标记 [n] —— 上标胶囊，链接到检索回执命中条目 --------------- */
+/* linkifyCitations 把正文 [n] 转成 #cite-{msgId}-{n} 链接；样式做成紧凑的
+   上标胶囊，让"这句话有依据"一眼可辨，同时不打断阅读节奏。 */
+.aetherhub-workspace .hub-agent-md a[href^="#cite-"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  height: 1.3em;
+  margin: 0 0.12em;
+  padding: 0 0.3em;
+  vertical-align: 0.28em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68em;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--aurora-1);
+  background: color-mix(in oklch, var(--aurora-1) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 26%, transparent);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
+}
+.aetherhub-workspace .hub-agent-md a[href^="#cite-"]:hover {
+  background: color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  border-color: color-mix(in oklch, var(--aurora-1) 45%, transparent);
+}
+
+/* 引用跳转后的命中条目高亮 —— 极光渐亮再退去，指引视线落点。 */
+@keyframes hub-cite-flash {
+  0% { background-color: color-mix(in oklch, var(--aurora-1) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+.aetherhub-workspace .hub-cite-flash {
+  animation: hub-cite-flash 1.5s var(--ease-out) both;
+}
+
+/* --- 上下文断点分隔线 —— Cherry Studio「清除上下文」心智 ---------------- */
+/* 断点之前的消息仍可回看，但不再随请求发送；分隔线本身可点击恢复。 */
+.aetherhub-workspace .hub-context-break {
+  position: relative;
+  isolation: isolate;
+}
+.aetherhub-workspace .hub-context-break::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--signal-warn) 45%, transparent) 18%,
+    color-mix(in oklch, var(--signal-warn) 45%, transparent) 82%,
+    transparent 100%
+  );
+  z-index: -1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-cite-flash { animation: none !important; }
+}
+
+/* 触屏（无 hover）设备上，hover 才浮现的消息操作条常显 —— 否则复制/重试/
+   翻译在手机上完全不可达。 */
+@media (hover: none) {
+  .aetherhub-workspace .hub-touch-show { opacity: 1 !important; }
+}
+
 /* ============================================================
    Focus Mode —— ⌘. 专注写作模式:隐藏侧栏/顶栏,最大化编辑区
    ============================================================ */

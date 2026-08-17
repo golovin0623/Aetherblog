@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, CircleAlert, ExternalLink, ShieldAlert } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -40,13 +40,43 @@ function formatScore(score: number | undefined): string | null {
   return score.toFixed(2);
 }
 
-export function RetrievalReceiptCard({ receipt }: { receipt: AgentRetrievalReceipt }) {
+export function RetrievalReceiptCard({
+  receipt,
+  messageId,
+  spotlight,
+}: {
+  receipt: AgentRetrievalReceipt;
+  /** 供正文引用标记 `[n]` 锚点定位（`#cite-{messageId}-{rank}`）。 */
+  messageId?: string;
+  /** 正文引用被点击时传入 —— 卡片自动展开并把该命中滚入视野高亮。
+   *  nonce 保证连点同一个 [n] 也能重新触发定位。 */
+  spotlight?: { rank: number; nonce: number } | null;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [flashRank, setFlashRank] = useState<number | null>(null);
+  const listRef = useRef<HTMLOListElement | null>(null);
   const detailsId = useId();
   const presentation = getRetrievalReceiptPresentation(receipt);
   const tone = TONE_STYLES[presentation.tone];
   const hasDetails = receipt.hits.length > 0 || receipt.warnings.length > 0;
   const Icon = tone.Icon;
+
+  // 引用跳转：先展开，等折叠区渲染完成后再滚动 —— 直接锚点跳转会因为目标
+  // 尚未挂载而落空，这也是不用原生 href 跳转的原因。
+  useEffect(() => {
+    if (!spotlight) return;
+    setExpanded(true);
+    setFlashRank(spotlight.rank);
+    const raf = requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector<HTMLElement>(`[data-cite-rank="${spotlight.rank}"]`);
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    const timer = window.setTimeout(() => setFlashRank(null), 1600);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [spotlight]);
 
   return (
     <section
@@ -87,12 +117,20 @@ export function RetrievalReceiptCard({ receipt }: { receipt: AgentRetrievalRecei
           className="border-t border-[color-mix(in_oklch,var(--hub-border)_72%,transparent)] px-3 py-2.5"
         >
           {receipt.hits.length > 0 && (
-            <ol className="space-y-2">
+            <ol ref={listRef} className="space-y-2">
               {receipt.hits.map((hit) => {
                 const score = formatScore(hit.score);
                 const href = safeRetrievalHref(hit.href);
                 return (
-                  <li key={hit.key} className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-2">
+                  <li
+                    key={hit.key}
+                    id={messageId ? `cite-${messageId}-${hit.rank}` : undefined}
+                    data-cite-rank={hit.rank}
+                    className={cn(
+                      'grid grid-cols-[1.25rem_minmax(0,1fr)] gap-2 rounded-lg transition-colors',
+                      flashRank === hit.rank && 'hub-cite-flash',
+                    )}
+                  >
                     <span className="tnum pt-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
                       {hit.rank.toString().padStart(2, '0')}
                     </span>

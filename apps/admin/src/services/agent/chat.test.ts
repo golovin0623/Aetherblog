@@ -35,7 +35,7 @@ describe('streamAgentChat HTTP errors', () => {
     expect(onError).toHaveBeenCalledWith('无法使用所选知识库');
   });
 
-  it('maps a 401 response to an expired login message', async () => {
+  it('maps a 401 response to an expired login message marked non-retryable', async () => {
     mockResponse(
       new Response(JSON.stringify({ code: 401, message: 'Token无效' }), {
         status: 401,
@@ -46,7 +46,8 @@ describe('streamAgentChat HTTP errors', () => {
 
     await streamAgentChat(request, { onError });
 
-    expect(onError).toHaveBeenCalledWith('登录状态已过期，请重新登录');
+    // 登录态失效重试没有意义，必须显式标记 retryable: false
+    expect(onError).toHaveBeenCalledWith('登录状态已过期，请重新登录', { retryable: false });
   });
 
   it('still treats an authentication-classified 403 as an expired login', async () => {
@@ -64,7 +65,7 @@ describe('streamAgentChat HTTP errors', () => {
 
     await streamAgentChat(request, { onError });
 
-    expect(onError).toHaveBeenCalledWith('登录状态已过期，请重新登录');
+    expect(onError).toHaveBeenCalledWith('登录状态已过期，请重新登录', { retryable: false });
   });
 });
 
@@ -192,7 +193,28 @@ describe('streamAgentChat completion', () => {
 
     expect(onDelta).toHaveBeenCalledWith('部分回答');
     expect(onDone).not.toHaveBeenCalled();
-    expect(onError).toHaveBeenCalledWith('回答流意外中断，请重试');
+    // 未收 done 的断流是可恢复的网络故障，标记 retryable: true 让 UI 直接亮出重试按钮
+    expect(onError).toHaveBeenCalledWith('回答流意外中断，请重试', { retryable: true });
+  });
+
+  it('processes a trailing event that arrives without the final blank line', async () => {
+    // 部分服务端/代理在最后一个事件后直接断开、不发终止空行 ——
+    // EOF 兜底必须补处理缓冲区里的尾事件，否则完整回答被误报成中断
+    mockResponse(
+      new Response('data: {"type":"delta","content":"完整回答"}\n\ndata: {"type":"done"}', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+    const onDelta = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    await streamAgentChat(request, { onDelta, onDone, onError });
+
+    expect(onDelta).toHaveBeenCalledWith('完整回答');
+    expect(onDone).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('calls onDone only after an explicit done event', async () => {
@@ -209,5 +231,159 @@ describe('streamAgentChat completion', () => {
 
     expect(onDone).toHaveBeenCalledOnce();
     expect(onError).not.toHaveBeenCalled();
+  });
+});
+
+describe('streamAgentChat usage events', () => {
+  it('delivers a well-formed usage event before done', async () => {
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"delta","content":"回答"}',
+          'data: {"type":"usage","promptTokens":128,"completionTokens":64,"totalTokens":192,"estimated":false}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onUsage = vi.fn();
+    const onDone = vi.fn();
+
+    await streamAgentChat(request, { onUsage, onDone });
+
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith({
+      promptTokens: 128,
+      completionTokens: 64,
+      totalTokens: 192,
+      estimated: false,
+    });
+    expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it('drops the whole usage packet when a token field is missing', async () => {
+    // totalTokens 缺失 —— 整包丢弃，绝不把半截数据写进会话统计
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"usage","promptTokens":128,"completionTokens":64,"estimated":true}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onUsage = vi.fn();
+    const onDone = vi.fn();
+
+    await streamAgentChat(request, { onUsage, onDone });
+
+    expect(onUsage).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it('drops the whole usage packet when a token field is not a number', async () => {
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"usage","promptTokens":"128","completionTokens":64,"totalTokens":192,"estimated":false}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onUsage = vi.fn();
+
+    await streamAgentChat(request, { onUsage });
+
+    expect(onUsage).not.toHaveBeenCalled();
+  });
+
+  it('drops the whole usage packet when estimated is not a boolean', async () => {
+    mockResponse(
+      new Response(
+        [
+          'data: {"type":"usage","promptTokens":128,"completionTokens":64,"totalTokens":192,"estimated":"yes"}',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n\n'),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onUsage = vi.fn();
+
+    await streamAgentChat(request, { onUsage });
+
+    expect(onUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe('streamAgentChat structured error meta', () => {
+  it('passes through code and retryable from the SSE error event', async () => {
+    mockResponse(
+      new Response(
+        'data: {"type":"error","code":"selected_context_not_grounded","message":"未能找到依据","retryable":true}\n\n',
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onError = vi.fn();
+
+    await streamAgentChat(request, { onError });
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith('未能找到依据', {
+      code: 'selected_context_not_grounded',
+      retryable: true,
+    });
+  });
+
+  it('leaves meta fields undefined when the error event carries wrong types', async () => {
+    // code 非字符串 / retryable 非布尔 —— 置 undefined（未知），不猜测
+    mockResponse(
+      new Response(
+        'data: {"type":"error","code":500,"message":"上游异常","retryable":"maybe"}\n\n',
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+    const onError = vi.fn();
+
+    await streamAgentChat(request, { onError });
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith('上游异常', {
+      code: undefined,
+      retryable: undefined,
+    });
+  });
+});
+
+describe('streamAgentChat multimodal content parts', () => {
+  it('serializes content part arrays without losing fields', async () => {
+    mockResponse(
+      new Response('data: {"type":"done"}\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+
+    const parts = [
+      { type: 'text' as const, text: '这张图里是什么？' },
+      { type: 'image_url' as const, image_url: { url: 'https://cdn.example.com/a.png' } },
+    ];
+    await streamAgentChat(
+      { ...request, messages: [{ role: 'user', content: parts }] },
+      {},
+    );
+
+    const fetchMock = vi.mocked(fetch);
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body)).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '这张图里是什么？' },
+          { type: 'image_url', image_url: { url: 'https://cdn.example.com/a.png' } },
+        ],
+      },
+    ]);
   });
 });
