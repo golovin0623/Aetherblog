@@ -8,6 +8,7 @@ import {
   normalizeContextBreak,
   readAgentSessionDraft,
   resolveAgentSessionDraftAfterRequestStart,
+  sanitizeGeneratedSessionTitle,
   sessionMatchesQuery,
   sessionToMarkdown,
   sliceContextMessages,
@@ -208,6 +209,51 @@ describe('context break helpers', () => {
     expect(normalizeContextBreak(messages, 'gone')).toBeNull();
     expect(normalizeContextBreak(messages, null)).toBeNull();
     expect(normalizeContextBreak(messages, 'b')).toBe('b');
+  });
+});
+
+describe('sanitizeGeneratedSessionTitle', () => {
+  it('剥掉模型爱加的引号 / 书名号 / 括号包装', () => {
+    expect(sanitizeGeneratedSessionTitle('"部署方案讨论"')).toBe('部署方案讨论');
+    expect(sanitizeGeneratedSessionTitle('“部署方案讨论”')).toBe('部署方案讨论');
+    expect(sanitizeGeneratedSessionTitle('「部署方案讨论」')).toBe('部署方案讨论');
+    expect(sanitizeGeneratedSessionTitle('《AetherBlog 架构》')).toBe('AetherBlog 架构');
+    expect(sanitizeGeneratedSessionTitle('【部署方案讨论】')).toBe('部署方案讨论');
+    expect(sanitizeGeneratedSessionTitle('（部署方案讨论）')).toBe('部署方案讨论');
+  });
+
+  it('去掉收尾句读，包装与标点交替嵌套时剥到干净', () => {
+    expect(sanitizeGeneratedSessionTitle('如何配置 Nginx？')).toBe('如何配置 Nginx');
+    expect(sanitizeGeneratedSessionTitle('部署方案讨论。')).toBe('部署方案讨论');
+    expect(sanitizeGeneratedSessionTitle('部署方案讨论!!!')).toBe('部署方案讨论');
+    // 标点落在包装外：单趟剥离会留下半个书名号 / 引号。
+    expect(sanitizeGeneratedSessionTitle('《AetherBlog 架构》。')).toBe('AetherBlog 架构');
+    expect(sanitizeGeneratedSessionTitle('"部署方案讨论"。')).toBe('部署方案讨论');
+  });
+
+  it('换行与连续空白折叠为单空格', () => {
+    expect(sanitizeGeneratedSessionTitle('部署方案\n讨论')).toBe('部署方案 讨论');
+    expect(sanitizeGeneratedSessionTitle('  部署方案   讨论  ')).toBe('部署方案 讨论');
+    expect(sanitizeGeneratedSessionTitle('部署方案\r\n\t讨论')).toBe('部署方案 讨论');
+  });
+
+  it('超过 24 字截断（与 deriveSessionTitle 上限一致，但不加省略号）', () => {
+    const long = '一二三四五六七八九十一二三四五六七八九十一二三四五';
+    expect(long.length).toBe(25);
+    const title = sanitizeGeneratedSessionTitle(long);
+    expect(title).toHaveLength(24);
+    expect(title).toBe(long.slice(0, 24));
+    expect(title.endsWith('…')).toBe(false);
+    // 恰好 24 字不动。
+    expect(sanitizeGeneratedSessionTitle(long.slice(0, 24))).toBe(long.slice(0, 24));
+  });
+
+  it('清洗后为空返回空串（调用方据此放弃写入）', () => {
+    expect(sanitizeGeneratedSessionTitle('')).toBe('');
+    expect(sanitizeGeneratedSessionTitle('   \n  ')).toBe('');
+    expect(sanitizeGeneratedSessionTitle('。。。')).toBe('');
+    expect(sanitizeGeneratedSessionTitle('""')).toBe('');
+    expect(sanitizeGeneratedSessionTitle('《》')).toBe('');
   });
 });
 

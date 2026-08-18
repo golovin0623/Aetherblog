@@ -1048,6 +1048,11 @@ class _ToolCallAssembler:
     单个调用的 arguments 累加超过 ``_TOOL_ARGUMENTS_MAX_BYTES`` 即标记
     ``oversized`` 并停止累加（截断到硬限）——上限之外的分片直接丢弃，
     保证内存与下游 SSE 行长度都被封顶。
+
+    ⚠️ 长度核算走**增量字节计数**（``_bytes``），不要退回「每片对累计全串
+    再 encode 一次」：那是 O(n²)，8KB 上限下最坏累计约 33MB 重复编码，而且
+    发生在与所有 SSE 流共享的事件循环上。现在只对新增分片编码一次，逼近
+    上限时才对拼接串做一次精确 UTF-8 截断。
     """
 
     def __init__(self) -> None:
@@ -1065,7 +1070,8 @@ class _ToolCallAssembler:
             except (TypeError, ValueError):
                 index = 0
             entry = self._calls.setdefault(
-                index, {"id": "", "name": "", "arguments": "", "oversized": False}
+                index,
+                {"id": "", "name": "", "arguments": "", "bytes": 0, "oversized": False},
             )
             call_id = _get_delta_field(fragment, "id")
             if call_id and not entry["id"]:
@@ -1078,12 +1084,19 @@ class _ToolCallAssembler:
                 entry["name"] += str(name)
             arguments = _get_delta_field(function, "arguments")
             if arguments and not entry["oversized"]:
-                combined = entry["arguments"] + str(arguments)
-                if len(combined.encode("utf-8")) > _TOOL_ARGUMENTS_MAX_BYTES:
+                piece = str(arguments)
+                # 只编码新增分片 —— 累计长度靠 entry["bytes"] 增量维护。
+                piece_bytes = len(piece.encode("utf-8"))
+                if entry["bytes"] + piece_bytes > _TOOL_ARGUMENTS_MAX_BYTES:
+                    # 仅在越限这一刻做一次精确截断（拼接串 ≤ 上限 + 单片长度）。
                     entry["oversized"] = True
-                    entry["arguments"] = _truncate_utf8(combined, _TOOL_ARGUMENTS_MAX_BYTES)
+                    entry["arguments"] = _truncate_utf8(
+                        entry["arguments"] + piece, _TOOL_ARGUMENTS_MAX_BYTES
+                    )
+                    entry["bytes"] = len(entry["arguments"].encode("utf-8"))
                 else:
-                    entry["arguments"] = combined
+                    entry["arguments"] += piece
+                    entry["bytes"] += piece_bytes
 
     def result(self) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []

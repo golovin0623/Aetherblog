@@ -39,15 +39,38 @@ const agentSessionColumns = `
 	client_created_at, client_updated_at, created_at, updated_at`
 
 // ListByUser 按用户取会话列表（不含消息正文），置顶优先、按最近更新倒序。
+//
+// 消息数用 LEFT JOIN LATERAL 而不是 SELECT 列表里的相关子查询，也**刻意
+// 不用** `GROUP BY session_id` 一次聚合 —— 本地 PG17 实测（300 会话 ×30 消息
+// / 库内 159k 条消息）：
+//
+//	相关子查询 / LATERAL：Nested Loop + agent_chat_messages_pkey
+//	                      Index Only Scan ×100，shared hit≈306，0.7-0.9ms
+//	GROUP BY + IN (page)：可见性图冷（刚批量写入、autovacuum 未跟上）时
+//	                      退化成 Hash Semi Join + **全表 Seq Scan**
+//	                      （159k 行、shared hit≈5684、11ms）
+//
+// 即：先分页再逐行 count 本就只对返回的 limit 行求值（ORDER BY+LIMIT 在投影
+// 之前），每行是一次有界的索引扫描；而「聚合一次算完」反而给了规划器扫全表
+// 的机会。LATERAL 与相关子查询同计划，但把「只对本页求值」写在了语法里，
+// 可读性更好 —— 保留本注释，别再往 GROUP BY 方向"优化"。
 func (r *AgentSessionRepo) ListByUser(ctx context.Context, userID int64, limit int) ([]model.AgentChatSessionListRow, error) {
 	rows := []model.AgentChatSessionListRow{}
 	err := r.db.SelectContext(ctx, &rows, `
-		SELECT `+agentSessionColumns+`,
-			(SELECT COUNT(*) FROM agent_chat_messages m WHERE m.session_id = s.id) AS message_count
-		FROM agent_chat_sessions s
-		WHERE s.user_id = $1
-		ORDER BY s.pinned DESC, s.updated_at DESC
-		LIMIT $2`, userID, limit)
+		SELECT s.*, COALESCE(c.message_count, 0) AS message_count
+		FROM (
+			SELECT `+agentSessionColumns+`
+			FROM agent_chat_sessions
+			WHERE user_id = $1
+			ORDER BY pinned DESC, updated_at DESC
+			LIMIT $2
+		) s
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*) AS message_count
+			FROM agent_chat_messages m
+			WHERE m.session_id = s.id
+		) c ON TRUE
+		ORDER BY s.pinned DESC, s.updated_at DESC`, userID, limit)
 	return rows, err
 }
 

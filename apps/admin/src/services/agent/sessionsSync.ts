@@ -15,18 +15,24 @@
  *     水位缺失（从未同步过）时仅推送「值得同步」的会话（有消息或有草稿），
  *     避免每次进页面自动创建的空会话在多设备间来回打架。
  *
- *   serverNewer（懒加载标记）: reconcile 时发现服务端 updatedAt 更大。
+ *   serverNewer（懒加载标记）: reconcile 时发现服务端 updatedAt 更大，
+ *     **或**本地是空壳而服务端有消息（无论时间戳大小 —— 空壳永远不是权威版本）。
  *     不立即拉全量 —— 激活该会话时才 GET /:id 用服务端版本整体替换本地。
  *     服务端有、本地没有的会话以 meta 占位（messages 空）进侧栏，同样懒加载。
  *     标记在场期间本地不是权威版本：flush 拒绝 PUT（改为触发一次懒加载重试），
  *     页面发消息前也应先查 isSessionAwaitingHydration。懒加载仅在 HTTP 404
  *     （服务端确已删除）时清标记；网络 / 5xx 失败保留标记待重试 —— 否则空壳
  *     占位会话会被误判为已同步，随后一次发消息即以更晚 updatedAt 通过 LWW
- *     覆盖服务端全量历史。
+ *     覆盖服务端全量历史（PUT 是整会话替换：0 条消息 = 服务端历史被清空）。
  *
- *   permanentFailures（永久失败 skip）: PUT 撞上 4xx（除 409 冲突与 429 限流）
- *     属数据校验类永久失败，按「失败时的 updatedAt」记入 skip —— updatedAt
- *     再变才重试，避免每轮 flush 重推注定失败的请求；首次失败弹一次提示。
+ *   permanentFailures（永久失败 skip）: PUT 撞上「数据校验类」4xx
+ *     （400 / 413 / 422，且不是会话数配额已满）属永久失败，按「失败时的
+ *     updatedAt」记入 skip —— updatedAt 再变才重试，避免每轮 flush 重推注定
+ *     失败的请求。其余 4xx（401 掉登录、403、404、429 限流，以及「会话数量
+ *     已达上限」这类配额错误）都属**可恢复**，按瞬时失败处理，下轮 flush 自然
+ *     重试；任一会话 DELETE 成功（配额腾出一格）后整张表清空。用户提示按
+ *     「状态码 + 服务端 message」去重 —— 不同失败原因各提示一次，同一原因跨
+ *     会话只提示一次。
  *
  *   LWW: PUT 时服务端 client_updated_at 更新 → HTTP 409 且 data=服务端完整
  *     版本（极端为 null → GET /:id 自取），通过页面回调采纳写回 React state；
@@ -34,9 +40,14 @@
  *     相等时间戳视为幂等重放，服务端回 200。
  *
  * 首次迁移：服务端为空、本地有历史时，所有本地会话都无水位 → 全部 dirty →
- * 首次 flush 逐个 PUT 上去（即一次性导入，无需特殊分支）。
+ * 首次 flush 逐个 PUT 上去（即一次性导入，无需特殊分支）。单轮 flush 至多推
+ * MAX_PUTS_PER_FLUSH 条，仍有剩余时自行接力调度下一轮 —— 页面不会为「推送」
+ * 再产生一次 state 变化，没有接力就等于剩余会话永远不同步。
  *
  * 已知边界（有意取舍）：
+ *   · 首次迁移超过写限流（60/min/user）规模时，某一轮可能整轮 429 —— 该轮零
+ *     进展即停止接力，剩余会话等下一次真实状态变化（发消息 / 重进页面对账）
+ *     再续；不做定时重试是刻意的，避免限流期间的热重试雪上加霜；
  *   · 多标签页各自持有内存水位，可能交替 PUT 同一会话 —— LWW 保证收敛；
  *   · DELETE 失败（网络中断）时服务端副本残留，下次 reconcile 会以占位形式
  *     复活 —— 本地优先架构下无墓碑，接受；
@@ -270,21 +281,21 @@ export function sessionWorthSyncing(session: AgentSession): boolean {
 }
 
 /**
- * 水位判定：本轮 flush 应推送哪些会话（按 updatedAt 倒序，最近的优先）。
+ * 水位判定：本轮 flush 的候选会话（按 updatedAt 倒序，最近的优先）。
  *   · updatedAt === 水位 → 已同步，跳过；
  *   · 有 pending 消息/翻译 → 流式中，跳过（等流结束后的 flush）；
- *   · 无水位且不值得同步（空壳会话）→ 跳过；
- *   · 仍带 serverNewer 懒加载标记（awaitingHydration）→ 本地不是权威版本，
- *     拒绝 PUT —— 空壳/旧壳占位若被推上去会以 LWW 覆盖服务端全量历史。
+ *   · 无水位且不值得同步（空壳会话）→ 跳过。
+ *
+ * 注意：**懒加载（serverNewer）与永久失败 skip 不在这里判**。仍带懒加载标记的
+ * 会话同时是「拒绝 PUT」与「触发懒加载重试」的对象，两种处置只有 flush 分得清，
+ * 所以这两道闸统一由 flushAgentSessionSync + pushSession 把守（见那里的注释）。
  */
 export function selectSessionsToPush(
   sessions: readonly AgentSession[],
   watermarks: ReadonlyMap<string, number>,
-  awaitingHydration?: ReadonlySet<string> | ReadonlyMap<string, number>,
 ): AgentSession[] {
   return sessions
     .filter((s) => {
-      if (awaitingHydration?.has(s.id)) return false;
       const watermark = watermarks.get(s.id);
       if (watermark === s.updatedAt) return false;
       if (sessionHasPendingWork(s)) return false;
@@ -430,6 +441,11 @@ export function configureAgentSessionSync(config: AgentSessionSyncConfig): void 
     clearFlushTimer();
     state = freshState();
     state.userId = config.userId;
+    // reconcilePromise 是模块级的（不在 state 里）—— 不一并清空，新用户的
+    // reconcileAgentSessions 会复用旧用户那个在途 promise，而那一轮在
+    // `state.userId !== uid` 处自弃 → 新用户这一轮对账静默落空，reconciled
+    // 永远为 false，直到下一次 flush 才补上。
+    reconcilePromise = null;
   }
   state.callbacks = config;
 }
@@ -476,14 +492,19 @@ async function doReconcile(localSessions: AgentSession[]): Promise<void> {
       serverOnly.push(sessionStubFromWireMeta(meta));
       state.serverNewer.set(meta.id, meta.updatedAt);
       state.watermarks.set(meta.id, meta.updatedAt);
-    } else if (
-      meta.updatedAt > local.updatedAt ||
-      // 上次会话里落盘的占位（消息为空但服务端有）：时间戳相等也要懒加载，
-      // 否则占位跨页面生命周期后永远拉不到消息。
-      (meta.updatedAt === local.updatedAt && local.messages.length === 0 && meta.messageCount > 0)
-    ) {
-      // 服务端较新：懒加载标记；水位对齐本地值，本地未再变化就不推
-      //（若用户在懒加载前又改了本地 → dirty → PUT → 409 → LWW 采纳服务端）。
+      continue;
+    }
+    // 空壳兜底（与时间戳无关）：本地无消息、服务端有消息 —— 本地一定不是权威
+    // 版本。落盘的占位会话跨页面生命周期后 updatedAt 可能与服务端相等，也可能
+    // 因任意本地编辑（切模型 / 存草稿 / 改标题）反超服务端；不在这里标记，它就
+    // 会以「更晚的 updatedAt」赢下 LWW 被 PUT 上行，而 PUT 是整会话替换 ——
+    // 服务端 DELETE 全部消息后插入 0 条，历史被静默清空。
+    // 代价：极小概率误伤「reconcile 落地前刚被清空的会话」（清空动作被服务端
+    // 版本还原）—— 数据仍在，远优于永久丢历史。
+    const localIsEmptyShell = local.messages.length === 0 && meta.messageCount > 0;
+    if (meta.updatedAt > local.updatedAt || localIsEmptyShell) {
+      // 服务端较新（或本地空壳）：懒加载标记；水位对齐本地值，本地未再变化就不推
+      //（若用户在懒加载前又改了本地 → dirty → 仍被 serverNewer 挡住 → 懒加载重试）。
       state.serverNewer.set(meta.id, meta.updatedAt);
       state.watermarks.set(meta.id, local.updatedAt);
     } else {
@@ -535,8 +556,9 @@ export async function flushAgentSessionSync(): Promise<void> {
   const candidates: AgentSession[] = [];
   for (const session of dirty) {
     if (state.serverNewer.has(session.id)) {
-      // 本地不是权威版本（服务端较新且尚未懒加载成功）：拒绝 PUT，改为再触发
-      // 一次懒加载 —— hydration 读失败（'error'）保留标记后，这里即其重试通道。
+      // 本地不是权威版本（服务端较新 / 本地空壳，且尚未懒加载成功）：拒绝 PUT，
+      // 改为再触发一次懒加载 —— hydration 读失败（'error'）保留标记后，
+      // 这里即其重试通道。
       void hydrateSessionFromServer(session.id);
       continue;
     }
@@ -546,18 +568,33 @@ export async function flushAgentSessionSync(): Promise<void> {
     candidates.push(session);
   }
   // 串行推送 —— 写路径限流 60/min/user，并发只会更快触顶。
-  for (const session of candidates.slice(0, MAX_PUTS_PER_FLUSH)) {
-    await pushSession(session);
+  const batch = candidates.slice(0, MAX_PUTS_PER_FLUSH);
+  let progressed = false;
+  for (const session of batch) {
+    if (await pushSession(session)) progressed = true;
+  }
+  // 续推接力：被单轮上限截断的会话没有别的触发源（pushSession 只改模块内水位，
+  // 不产生任何 React state 变化 → 页面不会再喂快照），不接力就等于首次迁移
+  // 只上行前 20 个会话。用页面在推送期间喂进来的新快照优先（避免旧数据倒灌），
+  // 没有才用本轮快照。
+  // 本轮零进展（全是网络 / 5xx 失败）时不接力 —— 否则服务端持续故障会变成
+  // 每 1.5s 一轮的热重试；那种情况等下一次真实状态变化再重试即可。
+  if (candidates.length > batch.length && progressed) {
+    scheduleAgentSessionSync(state.pendingSnapshot ?? snapshot);
   }
 }
 
-async function pushSession(session: AgentSession): Promise<void> {
+/**
+ * 推送单个会话。返回「本轮是否取得进展」（同步成功 / 采纳了服务端版本 /
+ * 判定为永久失败 —— 三者都让该会话退出候选集），供 flush 决定是否接力续推。
+ */
+async function pushSession(session: AgentSession): Promise<boolean> {
   const uid = state.userId;
-  if (!uid || state.inflight.has(session.id)) return;
+  if (!uid || state.inflight.has(session.id)) return false;
   // 兜底（调用方已过滤，这里再挡一道）：仍待懒加载的会话本地不是权威版本，
   // 绝不 PUT；永久失败且内容未变的会话不重推。
-  if (state.serverNewer.has(session.id)) return;
-  if (state.permanentFailures.get(session.id) === session.updatedAt) return;
+  if (state.serverNewer.has(session.id)) return false;
+  if (state.permanentFailures.get(session.id) === session.updatedAt) return false;
   state.inflight.add(session.id);
   try {
     const res = await doFetch(`${API_BASE}/${encodeURIComponent(session.id)}`, {
@@ -566,7 +603,7 @@ async function pushSession(session: AgentSession): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sessionToWire(session)),
     });
-    if (state.userId !== uid) return;
+    if (state.userId !== uid) return false;
     if (res.status === 409) {
       // LWW 冲突：data = 服务端完整版本；极端为 null 时 GET 自取。
       const envelope = (await res
@@ -577,33 +614,88 @@ async function pushSession(session: AgentSession): Promise<void> {
         const detail = await fetchSessionDetail(session.id);
         if (detail.status === 'ok') server = detail.session;
       }
-      if (state.userId !== uid) return;
-      if (server) adoptServerVersion(server, { conflict: true });
-      return;
+      if (state.userId !== uid) return false;
+      if (!server) return false;
+      return adoptServerVersion(server, { conflict: true });
     }
     if (!res.ok) {
-      if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-        // 数据校验类永久失败：同一内容重推必然再失败，按失败时的 updatedAt
-        // 记入 skip（内容再变才重试），并给用户一次性提示。
-        state.permanentFailures.set(session.id, session.updatedAt);
-        noticeOnce(
-          'push-permanent-4xx',
-          '有对话未能同步到云端（数据校验未通过），仅保存在本设备',
-        );
-        warnOnce('push-4xx', new Error(`HTTP ${res.status}`));
-        return;
+      if (res.status >= 400 && res.status < 500) {
+        const message = await readEnvelopeMessage(res);
+        if (state.userId !== uid) return false;
+        return handlePushClientError(session, res.status, message);
       }
       warnOnce('push', new Error(`HTTP ${res.status}`));
-      return;
+      return false;
     }
     state.watermarks.set(session.id, session.updatedAt);
     state.serverNewer.delete(session.id);
     state.permanentFailures.delete(session.id);
+    return true;
   } catch (err) {
     warnOnce('push', err);
+    return false;
   } finally {
     state.inflight.delete(session.id);
   }
+}
+
+/** 数据校验类永久失败的 HTTP 状态 —— 同一内容重推必然再失败：
+ *  400 = 服务端校验（id 形态 / mode / 时间戳 / 长度上限…），413 = body 超 4MB，
+ *  422 预留。其余 4xx 都可能自行恢复：401 掉登录（重新登录后可用）、403、
+ *  404（会话被其他设备删除，下轮 reconcile 收敛）、429 限流。 */
+const PERMANENT_PUSH_STATUSES: ReadonlySet<number> = new Set([400, 413, 422]);
+
+/** 会话数配额已满 —— 服务端与数据校验共用 HTTP 400，只能按文案区分
+ *  （见 apps/server-go/internal/service/agent_session_service.go：
+ *  「会话数量已达上限（500），请删除部分旧对话后重试」）。用户删掉旧会话即可
+ *  恢复，绝不能钉成永久失败。注意不能只匹配「上限」—— 消息数 / draft 超长
+ *  也用这个词，那些才是真永久失败。后端若补上专用 errorCode 应改判 code。 */
+const QUOTA_MESSAGE_PATTERN = /会话数量.*上限|删除部分旧对话/;
+
+/** 推送失败提示的去重 key 前缀（DELETE 成功后按前缀放开重提）。 */
+const PUSH_NOTICE_PREFIX = 'push-4xx:';
+
+/** 读 4xx 响应体（服务端统一 R 信封）的 message；缺失 / 非 JSON 返回空串。 */
+async function readEnvelopeMessage(res: Response): Promise<string> {
+  try {
+    const envelope = (await res.json()) as Envelope<unknown> | null;
+    return typeof envelope?.message === 'string' ? envelope.message.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * PUT 撞 4xx 的处置：判定永久 / 瞬时，透传服务端 message 给用户，返回
+ * 「是否取得进展」（永久失败 = 会话退出候选集，算进展；瞬时失败下轮还要重试）。
+ */
+function handlePushClientError(session: AgentSession, status: number, message: string): boolean {
+  const quotaExhausted = QUOTA_MESSAGE_PATTERN.test(message);
+  const permanent = PERMANENT_PUSH_STATUSES.has(status) && !quotaExhausted;
+  if (permanent) {
+    // 按失败时的 updatedAt 记入 skip —— 内容再变（updatedAt bump）才重试。
+    state.permanentFailures.set(session.id, session.updatedAt);
+  }
+  // 提示按「状态码 + 服务端文案」去重：不同失败原因各提示一次（旧实现一个固定
+  // key 把配额已满、数据超长全吞成同一条与事实不符的提示），同一原因跨会话仍
+  // 只提示一次（20 个会话同因失败不该刷 20 条 toast）。
+  noticeOnce(
+    `${PUSH_NOTICE_PREFIX}${status}:${message}`,
+    pushFailureNotice(status, message, permanent),
+  );
+  warnOnce(`push-4xx-${status}`, new Error(`HTTP ${status}${message ? ` ${message}` : ''}`));
+  return permanent;
+}
+
+function pushFailureNotice(status: number, message: string, permanent: boolean): string {
+  if (permanent) {
+    return message
+      ? `云端同步失败：${message}（该对话仅保存在本设备）`
+      : '有对话未能同步到云端（数据校验未通过），仅保存在本设备';
+  }
+  return message
+    ? `云端同步暂时失败：${message}（本地已保存，稍后自动重试）`
+    : `有对话暂时未能同步到云端（HTTP ${status}），本地已保存，稍后自动重试`;
 }
 
 /** GET /:id 的判别式结果 —— 'deleted'（HTTP 404，服务端确已删）必须与
@@ -632,16 +724,18 @@ async function fetchSessionDetail(id: string): Promise<SessionDetailResult> {
   }
 }
 
-function adoptServerVersion(wire: AgentSessionWireDetail, opts: { conflict: boolean }): void {
+/** 采纳服务端版本；返回是否真的采纳（页面在流式中会拒绝）。 */
+function adoptServerVersion(wire: AgentSessionWireDetail, opts: { conflict: boolean }): boolean {
   const session = sessionFromWire(wire);
   const adopted = state.callbacks?.onAdoptServerVersion(session) ?? false;
-  if (!adopted) return; // 流式中拒绝采纳：水位不动，下轮 flush 再冲突再采纳
+  if (!adopted) return false; // 流式中拒绝采纳：水位不动，下轮 flush 再冲突再采纳
   state.watermarks.set(session.id, session.updatedAt);
   state.serverNewer.delete(session.id);
   if (opts.conflict && !state.conflictNoticed) {
     state.conflictNoticed = true;
     state.callbacks?.onSyncNotice?.('已同步另一设备的更新');
   }
+  return true;
 }
 
 /**
@@ -693,15 +787,32 @@ async function hydrateSessionFromServer(id: string): Promise<void> {
   }
 }
 
-/** 删除会话的云端镜像 —— fire-and-forget，404 / 网络失败一律忽略。 */
+/** 删除会话的云端镜像 —— fire-and-forget，404 / 网络失败一律忽略。
+ *  三张 per-session 表（水位 / 懒加载 / 永久失败）必须一起清，漏一张就会让
+ *  同 id 会话（如导入旧快照）带着上个生命周期的状态复活。 */
 export function deleteAgentSessionRemote(sessionId: string): void {
   state.watermarks.delete(sessionId);
   state.serverNewer.delete(sessionId);
+  state.permanentFailures.delete(sessionId);
   if (!state.userId) return;
+  const uid = state.userId;
   void doFetch(`${API_BASE}/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
     credentials: 'include',
-  }).catch(() => undefined);
+  })
+    .then((res) => {
+      if (state.userId !== uid) return;
+      // 删成功 = 服务端真的少了一个会话（配额腾出一格）：之前因「会话数量已达
+      // 上限」等原因失败的会话状态可能已恢复 —— 清空整张永久失败表与推送失败
+      // 提示去重，让下一轮 flush 重新尝试并可再次提示。
+      // 404（服务端本就没有）不算腾出配额，不做全表放开。
+      if (!res.ok) return;
+      state.permanentFailures.clear();
+      for (const key of [...state.noticed]) {
+        if (key.startsWith(PUSH_NOTICE_PREFIX)) state.noticed.delete(key);
+      }
+    })
+    .catch(() => undefined);
 }
 
 // ============================================================

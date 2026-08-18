@@ -7,6 +7,9 @@
       （Go 端已做权限过滤/注入；kbIds 为空时该工具根本不注册）；
     * 参数经 pydantic 校验（query ≤500 字符），SQL 全参数化，ILIKE
       通配符显式转义 —— 模型给出的参数视同不可信输入；
+    * ``search_posts`` 主路径走 GIN 全文索引（``idx_posts_fulltext``），
+      前导通配符 ILIKE 只作零命中兜底 —— 这是模型可自由触发的循环，
+      默认路径不能是全表扫；
     * 两个工具都是库内检索，**不产生任何出网请求**；
     * 单工具执行超时 10s；任何异常折叠为 ``isError`` 结果，不中断对话；
     * 工具结果在进入 SSE 与模型上下文之前统一截断（≤2000 字符），
@@ -80,6 +83,54 @@ def truncate_tool_text(text: str, max_chars: int = TOOL_RESULT_MAX_CHARS) -> str
 def _escape_like(term: str) -> str:
     """转义 ILIKE 通配符 —— 模型给出的 query 不允许携带模式语义。"""
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# --------------------------------------------------------------------------
+# search_posts 的两条 SQL
+# --------------------------------------------------------------------------
+# 可见性口径（与 agent 路由的文章注入 SQL 完全一致，两条查询共用）：
+# 只读已发布、未删除、未隐藏且无密码保护的文章。
+_POST_VISIBILITY_SQL = """
+                  p.deleted = FALSE
+              AND p.status = 'PUBLISHED'
+              AND p.is_hidden = FALSE
+              AND p.password IS NULL
+"""
+
+# ⚠️ 下面这行必须与 migration 000055 建的 GIN 表达式索引 idx_posts_fulltext
+# **逐字一致**（含 'simple' 配置、left(..., 200000) 截断、COALESCE 顺序）——
+# 差一个字符 PG 就匹配不上表达式索引，直接退化成全表扫。
+# 对照：CREATE INDEX idx_posts_fulltext ON posts USING gin
+#       (to_tsvector('simple', left(title || ' ' || COALESCE(summary, '')
+#                    || ' ' || COALESCE(content_markdown, ''), 200000)));
+_POST_FULLTEXT_DOCUMENT = (
+    "left(p.title || ' ' || COALESCE(p.summary, '') "
+    "|| ' ' || COALESCE(p.content_markdown, ''), 200000)"
+)
+
+# 主路径：走 GIN 索引的全文检索（Bitmap Index Scan on idx_posts_fulltext）。
+_SEARCH_POSTS_FULLTEXT_SQL = f"""
+            SELECT p.id, p.title, p.summary
+            FROM posts p
+            WHERE {_POST_VISIBILITY_SQL}
+              AND to_tsvector('simple', {_POST_FULLTEXT_DOCUMENT})
+                  @@ plainto_tsquery('simple', $1)
+            ORDER BY p.published_at DESC NULLS LAST, p.id DESC
+            LIMIT $2
+"""
+
+# 回退路径：全文零命中时才跑。必要性 ——'simple' 配置对 CJK 只按连续汉字切
+# 一个 token（实测 to_tsvector('simple','灵境博客') @@ plainto_tsquery('simple','灵境')
+# 为 false），中文子串检索只能靠 ILIKE。前导通配符注定扫全表，所以放在
+# 「全文没结果」之后，把它从每次调用的必经路径降级为兜底。
+_SEARCH_POSTS_ILIKE_SQL = f"""
+            SELECT p.id, p.title, p.summary
+            FROM posts p
+            WHERE {_POST_VISIBILITY_SQL}
+              AND (p.title ILIKE $1 OR p.summary ILIKE $1)
+            ORDER BY p.published_at DESC NULLS LAST, p.id DESC
+            LIMIT $2
+"""
 
 
 def _dedupe_positive_kb_ids(values: list[int] | None, limit: int = 10) -> list[int]:
@@ -164,25 +215,22 @@ def build_agent_tools(pool, llm_router, *, kb_ids: list[int] | None) -> list[Age
         )
 
     async def search_posts(args: SearchPostsArgs) -> str:
-        pattern = f"%{_escape_like(args.query)}%"
-        # SECURITY: 与 agent 路由的文章注入 SQL 同一可见性口径 ——
-        # 只读已发布、未删除、未隐藏且无密码保护的文章；全参数化。
+        # 检索策略：GIN 全文优先，零命中才回退 ILIKE。
+        #
+        # 这是模型可自由触发的循环（单轮最多 8 次调用 × 4 轮 = 每条用户消息
+        # 最多 32 次查询），且跑在共享事件循环上 —— 主路径必须走索引，不能
+        # 让「前导通配符 ILIKE 全表扫」成为每次调用的默认开销。
+        #
+        # SECURITY: 两条 SQL 同一可见性口径（只读已发布/未删除/未隐藏/无密码），
+        # 全参数化；ILIKE 分支仍显式转义模型给出的 % _ \ 通配符。
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT p.id, p.title, p.summary
-                FROM posts p
-                WHERE p.deleted = FALSE
-                  AND p.status = 'PUBLISHED'
-                  AND p.is_hidden = FALSE
-                  AND p.password IS NULL
-                  AND (p.title ILIKE $1 OR p.summary ILIKE $1)
-                ORDER BY p.published_at DESC NULLS LAST, p.id DESC
-                LIMIT $2
-                """,
-                pattern,
-                args.limit,
-            )
+            rows = await conn.fetch(_SEARCH_POSTS_FULLTEXT_SQL, args.query, args.limit)
+            if not rows:
+                rows = await conn.fetch(
+                    _SEARCH_POSTS_ILIKE_SQL,
+                    f"%{_escape_like(args.query)}%",
+                    args.limit,
+                )
         return json.dumps(
             [
                 {
@@ -201,14 +249,14 @@ def build_agent_tools(pool, llm_router, *, kb_ids: list[int] | None) -> list[Age
         AgentToolSpec(
             name="search_posts",
             description=(
-                "按标题/摘要关键词检索站点已发布文章，返回 [{id,title,summary}]。"
+                "全文检索站点已发布文章（标题/摘要/正文），返回 [{id,title,summary}]。"
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "标题或摘要关键词",
+                        "description": "检索关键词（匹配标题、摘要与正文）",
                         "maxLength": _QUERY_MAX_CHARS,
                     },
                     "limit": {

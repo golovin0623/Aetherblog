@@ -414,8 +414,18 @@ func TestAgentSessionLWWConflictReturnsServerVersion(t *testing.T) {
 	h := newAgentSessionHandlerForTest(store)
 	const sid = "sess_lww_conflict"
 
-	// 设备 A：updatedAt=2000ms 版本先落库。
-	newer := strings.Replace(agentSessionTestBody, `"updatedAt": 1734000002000`, `"updatedAt": 1734000002000`, 1)
+	// 三份 body 的 title 必须两两不同 —— 409 的 data 究竟来自服务端还是原样回显
+	// 请求体，只有靠「标题不同」才能区分。
+	const (
+		deviceATitle = "设备A新版本"
+		deviceBTitle = "设备B过期覆盖"
+	)
+
+	// 设备 A：updatedAt=2000ms 的较新版本先落库。
+	newer := strings.Replace(agentSessionTestBody, `"往返测试"`, `"`+deviceATitle+`"`, 1)
+	if newer == agentSessionTestBody {
+		t.Fatal("device A body must differ from the base fixture")
+	}
 	c, rec := newAgentSessionCtx(t, http.MethodPut, newer, 1, sid)
 	if err := h.Put(c); err != nil {
 		t.Fatalf("seed Put error: %v", err)
@@ -426,7 +436,10 @@ func TestAgentSessionLWWConflictReturnsServerVersion(t *testing.T) {
 
 	// 设备 B：携带更旧的 updatedAt → 409 + data=服务端版本（含 messages）。
 	stale := strings.Replace(agentSessionTestBody, `"updatedAt": 1734000002000`, `"updatedAt": 1734000001000`, 1)
-	stale = strings.Replace(stale, `"往返测试"`, `"过期覆盖"`, 1)
+	stale = strings.Replace(stale, `"往返测试"`, `"`+deviceBTitle+`"`, 1)
+	if !strings.Contains(stale, deviceBTitle) || !strings.Contains(stale, `"updatedAt": 1734000001000`) {
+		t.Fatalf("device B body was not constructed as expected: %s", stale)
+	}
 	c, rec = newAgentSessionCtx(t, http.MethodPut, stale, 1, sid)
 	if err := h.Put(c); err != nil {
 		t.Fatalf("stale Put error: %v", err)
@@ -441,22 +454,30 @@ func TestAgentSessionLWWConflictReturnsServerVersion(t *testing.T) {
 	if r.Code != http.StatusConflict {
 		t.Fatalf("conflict business code = %d, want 409", r.Code)
 	}
+	// 409 的 data 必须是服务端（设备 A）版本，不能是被拒绝的请求体（设备 B）——
+	// 前端拿它直接覆盖本地，回显请求版本会让「冲突后自动收敛」变成静默丢数据。
 	var server dto.AgentSessionVO
 	decodeAgentSessionData(t, rec, &server)
-	if server.Title != "往返测试" || server.UpdatedAt != 1734000002000 || len(server.Messages) != 2 {
-		t.Fatalf("conflict server version = %+v", server.AgentSessionMetaVO)
+	if server.Title == deviceBTitle {
+		t.Fatalf("conflict data echoed the rejected request version (title=%q)", server.Title)
 	}
-	// 库内仍是新版本。
-	if store.sessions[sid].Title != "往返测试" || store.sessions[sid].ClientUpdatedAt != 1734000002000 {
+	if server.Title != deviceATitle || server.UpdatedAt != 1734000002000 || len(server.Messages) != 2 {
+		t.Fatalf("conflict server version = %+v (messages=%d)", server.AgentSessionMetaVO, len(server.Messages))
+	}
+	// 库内仍是设备 A 的新版本。
+	if store.sessions[sid].Title != deviceATitle || store.sessions[sid].ClientUpdatedAt != 1734000002000 {
 		t.Fatalf("store must keep newer version, got %+v", store.sessions[sid])
 	}
 
-	// 同一 updatedAt 重放（幂等重试）应被接受。
-	c, rec = newAgentSessionCtx(t, http.MethodPut, agentSessionTestBody, 1, sid)
+	// 同一 updatedAt 重放（设备 A 的幂等重试）应被接受。
+	c, rec = newAgentSessionCtx(t, http.MethodPut, newer, 1, sid)
 	if err := h.Put(c); err != nil {
 		t.Fatalf("replay Put error: %v", err)
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("equal-timestamp replay status = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if store.sessions[sid].Title != deviceATitle {
+		t.Fatalf("replay must not change stored version, got %q", store.sessions[sid].Title)
 	}
 }

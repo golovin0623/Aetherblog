@@ -1,6 +1,8 @@
 import React, {
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -60,14 +62,14 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Virtualizer, type VirtualizerHandle } from 'virtua';
 import { toast } from 'sonner';
-import { AetherMark, ConfirmModal, Modal } from '@aetherblog/ui';
+import { AetherMark, ConfirmModal } from '@aetherblog/ui';
 import { MarkdownPreview, MarkdownStreamPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
-import { useMediaQuery, useTheme } from '@/hooks';
+import { useMediaQuery, useModalDialog, useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
 import {
   fetchAgentKnowledgeBases,
@@ -174,8 +176,55 @@ function workflowErrorMessage(error: unknown, fallback: string) {
 
 // 附件原图的内存缓存 —— localStorage 有 ~5MB 配额，base64 原图必然挤爆并
 // 连带毁掉整份会话持久化；所以会话里只存去掉 dataUrl 的附件元信息，原图在
-// 这里按 id 缓存，刷新后消息降级为「图片仅发送当次可见」的占位卡片。
+// 这里按 id 缓存，刷新后由 IndexedDB 回填（都取不到才降级为占位卡片）。
+//
+// 为什么必须有上限：本缓存最初只在 handleSend 写入（生命周期 = 本次发送），
+// 但 AttachmentImage 的三级降级读取新增了「每张滚入视口的历史图片都回填缓存」
+// 的通道 —— 虚拟化列表滚一遍图多的会话就能把几百 MB base64 永久钉在内存里，
+// 而删除只发生在 reclaimAttachments（删会话 / 截断消息）。这里用「按字节数的
+// LRU」封顶：Map 天然保持插入序，命中时 delete+set 提升为最近使用，超限时从
+// 队首（最久未使用）淘汰。淘汰只丢内存副本 —— IndexedDB 才是持久层，下次滚
+// 回来照样能取到。
+const ATTACHMENT_CACHE_MAX_BYTES = 48 * 1024 * 1024;
 const attachmentDataUrlCache = new Map<string, string>();
+// dataURL 是纯 ASCII（base64 + mime 前缀），字符数即字节数，无需额外编码开销。
+let attachmentCacheBytes = 0;
+
+/** 读缓存并提升为最近使用（LRU 的 recency 记账全在这一处）。 */
+function readAttachmentCache(id: string): string | undefined {
+  const hit = attachmentDataUrlCache.get(id);
+  if (hit === undefined) return undefined;
+  attachmentDataUrlCache.delete(id);
+  attachmentDataUrlCache.set(id, hit);
+  return hit;
+}
+
+/** 写缓存并按字节上限淘汰队首。单张就超限时至少保留刚写入的这张。 */
+function writeAttachmentCache(id: string, dataUrl: string): void {
+  dropAttachmentCache(id);
+  attachmentDataUrlCache.set(id, dataUrl);
+  attachmentCacheBytes += dataUrl.length;
+  for (const [key, value] of attachmentDataUrlCache) {
+    if (attachmentCacheBytes <= ATTACHMENT_CACHE_MAX_BYTES) break;
+    if (key === id) break; // 队尾即刚写入的这张，不自我淘汰
+    attachmentDataUrlCache.delete(key);
+    attachmentCacheBytes -= value.length;
+  }
+}
+
+/** 单条淘汰 —— 供 reclaimAttachments 的引用计数回收调用。 */
+function dropAttachmentCache(id: string): void {
+  const existing = attachmentDataUrlCache.get(id);
+  if (existing === undefined) return;
+  attachmentDataUrlCache.delete(id);
+  attachmentCacheBytes -= existing.length;
+}
+
+/** 整体清空 —— 页面卸载时调用：内存缓存只服务「重挂载窗口」，持久层是 IndexedDB。 */
+function clearAttachmentCache(): void {
+  attachmentDataUrlCache.clear();
+  attachmentCacheBytes = 0;
+}
 
 // 会话标题 AI 自动生成的「每会话只试一次」登记 —— 模块级：切换会话 / 组件
 // 重挂载都不清零；失败静默不重试，避免反复占用模型配额与打扰用户。
@@ -198,6 +247,28 @@ type SpacePreviewTarget =
   | { kind: 'kb'; kb: AgentKnowledgeBase }
   | { kind: 'atlas'; kp: AtlasKnowledgePoint }
   | { kind: 'tag'; tag: AgentTag };
+
+/** 附件原图大图预览的目标（页面级单例，见 AttachmentPreviewContext）。 */
+interface AttachmentPreviewTarget {
+  src: string;
+  name: string;
+}
+
+/**
+ * 大图预览的「请求打开」通道。
+ *
+ * 为什么要提到页面级：预览此前挂在 AttachmentImage 自己的 state 上，而
+ * AttachmentImage 活在虚拟化消息行的子树里 —— 消息行滚出缓冲区即卸载，
+ * 打开中的预览会毫无征兆地自己消失。状态提到页面、浮层渲染在虚拟化列表
+ * 之外，才与滚动解耦。
+ *
+ * 用 context 而不是逐层传 prop：链路是
+ * WorkspaceCanvas → MessageRow → UserContent → UserAttachments →
+ * AttachmentImage，五层组件各自已有大量 props，穿一个回调进去纯属噪声。
+ */
+const AttachmentPreviewContext = createContext<((target: AttachmentPreviewTarget) => void) | null>(
+  null,
+);
 
 /**
  * 多模型对比：打开浮层那一刻从目标 assistant 消息冻结的重放上下文。
@@ -583,6 +654,9 @@ export default function AetherHubWorkspacePage() {
     scheduleAgentSessionSync(sessions);
   }, [hydrated, currentUser.id, sessions]);
   useEffect(() => flushSaveSessions, []);
+  // 离开页面即清空附件原图内存缓存 —— 持久层是 IndexedDB，内存副本只服务
+  // 「本次挂载 + 虚拟化重挂载」窗口，留着只会白占几十 MB。
+  useEffect(() => clearAttachmentCache, []);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -594,6 +668,53 @@ export default function AetherHubWorkspacePage() {
       setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
     },
     [],
+  );
+
+  /**
+   * 懒加载门禁 —— 会话仍在等待云端全量时，任何「会 bump updatedAt」的变更都必须拦下。
+   *
+   * 为什么：serverNewer 标记在场期间，本地那份只是空壳 / 旧壳占位，不是权威版本。
+   * 此刻 bump updatedAt 会同时踩死两条路：
+   *   · flush 拒绝 PUT（sessionsSync 对 awaiting-hydration 的会话不推送，改为触发重试）；
+   *   · 懒加载真的回来了，也会被 mergeAdoptedServerSession 的
+   *     `local.updatedAt > server.updatedAt` 判定为「本地更新」而拒绝采纳。
+   * 双向死锁 → 该会话本轮生命周期永久卡死；更糟的是刷新之后，这个空壳带着更晚的
+   * updatedAt 赢下 LWW，把服务端的全量历史整个覆盖掉。
+   *
+   * 所以：拦下本次变更 + 主动触发一次懒加载重试，让用户等加载完再操作。toast 带固定
+   * id 去重，避免用户连点时糊一屏。
+   */
+  const ensureSessionHydrated = useCallback((id: string, silent = false) => {
+    if (!isSessionAwaitingHydration(id)) return true;
+    if (!silent) {
+      toast.info('该对话正在从云端加载，请稍候', { id: 'aetherhub-awaiting-hydration' });
+    }
+    retryAgentSessionHydration(id);
+    return false;
+  }, []);
+
+  /**
+   * 会话写入的统一入口 —— 所有会 bump updatedAt（= 参与云同步 LWW 竞争）的变更走这里。
+   *
+   * 反过来说，**纯本地态不该被拦**，它们继续直接用 updateSession：
+   *   · 草稿（setComposer / withAgentSessionDraft）—— 不 bump updatedAt，且 merge 采纳
+   *     时会被显式保留，拦住只会让用户在等加载期间连字都打不了；
+   *   · 置顶 / 重命名 / 上下文断点 —— 同样不 bump updatedAt（sessionsSync 头注释里
+   *     「置顶/重命名不 bump updatedAt」是有意取舍），既不会赢 LWW，也不会阻塞 flush。
+   * 流式管线的逐帧写入（patchAssistant 等）也不走这里：handleSend 已在发起前过了同一道
+   * 门禁，且流式期间的会话本就被 flush / 采纳双向排除，中途再拦只会打断正在跑的流。
+   */
+  const mutateSyncedSession = useCallback(
+    (
+      id: string,
+      updater: (s: AgentSession) => AgentSession,
+      options?: { silent?: boolean },
+    ) => {
+      if (!ensureSessionHydrated(id, options?.silent)) return false;
+      updateSession(id, updater);
+      return true;
+    },
+    [ensureSessionHydrated, updateSession],
   );
 
   // 异步收尾逻辑（标题自动生成 / 附件清理）需要读「此刻」的会话状态 ——
@@ -870,7 +991,7 @@ export default function AetherHubWorkspacePage() {
     (candidateIds: readonly string[], sessionsAfterChange: readonly AgentSession[]) => {
       const ids = collectReclaimableAttachmentIds(candidateIds, sessionsAfterChange);
       if (ids.length === 0) return;
-      ids.forEach((attId) => attachmentDataUrlCache.delete(attId));
+      ids.forEach(dropAttachmentCache);
       void deleteAttachmentData(ids);
     },
     [],
@@ -916,6 +1037,9 @@ export default function AetherHubWorkspacePage() {
     [activeId, markStreaming, reclaimAttachments],
   );
 
+  // 置顶 / 重命名有意不 bump updatedAt（沿用既有行为，见 sessionsSync 头注释），
+  // 因此不参与 LWW 竞争、也不会阻塞 flush —— 走 updateSession 而不是门禁版本，
+  // 免得用户在等云端加载时连侧栏整理都做不了。
   const handleTogglePinSession = useCallback(
     (id: string) => {
       updateSession(id, (s) => ({ ...s, pinned: !s.pinned }));
@@ -958,7 +1082,7 @@ export default function AetherHubWorkspacePage() {
   const handleSetModel = useCallback(
     (modelId: string | null, providerCode: string | null) => {
       if (!activeSession) return;
-      updateSession(activeSession.id, (s) => ({
+      mutateSyncedSession(activeSession.id, (s) => ({
         ...s,
         modelId,
         providerCode,
@@ -966,13 +1090,13 @@ export default function AetherHubWorkspacePage() {
         updatedAt: Date.now(),
       }));
     },
-    [activeSession, updateSession],
+    [activeSession, mutateSyncedSession],
   );
 
   const handleSetModelParam = useCallback(
     (key: string, value: AgentModelParams[string] | undefined) => {
       if (!activeSession) return;
-      updateSession(activeSession.id, (s) => {
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextParams = { ...(s.modelParams || {}) };
         if (value === undefined || value === null || value === '') {
           delete nextParams[key];
@@ -986,17 +1110,17 @@ export default function AetherHubWorkspacePage() {
         };
       });
     },
-    [activeSession, updateSession],
+    [activeSession, mutateSyncedSession],
   );
 
   const handleResetModelParams = useCallback(() => {
     if (!activeSession) return;
-    updateSession(activeSession.id, (s) => ({
+    mutateSyncedSession(activeSession.id, (s) => ({
       ...s,
       modelParams: undefined,
       updatedAt: Date.now(),
     }));
-  }, [activeSession, updateSession]);
+  }, [activeSession, mutateSyncedSession]);
 
   const handleAbort = useCallback(() => {
     const targetId = activeId;
@@ -1072,8 +1196,12 @@ export default function AetherHubWorkspacePage() {
             if (!title) return;
             // 生成期间用户可能已手动改名 / 删除会话 —— updater 内再核对一次，
             // 不满足即放弃（updateSession 对不存在的会话本身就是 no-op）。
-            updateSession(sessionId, (s) =>
-              isAutoTitle(s) ? { ...s, title, updatedAt: Date.now() } : s,
+            // 走门禁的静默档：起名同样 bump updatedAt，但它是后台任务，被懒加载
+            // 拦下时不该弹 toast 打扰用户 —— 丢掉这次起名即可（best-effort）。
+            mutateSyncedSession(
+              sessionId,
+              (s) => (isAutoTitle(s) ? { ...s, title, updatedAt: Date.now() } : s),
+              { silent: true },
             );
           },
           onError: () => undefined, // 静默：起名失败不打扰用户，也不重试
@@ -1083,7 +1211,7 @@ export default function AetherHubWorkspacePage() {
         .catch(() => undefined)
         .finally(() => auxControllersRef.current.delete(controller));
     },
-    [updateSession],
+    [mutateSyncedSession],
   );
 
   const handleSend = useCallback(
@@ -1107,12 +1235,9 @@ export default function AetherHubWorkspacePage() {
       }
       // 会话仍在等待云端懒加载（本地只是空壳/旧壳占位，不是权威版本）：
       // 此刻发消息会以更晚的 updatedAt 通过 LWW 把服务端全量历史覆盖掉 ——
-      // 拦下并触发一次懒加载重试，加载完成后再发。
-      if (isSessionAwaitingHydration(baseSession.id)) {
-        toast.info('该对话正在从云端加载，请稍候');
-        retryAgentSessionHydration(baseSession.id);
-        return;
-      }
+      // 拦下并触发一次懒加载重试（细节见 ensureSessionHydrated），加载完成后再发。
+      // 必须在任何副作用（附件落盘 / 清空 composer）之前拦。
+      if (!ensureSessionHydrated(baseSession.id)) return;
 
       const isFirstMessage = baseMessages.length === 0;
       const sessionId = baseSession.id;
@@ -1179,7 +1304,7 @@ export default function AetherHubWorkspacePage() {
         attachments:
           requestAttachments.length > 0
             ? requestAttachments.map((a) => {
-                attachmentDataUrlCache.set(a.id, a.dataUrl);
+                writeAttachmentCache(a.id, a.dataUrl);
                 // 原图同时异步落 IndexedDB —— 刷新 / 重启后仍可显示；写入失败
                 // 静默（隐私模式等场景退回「仅发送当次可见」的占位卡）。
                 void putAttachmentData(a.id, a.dataUrl);
@@ -1228,6 +1353,8 @@ export default function AetherHubWorkspacePage() {
           : m,
       );
 
+      // 直接 updateSession（不再过门禁）：本函数入口已经过一次 ensureSessionHydrated，
+      // 且这一步之后就进流式管线 —— 中途再拦只会写出半条消息。
       updateSession(sessionId, (s) => ({
         ...s,
         messages: [...baseMessages, userMsg, assistantMsg],
@@ -1442,10 +1569,13 @@ export default function AetherHubWorkspacePage() {
           });
           clearRequestContext();
         } catch (error: unknown) {
+          // error 是直接渲染给用户的那一行（"ERROR · {message.error}"），只放人话；
+          // 内部码走 errorCode（与流式失败路径 onError 的 message/meta.code 分工一致）。
           patchAssistant({
-            content: workflowErrorMessage(error, 'Article Audit 启动失败'),
             pending: false,
-            error: 'workflow_invoke_failed',
+            error: workflowErrorMessage(error, 'Article Audit 启动失败'),
+            errorCode: 'workflow_invoke_failed',
+            retryable: true,
             finishedAt: Date.now(),
           });
         } finally {
@@ -1624,6 +1754,7 @@ export default function AetherHubWorkspacePage() {
       activeSession,
       composerAttachments,
       enableTools,
+      ensureSessionHydrated,
       markStreaming,
       modelsState,
       pendingSessionKnowledgeHandoff,
@@ -1644,6 +1775,8 @@ export default function AetherHubWorkspacePage() {
       if (!activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
+      // 门禁前置到副作用之前：附件回收是不可逆的，不能先删图再被门禁拦下。
+      if (!ensureSessionHydrated(activeSession.id)) return;
       // 截断掉的消息（该条及之后）携带的附件：引用计数后 best-effort 回收。
       const remaining = activeSession.messages.slice(0, idx);
       reclaimAttachments(
@@ -1652,7 +1785,7 @@ export default function AetherHubWorkspacePage() {
           s.id === activeSession.id ? { ...s, messages: remaining } : s,
         ),
       );
-      updateSession(activeSession.id, (s) => {
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextMessages = s.messages.slice(0, idx);
         return {
           ...s,
@@ -1663,7 +1796,7 @@ export default function AetherHubWorkspacePage() {
         };
       });
     },
-    [activeSession, reclaimAttachments, updateSession],
+    [activeSession, ensureSessionHydrated, mutateSyncedSession, reclaimAttachments],
   );
   const handleEditMessage = useCallback(
     (message: AgentMessage) => {
@@ -1795,6 +1928,7 @@ export default function AetherHubWorkspacePage() {
 
   // 上下文断点 —— Cherry Studio「清除上下文」心智：断点前的消息保留可回看，
   // 但不再随请求发送；再点一次（或点分隔线上的恢复）即撤销。
+  // 同样不 bump updatedAt（纯本地视图态），故不过懒加载门禁。
   const handleToggleContextBreak = useCallback(() => {
     if (!activeSession || activeSession.messages.length === 0) return;
     const lastId = activeSession.messages[activeSession.messages.length - 1].id;
@@ -1969,6 +2103,9 @@ export default function AetherHubWorkspacePage() {
         setCompareTarget(null);
         return;
       }
+      // 采纳同样 bump updatedAt → 同一道门禁。故意不关浮层：对比结果还在
+      // liveRef / columns 里，等云端加载完再点一次「采纳」即可，不丢结果。
+      if (!ensureSessionHydrated(target.sessionId)) return;
       const archived: AgentAlternative[] = archivedColumns.map((col) => ({
         modelId: col.model.modelId,
         providerCode: col.model.providerCode,
@@ -2026,7 +2163,7 @@ export default function AetherHubWorkspacePage() {
       toast.success(`已采纳 ${modelLabel(adopted.model)} 的回答`);
       setCompareTarget(null);
     },
-    [compareTarget],
+    [compareTarget, ensureSessionHydrated],
   );
 
   const handleDeleteMessage = useCallback(
@@ -2034,6 +2171,8 @@ export default function AetherHubWorkspacePage() {
       if (streaming || !activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
+      // 门禁前置到副作用之前（同 applyEditMessage）。
+      if (!ensureSessionHydrated(activeSession.id)) return;
       // 被截断的消息（该条及之后）携带的附件：引用计数后 best-effort 回收。
       const remaining = activeSession.messages.slice(0, idx);
       reclaimAttachments(
@@ -2042,7 +2181,7 @@ export default function AetherHubWorkspacePage() {
           s.id === activeSession.id ? { ...s, messages: remaining } : s,
         ),
       );
-      updateSession(activeSession.id, (s) => {
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextMessages = s.messages.slice(0, idx);
         return {
           ...s,
@@ -2053,7 +2192,13 @@ export default function AetherHubWorkspacePage() {
       });
       toast.success('已删除此处及后续消息');
     },
-    [activeSession, reclaimAttachments, streaming, updateSession],
+    [
+      activeSession,
+      ensureSessionHydrated,
+      mutateSyncedSession,
+      reclaimAttachments,
+      streaming,
+    ],
   );
 
   // 清空当前对话（'/clear' 与移动端配置抽屉共用）—— 被清空消息携带的附件
@@ -2064,13 +2209,16 @@ export default function AetherHubWorkspacePage() {
       toast.info('请先停止当前回答');
       return;
     }
+    // 门禁前置到副作用之前：清空是最危险的一条 —— 空壳会话被清空并 bump
+    // updatedAt 后，刷新即以更晚时间戳覆盖服务端的全量历史。
+    if (!ensureSessionHydrated(activeSession.id)) return;
     reclaimAttachments(
       collectAttachmentIds(activeSession.messages),
       sessionsRef.current.map((s) =>
         s.id === activeSession.id ? { ...s, messages: [] } : s,
       ),
     );
-    updateSession(activeSession.id, (s) => ({
+    mutateSyncedSession(activeSession.id, (s) => ({
       ...s,
       messages: [],
       title: '新对话',
@@ -2083,7 +2231,14 @@ export default function AetherHubWorkspacePage() {
     setSelectedAtlasKps([]);
     clearActiveKnowledgeHandoff();
     toast.success('已清空当前对话');
-  }, [activeSession, clearActiveKnowledgeHandoff, reclaimAttachments, streaming, updateSession]);
+  }, [
+    activeSession,
+    clearActiveKnowledgeHandoff,
+    ensureSessionHydrated,
+    mutateSyncedSession,
+    reclaimAttachments,
+    streaming,
+  ]);
 
   // ----- 斜杠命令 -----
   const handleSlashCommand = useCallback(
@@ -2125,11 +2280,17 @@ export default function AetherHubWorkspacePage() {
     ],
   );
 
+  // ----- 附件大图预览（页面级单例）-----
+  // 状态必须活在虚拟化列表之外：挂在消息行子树里时，行滚出缓冲区被卸载
+  // 会让打开中的预览自己消失。见 AttachmentPreviewContext 的注释。
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewTarget | null>(null);
+  const closeAttachmentPreview = useCallback(() => setAttachmentPreview(null), []);
+
   if (!hydrated) {
     return <AetherHubSkeleton label="正在恢复灵境会话…" />;
   }
 
-  return (
+  const workspace = (
     <div className="aetherhub-workspace fixed inset-0 flex flex-col overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
       <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--bg-void)]">
         <div className="aurora-layer opacity-70" data-animated="true" aria-hidden="true" />
@@ -2364,9 +2525,25 @@ export default function AetherHubWorkspacePage() {
               />
             )}
           </AnimatePresence>
+
+          {/* 附件大图预览 —— 渲染在虚拟化列表之外，滚动不再把它连根卸载。 */}
+          <AnimatePresence>
+            {attachmentPreview && (
+              <AttachmentPreviewOverlay
+                target={attachmentPreview}
+                onClose={closeAttachmentPreview}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <AttachmentPreviewContext.Provider value={setAttachmentPreview}>
+      {workspace}
+    </AttachmentPreviewContext.Provider>
   );
 }
 
@@ -2755,6 +2932,8 @@ function SessionRow({
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  // 尊重系统「减少动态效果」：操作条展开改为瞬时。
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!renaming) return;
@@ -2852,7 +3031,7 @@ function SessionRow({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
             <div className="mx-1 mt-0.5 flex items-center gap-0.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1">
@@ -3086,10 +3265,12 @@ function ModelPickerButton({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // ESC 关闭
+  // ESC 关闭 —— 跳过 IME 组合态：面板内有模型搜索框，中文输入法按 Esc 取消
+  // 候选词时浏览器同样派发 key='Escape'，不放行会把面板连同已输入的筛选一起关掉。
   useEffect(() => {
     if (!open) return;
     const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', handler);
@@ -4385,16 +4566,17 @@ function Avatar({
  * 单张附件图片的三态渲染：
  *   1. 内存缓存（或消息自带 dataUrl）命中 → 同步显示；
  *   2. 未命中 → 骨架占位 + 异步查 IndexedDB，取到后显示并回填内存缓存
- *      —— 虚拟化列表滚出重挂载时，回填过的缓存让重挂载直接走同步路径；
+ *      —— 虚拟化列表滚出重挂载时，回填过的缓存让重挂载直接走同步路径
+ *      （回填有 LRU 上限，见 writeAttachmentCache）；
  *   3. IndexedDB 也没有（已清理 / 隐私模式）→ 占位卡片。
- * 点击图片 → Modal 查看原图大图。
+ * 点击图片 → 请求页面级大图预览（状态不在本组件，否则会随虚拟化卸载而丢）。
  */
 function AttachmentImage({ attachment }: { attachment: AgentAttachment }) {
   const [url, setUrl] = useState(
-    () => attachment.dataUrl || attachmentDataUrlCache.get(attachment.id) || '',
+    () => attachment.dataUrl || readAttachmentCache(attachment.id) || '',
   );
   const [idbChecked, setIdbChecked] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const requestPreview = useContext(AttachmentPreviewContext);
 
   useEffect(() => {
     if (url) return;
@@ -4402,7 +4584,7 @@ function AttachmentImage({ attachment }: { attachment: AgentAttachment }) {
     void getAttachmentData(attachment.id).then((dataUrl) => {
       if (cancelled) return;
       if (dataUrl) {
-        attachmentDataUrlCache.set(attachment.id, dataUrl);
+        writeAttachmentCache(attachment.id, dataUrl);
         setUrl(dataUrl);
       } else {
         setIdbChecked(true);
@@ -4432,29 +4614,87 @@ function AttachmentImage({ attachment }: { attachment: AgentAttachment }) {
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setPreviewOpen(true)}
-        className="overflow-hidden rounded-xl border border-[var(--hub-border)] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
-        title={`点击查看大图：${attachment.name}`}
-        aria-label={`查看大图：${attachment.name}`}
-      >
-        <img src={url} alt={attachment.name} className="h-28 max-w-[13rem] object-cover" />
-      </button>
-      <Modal
-        isOpen={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        title={attachment.name}
-        size="full"
-      >
-        <img
-          src={url}
-          alt={attachment.name}
-          className="mx-auto max-h-[80vh] max-w-full object-contain"
-        />
-      </Modal>
-    </>
+    <button
+      type="button"
+      onClick={() => requestPreview?.({ src: url, name: attachment.name })}
+      className="overflow-hidden rounded-xl border border-[var(--hub-border)] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+      title={`点击查看大图：${attachment.name}`}
+      aria-label={`查看大图：${attachment.name}`}
+    >
+      <img src={url} alt={attachment.name} className="h-28 max-w-[13rem] object-cover" />
+    </button>
+  );
+}
+
+/**
+ * 附件大图预览浮层 —— 页面级单例，渲染在虚拟化列表之外。
+ *
+ * 不复用 @aetherblog/ui 的 Modal：它没有 role="dialog"、没有焦点管理，Esc 也
+ * 没有 IME 守卫；而本浮层的写法与 CompareOverlay / SpacePreviewDialog 一致，
+ * 焦点行为统一交给 useModalDialog（移入焦点 / Tab 陷阱 / 关闭还原焦点 /
+ * Esc 跳过输入法组合态）。
+ */
+function AttachmentPreviewOverlay({
+  target,
+  onClose,
+}: {
+  target: AttachmentPreviewTarget;
+  onClose: () => void;
+}) {
+  const dialogRef = useModalDialog<HTMLElement>({ onClose });
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <motion.div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <motion.section
+          ref={dialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`附件大图：${target.name}`}
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }
+          }
+          className="surface-overlay flex max-h-[92vh] w-[min(960px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[26px] border outline-none backdrop-blur-2xl"
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--hub-border)] px-5">
+            <h3 className="min-w-0 truncate text-sm font-semibold text-[var(--ink-primary)]">
+              {target.name}
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭大图"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="agent-thumb-scroll min-h-0 flex-1 overflow-auto p-5">
+            <img
+              src={target.src}
+              alt={target.name}
+              className="mx-auto max-h-[74vh] max-w-full object-contain"
+            />
+          </div>
+        </motion.section>
+      </div>
+    </div>
   );
 }
 
@@ -4989,6 +5229,8 @@ function ToolCallCard({
 }) {
   const [open, setOpen] = useState(false);
   const userToggledRef = useRef(false);
+  // 尊重系统「减少动态效果」：展开改为瞬时（同 PR 的 CSS 动效都做了同款降级）。
+  const reduceMotion = useReducedMotion();
   const failed = event.isError === true;
   // finishedAt 缺失 + 消息已定格 = 流被中断（abort / 关页恢复），不再呼吸。
   const running = event.finishedAt === undefined && messagePending;
@@ -5092,7 +5334,7 @@ function ToolCallCard({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
             <div className="mt-2 flex flex-col gap-2.5 rounded-xl border border-[color-mix(in_oklch,var(--aurora-2)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_4%,var(--hub-control))] p-3">
@@ -5223,13 +5465,13 @@ function CompareOverlay({
   }, [abortAll, onClose]);
   useEffect(() => abortAll, [abortAll]);
 
-  useEffect(() => {
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') requestClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [requestClose]);
+  // 焦点管理交给 useModalDialog：移入初始焦点 / Tab 焦点陷阱 / 关闭还原焦点 /
+  // Esc 关闭且跳过 IME 组合态。此前这里只有一个裸 Esc 监听，却照样声明了
+  // role="dialog" aria-modal="true" —— 读屏器按语义认为窗外内容已惰性化，实际
+  // Tab 依旧能走出去；而中文输入法按 Esc 取消候选词会连带把浮层（含已勾选的
+  // 模型）一起关掉。
+  const dialogRef = useModalDialog<HTMLElement>({ onClose: requestClose });
+  const reduceMotion = useReducedMotion();
 
   // 流式中的用时 tick（250ms 足够，展示精度 0.1s）。
   const anyStreaming = columns.some((c) => c.status === 'streaming');
@@ -5392,21 +5634,27 @@ function CompareOverlay({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
         onClick={requestClose}
         aria-hidden="true"
       />
       <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
         <motion.section
+          ref={dialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="多模型对比"
-          initial={{ opacity: 0, y: 18, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 18, scale: 0.98 }}
-          transition={{ type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }}
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }
+          }
           className={cn(
-            'surface-overlay flex max-h-[92vh] flex-col overflow-hidden rounded-[26px] border backdrop-blur-2xl',
+            'surface-overlay flex max-h-[92vh] flex-col overflow-hidden rounded-[26px] border outline-none backdrop-blur-2xl',
             running ? 'w-[min(1180px,calc(100vw-1.5rem))]' : 'w-[min(560px,calc(100vw-1.5rem))]',
           )}
         >
@@ -5769,6 +6017,8 @@ function Composer({
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const sendMenuCloseTimerRef = useRef<number | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
+  // 尊重系统「减少动态效果」：附件托盘展开与外框 layout 位移都降级为瞬时。
+  const reduceMotion = useReducedMotion();
   const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'atlas' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -5878,6 +6128,8 @@ function Composer({
       if (!sendMenuRef.current.contains(e.target as Node)) closeSendMenu();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // 输入法组合态放行（发送菜单就悬在输入框上方，用户多半正在打字）。
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') closeSendMenu();
     };
     document.addEventListener('mousedown', onDown);
@@ -5912,7 +6164,7 @@ function Composer({
       <div className="relative mx-auto w-full max-w-[820px]">
         <motion.div
           layout
-          transition={{ layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
+          transition={{ layout: { duration: reduceMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] } }}
           className={cn(
             'rounded-[1.75rem] bg-[var(--hub-panel-strong)] p-2.5 transition-[box-shadow,border-color] duration-300 md:rounded-3xl md:p-4',
             'border',
@@ -6129,7 +6381,7 @@ function Composer({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="overflow-hidden"
               >
                 <div className="flex flex-wrap gap-2 px-1 pb-2 pt-0.5" aria-label="待发送图片">
@@ -6645,6 +6897,8 @@ function PickerPanelHeader({
                 value={query}
                 onChange={(e) => onQueryChange(e.target.value)}
                 onKeyDown={(e) => {
+                  // 中文输入法按 Esc 取消候选词不应连搜索框一起收起。
+                  if (e.nativeEvent.isComposing) return;
                   if (e.key === 'Escape') handleCloseSearch();
                 }}
                 aria-label={placeholder}
@@ -6711,6 +6965,9 @@ function PickerPopover({
       onClose();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // 各 picker 面板内都有搜索框：输入法组合态的 Esc 属于「取消候选词」，
+      // 放行后交给输入法自己消费，别把面板连同筛选结果一起关掉。
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('mousedown', onDown);
@@ -7446,6 +7703,9 @@ function ContextPanel({
   useEffect(() => {
     if (collapsed) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
+      // 面板内有资源搜索框；输入法组合态的 Esc 一律放行（同 SpacePreviewDialog：
+      // 预览的关闭也走这条监听）。
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === 'Escape') {
         if (preview) setPreview(null);
         else onToggleCollapsed();

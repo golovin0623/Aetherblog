@@ -1,8 +1,20 @@
 /**
- * Agent 会话本地存储层（admin 端）
+ * Agent 会话本地存储层（admin 端）—— 本地优先架构的第一真值层。
  *
- * MVP：会话与消息存 localStorage，每个用户独立 namespace。后续上 DB 时把
- * load/saveSessions 替换为 /api/v1/agent/sessions REST 即可。
+ * 会话与消息存 localStorage，每个用户独立 namespace；UI 的读写只碰本地，
+ * 永不等网络（加载即 loadSessions，落盘走 scheduleSaveSessions 节流）。
+ *
+ * 二期起本模块**不再是唯一真值**：跨设备漫游由同目录 sessionsSync.ts 在后台
+ * 与 /api/v1/agent/sessions 对账并整会话 PUT（LWW，网络失败静默重试）。云端是
+ * 本地的镜像而非上游 —— 断网仍是完整可用的存储层，页面也不因同步失败而降级。
+ *
+ * 上行边界（wire 映射见 sessionsSync.ts）：
+ *   · titleEdited —— 纯本地标记，不上行（wire 是显式字段构建，天然忽略）；
+ *     采纳服务端版本时从本地继承，「手动改名永远赢」；
+ *   · draft —— 上行，但采纳服务端版本时保留本地值（用户可能正在输入）；
+ *   · attachments[].dataUrl —— 上行剥离（4MB body 上限，服务端不存原图），
+ *     回程补空串，刷新后降级为占位卡；
+ *   · pending 消息 / pending 翻译 —— 流式中的会话整体不推送，等流结束。
  *
  * namespace 与 blog 端隔离：admin 在自己的 storage key 下写，避免两边混读。
  *
@@ -72,7 +84,8 @@ export interface AgentAlternative {
   elapsedMs?: number;
 }
 
-/** 消息图片附件 —— dataUrl 直接内联持久化（MVP 不走对象存储）。 */
+/** 消息图片附件 —— dataUrl 内联落 localStorage（不走对象存储）；
+ *  云同步上行时剥离 dataUrl，跨设备只保留元信息占位卡。 */
 export interface AgentAttachment {
   id: string;
   kind: 'image';
@@ -137,7 +150,8 @@ export interface AgentSession {
   modelId?: string | null;
   providerCode?: string | null;
   modelParams?: AgentModelParams;
-  /** Unsent composer text. Optional so sessions saved before this field remain compatible. */
+  /** 未发送的输入框文本。可选 —— 该字段之前存下的会话仍能直接加载。
+   *  上行云端，但采纳服务端版本时永远保留本地值（用户可能正在输入）。 */
   draft?: string;
   /** 置顶 —— 侧栏排序时优先于时间分组。 */
   pinned?: boolean;
@@ -321,18 +335,27 @@ export function deriveSessionTitle(firstMessage: string): string {
   return `${trimmed.slice(0, 24)}…`;
 }
 
+/** 模型爱加的首尾包装字符（引号 / 书名号 / 括号）。 */
+const TITLE_WRAPPER_EDGE_RE = /^[\s"'“”‘’「」『』《》【】()（）]+|[\s"'“”‘’「」『』《》【】()（）]+$/g;
+/** 收尾句读。 */
+const TITLE_TRAILING_PUNCT_RE = /[。．.!！?？~～、，,;；:：]+$/g;
+
 /**
  * 清洗 AI 生成的会话标题 —— 模型偶尔会带引号 / 书名号 / 收尾句号 / 换行，
- * 全部剥掉后截 24 字（与 deriveSessionTitle 的截断上限一致）。清洗后为空
- * 返回 ''，调用方据此放弃写入。
+ * 全部剥掉后截 24 字（与 deriveSessionTitle 的截断上限一致，但不加省略号）。
+ * 清洗后为空返回 ''，调用方据此放弃写入。
  */
 export function sanitizeGeneratedSessionTitle(raw: string): string {
   // 换行与连续空白折叠为单空格
   let title = raw.replace(/\s+/g, ' ').trim();
-  // 剥掉首尾的引号 / 书名号 / 括号类包装字符（模型爱加的装饰）
-  title = title.replace(/^[\s"'“”‘’「」『』《》【】()（）]+|[\s"'“”‘’「」『』《》【】()（）]+$/g, '');
-  // 去掉收尾的句号类标点
-  title = title.replace(/[。．.!！?？~～、，,;；:：]+$/g, '').trim();
+  // 包装字符与收尾句读可能交替嵌套（《标题》。 / "标题"。）—— 剥到稳定为止：
+  // 只剥一趟时标点落在包装外，会留下半个书名号 / 引号。
+  for (;;) {
+    const before = title;
+    title = title.replace(TITLE_WRAPPER_EDGE_RE, '');
+    title = title.replace(TITLE_TRAILING_PUNCT_RE, '').trim();
+    if (title === before) break; // 替换只会缩短，必然收敛
+  }
   if (!title) return '';
   return title.length > 24 ? title.slice(0, 24) : title;
 }

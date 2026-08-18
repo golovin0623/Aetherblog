@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -151,6 +152,44 @@ def test_tool_call_assembler_caps_oversized_arguments_and_stops_accumulating() -
     assert set(cjk["arguments"]) == {"汉"}
 
 
+def test_tool_call_assembler_byte_counter_tracks_many_small_fragments() -> None:
+    """增量字节计数（O(n²) → O(n)）后，多分片累加的长度/截断语义不变。
+
+    钉住两点：① 大量小分片逐片累加，结果与直接拼接完全一致，且内部字节计数
+    与实际 UTF-8 长度不漂移；② 恰好压线（累计 == 上限）不算 oversized，
+    再多一个字节才触发截断 —— 边界条件不能因为改成增量计数而偏移 1。
+    """
+    limit = agent_module._TOOL_ARGUMENTS_MAX_BYTES
+
+    # ① 2000 个 3 字节 CJK 分片（6000 字节，远低于上限）。
+    assembler = agent_module._ToolCallAssembler()
+    assembler.feed([_tool_call_fragment(index=0, call_id="c", name="search_posts")])
+    for _ in range(2000):
+        assembler.feed([_tool_call_fragment(index=0, arguments="漢")])
+    call = assembler.result()[0]
+    assert call["oversized"] is False
+    assert call["arguments"] == "漢" * 2000
+    assert assembler._calls[0]["bytes"] == len(call["arguments"].encode("utf-8")) == 6000
+
+    # ② 恰好压线：累计 == 上限，不触发 oversized。
+    exact = agent_module._ToolCallAssembler()
+    exact.feed([
+        _tool_call_fragment(index=0, call_id="c", name="search_posts", arguments="a" * limit),
+    ])
+    exact_call = exact.result()[0]
+    assert exact_call["oversized"] is False
+    assert len(exact_call["arguments"].encode("utf-8")) == limit
+
+    # 再来 1 字节即越限 → 截断到上限，且不再累加。
+    exact.feed([_tool_call_fragment(index=0, arguments="b")])
+    exact.feed([_tool_call_fragment(index=0, arguments="c" * 100)])
+    over_call = exact.result()[0]
+    assert over_call["oversized"] is True
+    assert len(over_call["arguments"].encode("utf-8")) == limit
+    assert over_call["arguments"] == "a" * limit
+    assert exact._calls[0]["bytes"] == limit
+
+
 @pytest.mark.asyncio
 async def test_stream_events_emit_internal_tool_calls_event_after_content() -> None:
     stream = _aiter([
@@ -215,8 +254,9 @@ async def test_agent_chat_tool_round_emits_call_result_delta_usage_done(
         assert "p.status = 'PUBLISHED'" in query
         assert "p.deleted = FALSE" in query
         assert "p.is_hidden = FALSE" in query
-        assert "ILIKE $1" in query
-        assert args == ("%aether%", 2)
+        # 主路径是 GIN 全文，不再是前导通配符 ILIKE。
+        assert "plainto_tsquery('simple', $1)" in query
+        assert args == ("aether", 2)
         return [
             {"id": 5, "title": "Aether 架构", "summary": "架构演进摘要"},
             {"id": 8, "title": "Aether Codex", "summary": None},
@@ -845,25 +885,106 @@ def test_build_agent_tools_registers_kb_tool_only_with_authorized_kb_ids() -> No
     assert schema["function"]["parameters"]["required"] == ["query"]
 
 
+def _normalize_sql(sql: str) -> str:
+    """折叠连续空白，便于对 SQL 片段做逐字断言。"""
+    return " ".join(sql.split())
+
+
+def test_search_posts_fulltext_expression_matches_gin_index_definition() -> None:
+    """全文表达式必须与 migration 000055 的 idx_posts_fulltext **逐字一致**。
+
+    差一个字符（配置名 / left() 截断 / COALESCE 顺序）PG 就用不上表达式
+    索引，静默退化成全表扫 —— 这是最容易在重构里被悄悄改坏的一行。
+    """
+    # tests/ → apps/ai-service/ → apps/ → apps/server-go/migrations/
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "server-go"
+        / "migrations"
+        / "000055_limit_fulltext_tsvector_input.up.sql"
+    )
+    if not migration.is_file():
+        pytest.skip(f"找不到 migration 文件：{migration}")
+
+    index_sql = _normalize_sql(migration.read_text(encoding="utf-8"))
+    # 索引里是裸列名，工具 SQL 用 p. 别名（PG 按解析后的表达式匹配索引，
+    # 别名不影响命中）—— 对比前先把别名抹掉。
+    tool_expr = _normalize_sql(
+        f"to_tsvector('simple', {agent_tools_module._POST_FULLTEXT_DOCUMENT})"
+    ).replace("p.", "")
+    assert tool_expr in index_sql, (
+        f"search_posts 的全文表达式与 idx_posts_fulltext 不一致：\n"
+        f"tool = {tool_expr}\nindex = {index_sql}"
+    )
+
+
 @pytest.mark.asyncio
-async def test_search_posts_tool_escapes_like_wildcards_and_truncates_summary() -> None:
-    captured: dict[str, Any] = {}
+async def test_search_posts_tool_uses_gin_fulltext_as_primary_path() -> None:
+    """主路径 = 全文检索：命中即返回，绝不再跑前导通配符 ILIKE。"""
+    queries: list[str] = []
+    argss: list[tuple[Any, ...]] = []
 
     def fetch(query: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
-        captured["query"] = query
-        captured["args"] = args
+        queries.append(query)
+        argss.append(args)
         return [{"id": 1, "title": "命中", "summary": "s" * 500}]
 
     tool = build_agent_tools(FakePool(FakeConn(fetch=fetch)), object(), kb_ids=None)[0]
     assert tool.name == "search_posts"
 
+    result, is_error = await run_agent_tool(tool, '{"query": "aether", "limit": 3}')
+
+    assert is_error is False
+    # 只发一条查询，且是全文那条（query 原样入参，不加通配符）。
+    assert len(queries) == 1
+    assert argss[0] == ("aether", 3)
+    sql = _normalize_sql(queries[0])
+    assert "plainto_tsquery('simple', $1)" in sql
+    assert "to_tsvector('simple', left(" in sql
+    assert "ILIKE" not in sql
+    # 可见性口径不因换检索方式而放宽。
+    for guard in (
+        "p.deleted = FALSE",
+        "p.status = 'PUBLISHED'",
+        "p.is_hidden = FALSE",
+        "p.password IS NULL",
+    ):
+        assert guard in sql
+    payload = json.loads(result)
+    assert payload[0]["id"] == 1
+    assert len(payload[0]["summary"]) <= 200
+
+
+@pytest.mark.asyncio
+async def test_search_posts_tool_falls_back_to_escaped_ilike_on_fulltext_miss() -> None:
+    """全文零命中才回退 ILIKE，且模型给的通配符仍被转义。
+
+    回退是刚需：'simple' 配置对 CJK 按整段切 token，
+    to_tsvector('simple','灵境博客') 匹配不到 plainto_tsquery('simple','灵境')。
+    """
+    queries: list[str] = []
+    argss: list[tuple[Any, ...]] = []
+
+    def fetch(query: str, args: tuple[Any, ...]) -> list[dict[str, Any]]:
+        queries.append(query)
+        argss.append(args)
+        if len(queries) == 1:  # 全文零命中
+            return []
+        return [{"id": 7, "title": "回退命中", "summary": "s" * 500}]
+
+    tool = build_agent_tools(FakePool(FakeConn(fetch=fetch)), object(), kb_ids=None)[0]
     result, is_error = await run_agent_tool(tool, '{"query": "aether_%blog", "limit": 3}')
 
     assert is_error is False
-    assert captured["args"] == ("%aether\\_\\%blog%", 3)
-    assert "p.password IS NULL" in captured["query"]
+    assert len(queries) == 2
+    assert argss[0] == ("aether_%blog", 3)
+    # 回退才做通配符转义。
+    assert argss[1] == ("%aether\\_\\%blog%", 3)
+    fallback_sql = _normalize_sql(queries[1])
+    assert "p.title ILIKE $1 OR p.summary ILIKE $1" in fallback_sql
+    assert "p.password IS NULL" in fallback_sql
     payload = json.loads(result)
-    assert payload[0]["id"] == 1
+    assert payload[0]["id"] == 7
     assert len(payload[0]["summary"]) <= 200
 
 

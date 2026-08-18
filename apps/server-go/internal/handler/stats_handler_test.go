@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +19,82 @@ func expectAICostArchiveSchemaCheck(mock sqlmock.Sqlmock, columnCount int) {
 	mock.ExpectQuery(`(?s).*information_schema\.columns.*ai_usage_logs.*cost_archive_status.*cost_archive_error.*`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(columnCount))
 }
+
+// sqlContaining 生成 sqlmock 用的查询正则：给定片段必须**按顺序逐字**出现在
+// 被执行的 SQL 里（片段之间允许任意内容）。
+//
+// 为什么不用 `(?s).*`：那等于不校验 SQL —— 二期新增的「今日 vs 时间窗」聚合
+// （task 分布的 FILTER (WHERE created_at >= CURRENT_DATE) 一族）曾被通配符
+// 整个吞掉，测试只验证了结构体字段搬运，聚合表达式写错也一路绿。片段命中式
+// 断言让任何一处关键聚合被改名 / 删除 / 改口径都立刻红。
+//
+// 注意 sqlmock 会先把 SQL 的连续空白折叠为单个空格，所以片段里不要写换行。
+func sqlContaining(fragments ...string) string {
+	quoted := make([]string, 0, len(fragments))
+	for _, fragment := range fragments {
+		quoted = append(quoted, regexp.QuoteMeta(fragment))
+	}
+	return `(?s)` + strings.Join(quoted, `.*`)
+}
+
+// priced_logs CTE 的 cost_status 分支：库有 cost_archive_* 列时优先取归档金额，
+// 否则只有 missing / realtime 两态。两个片段互斥，用来钉住走了哪条分支。
+const (
+	aiArchivedCostStatusBranch = "WHEN l.cost_archive_status = 'archived' AND l.cost_archive_amount IS NOT NULL THEN 'archived'"
+	aiRealtimeOnlyCostStatus   = "CASE WHEN pricing.pricing_missing THEN 'missing' ELSE 'realtime' END AS cost_status"
+)
+
+// aiOverviewSQL 概览聚合查询；costStatusBranch 同时钉住 priced_logs CTE 走了
+// 归档分支还是降级分支。
+func aiOverviewSQL(costStatusBranch string) string {
+	return sqlContaining(
+		costStatusBranch,
+		"COUNT(*) AS total_calls",
+		"COUNT(*) FILTER (WHERE success) AS success_calls",
+		"COUNT(*) FILTER (WHERE cached) AS cached_calls",
+		"COALESCE(AVG(latency_ms), 0.0) AS avg_latency_ms",
+		"FROM priced_logs",
+	)
+}
+
+// AI 仪表盘其余查询的关键片段（按 AnalyticsRepo.GetAIDashboard 的执行顺序）。
+var (
+	// task 分布：时间窗聚合与「今日」聚合并存，且按 task_type 分组。
+	aiTaskDistributionSQL = sqlContaining(
+		"task_type AS task",
+		"COALESCE(SUM(tokens_in), 0) AS tokens_in",
+		"COALESCE(SUM(tokens_out), 0) AS tokens_out",
+		"COALESCE(AVG(latency_ms), 0.0) AS avg_latency_ms",
+		"COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS today_calls",
+		"COALESCE(SUM(tokens_in) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_tokens_in",
+		"COALESCE(SUM(tokens_out) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_tokens_out",
+		"COALESCE(SUM(COALESCE(cost, 0)) FILTER (WHERE created_at >= CURRENT_DATE), 0.0) AS today_cost",
+		"COALESCE(AVG(latency_ms) FILTER (WHERE created_at >= CURRENT_DATE), 0.0) AS today_avg_latency_ms",
+		"FROM priced_logs GROUP BY task_type",
+	)
+	aiTrendSQL = sqlContaining(
+		"DATE(created_at)::text AS date",
+		"GROUP BY DATE(created_at)::text",
+		"FROM daily ORDER BY date ASC",
+	)
+	aiModelDistributionSQL = sqlContaining(
+		"FROM priced_logs GROUP BY model, provider_code",
+		"ORDER BY calls DESC, model ASC LIMIT 8",
+	)
+	aiRecordCountSQL = sqlContaining("SELECT COUNT(*) FROM priced_logs")
+	aiRecordsPageSQL = sqlContaining("FROM priced_logs ORDER BY created_at DESC LIMIT $")
+	// 价格缺口：只聚合 pricing_missing 的调用，按 provider+model 归组。
+	aiPricingGapsSQL = sqlContaining(
+		"FROM priced_logs WHERE pricing_missing = true GROUP BY provider_code, model",
+	)
+	// 费用归档：UPDATE ... RETURNING 后按 archived / failed 分桶计数。
+	aiCostArchiveSQL = sqlContaining(
+		"UPDATE ai_usage_logs AS target",
+		"RETURNING CASE WHEN priced_logs.pricing_missing THEN 'failed' ELSE 'archived' END AS result_status",
+		"COUNT(*) FILTER (WHERE result_status = 'archived') AS archived",
+		"COUNT(*) FILTER (WHERE result_status = 'failed') AS failed",
+	)
+)
 
 type aiDashboardResponse struct {
 	Code int `json:"code"`
@@ -129,7 +207,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 
 	expectAICostArchiveSchemaCheck(mock, 4)
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiOverviewSQL(aiArchivedCostStatusBranch)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total_calls",
 			"success_calls",
@@ -139,7 +217,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"avg_latency_ms",
 		}).AddRow(2, 1, 1, 12, 0.024, 345.5))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiTaskDistributionSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"task",
 			"calls",
@@ -155,7 +233,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"today_avg_latency_ms",
 		}).AddRow("summary", 2, 12, 4, 8, 0.024, 345.5, 1, 2, 4, 0.012, 300.0))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiTrendSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"date",
 			"calls",
@@ -163,7 +241,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"cost",
 		}).AddRow("2026-04-05", 1, 4, 0.008).AddRow("2026-04-06", 1, 8, 0.016))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiModelDistributionSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model",
 			"provider_code",
@@ -172,10 +250,10 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"cost",
 		}).AddRow("gpt-5-mini", "openai", 2, 12, 0.024))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiRecordCountSQL).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiRecordsPageSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id",
 			"task_type",
@@ -275,7 +353,7 @@ func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
 
 	expectAICostArchiveSchemaCheck(mock, 0)
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiOverviewSQL(aiRealtimeOnlyCostStatus)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total_calls",
 			"success_calls",
@@ -285,7 +363,9 @@ func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
 			"avg_latency_ms",
 		}).AddRow(1, 1, 0, 24, 0.048, 220.0))
 
-	mock.ExpectQuery(`(?s).*`).
+	// 降级路径同样要发「今日 vs 时间窗」的完整聚合 —— 缺 cost_archive_* 列
+	// 只影响 priced_logs CTE 的成本口径，不该退化 task 分布的统计维度。
+	mock.ExpectQuery(aiTaskDistributionSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"task",
 			"calls",
@@ -293,7 +373,7 @@ func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
 			"cost",
 		}).AddRow("chat", 1, 24, 0.048))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiTrendSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"date",
 			"calls",
@@ -301,7 +381,7 @@ func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
 			"cost",
 		}).AddRow("2026-04-06", 1, 24, 0.048))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiModelDistributionSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model",
 			"provider_code",
@@ -310,10 +390,10 @@ func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
 			"cost",
 		}).AddRow("gpt-5-mini", "openai", 1, 24, 0.048))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiRecordCountSQL).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiRecordsPageSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id",
 			"task_type",
@@ -375,7 +455,7 @@ func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 
 	expectAICostArchiveSchemaCheck(mock, 4)
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiPricingGapsSQL).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"provider_code",
 			"model_id",
@@ -401,7 +481,7 @@ func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 
 	expectAICostArchiveSchemaCheck(mock, 4)
 
-	mock.ExpectQuery(`(?s).*`).
+	mock.ExpectQuery(aiCostArchiveSQL).
 		WillReturnRows(sqlmock.NewRows([]string{"total", "archived", "failed"}).AddRow(4, 3, 1))
 
 	archiveRec := handlertest.DoRequest(e, "POST", "/api/v1/admin/stats/ai-cost-archive", `{"days":30}`)

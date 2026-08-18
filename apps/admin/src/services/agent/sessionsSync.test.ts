@@ -291,18 +291,16 @@ describe('sessionHasPendingWork / sessionWorthSyncing / selectSessionsToPush', (
     expect(picked.map((s) => s.id)).toEqual(['cleared', 'dirty-new', 'dirty-old']);
   });
 
-  it('仍带 serverNewer 懒加载标记（awaitingHydration）的会话拒绝入选 —— 本地不是权威版本', () => {
+  it('只做水位判定 —— 懒加载 / 永久失败两道闸不在这里（由 flush 统一把守）', () => {
     const stale = makeSession({ id: 'stale', updatedAt: 300 });
     const normal = makeSession({ id: 'normal', updatedAt: 200 });
     const watermarks = new Map<string, number>([
       ['stale', 100],
       ['normal', 100],
     ]);
-    const awaiting = new Map<string, number>([['stale', 9999]]);
-    expect(selectSessionsToPush([stale, normal], watermarks, awaiting).map((s) => s.id)).toEqual([
-      'normal',
-    ]);
-    // 不传 awaitingHydration 时行为不变（两个都 dirty）。
+    // 契约：本函数只回答「水位落后吗」。stale 即便仍待懒加载也会入选 ——
+    // 拒推与「改为触发懒加载重试」是同一条件的两种处置，只有 flush 分得清，
+    // 拦截由 flushAgentSessionSync / pushSession 负责（见网络层用例）。
     expect(selectSessionsToPush([stale, normal], watermarks).map((s) => s.id)).toEqual([
       'stale',
       'normal',
@@ -518,6 +516,34 @@ describe('sessionsSync 网络层', () => {
     expect(calls.filter((c) => c.init?.method === 'PUT')).toHaveLength(0);
   });
 
+  it('本地空壳的 updatedAt 反超服务端时仍标懒加载 —— 空壳绝不能凭更晚时间戳赢 LWW', async () => {
+    const server = makeDetail({ id: 'sess_shell_lww', updatedAt: 5000, messageCount: 3 });
+    route('GET', '/api/v1/agent/sessions', () =>
+      jsonResponse(200, { code: 200, data: [metaOf(server)] }),
+    );
+    // 占位落盘后，用户在本地对这个空壳做了任意编辑（存草稿 / 切模型 / 改标题）
+    // → updatedAt 反超服务端。修复前落进 else 分支：只对齐水位、不标 serverNewer，
+    // 下一轮 flush 就把 0 条消息的空壳 PUT 上去（整会话替换 = 服务端历史清空）。
+    const shell = makeSession({
+      id: 'sess_shell_lww',
+      updatedAt: 9999,
+      messages: [],
+      draft: '本地随手写的草稿',
+    });
+    configure();
+    await reconcileAgentSessions([shell]);
+
+    const { serverNewer, watermarks } = inspectAgentSessionSyncForTests();
+    expect(serverNewer.get('sess_shell_lww')).toBe(5000);
+    expect(watermarks.get('sess_shell_lww')).toBe(9999);
+    expect(isSessionAwaitingHydration('sess_shell_lww')).toBe(true);
+
+    // 继续本地编辑（updatedAt 再 bump）也不许 PUT —— 懒加载成功前本地永远不是权威。
+    scheduleAgentSessionSync([{ ...shell, updatedAt: 12000 }]);
+    await flushAgentSessionSync();
+    expect(calls.filter((c) => c.init?.method === 'PUT')).toHaveLength(0);
+  });
+
   it('激活被标记「服务端较新」的会话时 GET /:id 并采纳服务端版本（不弹冲突提示）', async () => {
     const newer = makeDetail({ id: 'sess_newer_001', updatedAt: 9999 });
     route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [metaOf(newer)] }));
@@ -626,7 +652,8 @@ describe('sessionsSync 网络层', () => {
     await flushAgentSessionSync();
 
     expect(puts).toBe(1);
-    expect(notices).toEqual(['有对话未能同步到云端（数据校验未通过），仅保存在本设备']);
+    // 服务端 message 透传（旧实现固定文案，吞掉了真实原因）。
+    expect(notices).toEqual(['云端同步失败：数据校验未通过（该对话仅保存在本设备）']);
     expect(inspectAgentSessionSyncForTests().watermarks.has('sess_4xx_00001')).toBe(false);
     expect(inspectAgentSessionSyncForTests().permanentFailures.get('sess_4xx_00001')).toBe(900);
 
@@ -820,5 +847,187 @@ describe('sessionsSync 网络层', () => {
     await flushAgentSessionSync(); // flush 内部补对账（第二次 GET 成功）→ 推送
     expect(inspectAgentSessionSyncForTests().reconciled).toBe(true);
     expect(inspectAgentSessionSyncForTests().watermarks.get('sess_rcvr_0001')).toBe(100);
+  });
+
+  it('单轮 flush 至多推 20 条，剩余会话自行接力续推（30 个 dirty 两轮推完）', async () => {
+    route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [] }));
+    const putIds: string[] = [];
+    const locals = Array.from({ length: 30 }, (_, i) =>
+      makeSession({ id: `sess_bulk_${String(i).padStart(4, '0')}`, updatedAt: 1000 + i }),
+    );
+    for (const s of locals) {
+      route('PUT', `/api/v1/agent/sessions/${s.id}`, (call) => {
+        putIds.push(s.id);
+        const body = JSON.parse(String(call.init?.body));
+        return jsonResponse(200, { code: 200, data: { ...body, id: s.id } });
+      });
+    }
+    configure();
+    await reconcileAgentSessions(locals);
+
+    await flushAgentSessionSync();
+    expect(putIds).toHaveLength(20); // 单轮上限
+
+    // 接力：flush 尾部用剩余快照重新调度，第二轮把剩下的 10 个推完
+    //（修复前 pushSession 只改模块内水位、不触发 React state 变化 —— 剩余
+    // 会话再无触发源，首次迁移只上行前 20 个）。
+    await flushAgentSessionSync();
+    expect(new Set(putIds).size).toBe(30);
+    const { watermarks } = inspectAgentSessionSyncForTests();
+    expect(locals.every((s) => watermarks.get(s.id) === s.updatedAt)).toBe(true);
+
+    // 全部推完后不再接力（无剩余候选）。
+    await flushAgentSessionSync();
+    expect(putIds).toHaveLength(30);
+  });
+
+  it('4xx 配额已满按可恢复处理：不进永久 skip、透传服务端文案、内容未变也重试', async () => {
+    route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [] }));
+    let quotaFull = true;
+    let puts = 0;
+    route('PUT', '/api/v1/agent/sessions/sess_quota_0001', (call) => {
+      puts += 1;
+      if (quotaFull) {
+        return jsonResponse(400, {
+          code: 400,
+          message: '会话数量已达上限（500），请删除部分旧对话后重试',
+        });
+      }
+      const body = JSON.parse(String(call.init?.body));
+      return jsonResponse(200, { code: 200, data: { ...body, id: 'sess_quota_0001' } });
+    });
+    const local = makeSession({ id: 'sess_quota_0001', updatedAt: 900 });
+    configure();
+    await reconcileAgentSessions([local]);
+    await flushAgentSessionSync();
+
+    expect(puts).toBe(1);
+    // 配额是可恢复错误：不能钉进永久失败（否则用户删了旧会话也永不重试）。
+    expect(inspectAgentSessionSyncForTests().permanentFailures.size).toBe(0);
+    expect(notices).toEqual([
+      '云端同步暂时失败：会话数量已达上限（500），请删除部分旧对话后重试（本地已保存，稍后自动重试）',
+    ]);
+
+    // updatedAt 未变也照样重试（永久失败才 skip）；同一原因不重复提示。
+    scheduleAgentSessionSync([local]);
+    await flushAgentSessionSync();
+    expect(puts).toBe(2);
+    expect(notices).toHaveLength(1);
+
+    // 用户删掉旧会话腾出配额 → 下轮 flush 成功。
+    quotaFull = false;
+    scheduleAgentSessionSync([local]);
+    await flushAgentSessionSync();
+    expect(puts).toBe(3);
+    expect(inspectAgentSessionSyncForTests().watermarks.get('sess_quota_0001')).toBe(900);
+  });
+
+  it('不同 4xx 原因各提示一次（旧实现用固定 key 把所有原因吞成同一条）', async () => {
+    route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [] }));
+    route('PUT', '/api/v1/agent/sessions/sess_multi_0001', () =>
+      jsonResponse(400, { code: 400, message: '会话数量已达上限（500），请删除部分旧对话后重试' }),
+    );
+    route('PUT', '/api/v1/agent/sessions/sess_multi_0002', () =>
+      jsonResponse(400, { code: 400, message: '第 1 条消息 content 超过上限（65536 字符）' }),
+    );
+    route('PUT', '/api/v1/agent/sessions/sess_multi_0003', () => jsonResponse(401, { code: 401 }));
+    const locals = [
+      makeSession({ id: 'sess_multi_0001', updatedAt: 300 }),
+      makeSession({ id: 'sess_multi_0002', updatedAt: 200 }),
+      makeSession({ id: 'sess_multi_0003', updatedAt: 100 }),
+    ];
+    configure();
+    await reconcileAgentSessions(locals);
+    await flushAgentSessionSync();
+
+    expect(notices).toHaveLength(3);
+    expect(notices[0]).toContain('会话数量已达上限');
+    expect(notices[1]).toContain('content 超过上限');
+    // 无 message 的 4xx 回落到兜底文案（并带上状态码）。
+    expect(notices[2]).toBe('有对话暂时未能同步到云端（HTTP 401），本地已保存，稍后自动重试');
+    // 只有真数据校验错误钉成永久失败；配额与 401 都留待重试。
+    const { permanentFailures } = inspectAgentSessionSyncForTests();
+    expect([...permanentFailures.keys()]).toEqual(['sess_multi_0002']);
+  });
+
+  it('DELETE 成功后清空永久失败表（配额腾出 = 状态可能已恢复），被删会话三张表都清', async () => {
+    route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [] }));
+    let rejecting = true;
+    let puts = 0;
+    route('PUT', '/api/v1/agent/sessions/sess_perm_0001', (call) => {
+      puts += 1;
+      if (rejecting) return jsonResponse(400, { code: 400, message: 'draft 超过上限（16384 字符）' });
+      const body = JSON.parse(String(call.init?.body));
+      return jsonResponse(200, { code: 200, data: { ...body, id: 'sess_perm_0001' } });
+    });
+    route('DELETE', '/api/v1/agent/sessions/sess_old_00001', () =>
+      jsonResponse(200, { code: 200 }),
+    );
+    const local = makeSession({ id: 'sess_perm_0001', updatedAt: 900 });
+    configure();
+    await reconcileAgentSessions([local, makeSession({ id: 'sess_old_00001', updatedAt: 100 })]);
+    await flushAgentSessionSync();
+    expect(puts).toBeGreaterThanOrEqual(1);
+    expect(inspectAgentSessionSyncForTests().permanentFailures.get('sess_perm_0001')).toBe(900);
+
+    // 用户删掉另一个会话 → 服务端状态已变，整张永久失败表放开重试。
+    rejecting = false;
+    deleteAgentSessionRemote('sess_old_00001');
+    await vi.waitFor(() =>
+      expect(inspectAgentSessionSyncForTests().permanentFailures.size).toBe(0),
+    );
+
+    const putsBefore = puts;
+    scheduleAgentSessionSync([local]);
+    await flushAgentSessionSync();
+    expect(puts).toBe(putsBefore + 1);
+    expect(inspectAgentSessionSyncForTests().watermarks.get('sess_perm_0001')).toBe(900);
+  });
+
+  it('deleteAgentSessionRemote 清掉该会话的永久失败记录（三张表生命周期对齐）', async () => {
+    route('GET', '/api/v1/agent/sessions', () => jsonResponse(200, { code: 200, data: [] }));
+    route('PUT', '/api/v1/agent/sessions/sess_dperm_001', () =>
+      jsonResponse(400, { code: 400, message: '会话 id 非法' }),
+    );
+    const local = makeSession({ id: 'sess_dperm_001', updatedAt: 900 });
+    configure();
+    await reconcileAgentSessions([local]);
+    await flushAgentSessionSync();
+    expect(inspectAgentSessionSyncForTests().permanentFailures.has('sess_dperm_001')).toBe(true);
+
+    deleteAgentSessionRemote('sess_dperm_001');
+    // 同步清除（不等网络回来）——漏清会让同 id 会话带着上个生命周期的 skip 复活。
+    expect(inspectAgentSessionSyncForTests().permanentFailures.has('sess_dperm_001')).toBe(false);
+  });
+
+  it('切换登录用户时重置在途的 reconcile promise（否则新用户那轮对账静默落空）', async () => {
+    const firstList: { resolve?: (res: Response) => void } = {};
+    let listCount = 0;
+    setAgentSessionSyncFetchForTests((url, init) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'GET' && url.startsWith('/api/v1/agent/sessions?')) {
+        listCount += 1;
+        if (listCount === 1) {
+          return new Promise<Response>((resolve) => {
+            firstList.resolve = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse(200, { code: 200, data: [] }));
+      }
+      return Promise.resolve(jsonResponse(404, { code: 404, data: null }));
+    });
+
+    configure('u1');
+    const first = reconcileAgentSessions([makeSession({ id: 'sess_u1_000001' })]);
+    // 旧用户的列表请求还在途时切换用户。
+    configure('u2');
+    const second = reconcileAgentSessions([makeSession({ id: 'sess_u2_000001' })]);
+    firstList.resolve?.(jsonResponse(200, { code: 200, data: [] }));
+    await Promise.all([first, second]);
+
+    // 修复前：second 复用 u1 的 promise，那一轮在 state.userId !== uid 处自弃 →
+    // 只有 1 次 GET、reconciled 永远 false。
+    expect(listCount).toBe(2);
+    expect(inspectAgentSessionSyncForTests().reconciled).toBe(true);
   });
 });
