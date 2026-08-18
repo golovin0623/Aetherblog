@@ -125,11 +125,20 @@ ops/release/preflight.sh
 | 路径 | 上游 | 关键参数 |
 | --- | --- | --- |
 | `/api/v1/ai/*` | `ai_service` (FastAPI:8000) | timeout 600s、`X-Accel-Buffering: no`（SSE） |
+| **上传 location**（见下） | backend (Go:8080) | `client_max_body_size 10G`、read timeout 3600s、`proxy_request_buffering off` |
 | `/admin/` | admin (Vite:5173 / 编译后:80) | — |
-| `/api/` | backend (Go:8080) | — |
+| `/api/` | backend (Go:8080) | `client_max_body_size 50m`、read timeout 60s、`limit_req zone=edge_api` |
 | `/` | blog (Next.js:3000) | — |
 
-`client_max_body_size: 10GB`（媒体上传）。
+**上传 location 的正则必须写后端真实注册的路径**：
+
+```nginx
+location ~ ^/api/(upload|media|file|v1/chat/attachments|v1/admin/media/upload|v1/admin/media/[0-9]+/content|v1/admin/kbs/[0-9]+/files|v1/admin/migrations/vanblog)
+```
+
+历史 bug：这里只写了 `^/api/(upload|media|file|v1/chat/attachments)`，而媒体库上传的实际 URL 是 `/api/v1/admin/media/upload`（`media` 在第 4 段），正则一次都没命中 —— 所有媒体上传都掉进通用 `/api` 块的 50MB + 60s 里，症状是"传大 PPT/视频失败、传小文档正常"。改这里前先 `grep -rn "Mount(admin" apps/server-go/internal/server/server.go` 核对真实路径。详见 `.agent/rules/nginx-guide.md` §4.3。
+
+> 上传体积还受**后端** `site_settings.upload_max_size`（MB，硬上限 100MB）约束 —— 网关放行不等于后端接收。两者要一起看：迁移 000088 已把陈旧的 10MB 种子值抬到 100MB。
 
 被 `./start.sh --gateway`（开发）和 `./start.sh --prod`（生产）使用。
 
