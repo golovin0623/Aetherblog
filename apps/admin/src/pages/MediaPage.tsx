@@ -32,7 +32,18 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks';
-import { mediaService, MediaItem, MediaListParams, MediaType, getMediaUrl, isUploadAborted } from '@/services/mediaService';
+import {
+  mediaService,
+  MediaItem,
+  MediaListParams,
+  MediaType,
+  getMediaUrl,
+  isUploadAborted,
+  fetchUploadLimitBytes,
+  formatUploadLimitMB,
+  resolveUploadErrorMessage,
+  UPLOAD_HARD_CEILING_BYTES,
+} from '@/services/mediaService';
 import { folderService } from '@/services/folderService';
 import { MediaGrid } from './media/components/MediaGrid';
 import { MediaList } from './media/components/MediaList';
@@ -285,6 +296,20 @@ export default function MediaPage() {
   const trashCount = trashCountData || 0;
   const listRefreshing = isFetching && !isLoading;
 
+  // 单文件上传上限（字节）—— 与后端 upload_max_size / 硬上限同口径。
+  // 拿来在**推流之前**拦掉超限文件:否则用户要把几十上百 MB 完整传上去,
+  // 才在"服务器处理中"卡住之后收到一句"超过限制"。
+  // 查询失败时 fetchUploadLimitBytes 自己回落到硬上限,永远不会挡住合法上传。
+  // 用 placeholderData 而非 initialData:initialData 会被当成"刚取到的新鲜数据"
+  // 写进缓存,配合 staleTime 会让首次挂载整整 5 分钟不发请求 —— 那段时间里预校验
+  // 用的是 100MB 占位值,等于没生效。placeholderData 只顶显示、不阻止首次拉取。
+  const { data: uploadLimitBytes } = useQuery({
+    queryKey: ['media', 'upload-limit'],
+    queryFn: fetchUploadLimitBytes,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: UPLOAD_HARD_CEILING_BYTES,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => mediaService.delete(id),
     onSuccess: () => {
@@ -489,9 +514,9 @@ export default function MediaPage() {
             );
             return;
           }
-          const anyErr = error as { response?: { data?: { msg?: string; message?: string } }; message?: string };
-          const errorMessage =
-            anyErr.response?.data?.msg || anyErr.response?.data?.message || anyErr.message || '上传失败';
+          // 网关 413 / 连接被重置这类失败拿不到后端的 R 信封,原来的取值链会退化成
+          // 一句 "Network Error" —— resolveUploadErrorMessage 负责把它们翻成人话。
+          const errorMessage = resolveUploadErrorMessage(error);
           logger.error('Upload failed:', error);
           setUploadingFiles((prev) =>
             prev.map((f) => (f.id === uploadId ? { ...f, status: 'error', error: errorMessage } : f))
@@ -505,9 +530,37 @@ export default function MediaPage() {
   const handleUpload = useCallback(
     (files: FileList | File[]) => {
       const fileArray = Array.from(files);
+
+      // 前置体积校验 —— 超限文件根本不进网络,直接以终态 error 落到上传浮窗。
+      // 这是"传 PPT 一直卡在『服务器处理中』最后失败"的正面解法:失败要来得快、
+      // 要说清楚是体积问题、还要告诉用户去哪儿调。
+      const limit = uploadLimitBytes ?? UPLOAD_HARD_CEILING_BYTES;
+      const limitLabel = formatUploadLimitMB(limit);
+      const oversized = fileArray.filter((file) => file.size > limit);
+      const accepted = fileArray.filter((file) => file.size <= limit);
+
+      if (oversized.length > 0) {
+        const rejectedRows: UploadingFile[] = oversized.map((file) => ({
+          file,
+          progress: 0,
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          status: 'error' as const,
+          error: `${formatUploadLimitMB(file.size)} MB 超过单文件上限 ${limitLabel} MB`,
+          folderId: currentFolderId,
+        }));
+        setUploadingFiles((prev) => [...prev, ...rejectedRows]);
+        toast.error(
+          oversized.length === 1
+            ? `${oversized[0].name}: 超过单文件上限 ${limitLabel} MB，可在「设置 → 高级 → 最大上传」调整`
+            : `${oversized.length} 个文件超过单文件上限 ${limitLabel} MB，可在「设置 → 高级 → 最大上传」调整`
+        );
+      }
+
+      if (accepted.length === 0) return;
+
       // 同步预创建 controller —— 在 setState 提交前就放到 ref,即使用户在 setState
       // 完成前点 X 取消也能立即生效(消除 race condition)。
-      const queued = fileArray.map((file) => {
+      const queued = accepted.map((file) => {
         const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const controller = new AbortController();
         controllersRef.current.set(id, controller);
@@ -523,7 +576,7 @@ export default function MediaPage() {
       setUploadingFiles((prev) => [...prev, ...placeholders]);
       queued.forEach(({ id, file, controller }) => startUpload(id, file, currentFolderId, controller));
     },
-    [currentFolderId, startUpload]
+    [currentFolderId, startUpload, uploadLimitBytes]
   );
 
   // handleCancelUpload 是纯副作用 + 最多一次 setState(终态行的移除),
@@ -547,11 +600,18 @@ export default function MediaPage() {
       const target = uploadingFilesRef.current.find((f) => f.id === id);
       if (!target) return;
       if (target.status !== 'error' && target.status !== 'aborted') return;
+      // 体积超限的行是前置校验拦下的,重试同一个文件必然同样被拒 —— 不要浪费
+      // 一次完整上传,原地重申上限即可(用户改设置后重新选文件就是新一轮)。
+      const limit = uploadLimitBytes ?? UPLOAD_HARD_CEILING_BYTES;
+      if (target.file.size > limit) {
+        toast.error(`${target.file.name}: 仍超过单文件上限 ${formatUploadLimitMB(limit)} MB`);
+        return;
+      }
       const controller = new AbortController();
       controllersRef.current.set(id, controller);
       startUpload(id, target.file, target.folderId, controller);
     },
-    [startUpload]
+    [startUpload, uploadLimitBytes]
   );
 
   const handleCancelAll = useCallback(() => {

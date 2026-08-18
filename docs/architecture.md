@@ -354,7 +354,7 @@ packages/
 | 管理 | `/v1/admin/*` | 后台管理 API | JWT |
 | 智能编排 | `/v1/admin/agent-workflows/*`、`/v1/admin/agent-{tools,definitions,schedules}`、`/v1/agent/workflows/*`、`/v1/agent/published/*`、`/v1/agent/runs/*` | Agent Workflow authoring、catalog、capabilities、governed runtime、run stream/control、published invoke | JWT |
 | Agent 工作台 | `/v1/agent/{chat,models,articles,tags}` | 灵境多轮对话 SSE（事件：`retrieval/think/delta/tool_call/tool_result/sources/usage/done/error`，`usage` 在 `done` 前下发真实或估算 token 用量、工具循环下覆盖全部轮次累加；`enableTools: true` 且模型 `abilities.functionCall` 时启用服务端白名单工具 `search_knowledge_base`（仅限本次已授权 kbIds）/ `search_posts`（已发布文章 ILIKE 检索），`tool_call`(id/name/arguments JSON 串) → 服务端执行（10s 超时）→ `tool_result`(result ≤2000 字符/isError) 回喂上下文，最多 4 轮后强制直接作答；`messages[].content` 支持 OpenAI content-parts 图片输入，仅内联 data URL、单图 ≤5MB、每请求 ≤8 图、非 vision 模型 400）、模型清单（含 `inputCostPer1M/outputCostPer1M` 定价）、@/# picker | JWT |
-| Agent 会话云同步 | `/v1/agent/sessions[/:id]` | 灵境会话跨设备漫游（migration 000088）：`GET` 列表（含 `messageCount`，不含 messages）/ `GET :id` 详情（含全量 messages）/ `PUT :id` 整会话 upsert（LWW：库内 `client_updated_at` 更新 → 409 + data=服务端版本）/ `DELETE :id`；id 客户端生成 `^[A-Za-z0-9_-]{8,64}$`，越权/不存在一律 404；写路径 60/min/user + body 4MB | JWT |
+| Agent 会话云同步 | `/v1/agent/sessions[/:id]` | 灵境会话跨设备漫游（migration 000089）：`GET` 列表（含 `messageCount`，不含 messages）/ `GET :id` 详情（含全量 messages）/ `PUT :id` 整会话 upsert（LWW：库内 `client_updated_at` 更新 → 409 + data=服务端版本）/ `DELETE :id`；id 客户端生成 `^[A-Za-z0-9_-]{8,64}$`，越权/不存在一律 404；写路径 60/min/user + body 4MB | JWT |
 | AI | `/api/v1/ai/*` | AI 服务代理 | JWT |
 
 ### 通用响应格式
@@ -528,7 +528,7 @@ pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` �
 
 | 表名 | 说明 |
 |------|------|
-| `site_settings` | 站点设置（分组键值对；含 `editor_image_smart_compression_enabled` 等功能开关） |
+| `site_settings` | 站点设置（分组键值对；含 `editor_image_smart_compression_enabled` 等功能开关；`upload_max_size` = 单文件上传上限 MB，后端硬顶 100MB，migration 000088 已把 000013 遗留的 10MB 种子值抬到 100） |
 | `social_links` | 社交链接 |
 | `friend_links` | 友链（含排序 / 状态） |
 | `storage_providers` | 云存储提供商配置 |
@@ -573,7 +573,7 @@ REST：`/v1/chat/*`（21 端点，含 000087 新增的消息编辑/撤回、回�
 
 ---
 
-### 灵境会话云同步（migration 000088）
+### 灵境会话云同步（migration 000089）
 
 灵境 AI 工作台会话的服务端持久化（`/v1/agent/sessions`），替代纯 localStorage 存储实现跨设备漫游。同步模型 = **整会话 upsert**（PUT 全量替换 meta + messages，事务内 delete+insert，幂等可重放），冲突判定 = **LWW**（客户端毫秒时间戳 `client_updated_at`，库内更新则 409 并回传服务端完整版本）。
 

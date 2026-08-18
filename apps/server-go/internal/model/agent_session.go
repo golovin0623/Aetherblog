@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// AgentChatSession 对应 `agent_chat_sessions` 表（migration 000088），
+// AgentChatSession 对应 `agent_chat_sessions` 表（migration 000089），
 // 是灵境 AI 工作台会话的云端持久化实体。id 由客户端生成
 // （uuid 或 sess_ 前缀串，^[A-Za-z0-9_-]{8,64}$）。
 //

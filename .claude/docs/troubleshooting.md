@@ -118,6 +118,33 @@ ValueError: Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: ...
 
 ---
 
+## 6.1 GitHub Actions 突然变红，但没人改过相关代码
+
+**典型症状：** `ai-test` job 的 **Run linting** 步骤爆出成百上千条 error（先例：507 条 / run 32047480619），而 diff 里根本没碰这些文件；把同一个 commit 拉到本地跑 `ruff check .` 却是 `All checks passed!`。
+
+**根因：CI 工具链没钉版本，上游一次例行发版改了默认行为。**
+
+`apps/ai-service` 当时既没有 `[tool.ruff]` 配置，CI 又裸跑 `pip install ruff` —— 于是「检查哪些规则」完全由所安装的 ruff 版本决定。ruff 0.16.0 大幅扩充了内置默认规则集（新增 `I` / `RUF` / `B` / `S` / `UP` / `SIM` / `ASYNC` / `C4` / `DTZ` …），CI 拉到 0.16.3 后存量代码里的风格问题一次性全变成 error。本地之所以是绿的，只是因为本地装的是旧版 ruff。
+
+**诊断顺序（先比工具版本，别 diff 业务代码）：**
+
+```bash
+# 1. CI 里工具的实际版本 —— 到 job 日志的 install 步骤看解析到了哪个版本
+# 2. 本地对齐同一版本复现（用独立目录，别污染现有环境）
+pip install --target /tmp/ruff-repro 'ruff==<CI 里的版本>'
+cd apps/ai-service && /tmp/ruff-repro/bin/ruff check . --statistics   # 按规则聚合，一眼看出是哪个规则族新进来的
+
+# 3. 确认当前生效的规则集是不是自己声明的
+/tmp/ruff-repro/bin/ruff check . --show-settings | sed -n '/linter.rules.enabled/,/^]/p'
+```
+
+**修复：钉死两处**（详见 `.claude/docs/deployment-cicd.md` §7.1）——
+规则集钉 `apps/ai-service/pyproject.toml` 的 `[tool.ruff.lint].select`，工具版本钉 `apps/ai-service/requirements-lint.txt` 的 `ruff==`。
+
+> ⚠️ **不要用 `--exit-zero` / 删 lint 步骤 / 大范围 `# noqa` 糊过去** —— 那是把门禁关掉，不是修好。也不要顺手把新暴露的几百条告警混进「修流水线」的 PR 里：清理存量告警是独立工作，单开 PR。
+
+---
+
 ## 7. JWT 验签失败 / 登录后 401
 
 可能场景：
@@ -153,6 +180,38 @@ docker logs aetherblog-backend --tail 500 | grep -i sync
 - `last_error: signature mismatch` → endpoint / region / accessKey / secretKey 配错
 - `last_error: bucket not exists` → bucket 名拼错或未创建
 - `last_error: permission denied` → IAM 策略缺 PutObject / GetObject
+
+---
+
+## 8.1 媒体库"传大文件失败、传小文档正常"（PPT / 视频 / 带图 PDF）
+
+**典型症状：** 上传浮窗走到 99% 停在「服务器处理中…」，然后失败；toast 只给一句 `Network Error` 或「文件大小超过限制」。同一时刻几十 KB 的 `.docx` / `.txt` 一切正常。
+
+这是**体积链路**问题，不是文件类型问题（`.pptx` 早就在后端 MIME 白名单里）。上传要穿过三道独立的体积闸，任何一道最紧就是实际生效值：
+
+| 闸门 | 位置 | 默认 | 触发表现 |
+| --- | --- | --- | --- |
+| ① 网关 `client_max_body_size` | `nginx/nginx.conf` 上传 location = 10G；**通用 `/api` 块 = 50m** | 取决于 location 是否命中 | 413；常在收完 body 前断连 → 浏览器只报 `Network Error` |
+| ② 网关 `proxy_read_timeout` | 上传 location = 3600s；通用 `/api` 块 = 60s | 同上 | 504，前端卡在"服务器处理中"后失败 |
+| ③ 后端 `site_settings.upload_max_size` | `MediaHandler.maxUploadBytes`，硬上限 100MB | 曾长期是 **10**（MB） | 400 +「文件大小超过限制 (最大 N MB)」 |
+
+排查顺序：
+
+```bash
+# ③ 先看后端生效上限（最常见）——历史种子值是 10MB
+docker exec -it aetherblog-postgres psql -U aetherblog -d aetherblog -c \
+  "SELECT setting_value FROM site_settings WHERE setting_key='upload_max_size';"
+
+# ①② 确认上传请求命中的是上传 location 而不是通用 /api
+docker logs aetherblog-nginx --tail 200 | grep -E "413|504|client intended to send too large body"
+```
+
+**已修复（本仓库）：**
+- 迁移 `000088` 把 `upload_max_size` 的陈旧种子值 `'10'` 抬到 `'100'`（只动仍是旧种子的行）。
+- 上传 location 正则补上后端真实路径 `/api/v1/admin/media/upload` 等 —— 此前 `^/api/(upload|media|file|…)` 匹配不到第 4 段的 `media`，**所有媒体上传都掉在通用 `/api` 块里**（50MB + 60s）。详见 `.agent/rules/nginx-guide.md` §4.3。
+- 前端在推流前按 `upload_max_size` 预校验并直接给出可读原因；413 不再自动重试三次。
+
+自查一句话：**如果只有大文件失败，永远先量三道闸的最小值，别去查 MIME 白名单。**
 
 ---
 

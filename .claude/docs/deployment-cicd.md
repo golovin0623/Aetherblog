@@ -125,11 +125,20 @@ ops/release/preflight.sh
 | 路径 | 上游 | 关键参数 |
 | --- | --- | --- |
 | `/api/v1/ai/*` | `ai_service` (FastAPI:8000) | timeout 600s、`X-Accel-Buffering: no`（SSE） |
+| **上传 location**（见下） | backend (Go:8080) | `client_max_body_size 10G`、read timeout 3600s、`proxy_request_buffering off` |
 | `/admin/` | admin (Vite:5173 / 编译后:80) | — |
-| `/api/` | backend (Go:8080) | — |
+| `/api/` | backend (Go:8080) | `client_max_body_size 50m`、read timeout 60s、`limit_req zone=edge_api` |
 | `/` | blog (Next.js:3000) | — |
 
-`client_max_body_size: 10GB`（媒体上传）。
+**上传 location 的正则必须写后端真实注册的路径**：
+
+```nginx
+location ~ ^/api/(upload|media|file|v1/chat/attachments|v1/admin/media/upload|v1/admin/media/[0-9]+/content|v1/admin/kbs/[0-9]+/files|v1/admin/migrations/vanblog)
+```
+
+历史 bug：这里只写了 `^/api/(upload|media|file|v1/chat/attachments)`，而媒体库上传的实际 URL 是 `/api/v1/admin/media/upload`（`media` 在第 4 段），正则一次都没命中 —— 所有媒体上传都掉进通用 `/api` 块的 50MB + 60s 里，症状是"传大 PPT/视频失败、传小文档正常"。改这里前先 `grep -rn "Mount(admin" apps/server-go/internal/server/server.go` 核对真实路径。详见 `.agent/rules/nginx-guide.md` §4.3。
+
+> 上传体积还受**后端** `site_settings.upload_max_size`（MB，硬上限 100MB）约束 —— 网关放行不等于后端接收。两者要一起看：迁移 000088 已把陈旧的 10MB 种子值抬到 100MB。
 
 被 `./start.sh --gateway`（开发）和 `./start.sh --prod`（生产）使用。
 
@@ -147,3 +156,20 @@ ops/release/preflight.sh
 | `quick-build.yml` | 快速验证构建 |
 
 详细：`.github/CICD_GUIDE.md` + `.github/VERSION_GUIDE.md`。
+
+### 7.1 Lint 工具链必须钉版本（红线）
+
+`ai-test` job 的 **Run linting** 步骤跑 `ruff check .`，检查范围由两处**共同**决定，缺一不可：
+
+| 钉什么 | 钉在哪 | 不钉的后果 |
+| --- | --- | --- |
+| **规则集** | `apps/ai-service/pyproject.toml` → `[tool.ruff.lint].select` | 范围 = 所装 ruff 版本的**内置默认集**，即门禁由上游定义 |
+| **工具版本** | `apps/ai-service/requirements-lint.txt`（`ruff==x.y.z`，精确 `==`） | 上游发版即换规则集 |
+
+> **事故先例（run 32047480619）：** 两处都没钉 —— 无 `[tool.ruff]` 配置 + CI 裸跑 `pip install ruff`。ruff 0.16.0 大幅扩充内置默认集（新增 `I` / `RUF` / `B` / `S` / `UP` / `SIM` / `ASYNC` / `C4` / `DTZ` …），CI 于 2026-08-17 拉到 0.16.3，**零代码变更的 main 分支当场爆出 507 条 error**。
+>
+> 这类故障的特征是「谁都没改代码，流水线自己红了」，排查时先比对 CI 里工具的实际版本，别去 diff 业务代码。
+
+**升级 ruff 的正确姿势：** 改 `requirements-lint.txt` 版本号 → 本地 `cd apps/ai-service && pip install -r requirements-lint.txt && ruff check .` → 新告警在**同一个 PR**里清理干净或显式调整 `select`。禁止把清理工作留给下一个人的 CI。
+
+**同一原则适用于所有 CI 工具链**：任何 `pip install <tool>` / `go install ...@latest` / `npx <tool>` 只要其输出参与红绿判定，就必须钉版本。（例外：`govulncheck` 有意用 `@latest` 且已 `|| echo "::warning::"` 降级为非阻断。）

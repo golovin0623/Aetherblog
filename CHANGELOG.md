@@ -35,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 全栈浏览器联调抓到两个真实缺陷（单元/handler 测试因 mock 层无法覆盖）：
 
 - **PUT /agent/sessions 500（42P08）**：upsert SQL 把 `$11/$12` 同时用作 BIGINT 列值与 `to_timestamp(...)` 的 double 输入，lib/pq 服务端预备语句类型推导冲突。拆为独立参数 `$13/$14`（float64）修复。
-- **分支会话同步撞主键（23505）**：`agent_chat_messages.id` 被设计为全局 PK，而「分支会话」按产品语义复制消息（含 id）——新增 forward-fix migration **000089** 将主键收敛为 `(session_id, id)` 复合键（幂等 DO 块，重放 no-op）。
+- **分支会话同步撞主键（23505）**：`agent_chat_messages.id` 原设计为全局 PK，而「分支会话」按产品语义复制消息（含 id）到新会话，两会话先后同步时后者必撞。主键收敛为 `(session_id, id)` 复合键（消息的唯一域本就是会话内）——因本迁移尚未合并未部署，直接并入建表定义，不留 forward-fix 疤痕。
+- **迁移撞号（§3.8 红线）**：本分支的会话表原取 000088，与 main 同期合并的 `000088_raise_stale_upload_max_size_default` 撞号（golang-migrate 见重复版本号直接拒绝启动）。按「撞号 → 新来的取空号，绝不顺移」改到 **000089**，代码与文档引用同步更新。
 
 ### Changed — 灵境前后台同源模块收敛为 `@aetherblog/agent-kit` workspace 包 (2026-08-18, branch claude/lingxing-chat-phase2)
 
@@ -95,7 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — 灵境会话服务端持久化（跨设备同步，后端） (2026-08-18, branch claude/lingxing-chat-phase2)
 
-- **migration 000088 `agent_chat_sessions`：** 新建 `agent_chat_sessions`（会话 meta，`id TEXT PK` 客户端生成、CHECK `^[A-Za-z0-9_-]{8,64}$`，`client_created_at/client_updated_at BIGINT` 客户端毫秒双轨 + TIMESTAMPTZ 服务端视图，索引 `(user_id, pinned DESC, updated_at DESC)`）与 `agent_chat_messages`（`(session_id, seq)` 唯一；think/sources/retrieval/usage/attachments 元信息(不含 dataUrl)/translation/requestSnapshot/error 等全部可选元数据收进单个 `payload JSONB` 透传）。全幂等（IF NOT EXISTS，本地实测重放 no-op），down 逆序 DROP。
+- **migration 000089 `agent_chat_sessions`：** 新建 `agent_chat_sessions`（会话 meta，`id TEXT PK` 客户端生成、CHECK `^[A-Za-z0-9_-]{8,64}$`，`client_created_at/client_updated_at BIGINT` 客户端毫秒双轨 + TIMESTAMPTZ 服务端视图，索引 `(user_id, pinned DESC, updated_at DESC)`）与 `agent_chat_messages`（主键 `(session_id, id)` 复合键 —— 消息 id 只保证会话内唯一，分支会话会复制原 id；`(session_id, seq)` 唯一；think/sources/retrieval/usage/attachments 元信息(不含 dataUrl)/translation/requestSnapshot/error 等全部可选元数据收进单个 `payload JSONB` 透传）。全幂等（IF NOT EXISTS，本地实测重放 no-op），down 逆序 DROP。
 - **新端点 `/api/v1/agent/sessions`（任意已登录用户，越权/不存在统一 404）：** `GET` 列表（含 `messageCount` 不含 messages，置顶优先按更新倒序，`?limit=` 默认 100/上限 500）、`GET /:id` 详情（全量 messages 按 seq）、`PUT /:id` **整会话 upsert**（事务内 `FOR UPDATE` + 全量替换，幂等可重放；**LWW**：库内 `client_updated_at` > 请求 `updatedAt` → HTTP 409 + data=服务端完整版本，相等视为重放接受）、`DELETE /:id`。写路径 `rate:agent:sessions` 60/min/user（onlyMutating）+ body 4MB。
 - **分层齐全：** `AgentSessionHandler` / `AgentSessionService`（id 正则、mode/role 白名单、时间戳与消息数上限、JSON 校验）/ `AgentSessionRepo`（sqlx 事务，`ON CONFLICT ... WHERE user_id` 纵深守卫）+ model/dto；`server.go` 挂载于 `/v1/agent` 组。
 - 验证：`go build`/`go vet`/`go test ./internal/...` 全绿（新增 handler 测试 4 组：非法 id 400、upsert 往返一致、越权 404、LWW 409+幂等重放）；migration 在本地库实跑 87→88 无 dirty，repo SQL 全语句 psql 冒烟通过。前端接入（admin/blog 双端）由后续任务落地。
@@ -118,6 +119,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed — blog Tailwind 缺失 Aether 动效映射 (2026-08-18, branch claude/lingxing-chat-phase2)
 
 - `apps/blog/tailwind.config.ts` 补齐 `transitionTimingFunction.aether` 与 `transitionDuration.{instant,quick,flow,ambient}` 映射（与 admin 对齐，ref: `.claude/design-system/04-motion.md`）。此前 `apps/blog/app/agent` 下 18 处 `duration-quick` + 18 处 `ease-aether` 类不产生任何 CSS；现构建产物正确输出 `cubic-bezier(0.16, 1, 0.3, 1)` 与 260ms。
+### Fixed — 媒体库大文件（PPT/视频）上传失败 + 新建文件夹弹窗主题失配 (2026-08-17, branch claude/media-library-ppt-upload-eqwtxj)
+
+**上传失败**（症状：`.pptx` 卡在 99%「服务器处理中」后失败，几十 KB 的 `.docx`/`.txt` 一切正常）。这不是文件类型问题 —— `.pptx` 早就在后端 MIME 白名单里，`resolveMimeWithFallback` 也会把 OOXML 的 `application/zip` 嗅探结果按扩展名抬升。真正的原因是**体积链路上两处独立缺陷叠加**：
+
+- **网关上传 location 一次都没命中（`nginx/nginx.conf` + `nginx.dev.conf`）。** 正则写的是 `^/api/(upload|media|file|v1/chat/attachments)`，而媒体库上传的真实 URL 是 `/api/v1/admin/media/upload` —— `media` 落在第 4 段而不是第 2 段。于是**所有**媒体上传都掉进通用 `location /api`：`client_max_body_size 50m`（>50MB → 413，且常在收完 body 前断连，浏览器只报 `Network Error`）+ `proxy_read_timeout 60s`（写存储后端超时 → 504）+ `limit_req zone=edge_api`。现补上后端真实注册的上传路径（media upload/batch、`media/{id}/content`、`kbs/{id}/files`、`migrations/vanblog`），并刻意**不用** `^/api/v1/admin/media` 整段前缀 —— 那会把 GET 列表/删除也一并移出限流。
+- **`upload_max_size` 停在 2023 年的种子值 10MB**（migration `000013`）。媒体库早已扩成图片/视频/音频/文档工作台（网关 10G、后端硬顶 100MB、设置页文案写"留空视为 100MB"），只剩这个值在默认拦掉一切 >10MB 的文件。新增 **migration `000088`** 前向修复：仅把仍是旧种子 `'10'` 的行抬到 `'100'`（管理员显式调过的值不覆盖），并对极老实例补 `INSERT ... ON CONFLICT DO NOTHING`。
+
+顺带把失败路径做得说得清、来得快：
+
+- **后端**（`media_handler.go`）：上传三个入口（`/upload`、`/upload/batch`、`/{id}/content`）在解析 multipart **之前**用 `http.MaxBytesReader` 装闸（单文件 = 上限 + 1MB multipart 余量，批量 = 20×）。此前 `c.FormFile` 会先把整个请求体读完（>32MB 落临时盘）才轮到 `fh.Size > max` 校验 —— 声称传 5GB 的请求会先写满磁盘再被礼貌拒绝。超限文案统一带上实际生效 MB 数与「设置 → 高级 → 最大上传」的去处。
+- **前端**（`mediaService.ts` + `MediaPage.tsx`）：上传前按 `upload_max_size` 本地预校验（与后端 `maxUploadBytes` 逐条同构：非法/超硬顶一律回落 100MB；查询失败也回落，绝不因辅助查询挡住合法上传），超限文件直接以终态 error 落到上传浮窗、根本不进网络；413 从"无响应 → 可重试"里摘出来（原先一个必然被拒的文件要完整重传三遍）；新增 `resolveUploadErrorMessage` 把拿不到 R 信封的 413 / 504 / 连接重置翻译成人话，替代原来那句 `Network Error`。
+
+**新建文件夹弹窗主题失配**（`pages/media/components/FolderDialog.tsx`）：弹窗底色写的是 `bg-[var(--bg-card)]`，而 `--bg-card` 在亮主题下是 `rgba(0,0,0,0.02)` —— 它是"叠在 `--bg-primary` 上的 2% 压深"，**不是实底**。当成 Modal 背景用等于弹窗几乎全透明，底下 `bg-black/50` 遮罩直接透上来成一片灰；再叠上按亮主题取色的 `--text-primary`(#0f172a 近黑) 标签与 `--bg-secondary`(#F4F2EC 米色) 输入框，就是截图里"和主题没适配、字看不清"的样子。现整体迁到 Aether Codex：`.surface-overlay` 弹层 + `--ink-*` / `--bg-substrate` / `--aurora-1` / `--signal-danger`，标签走 font-mono + `tracking-[0.2em]` uppercase 阶梯，动效从 `@aetherblog/ui` 取 `spring`/`transition`，去掉全部 `dark:` 变体与 `from-primary to-accent` 品牌渐变（Codex 硬规则 #1/#2/#3/#4/#5）。同时补上 modal 该有的基本功：`createPortal` 脱离父级 stacking context、Esc 关闭、打开即聚焦名称输入框、`acquireOverlayScrollLock` 锁背景滚动、`role="dialog"` + `aria-modal` + `aria-labelledby`。
+
+**验证：** `go build ./...` + `go test ./internal/handler/ ./internal/service/`（新增 `media_upload_guard_test.go` 4 组）通过；admin `tsc --noEmit` + `vitest run` 461 项通过（新增 `mediaUploadLimit.test.ts` 16 项）+ `pnpm build` 通过；`pnpm design-system:check` 保持 **0 error**，且本次改动让 `naked-white-glass` 少 1 个文件、`legacy-ink-aliases` 少 1 个文件。
+
+📄 文档影响：[已更新 `.claude/docs/database-migrations.md`（000088 + 基线 88）、`.claude/docs/deployment-cicd.md` §6、`.claude/docs/troubleshooting.md` §8.1（新增故障条目）、`.agent/rules/nginx-guide.md` §4.3（新增陷阱条目）、`docs/architecture.md` site_settings 行]
+
+### Fixed — blog Tailwind `boxShadow` 误嵌套致 shadow 工具类失效 (2026-08-18, branch claude/confident-cori-78cd56)
+
+- `apps/blog/tailwind.config.ts` 的 `boxShadow` 块此前误嵌在 `theme.extend.colors` 内（被 Tailwind 当成 `colors.boxShadow.*` 颜色定义），`shadow-sm/md/lg/xl` → `var(--shadow-*)` 映射整体失效，工具类一直落在 Tailwind 内置硬编码阴影上。现移出为 `theme.extend.boxShadow`（与 admin 结构对齐），并补齐 `xs` / `primary` / `primary-lg` 三档（blog `globals.css` 明暗两套 token 均已定义，此前组件只能靠 `shadow-[var(--shadow-primary)]` 任意值绕行）。已验证 `pnpm --filter @aetherblog/blog build` 通过，产物 CSS 中 `.shadow-sm/.shadow-lg` 现编译为 `--tw-shadow:var(--shadow-*)`。
+### Fixed — CI 流水线红：ruff 未钉版本导致门禁范围被上游改写 (2026-08-17, branch claude/pr-pipeline-failure-fix-tm2pnw)
+
+**现象：** main 分支 `ci-cd.yml` 的 `ai-test` job 在 **Run linting** 步骤失败（run 32047480619），`ruff check .` 报 507 条 error —— 但该 commit 没有改动任何被报告的文件，本地跑同一命令是 `All checks passed!`。
+
+**根因：** `apps/ai-service` 既无 `[tool.ruff]` 配置，CI 又裸跑 `pip install ruff`（浮动版本）。二者叠加使「检查哪些规则」完全由所安装的 ruff 版本决定，**门禁范围由上游定义而非本仓库定义**。ruff 0.16.0 大幅扩充了内置默认规则集（新增 `I` / `RUF` / `B` / `S` / `UP` / `SIM` / `ASYNC` / `C4` / `DTZ` …），CI 于 2026-08-17 解析到 0.16.3，存量代码里的既有风格问题一次性全部变成 error。本地绿是因为本地装的是旧版 ruff（0.15.8）。
+
+- **钉死规则集：** `apps/ai-service/pyproject.toml` 新增 `[tool.ruff]`（`target-version = "py311"`，与 `requires-python` 对齐）+ `[tool.ruff.lint].select = ["E4", "E7", "E9", "F"]` —— 等价于 ruff ≤0.15 的内置默认集，即本仓库一直以来实际通过的门禁范围。**本次修复不改变任何被检查的代码，也不降低既有门禁强度**（`F821` undefined-name、`F401` unused-import、`E722` bare-except 等仍在）。
+- **钉死工具版本：** 新增 `apps/ai-service/requirements-lint.txt`（`ruff==0.16.3`，精确 `==`）作为 lint 工具链单一事实来源；`requirements-dev.txt` 通过 `-r` 引用，CI 改为 `pip install -r requirements-lint.txt`，本地与 CI 从此同版本。
+- **顺带修掉 checkout 后置清理的 exit 128：** `.claude/worktrees/frosty-goldwasser` 是 PR #780 误提交的 git worktree，在索引里留下 mode 160000 的 gitlink 而 `.gitmodules` 无对应条目，导致**每个 job** 的 `git submodule foreach` 都报 `fatal: No url found for submodule path ...` 警告。已从索引移除，并将 `.claude/worktrees/` 加入 `.gitignore` 防复发。
+- **文档：** `.claude/docs/deployment-cicd.md` §7.1 新增「Lint 工具链必须钉版本」红线（含 ruff 升级流程）；`.claude/docs/troubleshooting.md` §6.1 新增「Actions 突然变红但没人改过相关代码」诊断条目（先比工具版本，别 diff 业务代码）。
+
+> **未处理（有意留作独立 PR）：** ruff 0.16 默认集在存量代码上暴露的 507 条告警本身未清理 —— 其中 `B008`（200 条）是 FastAPI `Depends()/Query()` 默认参数的既定误报，启用 `B` 时必须同时配 `flake8-bugbear.extend-immutable-calls` 才可能收敛；`BLE001`(79) / `UP045`(79) / `I001`(51) 等属于风格与类型标注现代化。把这些混进「修流水线」的 PR 会让一个 4 文件的修复变成 100+ 文件的改动，故单列。已抽查最高信号的 7 条（`RUF012`×3 / `S110`×2 / `FURB162` / `SIM103`），**无正确性缺陷被本次配置掩盖**。
 
 ### Changed — 后台灵境 AI 对话系统性重做（渲染管线 / 消息操作 / 会话管理 / 上下文 / 图片）(2026-08-17, branch claude/lingxing-ai-chat-optimization-8a620b)
 

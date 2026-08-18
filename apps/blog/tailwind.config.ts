@@ -35,13 +35,16 @@ const config: Config = {
           DEFAULT: 'var(--border-default)',
           hover: 'var(--border-hover)',
         },
-        boxShadow: {
-          sm: 'var(--shadow-sm)',
-          DEFAULT: 'var(--shadow-sm)',
-          md: 'var(--shadow-md)',
-          lg: 'var(--shadow-lg)',
-          xl: 'var(--shadow-xl)',
-        },
+      },
+      boxShadow: {
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        xl: 'var(--shadow-xl)',
+        primary: 'var(--shadow-primary)',
+        'primary-lg': 'var(--shadow-primary-lg)',
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],

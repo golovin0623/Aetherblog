@@ -1,5 +1,5 @@
 // Package repository · agent_session_repo.go — agent_chat_sessions /
-// agent_chat_messages（migration 000088）数据访问层。
+// agent_chat_messages（migration 000089）数据访问层。
 //
 // 安全边界：所有查询都强制 user_id 过滤 —— 会话 id 是客户端生成的全局主键，
 // 命中他人会话与不存在必须不可区分（上层统一 404）。整会话 upsert 在单事务

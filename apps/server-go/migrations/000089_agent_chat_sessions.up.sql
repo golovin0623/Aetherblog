@@ -12,7 +12,7 @@
 --      translation/requestSnapshot/error/errorCode/retryable/各时间戳）收进单个
 --      payload JSONB，避免 20 个稀疏列；服务端不解析、原样回传。
 --
--- 红线遵循 CLAUDE.md §3.8：取空号 000088（当前最大 000087 +1，不顺移）；
+-- 红线遵循 CLAUDE.md §3.8：取空号 000089（当前最大 000088 +1，不顺移）；
 -- 全部 IF NOT EXISTS，幂等、单事务安全。
 -- ============================================================
 
@@ -48,9 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_agent_chat_sessions_user_recency
     ON agent_chat_sessions (user_id, pinned DESC, updated_at DESC);
 
 -- 消息表：一行 = 会话内一条消息，seq 为会话内顺序（PUT 时按数组下标重排）。
+--
+-- 主键是 (session_id, id) 复合键而非单列 id：客户端消息 id 只保证**会话内**
+-- 唯一，「分支会话」按产品语义把消息（含原 id）原样复制到新会话，两个会话
+-- 先后同步时单列全局主键必撞 23505（联调实测）。消息的唯一域就是会话内。
 CREATE TABLE IF NOT EXISTS agent_chat_messages (
-    -- 客户端生成 id（uuid / msg_ 前缀串）
-    id         TEXT PRIMARY KEY,
+    -- 客户端生成 id（uuid / msg_ 前缀串），会话内唯一
+    id         TEXT NOT NULL,
     session_id TEXT NOT NULL REFERENCES agent_chat_sessions(id) ON DELETE CASCADE,
     seq        INT NOT NULL,
     role       TEXT NOT NULL,
@@ -61,6 +65,7 @@ CREATE TABLE IF NOT EXISTS agent_chat_messages (
     -- 客户端毫秒时间戳
     created_at BIGINT NOT NULL DEFAULT 0,
 
+    CONSTRAINT agent_chat_messages_pkey PRIMARY KEY (session_id, id),
     CONSTRAINT chk_agent_chat_message_id   CHECK (id ~ '^[A-Za-z0-9_-]{8,64}$'),
     CONSTRAINT chk_agent_chat_message_role CHECK (role IN ('user', 'assistant'))
 );

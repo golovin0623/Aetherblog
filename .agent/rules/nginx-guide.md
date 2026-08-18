@@ -140,22 +140,52 @@ location /api/v1/admin/search/ {
 ### 4.3 大文件上传配置
 
 ```nginx
-http {
-    client_max_body_size 10G;  # 全局最大请求体，支持大视频/附件上传
-}
+server {
+    client_max_body_size 50m;   # 常规 API 的默认上限
 
-# 文件上传路由
-location ~ ^/(upload|media|file) {
-    proxy_pass http://backend;
-    proxy_read_timeout 3600s;   # 大文件上传可能超时，3600s 对应 1 小时
-}
+    # 文件上传路由 —— 前缀必须写"后端真实注册的路径"
+    location ~ ^/api/(upload|media|file|v1/chat/attachments|v1/admin/media/upload|v1/admin/media/[0-9]+/content|v1/admin/kbs/[0-9]+/files|v1/admin/migrations/vanblog) {
+        proxy_pass http://backend;
+        client_max_body_size 10G;   # 超大素材/备份场景
+        proxy_read_timeout 3600s;   # 大文件写存储后端可能很久，1 小时
+        proxy_request_buffering off; # 边收边传，别先在网关落一遍盘
+    }
 
-# 静态文件访问（已上传）
-location /uploads/ {
-    proxy_pass http://backend;
-    proxy_read_timeout 60s;
+    # 静态文件访问（已上传）
+    location /uploads/ {
+        proxy_pass http://backend;
+        proxy_read_timeout 60s;
+    }
 }
 ```
+
+#### 🛑 陷阱：上传 location 的前缀写成了"看起来像上传的词"
+
+这条正则最初写的是 `^/api/(upload|media|file|v1/chat/attachments)`。看着没问题 —— 直到你去核对后端真实路由：媒体库上传挂在 admin group 下，URL 是
+
+```
+POST /api/v1/admin/media/upload
+```
+
+`media` 出现在**第 4 段**而不是第 2 段，正则一次都没命中。结果所有媒体上传都掉进通用 `location /api`：
+
+| 落到通用块的后果 | 表现 |
+| --- | --- |
+| `client_max_body_size 50m` | >50MB 直接 413，且网关常在收完 body 前断连 → 浏览器只报 "Network Error" |
+| `proxy_read_timeout 60s` | 大文件写 S3/本地盘超过 60s → 504，前端卡在"服务器处理中"后失败 |
+| `limit_req zone=edge_api` | 批量上传被限流 |
+
+典型症状是 **"传大 PPT/视频失败、传几十 KB 的 docx/txt 一切正常"**。
+
+**规则：** 改上传 location 前，先用
+
+```bash
+grep -rn "Mount(admin" apps/server-go/internal/server/server.go
+```
+
+核对后端真实挂载路径，别凭 URL 的直觉写正则。
+
+**另一条规则：** 不要图省事写整段前缀（如 `^/api/v1/admin/media`）—— 那会把 GET 列表 / DELETE 等读接口也一并移出 `edge_api` 限流。只放行确实要传大 body 的具体路径。
 
 ### 4.4 静态资源缓存（Next.js）
 

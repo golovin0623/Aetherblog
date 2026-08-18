@@ -1,6 +1,6 @@
 // Package handler · agent_session_handler.go — /api/v1/agent/sessions 路由族。
 //
-// 灵境 AI 会话云同步（跨设备漫游，migration 000088）。鉴权与 /v1/agent 组一致：
+// 灵境 AI 会话云同步（跨设备漫游，migration 000089）。鉴权与 /v1/agent 组一致：
 // 任意已登录用户；所有查询强制 user_id = JWT 主体，越权 / 不存在一律 404，
 // 不泄露会话存在性。
 //

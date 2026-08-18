@@ -497,7 +497,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	)
 	agentWorkflowHandler.MountRuntime(agentGroup)
 
-	// --- 灵境会话云同步（/v1/agent/sessions，migration 000088） ---
+	// --- 灵境会话云同步（/v1/agent/sessions，migration 000089） ---
 	// 整会话 upsert + LWW（client_updated_at）。任意已登录用户；所有查询强制
 	// user_id = JWT 主体，越权一律 404 不泄露存在性。
 	// 写路径（PUT/DELETE）每用户 60/min，读不计桶（onlyMutating，同 KB 策略）；
