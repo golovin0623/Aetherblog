@@ -1,8 +1,20 @@
 /**
- * Agent 会话本地存储层（admin 端）
+ * Agent 会话本地存储层（admin 端）—— 本地优先架构的第一真值层。
  *
- * MVP：会话与消息存 localStorage，每个用户独立 namespace。后续上 DB 时把
- * load/saveSessions 替换为 /api/v1/agent/sessions REST 即可。
+ * 会话与消息存 localStorage，每个用户独立 namespace；UI 的读写只碰本地，
+ * 永不等网络（加载即 loadSessions，落盘走 scheduleSaveSessions 节流）。
+ *
+ * 二期起本模块**不再是唯一真值**：跨设备漫游由同目录 sessionsSync.ts 在后台
+ * 与 /api/v1/agent/sessions 对账并整会话 PUT（LWW，网络失败静默重试）。云端是
+ * 本地的镜像而非上游 —— 断网仍是完整可用的存储层，页面也不因同步失败而降级。
+ *
+ * 上行边界（wire 映射见 sessionsSync.ts）：
+ *   · titleEdited —— 纯本地标记，不上行（wire 是显式字段构建，天然忽略）；
+ *     采纳服务端版本时从本地继承，「手动改名永远赢」；
+ *   · draft —— 上行，但采纳服务端版本时保留本地值（用户可能正在输入）；
+ *   · attachments[].dataUrl —— 上行剥离（4MB body 上限，服务端不存原图），
+ *     回程补空串，刷新后降级为占位卡；
+ *   · pending 消息 / pending 翻译 —— 流式中的会话整体不推送，等流结束。
  *
  * namespace 与 blog 端隔离：admin 在自己的 storage key 下写，避免两边混读。
  *
@@ -12,7 +24,7 @@
  * 快照直接兼容加载。
  */
 
-import type { AgentRetrievalReceipt } from './chat';
+import type { AgentRetrievalReceipt } from '@aetherblog/agent-kit';
 import type { KnowledgeContextSelection } from '../knowledgeWorkspaceHandoff';
 
 export type AgentMode = 'chat' | 'cowork' | 'code';
@@ -41,7 +53,39 @@ export interface AgentUsage {
   estimated: boolean;
 }
 
-/** 消息图片附件 —— dataUrl 直接内联持久化（MVP 不走对象存储）。 */
+/**
+ * assistant 消息的单次工具调用轨迹 —— SSE tool_call 到达即建（进行中），
+ * 同 id 的 tool_result 到达后合并 result / isError / finishedAt。
+ * 数组顺序即服务端执行顺序（协议保证一次 tool_call 后必跟同 id 的 tool_result）。
+ */
+export interface AgentToolEvent {
+  id: string;
+  name: string;
+  /** 服务端拼装完成的完整 JSON 参数串（展示层再尝试 pretty-print）。 */
+  arguments: string;
+  /** 工具执行结果（服务端已截断 ≤2000 字符）；undefined = 尚未返回。 */
+  result?: string;
+  isError?: boolean;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+/**
+ * 多模型对比的存档回答 —— 「对比」浮层采纳某一列后，其余完成的列与被替换的
+ * 原回答落在这里，随消息持久化 / 云同步，可在消息 meta footer 下方回看。
+ */
+export interface AgentAlternative {
+  /** 产生该回答的模型戳记（null = 后端自动路由）。 */
+  modelId: string | null;
+  providerCode: string | null;
+  content: string;
+  usage?: AgentUsage;
+  /** 该回答从发起到完成的耗时（毫秒）。 */
+  elapsedMs?: number;
+}
+
+/** 消息图片附件 —— dataUrl 内联落 localStorage（不走对象存储）；
+ *  云同步上行时剥离 dataUrl，跨设备只保留元信息占位卡。 */
 export interface AgentAttachment {
   id: string;
   kind: 'image';
@@ -69,6 +113,10 @@ export interface AgentMessage {
   translation?: AgentTranslation;
   /** 本条消息的 token 用量（assistant 消息使用）。 */
   usage?: AgentUsage;
+  /** 本轮回答的工具调用轨迹（assistant 消息使用，按执行顺序排列）。 */
+  toolEvents?: AgentToolEvent[];
+  /** 多模型对比后存档的其他回答（assistant 消息使用，采纳时写入）。 */
+  alternatives?: AgentAlternative[];
   /** 本轮 user 消息携带的图片附件。 */
   attachments?: AgentAttachment[];
   createdAt: number;
@@ -102,7 +150,8 @@ export interface AgentSession {
   modelId?: string | null;
   providerCode?: string | null;
   modelParams?: AgentModelParams;
-  /** Unsent composer text. Optional so sessions saved before this field remain compatible. */
+  /** 未发送的输入框文本。可选 —— 该字段之前存下的会话仍能直接加载。
+   *  上行云端，但采纳服务端版本时永远保留本地值（用户可能正在输入）。 */
   draft?: string;
   /** 置顶 —— 侧栏排序时优先于时间分组。 */
   pinned?: boolean;
@@ -110,6 +159,10 @@ export interface AgentSession {
    *  null/undefined = 无断点。对齐 Cherry Studio「清除上下文」心智：
    *  消息仍在、可回看，但模型从断点后重新开始记忆。 */
   contextBreakId?: string | null;
+  /** 用户手动改过标题 —— AI 自动起名不再覆盖。
+   *  本地字段：云同步 wire 映射是显式字段构建，天然忽略它（跨设备不持久化
+   *  属已知边界——其他设备最多多做一次无害的自动起名尝试）。 */
+  titleEdited?: boolean;
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];
@@ -280,6 +333,31 @@ export function deriveSessionTitle(firstMessage: string): string {
   }
   if (trimmed.length <= 24) return trimmed;
   return `${trimmed.slice(0, 24)}…`;
+}
+
+/** 模型爱加的首尾包装字符（引号 / 书名号 / 括号）。 */
+const TITLE_WRAPPER_EDGE_RE = /^[\s"'“”‘’「」『』《》【】()（）]+|[\s"'“”‘’「」『』《》【】()（）]+$/g;
+/** 收尾句读。 */
+const TITLE_TRAILING_PUNCT_RE = /[。．.!！?？~～、，,;；:：]+$/g;
+
+/**
+ * 清洗 AI 生成的会话标题 —— 模型偶尔会带引号 / 书名号 / 收尾句号 / 换行，
+ * 全部剥掉后截 24 字（与 deriveSessionTitle 的截断上限一致，但不加省略号）。
+ * 清洗后为空返回 ''，调用方据此放弃写入。
+ */
+export function sanitizeGeneratedSessionTitle(raw: string): string {
+  // 换行与连续空白折叠为单空格
+  let title = raw.replace(/\s+/g, ' ').trim();
+  // 包装字符与收尾句读可能交替嵌套（《标题》。 / "标题"。）—— 剥到稳定为止：
+  // 只剥一趟时标点落在包装外，会留下半个书名号 / 引号。
+  for (;;) {
+    const before = title;
+    title = title.replace(TITLE_WRAPPER_EDGE_RE, '');
+    title = title.replace(TITLE_TRAILING_PUNCT_RE, '').trim();
+    if (title === before) break; // 替换只会缩短，必然收敛
+  }
+  if (!title) return '';
+  return title.length > 24 ? title.slice(0, 24) : title;
 }
 
 export interface SessionGroup {

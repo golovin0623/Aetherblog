@@ -29,8 +29,7 @@ import SlashCommandPicker from './SlashCommandPicker';
 import KnowledgePicker from './KnowledgePicker';
 import type { AgentArticle, AgentTag, SlashCommand } from '../../lib/agentResources';
 import type { AgentKbRef, AgentKnowledgeBase } from '../../lib/agentKbs';
-import type { KnowledgeContextMode } from '../../lib/agentChatStream';
-import { formatTokenCount } from '../../lib/tokenEstimate';
+import { formatTokenCount, type KnowledgeContextMode } from '@aetherblog/agent-kit';
 import { SEND_SHORTCUT_OPTIONS, useSendShortcut } from '../../lib/sendShortcut';
 
 type PickerKey = 'article' | 'tag' | 'slash' | 'kb' | null;

@@ -9,7 +9,8 @@
 //   - 由于下游 ai-service 的 /api/v1/agent/chat 走 require_admin_or_internal，
 //     这里强制注入 X-Internal-Service token 让后端以"内部服务"身份代理。
 //   - 走 streamClient（StreamReadTimeout 较长），SSE 行级转发，复用
-//     validateSSELine 白名单（已加入 think / sources / retrieval / usage）。
+//     validateSSELine 白名单（已加入 think / sources / retrieval /
+//     tool_call / tool_result / usage，与 ai_handler.go allowedSSETypes 对齐）。
 //
 // 端点：
 //

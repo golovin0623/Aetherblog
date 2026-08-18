@@ -68,7 +68,8 @@ AetherBlog/
 │   ├── hooks/                   # 共享 React hooks
 │   ├── types/                   # TypeScript 类型
 │   ├── utils/                   # 工具函数
-│   └── editor/                  # CodeMirror Markdown 编辑器
+│   ├── editor/                  # CodeMirror Markdown 编辑器
+│   └── agent-kit/               # 灵境 Agent Chat 协议层（SSE 客户端 + 纯函数）
 ├── scripts/                     # 构建与工具脚本
 │   └── codemod-tokens.mjs       # 设计系统违规扫描
 ├── 系统需求企划书及详细设计.md   # 主设计文档（~22k 行）
@@ -132,6 +133,7 @@ AetherBlog/
 | @lobehub/icons | 4.1.0 | — |
 | react-hook-form | 7.70.0 | — |
 | sonner | 2.0.7 | — |
+| virtua | 0.50.1 | — |
 | shiki | — | 1.1.0 |
 | mermaid | — | 11.12.2 |
 | katex | — | 0.16.27 |
@@ -201,6 +203,19 @@ CodeMirror 版 Markdown 编辑器：
 
 - 组件：`MarkdownEditor`、`MarkdownPreview`、`MarkdownStreamPreview`（AI 流式专用轻渲染器：marked+DOMPurify、无 shiki/KaTeX/mermaid、内置未闭合围栏稳定化 `stabilizeStreamingFences`）、`EditorWithPreview`、`UploadProgress`、`ImageSizePopover`
 - Hooks：`useEditorCommands`、`useTableCommands`、`useImageUpload`
+
+### `@aetherblog/agent-kit`
+
+灵境（Agent Chat）前后台共用的协议层与纯函数（2026-08 从 admin `src/services/agent/` 与 blog `app/agent/lib/` 的漂移副本收敛而来；admin 经 `@/services/agent` barrel 转发，blog 直接 import 包名）：
+
+- `chatStream.ts` —— `streamAgentChat` SSE 客户端（事件 retrieval/think/delta/tool_call/tool_result/usage/done/error）+ 全部请求/事件类型（`ChatStreamRequest`、`KnowledgeContextMode`、`AgentRetrievalReceipt` 等）+ 防御性 parser（`parseAgentRetrievalReceipt`、`parseChatStreamToolCall/ToolResult/Usage`）
+- `citations.ts` —— `linkifyCitations`、`parseCitationRank`
+- `cjkMarkdown.ts` —— `normalizeCjkInlineMarkdown`
+- `contextBudget.ts` —— `budgetHistory` + 预算常量
+- `smooth.ts` —— `useSmoothStream`、`StreamAnimationMode`（React hook，带 `'use client'`）
+- `tokenEstimate.ts` —— `estimateTokens`、`estimateMessagesTokens`、`formatTokenCount`
+
+**刻意不上提**（两端形态已实质分叉，见包 README）：admin `sessions/sessionsSync/attachments/attachmentStore/models/resources`；blog `agentSessions/agentModels/agentKbs/agentResources/agentAuth/sendShortcut`。
 
 ### Import 模板
 

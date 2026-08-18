@@ -24,11 +24,16 @@ import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 import StreamMarkdown from './StreamMarkdown';
 import RetrievalReceipt, { type RetrievalReceiptHandle } from './RetrievalReceipt';
 import type { AgentMessage } from '../../lib/agentSessions';
-import type { KnowledgeContextMode } from '../../lib/agentChatStream';
-import { normalizeCjkInlineMarkdown } from '../../lib/cjkMarkdown';
-import { linkifyCitations, parseCitationRank } from '../../lib/citations';
-import { estimateTokens, formatTokenCount } from '../../lib/tokenEstimate';
-import { useSmoothStream, type StreamAnimationMode } from '../../lib/smooth';
+import {
+  estimateTokens,
+  formatTokenCount,
+  linkifyCitations,
+  normalizeCjkInlineMarkdown,
+  parseCitationRank,
+  useSmoothStream,
+  type KnowledgeContextMode,
+  type StreamAnimationMode,
+} from '@aetherblog/agent-kit';
 
 /** 显示模式：bubble = 彩色卡片承载；engraved = 文字浮印纸面（版书）。 */
 export type DisplayMode = 'bubble' | 'engraved';

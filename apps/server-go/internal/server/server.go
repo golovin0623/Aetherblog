@@ -497,6 +497,18 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	)
 	agentWorkflowHandler.MountRuntime(agentGroup)
 
+	// --- 灵境会话云同步（/v1/agent/sessions，migration 000089） ---
+	// 整会话 upsert + LWW（client_updated_at）。任意已登录用户；所有查询强制
+	// user_id = JWT 主体，越权一律 404 不泄露存在性。
+	// 写路径（PUT/DELETE）每用户 60/min，读不计桶（onlyMutating，同 KB 策略）；
+	// body 上限 4MB（消息 payload 只存附件元信息不含 dataUrl，正常会话远小于此）。
+	agentSessionSvc := service.NewAgentSessionService(repository.NewAgentSessionRepo(s.DB))
+	agentSessionGroup := agentGroup.Group("/sessions",
+		onlyMutating(middleware.RateLimitByUser(s.Redis, "rate:agent:sessions", 60, time.Minute)),
+		echomiddleware.BodyLimit("4M"),
+	)
+	handler.NewAgentSessionHandler(agentSessionSvc).Mount(agentSessionGroup)
+
 	// --- 团队聊天 / 私聊（实时消息，migration 000082） ---
 	// 端到端：WebSocket(/v1/chat/ws) 承载消息推送 / 打字提示 / 已读回执 / 在线状态；
 	// REST 提供会话列表、历史(游标分页)、发送兜底、附件上传、皮肤偏好。

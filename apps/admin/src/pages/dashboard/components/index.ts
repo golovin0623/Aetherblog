@@ -10,4 +10,5 @@ export * from './RealtimeLogViewer';
 export * from './AiUsageTrendChart';
 export * from './AiModelDistributionChart';
 export * from './AiTaskDistributionChart';
+export * from './AgentChatUsageCard';
 export * from './AiUsageRecordsTable';

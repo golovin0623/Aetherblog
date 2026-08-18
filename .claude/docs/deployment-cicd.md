@@ -157,6 +157,24 @@ location ~ ^/api/(upload|media|file|v1/chat/attachments|v1/admin/media/upload|v1
 
 详细：`.github/CICD_GUIDE.md` + `.github/VERSION_GUIDE.md`。
 
+### 7.0 测试门禁：三套测试各自跑在哪个 job（红线）
+
+| 测试栈 | job | 步骤名 | 命令 | 触发条件（`detect-changes`） |
+| --- | --- | --- | --- | --- |
+| Go 单测 | `backend-test` | Run tests | `go test ./... -v -count=1` | `backend == true` |
+| Python 单测 | `ai-test` | **Run unit tests (pytest)** | `pip install -r requirements-dev.txt` + `python -m pytest tests --ignore=tests/e2e -q` | `ai-service == true` |
+| 前端单测 | `frontend-quality` | **Unit tests (vitest)** | `pnpm -r --if-present test` | `frontend == true`（blog 或 admin） |
+
+> **历史欠账（2026-08 修复）：** 加粗的两步此前**不存在** —— `ai-test` 只有 `py_compile` + `ruff` + import 自检，`frontend-quality` 只有 lint + typecheck。结果是 `apps/ai-service/tests/`（644 例）与 admin / agent-kit 的 vitest 用例（515 例）**从未在 CI 执行过**，`pyproject.toml` 里的 `--cov-fail-under` 覆盖率门槛也从未生效。写了测试 ≠ 测试在跑，接手时先确认 job 里真有对应步骤。
+
+**三条红线：**
+
+1. **不许降级为非阻断。** 这三步都不许加 `|| true` / `continue-on-error: true`。（本仓库有意非阻断的只有 `gitleaks` / `trivy-scan` / `govulncheck` / `pnpm audit` 四个观测型步骤，它们都在注释里写明了原因与转正条件。）
+2. **pytest 步骤刻意不注入 secret env。** `apps/ai-service/tests/conftest.py` 用 `os.environ.setdefault` 兜底 `JWT_SECRET` / `AI_INTERNAL_SERVICE_TOKEN` / `AI_CREDENTIAL_ENCRYPTION_KEYS` / `POSTGRES_DSN`，`setdefault` **不会覆盖外部已有值**；而 `tests/test_deps.py` 用字面量 `"test-secret"` 签 JWT。一旦照抄同 job「Verify app can start」步骤的 `JWT_SECRET: ci-test-secret`，4 个 `test_deps` 用例当场签名校验失败。该步骤只设 `AI_ENV=test` / `AI_MOCK_MODE=true`。
+3. **vitest 用 `--if-present` 而非裸 `pnpm -r test`。** `blog` / `ui` / `hooks` / `types` / `utils` / `editor` 没有 `test` script，裸 `-r test` 会整段失败。新包只要在自己 `package.json` 加 `"test": "vitest run"` 就自动纳入门禁；覆盖率门槛（pytest 侧）写在 `apps/ai-service/pyproject.toml` 的 `[tool.pytest.ini_options].addopts`，不在 workflow 里重复。
+
+`tests/e2e` 依赖外部 provider / 真实 DB，明确排除在单测门禁之外。
+
 ### 7.1 Lint 工具链必须钉版本（红线）
 
 `ai-test` job 的 **Run linting** 步骤跑 `ruff check .`，检查范围由两处**共同**决定，缺一不可：

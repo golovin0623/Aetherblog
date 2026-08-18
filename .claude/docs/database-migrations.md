@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 88
-- **最新：** `000088_raise_stale_upload_max_size_default`（把 `upload_max_size` 的陈旧种子值 10MB 抬到 100MB —— 纯数据迁移，不改 schema）
-- **次新：** `000087_chat_interactions`（团队聊天表情回应 / 置顶 / @提及 / 软撤回）
+- **总数：** 89
+- **最新：** `000089_agent_chat_sessions`（灵境 AI 会话云端持久化：`agent_chat_sessions` + `agent_chat_messages` 两张新表，跨设备漫游）
+- **次新：** `000088_raise_stale_upload_max_size_default`（把 `upload_max_size` 的陈旧种子值 10MB 抬到 100MB —— 纯数据迁移，不改 schema）
 
 ---
 
@@ -327,6 +327,17 @@ down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增
 - 无 dirty 自愈条目（纯 UPDATE/INSERT，失败 fail-closed 中止）。
 
 > 配套改动（同一 PR）：`nginx/nginx.conf` 与 `nginx.dev.conf` 的上传 location 正则此前匹配不到 `/api/v1/admin/media/upload`，媒体上传一直落在通用 `/api` 块的 50MB + 60s 超时里 —— 只抬 `upload_max_size` 不改网关，>50MB 的文件仍会被网关 413。两者必须一起上。
+
+### 000089 · `agent_chat_sessions`
+
+灵境 AI 会话云端持久化（`/api/v1/agent/sessions`，跨设备漫游）。取空号 000089（当前最大 000088 +1，**不顺移**）。纯新增 2 张表：
+
+- `agent_chat_sessions`（会话 meta；`id TEXT PK` **客户端生成**，CHECK `^[A-Za-z0-9_-]{8,64}$`；`user_id` FK ON DELETE CASCADE；`mode`/`model_id`/`provider_code`/`model_params JSONB`/`pinned`/`context_break_id`/`draft`；**时间戳双轨**：`client_created_at`/`client_updated_at BIGINT` 客户端毫秒（`client_updated_at` 为 LWW 冲突判定基准），`created_at`/`updated_at TIMESTAMPTZ` 服务端换算视图。索引 `(user_id, pinned DESC, updated_at DESC)` 撑侧栏列表）
+- `agent_chat_messages`（消息；**主键是 `(session_id, id)` 复合键** —— 客户端消息 id 只保证会话内唯一，「分支会话」按产品语义把消息含原 id 原样复制到新会话，单列全局主键必撞 23505（联调实测），消息的唯一域就是会话内；`session_id` FK CASCADE + `seq` 会话内顺序（`(session_id, seq)` 唯一，整会话 upsert 时按数组下标重排）；`role` CHECK [user/assistant]；全部可选流式元数据（think/sources/retrieval/usage/attachments 元信息(不含 dataUrl)/translation/requestSnapshot/error/errorCode/retryable/各时间戳）收进单个 `payload JSONB`，服务端不解析原样回传；`created_at BIGINT` 客户端毫秒）
+
+`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`，单事务安全、可重放幂等（本地已实测重放全程 no-op）。down 按依赖逆序 `DROP TABLE IF EXISTS`。无 dirty 自愈条目（纯新增表，失败 fail-closed 中止部署）。
+
+> **编号故事：** 本迁移开发期间原取 000088，与 main 上同期合并的 `000088_raise_stale_upload_max_size_default` 撞号（golang-migrate 见到重复版本号直接拒绝启动）。按 §3.8「撞号 → 新来的取下一个空号，绝不顺移」，未合并未部署的本条改到 000089；开发中途另有一条 `agent_chat_messages` 复合主键 forward-fix，因同样未发布，一并并入本条表定义，不留自制的疤痕。
 
 ---
 

@@ -55,11 +55,21 @@ type AIDashboard struct {
 }
 
 // AITaskDistribution 持有 ai_usage_logs 表中按任务类型聚合的统计数据。
+// Today* 字段为当天（服务器时区 CURRENT_DATE 起）的子集聚合，
+// 供前端「灵境对话」等任务专项卡片展示「今日 vs 时间窗」对比。
 type AITaskDistribution struct {
-	Task   string  `db:"task"`   // 任务类型名称
-	Calls  int64   `db:"calls"`  // 调用次数
-	Tokens int64   `db:"tokens"` // 消耗 Token 量
-	Cost   float64 `db:"cost"`   // 估算费用
+	Task              string  `db:"task"`                 // 任务类型名称
+	Calls             int64   `db:"calls"`                // 调用次数
+	Tokens            int64   `db:"tokens"`               // 消耗 Token 量
+	TokensIn          int64   `db:"tokens_in"`            // 输入 Token 量
+	TokensOut         int64   `db:"tokens_out"`           // 输出 Token 量
+	Cost              float64 `db:"cost"`                 // 估算费用
+	AvgLatencyMs      float64 `db:"avg_latency_ms"`       // 平均延迟（毫秒）
+	TodayCalls        int64   `db:"today_calls"`          // 今日调用次数
+	TodayTokensIn     int64   `db:"today_tokens_in"`      // 今日输入 Token 量
+	TodayTokensOut    int64   `db:"today_tokens_out"`     // 今日输出 Token 量
+	TodayCost         float64 `db:"today_cost"`           // 今日估算费用
+	TodayAvgLatencyMs float64 `db:"today_avg_latency_ms"` // 今日平均延迟（毫秒）
 }
 
 // AITrendPoint 表示单日 AI 调用趋势点。
@@ -480,7 +490,15 @@ SELECT
     task_type AS task,
     COUNT(*) AS calls,
     COALESCE(SUM(total_tokens), 0) AS tokens,
-    COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS cost
+    COALESCE(SUM(tokens_in), 0) AS tokens_in,
+    COALESCE(SUM(tokens_out), 0) AS tokens_out,
+    COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS cost,
+    COALESCE(AVG(latency_ms), 0.0) AS avg_latency_ms,
+    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) AS today_calls,
+    COALESCE(SUM(tokens_in) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_tokens_in,
+    COALESCE(SUM(tokens_out) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_tokens_out,
+    COALESCE(SUM(COALESCE(cost, 0)) FILTER (WHERE created_at >= CURRENT_DATE), 0.0) AS today_cost,
+    COALESCE(AVG(latency_ms) FILTER (WHERE created_at >= CURRENT_DATE), 0.0) AS today_avg_latency_ms
 FROM priced_logs
 GROUP BY task_type
 ORDER BY calls DESC, task ASC`

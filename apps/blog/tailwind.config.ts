@@ -51,6 +51,16 @@ const config: Config = {
         serif: ['var(--font-playfair)', 'var(--font-noto-serif-sc)', 'Georgia', 'Times New Roman', 'serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
+      // Aether Codex 动效映射 —— ref: .claude/design-system/04-motion.md
+      transitionTimingFunction: {
+        aether: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      },
+      transitionDuration: {
+        instant: '120ms',
+        quick: '260ms',
+        flow: '520ms',
+        ambient: '1800ms',
+      },
       typography: {
         DEFAULT: {
           css: {

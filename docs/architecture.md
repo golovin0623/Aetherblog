@@ -147,7 +147,7 @@ cmd/server/main.go（Go 可执行入口）
 | `FolderHandler` | `/v1/admin/folders` | 文件夹树 / 层级 / 移动 | GET /v1/admin/folders/tree |
 | `PermissionHandler` | `/v1/admin/folders/*/permissions` | 文件夹权限 ACL | GET/POST/PUT/DELETE |
 | `ShareHandler` | `/v1/admin/shares` | 文件/文件夹分享链接管理 | POST .../file/:fileId, POST .../folder/:folderId |
-| `StatsHandler` | `/v1/admin/stats` | 统计仪表盘 / 访客趋势 / AI 分析 | GET .../dashboard, .../ai-dashboard, .../ai-pricing-gaps |
+| `StatsHandler` | `/v1/admin/stats` | 统计仪表盘 / 访客趋势 / AI 分析（ai-dashboard `taskDistribution[]` 含 `tokensIn/tokensOut/avgLatencyMs` + `today*` 今日子集，支撑灵境对话专项用量卡） | GET .../dashboard, .../ai-dashboard, .../ai-pricing-gaps |
 | `AiHandler` | `/v1/admin/ai` | AI 写作辅助（6 工具 + stream）/ Prompt 配置 / 任务配置 / 供应商代理 | POST .../summary/stream |
 | `SystemMonitorHandler` | `/v1/admin/monitor` | 系统指标 / 容器 / 日志 / 告警 / 历史 | GET .../overview, .../containers/:id/logs |
 | `SiteHandler` | `/v1/admin/site` | 站点信息 / 统计 / 作者 | GET .../info, .../stats, .../author |
@@ -353,7 +353,8 @@ packages/
 | 公开 | `/v1/public/*` | 面向访客的内容 API | 否 |
 | 管理 | `/v1/admin/*` | 后台管理 API | JWT |
 | 智能编排 | `/v1/admin/agent-workflows/*`、`/v1/admin/agent-{tools,definitions,schedules}`、`/v1/agent/workflows/*`、`/v1/agent/published/*`、`/v1/agent/runs/*` | Agent Workflow authoring、catalog、capabilities、governed runtime、run stream/control、published invoke | JWT |
-| Agent 工作台 | `/v1/agent/{chat,models,articles,tags}` | 灵境多轮对话 SSE（事件：`retrieval/think/delta/sources/usage/done/error`，`usage` 在 `done` 前下发真实或估算 token 用量；`messages[].content` 支持 OpenAI content-parts 图片输入，仅内联 data URL、单图 ≤5MB、每请求 ≤8 图、非 vision 模型 400）、模型清单（含 `inputCostPer1M/outputCostPer1M` 定价）、@/# picker | JWT |
+| Agent 工作台 | `/v1/agent/{chat,models,articles,tags}` | 灵境多轮对话 SSE（事件：`retrieval/think/delta/tool_call/tool_result/sources/usage/done/error`，`usage` 在 `done` 前下发真实或估算 token 用量、工具循环下覆盖全部轮次累加；`enableTools: true` 且模型 `abilities.functionCall` 时启用服务端白名单工具 `search_knowledge_base`（仅限本次已授权 kbIds）/ `search_posts`（已发布文章 ILIKE 检索），`tool_call`(id/name/arguments JSON 串) → 服务端执行（10s 超时）→ `tool_result`(result ≤2000 字符/isError) 回喂上下文，最多 4 轮后强制直接作答；`messages[].content` 支持 OpenAI content-parts 图片输入，仅内联 data URL、单图 ≤5MB、每请求 ≤8 图、非 vision 模型 400）、模型清单（含 `inputCostPer1M/outputCostPer1M` 定价）、@/# picker | JWT |
+| Agent 会话云同步 | `/v1/agent/sessions[/:id]` | 灵境会话跨设备漫游（migration 000089）：`GET` 列表（含 `messageCount`，不含 messages）/ `GET :id` 详情（含全量 messages）/ `PUT :id` 整会话 upsert（LWW：库内 `client_updated_at` 更新 → 409 + data=服务端版本）/ `DELETE :id`；id 客户端生成 `^[A-Za-z0-9_-]{8,64}$`，越权/不存在一律 404；写路径 60/min/user + body 4MB | JWT |
 | AI | `/api/v1/ai/*` | AI 服务代理 | JWT |
 
 ### 通用响应格式
@@ -569,6 +570,19 @@ REST：`/v1/admin/qa-documents/*`（22 端点，见 `.claude/docs/api-handlers.m
 REST：`/v1/chat/*`（21 端点，含 000087 新增的消息编辑/撤回、回应增删、会话偏好，及选人搜索 `GET /dm-targets?q=`、我的团队 `GET /teams`；见 `.claude/docs/api-handlers.md`）。实时：WebSocket `/v1/chat/ws`，事件 message / message-updated / reaction / typing / read / presence，跨实例经 Redis Pub/Sub `chat:fanout` 扇出。编辑/撤回 2 分钟窗口由 UPDATE SQL 内联校验；@提及在 service 层过滤为会话真实成员后落库。
 
 **DM 可达性策略（站点设置 `chat_dm_scope`，语义对齐 Mattermost RestrictDirectMessage）：** `any`（默认，任意已登录成员互相可私聊）| `team`（仅与至少共享一个活跃团队的成员可私聊，admin 豁免）。服务端在 `ChatService.OpenDirect` 与 `SearchDMTargets` 同源强制（搜得到 ⇔ 打得开）；策略拒绝与「用户不存在」同为 `无效的私聊对象`，不构成用户存在性 oracle。限流：会话创建 `rate:chat:open` 15/min/user，选人搜索 `rate:chat:dmsearch` 60/min/user（通用写桶 120/min 之外的独立桶）。团队会话标题取团队名（创建时写入，存量空标题在下次打开时懒回填）。
+
+---
+
+### 灵境会话云同步（migration 000089）
+
+灵境 AI 工作台会话的服务端持久化（`/v1/agent/sessions`），替代纯 localStorage 存储实现跨设备漫游。同步模型 = **整会话 upsert**（PUT 全量替换 meta + messages，事务内 delete+insert，幂等可重放），冲突判定 = **LWW**（客户端毫秒时间戳 `client_updated_at`，库内更新则 409 并回传服务端完整版本）。
+
+| 表名 | 说明 |
+|------|------|
+| `agent_chat_sessions` | 会话 meta（`id TEXT PK` 客户端生成 CHECK `^[A-Za-z0-9_-]{8,64}$`；mode/model/params/pinned/断点/draft；`client_created_at`/`client_updated_at BIGINT` 客户端毫秒 + `created_at`/`updated_at TIMESTAMPTZ` 服务端视图；索引 `(user_id, pinned DESC, updated_at DESC)`） |
+| `agent_chat_messages` | 消息（`(session_id, seq)` 唯一，seq 按 PUT 数组下标重排；`role` CHECK [user/assistant]；think/sources/retrieval/usage/attachments 元信息(不含 dataUrl)/translation/requestSnapshot/error 等全部可选元数据收进单个 `payload JSONB`，服务端不解析透传） |
+
+安全：任意已登录用户可用，所有查询强制 `user_id` = JWT 主体，越权与不存在统一 404（会话 id 不可枚举）；upsert 事务内 `FOR UPDATE` 锁行 + `ON CONFLICT ... WHERE user_id` 纵深守卫。分层 `AgentSessionHandler → AgentSessionService（校验/LWW 语义）→ AgentSessionRepo（sqlx 事务）`。
 
 ---
 

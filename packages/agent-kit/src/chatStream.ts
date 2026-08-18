@@ -1,13 +1,16 @@
 /**
- * Agent 聊天 SSE 客户端 —— admin 端复用
+ * Agent 聊天 SSE 客户端 —— admin / blog 两端共用（@aetherblog/agent-kit）
  *
- * 与 blog 端 apps/blog/app/agent/lib/agentChatStream.ts 协议同源：
- * fetch + ReadableStream 解析 SSE，事件类型 retrieval / think / delta / usage / done / error
- * （旧版 sources 保留兼容）。EventSource 不能 POST 多轮历史，所以这里手撕。
+ * 向 `/api/v1/agent/chat` 发起 POST，接收 SSE 流。事件类型 retrieval / think /
+ * delta / tool_call / tool_result / usage / done / error（旧版 sources 保留兼容）。
+ * EventSource 不能 POST 多轮历史，所以这里用 fetch + ReadableStream 手撕：
+ *  1. EventSource 只支持 GET，不能 POST 多轮对话历史；
+ *  2. EventSource 无法带自定义 header（虽然这里只靠 cookie，但 POST 的明确语义更好）；
+ *  3. AbortController 中断更干净，避免 EventSource onerror 在 devtools 刷红。
  *
- * admin 版在 blog 版之上保留的差异点：
- *   · modelParams / atlasScope 上行字段（blog 端没有）；
- *   · HTTP 错误回执的严格 parser（code / errorCategory 双通道识别登录态失效）。
+ * 请求形态以 admin 版为超集：modelParams / atlasScope / enableTools 上行字段
+ * blog 端暂不使用（可选字段，省略即可）；HTTP 错误回执走严格 parser
+ * （code / errorCategory 双通道识别登录态失效）。
  */
 
 /**
@@ -18,6 +21,11 @@ export type ChatMessageContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
+/** 知识上下文三态契约 —— 与后端 knowledgeContextMode 归一化逻辑对齐：
+ *  auto = 服务端自动发现（省略 kbIds）；selected = 只用显式选中的 kbIds；
+ *  none = 本轮完全不启用知识检索（kbIds 显式置 null）。 */
+export type KnowledgeContextMode = 'auto' | 'selected' | 'none';
+
 export interface ChatStreamRequest {
   sessionId: string;
   mode: 'chat' | 'cowork' | 'code';
@@ -25,7 +33,7 @@ export interface ChatStreamRequest {
    * Knowledge execution contract for this turn. This field is required so an
    * empty selection cannot be confused with automatic discovery in transit.
    */
-  knowledgeContextMode: 'auto' | 'selected' | 'none';
+  knowledgeContextMode: KnowledgeContextMode;
   messages: { role: 'user' | 'assistant'; content: string | ChatMessageContentPart[] }[];
   modelId?: string | null;
   providerCode?: string | null;
@@ -38,6 +46,12 @@ export interface ChatStreamRequest {
    * 把命中的 chunk 拼成额外 system 段注入 LLM。
    */
   kbIds?: number[] | null;
+  /**
+   * 工具调用开关 —— 显式 true 才生效；所选模型 abilities.functionCall 非 true
+   * 时服务端静默降级为普通对话（不报错）。工具为服务端白名单
+   * （search_knowledge_base / search_posts），客户端不可自定义。
+   */
+  enableTools?: boolean;
   atlasScope?: {
     kpIds?: number[];
     carrierIds?: number[];
@@ -106,11 +120,34 @@ export interface ChatStreamUsage {
   estimated: boolean;
 }
 
+/**
+ * tool_call 事件 —— 服务端把流式分片拼装完成后才下发，arguments 是完整的
+ * JSON 字符串（可直接 JSON.parse；展示层 parse 失败时原样呈现）。
+ */
+export interface ChatStreamToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+/**
+ * tool_result 事件 —— 与同 id 的 tool_call 配对（一次 tool_call 后必然跟随），
+ * result 已由服务端统一截断至 ≤2000 字符。
+ */
+export interface ChatStreamToolResult {
+  id: string;
+  name: string;
+  result: string;
+  isError: boolean;
+}
+
 export interface ChatStreamHandlers {
   onDelta?: (chunk: string) => void;
   onThink?: (chunk: string) => void;
   onSources?: (sources: { title: string; slug: string }[]) => void;
   onRetrieval?: (receipt: AgentRetrievalReceipt) => void;
+  onToolCall?: (call: ChatStreamToolCall) => void;
+  onToolResult?: (result: ChatStreamToolResult) => void;
   onUsage?: (usage: ChatStreamUsage) => void;
   onDone?: () => void;
   onError?: (message: string, meta?: ChatStreamErrorMeta) => void;
@@ -250,6 +287,30 @@ export function parseAgentRetrievalReceipt(value: unknown): AgentRetrievalReceip
   };
 }
 
+/**
+ * tool_call 事件防御性解析：id / name 缺失或非字符串、arguments 非字符串时
+ * 整包丢弃不回调 —— 半截工具事件进了 UI 只会渲染出无法配对的幽灵卡片。
+ */
+export function parseChatStreamToolCall(value: unknown): ChatStreamToolCall | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const id = nonEmptyString(candidate.id);
+  const name = nonEmptyString(candidate.name);
+  if (!id || !name || typeof candidate.arguments !== 'string') return null;
+  return { id, name, arguments: candidate.arguments };
+}
+
+/** tool_result 事件防御性解析：任一字段缺失 / 类型不对整包丢弃（同上）。 */
+export function parseChatStreamToolResult(value: unknown): ChatStreamToolResult | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const id = nonEmptyString(candidate.id);
+  const name = nonEmptyString(candidate.name);
+  if (!id || !name || typeof candidate.result !== 'string') return null;
+  if (typeof candidate.isError !== 'boolean') return null;
+  return { id, name, result: candidate.result, isError: candidate.isError };
+}
+
 /** usage 字段校验：必须是有限的非负数字 —— NaN / Infinity / 负值都视为脏数据。 */
 function usageNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -329,6 +390,16 @@ export async function streamAgentChat(
         case 'retrieval': {
           const receipt = parseAgentRetrievalReceipt(parsed);
           if (receipt) handlers.onRetrieval?.(receipt);
+          break;
+        }
+        case 'tool_call': {
+          const call = parseChatStreamToolCall(parsed);
+          if (call) handlers.onToolCall?.(call);
+          break;
+        }
+        case 'tool_result': {
+          const result = parseChatStreamToolResult(parsed);
+          if (result) handlers.onToolResult?.(result);
           break;
         }
         case 'usage': {

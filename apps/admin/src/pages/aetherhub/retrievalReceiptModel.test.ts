@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AgentRetrievalReceipt } from '@/services/agent/chat';
+import type { AgentRetrievalReceipt } from '@aetherblog/agent-kit';
 import {
   getRetrievalReceiptPresentation,
   retrievalHitKindLabel,

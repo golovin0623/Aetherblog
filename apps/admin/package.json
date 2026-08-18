@@ -14,6 +14,7 @@
     "clean": "rm -rf dist node_modules"
   },
   "dependencies": {
+    "@aetherblog/agent-kit": "workspace:*",
     "@aetherblog/editor": "workspace:*",
     "@aetherblog/hooks": "workspace:*",
     "@aetherblog/types": "workspace:*",
@@ -45,6 +46,7 @@
     "recharts": "^2.15.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
+    "virtua": "^0.50.1",
     "zod": "^4.3.5",
     "zustand": "^5.0.2"
   },

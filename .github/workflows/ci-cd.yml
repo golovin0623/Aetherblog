@@ -326,6 +326,16 @@ jobs:
           pnpm --filter @aetherblog/admin typecheck
           pnpm --filter @aetherblog/blog typecheck
 
+      - name: Unit tests (vitest)
+        # 红线: 前端单测必须真正参与红绿判定 —— 不许加 `|| true` / continue-on-error。
+        # (2026-08 之前本 job 只有 lint + typecheck, 数千行 vitest 用例从未在 CI 跑过。)
+        #
+        # `--if-present` 而非裸 `-r test`: blog / ui / hooks / types / utils / editor
+        # 没有 test script, 裸 `-r test` 会因缺脚本整段失败。当前实际执行:
+        #   @aetherblog/admin (vitest run) + @aetherblog/agent-kit (vitest run)
+        # 新包只要在自己的 package.json 加 `"test": "vitest run"` 就会自动纳入。
+        run: pnpm -r --if-present test
+
   # ===========================================================================
   # 后端测试 (仅当后端代码变更时)
   # ===========================================================================
@@ -379,7 +389,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: apps/ai-service/requirements.txt
+          cache-dependency-path: |
+            apps/ai-service/requirements.txt
+            apps/ai-service/requirements-dev.txt
 
       - name: Install dependencies
         working-directory: apps/ai-service
@@ -413,6 +425,28 @@ jobs:
           AI_CREDENTIAL_ENCRYPTION_KEYS: "RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI="
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
+
+      - name: Run unit tests (pytest)
+        # 红线: pytest 必须真正参与红绿判定 —— 不许加 `|| true` / continue-on-error。
+        # (2026-08 之前本 job 只有 py_compile + ruff + import 自检, tests/ 下的用例从未在 CI 跑过。)
+        #
+        # ⚠️ 本步骤刻意 **不** 复用上一步的 secret env。tests/conftest.py 用
+        # `os.environ.setdefault` 兜底 JWT_SECRET / AI_INTERNAL_SERVICE_TOKEN /
+        # AI_CREDENTIAL_ENCRYPTION_KEYS / POSTGRES_DSN，而 setdefault 不会覆盖
+        # 外部已有值；tests/test_deps.py 又用字面量 "test-secret" 签 JWT。
+        # 一旦在这里注入 JWT_SECRET=ci-test-secret，签名校验必然失败
+        # （实测 4 个 test_deps 用例 401/断言失败）。让 conftest 自己兜底即可。
+        #
+        # --ignore=tests/e2e: e2e 依赖外部 provider / DB，不在单测门禁内。
+        # 覆盖率门槛（--cov-fail-under=76）已写在 apps/ai-service/pyproject.toml
+        # 的 [tool.pytest.ini_options].addopts，无需在此重复。
+        working-directory: apps/ai-service
+        env:
+          AI_ENV: test
+          AI_MOCK_MODE: "true"
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest tests --ignore=tests/e2e -q
 
   # ===========================================================================
   # 条件性 Docker 构建: 仅 push to main 且模块有变更时触发

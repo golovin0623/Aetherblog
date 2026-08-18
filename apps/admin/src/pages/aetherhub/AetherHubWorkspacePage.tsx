@@ -1,6 +1,8 @@
 import React, {
+  createContext,
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -25,8 +27,10 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Columns2,
   Copy,
   Download,
+  FileSearch,
   FileText,
   GitBranch,
   GitFork,
@@ -55,15 +59,17 @@ import {
   Sun,
   Trash2,
   User as UserIcon,
+  Wrench,
   X,
 } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Virtualizer, type VirtualizerHandle } from 'virtua';
 import { toast } from 'sonner';
 import { AetherMark, ConfirmModal } from '@aetherblog/ui';
 import { MarkdownPreview, MarkdownStreamPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
-import { useMediaQuery, useTheme } from '@/hooks';
+import { useMediaQuery, useModalDialog, useTheme } from '@/hooks';
 import { getMediaUrl } from '@/services/mediaService';
 import {
   fetchAgentKnowledgeBases,
@@ -79,6 +85,7 @@ import { cn } from '@/lib/utils';
 import { CachedAvatar } from '@/components/common/CachedAvatar';
 import { AetherHubSkeleton } from './AetherHubSkeleton';
 import {
+  type AgentAlternative,
   type AgentArticle,
   type AgentAttachment,
   type AgentModelItem,
@@ -88,7 +95,9 @@ import {
   type AgentRetrievalReceipt,
   type AgentRequestSnapshotV1,
   type AgentSession,
+  type AgentToolEvent,
   type AgentTranslation,
+  type AgentUsage,
   type ChatStreamRequest,
   type SlashCommand,
   type StreamAnimationMode,
@@ -96,9 +105,16 @@ import {
   attachmentTokenEstimate,
   attachmentsWithinBudget,
   budgetHistory,
+  collectAttachmentIds,
+  collectReclaimableAttachmentIds,
+  compressImageIfNeeded,
   CONTEXT_CHAR_BUDGET,
+  configureAgentSessionSync,
   createEmptySession,
+  deleteAgentSessionRemote,
+  deleteAttachmentData,
   deriveSessionTitle,
+  getAttachmentData,
   estimateMessagesTokens,
   exportFileName,
   fileToAttachment,
@@ -107,17 +123,26 @@ import {
   flushSaveSessions,
   formatTokenCount,
   groupSessionsByRecency,
+  isSessionAwaitingHydration,
   linkifyCitations,
   loadSessions,
   MAX_IMAGES_PER_MESSAGE,
   MAX_TOTAL_ATTACHMENT_DATAURL_BYTES,
+  mergeAdoptedServerSession,
   modelLabel,
   newMessageId,
   normalizeCjkInlineMarkdown,
   normalizeContextBreak,
+  notifyAgentSessionActivated,
   parseCitationRank,
+  providerLabel,
+  putAttachmentData,
   readAgentSessionDraft,
+  reconcileAgentSessions,
   resolveAgentSessionDraftAfterRequestStart,
+  retryAgentSessionHydration,
+  sanitizeGeneratedSessionTitle,
+  scheduleAgentSessionSync,
   scheduleSaveSessions,
   sessionToMarkdown,
   sliceContextMessages,
@@ -151,8 +176,59 @@ function workflowErrorMessage(error: unknown, fallback: string) {
 
 // 附件原图的内存缓存 —— localStorage 有 ~5MB 配额，base64 原图必然挤爆并
 // 连带毁掉整份会话持久化；所以会话里只存去掉 dataUrl 的附件元信息，原图在
-// 这里按 id 缓存，刷新后消息降级为「图片仅发送当次可见」的占位卡片。
+// 这里按 id 缓存，刷新后由 IndexedDB 回填（都取不到才降级为占位卡片）。
+//
+// 为什么必须有上限：本缓存最初只在 handleSend 写入（生命周期 = 本次发送），
+// 但 AttachmentImage 的三级降级读取新增了「每张滚入视口的历史图片都回填缓存」
+// 的通道 —— 虚拟化列表滚一遍图多的会话就能把几百 MB base64 永久钉在内存里，
+// 而删除只发生在 reclaimAttachments（删会话 / 截断消息）。这里用「按字节数的
+// LRU」封顶：Map 天然保持插入序，命中时 delete+set 提升为最近使用，超限时从
+// 队首（最久未使用）淘汰。淘汰只丢内存副本 —— IndexedDB 才是持久层，下次滚
+// 回来照样能取到。
+const ATTACHMENT_CACHE_MAX_BYTES = 48 * 1024 * 1024;
 const attachmentDataUrlCache = new Map<string, string>();
+// dataURL 是纯 ASCII（base64 + mime 前缀），字符数即字节数，无需额外编码开销。
+let attachmentCacheBytes = 0;
+
+/** 读缓存并提升为最近使用（LRU 的 recency 记账全在这一处）。 */
+function readAttachmentCache(id: string): string | undefined {
+  const hit = attachmentDataUrlCache.get(id);
+  if (hit === undefined) return undefined;
+  attachmentDataUrlCache.delete(id);
+  attachmentDataUrlCache.set(id, hit);
+  return hit;
+}
+
+/** 写缓存并按字节上限淘汰队首。单张就超限时至少保留刚写入的这张。 */
+function writeAttachmentCache(id: string, dataUrl: string): void {
+  dropAttachmentCache(id);
+  attachmentDataUrlCache.set(id, dataUrl);
+  attachmentCacheBytes += dataUrl.length;
+  for (const [key, value] of attachmentDataUrlCache) {
+    if (attachmentCacheBytes <= ATTACHMENT_CACHE_MAX_BYTES) break;
+    if (key === id) break; // 队尾即刚写入的这张，不自我淘汰
+    attachmentDataUrlCache.delete(key);
+    attachmentCacheBytes -= value.length;
+  }
+}
+
+/** 单条淘汰 —— 供 reclaimAttachments 的引用计数回收调用。 */
+function dropAttachmentCache(id: string): void {
+  const existing = attachmentDataUrlCache.get(id);
+  if (existing === undefined) return;
+  attachmentDataUrlCache.delete(id);
+  attachmentCacheBytes -= existing.length;
+}
+
+/** 整体清空 —— 页面卸载时调用：内存缓存只服务「重挂载窗口」，持久层是 IndexedDB。 */
+function clearAttachmentCache(): void {
+  attachmentDataUrlCache.clear();
+  attachmentCacheBytes = 0;
+}
+
+// 会话标题 AI 自动生成的「每会话只试一次」登记 —— 模块级：切换会话 / 组件
+// 重挂载都不清零；失败静默不重试，避免反复占用模型配额与打扰用户。
+const autoTitleAttemptedSessions = new Set<string>();
 
 // 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
 // 前两条依赖知识检索（auto 模式自动召回），后两条是纯写作/整理任务。
@@ -172,7 +248,72 @@ type SpacePreviewTarget =
   | { kind: 'atlas'; kp: AtlasKnowledgePoint }
   | { kind: 'tag'; tag: AgentTag };
 
+/** 附件原图大图预览的目标（页面级单例，见 AttachmentPreviewContext）。 */
+interface AttachmentPreviewTarget {
+  src: string;
+  name: string;
+}
+
+/**
+ * 大图预览的「请求打开」通道。
+ *
+ * 为什么要提到页面级：预览此前挂在 AttachmentImage 自己的 state 上，而
+ * AttachmentImage 活在虚拟化消息行的子树里 —— 消息行滚出缓冲区即卸载，
+ * 打开中的预览会毫无征兆地自己消失。状态提到页面、浮层渲染在虚拟化列表
+ * 之外，才与滚动解耦。
+ *
+ * 用 context 而不是逐层传 prop：链路是
+ * WorkspaceCanvas → MessageRow → UserContent → UserAttachments →
+ * AttachmentImage，五层组件各自已有大量 props，穿一个回调进去纯属噪声。
+ */
+const AttachmentPreviewContext = createContext<((target: AttachmentPreviewTarget) => void) | null>(
+  null,
+);
+
+/**
+ * 多模型对比：打开浮层那一刻从目标 assistant 消息冻结的重放上下文。
+ * 语义与 handleRetryMessage 完全一致 —— baseMessages 是「前置 user 消息之前」
+ * 的历史，requestSnapshot 来自前置 user 消息（缺失时退回 auto 契约）。
+ */
+interface CompareTarget {
+  sessionId: string;
+  /** 被对比 / 采纳时被替换的 assistant 消息 id。 */
+  messageId: string;
+  /** 前置 user 消息正文（对比的「原问题」）。 */
+  question: string;
+  baseMessages: AgentMessage[];
+  contextBreakId: string | null;
+  requestSnapshot: AgentRequestSnapshotV1;
+  sessionModelId: string | null;
+  sessionProviderCode: string | null;
+  sessionModelParams: AgentModelParams | undefined;
+  /** 被替换的原回答（采纳时随其余完成列一起存入 alternatives）。 */
+  original: AgentMessage;
+}
+
+/** 对比浮层的单列流式状态 —— 只活在浮层本地，采纳前不进 sessions。 */
+interface CompareColumn {
+  key: string;
+  model: AgentModelItem;
+  status: 'streaming' | 'done' | 'error';
+  content: string;
+  think: string;
+  error?: string;
+  usage?: AgentUsage;
+  startedAt: number;
+  firstTokenAt?: number;
+  finishedAt?: number;
+}
+
+const COMPARE_MIN_MODELS = 2;
+const COMPARE_MAX_MODELS = 3;
+
+function compareModelKey(model: AgentModelItem): string {
+  return `${model.providerCode}::${model.modelId}`;
+}
+
 const SEND_SHORTCUT_STORAGE_KEY = 'aetherblog.admin.aetherhub.sendShortcut';
+const ENABLE_TOOLS_STORAGE_KEY = 'aetherblog.admin.aetherhub.enableTools';
 const SEND_SHORTCUT_OPTIONS: Array<{
   value: SendShortcut;
   label: string;
@@ -508,8 +649,14 @@ export default function AetherHubWorkspacePage() {
   useEffect(() => {
     if (!hydrated) return;
     scheduleSaveSessions(currentUser.id, sessions);
+    // 云同步共用同一触发点：flush 时只推「updatedAt 变化且无 pending 流/翻译」
+    // 的会话 —— 流式期间自然跳过，等流结束后的那次 flush（细节在 sessionsSync.ts）。
+    scheduleAgentSessionSync(sessions);
   }, [hydrated, currentUser.id, sessions]);
   useEffect(() => flushSaveSessions, []);
+  // 离开页面即清空附件原图内存缓存 —— 持久层是 IndexedDB，内存副本只服务
+  // 「本次挂载 + 虚拟化重挂载」窗口，留着只会白占几十 MB。
+  useEffect(() => clearAttachmentCache, []);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
@@ -522,6 +669,60 @@ export default function AetherHubWorkspacePage() {
     },
     [],
   );
+
+  /**
+   * 懒加载门禁 —— 会话仍在等待云端全量时，任何「会 bump updatedAt」的变更都必须拦下。
+   *
+   * 为什么：serverNewer 标记在场期间，本地那份只是空壳 / 旧壳占位，不是权威版本。
+   * 此刻 bump updatedAt 会同时踩死两条路：
+   *   · flush 拒绝 PUT（sessionsSync 对 awaiting-hydration 的会话不推送，改为触发重试）；
+   *   · 懒加载真的回来了，也会被 mergeAdoptedServerSession 的
+   *     `local.updatedAt > server.updatedAt` 判定为「本地更新」而拒绝采纳。
+   * 双向死锁 → 该会话本轮生命周期永久卡死；更糟的是刷新之后，这个空壳带着更晚的
+   * updatedAt 赢下 LWW，把服务端的全量历史整个覆盖掉。
+   *
+   * 所以：拦下本次变更 + 主动触发一次懒加载重试，让用户等加载完再操作。toast 带固定
+   * id 去重，避免用户连点时糊一屏。
+   */
+  const ensureSessionHydrated = useCallback((id: string, silent = false) => {
+    if (!isSessionAwaitingHydration(id)) return true;
+    if (!silent) {
+      toast.info('该对话正在从云端加载，请稍候', { id: 'aetherhub-awaiting-hydration' });
+    }
+    retryAgentSessionHydration(id);
+    return false;
+  }, []);
+
+  /**
+   * 会话写入的统一入口 —— 所有会 bump updatedAt（= 参与云同步 LWW 竞争）的变更走这里。
+   *
+   * 反过来说，**纯本地态不该被拦**，它们继续直接用 updateSession：
+   *   · 草稿（setComposer / withAgentSessionDraft）—— 不 bump updatedAt，且 merge 采纳
+   *     时会被显式保留，拦住只会让用户在等加载期间连字都打不了；
+   *   · 置顶 / 重命名 / 上下文断点 —— 同样不 bump updatedAt（sessionsSync 头注释里
+   *     「置顶/重命名不 bump updatedAt」是有意取舍），既不会赢 LWW，也不会阻塞 flush。
+   * 流式管线的逐帧写入（patchAssistant 等）也不走这里：handleSend 已在发起前过了同一道
+   * 门禁，且流式期间的会话本就被 flush / 采纳双向排除，中途再拦只会打断正在跑的流。
+   */
+  const mutateSyncedSession = useCallback(
+    (
+      id: string,
+      updater: (s: AgentSession) => AgentSession,
+      options?: { silent?: boolean },
+    ) => {
+      if (!ensureSessionHydrated(id, options?.silent)) return false;
+      updateSession(id, updater);
+      return true;
+    },
+    [ensureSessionHydrated, updateSession],
+  );
+
+  // 异步收尾逻辑（标题自动生成 / 附件清理）需要读「此刻」的会话状态 ——
+  // 闭包里捕获的 sessions 在流式结束时早已过期，这里用 ref 供其穿透读取。
+  const sessionsRef = useRef<AgentSession[]>([]);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   // ----- Greeting tick：跨过整点时切换 -----
   const [greeting, setGreeting] = useState(() => pickGreeting(new Date().getHours()));
@@ -552,6 +753,21 @@ export default function AetherHubWorkspacePage() {
   const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(() => new Set());
   const streamingIdsRef = useRef<Set<string>>(new Set());
   const abortControllersRef = useRef(new Map<string, AbortController>());
+  // 辅助流（翻译 / 自动起名）的 AbortController 集合 —— 不占会话级
+  // streamingIds，但卸载时必须一并掐断，防止路由离开后网络流空转。
+  const auxControllersRef = useRef(new Set<AbortController>());
+  // 卸载即断流：会话回答流 + 全部辅助流。rAF 管线由各自的 AbortError 分支
+  // 收尾；卸载后的 setState 在 React 18 是安全 no-op。
+  useEffect(() => {
+    const mainControllers = abortControllersRef.current;
+    const auxControllers = auxControllersRef.current;
+    return () => {
+      for (const controller of mainControllers.values()) controller.abort();
+      mainControllers.clear();
+      for (const controller of auxControllers) controller.abort();
+      auxControllers.clear();
+    };
+  }, []);
   const markStreaming = useCallback((id: string, on: boolean) => {
     const live = streamingIdsRef.current;
     if (on) live.add(id);
@@ -566,6 +782,50 @@ export default function AetherHubWorkspacePage() {
   }, []);
   // 当前活跃会话视角的 streaming —— 旧 UI 契约（Composer 停止按钮等）继续可用。
   const streaming = activeId ? streamingIds.has(activeId) : false;
+
+  // ----- 云同步：本地优先 + 服务端 LWW 漫游（网络细节全部收在 sessionsSync.ts）-----
+  // hydrate 已用本地快照即时渲染；这里在后台 GET 列表对账：服务端较新的会话标
+  // 懒加载（激活时拉全量），本地较新/仅存本地的标 dirty 待推送（服务端为空时
+  // 即首次迁移导入）。对账输入用 localStorage 快照 —— 与其它设备可见的真值一致。
+  useEffect(() => {
+    if (!hydrated) return;
+    configureAgentSessionSync({
+      userId: currentUser.id === 'anon' ? null : currentUser.id,
+      // 409 冲突 / 懒加载采纳服务端版本 —— 正在流式的会话拒绝采纳（返回
+      // false，水位不动），流结束后的下一轮 flush 再冲突再采纳。
+      // mergeAdoptedServerSession：保留本地 draft（纯本地态，用户可能正在
+      // 输入）与 titleEdited（不在 wire 里）；采纳瞬间本地 updatedAt 已更
+      // 新（用户刚做了编辑）→ 返回 null 拒绝采纳，走既有 LWW 重试通道。
+      onAdoptServerVersion: (session) => {
+        if (streamingIdsRef.current.has(session.id)) return false;
+        const local = sessionsRef.current.find((s) => s.id === session.id);
+        const merged = mergeAdoptedServerSession(session, local);
+        if (merged === null) return false;
+        setSessions((prev) =>
+          prev.some((s) => s.id === merged.id)
+            ? prev.map((s) => (s.id === merged.id ? merged : s))
+            : [merged, ...prev],
+        );
+        return true;
+      },
+      // 服务端有、本地没有的会话（其他设备创建）→ 以 meta 占位进侧栏。
+      onServerOnlySessions: (remote) => {
+        setSessions((prev) => {
+          const known = new Set(prev.map((s) => s.id));
+          const fresh = remote.filter((s) => !known.has(s.id));
+          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        });
+      },
+      onSyncNotice: (message) => toast.info(message),
+    });
+    void reconcileAgentSessions(loadSessions(currentUser.id));
+  }, [hydrated, currentUser.id]);
+
+  // 激活会话时检查懒加载 —— 只有 reconcile 标记过「服务端较新」的才真的发 GET。
+  useEffect(() => {
+    if (!hydrated) return;
+    notifyAgentSessionActivated(activeId);
+  }, [hydrated, activeId]);
 
   // ----- 待发送的图片附件（仅随下一条消息发出，切换会话即清空）-----
   const [composerAttachments, setComposerAttachments] = useState<AgentAttachment[]>([]);
@@ -683,6 +943,17 @@ export default function AetherHubWorkspacePage() {
     window.localStorage.setItem(SEND_SHORTCUT_STORAGE_KEY, sendShortcut);
   }, [sendShortcut]);
 
+  // ----- 工具调用开关：开启且当前模型声明 functionCall 能力时随请求上行。 -----
+  const [enableTools, setEnableTools] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.localStorage.getItem(ENABLE_TOOLS_STORAGE_KEY) === '1') setEnableTools(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(ENABLE_TOOLS_STORAGE_KEY, enableTools ? '1' : '0');
+  }, [enableTools]);
+
   // 新建 / 切换会话不再被生成中的流阻塞 —— 旧流在自己的会话里继续写，
   // 由闭包 pin 住的 sessionId 保证不串台。
   const handleNewSession = useCallback(() => {
@@ -712,6 +983,20 @@ export default function AetherHubWorkspacePage() {
     [activeId],
   );
 
+  // 附件原图 best-effort 回收（内存缓存 + IndexedDB）—— 失败静默。分支会话
+  // 与原会话共享附件 id，无条件回收会连坐另一方的图片：先对「变更后的全部
+  // 会话」做引用计数，仅回收不再被任何存活消息引用的。删会话 / 删消息截断 /
+  // 编辑截断 / 清空消息四类入口统一走这里。
+  const reclaimAttachments = useCallback(
+    (candidateIds: readonly string[], sessionsAfterChange: readonly AgentSession[]) => {
+      const ids = collectReclaimableAttachmentIds(candidateIds, sessionsAfterChange);
+      if (ids.length === 0) return;
+      ids.forEach(dropAttachmentCache);
+      void deleteAttachmentData(ids);
+    },
+    [],
+  );
+
   const handleDeleteSession = useCallback(
     (id: string) => {
       // 删除正在流式的会话前先掐断它的流，避免 rAF 管线继续往已删除的
@@ -725,6 +1010,15 @@ export default function AetherHubWorkspacePage() {
       setPendingSessionKnowledgeHandoff((current) =>
         clearSessionKnowledgeHandoff(current, id),
       );
+      // 云端镜像同删 —— fire-and-forget，404 / 网络失败忽略（本地优先）。
+      deleteAgentSessionRemote(id);
+      const doomed = sessionsRef.current.find((s) => s.id === id);
+      if (doomed) {
+        reclaimAttachments(
+          collectAttachmentIds(doomed.messages),
+          sessionsRef.current.filter((s) => s.id !== id),
+        );
+      }
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== id);
         if (next.length === 0) {
@@ -740,9 +1034,12 @@ export default function AetherHubWorkspacePage() {
       });
       toast.success('对话已删除');
     },
-    [activeId],
+    [activeId, markStreaming, reclaimAttachments],
   );
 
+  // 置顶 / 重命名有意不 bump updatedAt（沿用既有行为，见 sessionsSync 头注释），
+  // 因此不参与 LWW 竞争、也不会阻塞 flush —— 走 updateSession 而不是门禁版本，
+  // 免得用户在等云端加载时连侧栏整理都做不了。
   const handleTogglePinSession = useCallback(
     (id: string) => {
       updateSession(id, (s) => ({ ...s, pinned: !s.pinned }));
@@ -754,7 +1051,8 @@ export default function AetherHubWorkspacePage() {
     (id: string, title: string) => {
       const trimmed = title.trim().slice(0, 60);
       if (!trimmed) return;
-      updateSession(id, (s) => ({ ...s, title: trimmed }));
+      // titleEdited：手动改名后 AI 自动起名不再覆盖（本地字段，不随云同步）。
+      updateSession(id, (s) => ({ ...s, title: trimmed, titleEdited: true }));
     },
     [updateSession],
   );
@@ -784,7 +1082,7 @@ export default function AetherHubWorkspacePage() {
   const handleSetModel = useCallback(
     (modelId: string | null, providerCode: string | null) => {
       if (!activeSession) return;
-      updateSession(activeSession.id, (s) => ({
+      mutateSyncedSession(activeSession.id, (s) => ({
         ...s,
         modelId,
         providerCode,
@@ -792,13 +1090,13 @@ export default function AetherHubWorkspacePage() {
         updatedAt: Date.now(),
       }));
     },
-    [activeSession, updateSession],
+    [activeSession, mutateSyncedSession],
   );
 
   const handleSetModelParam = useCallback(
     (key: string, value: AgentModelParams[string] | undefined) => {
       if (!activeSession) return;
-      updateSession(activeSession.id, (s) => {
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextParams = { ...(s.modelParams || {}) };
         if (value === undefined || value === null || value === '') {
           delete nextParams[key];
@@ -812,17 +1110,17 @@ export default function AetherHubWorkspacePage() {
         };
       });
     },
-    [activeSession, updateSession],
+    [activeSession, mutateSyncedSession],
   );
 
   const handleResetModelParams = useCallback(() => {
     if (!activeSession) return;
-    updateSession(activeSession.id, (s) => ({
+    mutateSyncedSession(activeSession.id, (s) => ({
       ...s,
       modelParams: undefined,
       updatedAt: Date.now(),
     }));
-  }, [activeSession, updateSession]);
+  }, [activeSession, mutateSyncedSession]);
 
   const handleAbort = useCallback(() => {
     const targetId = activeId;
@@ -855,6 +1153,67 @@ export default function AetherHubWorkspacePage() {
     );
   }, [activeId, markStreaming]);
 
+  // ----- 会话标题 AI 自动生成 -----
+  // 首轮问答成功后，后台静默起一条轻量 chat 流（不触发知识检索）为会话起名。
+  // 每会话只尝试一次（模块级 attempted 登记），失败静默；写入前后各核对一次
+  // 「标题仍是派生值且未被手动改名」，手动重命名永远赢。
+  const scheduleAutoTitle = useCallback(
+    (sessionId: string, question: string, answer: string) => {
+      if (autoTitleAttemptedSessions.has(sessionId)) return;
+      autoTitleAttemptedSessions.add(sessionId);
+      const derivedTitle = deriveSessionTitle(question);
+      const isAutoTitle = (s: AgentSession) =>
+        !s.titleEdited && (s.title === derivedTitle || s.title === '新对话');
+      const current = sessionsRef.current.find((s) => s.id === sessionId);
+      if (!current || !isAutoTitle(current)) return;
+      let acc = '';
+      // 辅助流登记 AbortController —— 页面卸载时一并掐断，完成后自清。
+      const controller = new AbortController();
+      auxControllersRef.current.add(controller);
+      void streamAgentChat(
+        {
+          sessionId,
+          mode: 'chat',
+          knowledgeContextMode: 'none',
+          kbIds: null,
+          messages: [
+            {
+              role: 'user',
+              content:
+                '请为以下对话生成一个不超过 16 字的中文标题，只输出标题本身，' +
+                '不要引号、句号或任何解释。\n\n' +
+                `用户问题：${question.slice(0, 500)}\n\n` +
+                `助手回答：${answer.slice(0, 500)}`,
+            },
+          ],
+        },
+        {
+          onDelta: (chunk) => {
+            acc += chunk;
+          },
+          onDone: () => {
+            const title = sanitizeGeneratedSessionTitle(acc);
+            if (!title) return;
+            // 生成期间用户可能已手动改名 / 删除会话 —— updater 内再核对一次，
+            // 不满足即放弃（updateSession 对不存在的会话本身就是 no-op）。
+            // 走门禁的静默档：起名同样 bump updatedAt，但它是后台任务，被懒加载
+            // 拦下时不该弹 toast 打扰用户 —— 丢掉这次起名即可（best-effort）。
+            mutateSyncedSession(
+              sessionId,
+              (s) => (isAutoTitle(s) ? { ...s, title, updatedAt: Date.now() } : s),
+              { silent: true },
+            );
+          },
+          onError: () => undefined, // 静默：起名失败不打扰用户，也不重试
+        },
+        controller.signal,
+      )
+        .catch(() => undefined)
+        .finally(() => auxControllersRef.current.delete(controller));
+    },
+    [mutateSyncedSession],
+  );
+
   const handleSend = useCallback(
     async (
       rawText: string,
@@ -874,6 +1233,11 @@ export default function AetherHubWorkspacePage() {
         toast.info('这个对话正在生成回答，请先停止或稍候');
         return;
       }
+      // 会话仍在等待云端懒加载（本地只是空壳/旧壳占位，不是权威版本）：
+      // 此刻发消息会以更晚的 updatedAt 通过 LWW 把服务端全量历史覆盖掉 ——
+      // 拦下并触发一次懒加载重试（细节见 ensureSessionHydrated），加载完成后再发。
+      // 必须在任何副作用（附件落盘 / 清空 composer）之前拦。
+      if (!ensureSessionHydrated(baseSession.id)) return;
 
       const isFirstMessage = baseMessages.length === 0;
       const sessionId = baseSession.id;
@@ -881,6 +1245,9 @@ export default function AetherHubWorkspacePage() {
       const providerCode = baseSession.providerCode ?? null;
       const requestModel = currentModelFromSession(baseSession, modelsState);
       const modelParams = buildModelParamsForRequest(requestModel, baseSession.modelParams);
+      // 工具调用双重门控：开关开启且当前模型显式声明 functionCall 才上行
+      // enableTools（自动路由 / 能力未知一律不带；服务端同样会静默降级）。
+      const toolsEnabled = enableTools && requestModel?.abilities?.functionCall === true;
 
       // 图片附件只随手动发送走（重试 / 编辑重放不重复携带），且必须有
       // 明确声明 vision 能力的模型 —— 自动路由不知道会落到谁，直接拦下。
@@ -937,7 +1304,10 @@ export default function AetherHubWorkspacePage() {
         attachments:
           requestAttachments.length > 0
             ? requestAttachments.map((a) => {
-                attachmentDataUrlCache.set(a.id, a.dataUrl);
+                writeAttachmentCache(a.id, a.dataUrl);
+                // 原图同时异步落 IndexedDB —— 刷新 / 重启后仍可显示；写入失败
+                // 静默（隐私模式等场景退回「仅发送当次可见」的占位卡）。
+                void putAttachmentData(a.id, a.dataUrl);
                 return { ...a, dataUrl: '' };
               })
             : undefined,
@@ -983,6 +1353,8 @@ export default function AetherHubWorkspacePage() {
           : m,
       );
 
+      // 直接 updateSession（不再过门禁）：本函数入口已经过一次 ensureSessionHydrated，
+      // 且这一步之后就进流式管线 —— 中途再拦只会写出半条消息。
       updateSession(sessionId, (s) => ({
         ...s,
         messages: [...baseMessages, userMsg, assistantMsg],
@@ -1197,10 +1569,13 @@ export default function AetherHubWorkspacePage() {
           });
           clearRequestContext();
         } catch (error: unknown) {
+          // error 是直接渲染给用户的那一行（"ERROR · {message.error}"），只放人话；
+          // 内部码走 errorCode（与流式失败路径 onError 的 message/meta.code 分工一致）。
           patchAssistant({
-            content: workflowErrorMessage(error, 'Article Audit 启动失败'),
             pending: false,
-            error: 'workflow_invoke_failed',
+            error: workflowErrorMessage(error, 'Article Audit 启动失败'),
+            errorCode: 'workflow_invoke_failed',
+            retryable: true,
             finishedAt: Date.now(),
           });
         } finally {
@@ -1219,6 +1594,7 @@ export default function AetherHubWorkspacePage() {
         modelParams,
         articleIds: requestSnapshot.articleIds,
         tagSlugs: requestSnapshot.tagSlugs,
+        ...(toolsEnabled ? { enableTools: true } : {}),
         ...contextPayload.value,
       };
       let retrievalReceipt: AgentRetrievalReceipt | null = null;
@@ -1248,6 +1624,78 @@ export default function AetherHubWorkspacePage() {
               // 回执在正文前一次性到达 —— 直接落消息，不等吐字管线。
               patchAssistant({ retrieval: receipt });
             },
+            // 工具事件不走吐字 rAF 管线 —— 在轮次间隙到达、频率低（≤4 轮），
+            // 直接函数式 patch 目标 assistant 消息的 toolEvents。
+            onToolCall: (call) => {
+              const startedAt = Date.now();
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id !== sessionId
+                    ? s
+                    : {
+                        ...s,
+                        updatedAt: startedAt,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== assistantId) return m;
+                          const events = m.toolEvents ?? [];
+                          // 同 id 去重（服务端异常重发时以首个为准）。
+                          if (events.some((e) => e.id === call.id)) return m;
+                          const event: AgentToolEvent = {
+                            id: call.id,
+                            name: call.name,
+                            arguments: call.arguments,
+                            startedAt,
+                          };
+                          return { ...m, toolEvents: [...events, event] };
+                        }),
+                      },
+                ),
+              );
+            },
+            onToolResult: (result) => {
+              const finishedAt = Date.now();
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id !== sessionId
+                    ? s
+                    : {
+                        ...s,
+                        updatedAt: finishedAt,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== assistantId) return m;
+                          const events = m.toolEvents ?? [];
+                          // 协议保证 result 前必有同 id 的 call；万一缺失则以
+                          // result 自建条目兜底（不丢可见信息）。
+                          if (!events.some((e) => e.id === result.id)) {
+                            const orphan: AgentToolEvent = {
+                              id: result.id,
+                              name: result.name,
+                              arguments: '',
+                              result: result.result,
+                              isError: result.isError,
+                              startedAt: finishedAt,
+                              finishedAt,
+                            };
+                            return { ...m, toolEvents: [...events, orphan] };
+                          }
+                          return {
+                            ...m,
+                            toolEvents: events.map((e) =>
+                              e.id === result.id
+                                ? {
+                                    ...e,
+                                    result: result.result,
+                                    isError: result.isError,
+                                    finishedAt,
+                                  }
+                                : e,
+                            ),
+                          };
+                        }),
+                      },
+                ),
+              );
+            },
             onUsage: (usage) => {
               pendingMisc.usage = usage;
               schedule();
@@ -1264,6 +1712,12 @@ export default function AetherHubWorkspacePage() {
               }).catch(() => undefined);
               finishStream({ pending: false, finishedAt: Date.now() });
               clearRequestContext();
+              // 首轮问答成功（会话恰为 [user, assistant] 且回答非空）→ 后台
+              // 静默生成会话标题。闭包 pin 的是 sessionId 而非 activeSession，
+              // 用户切走会话也不会串台。
+              if (isFirstMessage && acc.trim()) {
+                scheduleAutoTitle(sessionId, text, acc);
+              }
             },
             onError: (message, meta) =>
               finishStream({
@@ -1299,9 +1753,12 @@ export default function AetherHubWorkspacePage() {
     [
       activeSession,
       composerAttachments,
+      enableTools,
+      ensureSessionHydrated,
       markStreaming,
       modelsState,
       pendingSessionKnowledgeHandoff,
+      scheduleAutoTitle,
       selectedArticles,
       selectedAtlasKps,
       selectedKbs,
@@ -1318,7 +1775,17 @@ export default function AetherHubWorkspacePage() {
       if (!activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
-      updateSession(activeSession.id, (s) => {
+      // 门禁前置到副作用之前：附件回收是不可逆的，不能先删图再被门禁拦下。
+      if (!ensureSessionHydrated(activeSession.id)) return;
+      // 截断掉的消息（该条及之后）携带的附件：引用计数后 best-effort 回收。
+      const remaining = activeSession.messages.slice(0, idx);
+      reclaimAttachments(
+        collectAttachmentIds(activeSession.messages.slice(idx)),
+        sessionsRef.current.map((s) =>
+          s.id === activeSession.id ? { ...s, messages: remaining } : s,
+        ),
+      );
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextMessages = s.messages.slice(0, idx);
         return {
           ...s,
@@ -1329,7 +1796,7 @@ export default function AetherHubWorkspacePage() {
         };
       });
     },
-    [activeSession, updateSession],
+    [activeSession, ensureSessionHydrated, mutateSyncedSession, reclaimAttachments],
   );
   const handleEditMessage = useCallback(
     (message: AgentMessage) => {
@@ -1378,6 +1845,9 @@ export default function AetherHubWorkspacePage() {
       const lang: 'en' | 'zh' = cjkCount > source.length / 4 ? 'en' : 'zh';
       writeTranslation({ lang, content: '', pending: true });
       let acc = '';
+      // 辅助流登记 AbortController —— 页面卸载时一并掐断，完成/失败后自清。
+      const controller = new AbortController();
+      auxControllersRef.current.add(controller);
       void streamAgentChat(
         {
           sessionId,
@@ -1403,7 +1873,16 @@ export default function AetherHubWorkspacePage() {
           onError: (msg) =>
             writeTranslation({ lang, content: acc, pending: false, error: msg }),
         },
-      ).catch(() => writeTranslation({ lang, content: acc, pending: false, error: '翻译请求失败' }));
+        controller.signal,
+      )
+        .catch((err) => {
+          // 卸载 abort 走 AbortError：不再写状态（残留的 pending 翻译由
+          // loadSessions 的加载期收敛统一定格为「翻译已中断」）。
+          if ((err as { name?: string })?.name !== 'AbortError') {
+            writeTranslation({ lang, content: acc, pending: false, error: '翻译请求失败' });
+          }
+        })
+        .finally(() => auxControllersRef.current.delete(controller));
     },
     [activeSession],
   );
@@ -1449,6 +1928,7 @@ export default function AetherHubWorkspacePage() {
 
   // 上下文断点 —— Cherry Studio「清除上下文」心智：断点前的消息保留可回看，
   // 但不再随请求发送；再点一次（或点分隔线上的恢复）即撤销。
+  // 同样不 bump updatedAt（纯本地视图态），故不过懒加载门禁。
   const handleToggleContextBreak = useCallback(() => {
     if (!activeSession || activeSession.messages.length === 0) return;
     const lastId = activeSession.messages[activeSession.messages.length - 1].id;
@@ -1476,13 +1956,16 @@ export default function AetherHubWorkspacePage() {
       }
       const accepted: AgentAttachment[] = [];
       for (const file of files.slice(0, room)) {
-        const problem = validateImageFile(file);
+        // 超过 5MB 先尝试 canvas 降采样（最长边 2048 / 质量 0.85；GIF 旁路防
+        // 丢帧），压后仍超限或压不了才交给原有校验拒绝。
+        const candidate = await compressImageIfNeeded(file);
+        const problem = validateImageFile(candidate);
         if (problem) {
           toast.error(problem);
           continue;
         }
         try {
-          const attachment = await fileToAttachment(file);
+          const attachment = await fileToAttachment(candidate);
           // 总量预算：Go 侧 body 上限 24MB ≈ 3 张满额图，前端用 16MB dataURL
           // 预算提前拦截，避免用户攒满 4 张后收到不透明的「请求体过大」。
           if (!attachmentsWithinBudget([...composerAttachments, ...accepted], attachment)) {
@@ -1563,12 +2046,142 @@ export default function AetherHubWorkspacePage() {
     [activeSession, handleSend, streaming],
   );
 
+  // ----- 多模型对比 -----
+  // 对比流全程只活在浮层本地 state：不写会话消息、不占用会话级 streamingIds、
+  // 不触发云同步；直到「采纳」才一次性落盘。浮层是 modal，天然阻止该会话在
+  // 对比期间再发消息。
+  const [compareTarget, setCompareTarget] = useState<CompareTarget | null>(null);
+
+  const handleCompareMessage = useCallback(
+    (message: AgentMessage) => {
+      if (streaming || message.role !== 'assistant' || !activeSession) return;
+      const idx = activeSession.messages.findIndex((m) => m.id === message.id);
+      if (idx <= 0) return;
+      const prior = activeSession.messages[idx - 1];
+      if (prior.role !== 'user') return;
+      const snapshotResult = readAetherHubRequestSnapshot(prior);
+      if (snapshotResult.status === 'invalid') {
+        toast.error(snapshotResult.message);
+        return;
+      }
+      setCompareTarget({
+        sessionId: activeSession.id,
+        messageId: message.id,
+        question: prior.content,
+        baseMessages: activeSession.messages.slice(0, idx - 1),
+        contextBreakId: activeSession.contextBreakId ?? null,
+        // 快照缺失（旧消息）时退回 auto 契约 —— 对比与当前 picker 选择无关，
+        // 不能把无关的实时选择混进历史问题的重放。
+        requestSnapshot:
+          snapshotResult.status === 'valid'
+            ? snapshotResult.snapshot
+            : {
+                schemaVersion: 1,
+                knowledgeContext: { mode: 'auto' },
+                articleIds: null,
+                tagSlugs: null,
+              },
+        sessionModelId: activeSession.modelId ?? null,
+        sessionProviderCode: activeSession.providerCode ?? null,
+        sessionModelParams: activeSession.modelParams,
+        original: message,
+      });
+    },
+    [activeSession, streaming],
+  );
+
+  // 采纳语义：用该列结果整体替换目标 assistant 消息（content / 模型戳记 /
+  // usage / think / 计时戳全换，清错误与工具轨迹与译文），其余完成列 + 被
+  // 替换的原回答存入 alternatives；bump updatedAt 让落盘与云同步随行。
+  const handleAdoptCompare = useCallback(
+    (adopted: CompareColumn, archivedColumns: CompareColumn[]) => {
+      const target = compareTarget;
+      if (!target) return;
+      const session = sessionsRef.current.find((s) => s.id === target.sessionId);
+      if (!session || !session.messages.some((m) => m.id === target.messageId)) {
+        toast.error('原消息已不存在，无法采纳');
+        setCompareTarget(null);
+        return;
+      }
+      // 采纳同样 bump updatedAt → 同一道门禁。故意不关浮层：对比结果还在
+      // liveRef / columns 里，等云端加载完再点一次「采纳」即可，不丢结果。
+      if (!ensureSessionHydrated(target.sessionId)) return;
+      const archived: AgentAlternative[] = archivedColumns.map((col) => ({
+        modelId: col.model.modelId,
+        providerCode: col.model.providerCode,
+        content: col.content,
+        ...(col.usage ? { usage: col.usage } : {}),
+        ...(col.finishedAt !== undefined
+          ? { elapsedMs: Math.max(0, col.finishedAt - col.startedAt) }
+          : {}),
+      }));
+      const original = target.original;
+      if (original.content.trim()) {
+        archived.push({
+          modelId: original.modelId ?? null,
+          providerCode: original.providerCode ?? null,
+          content: original.content,
+          ...(original.usage ? { usage: original.usage } : {}),
+          ...(original.finishedAt !== undefined && original.startedAt !== undefined
+            ? { elapsedMs: Math.max(0, original.finishedAt - original.startedAt) }
+            : {}),
+        });
+      }
+      const now = Date.now();
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id !== target.sessionId
+            ? s
+            : {
+                ...s,
+                updatedAt: now,
+                messages: s.messages.map((m) =>
+                  m.id !== target.messageId
+                    ? m
+                    : {
+                        ...m,
+                        content: adopted.content,
+                        modelId: adopted.model.modelId,
+                        providerCode: adopted.model.providerCode,
+                        think: adopted.think || undefined,
+                        usage: adopted.usage,
+                        startedAt: adopted.startedAt,
+                        firstTokenAt: adopted.firstTokenAt,
+                        finishedAt: adopted.finishedAt ?? now,
+                        pending: false,
+                        error: undefined,
+                        errorCode: undefined,
+                        retryable: undefined,
+                        toolEvents: undefined,
+                        translation: undefined,
+                        alternatives: archived.length > 0 ? archived : undefined,
+                      },
+                ),
+              },
+        ),
+      );
+      toast.success(`已采纳 ${modelLabel(adopted.model)} 的回答`);
+      setCompareTarget(null);
+    },
+    [compareTarget, ensureSessionHydrated],
+  );
+
   const handleDeleteMessage = useCallback(
     (message: AgentMessage) => {
       if (streaming || !activeSession) return;
       const idx = activeSession.messages.findIndex((m) => m.id === message.id);
       if (idx < 0) return;
-      updateSession(activeSession.id, (s) => {
+      // 门禁前置到副作用之前（同 applyEditMessage）。
+      if (!ensureSessionHydrated(activeSession.id)) return;
+      // 被截断的消息（该条及之后）携带的附件：引用计数后 best-effort 回收。
+      const remaining = activeSession.messages.slice(0, idx);
+      reclaimAttachments(
+        collectAttachmentIds(activeSession.messages.slice(idx)),
+        sessionsRef.current.map((s) =>
+          s.id === activeSession.id ? { ...s, messages: remaining } : s,
+        ),
+      );
+      mutateSyncedSession(activeSession.id, (s) => {
         const nextMessages = s.messages.slice(0, idx);
         return {
           ...s,
@@ -1579,8 +2192,53 @@ export default function AetherHubWorkspacePage() {
       });
       toast.success('已删除此处及后续消息');
     },
-    [activeSession, streaming, updateSession],
+    [
+      activeSession,
+      ensureSessionHydrated,
+      mutateSyncedSession,
+      reclaimAttachments,
+      streaming,
+    ],
   );
+
+  // 清空当前对话（'/clear' 与移动端配置抽屉共用）—— 被清空消息携带的附件
+  // 经引用计数后回收（历史版本这两处完全不回收，IndexedDB 里留孤儿原图）。
+  const handleClearActiveMessages = useCallback(() => {
+    if (!activeSession) return;
+    if (streaming) {
+      toast.info('请先停止当前回答');
+      return;
+    }
+    // 门禁前置到副作用之前：清空是最危险的一条 —— 空壳会话被清空并 bump
+    // updatedAt 后，刷新即以更晚时间戳覆盖服务端的全量历史。
+    if (!ensureSessionHydrated(activeSession.id)) return;
+    reclaimAttachments(
+      collectAttachmentIds(activeSession.messages),
+      sessionsRef.current.map((s) =>
+        s.id === activeSession.id ? { ...s, messages: [] } : s,
+      ),
+    );
+    mutateSyncedSession(activeSession.id, (s) => ({
+      ...s,
+      messages: [],
+      title: '新对话',
+      draft: '',
+      updatedAt: Date.now(),
+    }));
+    setSelectedArticles([]);
+    setSelectedTags([]);
+    setSelectedKbs([]);
+    setSelectedAtlasKps([]);
+    clearActiveKnowledgeHandoff();
+    toast.success('已清空当前对话');
+  }, [
+    activeSession,
+    clearActiveKnowledgeHandoff,
+    ensureSessionHydrated,
+    mutateSyncedSession,
+    reclaimAttachments,
+    streaming,
+  ]);
 
   // ----- 斜杠命令 -----
   const handleSlashCommand = useCallback(
@@ -1591,24 +2249,7 @@ export default function AetherHubWorkspacePage() {
       }
       switch (cmd.command) {
         case '/clear':
-          if (!activeSession) return;
-          if (streaming) {
-            toast.info('请先停止当前回答');
-            return;
-          }
-          updateSession(activeSession.id, (s) => ({
-            ...s,
-            messages: [],
-            title: '新对话',
-            draft: '',
-            updatedAt: Date.now(),
-          }));
-          setSelectedArticles([]);
-          setSelectedTags([]);
-          setSelectedKbs([]);
-          setSelectedAtlasKps([]);
-          clearActiveKnowledgeHandoff();
-          toast.success('已清空当前对话');
+          handleClearActiveMessages();
           return;
         case '/new':
           handleNewSession();
@@ -1632,19 +2273,24 @@ export default function AetherHubWorkspacePage() {
     [
       activeSession,
       streaming,
-      updateSession,
-      clearActiveKnowledgeHandoff,
+      handleClearActiveMessages,
       handleNewSession,
       retryUserTurn,
       setComposer,
     ],
   );
 
+  // ----- 附件大图预览（页面级单例）-----
+  // 状态必须活在虚拟化列表之外：挂在消息行子树里时，行滚出缓冲区被卸载
+  // 会让打开中的预览自己消失。见 AttachmentPreviewContext 的注释。
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewTarget | null>(null);
+  const closeAttachmentPreview = useCallback(() => setAttachmentPreview(null), []);
+
   if (!hydrated) {
     return <AetherHubSkeleton label="正在恢复灵境会话…" />;
   }
 
-  return (
+  const workspace = (
     <div className="aetherhub-workspace fixed inset-0 flex flex-col overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
       <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--bg-void)]">
         <div className="aurora-layer opacity-70" data-animated="true" aria-hidden="true" />
@@ -1753,6 +2399,8 @@ export default function AetherHubWorkspacePage() {
               fontSize={fontSize}
               sendShortcut={sendShortcut}
               onSetSendShortcut={setSendShortcut}
+              enableTools={enableTools}
+              onToggleEnableTools={() => setEnableTools((v) => !v)}
               onComposerChange={setComposer}
               onSend={handleSend}
               onAbort={handleAbort}
@@ -1796,6 +2444,7 @@ export default function AetherHubWorkspacePage() {
               onEditMessage={handleEditMessage}
               onRetryMessage={handleRetryMessage}
               onRetryAutoMessage={handleRetryMessageAuto}
+              onCompareMessage={handleCompareMessage}
               onDeleteMessage={handleDeleteMessage}
               onTranslateMessage={handleTranslateMessage}
               onQuoteMessage={handleQuoteMessage}
@@ -1847,26 +2496,7 @@ export default function AetherHubWorkspacePage() {
             onSetFontSize={setFontSize}
             onClose={() => setMobileConfigOpen(false)}
             onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
-            onClearMessages={() => {
-              if (!activeSession) return;
-              if (streaming) {
-                toast.info('请先停止当前回答');
-                return;
-              }
-              updateSession(activeSession.id, (s) => ({
-                ...s,
-                messages: [],
-                title: '新对话',
-                draft: '',
-                updatedAt: Date.now(),
-              }));
-              setSelectedArticles([]);
-              setSelectedTags([]);
-              setSelectedKbs([]);
-              setSelectedAtlasKps([]);
-              clearActiveKnowledgeHandoff();
-              toast.success('已清空当前对话');
-            }}
+            onClearMessages={handleClearActiveMessages}
           />
 
           <ConfirmModal
@@ -1882,9 +2512,38 @@ export default function AetherHubWorkspacePage() {
             }}
             onCancel={() => setConfirmEditTarget(null)}
           />
+
+          {/* 多模型对比浮层 —— key 绑定目标消息：换目标即整体重置浮层状态。 */}
+          <AnimatePresence>
+            {compareTarget && (
+              <CompareOverlay
+                key={`${compareTarget.sessionId}:${compareTarget.messageId}`}
+                target={compareTarget}
+                modelsState={modelsState}
+                onClose={() => setCompareTarget(null)}
+                onAdopt={handleAdoptCompare}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* 附件大图预览 —— 渲染在虚拟化列表之外，滚动不再把它连根卸载。 */}
+          <AnimatePresence>
+            {attachmentPreview && (
+              <AttachmentPreviewOverlay
+                target={attachmentPreview}
+                onClose={closeAttachmentPreview}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <AttachmentPreviewContext.Provider value={setAttachmentPreview}>
+      {workspace}
+    </AttachmentPreviewContext.Provider>
   );
 }
 
@@ -2273,6 +2932,8 @@ function SessionRow({
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  // 尊重系统「减少动态效果」：操作条展开改为瞬时。
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!renaming) return;
@@ -2370,7 +3031,7 @@ function SessionRow({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden"
           >
             <div className="mx-1 mt-0.5 flex items-center gap-0.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1">
@@ -2604,10 +3265,12 @@ function ModelPickerButton({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // ESC 关闭
+  // ESC 关闭 —— 跳过 IME 组合态：面板内有模型搜索框，中文输入法按 Esc 取消
+  // 候选词时浏览器同样派发 key='Escape'，不放行会把面板连同已输入的筛选一起关掉。
   useEffect(() => {
     if (!open) return;
     const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', handler);
@@ -2825,6 +3488,19 @@ function ModelPickerButton({
 // 主区 —— 空态欢迎 / 消息流 + 输入框
 // =============================================================================
 
+/**
+ * 超过 ENTER 条才启用 virtua 虚拟化；低于 EXIT 条才退出。短会话保留原始
+ * flex+gap 渲染路径：全量挂载对短列表毫无压力，且能原样保留 framer-motion
+ * 的 layout 动画与逐条入场动画，把虚拟化的行为差异（绝对定位、行卸载）
+ * 限制在真正需要它的长会话里，降低回归面。
+ *
+ * 两个阈值之间留迟滞带：在 30 附近增删一条消息（31→30→31）不会让渲染
+ * 分支来回切换 —— 分支切换 = 全部行卸载重挂载，无迟滞会伴随整屏动画重放
+ * 与滚动位置抖动。
+ */
+const VIRTUALIZE_ENTER_MESSAGES = 30;
+const VIRTUALIZE_EXIT_MESSAGES = 24;
+
 function WorkspaceCanvas({
   greeting,
   nickname,
@@ -2838,6 +3514,8 @@ function WorkspaceCanvas({
   fontSize,
   sendShortcut,
   onSetSendShortcut,
+  enableTools,
+  onToggleEnableTools,
   onComposerChange,
   onSend,
   onAbort,
@@ -2859,6 +3537,7 @@ function WorkspaceCanvas({
   onEditMessage,
   onRetryMessage,
   onRetryAutoMessage,
+  onCompareMessage,
   onDeleteMessage,
   onTranslateMessage,
   onQuoteMessage,
@@ -2881,6 +3560,8 @@ function WorkspaceCanvas({
   fontSize: number;
   sendShortcut: SendShortcut;
   onSetSendShortcut: (shortcut: SendShortcut) => void;
+  enableTools: boolean;
+  onToggleEnableTools: () => void;
   onComposerChange: (value: string) => void;
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -2902,6 +3583,7 @@ function WorkspaceCanvas({
   onEditMessage: (message: AgentMessage) => void;
   onRetryMessage: (message: AgentMessage) => void;
   onRetryAutoMessage: (message: AgentMessage) => void;
+  onCompareMessage: (message: AgentMessage) => void;
   onDeleteMessage: (message: AgentMessage) => void;
   onTranslateMessage: (message: AgentMessage) => void;
   onQuoteMessage: (message: AgentMessage) => void;
@@ -2914,11 +3596,37 @@ function WorkspaceCanvas({
 }) {
   const isEmpty = !activeSession || activeSession.messages.length === 0;
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 虚拟化路径的命令句柄；非虚拟化路径下保持 null，effect 里以此区分分支
+  const virtualizerRef = useRef<VirtualizerHandle | null>(null);
   // 用户主动滚动到非底部 → 暂停自动跟随；滚回底部 80px 内 → 恢复跟随
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastSessionIdRef = useRef<string | null | undefined>(undefined);
 
   const messages = activeSession?.messages ?? [];
+
+  // 虚拟化开关带迟滞（ref 记当前模式）：>ENTER 进入、<EXIT 退出。
+  const virtualizedRef = useRef(false);
+
+  // 入场动画只授予「本次挂载期间新追加」的消息。虚拟化行滚出视口即卸载，
+  // 滚回来会重挂载 —— 若不做标记，回滚历史时旧消息会重复播放入场动画。
+  // 非虚拟化分支同样按此标记：跨过阈值退出虚拟化时整列表重挂载，无标记
+  // 会把已见历史的入场动画整屏重放。切会话时把该会话现有消息全部视为已见
+  // （历史直接静态呈现）。
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const seenSessionIdRef = useRef<string | null | undefined>(undefined);
+  if (seenSessionIdRef.current !== (activeSession?.id ?? null)) {
+    seenSessionIdRef.current = activeSession?.id ?? null;
+    seenMessageIdsRef.current = new Set(messages.map((m) => m.id));
+    // 切会话按新会话自身规模定档，不携带上一个会话的迟滞状态。
+    virtualizedRef.current = messages.length > VIRTUALIZE_ENTER_MESSAGES;
+  }
+  if (messages.length > VIRTUALIZE_ENTER_MESSAGES) virtualizedRef.current = true;
+  else if (messages.length < VIRTUALIZE_EXIT_MESSAGES) virtualizedRef.current = false;
+  const virtualized = virtualizedRef.current;
+  useEffect(() => {
+    const seen = seenMessageIdsRef.current;
+    for (const m of messages) seen.add(m.id);
+  }, [messages]);
 
   // 切换会话时重置为"贴底"，并立即跳到底部
   useEffect(() => {
@@ -2961,8 +3669,16 @@ function WorkspaceCanvas({
     if (!stickToBottom) return;
     const node = scrollRef.current;
     if (!node) return;
+    const count = messages.length;
     const id = requestAnimationFrame(() => {
-      node.scrollTop = node.scrollHeight;
+      // 虚拟化下 scrollHeight 含未测量项的估算值，直接赋 scrollTop 可能落
+      // 不到真实底部；scrollToIndex(end) 由 virtua 在测量修正后收敛贴底。
+      const handle = virtualizerRef.current;
+      if (handle && count > 0) {
+        handle.scrollToIndex(count - 1, { align: 'end' });
+      } else {
+        node.scrollTop = node.scrollHeight;
+      }
     });
     return () => cancelAnimationFrame(id);
   }, [messages, streaming, stickToBottom]);
@@ -2971,12 +3687,47 @@ function WorkspaceCanvas({
     const node = scrollRef.current;
     if (!node) return;
     setStickToBottom(true);
-    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
-  }, []);
+    const handle = virtualizerRef.current;
+    if (handle && messages.length > 0) {
+      handle.scrollToIndex(messages.length - 1, { align: 'end', smooth: true });
+    } else {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages.length]);
+
+  const renderMessageRow = (m: AgentMessage, rowAnimation: { entrance: boolean; animateLayout: boolean }) => (
+    <MessageRow
+      message={m}
+      displayMode={displayMode}
+      streamAnimation={streamAnimation}
+      fontSize={fontSize}
+      currentUser={currentUser}
+      modelsState={modelsState}
+      busy={streaming}
+      entrance={rowAnimation.entrance}
+      animateLayout={rowAnimation.animateLayout}
+      onEdit={onEditMessage}
+      onRetry={onRetryMessage}
+      onRetryAuto={onRetryAutoMessage}
+      onCompare={onCompareMessage}
+      onDelete={onDeleteMessage}
+      onTranslate={onTranslateMessage}
+      onQuote={onQuoteMessage}
+      onFork={onForkMessage}
+    />
+  );
 
   return (
     <main className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 md:px-8 md:pt-12">
+      <div
+        ref={scrollRef}
+        className={cn(
+          'min-h-0 flex-1 overflow-y-auto px-4 md:px-8',
+          // 虚拟化项脱离常规文档流：顶部留白折进首项（保持视觉一致），并关闭
+          // 浏览器滚动锚定避免与 virtua 自身的位置补偿互相打架。
+          virtualized ? '[overflow-anchor:none]' : 'pt-3 md:pt-12',
+        )}
+      >
         <div className="mx-auto w-full max-w-[820px]">
           {isEmpty ? (
             <EmptyState
@@ -2984,6 +3735,42 @@ function WorkspaceCanvas({
               nickname={nickname}
               onPickPrompt={onPickPrompt}
             />
+          ) : virtualized ? (
+            <div role="log" aria-label="对话消息" aria-busy={streaming}>
+              {/* key=会话 id：切会话时重置 virtua 的按索引尺寸缓存，避免用上
+                  一个会话的测量值估算新会话的行高 */}
+              <Virtualizer
+                key={activeSession?.id ?? 'session'}
+                ref={virtualizerRef}
+                scrollRef={scrollRef}
+                bufferSize={600}
+              >
+                {messages.map((m, index) => (
+                  <div
+                    key={m.id}
+                    className={cn(
+                      // flex gap 在绝对定位的虚拟化行之间失效，折算成行内边距：
+                      // 行间距 = 原 gap；末行 pb-6 对应原容器的 pb-6 收尾留白。
+                      index === 0 && 'pt-3 md:pt-12',
+                      displayMode === 'engraved' && index !== messages.length - 1
+                        ? 'pb-2'
+                        : 'pb-6',
+                    )}
+                  >
+                    {renderMessageRow(m, {
+                      entrance: !seenMessageIdsRef.current.has(m.id),
+                      animateLayout: false,
+                    })}
+                    {activeSession?.contextBreakId === m.id && (
+                      <ContextBreakDivider
+                        onClear={onClearContextBreak}
+                        className={displayMode === 'engraved' ? 'mt-2' : 'mt-6'}
+                      />
+                    )}
+                  </div>
+                ))}
+              </Virtualizer>
+            </div>
           ) : (
             <div
               className={cn(
@@ -2996,34 +3783,14 @@ function WorkspaceCanvas({
             >
               {messages.map((m) => (
                 <React.Fragment key={m.id}>
-                  <MessageRow
-                    message={m}
-                    displayMode={displayMode}
-                    streamAnimation={streamAnimation}
-                    fontSize={fontSize}
-                    currentUser={currentUser}
-                    modelsState={modelsState}
-                    busy={streaming}
-                    onEdit={onEditMessage}
-                    onRetry={onRetryMessage}
-                    onRetryAuto={onRetryAutoMessage}
-                    onDelete={onDeleteMessage}
-                    onTranslate={onTranslateMessage}
-                    onQuote={onQuoteMessage}
-                    onFork={onForkMessage}
-                  />
+                  {renderMessageRow(m, {
+                    // 与虚拟化分支同一判定：只有本次挂载期间新追加的消息播
+                    // 入场动画，防止 31→30 下穿阈值时整屏历史重放入场动画。
+                    entrance: !seenMessageIdsRef.current.has(m.id),
+                    animateLayout: true,
+                  })}
                   {activeSession?.contextBreakId === m.id && (
-                    <div className="hub-context-break mx-auto flex w-full max-w-3xl items-center justify-center py-1">
-                      <button
-                        type="button"
-                        onClick={onClearContextBreak}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-warn)_32%,transparent)] bg-[var(--hub-panel-strong)] px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--signal-warn)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)]"
-                        title="断点之前的消息不再随请求发送，点击恢复"
-                      >
-                        <Scissors className="h-3 w-3" aria-hidden="true" />
-                        新上下文从这里开始 · 点击恢复
-                      </button>
-                    </div>
+                    <ContextBreakDivider onClear={onClearContextBreak} />
                   )}
                 </React.Fragment>
               ))}
@@ -3062,6 +3829,8 @@ function WorkspaceCanvas({
         onSetModel={onSetModel}
         sendShortcut={sendShortcut}
         onSetSendShortcut={onSetSendShortcut}
+        enableTools={enableTools}
+        onToggleEnableTools={onToggleEnableTools}
         selectedArticles={selectedArticles}
         selectedTags={selectedTags}
         selectedKbs={selectedKbs}
@@ -3081,6 +3850,37 @@ function WorkspaceCanvas({
         onToggleContextBreak={onToggleContextBreak}
       />
     </main>
+  );
+}
+
+/**
+ * 上下文断点分隔线 —— 插在被标记消息之后。虚拟化路径下它与消息同属一个
+ * 测量单元（间距用 className 传 mt-*），非虚拟化路径下由 flex gap 供间距。
+ */
+function ContextBreakDivider({
+  onClear,
+  className,
+}: {
+  onClear: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'hub-context-break mx-auto flex w-full max-w-3xl items-center justify-center py-1',
+        className,
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClear}
+        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--signal-warn)_32%,transparent)] bg-[var(--hub-panel-strong)] px-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--signal-warn)] transition-colors hover:bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)]"
+        title="断点之前的消息不再随请求发送，点击恢复"
+      >
+        <Scissors className="h-3 w-3" aria-hidden="true" />
+        新上下文从这里开始 · 点击恢复
+      </button>
+    </div>
   );
 }
 
@@ -3133,9 +3933,12 @@ function MessageRow({
   currentUser,
   modelsState,
   busy,
+  entrance = true,
+  animateLayout = true,
   onEdit,
   onRetry,
   onRetryAuto,
+  onCompare,
   onDelete,
   onTranslate,
   onQuote,
@@ -3148,9 +3951,14 @@ function MessageRow({
   currentUser: CurrentUser;
   modelsState: ReturnType<typeof useAgentModels>;
   busy: boolean;
+  /** false = 挂载时不播放入场动画（虚拟化重挂载的历史行） */
+  entrance?: boolean;
+  /** false = 关闭 framer layout 测量（虚拟化行由 virtua 定位，layout 动画无意义且会打架） */
+  animateLayout?: boolean;
   onEdit: (message: AgentMessage) => void;
   onRetry: (message: AgentMessage) => void;
   onRetryAuto: (message: AgentMessage) => void;
+  onCompare: (message: AgentMessage) => void;
   onDelete: (message: AgentMessage) => void;
   onTranslate: (message: AgentMessage) => void;
   onQuote: (message: AgentMessage) => void;
@@ -3197,6 +4005,7 @@ function MessageRow({
       canCopy={!!message.content}
       canEdit={canEdit}
       canRetry={canRetry}
+      canCompare={canRetry}
       canDelete={canDelete}
       canTranslate={canTranslate}
       canQuote={canQuote}
@@ -3206,6 +4015,7 @@ function MessageRow({
       onCopy={handleCopy}
       onEdit={() => onEdit(message)}
       onRetry={() => onRetry(message)}
+      onCompare={() => onCompare(message)}
       onTranslate={() => onTranslate(message)}
       onQuote={() => onQuote(message)}
       onFork={() => onFork(message)}
@@ -3250,8 +4060,8 @@ function MessageRow({
 
   return (
     <motion.article
-      layout="position"
-      initial={{ opacity: 0, y: 10 }}
+      layout={animateLayout ? 'position' : false}
+      initial={entrance ? { opacity: 0, y: 10 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
       className="group/msg relative mx-auto flex w-full max-w-3xl flex-col"
@@ -3291,6 +4101,14 @@ function MessageRow({
       )}
       {!isUser && !message.pending && !!message.startedAt && (
         <MessageMetaFooter message={message} modelsState={modelsState} />
+      )}
+      {!isUser && !message.pending && !!message.alternatives?.length && (
+        <AlternativeAnswers
+          alternatives={message.alternatives}
+          modelsState={modelsState}
+          isDark={isDark}
+          fontSize={fontSize}
+        />
       )}
     </motion.article>
   );
@@ -3361,6 +4179,99 @@ function MessageMetaFooter({
           <span>≈ ${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * AlternativeAnswers —— 多模型对比采纳后存档的其他回答，meta footer 下方
+ * 一行小按钮「查看其他 N 个回答」，行内展开每条 alternative 的紧凑卡
+ * （模型名 + MarkdownPreview 正文 + token 数 / 用时），再点收起。
+ */
+function AlternativeAnswers({
+  alternatives,
+  modelsState,
+  isDark,
+  fontSize,
+}: {
+  alternatives: AgentAlternative[];
+  modelsState: ReturnType<typeof useAgentModels>;
+  isDark: boolean;
+  fontSize: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const labelFor = (alt: AgentAlternative) => {
+    if (!alt.modelId) return '自动路由';
+    const found = items.find(
+      (m) => m.modelId === alt.modelId && m.providerCode === alt.providerCode,
+    );
+    return found ? modelLabel(found) : alt.modelId;
+  };
+  return (
+    <div className="mt-1.5 px-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 font-mono text-[10px] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
+      >
+        <Columns2 className="h-3 w-3" aria-hidden="true" />
+        {open ? '收起其他回答' : `查看其他 ${alternatives.length} 个回答`}
+        {open ? (
+          <ChevronDown className="h-3 w-3" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="h-3 w-3" aria-hidden="true" />
+        )}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="alternatives"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 flex flex-col gap-2">
+              {alternatives.map((alt, index) => (
+                <div
+                  key={`${alt.providerCode ?? 'auto'}:${alt.modelId ?? 'auto'}:${index}`}
+                  className="max-w-full rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-3"
+                >
+                  <div className="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-mono text-[10px] tnum text-[var(--ink-muted)]">
+                    <span className="max-w-[14rem] truncate" title={labelFor(alt)}>
+                      {labelFor(alt)}
+                    </span>
+                    {alt.usage && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                          {alt.usage.estimated ? '~' : ''}
+                          {formatTokenCount(alt.usage.totalTokens)} tok
+                        </span>
+                      </>
+                    )}
+                    {alt.elapsedMs != null && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>用时 {(alt.elapsedMs / 1000).toFixed(1)}s</span>
+                      </>
+                    )}
+                  </div>
+                  <MarkdownPreview
+                    content={normalizeCjkInlineMarkdown(alt.content)}
+                    theme={isDark ? 'dark' : 'light'}
+                    className="hub-agent-md leading-relaxed"
+                    style={{ fontSize: `${Math.max(12, fontSize - 1)}px` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3438,6 +4349,7 @@ function MessageActions({
   canCopy,
   canEdit,
   canRetry,
+  canCompare,
   canDelete,
   canTranslate,
   canQuote,
@@ -3447,6 +4359,7 @@ function MessageActions({
   onCopy,
   onEdit,
   onRetry,
+  onCompare,
   onTranslate,
   onQuote,
   onFork,
@@ -3457,6 +4370,7 @@ function MessageActions({
   canCopy: boolean;
   canEdit: boolean;
   canRetry: boolean;
+  canCompare: boolean;
   canDelete: boolean;
   canTranslate: boolean;
   canQuote: boolean;
@@ -3466,6 +4380,7 @@ function MessageActions({
   onCopy: () => void;
   onEdit: () => void;
   onRetry: () => void;
+  onCompare: () => void;
   onTranslate: () => void;
   onQuote: () => void;
   onFork: () => void;
@@ -3518,6 +4433,17 @@ function MessageActions({
           title="重新生成"
         >
           <RefreshCcw className="h-3 w-3" /> 重试
+        </button>
+      )}
+      {canCompare && (
+        <button
+          type="button"
+          onClick={onCompare}
+          className="inline-flex items-center gap-1 hover:text-[var(--aurora-2)]"
+          aria-label="多模型对比这条回复"
+          title="同一问题并行发给多个模型对比"
+        >
+          <Columns2 className="h-3 w-3" /> 对比
         </button>
       )}
       {canTranslate && (
@@ -3636,7 +4562,143 @@ function Avatar({
   );
 }
 
-/** 用户消息里的图片附件条 —— 原图走内存缓存；刷新后缓存失效则降级为占位。 */
+/**
+ * 单张附件图片的三态渲染：
+ *   1. 内存缓存（或消息自带 dataUrl）命中 → 同步显示；
+ *   2. 未命中 → 骨架占位 + 异步查 IndexedDB，取到后显示并回填内存缓存
+ *      —— 虚拟化列表滚出重挂载时，回填过的缓存让重挂载直接走同步路径
+ *      （回填有 LRU 上限，见 writeAttachmentCache）；
+ *   3. IndexedDB 也没有（已清理 / 隐私模式）→ 占位卡片。
+ * 点击图片 → 请求页面级大图预览（状态不在本组件，否则会随虚拟化卸载而丢）。
+ */
+function AttachmentImage({ attachment }: { attachment: AgentAttachment }) {
+  const [url, setUrl] = useState(
+    () => attachment.dataUrl || readAttachmentCache(attachment.id) || '',
+  );
+  const [idbChecked, setIdbChecked] = useState(false);
+  const requestPreview = useContext(AttachmentPreviewContext);
+
+  useEffect(() => {
+    if (url) return;
+    let cancelled = false;
+    void getAttachmentData(attachment.id).then((dataUrl) => {
+      if (cancelled) return;
+      if (dataUrl) {
+        writeAttachmentCache(attachment.id, dataUrl);
+        setUrl(dataUrl);
+      } else {
+        setIdbChecked(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.id, url]);
+
+  if (!url) {
+    // IndexedDB 查询在途 → 骨架（禁 spinner，红线）；确认无原图 → 占位卡片。
+    return idbChecked ? (
+      <span
+        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[11px] text-[var(--ink-muted)]"
+        title="原图本地缓存不可用（可能已被清理，或浏览器隐私模式未持久化）"
+      >
+        <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
+        {attachment.name}（原图缓存已失效）
+      </span>
+    ) : (
+      <span
+        className="h-28 w-28 animate-pulse rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)]"
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => requestPreview?.({ src: url, name: attachment.name })}
+      className="overflow-hidden rounded-xl border border-[var(--hub-border)] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+      title={`点击查看大图：${attachment.name}`}
+      aria-label={`查看大图：${attachment.name}`}
+    >
+      <img src={url} alt={attachment.name} className="h-28 max-w-[13rem] object-cover" />
+    </button>
+  );
+}
+
+/**
+ * 附件大图预览浮层 —— 页面级单例，渲染在虚拟化列表之外。
+ *
+ * 不复用 @aetherblog/ui 的 Modal：它没有 role="dialog"、没有焦点管理，Esc 也
+ * 没有 IME 守卫；而本浮层的写法与 CompareOverlay / SpacePreviewDialog 一致，
+ * 焦点行为统一交给 useModalDialog（移入焦点 / Tab 陷阱 / 关闭还原焦点 /
+ * Esc 跳过输入法组合态）。
+ */
+function AttachmentPreviewOverlay({
+  target,
+  onClose,
+}: {
+  target: AttachmentPreviewTarget;
+  onClose: () => void;
+}) {
+  const dialogRef = useModalDialog<HTMLElement>({ onClose });
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <motion.div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <motion.section
+          ref={dialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`附件大图：${target.name}`}
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }
+          }
+          className="surface-overlay flex max-h-[92vh] w-[min(960px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[26px] border outline-none backdrop-blur-2xl"
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--hub-border)] px-5">
+            <h3 className="min-w-0 truncate text-sm font-semibold text-[var(--ink-primary)]">
+              {target.name}
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭大图"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="agent-thumb-scroll min-h-0 flex-1 overflow-auto p-5">
+            <img
+              src={target.src}
+              alt={target.name}
+              className="mx-auto max-h-[74vh] max-w-full object-contain"
+            />
+          </div>
+        </motion.section>
+      </div>
+    </div>
+  );
+}
+
+/** 用户消息里的图片附件条 —— 三态渲染细节见 AttachmentImage。 */
 function UserAttachments({
   attachments,
   align,
@@ -3651,26 +4713,9 @@ function UserAttachments({
         align === 'end' ? 'justify-end' : 'justify-center',
       )}
     >
-      {attachments.map((a) => {
-        const url = a.dataUrl || attachmentDataUrlCache.get(a.id) || '';
-        return url ? (
-          <img
-            key={a.id}
-            src={url}
-            alt={a.name}
-            className="h-28 max-w-[13rem] rounded-xl border border-[var(--hub-border)] object-cover"
-          />
-        ) : (
-          <span
-            key={a.id}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-dashed border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-[11px] text-[var(--ink-muted)]"
-            title="原图只在发送当次保留，刷新页面后不再显示"
-          >
-            <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
-            {a.name}（图片已随刷新释放）
-          </span>
-        );
-      })}
+      {attachments.map((a) => (
+        <AttachmentImage key={a.id} attachment={a} />
+      ))}
     </div>
   );
 }
@@ -3810,6 +4855,18 @@ function AssistantContent({
             fontSize={fontSize}
             streamAnimation={streamAnimation}
           />
+        </div>
+      )}
+      {message.toolEvents && message.toolEvents.length > 0 && (
+        <div
+          className={cn(
+            'mb-2.5 flex max-w-full flex-col gap-2',
+            displayMode === 'engraved' && 'mx-auto',
+          )}
+        >
+          {message.toolEvents.map((event) => (
+            <ToolCallCard key={event.id} event={event} messagePending={!!message.pending} />
+          ))}
         </div>
       )}
       <AssistantSurface
@@ -4151,6 +5208,167 @@ function ThinkingPanel({
   );
 }
 
+/** 工具名 → 中文标签与图标（服务端白名单外的未知工具兜底扳手 + 原名）。 */
+const TOOL_CALL_META: Record<string, { label: string; icon: ElementType }> = {
+  search_posts: { label: '检索站内文章', icon: FileSearch },
+  search_knowledge_base: { label: '检索知识库', icon: BookOpen },
+};
+
+/**
+ * ToolCallCard —— 单次工具调用的可折叠卡片（ThinkingPanel 的姊妹件，accent
+ * 用 --aurora-2 与思考面板的 aurora-1 区分）。流式中默认收起只看头部状态，
+ * 失败卡自动展开；展开体 = 参数（尝试 pretty-print JSON，失败原样）+ 结果
+ * （<pre> 原样，服务端已截断 ≤2000 字符）。
+ */
+function ToolCallCard({
+  event,
+  messagePending,
+}: {
+  event: AgentToolEvent;
+  messagePending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const userToggledRef = useRef(false);
+  // 尊重系统「减少动态效果」：展开改为瞬时（同 PR 的 CSS 动效都做了同款降级）。
+  const reduceMotion = useReducedMotion();
+  const failed = event.isError === true;
+  // finishedAt 缺失 + 消息已定格 = 流被中断（abort / 关页恢复），不再呼吸。
+  const running = event.finishedAt === undefined && messagePending;
+  const interrupted = event.finishedAt === undefined && !messagePending;
+
+  // 失败卡自动展开（用户手动折叠过则尊重用户）。
+  useEffect(() => {
+    if (failed && !userToggledRef.current) setOpen(true);
+  }, [failed]);
+
+  const meta = TOOL_CALL_META[event.name];
+  const Icon = meta?.icon ?? Wrench;
+  const label = meta?.label ?? event.name;
+
+  const prettyArgs = useMemo(() => {
+    if (!event.arguments) return '';
+    try {
+      return JSON.stringify(JSON.parse(event.arguments), null, 2);
+    } catch {
+      return event.arguments; // 非法 JSON 原样展示，不猜测
+    }
+  }, [event.arguments]);
+
+  const elapsed =
+    event.finishedAt !== undefined
+      ? Math.max(0, event.finishedAt - event.startedAt) / 1000
+      : null;
+
+  return (
+    <div className="max-w-full">
+      <button
+        type="button"
+        onClick={() => {
+          userToggledRef.current = true;
+          setOpen((v) => !v);
+        }}
+        aria-expanded={open}
+        className={cn(
+          'flex w-full items-center gap-2 overflow-hidden rounded-xl border py-2 pl-3 pr-2.5 text-left transition-[border-color,background-color]',
+          running
+            ? 'border-[color-mix(in_oklch,var(--aurora-2)_26%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_7%,transparent)]'
+            : failed
+              ? 'border-[color-mix(in_oklch,var(--signal-danger)_26%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_6%,transparent)]'
+              : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-2)_30%,transparent)]',
+        )}
+      >
+        <span
+          className={cn(
+            'grid h-6 w-6 shrink-0 place-items-center rounded-lg',
+            running
+              ? 'bg-[color-mix(in_oklch,var(--aurora-2)_18%,transparent)] text-[var(--aurora-2)]'
+              : failed
+                ? 'bg-[color-mix(in_oklch,var(--signal-danger)_14%,transparent)] text-[var(--signal-danger)]'
+                : 'bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-muted)]',
+          )}
+          aria-hidden="true"
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            className={cn(
+              'shrink-0 whitespace-nowrap text-[12px] font-medium',
+              running
+                ? 'text-[var(--aurora-2)]'
+                : failed
+                  ? 'text-[var(--signal-danger)]'
+                  : 'text-[var(--ink-secondary)]',
+            )}
+          >
+            {label}
+          </span>
+          <span className="hidden shrink-0 font-mono text-[10px] tracking-[0.06em] text-[var(--ink-muted)] sm:inline">
+            {event.name}
+          </span>
+          {running && (
+            <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-[color-mix(in_oklch,var(--aurora-2)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_9%,transparent)] px-2 text-[10.5px] text-[var(--aurora-2)]">
+              <span className="hub-think-live-dot" aria-hidden="true" />
+              进行中
+            </span>
+          )}
+        </span>
+        <span className="ml-auto inline-flex shrink-0 items-center font-mono text-[10.5px] tnum">
+          {failed ? (
+            <span className="whitespace-nowrap text-[var(--signal-danger)]">调用失败</span>
+          ) : interrupted ? (
+            <span className="whitespace-nowrap text-[var(--ink-muted)]">已中断</span>
+          ) : elapsed !== null ? (
+            <span className="whitespace-nowrap text-[var(--ink-muted)]">耗时 {elapsed.toFixed(1)}s</span>
+          ) : null}
+        </span>
+        <span className="shrink-0 text-[var(--ink-muted)]" aria-hidden="true">
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="tool-body"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 flex flex-col gap-2.5 rounded-xl border border-[color-mix(in_oklch,var(--aurora-2)_18%,transparent)] bg-[color-mix(in_oklch,var(--aurora-2)_4%,var(--hub-control))] p-3">
+              <div>
+                <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                  参数
+                </div>
+                <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ink-secondary)]">
+                  {prettyArgs || '（无参数）'}
+                </pre>
+              </div>
+              {event.result !== undefined && (
+                <div>
+                  <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                    结果
+                  </div>
+                  <pre
+                    className={cn(
+                      'max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed',
+                      failed ? 'text-[var(--signal-danger)]' : 'text-[var(--ink-secondary)]',
+                    )}
+                  >
+                    {event.result}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /**
  * TypingDots —— 三点 typing 指示器（漂浮 + 缩放 + 透明度复合呼吸）
  */
@@ -4173,6 +5391,558 @@ function TypingDots() {
 }
 
 // =============================================================================
+// 多模型对比浮层 —— 同一问题并行发给 2-3 个模型，分栏流式对比，采纳一条
+// =============================================================================
+
+/**
+ * CompareOverlay —— surface-overlay 全屏浮层（浮层写法对齐 SpacePreviewDialog）。
+ *
+ * 并发独立性：每列自己的 streamAgentChat + AbortController，列状态只活在
+ * 浮层本地（liveRef 为真值、rAF 合并刷进 columns state），不写会话消息、
+ * 不占用会话级 streamingIds；关闭浮层（Esc / 遮罩 / 按钮 / 卸载）= 全部 abort。
+ * 请求 = 重试同款重放（snapshot 的知识契约 + 断点切片 + 预算裁剪），仅覆盖
+ * modelId/providerCode；modelParams 按各列模型重建（跨模型透传会话参数可能
+ * 400）；enableTools 不带 —— 对比场景关工具，降低变量。
+ */
+function CompareOverlay({
+  target,
+  modelsState,
+  onClose,
+  onAdopt,
+}: {
+  target: CompareTarget;
+  modelsState: ReturnType<typeof useAgentModels>;
+  onClose: () => void;
+  onAdopt: (adopted: CompareColumn, archived: CompareColumn[]) => void;
+}) {
+  const items = modelsState.status === 'ready' ? modelsState.items : [];
+  const [query, setQuery] = useState('');
+  // 默认预勾当前会话模型（自动路由 / 模型已下架时为空勾）。
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => {
+    const initial = new Set<string>();
+    if (target.sessionModelId) {
+      initial.add(`${target.sessionProviderCode}::${target.sessionModelId}`);
+    }
+    return initial;
+  });
+  const [columns, setColumns] = useState<CompareColumn[]>([]);
+  const running = columns.length > 0;
+
+  // 列状态真值：liveRef 里就地累加，rAF 合并成 columns 快照供渲染 ——
+  // 3 路并行流每个 delta 都 setState 会把浮层打成高频重渲染。
+  const liveRef = useRef<Map<string, CompareColumn>>(new Map());
+  const controllersRef = useRef<Map<string, AbortController>>(new Map());
+  const rafRef = useRef(0);
+
+  const flushColumns = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    setColumns(Array.from(liveRef.current.values()).map((col) => ({ ...col })));
+  }, []);
+  const scheduleFlush = useCallback(() => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      setColumns(Array.from(liveRef.current.values()).map((col) => ({ ...col })));
+    });
+  }, []);
+
+  const abortAll = useCallback(() => {
+    for (const controller of controllersRef.current.values()) controller.abort();
+    controllersRef.current.clear();
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+  }, []);
+
+  // 关闭浮层 = 全部 abort；组件卸载兜底同款清理（AnimatePresence 退场后触发）。
+  const requestClose = useCallback(() => {
+    abortAll();
+    onClose();
+  }, [abortAll, onClose]);
+  useEffect(() => abortAll, [abortAll]);
+
+  // 焦点管理交给 useModalDialog：移入初始焦点 / Tab 焦点陷阱 / 关闭还原焦点 /
+  // Esc 关闭且跳过 IME 组合态。此前这里只有一个裸 Esc 监听，却照样声明了
+  // role="dialog" aria-modal="true" —— 读屏器按语义认为窗外内容已惰性化，实际
+  // Tab 依旧能走出去；而中文输入法按 Esc 取消候选词会连带把浮层（含已勾选的
+  // 模型）一起关掉。
+  const dialogRef = useModalDialog<HTMLElement>({ onClose: requestClose });
+  const reduceMotion = useReducedMotion();
+
+  // 流式中的用时 tick（250ms 足够，展示精度 0.1s）。
+  const anyStreaming = columns.some((c) => c.status === 'streaming');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!anyStreaming) return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [anyStreaming]);
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) =>
+      [item.providerCode, item.providerName, item.modelId, item.displayName]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [items, query]);
+
+  // 已勾模型以清单为准 —— 预勾的会话模型不在清单里（已下架）时不计数。
+  const chosenModels = useMemo(
+    () => items.filter((m) => selectedKeys.has(compareModelKey(m))),
+    [items, selectedKeys],
+  );
+  const chosenCount = chosenModels.length;
+  const canStart =
+    !running && chosenCount >= COMPARE_MIN_MODELS && chosenCount <= COMPARE_MAX_MODELS;
+
+  const toggleModel = (model: AgentModelItem) => {
+    const key = compareModelKey(model);
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        if (chosenCount >= COMPARE_MAX_MODELS) return prev; // 超过 3 个禁勾
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const startCompare = () => {
+    if (!canStart) return;
+    const contextPayload = resolveAetherHubKnowledgeContext(
+      target.requestSnapshot.knowledgeContext,
+      [],
+      [],
+    );
+    if (!contextPayload.ok) {
+      toast.error(contextPayload.error.message);
+      return;
+    }
+    // 与 handleSend 重放路径同款：断点切片 + 后端硬限预算裁剪。
+    const contextMessages = sliceContextMessages(target.baseMessages, target.contextBreakId);
+    const budget = budgetHistory([
+      ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: target.question },
+    ]);
+
+    for (const model of chosenModels) {
+      const key = compareModelKey(model);
+      const startedAt = Date.now();
+      const controller = new AbortController();
+      controllersRef.current.set(key, controller);
+      liveRef.current.set(key, {
+        key,
+        model,
+        status: 'streaming',
+        content: '',
+        think: '',
+        startedAt,
+      });
+
+      const req: ChatStreamRequest = {
+        sessionId: target.sessionId,
+        mode: 'chat',
+        messages: budget.history,
+        modelId: model.modelId,
+        providerCode: model.providerCode,
+        modelParams: buildModelParamsForRequest(model, target.sessionModelParams),
+        articleIds: target.requestSnapshot.articleIds,
+        tagSlugs: target.requestSnapshot.tagSlugs,
+        ...contextPayload.value,
+      };
+      const patch = (mutate: (col: CompareColumn) => void, immediate = false) => {
+        const col = liveRef.current.get(key);
+        if (!col) return;
+        mutate(col);
+        if (immediate) flushColumns();
+        else scheduleFlush();
+      };
+      void streamAgentChat(
+        req,
+        {
+          onDelta: (chunk) =>
+            patch((col) => {
+              if (col.status !== 'streaming') return;
+              if (col.firstTokenAt === undefined) col.firstTokenAt = Date.now();
+              col.content += chunk;
+            }),
+          onThink: (chunk) =>
+            patch((col) => {
+              if (col.status !== 'streaming') return;
+              col.think += chunk;
+            }),
+          onUsage: (usage) =>
+            patch((col) => {
+              col.usage = usage;
+            }),
+          onDone: () =>
+            patch((col) => {
+              if (col.status !== 'streaming') return;
+              col.status = 'done';
+              col.finishedAt = Date.now();
+            }, true),
+          onError: (message) =>
+            patch((col) => {
+              if (col.status !== 'streaming') return;
+              col.status = 'error';
+              col.error = message;
+              col.finishedAt = Date.now();
+            }, true),
+        },
+        controller.signal,
+      )
+        .catch((err: unknown) => {
+          if ((err as { name?: string })?.name === 'AbortError') return;
+          patch((col) => {
+            if (col.status !== 'streaming') return;
+            col.status = 'error';
+            col.error = err instanceof Error ? err.message : '请求失败';
+            col.finishedAt = Date.now();
+          }, true);
+        })
+        .finally(() => {
+          controllersRef.current.delete(key);
+        });
+    }
+    flushColumns();
+  };
+
+  const handleAdoptColumn = (column: CompareColumn) => {
+    if (column.status !== 'done' || column.error || !column.content.trim()) return;
+    // 其余完成且非空的列进存档（liveRef 为真值，避免快照落后一帧）。
+    const archived = Array.from(liveRef.current.values()).filter(
+      (c) => c.key !== column.key && c.status === 'done' && !c.error && c.content.trim() !== '',
+    );
+    abortAll();
+    onAdopt(column, archived);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
+        onClick={requestClose}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
+        <motion.section
+          ref={dialogRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="多模型对比"
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 430, damping: 34, mass: 0.8 }
+          }
+          className={cn(
+            'surface-overlay flex max-h-[92vh] flex-col overflow-hidden rounded-[26px] border outline-none backdrop-blur-2xl',
+            running ? 'w-[min(1180px,calc(100vw-1.5rem))]' : 'w-[min(560px,calc(100vw-1.5rem))]',
+          )}
+        >
+          <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-[var(--hub-border)] px-4 py-2.5 sm:px-5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[color-mix(in_oklch,var(--aurora-2)_14%,transparent)] text-[var(--aurora-2)]">
+              <Columns2 className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-[var(--ink-primary)]">多模型对比</h3>
+              <p
+                className="mt-0.5 truncate text-[11.5px] text-[var(--ink-muted)]"
+                title={target.question}
+              >
+                {target.question}
+              </p>
+            </div>
+            {!running && (
+              <button
+                type="button"
+                onClick={startCompare}
+                disabled={!canStart}
+                className={cn(
+                  'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-[12.5px] font-semibold transition-colors',
+                  canStart
+                    ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                    : 'cursor-not-allowed bg-[var(--hub-control)] text-[var(--ink-muted)]',
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                开始对比
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={requestClose}
+              aria-label="关闭对比"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {!running ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--hub-border)] px-4 py-2.5 sm:px-5">
+                <div className="relative min-w-0 flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-muted)]"
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="搜索模型或厂商…"
+                    aria-label="搜索模型"
+                    className="h-9 w-full rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] pl-9 pr-3 text-[13px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)]"
+                  />
+                </div>
+                <span className="shrink-0 font-mono text-[10.5px] tnum uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  已选 {chosenCount}/{COMPARE_MAX_MODELS}
+                </span>
+              </div>
+              <div className="agent-thumb-scroll min-h-[14rem] flex-1 overflow-y-auto p-2 sm:p-3">
+                {modelsState.status === 'loading' && (
+                  <div className="space-y-2 px-2 py-3" aria-label="加载模型清单">
+                    <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--hub-control-hover)]" />
+                    <div className="h-11 animate-pulse rounded-2xl bg-[var(--hub-control)]" />
+                    <div className="h-11 animate-pulse rounded-2xl bg-[var(--hub-control)]" />
+                    <div className="h-11 animate-pulse rounded-2xl bg-[var(--hub-control)]" />
+                  </div>
+                )}
+                {modelsState.status === 'error' && (
+                  <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--signal-danger)]">
+                    加载失败：{modelsState.message}
+                  </div>
+                )}
+                {modelsState.status === 'ready' && filteredItems.length === 0 && (
+                  <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--ink-muted)]">
+                    {query.trim() ? '没有匹配的模型' : '没有已启用的模型，去 AI 配置页添加'}
+                  </div>
+                )}
+                {filteredItems.map((m) => {
+                  const key = compareModelKey(m);
+                  const checked = selectedKeys.has(key);
+                  const full = !checked && chosenCount >= COMPARE_MAX_MODELS;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleModel(m)}
+                      disabled={full}
+                      role="checkbox"
+                      aria-checked={checked}
+                      className={cn(
+                        'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors',
+                        checked
+                          ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)]'
+                          : 'text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+                        full && 'cursor-not-allowed opacity-45',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors',
+                          checked
+                            ? 'border-transparent bg-[var(--aurora-1)] text-[var(--hub-on-accent)]'
+                            : 'border-[var(--hub-border)] bg-[var(--hub-control)] text-transparent',
+                        )}
+                        aria-hidden="true"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{modelLabel(m)}</div>
+                        <div className="mt-0.5 truncate font-mono text-[10.5px] text-[var(--ink-muted)]">
+                          {providerLabel(m)} · {m.modelId}
+                        </div>
+                      </div>
+                      {m.contextWindow ? (
+                        <span className="hidden shrink-0 rounded-full bg-[var(--hub-control)] px-2 py-1 font-mono text-[10px] tnum text-[var(--ink-muted)] sm:inline">
+                          {formatContextWindow(m.contextWindow)}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="shrink-0 border-t border-[var(--hub-border)] px-4 py-2.5 text-[11.5px] leading-5 text-[var(--ink-muted)] sm:px-5">
+                勾选 {COMPARE_MIN_MODELS}-{COMPARE_MAX_MODELS} 个模型后开始对比；
+                对比回答不携带图片附件，也不启用工具调用。
+              </div>
+            </div>
+          ) : (
+            <div className="agent-thumb-scroll min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+              <div
+                className={cn(
+                  'grid grid-cols-1 gap-3',
+                  columns.length >= 3 ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2',
+                )}
+              >
+                {columns.map((col) => (
+                  <CompareColumnCard
+                    key={col.key}
+                    column={col}
+                    now={now}
+                    onAdopt={() => handleAdoptColumn(col)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.section>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * CompareColumnCard —— 对比浮层的单列：模型名头部 + 独立流式内容
+ * （MarkdownStreamPreview，完成后仍用它 —— 对比场景不必上重型渲染器）+
+ * 状态（流式呼吸点 / 用时 / usage token / 错误红字）+「采纳这条」。
+ */
+function CompareColumnCard({
+  column,
+  now,
+  onAdopt,
+}: {
+  column: CompareColumn;
+  now: number;
+  onAdopt: () => void;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const isStreaming = column.status === 'streaming';
+
+  // 流式期间跟随尾部（与 ThinkingPanel 同款写法）；完成后交还给用户滚动。
+  useLayoutEffect(() => {
+    if (!isStreaming) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [isStreaming, column.content, column.think]);
+
+  const endTs = isStreaming ? now : (column.finishedAt ?? column.startedAt);
+  const elapsedSec = Math.max(0, endTs - column.startedAt) / 1000;
+  const usage = column.usage;
+  const canAdopt = column.status === 'done' && !column.error && column.content.trim() !== '';
+
+  return (
+    <div
+      className={cn(
+        'flex min-h-[16rem] flex-col overflow-hidden rounded-2xl border bg-[var(--hub-control)]',
+        isStreaming
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]'
+          : column.status === 'error'
+            ? 'border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)]'
+            : 'border-[var(--hub-border)]',
+      )}
+    >
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--hub-border)] px-3 py-2">
+        <span
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]"
+          aria-hidden="true"
+        >
+          <Brain className="h-3.5 w-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div
+            className="truncate text-[12.5px] font-medium text-[var(--ink-primary)]"
+            title={modelLabel(column.model)}
+          >
+            {modelLabel(column.model)}
+          </div>
+          <div className="truncate font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
+            {providerLabel(column.model)}
+          </div>
+        </div>
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] tnum text-[var(--ink-muted)]">
+          {isStreaming && <span className="hub-think-live-dot" aria-label="生成中" />}
+          {column.status === 'error' ? (
+            <span className="text-[var(--signal-danger)]">失败</span>
+          ) : (
+            <span className="whitespace-nowrap">
+              {isStreaming ? '' : '用时 '}
+              {elapsedSec.toFixed(1)}s
+            </span>
+          )}
+          {usage && (
+            <span className="whitespace-nowrap">
+              · {usage.estimated ? '~' : ''}
+              {formatTokenCount(usage.totalTokens)} tok
+            </span>
+          )}
+        </span>
+      </div>
+
+      <div
+        ref={scrollerRef}
+        className="hub-think-scroll max-h-[46vh] min-h-0 flex-1 overflow-y-auto p-3 md:max-h-[52vh]"
+      >
+        {column.status === 'error' && !column.content ? (
+          <div className="font-mono text-[11px] leading-relaxed tracking-[0.06em] text-[var(--signal-danger)]">
+            ERROR · {column.error}
+          </div>
+        ) : !column.content ? (
+          isStreaming ? (
+            <div className="flex flex-col items-start gap-2 text-[11.5px] text-[var(--ink-muted)]">
+              <TypingDots />
+              {column.think && <span>思考中 · {column.think.length} 字符</span>}
+            </div>
+          ) : (
+            <div className="text-[11.5px] text-[var(--ink-muted)]">（空回答）</div>
+          )
+        ) : (
+          <>
+            <MarkdownStreamPreview
+              content={normalizeCjkInlineMarkdown(column.content)}
+              className="hub-agent-md text-[13px] leading-relaxed"
+            />
+            {column.status === 'error' && (
+              <div className="mt-2 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                ERROR · {column.error}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-[var(--hub-border)] p-2">
+        <button
+          type="button"
+          onClick={onAdopt}
+          disabled={!canAdopt}
+          className={cn(
+            'inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-semibold transition-colors',
+            canAdopt
+              ? 'bg-[var(--hub-active)] text-[var(--hub-accent-text)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+              : 'cursor-not-allowed bg-[color-mix(in_oklch,var(--ink-primary)_3%,transparent)] text-[var(--ink-muted)]',
+          )}
+        >
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          采纳这条
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // Composer —— 输入框 + 发送 / 停止
 // =============================================================================
 
@@ -4187,6 +5957,8 @@ function Composer({
   onSetModel,
   sendShortcut,
   onSetSendShortcut,
+  enableTools,
+  onToggleEnableTools,
   selectedArticles,
   selectedTags,
   selectedKbs,
@@ -4215,6 +5987,8 @@ function Composer({
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
   sendShortcut: SendShortcut;
   onSetSendShortcut: (shortcut: SendShortcut) => void;
+  enableTools: boolean;
+  onToggleEnableTools: () => void;
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
@@ -4243,6 +6017,8 @@ function Composer({
   const sendMenuRef = useRef<HTMLDivElement | null>(null);
   const sendMenuCloseTimerRef = useRef<number | null>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
+  // 尊重系统「减少动态效果」：附件托盘展开与外框 layout 位移都降级为瞬时。
+  const reduceMotion = useReducedMotion();
   const [picker, setPicker] = useState<'article' | 'tag' | 'kb' | 'atlas' | 'slash' | null>(null);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -4254,6 +6030,8 @@ function Composer({
     [activeSession, modelsState],
   );
   const visionReady = !!currentModel?.abilities?.vision;
+  // 工具按钮按当前模型的 functionCall 能力门控 —— 自动路由或不支持的模型禁用并提示。
+  const functionCallReady = currentModel?.abilities?.functionCall === true;
 
   // 上下文用量计：断点之后的历史 + 草稿 + 附件的估算 token，进度按后端字符
   // 预算（28K，含安全余量）折算 —— 满则提示会自动省略较早消息。
@@ -4350,6 +6128,8 @@ function Composer({
       if (!sendMenuRef.current.contains(e.target as Node)) closeSendMenu();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // 输入法组合态放行（发送菜单就悬在输入框上方，用户多半正在打字）。
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') closeSendMenu();
     };
     document.addEventListener('mousedown', onDown);
@@ -4384,7 +6164,7 @@ function Composer({
       <div className="relative mx-auto w-full max-w-[820px]">
         <motion.div
           layout
-          transition={{ layout: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
+          transition={{ layout: { duration: reduceMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] } }}
           className={cn(
             'rounded-[1.75rem] bg-[var(--hub-panel-strong)] p-2.5 transition-[box-shadow,border-color] duration-300 md:rounded-3xl md:p-4',
             'border',
@@ -4601,7 +6381,7 @@ function Composer({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="overflow-hidden"
               >
                 <div className="flex flex-wrap gap-2 px-1 pb-2 pt-0.5" aria-label="待发送图片">
@@ -4758,6 +6538,20 @@ function Composer({
                   onAddAttachments(files);
                 }}
               />
+              <ToolButton
+                title={
+                  !functionCallReady
+                    ? '当前模型不支持函数调用 —— 请先选择带「函数调用」能力的模型'
+                    : enableTools
+                      ? '工具调用已开启 —— 模型可检索站内文章与知识库'
+                      : '开启工具调用（检索站内文章 / 知识库）'
+                }
+                active={enableTools && functionCallReady}
+                disabled={!functionCallReady}
+                onClick={onToggleEnableTools}
+              >
+                <Wrench className="h-3.5 w-3.5" />
+              </ToolButton>
               <ToolButton
                 title={
                   hasContextBreak
@@ -5103,6 +6897,8 @@ function PickerPanelHeader({
                 value={query}
                 onChange={(e) => onQueryChange(e.target.value)}
                 onKeyDown={(e) => {
+                  // 中文输入法按 Esc 取消候选词不应连搜索框一起收起。
+                  if (e.nativeEvent.isComposing) return;
                   if (e.key === 'Escape') handleCloseSearch();
                 }}
                 aria-label={placeholder}
@@ -5169,6 +6965,9 @@ function PickerPopover({
       onClose();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // 各 picker 面板内都有搜索框：输入法组合态的 Esc 属于「取消候选词」，
+      // 放行后交给输入法自己消费，别把面板连同筛选结果一起关掉。
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('mousedown', onDown);
@@ -5904,6 +7703,9 @@ function ContextPanel({
   useEffect(() => {
     if (collapsed) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
+      // 面板内有资源搜索框；输入法组合态的 Esc 一律放行（同 SpacePreviewDialog：
+      // 预览的关闭也走这条监听）。
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === 'Escape') {
         if (preview) setPreview(null);
         else onToggleCollapsed();

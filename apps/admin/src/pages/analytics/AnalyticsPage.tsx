@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import {
+  AgentChatUsageCard,
   AiModelDistributionChart,
   AiTaskDistributionChart,
   AiUsageTrendChart,
@@ -449,6 +450,11 @@ export function AnalyticsPage() {
           <AiTaskDistributionChart data={data.taskDistribution} loading={dashboardLoading} />
         </>
       )}
+
+      {/* T10: 灵境对话专项用量 — agent_chat 真实 token 口径（provider 真值优先、估算兜底），
+          固定今日 / 近 30 天窗口，独立于上方筛选器。 */}
+      <AgentChatUsageCard refreshToken={refreshNonce} />
+
 
       <AiUsageRecordsTable
         records={records}

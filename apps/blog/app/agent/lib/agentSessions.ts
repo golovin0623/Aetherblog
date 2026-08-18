@@ -2,7 +2,7 @@
 
 import type { AgentArticle, AgentTag } from './agentResources';
 import type { AgentKbRef } from './agentKbs';
-import type { AgentRetrievalReceipt, KnowledgeContextMode } from './agentChatStream';
+import type { AgentRetrievalReceipt, KnowledgeContextMode } from '@aetherblog/agent-kit';
 
 /**
  * Agent 会话本地存储层
