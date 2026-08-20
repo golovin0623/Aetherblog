@@ -40,7 +40,12 @@ export type ModelsState =
   | { status: 'ready'; items: AgentModelItem[] }
   | { status: 'error'; message: string };
 
-export function useAgentModels(enabled: boolean): ModelsState {
+/**
+ * @param reloadToken 变化即重新拉取。灵境工作台跨路由保活后不再重挂载，而用户
+ * 可能刚在 /ai-config 里启用 / 停用 / 改过模型 —— 回到灵境时靠 bump 这个值把
+ * 清单刷新，否则新启用的模型不可见、已停用的仍可选，直到整页刷新。
+ */
+export function useAgentModels(enabled: boolean, reloadToken = 0): ModelsState {
   const [state, setState] = useState<ModelsState>({ status: 'loading' });
 
   useEffect(() => {
@@ -71,7 +76,7 @@ export function useAgentModels(enabled: boolean): ModelsState {
         });
       });
     return () => controller.abort();
-  }, [enabled]);
+  }, [enabled, reloadToken]);
 
   return state;
 }

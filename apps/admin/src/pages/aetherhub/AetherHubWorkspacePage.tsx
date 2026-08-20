@@ -233,11 +233,11 @@ function clearAttachmentCache(): void {
 const autoTitleAttemptedSessions = new Set<string>();
 
 // 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
-// needsKnowledge 的那条必须自带自动检索：默认知识范围是「不检索」，否则点了
-// 建议词也召不回任何东西，用户会以为知识库坏了。
+// needsKnowledge 的那几条必须自带自动检索：默认知识范围是「不检索」，否则点了
+// 建议词也召不回任何东西（前两条都要读站内内容），用户会以为知识库坏了。
 const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
   { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
-  { text: '把我最近的一篇草稿提炼成 200 字发布预告' },
+  { text: '把我最近的一篇草稿提炼成 200 字发布预告', needsKnowledge: true },
   { text: '为上个月发布的文章各写一句推荐语' },
   { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
@@ -614,7 +614,13 @@ function pickGreeting(hour: number): string {
   return '晚上好';
 }
 
-export default function AetherHubWorkspacePage() {
+/**
+ * @param onRoute 当前路由是否停在 /aetherhub。工作台被 AetherHubKeepAliveHost
+ * 跨路由保活（不卸载），所以「离开 / 重新进入」不再对应挂载与卸载，只能靠这个
+ * 信号补做两类事：离开时收掉 portal 到 document.body、逃出保活容器 visibility
+ * 的浮层；重新进入时补跑那些原本只在挂载期跑一次的一次性逻辑。
+ */
+export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: boolean } = {}) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
@@ -737,8 +743,20 @@ export default function AetherHubWorkspacePage() {
     return () => window.clearInterval(id);
   }, []);
 
+  // ----- 路由重入计数 -----
+  // 保活实例只挂载一次，于是「回到灵境」不再触发任何挂载期逻辑。这个计数在
+  // 每次 onRoute false → true 时 +1，供下面几处一次性副作用当重跑依据。
+  const [routeEntryCount, setRouteEntryCount] = useState(0);
+  const wasOnRouteRef = useRef(onRoute);
+  useEffect(() => {
+    if (onRoute && !wasOnRouteRef.current) setRouteEntryCount((n) => n + 1);
+    wasOnRouteRef.current = onRoute;
+  }, [onRoute]);
+
   // ----- 模型清单 -----
-  const modelsState = useAgentModels(true);
+  // 用户很可能刚从模型选择器跳去 /ai-config 改完供应商再回来 —— 保活实例不重
+  // 挂载，不带 routeEntryCount 就会一直用进入灵境那一刻的旧清单。
+  const modelsState = useAgentModels(true, routeEntryCount);
 
   // ----- Composer 状态 -----
   const composer = readAgentSessionDraft(activeSession);
@@ -866,7 +884,10 @@ export default function AetherHubWorkspacePage() {
       clearSessionKnowledgeHandoff(current, activeId),
     );
   }, [activeId]);
-  const handoffConsumedForUserRef = useRef<string | null>(null);
+  // 交接消费的去重键 = 用户 × 本次路由进入。保活实例不重挂载，只按用户去重会
+  // 让「先逛过灵境 → 去知识工作台派任务 → 回灵境」这条路彻底失效：一次性任务
+  // 留在 storage 里直到过期，用户看不到任何反应。
+  const handoffConsumedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
@@ -876,9 +897,10 @@ export default function AetherHubWorkspacePage() {
   }, [activeId]);
 
   useEffect(() => {
-    if (!hydrated || currentUser.id === 'anon') return;
-    if (handoffConsumedForUserRef.current === currentUser.id) return;
-    handoffConsumedForUserRef.current = currentUser.id;
+    if (!hydrated || currentUser.id === 'anon' || !onRoute) return;
+    const consumeKey = `${currentUser.id}:${routeEntryCount}`;
+    if (handoffConsumedKeyRef.current === consumeKey) return;
+    handoffConsumedKeyRef.current = consumeKey;
 
     const result = consumeKnowledgeWorkspaceHandoff(currentUser.id);
     if (!result.ok) {
@@ -903,7 +925,7 @@ export default function AetherHubWorkspacePage() {
           ? '已带入工作台任务，本次不使用知识来源'
           : '已带入工作台任务，将自动检索有权限的知识库与知识点',
     );
-  }, [currentUser.id, hydrated]);
+  }, [currentUser.id, hydrated, onRoute, routeEntryCount]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
@@ -1792,6 +1814,12 @@ export default function AetherHubWorkspacePage() {
   // 编辑 = 回填输入框 + 截断该消息之后的所有回复。截断不可逆，先过
   // ConfirmModal（浏览器原生 confirm 是设计系统红线）。
   const [confirmEditTarget, setConfirmEditTarget] = useState<AgentMessage | null>(null);
+  // ConfirmModal 走 createPortal(document.body)，挂在保活容器**外面** —— 容器的
+  // visibility/inert 管不到它。不主动关掉的话，带着确认框离开 /aetherhub 会让它
+  // 继续浮在目标页面上且可点，确认后还会去改那个已经看不见的会话。
+  useEffect(() => {
+    if (!onRoute) setConfirmEditTarget(null);
+  }, [onRoute]);
   const applyEditMessage = useCallback(
     (message: AgentMessage) => {
       if (!activeSession) return;

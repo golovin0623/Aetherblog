@@ -43,6 +43,7 @@ export function AetherHubKeepAliveHost() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const authorized = useAetherHubPresenceStore((state) => state.authorized);
   const sessionTitle = useAetherHubPresenceStore((state) => state.sessionTitle);
   const streamingCount = useAetherHubPresenceStore((state) => state.streamingCount);
   const resetPresence = useAetherHubPresenceStore((state) => state.reset);
@@ -51,9 +52,12 @@ export function AetherHubKeepAliveHost() {
   const [activated, setActivated] = useState(false);
   const [islandHidden, setIslandHidden] = useState(false);
 
+  // 只认 AetherHubRouteAnchor 发的许可（它渲染在 AuthGuard 内部 = /auth/me 已
+  // 校验通过）。直接用 authStore 的 persist 布尔值会在令牌过期、校验尚未返回
+  // 的窗口里抢先挂载，露出上一位用户的本地会话并发出注定 401 的请求。
   useEffect(() => {
-    if (onHub && isAuthenticated) setActivated(true);
-  }, [onHub, isAuthenticated]);
+    if (authorized && isAuthenticated) setActivated(true);
+  }, [authorized, isAuthenticated]);
 
   // 退出登录 / 被踢下线：整体卸载。灵境里存着上一个账号的草稿与知识来源，
   // 换人登录后继续挂着既是信息泄漏也是数据串台。
@@ -88,7 +92,10 @@ export function AetherHubKeepAliveHost() {
       >
         <ErrorBoundary>
           <Suspense fallback={onHub ? <AetherHubSkeleton /> : null}>
-            <AetherHubWorkspacePage />
+            {/* onRoute 让页面自己收尾「离开路由」的副作用：关掉 portal 到
+                document.body、因而逃出本容器 visibility 的浮层；重新进入时补做
+                只在挂载期跑过一次的一次性工作（工作台交接、模型清单刷新）。 */}
+            <AetherHubWorkspacePage onRoute={onHub} />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -101,7 +108,9 @@ export function AetherHubKeepAliveHost() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.96, transition: transition.quick }}
             transition={spring.soft}
-            className="fixed bottom-5 right-5 z-50 print:hidden"
+            // viewport-fit=cover 下 bottom-5 会落进 iPhone home indicator 区域，
+            // 按 AGENTS.md 的 max(x, env(safe-area-inset-*)) 惯例避让上来。
+            className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] z-50 print:hidden"
           >
             <div
               className="surface-raised flex items-center gap-2 rounded-full py-1.5 pl-2 pr-1.5 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.55)]"
@@ -136,6 +145,11 @@ export function AetherHubKeepAliveHost() {
                 onClick={() => setIslandHidden(true)}
                 title="隐藏浮岛（灵境继续在后台运行，可从侧栏返回）"
                 aria-label="隐藏灵境浮岛"
+                // 触控区不额外加伪元素：index.css 的全局
+                // `button {min-width:44px;min-height:44px} @media (hover:none) and
+                // (pointer:coarse)` 已把这里撑到 44×44（实测），本组件也没像
+                // composer 的 ToolButton 那样 !min-w-0 opt-out。再叠 before 只会把
+                // 命中区撑到 60px，吃掉与主按钮之间的 gap-2。
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-muted)] transition-colors hover:bg-[var(--bg-leaf)] hover:text-[var(--ink-primary)]"
               >
                 <X className="h-3.5 w-3.5" />

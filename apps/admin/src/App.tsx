@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import {
   Navigate,
   Outlet,
@@ -14,6 +14,7 @@ import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AetherHubKeepAliveHost } from './components/aetherhub/AetherHubKeepAliveHost';
+import { useAetherHubPresenceStore } from './stores/aetherHubPresenceStore';
 import { FocusModeProvider } from './contexts/FocusModeContext';
 import { AetherHubSkeleton } from './pages/aetherhub/AetherHubSkeleton';
 import { Toaster } from 'sonner';
@@ -95,8 +96,16 @@ function FolderPermissionsWrapper() {
 /**
  * /aetherhub 的路由占位：灵境本体由 AetherHubKeepAliveHost 保活渲染，这里只
  * 保留 AuthGuard 的鉴权与重定向语义，不再挂第二份页面实例。
+ *
+ * 同时它是保活宿主的**挂载许可**来源：本组件渲染在 AuthGuard 内部，能跑到这
+ * 里就意味着 `/auth/me` 已校验通过。宿主不能自己看 authStore 的
+ * `isAuthenticated`（persist 的布尔值，令牌过期后在校验返回前仍为 true）。
  */
 function AetherHubRouteAnchor() {
+  const markAuthorized = useAetherHubPresenceStore((state) => state.markAuthorized);
+  useEffect(() => {
+    markAuthorized();
+  }, [markAuthorized]);
   return null;
 }
 
