@@ -12,6 +12,15 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   /** 自定义错误回退 UI */
   fallback?: ReactNode;
+  /**
+   * 变化即清空错误态（仅在已 latch 时生效，不影响正常渲染路径）。
+   *
+   * 边界一旦捕获就会一直渲染兜底 UI，子树彻底不再渲染 —— 路由级边界因此会被
+   * 一个坏路由钉死到整页刷新为止，连带让「导航去别处」这条自救路失效。传
+   * pathname 即可让导航自动复位。**刻意不用 key**：key 会在每次导航重挂整棵
+   * 子树（含 AdminLayout 与侧栏状态），代价远大于收益。
+   */
+  resetKey?: string | number;
 }
 
 interface ErrorBoundaryState {
@@ -61,6 +70,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('[ErrorBoundary] Uncaught error:', error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps): void {
+    if (!this.state.hasError) return;
+    if (prevProps.resetKey === this.props.resetKey) return;
+    this.setState({ hasError: false, error: null });
   }
 
   handleRetry = () => {

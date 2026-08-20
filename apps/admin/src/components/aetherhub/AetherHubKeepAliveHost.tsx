@@ -74,35 +74,43 @@ export function AetherHubKeepAliveHost() {
   // 这里用「渲染期自我 setState」（React 官方的 derive-state-on-prop-change
   // 写法）：React 丢弃本次渲染产物、立刻重渲染本组件，**在渲染子树之前**，
   // 于是旧实例根本没机会带着新身份跑一次。
-  const [ownerUserId, setOwnerUserId] = useState(userId);
-  if (ownerUserId !== userId) {
+  // `null → 真实 id` 不是换人，而是**首次补齐身份**：authStore 的 partialize 只
+  // 持久化 isAuthenticated，硬刷新后 user 要等 AuthGuard 的 /auth/me 回来才有值。
+  // 把它误判成换人会当场撤掉 anchor 刚发的许可（anchor 在 Outlet 里、effect 比
+  // 本组件先跑），而 anchor 已经挂载、不会再补发 —— 直接进 /aetherhub 会永远停在
+  // 骨架屏。开发环境看不出来：StrictMode 的 mark→clear→mark 双调用恰好把它盖住，
+  // 生产只跑一次就暴露。因此只认「两侧都非 null 且不相等」这一种真·换人。
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(userId);
+  if (userId !== null && ownerUserId !== userId) {
     setOwnerUserId(userId);
-    setActivated(false);
-    setIslandHidden(false);
+    if (ownerUserId !== null) {
+      setActivated(false);
+      setIslandHidden(false);
+    }
   }
 
-  // 退出登录 / 被踢下线：同样整体卸载。
+  // 退出登录 / 被踢下线：整体卸载并撤权。撤权是必须的 —— 留着 authorized=true，
+  // 下一个账号一登录（isAuthenticated 转 true）就会在自己的 anchor 跑之前显形。
   useEffect(() => {
     if (isAuthenticated) return;
     setActivated(false);
     setIslandHidden(false);
-  }, [isAuthenticated]);
-
-  // store 写入是副作用，不能放在渲染期，跟在后面收尾即可 —— 此刻 activated 已是
-  // false、宿主返回 null，不存在「先显形再撤权」的窗口。用 ref 跳过挂载那一次：
-  // 挂载时无条件 clearAuthorized 会把 AetherHubRouteAnchor 刚发的许可清掉
-  // （anchor 在 Outlet 里，effect 比本组件先跑）。
-  const settledIdentityRef = useRef<{ userId: string | null; authed: boolean }>({
-    userId,
-    authed: isAuthenticated,
-  });
-  useEffect(() => {
-    const prev = settledIdentityRef.current;
-    if (prev.userId === userId && prev.authed === isAuthenticated) return;
-    settledIdentityRef.current = { userId, authed: isAuthenticated };
     clearAuthorized();
     resetPresence();
-  }, [userId, isAuthenticated, clearAuthorized, resetPresence]);
+  }, [isAuthenticated, clearAuthorized, resetPresence]);
+
+  // store 写入是副作用，不能放渲染期，跟在后面收尾即可：此刻 activated 已是
+  // false、宿主返回 null，不存在「先显形再撤权」的窗口。判定与上面渲染期那段
+  // 保持同一条规则（含跳过首次补齐），否则两者会在硬刷新时打架。
+  const settledUserIdRef = useRef<string | null>(userId);
+  useEffect(() => {
+    const prev = settledUserIdRef.current;
+    if (userId === null || prev === userId) return;
+    settledUserIdRef.current = userId;
+    if (prev === null) return;
+    clearAuthorized();
+    resetPresence();
+  }, [userId, clearAuthorized, resetPresence]);
 
   // 回到灵境本体 = 用户重新表达了「我要用它」，胶囊的手动关闭随之复位。
   useEffect(() => {

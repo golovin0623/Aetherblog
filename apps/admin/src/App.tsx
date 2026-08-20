@@ -129,11 +129,16 @@ function RouteSuspenseFallback() {
 }
 
 function AppProviders() {
+  const location = useLocation();
   return (
     <>
       <Toaster richColors position="top-center" />
       <FocusModeProvider>
-        <ErrorBoundary>
+        {/* resetKey=pathname：边界一旦 latch 就再也不渲染子树，Outlet 里的
+            AetherHubRouteAnchor 因此发不出许可 —— 从浮岛点回灵境只会停在骨架屏，
+            而那张 fixed inset-0 的骨架还盖住了兜底页的「重新加载」。让导航本身
+            复位错误态即可自救。 */}
+        <ErrorBoundary resetKey={location.pathname}>
           <Suspense fallback={<RouteSuspenseFallback />}>
             <Outlet />
           </Suspense>
