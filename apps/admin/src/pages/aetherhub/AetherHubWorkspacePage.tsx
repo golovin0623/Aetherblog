@@ -7973,6 +7973,15 @@ function ContextPanel({
 }) {
   const [activeTab, setActiveTab] = useState<CapabilityPanelTab>('space');
   const [preview, setPreview] = useState<SpacePreviewTarget | null>(null);
+
+  // 面板收起时一并关掉资源预览。SpacePreviewDialog 挂在 collapsed 判断**之外**，
+  // 是一层 fixed inset-0 z-[60] 的浮层：留着它就成了「面板没了、遮罩还在」，而
+  // 下面那条 Escape 监听恰好也随 collapsed 失效，用户按 Esc 都关不掉。
+  // 路由离开灵境时页面会收起面板（见 onRoute 的浮层清理），这条同时兜住了
+  // 「带着预览离开、回来时被幽灵遮罩糊脸」。
+  useEffect(() => {
+    if (collapsed) setPreview(null);
+  }, [collapsed]);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const currentModel = useMemo(
     () => currentModelFromSession(session, modelsState),
