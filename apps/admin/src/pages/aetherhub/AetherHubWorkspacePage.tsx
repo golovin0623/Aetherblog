@@ -233,15 +233,17 @@ function clearAttachmentCache(): void {
 const autoTitleAttemptedSessions = new Set<string>();
 
 // 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
-// needsKnowledge 的那几条必须自带自动检索：默认知识范围是「不检索」，否则点了
-// 建议词也召不回任何东西（前两条都要读站内内容），用户会以为知识库坏了。
+// 凡是要读站内内容的都得带 needsKnowledge：默认知识范围是「不检索」，否则点了
+// 建议词也召不回任何东西，用户会以为知识库坏了。文章走的就是知识库路径 ——
+// SYSTEM_POSTS 是「博客文章自动构成的系统库」，且后端 agentKBUsable 对它无条件
+// 放行，所以 auto 一定会把它注进来（普通 KB 还要求有 active profile + chunks）。
 const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
   { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
-  // 刻意不写「草稿」：auto 只召回有权限的知识库与 Atlas，而唯一能查文章的
-  // search_posts 既默认关闭、又硬过滤 status='PUBLISHED' —— 草稿根本够不着，
-  // 写进建议词只会让模型编造或反问。
+  // 刻意不写「草稿」：文章检索的两条路都只面向已发布内容 —— SYSTEM_POSTS 库按
+  // post_embeddings 建索引，search_posts 又硬过滤 status='PUBLISHED' 且默认关闭。
+  // 拿草稿当建议词只会让模型编造或反问。
   { text: '把最近发布的一篇文章提炼成 200 字社媒预告', needsKnowledge: true },
-  { text: '为上个月发布的文章各写一句推荐语' },
+  { text: '为上个月发布的文章各写一句推荐语', needsKnowledge: true },
   { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
 
