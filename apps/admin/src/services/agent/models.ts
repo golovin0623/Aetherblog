@@ -48,6 +48,16 @@ export type ModelsState =
        * 要拿清单做「这个模型还能用吗」的判断，必须先看这个标记。
        */
       revalidating?: boolean;
+      /**
+       * 重拉失败，`items` 仍是上一轮的旧值（**没有**退化成 error 态）。
+       *
+       * 首次加载失败才走 `status:'error'`；已经有过清单之后再失败，把好清单清掉
+       * 只会连模型选择器一起打坏（渲染成「加载失败」），用户连改回自动路由这条
+       * 自救路都没了。语义上它与 revalidating 同类：**清单未经核对**。
+       */
+      refreshFailed?: boolean;
+      /** refreshFailed 时的原因，用于提示文案。 */
+      refreshError?: string;
     }
   | { status: 'error'; message: string };
 
@@ -79,14 +89,20 @@ export function useAgentModels(enabled: boolean, reloadToken = 0): ModelsState {
           throw new Error(json.message || '加载失败');
         }
         const items = Array.isArray(json?.data) ? json.data : [];
+        // 成功即同时清掉 revalidating / refreshFailed（不带这两个字段即为已核对）。
         setState({ status: 'ready', items });
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === 'AbortError') return;
-        setState({
-          status: 'error',
-          message: err instanceof Error ? err.message : '未知错误',
-        });
+        const message = err instanceof Error ? err.message : '未知错误';
+        setState((prev) =>
+          // 已经有过清单：保住它，只标记「这次没刷成」。清掉的话模型选择器会变成
+          // 「加载失败」，用户连改回自动路由都做不了 —— 而那正是被闸门拦下时唯一
+          // 的自救路。
+          prev.status === 'ready'
+            ? { status: 'ready', items: prev.items, refreshFailed: true, refreshError: message }
+            : { status: 'error', message },
+        );
       });
     return () => controller.abort();
   }, [enabled, reloadToken]);

@@ -545,17 +545,23 @@ function buildNumericModelParams(model: AgentModelItem | null): NumericModelPara
 }
 
 /**
- * 模型清单正在后台重拉 —— `items` 仍是上一轮的旧值。
+ * 模型清单「未经核对」—— `items` 仍是上一轮的旧值，可能还留着刚在 /ai-config
+ * 停用的模型。两种情形：正在重拉（revalidating），或这次重拉失败了
+ * （refreshFailed —— 此时旧清单被刻意保留，而不是退化成 error 态）。
  *
- * 重拉期间旧清单里可能还留着刚在 /ai-config 停用的模型：拿它发请求只会换来后端
- * 「Requested model not found」，而清空回落自动路由的对账要等重拉落地才跑得了。
- * 所有会发起模型请求的入口（handleSend 及其重试 / 编辑 / `/regen` 复用者、多模型
- * 对比）都必须先过这道判定 —— 只放在输入框上会被这些路径绕过去。
+ * 拿未核对的清单发请求只会换来后端「Requested model not found」，而清空回落
+ * 自动路由的对账要等一次**成功**的重拉才跑得了。所有会发起模型请求的入口
+ * （handleSend 及其重试 / 编辑 / `/regen` 复用者、多模型对比）都必须先过这道
+ * 判定 —— 只放在输入框上会被这些路径绕过去。
+ *
+ * 拦下来不会把人困住：闸门只在会话钉了模型时生效，而选择器仍可用（旧清单还在），
+ * 改回自动路由即可立刻发送 —— 自动路由本就不依赖清单。
  */
-function isModelCatalogRevalidating(
+function isModelCatalogUnverified(
   modelsState: ReturnType<typeof useAgentModels>,
 ): boolean {
-  return modelsState.status === 'ready' && modelsState.revalidating === true;
+  if (modelsState.status !== 'ready') return false;
+  return modelsState.revalidating === true || modelsState.refreshFailed === true;
 }
 
 function currentModelFromSession(
@@ -1334,8 +1340,12 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
 
       // 会话钉了模型时，清单没核对完就不发 —— 自动路由不依赖清单，不拦。
       // 放在这里而不是输入框：重试卡、/regen、编辑重放都直接进 handleSend。
-      if (baseSession.modelId && isModelCatalogRevalidating(modelsState)) {
-        toast.info('正在核对模型清单，请稍候再发送');
+      if (baseSession.modelId && isModelCatalogUnverified(modelsState)) {
+        toast.info(
+          modelsState.status === 'ready' && modelsState.refreshFailed
+            ? '模型清单刷新失败，无法确认当前模型是否可用 —— 请重试，或在模型选择器里改用自动路由'
+            : '正在核对模型清单，请稍候再发送',
+        );
         return;
       }
 
@@ -5714,10 +5724,10 @@ function CompareOverlay({
   const chosenCount = chosenModels.length;
   // 对比不走 handleSend，得自己拦：勾选项直接取自 items，重拉期间可能勾到刚被
   // 停用的模型。
-  const catalogRevalidating = isModelCatalogRevalidating(modelsState);
+  const catalogUnverified = isModelCatalogUnverified(modelsState);
   const canStart =
     !running &&
-    !catalogRevalidating &&
+    !catalogUnverified &&
     chosenCount >= COMPARE_MIN_MODELS &&
     chosenCount <= COMPARE_MAX_MODELS;
 
@@ -6325,7 +6335,11 @@ function Composer({
   // 一个来回，但恰好落在「配完模型点浮岛回来立刻发」这条主路径上。
   // 只在会话真的钉了模型时才拦：自动路由不依赖清单，没有失效可言。
   const awaitingModelRevalidation =
-    isModelCatalogRevalidating(modelsState) && !!activeSession?.modelId;
+    isModelCatalogUnverified(modelsState) && !!activeSession?.modelId;
+  const modelGateHint =
+    modelsState.status === 'ready' && modelsState.refreshFailed
+      ? '模型清单刷新失败，请重试或改用自动路由'
+      : '正在核对模型清单…';
   const canSend = !!value.trim() && !streaming && !awaitingModelRevalidation;
 
   const clearSendMenuCloseTimer = useCallback(() => {
@@ -6847,7 +6861,7 @@ function Composer({
                     : 'cursor-not-allowed border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
                 )}
                 aria-label="发送"
-                title={awaitingModelRevalidation ? '正在核对模型清单…' : '发送'}
+                title={awaitingModelRevalidation ? modelGateHint : '发送'}
               >
                 <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
               </button>
@@ -6884,7 +6898,7 @@ function Composer({
                       : 'cursor-not-allowed text-[var(--ink-muted)]',
                   )}
                   aria-label="发送"
-                  title={awaitingModelRevalidation ? '正在核对模型清单…' : '发送'}
+                  title={awaitingModelRevalidation ? modelGateHint : '发送'}
                 >
                   <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
                 </button>
