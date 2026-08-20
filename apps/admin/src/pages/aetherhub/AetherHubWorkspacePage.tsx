@@ -51,6 +51,7 @@ import {
   Search,
   Send,
   Settings,
+  SlidersHorizontal,
   Sidebar as SidebarIcon,
   SlashSquare,
   SquarePen,
@@ -66,6 +67,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Virtualizer, type VirtualizerHandle } from 'virtua';
 import { toast } from 'sonner';
 import { AetherMark, ConfirmModal } from '@aetherblog/ui';
+import { useAetherHubPresenceStore } from '@/stores/aetherHubPresenceStore';
 import { MarkdownPreview, MarkdownStreamPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
@@ -231,12 +233,13 @@ function clearAttachmentCache(): void {
 const autoTitleAttemptedSessions = new Set<string>();
 
 // 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
-// 前两条依赖知识检索（auto 模式自动召回），后两条是纯写作/整理任务。
-const promptChips = [
-  '检索知识库，总结本站内容策略的核心要点',
-  '把我最近的一篇草稿提炼成 200 字发布预告',
-  '为上个月发布的文章各写一句推荐语',
-  '用表格整理当前可用 AI 模型的能力差异',
+// needsKnowledge 的那条必须自带自动检索：默认知识范围是「不检索」，否则点了
+// 建议词也召不回任何东西，用户会以为知识库坏了。
+const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
+  { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
+  { text: '把我最近的一篇草稿提炼成 200 字发布预告' },
+  { text: '为上个月发布的文章各写一句推荐语' },
+  { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
 
 type DisplayMode = 'bubble' | 'engraved';
@@ -783,6 +786,18 @@ export default function AetherHubWorkspacePage() {
   // 当前活跃会话视角的 streaming —— 旧 UI 契约（Composer 停止按钮等）继续可用。
   const streaming = activeId ? streamingIds.has(activeId) : false;
 
+  // 向胶囊浮岛广播「在场」状态。灵境离开 /aetherhub 后仍挂载（见
+  // AetherHubKeepAliveHost），浮岛靠这两个标量显示当前会话与生成进度。
+  const setHubPresence = useAetherHubPresenceStore((state) => state.setPresence);
+  const resetHubPresence = useAetherHubPresenceStore((state) => state.reset);
+  useEffect(() => {
+    setHubPresence({
+      sessionTitle: activeSession?.title?.trim() || null,
+      streamingCount: streamingIds.size,
+    });
+  }, [activeSession?.title, streamingIds, setHubPresence]);
+  useEffect(() => () => resetHubPresence(), [resetHubPresence]);
+
   // ----- 云同步：本地优先 + 服务端 LWW 漫游（网络细节全部收在 sessionsSync.ts）-----
   // hydrate 已用本地快照即时渲染；这里在后台 GET 列表对账：服务端较新的会话标
   // 懒加载（激活时拉全量），本地较新/仅存本地的标 dirty 待推送（服务端为空时
@@ -834,6 +849,11 @@ export default function AetherHubWorkspacePage() {
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
   const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
+  // 自动检索开关：空 picker 默认 = 不检索（none）。打开后才走 auto —— 后端会
+  // 注入「当前用户有权限的全部 KB」，代价是每轮都跑一次召回，所以必须是用户
+  // 主动选择而不是隐式默认（否则每条无关提问都挂一张「没有命中相关知识」）。
+  // 与显式选来源互斥：选了来源就是 selected，后端拒绝 auto 携带显式 id。
+  const [autoKnowledge, setAutoKnowledge] = useState(false);
   const [pendingSessionKnowledgeHandoff, setPendingSessionKnowledgeHandoff] =
     useState<SessionKnowledgeHandoff | null>(null);
   const activeSessionKnowledgeHandoff = getSessionKnowledgeHandoff(
@@ -1275,6 +1295,7 @@ export default function AetherHubWorkspacePage() {
             requestSessionHandoff?.handoff.context ?? null,
             requestKbs,
             requestAtlasKps,
+            autoKnowledge,
           );
       const requestHandoffSnapshot =
         override?.handoffSnapshot ?? (replaySnapshot ? null : requestSessionHandoff);
@@ -1752,6 +1773,7 @@ export default function AetherHubWorkspacePage() {
     },
     [
       activeSession,
+      autoKnowledge,
       composerAttachments,
       enableTools,
       ensureSessionHydrated,
@@ -2405,7 +2427,10 @@ export default function AetherHubWorkspacePage() {
               onSend={handleSend}
               onAbort={handleAbort}
               onSetModel={handleSetModel}
-              onPickPrompt={(text) => setComposer(text)}
+              onPickPrompt={(text, options) => {
+                setComposer(text);
+                if (options?.needsKnowledge) setAutoKnowledge(true);
+              }}
               selectedArticles={selectedArticles}
               selectedTags={selectedTags}
               selectedKbs={selectedKbs}
@@ -2420,6 +2445,11 @@ export default function AetherHubWorkspacePage() {
                   prev.find((t) => t.slug === tag.slug) ? prev : [...prev, tag],
                 )
               }
+              autoKnowledge={autoKnowledge}
+              onToggleAutoKnowledge={() => {
+                clearActiveKnowledgeHandoff();
+                setAutoKnowledge((v) => !v);
+              }}
               onPickKb={(kb) => {
                 clearActiveKnowledgeHandoff();
                 setSelectedKbs((prev) =>
@@ -3254,6 +3284,19 @@ function ModelPickerButton({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const { mobileHeight, handleResizeStart } = useMobilePickerResize(open);
+  const navigate = useNavigate();
+
+  // 供应商配置深链 —— AiConfigPage 已支持 ?provider=&model=（见该页 useEffect
+  // 里的一次性深链应用），所以这里只负责拼参数，不需要另建跳转协议。
+  const openProviderConfig = useCallback(
+    (providerCode: string, modelId?: string) => {
+      setOpen(false);
+      const params = new URLSearchParams({ provider: providerCode });
+      if (modelId) params.set('model', modelId);
+      navigate(`/ai-config?${params.toString()}`);
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -3419,14 +3462,39 @@ function ModelPickerButton({
 
           {modelsState.status === 'ready' && grouped.length === 0 && (
             <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--ink-muted)]">
-              {query.trim() ? '没有匹配的模型' : '没有已启用的模型，去 AI 配置页添加'}
+              {query.trim() ? (
+                '没有匹配的模型'
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    navigate('/ai-config');
+                  }}
+                  className="text-left text-[var(--aurora-1)] underline-offset-2 hover:underline"
+                >
+                  没有已启用的模型，去 AI 配置页添加 →
+                </button>
+              )}
             </div>
           )}
 
           {grouped.map(([providerCode, list]) => (
             <div key={providerCode} className="mt-2">
-              <div className="px-3 pb-1.5 text-[11px] font-medium text-[var(--ink-muted)]">
-                <span className="min-w-0 truncate">{list[0]?.providerName || providerCode}</span>
+              <div className="flex items-center gap-2 px-3 pb-1.5 text-[11px] font-medium text-[var(--ink-muted)]">
+                <span className="min-w-0 flex-1 truncate">
+                  {list[0]?.providerName || providerCode}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openProviderConfig(providerCode)}
+                  title={`配置 ${list[0]?.providerName || providerCode}`}
+                  aria-label={`配置 ${list[0]?.providerName || providerCode}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10.5px] text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]"
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                  配置
+                </button>
               </div>
               {list.map((m) => {
                 const selected =
@@ -3478,6 +3546,28 @@ function ModelPickerButton({
             </div>
           ))}
           </div>
+
+          {/* 直达当前模型的服务商配置 —— 灵境里换模型和调服务商参数是同一件事的
+              两半，没有这条就得手动翻侧栏找 AI 配置再自己认出是哪家。 */}
+          <div className="border-t border-[var(--hub-border)] p-2">
+            <button
+              type="button"
+              onClick={() =>
+                currentModel
+                  ? openProviderConfig(currentModel.providerCode, currentModel.modelId)
+                  : (setOpen(false), navigate('/ai-config'))
+              }
+              className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-left text-[12.5px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--ink-muted)]">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {currentModel ? `配置 ${currentModel.providerName || currentModel.providerCode}` : '管理模型与服务商'}
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" />
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -3525,6 +3615,8 @@ function WorkspaceCanvas({
   selectedTags,
   selectedKbs,
   selectedAtlasKps,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPickArticle,
   onPickTag,
   onPickKb,
@@ -3566,11 +3658,13 @@ function WorkspaceCanvas({
   onSend: (text: string) => void;
   onAbort: () => void;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
-  onPickPrompt: (text: string) => void;
+  onPickPrompt: (text: string, options?: { needsKnowledge?: boolean }) => void;
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
   selectedAtlasKps: AtlasKnowledgePoint[];
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
@@ -3835,6 +3929,8 @@ function WorkspaceCanvas({
         selectedTags={selectedTags}
         selectedKbs={selectedKbs}
         selectedAtlasKps={selectedAtlasKps}
+        autoKnowledge={autoKnowledge}
+        onToggleAutoKnowledge={onToggleAutoKnowledge}
         onPickArticle={onPickArticle}
         onPickTag={onPickTag}
         onPickKb={onPickKb}
@@ -3891,7 +3987,7 @@ function EmptyState({
 }: {
   greeting: string;
   nickname: string;
-  onPickPrompt: (text: string) => void;
+  onPickPrompt: (text: string, options?: { needsKnowledge?: boolean }) => void;
 }) {
   return (
     <div className="flex flex-col items-center pb-5 pt-[min(7vh,2.75rem)] text-center md:pt-12">
@@ -3908,16 +4004,16 @@ function EmptyState({
       <div className="mt-6 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:mt-8 md:gap-3">
         {promptChips.map((chip, index) => (
           <button
-            key={chip}
+            key={chip.text}
             type="button"
-            onClick={() => onPickPrompt(chip)}
+            onClick={() => onPickPrompt(chip.text, { needsKnowledge: chip.needsKnowledge })}
             className="group surface-leaf flex min-h-[3.35rem] items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] md:min-h-0 md:rounded-xl md:px-4"
             data-interactive
           >
             <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] font-mono text-[10px] tnum text-[var(--ink-muted)] transition-colors group-hover:bg-[var(--hub-active)] group-hover:text-[var(--hub-accent-text)]">
               {String(index + 1).padStart(2, '0')}
             </span>
-            <span className="line-clamp-2 min-w-0 flex-1">{chip}</span>
+            <span className="line-clamp-2 min-w-0 flex-1">{chip.text}</span>
           </button>
         ))}
       </div>
@@ -5963,6 +6059,8 @@ function Composer({
   selectedTags,
   selectedKbs,
   selectedAtlasKps,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPickArticle,
   onPickTag,
   onPickKb,
@@ -5993,6 +6091,8 @@ function Composer({
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
   selectedAtlasKps: AtlasKnowledgePoint[];
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
@@ -6085,6 +6185,14 @@ function Composer({
   const selectedTagCount = selectedTags.length;
   const selectedKbCount = selectedKbs.length;
   const selectedAtlasCount = selectedAtlasKps.length;
+  // 知识范围三态（与 selectAetherHubKnowledgeContext 的判定同源）：选了来源 =
+  // 指定；没选 + 开关开 = 自动；没选 + 开关关 = 不检索。
+  const knowledgeScopeLabel =
+    selectedKbCount > 0 || selectedAtlasCount > 0
+      ? '知识库 · 指定来源'
+      : autoKnowledge
+        ? '知识库 · 自动检索'
+        : '知识库 · 本轮不检索';
   const selectedContextCount = selectedArticleCount + selectedTagCount + selectedKbCount + selectedAtlasCount;
   const selectedContextVisible = selectedContextCount > 0;
   const compactSelectedContext = picker !== null && selectedContextCount > 1;
@@ -6184,6 +6292,9 @@ function Composer({
             open={picker === 'kb'}
             anchorRef={kbBtnRef}
             selectedIds={new Set(selectedKbs.map((kb) => kb.id))}
+            hasExplicitSources={selectedKbCount > 0 || selectedAtlasCount > 0}
+            autoKnowledge={autoKnowledge}
+            onToggleAutoKnowledge={onToggleAutoKnowledge}
             onClose={() => setPicker(null)}
             onPick={(kb) => onPickKb(kb)}
           />
@@ -6468,9 +6579,10 @@ function Composer({
               />
               <ToolButton
                 ref={kbBtnRef}
-                title="选择知识库"
+                title={knowledgeScopeLabel}
                 active={picker === 'kb'}
                 count={selectedKbCount}
+                dot={autoKnowledge && selectedKbCount === 0}
                 onClick={() => togglePicker('kb')}
               >
                 <BookOpen className="h-3.5 w-3.5" />
@@ -6744,10 +6856,12 @@ const ToolButton = forwardRef<
     title: string;
     active?: boolean;
     count?: number;
+    /** 无计数但功能已生效时的状态点（例：知识库未选来源、但自动检索已开）。 */
+    dot?: boolean;
     disabled?: boolean;
     onClick?: () => void;
   }
->(function ToolButton({ children, title, active, count, disabled, onClick }, ref) {
+>(function ToolButton({ children, title, active, count, dot, disabled, onClick }, ref) {
   return (
     <button
       ref={ref}
@@ -6770,6 +6884,12 @@ const ToolButton = forwardRef<
         <span className="absolute -right-1 -top-1 grid !h-4 min-w-4 place-items-center rounded-full bg-[var(--ink-primary)] px-1 font-mono text-[9px] leading-4 text-[var(--bg-void)] ring-2 ring-[var(--hub-panel-strong)]">
           {count > 9 ? '9+' : count}
         </span>
+      )}
+      {!count && dot && (
+        <span
+          aria-hidden="true"
+          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[var(--aurora-3)] ring-2 ring-[var(--hub-panel-strong)]"
+        />
       )}
     </button>
   );
@@ -7023,12 +7143,18 @@ function KnowledgeBasePicker({
   onClose,
   anchorRef,
   selectedIds,
+  hasExplicitSources,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPick,
 }: {
   open: boolean;
   onClose: () => void;
   anchorRef: RefObject<HTMLElement | null>;
   selectedIds: Set<number>;
+  hasExplicitSources: boolean;
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPick: (kb: AgentKnowledgeBase) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -7091,6 +7217,39 @@ function KnowledgeBasePicker({
         placeholder="搜索知识库…"
         inputRef={inputRef}
       />
+      {/* 知识范围开关 —— 不选来源时的默认是「不检索」，自动检索必须显式打开。
+          选了来源就以来源为准（后端拒绝 auto 携带显式 id），此时只做状态说明。 */}
+      <div className="border-b border-[var(--hub-border)] px-3 py-2.5">
+        {hasExplicitSources ? (
+          <p className="text-[11.5px] leading-4 text-[var(--ink-muted)]">
+            已指定来源 · 本轮只检索下方勾选的资源
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium leading-4 text-[var(--ink-primary)]">
+                未指定来源时
+              </p>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--ink-muted)]">
+                {autoKnowledge
+                  ? '每轮自动检索你有权限的知识库与知识点'
+                  : '直接回答，不做知识检索'}
+              </p>
+            </div>
+            <HubSegmentedControl
+              ariaLabel="未指定来源时的知识范围"
+              value={autoKnowledge ? 'auto' : 'none'}
+              options={[
+                { value: 'none', label: '不检索', title: '直接回答，不召回任何知识' },
+                { value: 'auto', label: '自动', title: '自动检索你有权限的知识库与知识点' },
+              ]}
+              onChange={(next) => {
+                if ((next === 'auto') !== autoKnowledge) onToggleAutoKnowledge();
+              }}
+            />
+          </div>
+        )}
+      </div>
       <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:h-[300px] sm:max-h-none sm:flex-none sm:py-1">
         {showInitialLoading && (
           <div className="absolute inset-x-3 top-4 space-y-2" aria-label="知识库加载中">
@@ -8982,7 +9141,7 @@ function HubSegmentedControl({
             title={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-quick ease-aether focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
+              'relative z-10 flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded-[11px] px-2.5 text-[13px] font-semibold tracking-normal transition-colors duration-quick ease-aether focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
               active
                 ? 'text-[var(--ink-primary)]'
                 : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]',

@@ -13,6 +13,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { AetherHubKeepAliveHost } from './components/aetherhub/AetherHubKeepAliveHost';
 import { FocusModeProvider } from './contexts/FocusModeContext';
 import { AetherHubSkeleton } from './pages/aetherhub/AetherHubSkeleton';
 import { Toaster } from 'sonner';
@@ -44,7 +45,6 @@ const AccessControlPage = lazy(() => import('./pages/access/AccessControlPage'))
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
-const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
 const KnowledgeWorkspacePage = lazy(() => import('./pages/intelligence/KnowledgeWorkspacePage'));
@@ -92,6 +92,14 @@ function FolderPermissionsWrapper() {
   );
 }
 
+/**
+ * /aetherhub 的路由占位：灵境本体由 AetherHubKeepAliveHost 保活渲染，这里只
+ * 保留 AuthGuard 的鉴权与重定向语义，不再挂第二份页面实例。
+ */
+function AetherHubRouteAnchor() {
+  return null;
+}
+
 function RouteSuspenseFallback() {
   const location = useLocation();
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
@@ -116,6 +124,9 @@ function AppProviders() {
           <Suspense fallback={<RouteSuspenseFallback />}>
             <Outlet />
           </Suspense>
+          {/* 灵境保活宿主 —— 单实例常驻，路由在 /aetherhub 时铺满视口，离开时
+              收成右下角胶囊浮岛。放在 Outlet 之后是为了叠在业务页之上。 */}
+          <AetherHubKeepAliveHost />
         </ErrorBoundary>
       </FocusModeProvider>
     </>
@@ -131,7 +142,7 @@ const router = createBrowserRouter(
     <Route element={<AppProviders />}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
-      <Route path="/aetherhub" element={<AuthGuard><AetherHubWorkspacePage /></AuthGuard>} />
+      <Route path="/aetherhub" element={<AuthGuard><AetherHubRouteAnchor /></AuthGuard>} />
       <Route
         path="/"
         element={

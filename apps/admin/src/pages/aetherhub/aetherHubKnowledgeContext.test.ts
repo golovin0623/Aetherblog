@@ -50,8 +50,17 @@ describe('AetherHub knowledge context resolution', () => {
     });
   });
 
-  it('keeps empty picker state in automatic mode and omits kbIds', () => {
+  it('treats an empty picker as an instruction to skip retrieval', () => {
     const result = resolveAetherHubKnowledgeContext(null, [], []);
+
+    expect(result).toEqual({
+      ok: true,
+      value: { knowledgeContextMode: 'none', kbIds: null, atlasScope: null },
+    });
+  });
+
+  it('only enters automatic mode when the composer switch opts in', () => {
+    const result = resolveAetherHubKnowledgeContext(null, [], [], true);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -63,6 +72,15 @@ describe('AetherHub knowledge context resolution', () => {
       semanticRecall: true,
     });
     expect(JSON.stringify(result.value)).not.toContain('kbIds');
+  });
+
+  it('keeps explicit picker selections authoritative over the auto switch', () => {
+    const result = resolveAetherHubKnowledgeContext(null, [{ id: 7, name: '产品资料' }], [], true);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { knowledgeContextMode: 'selected', kbIds: [7] },
+    });
   });
 });
 

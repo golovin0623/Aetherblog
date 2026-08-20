@@ -9149,3 +9149,12 @@ html[data-theme-transition] .codex-ambient-blob {
 .aiw-dialog .aiw-textarea:not(:focus) {
   border-color: rgb(from var(--ink-primary) r g b / 0.14);
 }
+
+/* 灵境保活宿主：收成浮岛后整棵子树仍在 DOM 里（visibility:hidden 保滚动位置
+   与流式连接），但浏览器不会因为不可见就停掉 CSS 动画 —— 极光层那条 40s
+   infinite 会一直吃合成器。折叠期间统一暂停，回到 /aetherhub 自动恢复。 */
+[data-aetherhub-collapsed='true'] *,
+[data-aetherhub-collapsed='true'] *::before,
+[data-aetherhub-collapsed='true'] *::after {
+  animation-play-state: paused !important;
+}

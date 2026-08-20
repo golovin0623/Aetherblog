@@ -210,9 +210,12 @@ export function selectAetherHubKnowledgeContext(
   handoffContext: KnowledgeContextSelection | null,
   knowledgeBases: readonly KnowledgeBaseSelectionLike[],
   knowledgePoints: readonly AtlasKnowledgePointSelectionLike[],
+  autoDiscovery = false,
 ): KnowledgeContextSelection {
   if (handoffContext) return handoffContext;
-  if (knowledgeBases.length === 0 && knowledgePoints.length === 0) return { mode: 'auto' };
+  if (knowledgeBases.length === 0 && knowledgePoints.length === 0) {
+    return autoDiscovery ? { mode: 'auto' } : { mode: 'none' };
+  }
   return {
     mode: 'selected',
     refs: [
@@ -232,15 +235,24 @@ export function selectAetherHubKnowledgeContext(
 
 /**
  * Workbench handoffs are explicit user intent and therefore take precedence.
- * Without a handoff, picker values are explicit selections; an empty picker is
- * automatic discovery, not an instruction to disable knowledge.
+ * Without a handoff, picker values are explicit selections, and an empty picker
+ * means "don't retrieve" — automatic discovery is opt-in through the composer's
+ * 自动检索 switch. Silently injecting every permitted knowledge base into an
+ * unrelated question produced a 没有命中相关知识 receipt on answers the user
+ * never asked to ground.
  */
 export function resolveAetherHubKnowledgeContext(
   handoffContext: KnowledgeContextSelection | null,
   knowledgeBases: readonly KnowledgeBaseSelectionLike[],
   knowledgePoints: readonly AtlasKnowledgePointSelectionLike[],
+  autoDiscovery = false,
 ): AetherHubKnowledgeContextResult {
   return adaptAetherHubKnowledgeContext(
-    selectAetherHubKnowledgeContext(handoffContext, knowledgeBases, knowledgePoints),
+    selectAetherHubKnowledgeContext(
+      handoffContext,
+      knowledgeBases,
+      knowledgePoints,
+      autoDiscovery,
+    ),
   );
 }

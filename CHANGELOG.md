@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Fixed — 模型中心（AI 配置中心）桌面端上下留白不对称（2026-08-20, branch claude/backend-service-lingxing-debug-7bccc4）
+
+`apps/admin/src/components/intelligence/IntelligenceShell.tsx` 的 `workspace` 模式高度写作 `md:h-[calc(100dvh-4rem)]`，减掉了一个**桌面端并不存在**的 4rem 顶栏 —— AdminLayout 里 `main` 上方只有 `MobileHeader`，而它是 `md:hidden h-14`（3.5rem，仅移动端）。由于同一条 class 上的 `md:-m-6` 已经把 `main` 的 `md:p-6` 上内边距抵消，缺失的 64px 无处可去，全部堆在底部：实测 1249px 视口下上留白 20px、下留白 84px。改为 `md:h-dvh`（桌面端 `main` 就是满屏），移动端分支 `h-[calc(100dvh-3.5rem)]` 本就正确、保持不动。实测修复后桌面端上下各 20px（外壳 `md:p-5`）、移动端上下各 12px（`p-3`）且贴底。影响面仅 `AiConfigPage` —— 它是全仓唯一使用 `mode="workspace"` 的页面，其余消费者走未改动的 `standard` 分支。
+
+### Changed — 灵境：知识检索改为显式opt-in、模型跳配置页、跨页保活浮岛（2026-08-20, branch claude/backend-service-lingxing-debug-7bccc4）
+
+- **空 picker 不再等于自动检索**（`apps/admin/src/pages/aetherhub/aetherHubKnowledgeContext.ts`）。原实现把「没选任何来源」判为 `mode:'auto'`，后端 `filterBodyKBIDs` 随即注入当前用户**有权限的全部 KB**，于是每一条无关提问都跑一次召回、并在 0 命中时挂一张「没有命中相关知识」警告卡 —— 后端三态（`auto/none/selected`）里的 `none` 在 UI 上根本没有入口。现改为：空 picker → `none`（完全不检索），自动检索经 `selectAetherHubKnowledgeContext(..., autoDiscovery)` 显式 opt-in。知识库 picker 顶部新增「未指定来源时：不检索 / 自动」二段控件（选了来源则退化为状态说明，因为后端拒绝 auto 携带显式 id），工具按钮标题随三态变化并在「自动且未选来源」时挂 aurora 状态点。依赖 auto 的那条空态建议词改为点击即自动打开开关，否则点了也召不回东西。
+- **模型选择器直达服务商配置**（同页 `ModelPickerButton`）：分组眉新增「配置」、面板底部新增「配置 {当前服务商}」，跳 `/ai-config?provider=&model=`（`AiConfigPage` 早已支持该深链，本次只补跳转侧）；空态「没有已启用的模型」也变为可点。
+- **灵境跨页保活 + 胶囊浮岛**（新增 `apps/admin/src/components/aetherhub/AetherHubKeepAliveHost.tsx`、`apps/admin/src/stores/aetherHubPresenceStore.ts`）：`/aetherhub` 路由退化为鉴权锚点，页面实例改由 App 级宿主单例渲染 —— 首次进入才挂载（保住 lazy 分包），此后常驻，离开路由时用 `visibility:hidden` + `inert` 收起而不是卸载，右下角浮出胶囊（会话标题 + 生成中计数 + 一键回灵境 + 可隐藏）。**为什么不能条件渲染**：流式回答挂在页面自己的 AbortController 上，卸载即断流；输入框草稿、选中的知识来源 / 文章 / 标签、待发送附件都是组件 state。**为什么不用 display:none**：会塌掉布局让消息列表 scrollTop 归零。退出登录整体卸载，避免下一个账号继承上一个人的草稿与来源选择；折叠期间用 `[data-aetherhub-collapsed]` 暂停子树 CSS 动画（极光层是 40s infinite，visibility:hidden 不会让浏览器停掉它）。
+- 验证：`pnpm exec tsc --noEmit` 干净、`vitest run` 39 文件 / 491 用例全绿（含知识上下文新增 2 例：auto 需 opt-in、显式选择压过开关）、`pnpm design-system:check` 0 error；浏览器端双向验证「不检索 → 无 receipt 卡 / 自动 → receipt 卡回来」，并用非持久化的开关状态证明跨页往返未重挂载。
+
 ### Fixed — 二期第二轮评审：后端性能与回归钉子（2026-08-18, branch claude/lingxing-chat-phase2）
 
 `apps/ai-service/app/{api/routes/agent.py,services/agent_tools.py}` 与 `apps/server-go/internal/{repository,service,handler}` 五项评审确认问题：
