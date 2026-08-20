@@ -544,6 +544,20 @@ function buildNumericModelParams(model: AgentModelItem | null): NumericModelPara
   });
 }
 
+/**
+ * 模型清单正在后台重拉 —— `items` 仍是上一轮的旧值。
+ *
+ * 重拉期间旧清单里可能还留着刚在 /ai-config 停用的模型：拿它发请求只会换来后端
+ * 「Requested model not found」，而清空回落自动路由的对账要等重拉落地才跑得了。
+ * 所有会发起模型请求的入口（handleSend 及其重试 / 编辑 / `/regen` 复用者、多模型
+ * 对比）都必须先过这道判定 —— 只放在输入框上会被这些路径绕过去。
+ */
+function isModelCatalogRevalidating(
+  modelsState: ReturnType<typeof useAgentModels>,
+): boolean {
+  return modelsState.status === 'ready' && modelsState.revalidating === true;
+}
+
 function currentModelFromSession(
   session: AgentSession | null,
   modelsState: ReturnType<typeof useAgentModels>,
@@ -1317,6 +1331,13 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
       // 拦下并触发一次懒加载重试（细节见 ensureSessionHydrated），加载完成后再发。
       // 必须在任何副作用（附件落盘 / 清空 composer）之前拦。
       if (!ensureSessionHydrated(baseSession.id)) return;
+
+      // 会话钉了模型时，清单没核对完就不发 —— 自动路由不依赖清单，不拦。
+      // 放在这里而不是输入框：重试卡、/regen、编辑重放都直接进 handleSend。
+      if (baseSession.modelId && isModelCatalogRevalidating(modelsState)) {
+        toast.info('正在核对模型清单，请稍候再发送');
+        return;
+      }
 
       const isFirstMessage = baseMessages.length === 0;
       const sessionId = baseSession.id;
@@ -5691,8 +5712,14 @@ function CompareOverlay({
     [items, selectedKeys],
   );
   const chosenCount = chosenModels.length;
+  // 对比不走 handleSend，得自己拦：勾选项直接取自 items，重拉期间可能勾到刚被
+  // 停用的模型。
+  const catalogRevalidating = isModelCatalogRevalidating(modelsState);
   const canStart =
-    !running && chosenCount >= COMPARE_MIN_MODELS && chosenCount <= COMPARE_MAX_MODELS;
+    !running &&
+    !catalogRevalidating &&
+    chosenCount >= COMPARE_MIN_MODELS &&
+    chosenCount <= COMPARE_MAX_MODELS;
 
   const toggleModel = (model: AgentModelItem) => {
     const key = compareModelKey(model);
@@ -6297,9 +6324,8 @@ function Composer({
   // 「Requested model not found」；对账要等这次重拉落地才跑得了。窗口通常只有
   // 一个来回，但恰好落在「配完模型点浮岛回来立刻发」这条主路径上。
   // 只在会话真的钉了模型时才拦：自动路由不依赖清单，没有失效可言。
-  const modelCatalogRevalidating =
-    modelsState.status === 'ready' && modelsState.revalidating === true;
-  const awaitingModelRevalidation = modelCatalogRevalidating && !!activeSession?.modelId;
+  const awaitingModelRevalidation =
+    isModelCatalogRevalidating(modelsState) && !!activeSession?.modelId;
   const canSend = !!value.trim() && !streaming && !awaitingModelRevalidation;
 
   const clearSendMenuCloseTimer = useCallback(() => {
