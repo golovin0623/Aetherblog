@@ -6264,7 +6264,7 @@ function Composer({
 
     if (shouldSend) {
       e.preventDefault();
-      if (!streaming) onSend(value);
+      if (canSend) onSend(value);
     }
   };
 
@@ -6292,7 +6292,15 @@ function Composer({
   const selectedContextVisible = selectedContextCount > 0;
   const compactSelectedContext = picker !== null && selectedContextCount > 1;
   const trayScrollEnabled = selectedContextCount > 6;
-  const canSend = !!value.trim() && !streaming;
+  // 模型清单正在后台重拉时，items 还是旧的 —— 里面可能留着用户刚在 /ai-config
+  // 停用的那个模型。此刻发送会拿旧清单解析出已失效的模型直送后端，换来一句
+  // 「Requested model not found」；对账要等这次重拉落地才跑得了。窗口通常只有
+  // 一个来回，但恰好落在「配完模型点浮岛回来立刻发」这条主路径上。
+  // 只在会话真的钉了模型时才拦：自动路由不依赖清单，没有失效可言。
+  const modelCatalogRevalidating =
+    modelsState.status === 'ready' && modelsState.revalidating === true;
+  const awaitingModelRevalidation = modelCatalogRevalidating && !!activeSession?.modelId;
+  const canSend = !!value.trim() && !streaming && !awaitingModelRevalidation;
 
   const clearSendMenuCloseTimer = useCallback(() => {
     if (sendMenuCloseTimerRef.current === null) return;
@@ -6813,7 +6821,7 @@ function Composer({
                     : 'cursor-not-allowed border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
                 )}
                 aria-label="发送"
-                title="发送"
+                title={awaitingModelRevalidation ? '正在核对模型清单…' : '发送'}
               >
                 <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
               </button>
@@ -6850,7 +6858,7 @@ function Composer({
                       : 'cursor-not-allowed text-[var(--ink-muted)]',
                   )}
                   aria-label="发送"
-                  title="发送"
+                  title={awaitingModelRevalidation ? '正在核对模型清单…' : '发送'}
                 >
                   <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
                 </button>

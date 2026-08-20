@@ -37,7 +37,18 @@ interface ModelsResponse {
 
 export type ModelsState =
   | { status: 'loading' }
-  | { status: 'ready'; items: AgentModelItem[] }
+  | {
+      status: 'ready';
+      items: AgentModelItem[];
+      /**
+       * 正在后台重新拉取，`items` 是上一轮的旧值。
+       *
+       * 重拉时不退回 loading 是刻意的（否则模型选择器每次回灵境都闪一下骨架），
+       * 代价是这段窗口里旧清单可能还留着刚在 /ai-config 停用的模型 —— 调用方若
+       * 要拿清单做「这个模型还能用吗」的判断，必须先看这个标记。
+       */
+      revalidating?: boolean;
+    }
   | { status: 'error'; message: string };
 
 /**
@@ -50,6 +61,8 @@ export function useAgentModels(enabled: boolean, reloadToken = 0): ModelsState {
 
   useEffect(() => {
     if (!enabled) return;
+    // 保留旧清单可用，但标记为「刷新中」：停用的模型这一刻还在 items 里。
+    setState((prev) => (prev.status === 'ready' ? { ...prev, revalidating: true } : prev));
     const controller = new AbortController();
     fetch('/api/v1/agent/models', {
       credentials: 'include',
