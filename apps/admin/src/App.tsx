@@ -137,10 +137,14 @@ function AppProviders() {
           <Suspense fallback={<RouteSuspenseFallback />}>
             <Outlet />
           </Suspense>
-          {/* 灵境保活宿主 —— 单实例常驻，路由在 /aetherhub 时铺满视口，离开时
-              收成右下角胶囊浮岛。放在 Outlet 之后是为了叠在业务页之上。 */}
-          <AetherHubKeepAliveHost />
         </ErrorBoundary>
+        {/* 灵境保活宿主 —— 单实例常驻，路由在 /aetherhub 时铺满视口，离开时收成
+            右下角胶囊浮岛。放在 Outlet 之后是为了叠在业务页之上，但**必须在路由
+            ErrorBoundary 之外**：目标路由渲染抛错或 lazy chunk 加载失败时，那个
+            边界会把它的全部子节点换成兜底 UI —— 连带卸载保活树、掐断在途生成、
+            丢掉草稿与选中来源，恰好发生在导航失败、最需要它还在的时候。宿主内部
+            自带一层 ErrorBoundary 兜工作台自身的错误。 */}
+        <AetherHubKeepAliveHost />
       </FocusModeProvider>
     </>
   );

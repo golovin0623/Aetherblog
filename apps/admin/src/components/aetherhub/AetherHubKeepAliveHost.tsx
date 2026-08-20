@@ -20,7 +20,7 @@
  * 一个人的草稿与知识来源选择。
  */
 
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles, X } from 'lucide-react';
@@ -61,31 +61,48 @@ export function AetherHubKeepAliveHost() {
     if (authorized && isAuthenticated) setActivated(true);
   }, [authorized, isAuthenticated]);
 
-  const teardown = useCallback(() => {
-    // setActivated(false) 会真正卸载工作台 —— 它的卸载 effect 负责断流、清附件
-    // 内存缓存，草稿 / 选中来源 / 待发附件也随组件 state 一起消失。
+  // 身份换人必须在**渲染期**同步断开，不能等 passive effect。
+  //
+  // /login 没有鉴权守卫，已登录用户可以直接访问并用另一个账号 login()，而
+  // login() 只是覆盖 user 并把 isAuthenticated 置 true —— 全程没有 false 态。
+  // 若只在 effect 里收尾，保活树会先带着 A 的 sessions、用 B 的身份渲染一次，
+  // 其落盘 effect（deps 含 currentUser.id 与 sessions）随即执行
+  // scheduleSaveSessions(B, A 的会话) —— sessions.ts 的 storageKey 按 userId
+  // 分命名空间，等于把 A 的对话写进 B 的本地存储，卸载时的 flush 还会把这份
+  // 快照坐实。
+  //
+  // 这里用「渲染期自我 setState」（React 官方的 derive-state-on-prop-change
+  // 写法）：React 丢弃本次渲染产物、立刻重渲染本组件，**在渲染子树之前**，
+  // 于是旧实例根本没机会带着新身份跑一次。
+  const [ownerUserId, setOwnerUserId] = useState(userId);
+  if (ownerUserId !== userId) {
+    setOwnerUserId(userId);
     setActivated(false);
     setIslandHidden(false);
-    clearAuthorized();
-    resetPresence();
-  }, [clearAuthorized, resetPresence]);
+  }
 
-  // 退出登录 / 被踢下线：整体卸载。
+  // 退出登录 / 被踢下线：同样整体卸载。
   useEffect(() => {
     if (isAuthenticated) return;
-    teardown();
-  }, [isAuthenticated, teardown]);
+    setActivated(false);
+    setIslandHidden(false);
+  }, [isAuthenticated]);
 
-  // 换账号：/login 没有鉴权守卫，已登录用户可以直接访问并用另一个账号
-  // login()，而 login() 只是覆盖 user 并把 isAuthenticated 置为 true ——
-  // 全程没有 false 态，只盯 isAuthenticated 的话保活树会带着上一个人的草稿、
-  // 选中来源、附件和在途请求原样留给新账号。
-  const lastUserIdRef = useRef(userId);
+  // store 写入是副作用，不能放在渲染期，跟在后面收尾即可 —— 此刻 activated 已是
+  // false、宿主返回 null，不存在「先显形再撤权」的窗口。用 ref 跳过挂载那一次：
+  // 挂载时无条件 clearAuthorized 会把 AetherHubRouteAnchor 刚发的许可清掉
+  // （anchor 在 Outlet 里，effect 比本组件先跑）。
+  const settledIdentityRef = useRef<{ userId: string | null; authed: boolean }>({
+    userId,
+    authed: isAuthenticated,
+  });
   useEffect(() => {
-    if (lastUserIdRef.current === userId) return;
-    lastUserIdRef.current = userId;
-    teardown();
-  }, [userId, teardown]);
+    const prev = settledIdentityRef.current;
+    if (prev.userId === userId && prev.authed === isAuthenticated) return;
+    settledIdentityRef.current = { userId, authed: isAuthenticated };
+    clearAuthorized();
+    resetPresence();
+  }, [userId, isAuthenticated, clearAuthorized, resetPresence]);
 
   // 回到灵境本体 = 用户重新表达了「我要用它」，胶囊的手动关闭随之复位。
   useEffect(() => {
