@@ -239,11 +239,14 @@ const autoTitleAttemptedSessions = new Set<string>();
 // 放行，所以 auto 一定会把它注进来（普通 KB 还要求有 active profile + chunks）。
 const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
   { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
-  // 刻意不写「草稿」：文章检索的两条路都只面向已发布内容 —— SYSTEM_POSTS 库按
-  // post_embeddings 建索引，search_posts 又硬过滤 status='PUBLISHED' 且默认关闭。
-  // 拿草稿当建议词只会让模型编造或反问。
-  { text: '把最近发布的一篇文章提炼成 200 字社媒预告', needsKnowledge: true },
-  { text: '为上个月发布的文章各写一句推荐语', needsKnowledge: true },
+  // 刻意不写「草稿」，也刻意不写「最近 / 上个月」这类时间限定：
+  //   - 草稿：文章检索的两条路都只面向已发布内容（SYSTEM_POSTS 按 post_embeddings
+  //     建索引，search_posts 又硬过滤 status='PUBLISHED' 且默认关闭）。
+  //   - 时间：_recall_system_posts 纯按 embedding 距离排序后取 top-N，既不带
+  //     published_at 也没有日期过滤，给不出「最新一篇」或「某月全部」。
+  // 建议词只承诺检索能兑现的范围，否则模型只能编造或反问。
+  { text: '挑一篇站内文章，提炼成 200 字社媒预告', needsKnowledge: true },
+  { text: '为检索到的几篇站内文章各写一句推荐语', needsKnowledge: true },
   { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
 
@@ -1139,6 +1142,35 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
     },
     [activeSession, mutateSyncedSession],
   );
+
+  // 模型清单刷新后对账：会话钉着的模型可能刚在 /ai-config 被停用 / 删除，而
+  // activeSession.modelId 不会自己失效 —— 下一条消息会原样带上它，换来后端一句
+  // 「Requested model not found」。清空 = 回落自动路由，并告诉用户发生了什么。
+  // silent 是因为这不是用户主动操作：会话还在等云端懒加载时不该弹门禁 toast，
+  // 加载完这个 effect 会因 modelsState / activeSession 变化再跑一次。
+  useEffect(() => {
+    if (modelsState.status !== 'ready') return;
+    const modelId = activeSession?.modelId;
+    if (!activeSession || !modelId) return;
+    const stillAvailable = modelsState.items.some(
+      (m) => m.modelId === modelId && m.providerCode === activeSession.providerCode,
+    );
+    if (stillAvailable) return;
+    const ok = mutateSyncedSession(
+      activeSession.id,
+      (session) => ({
+        ...session,
+        modelId: null,
+        providerCode: null,
+        modelParams: undefined,
+        updatedAt: Date.now(),
+      }),
+      { silent: true },
+    );
+    if (ok) {
+      toast.info(`「${modelId}」已不在可用清单中，本对话已改回自动路由`);
+    }
+  }, [modelsState, activeSession, mutateSyncedSession]);
 
   const handleSetModelParam = useCallback(
     (key: string, value: AgentModelParams[string] | undefined) => {
@@ -2049,8 +2081,18 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
       void handleSend(prior.content, {
         session: { ...session, messages: baseMessages },
         messages: baseMessages,
+        // 快照缺失（快照机制之前存下的旧消息）时退回 auto 契约，与对比路径同款。
+        // 不能落到「当前 picker + autoKnowledge」那条路：默认知识范围已是 none，
+        // 会把当年靠自动召回作答的历史问题静默改成不检索重放。
         requestSnapshot:
-          snapshotResult.status === 'valid' ? snapshotResult.snapshot : undefined,
+          snapshotResult.status === 'valid'
+            ? snapshotResult.snapshot
+            : {
+                schemaVersion: 1,
+                knowledgeContext: { mode: 'auto' },
+                articleIds: null,
+                tagSlugs: null,
+              },
         handoffSnapshot: activeSessionKnowledgeHandoff,
       });
     },
@@ -2349,6 +2391,9 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
     setAttachmentPreview(null);
     setMobileSessionOpen(false);
     setMobileConfigOpen(false);
+    // 空间/参数侧栏是独立的 panelCollapsed，移动端展开时同样锁 body overflow
+    // 并挂 document 级 Escape —— 不收起来，目标页面照样滚不动。
+    setPanelCollapsed(true);
   }, [onRoute]);
   const closeAttachmentPreview = useCallback(() => setAttachmentPreview(null), []);
 

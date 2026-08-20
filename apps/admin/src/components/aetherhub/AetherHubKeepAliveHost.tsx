@@ -20,7 +20,7 @@
  * 一个人的草稿与知识来源选择。
  */
 
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles, X } from 'lucide-react';
@@ -43,6 +43,7 @@ export function AetherHubKeepAliveHost() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const authorized = useAetherHubPresenceStore((state) => state.authorized);
   const sessionTitle = useAetherHubPresenceStore((state) => state.sessionTitle);
   const streamingCount = useAetherHubPresenceStore((state) => state.streamingCount);
@@ -60,15 +61,31 @@ export function AetherHubKeepAliveHost() {
     if (authorized && isAuthenticated) setActivated(true);
   }, [authorized, isAuthenticated]);
 
-  // 退出登录 / 被踢下线：整体卸载。灵境里存着上一个账号的草稿与知识来源，
-  // 换人登录后继续挂着既是信息泄漏也是数据串台。
-  useEffect(() => {
-    if (isAuthenticated) return;
+  const teardown = useCallback(() => {
+    // setActivated(false) 会真正卸载工作台 —— 它的卸载 effect 负责断流、清附件
+    // 内存缓存，草稿 / 选中来源 / 待发附件也随组件 state 一起消失。
     setActivated(false);
     setIslandHidden(false);
     clearAuthorized();
     resetPresence();
-  }, [isAuthenticated, clearAuthorized, resetPresence]);
+  }, [clearAuthorized, resetPresence]);
+
+  // 退出登录 / 被踢下线：整体卸载。
+  useEffect(() => {
+    if (isAuthenticated) return;
+    teardown();
+  }, [isAuthenticated, teardown]);
+
+  // 换账号：/login 没有鉴权守卫，已登录用户可以直接访问并用另一个账号
+  // login()，而 login() 只是覆盖 user 并把 isAuthenticated 置为 true ——
+  // 全程没有 false 态，只盯 isAuthenticated 的话保活树会带着上一个人的草稿、
+  // 选中来源、附件和在途请求原样留给新账号。
+  const lastUserIdRef = useRef(userId);
+  useEffect(() => {
+    if (lastUserIdRef.current === userId) return;
+    lastUserIdRef.current = userId;
+    teardown();
+  }, [userId, teardown]);
 
   // 回到灵境本体 = 用户重新表达了「我要用它」，胶囊的手动关闭随之复位。
   useEffect(() => {
