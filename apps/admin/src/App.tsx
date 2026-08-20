@@ -103,9 +103,13 @@ function FolderPermissionsWrapper() {
  */
 function AetherHubRouteAnchor() {
   const markAuthorized = useAetherHubPresenceStore((state) => state.markAuthorized);
+  const clearAuthorized = useAetherHubPresenceStore((state) => state.clearAuthorized);
   useEffect(() => {
     markAuthorized();
-  }, [markAuthorized]);
+    // 离开路由即撤销：授权必须每次访问重新取得。留着不撤，用户在别的页面待到
+    // cookie 过期后再回来，保活树会赶在新一轮 /auth/me 校验返回前直接显形。
+    return () => clearAuthorized();
+  }, [markAuthorized, clearAuthorized]);
   return null;
 }
 

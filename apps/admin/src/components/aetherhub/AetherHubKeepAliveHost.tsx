@@ -46,6 +46,7 @@ export function AetherHubKeepAliveHost() {
   const authorized = useAetherHubPresenceStore((state) => state.authorized);
   const sessionTitle = useAetherHubPresenceStore((state) => state.sessionTitle);
   const streamingCount = useAetherHubPresenceStore((state) => state.streamingCount);
+  const clearAuthorized = useAetherHubPresenceStore((state) => state.clearAuthorized);
   const resetPresence = useAetherHubPresenceStore((state) => state.reset);
 
   const onHub = normalizePathname(location.pathname) === AETHERHUB_ROUTE;
@@ -65,8 +66,9 @@ export function AetherHubKeepAliveHost() {
     if (isAuthenticated) return;
     setActivated(false);
     setIslandHidden(false);
+    clearAuthorized();
     resetPresence();
-  }, [isAuthenticated, resetPresence]);
+  }, [isAuthenticated, clearAuthorized, resetPresence]);
 
   // 回到灵境本体 = 用户重新表达了「我要用它」，胶囊的手动关闭随之复位。
   useEffect(() => {
@@ -75,27 +77,36 @@ export function AetherHubKeepAliveHost() {
 
   if (!activated || !isAuthenticated) return null;
 
+  // 显形 = 停在 /aetherhub **且**本次访问已通过 AuthGuard。二者分开的意义：
+  // activated 决定「挂不挂载」（保活，一次就够），revealed 决定「给不给看」
+  // （每次访问都要重新校验）。cookie 在别的页面上过期后回来，这段窗口里保活树
+  // 保持不可见，屏幕上是骨架屏，校验通过才显形、失败则 AuthGuard 直接重定向。
+  const revealed = onHub && authorized;
   const streaming = streamingCount > 0;
   const islandVisible = !onHub && !islandHidden;
 
   return (
     <>
+      {/* 校验未回来之前先铺骨架屏，避免这段窗口是一片空白。 */}
+      {onHub && !revealed && <AetherHubSkeleton />}
+
       <div
-        className={cn(onHub ? 'visible' : 'invisible')}
+        className={cn(revealed ? 'visible' : 'invisible')}
         // 折叠期间暂停子树里的 CSS 动画（极光层是 40s infinite）——
         // visibility:hidden 不会让浏览器停掉动画，规则见 index.css。
-        data-aetherhub-collapsed={onHub ? 'false' : 'true'}
-        aria-hidden={!onHub}
+        data-aetherhub-collapsed={revealed ? 'false' : 'true'}
+        aria-hidden={!revealed}
         // inert 让整棵子树退出 Tab 序 —— 光靠 visibility 已经不可聚焦，但
         // 屏幕阅读器的虚拟光标仍可能游进去。React 19 起 inert 收布尔值。
-        inert={!onHub}
+        inert={!revealed}
       >
         <ErrorBoundary>
-          <Suspense fallback={onHub ? <AetherHubSkeleton /> : null}>
+          <Suspense fallback={revealed ? <AetherHubSkeleton /> : null}>
             {/* onRoute 让页面自己收尾「离开路由」的副作用：关掉 portal 到
-                document.body、因而逃出本容器 visibility 的浮层；重新进入时补做
-                只在挂载期跑过一次的一次性工作（工作台交接、模型清单刷新）。 */}
-            <AetherHubWorkspacePage onRoute={onHub} />
+                document.body、因而逃出本容器 visibility 的浮层（连同它们持有的
+                body 滚动锁与 capture 阶段键盘监听）；重新进入时补做只在挂载期
+                跑过一次的一次性工作（工作台交接、模型清单刷新）。 */}
+            <AetherHubWorkspacePage onRoute={revealed} />
           </Suspense>
         </ErrorBoundary>
       </div>

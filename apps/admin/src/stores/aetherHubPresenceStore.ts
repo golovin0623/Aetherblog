@@ -19,6 +19,10 @@ interface AetherHubPresenceState {
    * localStorage 的布尔值，令牌过期后它在 AuthGuard 异步校验返回前仍是 true。
    * 用它当挂载条件，会在校验失败登出之前就把工作台挂起来 —— 既可能露出上一位
    * 用户本地已加载的会话，也会抢先发出一批注定 401 的受保护请求。
+   *
+   * **每次访问都要重新授权**：anchor 卸载（离开路由）即 clearAuthorized。否则
+   * 授权一次就永久生效，用户在别的页面待到 cookie 过期后再回 /aetherhub，保活
+   * 树会在新一轮 AuthGuard 校验返回之前就直接显形。
    */
   authorized: boolean;
   /** 会话标题（未命名会话为 null，浮岛回落到「灵境」）。 */
@@ -26,20 +30,27 @@ interface AetherHubPresenceState {
   /** 正在生成回答的会话数 —— 跨会话并发流时浮岛要显示总数。 */
   streamingCount: number;
   markAuthorized: () => void;
+  clearAuthorized: () => void;
   setPresence: (presence: { sessionTitle: string | null; streamingCount: number }) => void;
+  /** 只清 sessionTitle / streamingCount；authorized 由 markAuthorized / clearAuthorized 独占。 */
   reset: () => void;
 }
 
-const EMPTY = { authorized: false, sessionTitle: null, streamingCount: 0 } as const;
+const EMPTY_PRESENCE = { sessionTitle: null, streamingCount: 0 } as const;
 
 export const useAetherHubPresenceStore = create<AetherHubPresenceState>()((set) => ({
-  ...EMPTY,
+  authorized: false,
+  ...EMPTY_PRESENCE,
   markAuthorized: () => set((state) => (state.authorized ? state : { authorized: true })),
+  clearAuthorized: () => set((state) => (state.authorized ? { authorized: false } : state)),
   setPresence: ({ sessionTitle, streamingCount }) =>
     set((state) =>
       state.sessionTitle === sessionTitle && state.streamingCount === streamingCount
         ? state
         : { sessionTitle, streamingCount },
     ),
-  reset: () => set({ ...EMPTY }),
+  // 只清广播字段，**不碰 authorized**：调用方是工作台页面的卸载清理，而授权归
+  // AetherHubRouteAnchor 管。混在一起会让页面的卸载（含 StrictMode 的双调用）
+  // 顺手撤掉当前访问的授权，宿主随即收起，屏幕上只剩骨架屏。
+  reset: () => set({ ...EMPTY_PRESENCE }),
 }));

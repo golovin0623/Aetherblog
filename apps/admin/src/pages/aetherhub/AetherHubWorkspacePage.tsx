@@ -237,7 +237,10 @@ const autoTitleAttemptedSessions = new Set<string>();
 // 建议词也召不回任何东西（前两条都要读站内内容），用户会以为知识库坏了。
 const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
   { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
-  { text: '把我最近的一篇草稿提炼成 200 字发布预告', needsKnowledge: true },
+  // 刻意不写「草稿」：auto 只召回有权限的知识库与 Atlas，而唯一能查文章的
+  // search_posts 既默认关闭、又硬过滤 status='PUBLISHED' —— 草稿根本够不着，
+  // 写进建议词只会让模型编造或反问。
+  { text: '把最近发布的一篇文章提炼成 200 字社媒预告', needsKnowledge: true },
   { text: '为上个月发布的文章各写一句推荐语' },
   { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
@@ -1814,12 +1817,6 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
   // 编辑 = 回填输入框 + 截断该消息之后的所有回复。截断不可逆，先过
   // ConfirmModal（浏览器原生 confirm 是设计系统红线）。
   const [confirmEditTarget, setConfirmEditTarget] = useState<AgentMessage | null>(null);
-  // ConfirmModal 走 createPortal(document.body)，挂在保活容器**外面** —— 容器的
-  // visibility/inert 管不到它。不主动关掉的话，带着确认框离开 /aetherhub 会让它
-  // 继续浮在目标页面上且可点，确认后还会去改那个已经看不见的会话。
-  useEffect(() => {
-    if (!onRoute) setConfirmEditTarget(null);
-  }, [onRoute]);
   const applyEditMessage = useCallback(
     (message: AgentMessage) => {
       if (!activeSession) return;
@@ -2334,6 +2331,23 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
   // 状态必须活在虚拟化列表之外：挂在消息行子树里时，行滚出缓冲区被卸载
   // 会让打开中的预览自己消失。见 AttachmentPreviewContext 的注释。
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewTarget | null>(null);
+
+  // 离开路由时收掉所有页面级浮层。保活树只是 visibility:hidden，浮层的副作用**不**
+  // 随之失效：
+  //   - ConfirmModal 走 createPortal(document.body)，压根不在保活容器里，会继续
+  //     浮在目标页面上且可点，确认后还去改那个已经看不见的会话；
+  //   - CompareOverlay / AttachmentPreviewOverlay 走 useModalDialog，持有 body 滚动
+  //     锁（position:fixed）与 capture 阶段的 window keydown —— 不关掉，目标页面会
+  //     滚不动、键盘被拦，而移动端连按 Esc 自救的机会都没有；
+  //   - 两个移动端抽屉留着也只是过期状态，回来时该重新按需打开。
+  useEffect(() => {
+    if (onRoute) return;
+    setConfirmEditTarget(null);
+    setCompareTarget(null);
+    setAttachmentPreview(null);
+    setMobileSessionOpen(false);
+    setMobileConfigOpen(false);
+  }, [onRoute]);
   const closeAttachmentPreview = useCallback(() => setAttachmentPreview(null), []);
 
   if (!hydrated) {
@@ -2426,7 +2440,13 @@ export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: b
                 </button>
                 <button
                   type="button"
-                  onClick={clearActiveKnowledgeHandoff}
+                  onClick={() => {
+                    clearActiveKnowledgeHandoff();
+                    // 按钮承诺的是「改用自动来源」。默认知识范围已经是 none，只
+                    // 清交接会静默变成「本轮不检索」—— 与文案相反，所以这里必须
+                    // 同时把自动检索打开。
+                    setAutoKnowledge(true);
+                  }}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                   aria-label="改用自动来源"
                   title="改用自动来源"
