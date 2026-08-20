@@ -25,8 +25,12 @@ export function IntelligenceShell({
         `intelligence-shell-${mode}`,
         mode === 'standard' &&
           '-m-4 min-h-[calc(100%+2rem)] overflow-auto p-4 md:-m-6 md:min-h-[calc(100%+3rem)] md:p-6',
+        // 高度要减掉的是「main 上方真实存在的 chrome」：AdminLayout 里只有
+        // MobileHeader（h-14 = 3.5rem）且它是 md:hidden —— 桌面端 main 就是满
+        // 屏，减 4rem 是个不存在的顶栏。负 margin 已经把 main 的上内边距抵消，
+        // 于是缺的 64px 全堆在底部，表现为上下留白不对称（上 20 / 下 84）。
         mode === 'workspace' &&
-          '-m-4 h-[calc(100dvh-3.5rem)] min-h-[620px] overflow-hidden p-3 md:-m-6 md:h-[calc(100dvh-4rem)] md:p-5',
+          '-m-4 h-[calc(100dvh-3.5rem)] min-h-[620px] overflow-hidden p-3 md:-m-6 md:h-dvh md:p-5',
         className
       )}
     >

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import {
   Navigate,
   Outlet,
@@ -13,6 +13,8 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { AetherHubKeepAliveHost } from './components/aetherhub/AetherHubKeepAliveHost';
+import { useAetherHubPresenceStore } from './stores/aetherHubPresenceStore';
 import { FocusModeProvider } from './contexts/FocusModeContext';
 import { AetherHubSkeleton } from './pages/aetherhub/AetherHubSkeleton';
 import { Toaster } from 'sonner';
@@ -44,7 +46,6 @@ const AccessControlPage = lazy(() => import('./pages/access/AccessControlPage'))
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
-const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 const KnowledgeBasePage = lazy(() => import('./pages/knowledge/KnowledgeBasePage'));
 const KnowledgeBaseDetailPage = lazy(() => import('./pages/knowledge/KnowledgeBaseDetailPage'));
 const KnowledgeWorkspacePage = lazy(() => import('./pages/intelligence/KnowledgeWorkspacePage'));
@@ -92,6 +93,26 @@ function FolderPermissionsWrapper() {
   );
 }
 
+/**
+ * /aetherhub 的路由占位：灵境本体由 AetherHubKeepAliveHost 保活渲染，这里只
+ * 保留 AuthGuard 的鉴权与重定向语义，不再挂第二份页面实例。
+ *
+ * 同时它是保活宿主的**挂载许可**来源：本组件渲染在 AuthGuard 内部，能跑到这
+ * 里就意味着 `/auth/me` 已校验通过。宿主不能自己看 authStore 的
+ * `isAuthenticated`（persist 的布尔值，令牌过期后在校验返回前仍为 true）。
+ */
+function AetherHubRouteAnchor() {
+  const markAuthorized = useAetherHubPresenceStore((state) => state.markAuthorized);
+  const clearAuthorized = useAetherHubPresenceStore((state) => state.clearAuthorized);
+  useEffect(() => {
+    markAuthorized();
+    // 离开路由即撤销：授权必须每次访问重新取得。留着不撤，用户在别的页面待到
+    // cookie 过期后再回来，保活树会赶在新一轮 /auth/me 校验返回前直接显形。
+    return () => clearAuthorized();
+  }, [markAuthorized, clearAuthorized]);
+  return null;
+}
+
 function RouteSuspenseFallback() {
   const location = useLocation();
   const pathname = location.pathname.replace(/\/+$/, '') || '/';
@@ -108,15 +129,27 @@ function RouteSuspenseFallback() {
 }
 
 function AppProviders() {
+  const location = useLocation();
   return (
     <>
       <Toaster richColors position="top-center" />
       <FocusModeProvider>
-        <ErrorBoundary>
+        {/* resetKey=pathname：边界一旦 latch 就再也不渲染子树，Outlet 里的
+            AetherHubRouteAnchor 因此发不出许可 —— 从浮岛点回灵境只会停在骨架屏，
+            而那张 fixed inset-0 的骨架还盖住了兜底页的「重新加载」。让导航本身
+            复位错误态即可自救。 */}
+        <ErrorBoundary resetKey={location.pathname}>
           <Suspense fallback={<RouteSuspenseFallback />}>
             <Outlet />
           </Suspense>
         </ErrorBoundary>
+        {/* 灵境保活宿主 —— 单实例常驻，路由在 /aetherhub 时铺满视口，离开时收成
+            右下角胶囊浮岛。放在 Outlet 之后是为了叠在业务页之上，但**必须在路由
+            ErrorBoundary 之外**：目标路由渲染抛错或 lazy chunk 加载失败时，那个
+            边界会把它的全部子节点换成兜底 UI —— 连带卸载保活树、掐断在途生成、
+            丢掉草稿与选中来源，恰好发生在导航失败、最需要它还在的时候。宿主内部
+            自带一层 ErrorBoundary 兜工作台自身的错误。 */}
+        <AetherHubKeepAliveHost />
       </FocusModeProvider>
     </>
   );
@@ -131,7 +164,7 @@ const router = createBrowserRouter(
     <Route element={<AppProviders />}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
-      <Route path="/aetherhub" element={<AuthGuard><AetherHubWorkspacePage /></AuthGuard>} />
+      <Route path="/aetherhub" element={<AuthGuard><AetherHubRouteAnchor /></AuthGuard>} />
       <Route
         path="/"
         element={

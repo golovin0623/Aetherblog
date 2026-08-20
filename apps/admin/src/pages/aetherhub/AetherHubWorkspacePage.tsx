@@ -51,6 +51,7 @@ import {
   Search,
   Send,
   Settings,
+  SlidersHorizontal,
   Sidebar as SidebarIcon,
   SlashSquare,
   SquarePen,
@@ -66,6 +67,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Virtualizer, type VirtualizerHandle } from 'virtua';
 import { toast } from 'sonner';
 import { AetherMark, ConfirmModal } from '@aetherblog/ui';
+import { useAetherHubPresenceStore } from '@/stores/aetherHubPresenceStore';
 import { MarkdownPreview, MarkdownStreamPreview } from '@aetherblog/editor';
 import { formatDate } from '@aetherblog/utils';
 import { useAuthStore } from '@/stores';
@@ -231,12 +233,21 @@ function clearAttachmentCache(): void {
 const autoTitleAttemptedSessions = new Set<string>();
 
 // 空态推荐提示词 —— 面向「博客管理员在后台的日常任务」，而不是开发者自测。
-// 前两条依赖知识检索（auto 模式自动召回），后两条是纯写作/整理任务。
-const promptChips = [
-  '检索知识库，总结本站内容策略的核心要点',
-  '把我最近的一篇草稿提炼成 200 字发布预告',
-  '为上个月发布的文章各写一句推荐语',
-  '用表格整理当前可用 AI 模型的能力差异',
+// 凡是要读站内内容的都得带 needsKnowledge：默认知识范围是「不检索」，否则点了
+// 建议词也召不回任何东西，用户会以为知识库坏了。文章走的就是知识库路径 ——
+// SYSTEM_POSTS 是「博客文章自动构成的系统库」，且后端 agentKBUsable 对它无条件
+// 放行，所以 auto 一定会把它注进来（普通 KB 还要求有 active profile + chunks）。
+const promptChips: Array<{ text: string; needsKnowledge?: boolean }> = [
+  { text: '检索知识库，总结本站内容策略的核心要点', needsKnowledge: true },
+  // 刻意不写「草稿」，也刻意不写「最近 / 上个月」这类时间限定：
+  //   - 草稿：文章检索的两条路都只面向已发布内容（SYSTEM_POSTS 按 post_embeddings
+  //     建索引，search_posts 又硬过滤 status='PUBLISHED' 且默认关闭）。
+  //   - 时间：_recall_system_posts 纯按 embedding 距离排序后取 top-N，既不带
+  //     published_at 也没有日期过滤，给不出「最新一篇」或「某月全部」。
+  // 建议词只承诺检索能兑现的范围，否则模型只能编造或反问。
+  { text: '挑一篇站内文章，提炼成 200 字社媒预告', needsKnowledge: true },
+  { text: '为检索到的几篇站内文章各写一句推荐语', needsKnowledge: true },
+  { text: '用表格整理当前可用 AI 模型的能力差异' },
 ];
 
 type DisplayMode = 'bubble' | 'engraved';
@@ -533,6 +544,26 @@ function buildNumericModelParams(model: AgentModelItem | null): NumericModelPara
   });
 }
 
+/**
+ * 模型清单「未经核对」—— `items` 仍是上一轮的旧值，可能还留着刚在 /ai-config
+ * 停用的模型。两种情形：正在重拉（revalidating），或这次重拉失败了
+ * （refreshFailed —— 此时旧清单被刻意保留，而不是退化成 error 态）。
+ *
+ * 拿未核对的清单发请求只会换来后端「Requested model not found」，而清空回落
+ * 自动路由的对账要等一次**成功**的重拉才跑得了。所有会发起模型请求的入口
+ * （handleSend 及其重试 / 编辑 / `/regen` 复用者、多模型对比）都必须先过这道
+ * 判定 —— 只放在输入框上会被这些路径绕过去。
+ *
+ * 拦下来不会把人困住：闸门只在会话钉了模型时生效，而选择器仍可用（旧清单还在），
+ * 改回自动路由即可立刻发送 —— 自动路由本就不依赖清单。
+ */
+function isModelCatalogUnverified(
+  modelsState: ReturnType<typeof useAgentModels>,
+): boolean {
+  if (modelsState.status !== 'ready') return false;
+  return modelsState.revalidating === true || modelsState.refreshFailed === true;
+}
+
 function currentModelFromSession(
   session: AgentSession | null,
   modelsState: ReturnType<typeof useAgentModels>,
@@ -611,7 +642,13 @@ function pickGreeting(hour: number): string {
   return '晚上好';
 }
 
-export default function AetherHubWorkspacePage() {
+/**
+ * @param onRoute 当前路由是否停在 /aetherhub。工作台被 AetherHubKeepAliveHost
+ * 跨路由保活（不卸载），所以「离开 / 重新进入」不再对应挂载与卸载，只能靠这个
+ * 信号补做两类事：离开时收掉 portal 到 document.body、逃出保活容器 visibility
+ * 的浮层；重新进入时补跑那些原本只在挂载期跑一次的一次性逻辑。
+ */
+export default function AetherHubWorkspacePage({ onRoute = true }: { onRoute?: boolean } = {}) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
@@ -734,8 +771,20 @@ export default function AetherHubWorkspacePage() {
     return () => window.clearInterval(id);
   }, []);
 
+  // ----- 路由重入计数 -----
+  // 保活实例只挂载一次，于是「回到灵境」不再触发任何挂载期逻辑。这个计数在
+  // 每次 onRoute false → true 时 +1，供下面几处一次性副作用当重跑依据。
+  const [routeEntryCount, setRouteEntryCount] = useState(0);
+  const wasOnRouteRef = useRef(onRoute);
+  useEffect(() => {
+    if (onRoute && !wasOnRouteRef.current) setRouteEntryCount((n) => n + 1);
+    wasOnRouteRef.current = onRoute;
+  }, [onRoute]);
+
   // ----- 模型清单 -----
-  const modelsState = useAgentModels(true);
+  // 用户很可能刚从模型选择器跳去 /ai-config 改完供应商再回来 —— 保活实例不重
+  // 挂载，不带 routeEntryCount 就会一直用进入灵境那一刻的旧清单。
+  const modelsState = useAgentModels(true, routeEntryCount);
 
   // ----- Composer 状态 -----
   const composer = readAgentSessionDraft(activeSession);
@@ -782,6 +831,18 @@ export default function AetherHubWorkspacePage() {
   }, []);
   // 当前活跃会话视角的 streaming —— 旧 UI 契约（Composer 停止按钮等）继续可用。
   const streaming = activeId ? streamingIds.has(activeId) : false;
+
+  // 向胶囊浮岛广播「在场」状态。灵境离开 /aetherhub 后仍挂载（见
+  // AetherHubKeepAliveHost），浮岛靠这两个标量显示当前会话与生成进度。
+  const setHubPresence = useAetherHubPresenceStore((state) => state.setPresence);
+  const resetHubPresence = useAetherHubPresenceStore((state) => state.reset);
+  useEffect(() => {
+    setHubPresence({
+      sessionTitle: activeSession?.title?.trim() || null,
+      streamingCount: streamingIds.size,
+    });
+  }, [activeSession?.title, streamingIds, setHubPresence]);
+  useEffect(() => () => resetHubPresence(), [resetHubPresence]);
 
   // ----- 云同步：本地优先 + 服务端 LWW 漫游（网络细节全部收在 sessionsSync.ts）-----
   // hydrate 已用本地快照即时渲染；这里在后台 GET 列表对账：服务端较新的会话标
@@ -834,6 +895,11 @@ export default function AetherHubWorkspacePage() {
   // KB picker：选中的知识库参与本轮对话；按用户对每个 KB 的有效权限（USE+）过滤。
   const [selectedKbs, setSelectedKbs] = useState<AgentKnowledgeBase[]>([]);
   const [selectedAtlasKps, setSelectedAtlasKps] = useState<AtlasKnowledgePoint[]>([]);
+  // 自动检索开关：空 picker 默认 = 不检索（none）。打开后才走 auto —— 后端会
+  // 注入「当前用户有权限的全部 KB」，代价是每轮都跑一次召回，所以必须是用户
+  // 主动选择而不是隐式默认（否则每条无关提问都挂一张「没有命中相关知识」）。
+  // 与显式选来源互斥：选了来源就是 selected，后端拒绝 auto 携带显式 id。
+  const [autoKnowledge, setAutoKnowledge] = useState(false);
   const [pendingSessionKnowledgeHandoff, setPendingSessionKnowledgeHandoff] =
     useState<SessionKnowledgeHandoff | null>(null);
   const activeSessionKnowledgeHandoff = getSessionKnowledgeHandoff(
@@ -846,7 +912,10 @@ export default function AetherHubWorkspacePage() {
       clearSessionKnowledgeHandoff(current, activeId),
     );
   }, [activeId]);
-  const handoffConsumedForUserRef = useRef<string | null>(null);
+  // 交接消费的去重键 = 用户 × 本次路由进入。保活实例不重挂载，只按用户去重会
+  // 让「先逛过灵境 → 去知识工作台派任务 → 回灵境」这条路彻底失效：一次性任务
+  // 留在 storage 里直到过期，用户看不到任何反应。
+  const handoffConsumedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     setSelectedArticles([]);
     setSelectedTags([]);
@@ -856,9 +925,10 @@ export default function AetherHubWorkspacePage() {
   }, [activeId]);
 
   useEffect(() => {
-    if (!hydrated || currentUser.id === 'anon') return;
-    if (handoffConsumedForUserRef.current === currentUser.id) return;
-    handoffConsumedForUserRef.current = currentUser.id;
+    if (!hydrated || currentUser.id === 'anon' || !onRoute) return;
+    const consumeKey = `${currentUser.id}:${routeEntryCount}`;
+    if (handoffConsumedKeyRef.current === consumeKey) return;
+    handoffConsumedKeyRef.current = consumeKey;
 
     const result = consumeKnowledgeWorkspaceHandoff(currentUser.id);
     if (!result.ok) {
@@ -883,7 +953,7 @@ export default function AetherHubWorkspacePage() {
           ? '已带入工作台任务，本次不使用知识来源'
           : '已带入工作台任务，将自动检索有权限的知识库与知识点',
     );
-  }, [currentUser.id, hydrated]);
+  }, [currentUser.id, hydrated, onRoute, routeEntryCount]);
 
   // ----- 侧栏与右侧上下文面板：收起 / 展开 -----
   const [sessionSidebarCollapsed, setSessionSidebarCollapsed] = useState(false);
@@ -1093,6 +1163,35 @@ export default function AetherHubWorkspacePage() {
     [activeSession, mutateSyncedSession],
   );
 
+  // 模型清单刷新后对账：会话钉着的模型可能刚在 /ai-config 被停用 / 删除，而
+  // activeSession.modelId 不会自己失效 —— 下一条消息会原样带上它，换来后端一句
+  // 「Requested model not found」。清空 = 回落自动路由，并告诉用户发生了什么。
+  // silent 是因为这不是用户主动操作：会话还在等云端懒加载时不该弹门禁 toast，
+  // 加载完这个 effect 会因 modelsState / activeSession 变化再跑一次。
+  useEffect(() => {
+    if (modelsState.status !== 'ready') return;
+    const modelId = activeSession?.modelId;
+    if (!activeSession || !modelId) return;
+    const stillAvailable = modelsState.items.some(
+      (m) => m.modelId === modelId && m.providerCode === activeSession.providerCode,
+    );
+    if (stillAvailable) return;
+    const ok = mutateSyncedSession(
+      activeSession.id,
+      (session) => ({
+        ...session,
+        modelId: null,
+        providerCode: null,
+        modelParams: undefined,
+        updatedAt: Date.now(),
+      }),
+      { silent: true },
+    );
+    if (ok) {
+      toast.info(`「${modelId}」已不在可用清单中，本对话已改回自动路由`);
+    }
+  }, [modelsState, activeSession, mutateSyncedSession]);
+
   const handleSetModelParam = useCallback(
     (key: string, value: AgentModelParams[string] | undefined) => {
       if (!activeSession) return;
@@ -1239,6 +1338,17 @@ export default function AetherHubWorkspacePage() {
       // 必须在任何副作用（附件落盘 / 清空 composer）之前拦。
       if (!ensureSessionHydrated(baseSession.id)) return;
 
+      // 会话钉了模型时，清单没核对完就不发 —— 自动路由不依赖清单，不拦。
+      // 放在这里而不是输入框：重试卡、/regen、编辑重放都直接进 handleSend。
+      if (baseSession.modelId && isModelCatalogUnverified(modelsState)) {
+        toast.info(
+          modelsState.status === 'ready' && modelsState.refreshFailed
+            ? '模型清单刷新失败，无法确认当前模型是否可用 —— 请重试，或在模型选择器里改用自动路由'
+            : '正在核对模型清单，请稍候再发送',
+        );
+        return;
+      }
+
       const isFirstMessage = baseMessages.length === 0;
       const sessionId = baseSession.id;
       const modelId = baseSession.modelId ?? null;
@@ -1275,6 +1385,7 @@ export default function AetherHubWorkspacePage() {
             requestSessionHandoff?.handoff.context ?? null,
             requestKbs,
             requestAtlasKps,
+            autoKnowledge,
           );
       const requestHandoffSnapshot =
         override?.handoffSnapshot ?? (replaySnapshot ? null : requestSessionHandoff);
@@ -1752,6 +1863,7 @@ export default function AetherHubWorkspacePage() {
     },
     [
       activeSession,
+      autoKnowledge,
       composerAttachments,
       enableTools,
       ensureSessionHydrated,
@@ -2000,8 +2112,18 @@ export default function AetherHubWorkspacePage() {
       void handleSend(prior.content, {
         session: { ...session, messages: baseMessages },
         messages: baseMessages,
+        // 快照缺失（快照机制之前存下的旧消息）时退回 auto 契约，与对比路径同款。
+        // 不能落到「当前 picker + autoKnowledge」那条路：默认知识范围已是 none，
+        // 会把当年靠自动召回作答的历史问题静默改成不检索重放。
         requestSnapshot:
-          snapshotResult.status === 'valid' ? snapshotResult.snapshot : undefined,
+          snapshotResult.status === 'valid'
+            ? snapshotResult.snapshot
+            : {
+                schemaVersion: 1,
+                knowledgeContext: { mode: 'auto' },
+                articleIds: null,
+                tagSlugs: null,
+              },
         handoffSnapshot: activeSessionKnowledgeHandoff,
       });
     },
@@ -2284,6 +2406,26 @@ export default function AetherHubWorkspacePage() {
   // 状态必须活在虚拟化列表之外：挂在消息行子树里时，行滚出缓冲区被卸载
   // 会让打开中的预览自己消失。见 AttachmentPreviewContext 的注释。
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewTarget | null>(null);
+
+  // 离开路由时收掉所有页面级浮层。保活树只是 visibility:hidden，浮层的副作用**不**
+  // 随之失效：
+  //   - ConfirmModal 走 createPortal(document.body)，压根不在保活容器里，会继续
+  //     浮在目标页面上且可点，确认后还去改那个已经看不见的会话；
+  //   - CompareOverlay / AttachmentPreviewOverlay 走 useModalDialog，持有 body 滚动
+  //     锁（position:fixed）与 capture 阶段的 window keydown —— 不关掉，目标页面会
+  //     滚不动、键盘被拦，而移动端连按 Esc 自救的机会都没有；
+  //   - 两个移动端抽屉留着也只是过期状态，回来时该重新按需打开。
+  useEffect(() => {
+    if (onRoute) return;
+    setConfirmEditTarget(null);
+    setCompareTarget(null);
+    setAttachmentPreview(null);
+    setMobileSessionOpen(false);
+    setMobileConfigOpen(false);
+    // 空间/参数侧栏是独立的 panelCollapsed，移动端展开时同样锁 body overflow
+    // 并挂 document 级 Escape —— 不收起来，目标页面照样滚不动。
+    setPanelCollapsed(true);
+  }, [onRoute]);
   const closeAttachmentPreview = useCallback(() => setAttachmentPreview(null), []);
 
   if (!hydrated) {
@@ -2376,7 +2518,13 @@ export default function AetherHubWorkspacePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={clearActiveKnowledgeHandoff}
+                  onClick={() => {
+                    clearActiveKnowledgeHandoff();
+                    // 按钮承诺的是「改用自动来源」。默认知识范围已经是 none，只
+                    // 清交接会静默变成「本轮不检索」—— 与文案相反，所以这里必须
+                    // 同时把自动检索打开。
+                    setAutoKnowledge(true);
+                  }}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
                   aria-label="改用自动来源"
                   title="改用自动来源"
@@ -2405,7 +2553,10 @@ export default function AetherHubWorkspacePage() {
               onSend={handleSend}
               onAbort={handleAbort}
               onSetModel={handleSetModel}
-              onPickPrompt={(text) => setComposer(text)}
+              onPickPrompt={(text, options) => {
+                setComposer(text);
+                if (options?.needsKnowledge) setAutoKnowledge(true);
+              }}
               selectedArticles={selectedArticles}
               selectedTags={selectedTags}
               selectedKbs={selectedKbs}
@@ -2420,6 +2571,11 @@ export default function AetherHubWorkspacePage() {
                   prev.find((t) => t.slug === tag.slug) ? prev : [...prev, tag],
                 )
               }
+              autoKnowledge={autoKnowledge}
+              onToggleAutoKnowledge={() => {
+                clearActiveKnowledgeHandoff();
+                setAutoKnowledge((v) => !v);
+              }}
               onPickKb={(kb) => {
                 clearActiveKnowledgeHandoff();
                 setSelectedKbs((prev) =>
@@ -3254,6 +3410,19 @@ function ModelPickerButton({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const { mobileHeight, handleResizeStart } = useMobilePickerResize(open);
+  const navigate = useNavigate();
+
+  // 供应商配置深链 —— AiConfigPage 已支持 ?provider=&model=（见该页 useEffect
+  // 里的一次性深链应用），所以这里只负责拼参数，不需要另建跳转协议。
+  const openProviderConfig = useCallback(
+    (providerCode: string, modelId?: string) => {
+      setOpen(false);
+      const params = new URLSearchParams({ provider: providerCode });
+      if (modelId) params.set('model', modelId);
+      navigate(`/ai-config?${params.toString()}`);
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -3419,14 +3588,39 @@ function ModelPickerButton({
 
           {modelsState.status === 'ready' && grouped.length === 0 && (
             <div className="px-3 py-3 text-[var(--fs-caption)] text-[var(--ink-muted)]">
-              {query.trim() ? '没有匹配的模型' : '没有已启用的模型，去 AI 配置页添加'}
+              {query.trim() ? (
+                '没有匹配的模型'
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    navigate('/ai-config');
+                  }}
+                  className="text-left text-[var(--aurora-1)] underline-offset-2 hover:underline"
+                >
+                  没有已启用的模型，去 AI 配置页添加 →
+                </button>
+              )}
             </div>
           )}
 
           {grouped.map(([providerCode, list]) => (
             <div key={providerCode} className="mt-2">
-              <div className="px-3 pb-1.5 text-[11px] font-medium text-[var(--ink-muted)]">
-                <span className="min-w-0 truncate">{list[0]?.providerName || providerCode}</span>
+              <div className="flex items-center gap-2 px-3 pb-1.5 text-[11px] font-medium text-[var(--ink-muted)]">
+                <span className="min-w-0 flex-1 truncate">
+                  {list[0]?.providerName || providerCode}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openProviderConfig(providerCode)}
+                  title={`配置 ${list[0]?.providerName || providerCode}`}
+                  aria-label={`配置 ${list[0]?.providerName || providerCode}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10.5px] text-[var(--ink-muted)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--aurora-1)]"
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                  配置
+                </button>
               </div>
               {list.map((m) => {
                 const selected =
@@ -3478,6 +3672,28 @@ function ModelPickerButton({
             </div>
           ))}
           </div>
+
+          {/* 直达当前模型的服务商配置 —— 灵境里换模型和调服务商参数是同一件事的
+              两半，没有这条就得手动翻侧栏找 AI 配置再自己认出是哪家。 */}
+          <div className="border-t border-[var(--hub-border)] p-2">
+            <button
+              type="button"
+              onClick={() =>
+                currentModel
+                  ? openProviderConfig(currentModel.providerCode, currentModel.modelId)
+                  : (setOpen(false), navigate('/ai-config'))
+              }
+              className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-left text-[12.5px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+            >
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] text-[var(--ink-muted)]">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {currentModel ? `配置 ${currentModel.providerName || currentModel.providerCode}` : '管理模型与服务商'}
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" />
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -3525,6 +3741,8 @@ function WorkspaceCanvas({
   selectedTags,
   selectedKbs,
   selectedAtlasKps,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPickArticle,
   onPickTag,
   onPickKb,
@@ -3566,11 +3784,13 @@ function WorkspaceCanvas({
   onSend: (text: string) => void;
   onAbort: () => void;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
-  onPickPrompt: (text: string) => void;
+  onPickPrompt: (text: string, options?: { needsKnowledge?: boolean }) => void;
   selectedArticles: AgentArticle[];
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
   selectedAtlasKps: AtlasKnowledgePoint[];
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
@@ -3835,6 +4055,8 @@ function WorkspaceCanvas({
         selectedTags={selectedTags}
         selectedKbs={selectedKbs}
         selectedAtlasKps={selectedAtlasKps}
+        autoKnowledge={autoKnowledge}
+        onToggleAutoKnowledge={onToggleAutoKnowledge}
         onPickArticle={onPickArticle}
         onPickTag={onPickTag}
         onPickKb={onPickKb}
@@ -3891,7 +4113,7 @@ function EmptyState({
 }: {
   greeting: string;
   nickname: string;
-  onPickPrompt: (text: string) => void;
+  onPickPrompt: (text: string, options?: { needsKnowledge?: boolean }) => void;
 }) {
   return (
     <div className="flex flex-col items-center pb-5 pt-[min(7vh,2.75rem)] text-center md:pt-12">
@@ -3908,16 +4130,16 @@ function EmptyState({
       <div className="mt-6 grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:mt-8 md:gap-3">
         {promptChips.map((chip, index) => (
           <button
-            key={chip}
+            key={chip.text}
             type="button"
-            onClick={() => onPickPrompt(chip)}
+            onClick={() => onPickPrompt(chip.text, { needsKnowledge: chip.needsKnowledge })}
             className="group surface-leaf flex min-h-[3.35rem] items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] md:min-h-0 md:rounded-xl md:px-4"
             data-interactive
           >
             <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--hub-control)] font-mono text-[10px] tnum text-[var(--ink-muted)] transition-colors group-hover:bg-[var(--hub-active)] group-hover:text-[var(--hub-accent-text)]">
               {String(index + 1).padStart(2, '0')}
             </span>
-            <span className="line-clamp-2 min-w-0 flex-1">{chip}</span>
+            <span className="line-clamp-2 min-w-0 flex-1">{chip.text}</span>
           </button>
         ))}
       </div>
@@ -5500,8 +5722,14 @@ function CompareOverlay({
     [items, selectedKeys],
   );
   const chosenCount = chosenModels.length;
+  // 对比不走 handleSend，得自己拦：勾选项直接取自 items，重拉期间可能勾到刚被
+  // 停用的模型。
+  const catalogUnverified = isModelCatalogUnverified(modelsState);
   const canStart =
-    !running && chosenCount >= COMPARE_MIN_MODELS && chosenCount <= COMPARE_MAX_MODELS;
+    !running &&
+    !catalogUnverified &&
+    chosenCount >= COMPARE_MIN_MODELS &&
+    chosenCount <= COMPARE_MAX_MODELS;
 
   const toggleModel = (model: AgentModelItem) => {
     const key = compareModelKey(model);
@@ -5963,6 +6191,8 @@ function Composer({
   selectedTags,
   selectedKbs,
   selectedAtlasKps,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPickArticle,
   onPickTag,
   onPickKb,
@@ -5993,6 +6223,8 @@ function Composer({
   selectedTags: AgentTag[];
   selectedKbs: AgentKnowledgeBase[];
   selectedAtlasKps: AtlasKnowledgePoint[];
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPickArticle: (article: AgentArticle) => void;
   onPickTag: (tag: AgentTag) => void;
   onPickKb: (kb: AgentKnowledgeBase) => void;
@@ -6069,7 +6301,7 @@ function Composer({
 
     if (shouldSend) {
       e.preventDefault();
-      if (!streaming) onSend(value);
+      if (canSend) onSend(value);
     }
   };
 
@@ -6085,11 +6317,30 @@ function Composer({
   const selectedTagCount = selectedTags.length;
   const selectedKbCount = selectedKbs.length;
   const selectedAtlasCount = selectedAtlasKps.length;
+  // 知识范围三态（与 selectAetherHubKnowledgeContext 的判定同源）：选了来源 =
+  // 指定；没选 + 开关开 = 自动；没选 + 开关关 = 不检索。
+  const knowledgeScopeLabel =
+    selectedKbCount > 0 || selectedAtlasCount > 0
+      ? '知识库 · 指定来源'
+      : autoKnowledge
+        ? '知识库 · 自动检索'
+        : '知识库 · 本轮不检索';
   const selectedContextCount = selectedArticleCount + selectedTagCount + selectedKbCount + selectedAtlasCount;
   const selectedContextVisible = selectedContextCount > 0;
   const compactSelectedContext = picker !== null && selectedContextCount > 1;
   const trayScrollEnabled = selectedContextCount > 6;
-  const canSend = !!value.trim() && !streaming;
+  // 模型清单正在后台重拉时，items 还是旧的 —— 里面可能留着用户刚在 /ai-config
+  // 停用的那个模型。此刻发送会拿旧清单解析出已失效的模型直送后端，换来一句
+  // 「Requested model not found」；对账要等这次重拉落地才跑得了。窗口通常只有
+  // 一个来回，但恰好落在「配完模型点浮岛回来立刻发」这条主路径上。
+  // 只在会话真的钉了模型时才拦：自动路由不依赖清单，没有失效可言。
+  const awaitingModelRevalidation =
+    isModelCatalogUnverified(modelsState) && !!activeSession?.modelId;
+  const modelGateHint =
+    modelsState.status === 'ready' && modelsState.refreshFailed
+      ? '模型清单刷新失败，请重试或改用自动路由'
+      : '正在核对模型清单…';
+  const canSend = !!value.trim() && !streaming && !awaitingModelRevalidation;
 
   const clearSendMenuCloseTimer = useCallback(() => {
     if (sendMenuCloseTimerRef.current === null) return;
@@ -6184,6 +6435,9 @@ function Composer({
             open={picker === 'kb'}
             anchorRef={kbBtnRef}
             selectedIds={new Set(selectedKbs.map((kb) => kb.id))}
+            hasExplicitSources={selectedKbCount > 0 || selectedAtlasCount > 0}
+            autoKnowledge={autoKnowledge}
+            onToggleAutoKnowledge={onToggleAutoKnowledge}
             onClose={() => setPicker(null)}
             onPick={(kb) => onPickKb(kb)}
           />
@@ -6468,9 +6722,10 @@ function Composer({
               />
               <ToolButton
                 ref={kbBtnRef}
-                title="选择知识库"
+                title={knowledgeScopeLabel}
                 active={picker === 'kb'}
                 count={selectedKbCount}
+                dot={autoKnowledge && selectedKbCount === 0}
                 onClick={() => togglePicker('kb')}
               >
                 <BookOpen className="h-3.5 w-3.5" />
@@ -6606,7 +6861,7 @@ function Composer({
                     : 'cursor-not-allowed border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-muted)]',
                 )}
                 aria-label="发送"
-                title="发送"
+                title={awaitingModelRevalidation ? modelGateHint : '发送'}
               >
                 <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
               </button>
@@ -6643,7 +6898,7 @@ function Composer({
                       : 'cursor-not-allowed text-[var(--ink-muted)]',
                   )}
                   aria-label="发送"
-                  title="发送"
+                  title={awaitingModelRevalidation ? modelGateHint : '发送'}
                 >
                   <Send className="h-[18px] w-[18px] -rotate-12 fill-current stroke-[2.4]" />
                 </button>
@@ -6744,10 +6999,12 @@ const ToolButton = forwardRef<
     title: string;
     active?: boolean;
     count?: number;
+    /** 无计数但功能已生效时的状态点（例：知识库未选来源、但自动检索已开）。 */
+    dot?: boolean;
     disabled?: boolean;
     onClick?: () => void;
   }
->(function ToolButton({ children, title, active, count, disabled, onClick }, ref) {
+>(function ToolButton({ children, title, active, count, dot, disabled, onClick }, ref) {
   return (
     <button
       ref={ref}
@@ -6770,6 +7027,12 @@ const ToolButton = forwardRef<
         <span className="absolute -right-1 -top-1 grid !h-4 min-w-4 place-items-center rounded-full bg-[var(--ink-primary)] px-1 font-mono text-[9px] leading-4 text-[var(--bg-void)] ring-2 ring-[var(--hub-panel-strong)]">
           {count > 9 ? '9+' : count}
         </span>
+      )}
+      {!count && dot && (
+        <span
+          aria-hidden="true"
+          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[var(--aurora-3)] ring-2 ring-[var(--hub-panel-strong)]"
+        />
       )}
     </button>
   );
@@ -7023,12 +7286,18 @@ function KnowledgeBasePicker({
   onClose,
   anchorRef,
   selectedIds,
+  hasExplicitSources,
+  autoKnowledge,
+  onToggleAutoKnowledge,
   onPick,
 }: {
   open: boolean;
   onClose: () => void;
   anchorRef: RefObject<HTMLElement | null>;
   selectedIds: Set<number>;
+  hasExplicitSources: boolean;
+  autoKnowledge: boolean;
+  onToggleAutoKnowledge: () => void;
   onPick: (kb: AgentKnowledgeBase) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -7091,6 +7360,39 @@ function KnowledgeBasePicker({
         placeholder="搜索知识库…"
         inputRef={inputRef}
       />
+      {/* 知识范围开关 —— 不选来源时的默认是「不检索」，自动检索必须显式打开。
+          选了来源就以来源为准（后端拒绝 auto 携带显式 id），此时只做状态说明。 */}
+      <div className="border-b border-[var(--hub-border)] px-3 py-2.5">
+        {hasExplicitSources ? (
+          <p className="text-[11.5px] leading-4 text-[var(--ink-muted)]">
+            已指定来源 · 本轮只检索下方勾选的资源
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium leading-4 text-[var(--ink-primary)]">
+                未指定来源时
+              </p>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--ink-muted)]">
+                {autoKnowledge
+                  ? '每轮自动检索你有权限的知识库与知识点'
+                  : '直接回答，不做知识检索'}
+              </p>
+            </div>
+            <HubSegmentedControl
+              ariaLabel="未指定来源时的知识范围"
+              value={autoKnowledge ? 'auto' : 'none'}
+              options={[
+                { value: 'none', label: '不检索', title: '直接回答，不召回任何知识' },
+                { value: 'auto', label: '自动', title: '自动检索你有权限的知识库与知识点' },
+              ]}
+              onChange={(next) => {
+                if ((next === 'auto') !== autoKnowledge) onToggleAutoKnowledge();
+              }}
+            />
+          </div>
+        )}
+      </div>
       <div className="agent-thumb-scroll relative min-h-0 flex-1 overflow-y-auto py-1.5 sm:h-[300px] sm:max-h-none sm:flex-none sm:py-1">
         {showInitialLoading && (
           <div className="absolute inset-x-3 top-4 space-y-2" aria-label="知识库加载中">
@@ -7671,6 +7973,15 @@ function ContextPanel({
 }) {
   const [activeTab, setActiveTab] = useState<CapabilityPanelTab>('space');
   const [preview, setPreview] = useState<SpacePreviewTarget | null>(null);
+
+  // 面板收起时一并关掉资源预览。SpacePreviewDialog 挂在 collapsed 判断**之外**，
+  // 是一层 fixed inset-0 z-[60] 的浮层：留着它就成了「面板没了、遮罩还在」，而
+  // 下面那条 Escape 监听恰好也随 collapsed 失效，用户按 Esc 都关不掉。
+  // 路由离开灵境时页面会收起面板（见 onRoute 的浮层清理），这条同时兜住了
+  // 「带着预览离开、回来时被幽灵遮罩糊脸」。
+  useEffect(() => {
+    if (collapsed) setPreview(null);
+  }, [collapsed]);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const currentModel = useMemo(
     () => currentModelFromSession(session, modelsState),
@@ -8982,7 +9293,7 @@ function HubSegmentedControl({
             title={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative z-10 flex h-10 flex-1 items-center justify-center rounded-[11px] text-[13px] font-semibold tracking-normal transition-colors duration-quick ease-aether focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
+              'relative z-10 flex h-10 flex-1 items-center justify-center whitespace-nowrap rounded-[11px] px-2.5 text-[13px] font-semibold tracking-normal transition-colors duration-quick ease-aether focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--hub-panel-strong)]',
               active
                 ? 'text-[var(--ink-primary)]'
                 : 'text-[var(--ink-muted)] hover:text-[var(--ink-secondary)]',
