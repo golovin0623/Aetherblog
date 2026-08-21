@@ -283,10 +283,11 @@ musicMotion.duration.contentDelay; // 内容让几何先走 130ms
 几何过渡,不能从 TS 导入,故两侧各存一份并在注释中互指):
 
 ```css
---music-morph-dur / --music-morph-ease            /* 几何 */
---music-content-dur / --music-content-out-dur     /* 内容出入 */
---music-content-delay                             /* 内容让位延迟 */
---music-ease-emphasis / --music-ease-recede       /* = musicMotion.ease.* */
+--music-morph-dur / --music-morph-ease   /* 几何形变 */
+--music-content-dur                      /* 内容淡入淡出 */
+--music-content-delay                    /* 内容让位延迟(按目标密度取值) */
+--music-ease-emphasis                    /* = musicMotion.ease.emphasis */
+--music-ambient-blur                     /* 氛围层高斯半径,形变期砍半 */
 ```
 
 **规则:** 音乐播放器组件(`MusicPlayerProvider` / `MusicHallExperience` /

@@ -56,6 +56,18 @@ const confirmDialogSource = readFileSync(
   path.resolve(__dirname, '../apps/admin/src/components/common/ConfirmDialog.tsx'),
   'utf8'
 );
+const motionSpecSource = readFileSync(
+  path.resolve(__dirname, '../.claude/design-system/04-motion.md'),
+  'utf8'
+);
+const designHistorySource = readFileSync(
+  path.resolve(__dirname, '../.claude/design-system/history.md'),
+  'utf8'
+);
+const dependencyDocSource = readFileSync(
+  path.resolve(__dirname, '../.claude/docs/dependencies-and-stack.md'),
+  'utf8'
+);
 const motionVerifierSource = readFileSync(
   path.resolve(__dirname, './verify-music-player-motion.mjs'),
   'utf8'
@@ -710,6 +722,10 @@ describe('music modal product quality gates', () => {
     // 指针端必须留在本轮之前的 opacity-only / transition.quick 上 ——
     // AGENTS.md「修改移动端样式时不得影响桌面端」。锚角缩放只给触屏。
     expect(providerSource).toContain('function resolveMusicIslandMotion(');
+    // 按压反馈同样只给触屏:指针端有 hover 态可依赖,本轮不该顺手改桌面手感
+    expect(providerSource).toContain(
+      'whileTap={isMobile && !prefersReducedMotion ? { scale: 0.94, transition: spring.precise } : undefined}',
+    );
     expect(providerSource).toContain("initial: 'pointerHidden', animate: 'pointerVisible', exit: 'pointerExit'");
     expect(providerSource).toContain('pointerVisible: { opacity: 1, transition: motionTransition.quick }');
     expect(providerSource).toContain('pointerExit: { opacity: 0, transition: motionTransition.quick }');
@@ -774,6 +790,30 @@ describe('music modal product quality gates', () => {
     // 时长 / 曲线的唯一出处:令牌层,不在组件里散落裸值
     expect(musicSkinSource).toContain('--music-morph-dur: var(--dur-flow);');
     expect(musicSkinSource).toContain('--music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);');
+  });
+
+  it('keeps the documented music CSS token set in sync with what music-skin.css actually defines', () => {
+    // 第三评审轮的真实故障:桌面时序还原时删掉了 --music-content-out-dur /
+    // --music-ease-recede,但四份文档仍在把它们当作对外契约罗列。照着文档写的
+    // 人只会拿到一个解析不出来的自定义属性。这条门禁把「文档点名的令牌」与
+    // 「music-skin.css 实际定义的令牌」对齐,漂移即红。
+    const documented = new Set(motionSpecSource.match(/--music-[a-z0-9-]+/g) ?? []);
+    expect(documented.size).toBeGreaterThan(0);
+    const defined = new Set(
+      (musicSkinSource.match(/^\s*(--music-[a-z0-9-]+):/gm) ?? [])
+        .map((line) => line.trim().replace(/:$/, '')),
+    );
+    for (const token of documented) {
+      expect(defined, `${token} 在 04-motion.md 里被当作契约罗列,却没有在 music-skin.css 定义`)
+        .toContain(token);
+    }
+
+    // 追加型文档同样不许罗列已删除的令牌
+    for (const source of [motionSpecSource, designHistorySource, dependencyDocSource]) {
+      expect(source).not.toContain('--music-content-out-dur');
+      expect(source).not.toContain('--music-ease-recede');
+      expect(source).not.toContain('out-dur');
+    }
   });
 
   it('grows the mobile immersive sheet out of the island instead of cross-fading from the screen centre', () => {

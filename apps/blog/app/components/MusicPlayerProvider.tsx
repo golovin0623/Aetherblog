@@ -2395,8 +2395,9 @@ function PersistentMusicDock({
               dragElastic={0.2}
               dragMomentum={false}
               // 封面是浮岛上最大的命中区,却是唯一没有按压反馈的控件 —— 触屏上
-              // 「按下去有没有响应」全靠这一下。
-              whileTap={prefersReducedMotion ? undefined : { scale: 0.94, transition: spring.precise }}
+              // 「按下去有没有响应」全靠这一下。指针端不给:那边有 hover 态可
+              // 依赖,且本轮是移动端改造,不该顺手改掉桌面的点击手感。
+              whileTap={isMobile && !prefersReducedMotion ? { scale: 0.94, transition: spring.precise } : undefined}
               onDragStart={() => {
                 compactGestureRef.current = true;
                 registerCompactInteraction();
