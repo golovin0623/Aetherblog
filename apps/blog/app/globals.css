@@ -151,13 +151,6 @@
     height var(--dur-flow) var(--ease-out);
 }
 
-/* 形变窗口内才挂 will-change:常驻会让浏览器长期为浮岛保留合成层与位图预算,
-   在低端机上反而拖垮滚动。JS 在密度切换时打开 data-music-morphing,形变结束
-   由同一个定时器摘掉。 */
-.music-floating-player-root[data-music-morphing='true'] {
-  will-change: width, height;
-}
-
 .music-floating-player-surface {
   overflow: hidden;
   border-radius: var(--music-radius-floating);
@@ -877,6 +870,14 @@
      辨),落位后由 JS 摘掉 data-music-morphing 自动还原。
      氛围层走 --music-ambient-blur 变量而不是覆盖 filter:亮色主题那条
      `:root.light [data-music-skin] …` 特异度更高,直接覆盖会在亮色下静默失效。 */
+  /* 形变窗口内才挂 will-change:常驻会让浏览器长期为浮岛保留合成层与位图预算,
+     在低端机上反而拖垮滚动。JS 在密度切换时打开 data-music-morphing,形变结束
+     由同一个定时器摘掉。与降级滤镜同属窄屏优化,一并留在本查询内 —— 指针端
+     的合成行为不因这轮移动端改造而变。 */
+  .music-floating-player-root[data-music-morphing='true'] {
+    will-change: width, height;
+  }
+
   [data-music-morphing='true'] .music-floating-player-surface {
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);

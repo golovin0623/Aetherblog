@@ -2510,7 +2510,7 @@ function PersistentMusicDock({
                   <span className="min-w-0 truncate">正在载入…</span>
                 ) : (
                   <>
-                    {isPlaying && <NowPlayingGlyph className="music-island-wave shrink-0" />}
+                    {isMobile && isPlaying && <NowPlayingGlyph className="music-island-wave shrink-0" />}
                     <span className="min-w-0 truncate">{compactArtistLabel}</span>
                     <span className="music-island-count tnum shrink-0 font-mono">{currentIndex + 1}/{tracks.length}</span>
                   </>

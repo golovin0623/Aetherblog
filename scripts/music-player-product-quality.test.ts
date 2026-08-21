@@ -726,6 +726,18 @@ describe('music modal product quality gates', () => {
     expect(providerSource).toContain(
       'whileTap={isMobile && !prefersReducedMotion ? { scale: 0.94, transition: spring.precise } : undefined}',
     );
+    // 播放指示条同样只给触屏:它在 meta 行占掉 ~12px,指针端的元数据行本轮之前
+    // 是纯文本,不该被这轮窄屏改造改掉。
+    expect(providerSource).toContain(
+      '{isMobile && isPlaying && <NowPlayingGlyph className="music-island-wave shrink-0" />}',
+    );
+    // will-change 属于窄屏优化,必须留在窄屏查询内 —— 指针端的合成行为不因这轮
+    // 移动端改造而变。
+    expect(mobileIslandCss).toMatch(
+      /\.music-floating-player-root\[data-music-morphing='true'\]\s*\{\s*will-change: width, height;/,
+    );
+    const outsideMobileQuery = globalsSource.slice(0, globalsSource.indexOf('@media (max-width: 768px) {'));
+    expect(outsideMobileQuery).not.toContain('will-change: width, height');
     expect(providerSource).toContain("initial: 'pointerHidden', animate: 'pointerVisible', exit: 'pointerExit'");
     expect(providerSource).toContain('pointerVisible: { opacity: 1, transition: motionTransition.quick }');
     expect(providerSource).toContain('pointerExit: { opacity: 0, transition: motionTransition.quick }');
