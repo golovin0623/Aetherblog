@@ -19,7 +19,7 @@ import {
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useIsMobile } from '@aetherblog/hooks';
-import { musicMotion, spring } from '@aetherblog/ui';
+import { musicMotion, spring, transition as motionTransition } from '@aetherblog/ui';
 import {
   AnimatePresence,
   LayoutGroup,
@@ -116,41 +116,43 @@ const MUSIC_MORPH_WINDOW_MS = Math.round(
  * left bottom,所以单靠 scale 就等于从屏幕左下角的锚点长出来,既不占用被拖拽
  * 征用的 y,也不需要额外位移。
  *
- * exit 用函数形式读 AnimatePresence 的 custom,于是同一个壳体能分辨两种消失:
- *   handoff —— 交接给沉浸台,反向微放并快速淡出,像被展开的整屏吸走
- *   retract —— 真正收起 / 关闭,缩回锚点
+ * exit 用函数形式读 AnimatePresence 的 custom(布尔 handoff),于是同一个壳体
+ * 能分辨两种消失:
+ *   handoff=true  —— 交接给沉浸台,反向微放并快速淡出,像被展开的整屏吸走
+ *   handoff=false —— 真正收起 / 关闭,缩回锚点
+ *
+ * 这一整组只在触屏视口生效;指针端走下面的 pointer* 组,保持本轮之前的行为。
  */
 const musicIslandVariants: Variants = {
-  hidden: (intent: MusicIslandExit) => ({
+  /* ---- 触屏:锚角缩放 ---------------------------------------------------- */
+  hidden: {
     opacity: 0,
-    scale: intent.touch
-      ? musicMotion.island.enterScale.touch
-      : musicMotion.island.enterScale.pointer,
-  }),
+    scale: musicMotion.island.enterScale,
+  },
   visible: {
     opacity: 1,
     scale: 1,
     transition: {
       scale: musicMotion.spring.islandEnter,
-      // 透明度先于弹簧收尾:浮岛在还在落位时就已经是实体,而不是一路半透明
+      // 透明度先于弹簧收尾:浮岛还在落位时就已经是实体,而不是一路半透明
       opacity: { duration: musicMotion.duration.islandEnter, ease: musicMotion.ease.emphasis },
     },
   },
-  exit: (intent: MusicIslandExit) => ({
+  exit: (handoff: boolean) => ({
     opacity: 0,
-    scale: intent.handoff
-      ? musicMotion.island.handoffScale
-      : intent.touch
-        ? musicMotion.island.exitScale.touch
-        : musicMotion.island.exitScale.pointer,
+    scale: handoff ? musicMotion.island.handoffScale : musicMotion.island.exitScale,
     transition: {
-      duration: intent.handoff
-        ? musicMotion.duration.contentOut
-        : musicMotion.duration.islandExit,
+      duration: handoff ? musicMotion.duration.contentOut : musicMotion.duration.islandExit,
       ease: musicMotion.ease.recede,
     },
   }),
-  /** prefers-reduced-motion:只留最短淡入淡出,不做任何位移 / 缩放 */
+
+  /* ---- 指针端:保持既有的 opacity-only 入场 ------------------------------ */
+  pointerHidden: { opacity: 0 },
+  pointerVisible: { opacity: 1, transition: motionTransition.quick },
+  pointerExit: { opacity: 0, transition: motionTransition.quick },
+
+  /* ---- prefers-reduced-motion:只留最短淡入淡出,不做任何位移 / 缩放 ------ */
   reducedHidden: { opacity: 0 },
   reducedVisible: {
     opacity: 1,
@@ -162,11 +164,21 @@ const musicIslandVariants: Variants = {
   },
 };
 
-interface MusicIslandExit {
-  /** 触屏视口:灵动音乐元本体只有 52px,缩放幅度与指针端不同 */
-  touch: boolean;
-  /** 这次消失是交接给沉浸台,而不是收起 */
-  handoff: boolean;
+/**
+ * 按视口 / 无障碍偏好挑一组 variant 名。
+ *
+ * 指针端刻意回到 pointer* 那组(= 本轮之前的 opacity-only / transition.quick):
+ * AGENTS.md §移动端 UI 开发约定明写「修改移动端样式时不得影响桌面端」,而锚角
+ * 缩放那一档是为 52px 的灵动音乐元调的,套在指针端那条横幅上偏重。
+ */
+function resolveMusicIslandMotion(isMobile: boolean, prefersReducedMotion: boolean | null) {
+  if (prefersReducedMotion) {
+    return { initial: 'reducedHidden', animate: 'reducedVisible', exit: 'reducedExit' } as const;
+  }
+  if (!isMobile) {
+    return { initial: 'pointerHidden', animate: 'pointerVisible', exit: 'pointerExit' } as const;
+  }
+  return { initial: 'hidden', animate: 'visible', exit: 'exit' } as const;
 }
 
 type StoredMusicSkin =
@@ -1884,6 +1896,7 @@ function PersistentMusicDock({
   const [morphing, setMorphing] = useState(false);
   const [sheetOrigin, setSheetOrigin] = useState<{ x: number; y: number } | null>(null);
   const previousDensityRef = useRef<'minimized' | 'compact' | 'expanded' | null>(null);
+  const expandedRef = useRef(expanded);
   const previousSessionRef = useRef(false);
   const previousPlaybackErrorRef = useRef<string | null>(null);
   const compactDragControls = useDragControls();
@@ -1943,12 +1956,9 @@ function PersistentMusicDock({
     // 少了它,整屏面只能从屏幕正中淡入 —— 与指尖刚点过的左下角毫无空间关系,
     // 那正是「突然出现」的来源。
     const islandRect = compactPanelRef.current?.getBoundingClientRect();
-    if (islandRect && islandRect.width > 0) {
-      setSheetOrigin({
-        x: islandRect.left + islandRect.width / 2,
-        y: islandRect.top + islandRect.height / 2,
-      });
-    }
+    setSheetOrigin(islandRect && islandRect.width > 0
+      ? { x: islandRect.left + islandRect.width / 2, y: islandRect.top + islandRect.height / 2 }
+      : null);
     setCompactPointerInside(false);
     setCompactFocusWithin(false);
     setCompactOpen(false);
@@ -2255,6 +2265,10 @@ function PersistentMusicDock({
     if (surface === 'orb' || surface === 'compact') focusPendingSurface();
   }, [focusPendingSurface, surface]);
 
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
+
   // 形变窗口:只在密度真正切换的这几百毫秒内挂 will-change 并把两层高斯半径砍
   // 半。常驻 will-change 会让浏览器长期为浮岛保留合成层预算,在低端机上反过来
   // 拖垮页面滚动 —— 这就是「只在需要时申报」而不是「一直申报」的原因。
@@ -2294,10 +2308,9 @@ function PersistentMusicDock({
   // AnimatePresence 的 custom 在「子节点已从树上摘掉」的那一次渲染里求值,所以
   // 它是唯一能让退场动画分辨「交接给沉浸台」与「真正收起」的通道 —— 组件自身的
   // props 此时读到的还是上一帧(那时 surface 仍是 compact)。
-  const islandExitIntent: MusicIslandExit = {
-    touch: isMobile,
-    handoff: surface === 'immersive' && isMobile,
-  };
+  // 交接只在触屏成立:指针端沉浸态仍留在同一个壳体里,壳体根本不会卸载。
+  const islandExitIntent = surface === 'immersive' && isMobile;
+  const islandMotion = resolveMusicIslandMotion(isMobile, prefersReducedMotion);
 
   return (
     <LayoutGroup id="persistent-music-player">
@@ -2329,9 +2342,9 @@ function PersistentMusicDock({
             style={{ y: compactDragY, originX: 0, originY: 1 }}
             custom={islandExitIntent}
             variants={musicIslandVariants}
-            initial={prefersReducedMotion ? 'reducedHidden' : 'hidden'}
-            animate={prefersReducedMotion ? 'reducedVisible' : 'visible'}
-            exit={prefersReducedMotion ? 'reducedExit' : 'exit'}
+            initial={islandMotion.initial}
+            animate={islandMotion.animate}
+            exit={islandMotion.exit}
             onPointerEnter={() => {
               if (surface === 'compact') setCompactPointerInside(true);
             }}
@@ -2661,6 +2674,16 @@ function PersistentMusicDock({
               immersiveGestureRef.current = true;
             }}
             onDragEnd={(_, info) => handleImmersiveCollapseGesture(info)}
+            onAnimationComplete={() => {
+              // 收起动画跑完才忘掉原点 —— 提前清会让正在进行的回收动画中途丢掉
+              // transform-origin。清掉之后,下一次若不是从浮岛展开(音乐大厅的
+              // 正在播放条、Profile 卡的 openPlayer 都是直接 setExpanded(true),
+              // 不经过 openImmersivePlayer),台面就回落到居中放大,而不是从一个
+              // 与本次触发毫无关系的左下角旧坐标窜出来。
+              // 读 ref 而非闭包里的 expanded:退场时渲染的是 AnimatePresence 缓存
+              // 的那一帧元素,其闭包里 expanded 仍为 true。
+              if (!expandedRef.current) setSheetOrigin(null);
+            }}
             initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: musicMotion.island.sheetZoomFrom }}
             animate={{ opacity: 1, scale: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: musicMotion.island.sheetZoomFrom }}

@@ -699,20 +699,28 @@ describe('music modal product quality gates', () => {
       '@media (hover: hover) and (pointer: fine) {',
     );
 
-    // 浮岛不再靠裸 opacity 显隐:锚角缩放 + 弹簧落位,从屏幕左下角长出来
+    // 触屏浮岛不再靠裸 opacity 显隐:锚角缩放 + 弹簧落位,从屏幕左下角长出来
     expect(providerSource).toContain('const musicIslandVariants: Variants =');
-    expect(providerSource).toContain('musicMotion.island.enterScale.touch');
+    expect(providerSource).toContain('musicMotion.island.enterScale');
     expect(providerSource).toContain('musicMotion.spring.islandEnter');
     expect(floatingSource).toContain('variants={musicIslandVariants}');
     expect(floatingSource).not.toContain('initial={{ opacity: 0 }}');
     expect(floatingSource).toContain('originX: 0, originY: 1');
 
+    // 指针端必须留在本轮之前的 opacity-only / transition.quick 上 ——
+    // AGENTS.md「修改移动端样式时不得影响桌面端」。锚角缩放只给触屏。
+    expect(providerSource).toContain('function resolveMusicIslandMotion(');
+    expect(providerSource).toContain("initial: 'pointerHidden', animate: 'pointerVisible', exit: 'pointerExit'");
+    expect(providerSource).toContain('pointerVisible: { opacity: 1, transition: motionTransition.quick }');
+    expect(providerSource).toContain('pointerExit: { opacity: 0, transition: motionTransition.quick }');
+    expect(floatingSource).toContain('initial={islandMotion.initial}');
+
     // 退场必须能分辨「交接给沉浸台」与「真正收起」。只有 AnimatePresence 的
     // custom 在子节点被摘除的那一帧求值 —— 组件自身 props 此刻还是上一帧的
     // (surface 仍为 compact),所以 custom 不能挪到子节点上。
-    expect(providerSource).toContain("handoff: surface === 'immersive' && isMobile");
+    expect(providerSource).toContain("const islandExitIntent = surface === 'immersive' && isMobile;");
     expect(providerSource).toContain('musicMotion.island.handoffScale');
-    expect(providerSource).toContain('exit: (intent: MusicIslandExit)');
+    expect(providerSource).toContain('exit: (handoff: boolean)');
 
     // 形变窗口只在密度切换的那几百毫秒存在,不常驻 will-change
     expect(providerSource).toContain("data-music-morphing={morphing ? 'true' : undefined}");
@@ -748,12 +756,21 @@ describe('music modal product quality gates', () => {
     // 毫无空间关系。改为记下浮岛此刻的视口中心,以它为 transform-origin 放大。
     expect(providerSource).not.toContain('layoutId=');
     expect(providerSource).toContain('const islandRect = compactPanelRef.current?.getBoundingClientRect();');
-    expect(providerSource).toContain('setSheetOrigin({');
     expect(providerSource).toContain('transformOrigin: sheetOrigin');
     expect(providerSource).toContain('max(0.75rem, env(safe-area-inset-left))');
     expect(providerSource).toContain('max(0.5rem, env(safe-area-inset-top))');
     expect(providerSource).toContain('scale: musicMotion.island.sheetZoomFrom');
     expect(providerSource).toContain('musicMotion.spring.sheetZoom');
+
+    // 原点不许跨会话残留:音乐大厅的正在播放条与 Profile 卡的 openPlayer 都是
+    // 直接 setExpanded(true),不经过 openImmersivePlayer。收起动画跑完即清空,
+    // 否则下一次从那两个入口展开会从一个与本次触发无关的旧坐标窜出来。
+    // 必须等退场结束再清 —— 提前清会让回收动画中途丢掉 transform-origin。
+    expect(providerSource).toContain('if (!expandedRef.current) setSheetOrigin(null);');
+    expect(providerSource).toContain('const expandedRef = useRef(expanded);');
+    expect(providerSource).toMatch(
+      /setSheetOrigin\(islandRect \&\& islandRect\.width > 0[\s\S]*?: null\);/,
+    );
   });
 
   it('gives the narrow-viewport island real room for the track title and a legible paused state', () => {

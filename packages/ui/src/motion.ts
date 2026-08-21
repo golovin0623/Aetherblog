@@ -194,17 +194,21 @@ export const musicMotion = {
     contentDelay: 0.13,
   },
   /**
-   * 浮岛显隐的锚点缩放。浮岛的 transform-origin 恒为 left bottom(它就贴在
-   * 屏幕左下角),所以「缩放」等价于「从锚角长出来 / 缩回锚角」—— 不需要额外
-   * 位移,也就不会和拖拽占用的 y 打架。
-   *   touch   —— 灵动音乐元本身只有 52px,缩得狠才读得出「浮现」
-   *   pointer —— 指针端浮岛是一条横幅,大幅缩放显重,只留一档轻推
-   *   handoff —— 交接给沉浸台时反向微放(1.05):像是被展开的整屏吸走,
-   *              而不是原地消失
+   * 浮岛显隐的锚点缩放 —— **仅触屏视口消费**。浮岛的 transform-origin 恒为
+   * left bottom(它就贴在屏幕左下角),所以「缩放」等价于「从锚角长出来 /
+   * 缩回锚角」,不需要额外位移,也就不会和拖拽占用的 y 打架。
+   *
+   * 指针端浮岛沿用既有的 opacity-only 入场(transition.quick):AGENTS.md
+   * §移动端 UI 开发约定要求「修改移动端样式时不得影响桌面端」,而这一档缩放
+   * 是为 52px 的灵动音乐元调的,套在指针端那条横幅上本就偏重。
+   *
+   *   enterScale   —— 浮现起手(52px 的元,缩得狠才读得出「浮现」)
+   *   exitScale    —— 收起落点
+   *   handoffScale —— 交接给沉浸台时反向微放:像被展开的整屏吸走,而非原地消失
    */
   island: {
-    enterScale: { touch: 0.62, pointer: 0.9 },
-    exitScale: { touch: 0.7, pointer: 0.94 },
+    enterScale: 0.62,
+    exitScale: 0.7,
     handoffScale: 1.05,
     /** 沉浸台自浮岛原位放大的起手比例(见 MusicPlayerProvider 的 sheetOrigin) */
     sheetZoomFrom: 0.82,
