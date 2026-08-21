@@ -184,7 +184,7 @@ export const musicMotion = {
     morph: 0.44,
     /** 形变期间内容跟随入场(与 CSS --music-content-dur 对齐) */
     contentIn: 0.28,
-    /** 内容退场(与 CSS --music-content-out-dur 对齐) */
+    /** 浮岛交接给沉浸台时的短促淡出(仅 Framer 侧消费,CSS 无对应令牌) */
     contentOut: 0.12,
     /**
      * 内容让几何先走 ~30% 行程后再入场(与 CSS --music-content-delay 对齐)。

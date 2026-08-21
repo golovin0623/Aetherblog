@@ -738,16 +738,42 @@ describe('music modal product quality gates', () => {
       /\[data-music-floating-density='minimized'\]\.music-floating-player-root\s*\{\s*--music-content-delay: 0ms;/,
     );
     expect(globalsSource).toContain('opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay)');
-    expect(globalsSource).toContain('opacity var(--music-content-out-dur) var(--music-ease-recede)');
+
+    // 详情面板与工具行只在 expanded 密度下出现,而窄屏根本到不了这个密度
+    // (expanded 走整屏沉浸台,浮岛壳体已从树上摘掉)—— 那两处的时序纯属桌面
+    // 资产,本轮的内容错峰不许往里放。实测桌面 toolbar 仍为 0.26s / 0.52s。
+    expect(globalsSource).toMatch(
+      /\.music-island-toolbar\s*\{[\s\S]*?transition:\s*\n\s*opacity var\(--dur-quick\) var\(--ease-out\),\s*\n\s*transform var\(--dur-flow\) var\(--ease-out\);/,
+    );
+    expect(globalsSource).toMatch(
+      /\.music-island-expanded-detail\s*\{[\s\S]*?opacity var\(--dur-quick\) var\(--ease-out\),\s*\n\s*transform var\(--dur-flow\) var\(--ease-out\);/,
+    );
+    expect(globalsSource).not.toContain('--music-content-out-dur');
+    expect(globalsSource).not.toContain('--music-ease-recede');
 
     // 形变期间降级两层高斯:壳体 backdrop-filter 与氛围层封面都随尺寸每帧重算
     expect(mobileIslandCss).toContain("[data-music-morphing='true'] .music-floating-player-surface");
-    expect(mobileIslandCss).toContain("[data-music-morphing='true'] .music-floating-ambient > img");
+
+    // 氛围层必须走变量,不能靠选择器覆盖 filter —— 亮色主题那条
+    // `:root.light [data-music-skin] …` 特异度 (0,4,1) 会吃掉任何合理的形变态
+    // 选择器,直接覆盖会让「砍半」在亮色下静默失效(而亮色是站点默认主题)。
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-morphing='true'\]\s*\{\s*--music-ambient-blur: 26px;/,
+    );
+    expect(musicSkinSource).toContain('--music-ambient-blur: 52px;');
+    expect(globalsSource).toContain('filter: blur(var(--music-ambient-blur)) saturate(160%);');
+    expect(globalsSource).toContain('filter: blur(var(--music-ambient-blur)) saturate(130%);');
+    expect(globalsSource).not.toMatch(/filter:\s*blur\(52px\)/);
+
+    // 形变中途开启减少动态效果时,复位定时器会被 cleanup 清掉而本轮又直接返回
+    // —— 必须显式复位,否则 will-change 与降级滤镜常驻到刷新为止。
+    expect(providerSource).toMatch(
+      /if \(prefersReducedMotion\) \{[\s\S]*?setMorphing\(false\);[\s\S]*?return;\s*\}/,
+    );
 
     // 时长 / 曲线的唯一出处:令牌层,不在组件里散落裸值
     expect(musicSkinSource).toContain('--music-morph-dur: var(--dur-flow);');
     expect(musicSkinSource).toContain('--music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);');
-    expect(musicSkinSource).toContain('--music-ease-recede: cubic-bezier(0.62, 0, 0.86, 0.24);');
   });
 
   it('grows the mobile immersive sheet out of the island instead of cross-fading from the screen centre', () => {

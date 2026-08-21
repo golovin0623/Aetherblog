@@ -2276,7 +2276,13 @@ function PersistentMusicDock({
     const previousDensity = previousDensityRef.current;
     previousDensityRef.current = floatingDensity;
     if (previousDensity === null || previousDensity === floatingDensity) return;
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion) {
+      // 形变中途开启「减少动态效果」时,上一轮 effect 的 cleanup 会清掉那个
+      // 唯一负责复位的定时器,而本轮又直接返回 —— morphing 会永久停在 true,
+      // will-change 与降级滤镜跟着常驻到刷新为止,恰好是本机制要避免的那件事。
+      setMorphing(false);
+      return;
+    }
     setMorphing(true);
     const timer = window.setTimeout(() => setMorphing(false), MUSIC_MORPH_WINDOW_MS);
     return () => window.clearTimeout(timer);

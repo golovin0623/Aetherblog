@@ -202,7 +202,7 @@
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
   object-fit: cover;
-  filter: blur(52px) saturate(160%);
+  filter: blur(var(--music-ambient-blur)) saturate(160%);
   opacity: 0.42;
 }
 
@@ -219,7 +219,7 @@
 
 :root.light [data-music-skin] .music-floating-ambient > img {
   opacity: 0.26;
-  filter: blur(52px) saturate(130%);
+  filter: blur(var(--music-ambient-blur)) saturate(130%);
 }
 
 [data-music-floating-density='minimized'] .music-floating-ambient {
@@ -463,15 +463,17 @@
   pointer-events: none;
   visibility: hidden;
   transform: translateY(0.35rem);
-  /* 这条是「退场」侧的声明:详情面板只在 expanded 可见,任何离开 expanded 的
-     过渡都读到这里 —— 所以退场一律零延迟、短促收敛,盒子塌下去之前内容已清空。 */
+  /* 详情面板与下面的工具行只在 expanded 密度下出现,而移动端根本到不了这个
+     密度 —— 窄屏 expanded 走的是整屏沉浸台,浮岛壳体此时已从树上摘掉(见
+     PersistentMusicDock 的渲染条件)。所以这两处的时序纯属桌面资产,本轮的
+     内容错峰不往这里放,一律保持原样。 */
   transition:
     top var(--music-morph-dur) var(--music-morph-ease),
     right var(--music-morph-dur) var(--music-morph-ease),
     bottom var(--music-morph-dur) var(--music-morph-ease),
     left var(--music-morph-dur) var(--music-morph-ease),
-    opacity var(--music-content-out-dur) var(--music-ease-recede),
-    transform var(--music-content-out-dur) var(--music-ease-recede);
+    opacity var(--dur-quick) var(--ease-out),
+    transform var(--dur-flow) var(--ease-out);
 }
 
 /* 评审第 5 轮:队列不用「半行渐隐」暗示可滚动 —— 整行适配 + 常显细滚动条。
@@ -533,17 +535,14 @@
   visibility: hidden;
   transform: translateY(0.35rem);
   transition:
-    opacity var(--music-content-out-dur) var(--music-ease-recede),
-    transform var(--music-content-out-dur) var(--music-ease-recede);
+    opacity var(--dur-quick) var(--ease-out),
+    transform var(--dur-flow) var(--ease-out);
 }
 
 [data-music-floating-density='expanded'] .music-island-toolbar {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
-  transition:
-    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay),
-    transform var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 [data-music-floating-density='minimized'].music-floating-player-root {
@@ -682,14 +681,6 @@
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
-  /* 入场侧:几何仍走形变曲线,内容整体延后 —— 面板不再在半成型的空盒里闪现 */
-  transition:
-    top var(--music-morph-dur) var(--music-morph-ease),
-    right var(--music-morph-dur) var(--music-morph-ease),
-    bottom var(--music-morph-dur) var(--music-morph-ease),
-    left var(--music-morph-dur) var(--music-morph-ease),
-    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay),
-    transform var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 /* 桌面播放台内的页签瘦身仅限精指针环境(视觉 32px 即可,把高度让给歌词);
@@ -853,7 +844,6 @@
     --music-morph-dur: 440ms;
     --music-morph-ease: var(--music-ease-emphasis);
     --music-content-dur: 280ms;
-    --music-content-out-dur: 120ms;
     transition:
       --music-island-cover-scale var(--music-morph-dur) var(--music-morph-ease),
       --music-island-cover-size var(--music-morph-dur) var(--music-morph-ease),
@@ -884,14 +874,16 @@
   /* 形变期间的栅格化预算:壳体带 blur(26px) 背景滤镜,氛围层再叠一张
      blur(52px) 的封面。两者都随盒子尺寸每帧重算,而高斯代价随半径超线性增长
      —— 这是移动端掉帧的真正来源。形变窗口内把半径砍半(视觉上 0.44s 内不可
-     辨),落位后由 JS 摘掉 data-music-morphing 自动还原。 */
+     辨),落位后由 JS 摘掉 data-music-morphing 自动还原。
+     氛围层走 --music-ambient-blur 变量而不是覆盖 filter:亮色主题那条
+     `:root.light [data-music-skin] …` 特异度更高,直接覆盖会在亮色下静默失效。 */
   [data-music-morphing='true'] .music-floating-player-surface {
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
   }
 
-  [data-music-morphing='true'] .music-floating-ambient > img {
-    filter: blur(26px) saturate(150%);
+  [data-music-morphing='true'] {
+    --music-ambient-blur: 26px;
   }
 
   /* ---------------------------------------------------------------
