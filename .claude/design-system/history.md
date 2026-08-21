@@ -94,3 +94,23 @@ Round 3 之后存在「仅在 `/design` 上呈现」的风险，Round 4 分四�
 **机制：** `tokens.css` 新增 `[data-field] :is(input,textarea,select):focus-visible { box-shadow:none; border-radius:0 }`；组合输入框外壳一律加 `data-field`，聚焦反馈由外壳 `focus-within` 全权表达。独立输入框不加，保留全局焦点环（a11y）。
 
 **落地：** team-chat 侧栏搜索、发起会话弹窗搜索、消息 Composer、博客 ⌘K SearchPanel 四处外壳已标注。规则固化为 CLAUDE.md §3.4 硬规则 #7 + `05-components.md` 禁忌 #7。
+
+---
+
+## 2026-08-21 · 移动端音乐浮岛三态动效编排（Apple 容器形变语法落地）
+
+**问题：** 浮岛三密度（灵动音乐元 / 迷你播放器 / 沉浸播放台）在窄屏下「能切换但没有动效语法」——
+
+1. 显隐只有 `opacity 0↔1`：浮岛在原地由透变实，没有「从哪来、到哪去」；
+2. 形变是六条 layout 属性（`width/height/top/left/right/bottom`）同曲线同时长一起冲，且内容与几何同步淡入，于是内容在半成型的空盒里闪现；
+3. 沉浸台的 `layoutId` 没有配对节点（浮岛侧被门禁禁止用 `layoutId`），共享形变从未发生，整屏面从屏幕正中淡入，与指尖点过的左下角毫无空间关系。
+
+**机制（三条，均只作用于窄屏 —— CSS 侧 `@media (max-width: 768px)`、Framer 侧 `isMobile`；指针端时序与出入场逐字保持原状）：**
+
+- **锚角缩放代替裸淡入。** 浮岛 `transform-origin` 恒为 `left bottom`，因此单靠 `scale` 就等价于「从屏幕左下角长出来 / 缩回锚角」，不占用被拖拽征用的 `y`。退场方向由 `AnimatePresence custom` 下发（这是唯一在「子节点已摘除」那一帧求值的通道，组件自身 props 此时还是上一帧的），从而分辨「交接给沉浸台」（反向微放 1.05，像被吸走）与「真正收起」（缩回锚点）。
+- **几何先行、内容后到。** 新增 `--music-morph-{dur,ease}` / `--music-content-{dur,delay}` / `--music-ease-emphasis` / `--music-ambient-blur` 六个令牌（`music-skin.css`，默认值 = 桌面既有行为）。关键在 `--music-content-delay` **按目标密度在根上取值**：CSS 过渡的延迟读自目标态规则，于是同一条声明同时表达两个方向 —— 进入 compact/expanded 延后 130ms，回到 minimized 归零。窄屏形变曲线由主曲线 `--ease-out`（Expo，前 30% 吃掉 ~85% 位移，用在容器长大上读成「先炸开再爬行」）换为 `--music-ease-emphasis`，520→440ms。
+- **形变窗口而非常驻申报。** `data-music-morphing` 只在密度切换的那几百毫秒存在：期间把壳体 `backdrop-filter` 与氛围层封面的高斯半径砍半（两者都随盒子尺寸每帧重算，而高斯代价随半径超线性增长），并挂 `will-change: width,height`；落位即摘。常驻 `will-change` 会让浏览器长期为浮岛保留合成层预算，在低端机上反过来拖垮滚动。浮岛根另加 `contain: layout`，把每帧重排锁死在子树内。
+
+**空间与排印：** 窄屏顶栏的三个窗口控制键里，「展开」与「整卡点击」完全重复（后者还是大得多的命中区），隐掉它把标题带从 99px 还到 151px（375pt 实测 +52%）；曲序拆成 `shrink-0` 的 tabular 元素，长艺人名只压艺人；歌单眉标归位到 `font-mono` + `tracking-[0.2em]`（硬规则 #3）；曲名 900→700 + `-0.011em`（900 压在 15px 中西混排上会糊）；沉浸台曲名改两行 + `text-wrap: balance`。
+
+**取证：** Playwright 在 375×812 实测标题带 99→151px、`--music-content-delay` compact=130ms / minimized=0ms、形变期 backdrop `blur(26px)→blur(14px)`、`will-change` 仅形变窗口存在；桌面 1280 侧确认 `--music-morph-dur` 仍为 520ms / `--ease-out`、内容延迟 0ms。门禁 153 passed（新增 3 条钉住本轮编排）、`design-system:check` 0 error、blog 生产构建通过。

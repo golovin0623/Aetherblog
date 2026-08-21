@@ -35,6 +35,23 @@
   --music-shadow-float: 0 14px 34px -24px rgb(0 0 0 / 0.34);
   --music-shadow-artwork: 0 24px 52px -32px rgb(0 0 0 / 0.58);
 
+  /* 浮岛三态形变的编排档位 —— 与 packages/ui/src/motion.ts 的 musicMotion
+     一一对应,禁止在组件里散落裸时长。默认值即桌面既有行为(--dur-flow /
+     --ease-out,内容与几何同步);移动端在 globals.css 的窄屏查询里改写这四个
+     变量,把「几何先行、内容后到」的错峰只交给触屏。 */
+  --music-morph-dur: var(--dur-flow);
+  --music-morph-ease: var(--ease-out);
+  --music-content-dur: var(--dur-quick);
+  --music-content-delay: 0ms;
+  /* = musicMotion.ease.emphasis。几何形变用它(加速段更长,盒子像被推开而不是
+     被弹开);对应的 recede 只在 Framer 侧消费,CSS 这边没有消费方,不设令牌。 */
+  --music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);
+  /* 氛围层封面的高斯半径。做成变量而不是靠选择器覆盖:亮色主题那条
+     `:root.light [data-music-skin] …` 特异度 (0,4,1) 高于任何合理的形变态
+     选择器,直接覆盖 filter 会在亮色下静默失效 —— 而变量是在原声明里求值的,
+     完全绕开特异度之争。 */
+  --music-ambient-blur: 52px;
+
   /* 保底值 —— 不支持 oklch 相对色的旧浏览器(退化为单色,不撞色) */
   --aurora-1: var(--music-seed);
   --aurora-2: var(--music-seed);

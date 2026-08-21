@@ -56,6 +56,18 @@ const confirmDialogSource = readFileSync(
   path.resolve(__dirname, '../apps/admin/src/components/common/ConfirmDialog.tsx'),
   'utf8'
 );
+const motionSpecSource = readFileSync(
+  path.resolve(__dirname, '../.claude/design-system/04-motion.md'),
+  'utf8'
+);
+const designHistorySource = readFileSync(
+  path.resolve(__dirname, '../.claude/design-system/history.md'),
+  'utf8'
+);
+const dependencyDocSource = readFileSync(
+  path.resolve(__dirname, '../.claude/docs/dependencies-and-stack.md'),
+  'utf8'
+);
 const motionVerifierSource = readFileSync(
   path.resolve(__dirname, './verify-music-player-motion.mjs'),
   'utf8'
@@ -571,7 +583,7 @@ describe('music modal product quality gates', () => {
   it('uses a persistent three-density public island with the admin player motion contract', () => {
     const floatingSource = sourceBetween(
       providerSource,
-      '<AnimatePresence initial={false} onExitComplete={focusPendingSurface}>',
+      '<AnimatePresence custom={islandExitIntent} initial={false} onExitComplete={focusPendingSurface}>',
       '<AnimatePresence initial={false}>\n      {surface === \'immersive\' && isMobile',
     );
     const islandRootCss = sourceBetween(
@@ -685,6 +697,190 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toMatch(
       /\.music-island-cover-fallback\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*50%;[\s\S]*?left:\s*50%;[\s\S]*?transform:\s*translate\(-50%, -50%\);/,
     );
+  });
+
+  it('gives the mobile island an anchored appearance and an orchestrated three-density morph', () => {
+    const floatingSource = sourceBetween(
+      providerSource,
+      '<AnimatePresence custom={islandExitIntent} initial={false} onExitComplete={focusPendingSurface}>',
+      '<AnimatePresence initial={false}>\n      {surface === \'immersive\' && isMobile',
+    );
+    const mobileIslandCss = sourceBetween(
+      globalsSource,
+      '@media (max-width: 768px) {',
+      '@media (hover: hover) and (pointer: fine) {',
+    );
+
+    // 触屏浮岛不再靠裸 opacity 显隐:锚角缩放 + 弹簧落位,从屏幕左下角长出来
+    expect(providerSource).toContain('const musicIslandVariants: Variants =');
+    expect(providerSource).toContain('musicMotion.island.enterScale');
+    expect(providerSource).toContain('musicMotion.spring.islandEnter');
+    expect(floatingSource).toContain('variants={musicIslandVariants}');
+    expect(floatingSource).not.toContain('initial={{ opacity: 0 }}');
+    expect(floatingSource).toContain('originX: 0, originY: 1');
+
+    // 指针端必须留在本轮之前的 opacity-only / transition.quick 上 ——
+    // AGENTS.md「修改移动端样式时不得影响桌面端」。锚角缩放只给触屏。
+    expect(providerSource).toContain('function resolveMusicIslandMotion(');
+    // 按压反馈同样只给触屏:指针端有 hover 态可依赖,本轮不该顺手改桌面手感
+    expect(providerSource).toContain(
+      'whileTap={isMobile && !prefersReducedMotion ? { scale: 0.94, transition: spring.precise } : undefined}',
+    );
+    // 播放指示条同样只给触屏:它在 meta 行占掉 ~12px,指针端的元数据行本轮之前
+    // 是纯文本,不该被这轮窄屏改造改掉。
+    expect(providerSource).toContain(
+      '{isMobile && isPlaying && <NowPlayingGlyph className="music-island-wave shrink-0" />}',
+    );
+    // will-change 属于窄屏优化,必须留在窄屏查询内 —— 指针端的合成行为不因这轮
+    // 移动端改造而变。
+    expect(mobileIslandCss).toMatch(
+      /\.music-floating-player-root\[data-music-morphing='true'\]\s*\{\s*will-change: width, height;/,
+    );
+    const outsideMobileQuery = globalsSource.slice(0, globalsSource.indexOf('@media (max-width: 768px) {'));
+    expect(outsideMobileQuery).not.toContain('will-change: width, height');
+    expect(providerSource).toContain("initial: 'pointerHidden', animate: 'pointerVisible', exit: 'pointerExit'");
+    expect(providerSource).toContain('pointerVisible: { opacity: 1, transition: motionTransition.quick }');
+    expect(providerSource).toContain('pointerExit: { opacity: 0, transition: motionTransition.quick }');
+    expect(floatingSource).toContain('initial={islandMotion.initial}');
+
+    // 退场必须能分辨「交接给沉浸台」与「真正收起」。只有 AnimatePresence 的
+    // custom 在子节点被摘除的那一帧求值 —— 组件自身 props 此刻还是上一帧的
+    // (surface 仍为 compact),所以 custom 不能挪到子节点上。
+    expect(providerSource).toContain("const islandExitIntent = surface === 'immersive' && isMobile;");
+    expect(providerSource).toContain('musicMotion.island.handoffScale');
+    expect(providerSource).toContain('exit: (handoff: boolean)');
+
+    // 形变窗口只在密度切换的那几百毫秒存在,不常驻 will-change
+    expect(providerSource).toContain("data-music-morphing={morphing ? 'true' : undefined}");
+    expect(providerSource).toContain('const MUSIC_MORPH_WINDOW_MS');
+    expect(globalsSource).toMatch(
+      /\.music-floating-player-root\[data-music-morphing='true'\]\s*\{[\s\S]*?will-change: width, height;/,
+    );
+    expect(globalsSource).toMatch(/\.music-floating-player-root\s*\{[\s\S]*?contain: layout;/);
+
+    // 移动端自有形变节拍;内容延迟按「目标密度」取值,入场等几何、退场清零
+    expect(mobileIslandCss).toContain('--music-morph-dur: 440ms');
+    expect(mobileIslandCss).toContain('--music-morph-ease: var(--music-ease-emphasis)');
+    expect(mobileIslandCss).toContain('--music-content-delay: 130ms');
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-floating-density='minimized'\]\.music-floating-player-root\s*\{\s*--music-content-delay: 0ms;/,
+    );
+    expect(globalsSource).toContain('opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay)');
+
+    // 详情面板与工具行只在 expanded 密度下出现,而窄屏根本到不了这个密度
+    // (expanded 走整屏沉浸台,浮岛壳体已从树上摘掉)—— 那两处的时序纯属桌面
+    // 资产,本轮的内容错峰不许往里放。实测桌面 toolbar 仍为 0.26s / 0.52s。
+    expect(globalsSource).toMatch(
+      /\.music-island-toolbar\s*\{[\s\S]*?transition:\s*\n\s*opacity var\(--dur-quick\) var\(--ease-out\),\s*\n\s*transform var\(--dur-flow\) var\(--ease-out\);/,
+    );
+    expect(globalsSource).toMatch(
+      /\.music-island-expanded-detail\s*\{[\s\S]*?opacity var\(--dur-quick\) var\(--ease-out\),\s*\n\s*transform var\(--dur-flow\) var\(--ease-out\);/,
+    );
+    expect(globalsSource).not.toContain('--music-content-out-dur');
+    expect(globalsSource).not.toContain('--music-ease-recede');
+
+    // 形变期间降级两层高斯:壳体 backdrop-filter 与氛围层封面都随尺寸每帧重算
+    expect(mobileIslandCss).toContain("[data-music-morphing='true'] .music-floating-player-surface");
+
+    // 氛围层必须走变量,不能靠选择器覆盖 filter —— 亮色主题那条
+    // `:root.light [data-music-skin] …` 特异度 (0,4,1) 会吃掉任何合理的形变态
+    // 选择器,直接覆盖会让「砍半」在亮色下静默失效(而亮色是站点默认主题)。
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-morphing='true'\]\s*\{\s*--music-ambient-blur: 26px;/,
+    );
+    expect(musicSkinSource).toContain('--music-ambient-blur: 52px;');
+    expect(globalsSource).toContain('filter: blur(var(--music-ambient-blur)) saturate(160%);');
+    expect(globalsSource).toContain('filter: blur(var(--music-ambient-blur)) saturate(130%);');
+    expect(globalsSource).not.toMatch(/filter:\s*blur\(52px\)/);
+
+    // 形变中途开启减少动态效果时,复位定时器会被 cleanup 清掉而本轮又直接返回
+    // —— 必须显式复位,否则 will-change 与降级滤镜常驻到刷新为止。
+    expect(providerSource).toMatch(
+      /if \(prefersReducedMotion\) \{[\s\S]*?setMorphing\(false\);[\s\S]*?return;\s*\}/,
+    );
+
+    // 时长 / 曲线的唯一出处:令牌层,不在组件里散落裸值
+    expect(musicSkinSource).toContain('--music-morph-dur: var(--dur-flow);');
+    expect(musicSkinSource).toContain('--music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);');
+  });
+
+  it('keeps the documented music CSS token set in sync with what music-skin.css actually defines', () => {
+    // 第三评审轮的真实故障:桌面时序还原时删掉了 --music-content-out-dur /
+    // --music-ease-recede,但四份文档仍在把它们当作对外契约罗列。照着文档写的
+    // 人只会拿到一个解析不出来的自定义属性。这条门禁把「文档点名的令牌」与
+    // 「music-skin.css 实际定义的令牌」对齐,漂移即红。
+    const documented = new Set(motionSpecSource.match(/--music-[a-z0-9-]+/g) ?? []);
+    expect(documented.size).toBeGreaterThan(0);
+    const defined = new Set(
+      (musicSkinSource.match(/^\s*(--music-[a-z0-9-]+):/gm) ?? [])
+        .map((line) => line.trim().replace(/:$/, '')),
+    );
+    for (const token of documented) {
+      expect(defined, `${token} 在 04-motion.md 里被当作契约罗列,却没有在 music-skin.css 定义`)
+        .toContain(token);
+    }
+
+    // 追加型文档同样不许罗列已删除的令牌
+    for (const source of [motionSpecSource, designHistorySource, dependencyDocSource]) {
+      expect(source).not.toContain('--music-content-out-dur');
+      expect(source).not.toContain('--music-ease-recede');
+      expect(source).not.toContain('out-dur');
+    }
+  });
+
+  it('grows the mobile immersive sheet out of the island instead of cross-fading from the screen centre', () => {
+    // layoutId 曾挂在沉浸台上却没有配对节点(浮岛侧被本文件明令禁止),
+    // 于是共享形变从未发生,整屏面只是从屏幕正中淡入 —— 与指尖刚点过的左下角
+    // 毫无空间关系。改为记下浮岛此刻的视口中心,以它为 transform-origin 放大。
+    expect(providerSource).not.toContain('layoutId=');
+    expect(providerSource).toContain('const islandRect = compactPanelRef.current?.getBoundingClientRect();');
+    expect(providerSource).toContain('transformOrigin: sheetOrigin');
+    expect(providerSource).toContain('max(0.75rem, env(safe-area-inset-left))');
+    expect(providerSource).toContain('max(0.5rem, env(safe-area-inset-top))');
+    expect(providerSource).toContain('scale: musicMotion.island.sheetZoomFrom');
+    expect(providerSource).toContain('musicMotion.spring.sheetZoom');
+
+    // 原点不许跨会话残留:音乐大厅的正在播放条与 Profile 卡的 openPlayer 都是
+    // 直接 setExpanded(true),不经过 openImmersivePlayer。收起动画跑完即清空,
+    // 否则下一次从那两个入口展开会从一个与本次触发无关的旧坐标窜出来。
+    // 必须等退场结束再清 —— 提前清会让回收动画中途丢掉 transform-origin。
+    expect(providerSource).toContain('if (!expandedRef.current) setSheetOrigin(null);');
+    expect(providerSource).toContain('const expandedRef = useRef(expanded);');
+    expect(providerSource).toMatch(
+      /setSheetOrigin\(islandRect \&\& islandRect\.width > 0[\s\S]*?: null\);/,
+    );
+  });
+
+  it('gives the narrow-viewport island real room for the track title and a legible paused state', () => {
+    const mobileIslandCss = sourceBetween(
+      globalsSource,
+      '@media (max-width: 768px) {',
+      '@media (hover: hover) and (pointer: fine) {',
+    );
+
+    // 「展开」chevron 在触屏上与整卡点击完全重复,窄屏隐掉它把 ~60px 还给标题
+    expect(mobileIslandCss).toContain("[data-music-floating-density='compact'] .music-island-action--expand");
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-floating-density='compact'\] \.music-island-identity\s*\{\s*right: 6\.75rem;/,
+    );
+    // identity 仍是可聚焦的展开入口,隐掉 chevron 不减少任何可达路径
+    expect(providerSource).toContain('`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`');
+
+    // 曲序与艺人名分离:长艺人名只压自己,不再把「第几首」整个吃掉
+    expect(providerSource).toContain('music-island-count tnum shrink-0 font-mono');
+    expect(globalsSource).toContain('.music-island-count {');
+
+    // 在放 / 暂停要在 52px 的音乐元上分得清
+    expect(providerSource).toContain('<NowPlayingGlyph className="music-island-wave shrink-0" />');
+    expect(globalsSource).toContain('.music-wave-mark.music-island-wave {');
+    expect(globalsSource).toContain(
+      "[data-music-floating-density='minimized'] .music-playback-orb[data-playing='false'] .music-island-cover-ring {",
+    );
+
+    // 标签走 mono + tracking 的工具字级;整屏台面不再 truncate 曲名
+    expect(providerSource).toContain("font-mono text-[10px] font-semibold uppercase tracking-[0.2em]");
+    expect(providerSource).toContain('music-mobile-player-title line-clamp-2');
+    expect(globalsSource).toContain('text-wrap: balance;');
   });
 
   it('keeps the browser motion gate reproducible from a clean checkout', () => {
@@ -833,7 +1029,7 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toContain('@keyframes music-eq-pulse');
     expect(globalsSource).toContain('.music-wave-mark > span');
     expect(providerSource).toContain('dragControls={immersiveDragControls}');
-    expect(providerSource).toContain('style={{ y: immersiveDragY }}');
+    expect(providerSource).toContain('y: immersiveDragY,');
     expect(providerSource).toContain('style={{ opacity: mobileBackdropOpacity }}');
     expect(providerSource).toContain('onClick={closeExpandedPlayer}');
     expect(globalsSource).toContain('.music-mobile-player-sheet');
