@@ -35,6 +35,20 @@
   --music-shadow-float: 0 14px 34px -24px rgb(0 0 0 / 0.34);
   --music-shadow-artwork: 0 24px 52px -32px rgb(0 0 0 / 0.58);
 
+  /* 浮岛三态形变的编排档位 —— 与 packages/ui/src/motion.ts 的 musicMotion
+     一一对应,禁止在组件里散落裸时长。默认值即桌面既有行为(--dur-flow /
+     --ease-out,内容与几何同步);移动端在 globals.css 的窄屏查询里改写这四个
+     变量,把「几何先行、内容后到」的错峰只交给触屏。 */
+  --music-morph-dur: var(--dur-flow);
+  --music-morph-ease: var(--ease-out);
+  --music-content-dur: var(--dur-quick);
+  --music-content-out-dur: var(--dur-quick);
+  --music-content-delay: 0ms;
+  /* = musicMotion.ease.emphasis / .recede。几何用 emphasis(加速段更长,盒子
+     像被推开而不是被弹开),内容退场用 recede(先缓后急,快速让位)。 */
+  --music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);
+  --music-ease-recede: cubic-bezier(0.62, 0, 0.86, 0.24);
+
   /* 保底值 —— 不支持 oklch 相对色的旧浏览器(退化为单色,不撞色) */
   --aurora-1: var(--music-seed);
   --aurora-2: var(--music-seed);

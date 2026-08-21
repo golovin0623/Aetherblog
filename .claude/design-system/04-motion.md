@@ -262,18 +262,46 @@ Playwright 实机门禁(`scripts/verify-music-player-motion.mjs`)多轮调优,�
 ```ts
 import { musicMotion } from '@aetherblog/ui';
 
-musicMotion.spring.orbSnap;   // 下滑收起 → 回吸成灵动音乐元
-musicMotion.spring.rebound;   // 手势未达阈值 → 卡片弹回
-musicMotion.spring.reanchor;  // 沉浸台拖拽回锚
-musicMotion.spring.sheet;     // 沉浸台共享布局形变(layoutId)
-musicMotion.ease.glide;       // 音乐域内容出入(pane 切换、封面轮换)
-musicMotion.ease.fling;       // 沉浸台下滑离场
-musicMotion.duration.*;       // reduced / pane / veil / dialog / zoom / swap
+musicMotion.spring.orbSnap;      // 下滑收起 → 回吸成灵动音乐元
+musicMotion.spring.rebound;      // 手势未达阈值 → 卡片弹回
+musicMotion.spring.reanchor;     // 沉浸台拖拽回锚
+musicMotion.ease.glide;          // 音乐域内容出入(pane 切换、封面轮换)
+musicMotion.ease.fling;          // 沉浸台下滑离场
+musicMotion.duration.*;          // reduced / pane / veil / dialog / swap
+
+// 移动端浮岛三态编排(2026-08-21)
+musicMotion.spring.islandEnter;  // 浮岛自锚角浮现(ζ≈0.76,一丝过冲)
+musicMotion.spring.sheetZoom;    // 沉浸台自浮岛原位放大 / 收回(ζ≈1.0,不回弹)
+musicMotion.ease.emphasis;       // 三态几何形变主曲线
+musicMotion.ease.recede;         // 内容退场:短促加速让位
+musicMotion.island.*;            // enterScale / exitScale / handoffScale / sheetZoomFrom
+musicMotion.duration.morph;      // 窄屏几何形变 440ms
+musicMotion.duration.contentDelay; // 内容让几何先走 130ms
+```
+
+配套的 CSS 侧令牌在 `packages/ui/src/styles/music-skin.css`(浮岛的形变靠 CSS
+几何过渡,不能从 TS 导入,故两侧各存一份并在注释中互指):
+
+```css
+--music-morph-dur / --music-morph-ease            /* 几何 */
+--music-content-dur / --music-content-out-dur     /* 内容出入 */
+--music-content-delay                             /* 内容让位延迟 */
+--music-ease-emphasis / --music-ease-recede       /* = musicMotion.ease.* */
 ```
 
 **规则:** 音乐播放器组件(`MusicPlayerProvider` / `MusicHallExperience` /
 `ProfileMusicPlayer`)内禁止出现裸 spring 参数或裸 bezier —— 新的手势物理先在
 此预设登记语义,再消费。全站通用交互仍走 `spring` / `transition` 主预设。
+
+**容器形变的两条语法**(浮岛三态,`@media (max-width: 768px)`):
+
+1. **几何先行、内容后到。** `--music-content-delay` 按**目标密度**在浮岛根上取值 ——
+   CSS 过渡的 delay 读自目标态规则,因此同一条声明自动表达两个方向:进入更高密度
+   时内容延后入场,回落时延迟归零、内容先撤。不要把延迟写成 `transition-delay`
+   单独声明,那会连几何一起延后。
+2. **主曲线 `--ease-out` 不适合「盒子长大」。** 它是 Expo,前 30% 就吃掉 ~85% 位移,
+   用在按钮变色上干脆利落,用在容器尺寸上读成「先炸开再爬行」。容器形变走
+   `--music-ease-emphasis`(加速段更长)。
 
 ---
 

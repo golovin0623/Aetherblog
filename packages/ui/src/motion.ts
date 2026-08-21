@@ -140,20 +140,30 @@ export const cssMotion = {
  *   orbSnap  —— 下滑收起后,壳体回吸成灵动音乐元的收势
  *   rebound  —— 手势未达阈值时,卡片弹回原位
  *   reanchor —— 沉浸台拖拽未达阈值的回锚
- *   sheet    —— 移动端沉浸台共享布局形变(layoutId 过渡)
  *   glide    —— 音乐域内容出入的柔和曲线(pane 切换、封面轮换)
  *   fling    —— 沉浸台下滑离场的顺势加速曲线
+ *
+ * 移动端浮岛编排(2026-08 三态动效重制)追加的语义:
+ *   emphasis   —— 三态几何形变主曲线。主曲线 ease.out 是 Expo:前 30% 就走完
+ *                 ~85% 位移,用在「盒子长大」上会读成「先弹一下再爬」;emphasis
+ *                 把加速段拉长,让容器像被推开而不是被弹开。
+ *   recede     —— 内容退场:短促加速离场,绝不与几何抢戏。
+ *   islandEnter—— 浮岛从锚角浮现(ζ≈0.76,允许一丝过冲,像实体落位)
+ *   sheetZoom  —— 沉浸台自浮岛原位放大 / 收回(ζ≈1.0,整屏面不许回弹)
  */
 export const musicMotion = {
   ease: {
     glide: [0.22, 1, 0.36, 1] as const,
     fling: [0.32, 0.72, 0, 1] as const,
+    emphasis: [0.32, 0.9, 0.24, 1] as const,
+    recede: [0.62, 0, 0.86, 0.24] as const,
   },
   spring: {
     orbSnap:  { type: 'spring', stiffness: 460, damping: 40, mass: 0.68 } as const,
     rebound:  { type: 'spring', stiffness: 440, damping: 38, mass: 0.72 } as const,
     reanchor: { type: 'spring', stiffness: 420, damping: 40, mass: 0.8 } as const,
-    sheet:    { type: 'spring', stiffness: 360, damping: 36, mass: 0.82 } as const,
+    islandEnter: { type: 'spring', stiffness: 380, damping: 28, mass: 0.9 } as const,
+    sheetZoom:   { type: 'spring', stiffness: 320, damping: 34, mass: 0.9 } as const,
   },
   duration: {
     /** prefers-reduced-motion 下的极短淡入淡出 */
@@ -164,9 +174,39 @@ export const musicMotion = {
     veil: 0.18,
     /** 对话框整体淡入 */
     dialog: 0.2,
-    /** 沉浸台缩放入场 */
-    zoom: 0.22,
     /** 封面横向轮换 */
     swap: 0.24,
+    /** 浮岛浮现时透明度追随形变的窗口 */
+    islandEnter: 0.34,
+    /** 浮岛收起:比浮现短,收敛回锚点不留尾巴 */
+    islandExit: 0.22,
+    /** 移动端三态几何形变(与 CSS --music-morph-dur 对齐) */
+    morph: 0.44,
+    /** 形变期间内容跟随入场(与 CSS --music-content-dur 对齐) */
+    contentIn: 0.28,
+    /** 内容退场(与 CSS --music-content-out-dur 对齐) */
+    contentOut: 0.12,
+    /**
+     * 内容让几何先走 ~30% 行程后再入场(与 CSS --music-content-delay 对齐)。
+     * 这是 Apple 容器形变的核心语法:几何先动、内容后到,反向则内容先走、
+     * 几何后收。没有这层错峰,内容会在半成型的空盒子里闪现。
+     */
+    contentDelay: 0.13,
+  },
+  /**
+   * 浮岛显隐的锚点缩放。浮岛的 transform-origin 恒为 left bottom(它就贴在
+   * 屏幕左下角),所以「缩放」等价于「从锚角长出来 / 缩回锚角」—— 不需要额外
+   * 位移,也就不会和拖拽占用的 y 打架。
+   *   touch   —— 灵动音乐元本身只有 52px,缩得狠才读得出「浮现」
+   *   pointer —— 指针端浮岛是一条横幅,大幅缩放显重,只留一档轻推
+   *   handoff —— 交接给沉浸台时反向微放(1.05):像是被展开的整屏吸走,
+   *              而不是原地消失
+   */
+  island: {
+    enterScale: { touch: 0.62, pointer: 0.9 },
+    exitScale: { touch: 0.7, pointer: 0.94 },
+    handoffScale: 1.05,
+    /** 沉浸台自浮岛原位放大的起手比例(见 MusicPlayerProvider 的 sheetOrigin) */
+    sheetZoomFrom: 0.82,
   },
 } as const;

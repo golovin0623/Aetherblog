@@ -571,7 +571,7 @@ describe('music modal product quality gates', () => {
   it('uses a persistent three-density public island with the admin player motion contract', () => {
     const floatingSource = sourceBetween(
       providerSource,
-      '<AnimatePresence initial={false} onExitComplete={focusPendingSurface}>',
+      '<AnimatePresence custom={islandExitIntent} initial={false} onExitComplete={focusPendingSurface}>',
       '<AnimatePresence initial={false}>\n      {surface === \'immersive\' && isMobile',
     );
     const islandRootCss = sourceBetween(
@@ -685,6 +685,107 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toMatch(
       /\.music-island-cover-fallback\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*50%;[\s\S]*?left:\s*50%;[\s\S]*?transform:\s*translate\(-50%, -50%\);/,
     );
+  });
+
+  it('gives the mobile island an anchored appearance and an orchestrated three-density morph', () => {
+    const floatingSource = sourceBetween(
+      providerSource,
+      '<AnimatePresence custom={islandExitIntent} initial={false} onExitComplete={focusPendingSurface}>',
+      '<AnimatePresence initial={false}>\n      {surface === \'immersive\' && isMobile',
+    );
+    const mobileIslandCss = sourceBetween(
+      globalsSource,
+      '@media (max-width: 768px) {',
+      '@media (hover: hover) and (pointer: fine) {',
+    );
+
+    // 浮岛不再靠裸 opacity 显隐:锚角缩放 + 弹簧落位,从屏幕左下角长出来
+    expect(providerSource).toContain('const musicIslandVariants: Variants =');
+    expect(providerSource).toContain('musicMotion.island.enterScale.touch');
+    expect(providerSource).toContain('musicMotion.spring.islandEnter');
+    expect(floatingSource).toContain('variants={musicIslandVariants}');
+    expect(floatingSource).not.toContain('initial={{ opacity: 0 }}');
+    expect(floatingSource).toContain('originX: 0, originY: 1');
+
+    // 退场必须能分辨「交接给沉浸台」与「真正收起」。只有 AnimatePresence 的
+    // custom 在子节点被摘除的那一帧求值 —— 组件自身 props 此刻还是上一帧的
+    // (surface 仍为 compact),所以 custom 不能挪到子节点上。
+    expect(providerSource).toContain("handoff: surface === 'immersive' && isMobile");
+    expect(providerSource).toContain('musicMotion.island.handoffScale');
+    expect(providerSource).toContain('exit: (intent: MusicIslandExit)');
+
+    // 形变窗口只在密度切换的那几百毫秒存在,不常驻 will-change
+    expect(providerSource).toContain("data-music-morphing={morphing ? 'true' : undefined}");
+    expect(providerSource).toContain('const MUSIC_MORPH_WINDOW_MS');
+    expect(globalsSource).toMatch(
+      /\.music-floating-player-root\[data-music-morphing='true'\]\s*\{[\s\S]*?will-change: width, height;/,
+    );
+    expect(globalsSource).toMatch(/\.music-floating-player-root\s*\{[\s\S]*?contain: layout;/);
+
+    // 移动端自有形变节拍;内容延迟按「目标密度」取值,入场等几何、退场清零
+    expect(mobileIslandCss).toContain('--music-morph-dur: 440ms');
+    expect(mobileIslandCss).toContain('--music-morph-ease: var(--music-ease-emphasis)');
+    expect(mobileIslandCss).toContain('--music-content-delay: 130ms');
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-floating-density='minimized'\]\.music-floating-player-root\s*\{\s*--music-content-delay: 0ms;/,
+    );
+    expect(globalsSource).toContain('opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay)');
+    expect(globalsSource).toContain('opacity var(--music-content-out-dur) var(--music-ease-recede)');
+
+    // 形变期间降级两层高斯:壳体 backdrop-filter 与氛围层封面都随尺寸每帧重算
+    expect(mobileIslandCss).toContain("[data-music-morphing='true'] .music-floating-player-surface");
+    expect(mobileIslandCss).toContain("[data-music-morphing='true'] .music-floating-ambient > img");
+
+    // 时长 / 曲线的唯一出处:令牌层,不在组件里散落裸值
+    expect(musicSkinSource).toContain('--music-morph-dur: var(--dur-flow);');
+    expect(musicSkinSource).toContain('--music-ease-emphasis: cubic-bezier(0.32, 0.9, 0.24, 1);');
+    expect(musicSkinSource).toContain('--music-ease-recede: cubic-bezier(0.62, 0, 0.86, 0.24);');
+  });
+
+  it('grows the mobile immersive sheet out of the island instead of cross-fading from the screen centre', () => {
+    // layoutId 曾挂在沉浸台上却没有配对节点(浮岛侧被本文件明令禁止),
+    // 于是共享形变从未发生,整屏面只是从屏幕正中淡入 —— 与指尖刚点过的左下角
+    // 毫无空间关系。改为记下浮岛此刻的视口中心,以它为 transform-origin 放大。
+    expect(providerSource).not.toContain('layoutId=');
+    expect(providerSource).toContain('const islandRect = compactPanelRef.current?.getBoundingClientRect();');
+    expect(providerSource).toContain('setSheetOrigin({');
+    expect(providerSource).toContain('transformOrigin: sheetOrigin');
+    expect(providerSource).toContain('max(0.75rem, env(safe-area-inset-left))');
+    expect(providerSource).toContain('max(0.5rem, env(safe-area-inset-top))');
+    expect(providerSource).toContain('scale: musicMotion.island.sheetZoomFrom');
+    expect(providerSource).toContain('musicMotion.spring.sheetZoom');
+  });
+
+  it('gives the narrow-viewport island real room for the track title and a legible paused state', () => {
+    const mobileIslandCss = sourceBetween(
+      globalsSource,
+      '@media (max-width: 768px) {',
+      '@media (hover: hover) and (pointer: fine) {',
+    );
+
+    // 「展开」chevron 在触屏上与整卡点击完全重复,窄屏隐掉它把 ~60px 还给标题
+    expect(mobileIslandCss).toContain("[data-music-floating-density='compact'] .music-island-action--expand");
+    expect(mobileIslandCss).toMatch(
+      /\[data-music-floating-density='compact'\] \.music-island-identity\s*\{\s*right: 6\.75rem;/,
+    );
+    // identity 仍是可聚焦的展开入口,隐掉 chevron 不减少任何可达路径
+    expect(providerSource).toContain('`打开沉浸播放器：${currentPresentation.title}，${compactArtistLabel}`');
+
+    // 曲序与艺人名分离:长艺人名只压自己,不再把「第几首」整个吃掉
+    expect(providerSource).toContain('music-island-count tnum shrink-0 font-mono');
+    expect(globalsSource).toContain('.music-island-count {');
+
+    // 在放 / 暂停要在 52px 的音乐元上分得清
+    expect(providerSource).toContain('<NowPlayingGlyph className="music-island-wave shrink-0" />');
+    expect(globalsSource).toContain('.music-wave-mark.music-island-wave {');
+    expect(globalsSource).toContain(
+      "[data-music-floating-density='minimized'] .music-playback-orb[data-playing='false'] .music-island-cover-ring {",
+    );
+
+    // 标签走 mono + tracking 的工具字级;整屏台面不再 truncate 曲名
+    expect(providerSource).toContain("font-mono text-[10px] font-semibold uppercase tracking-[0.2em]");
+    expect(providerSource).toContain('music-mobile-player-title line-clamp-2');
+    expect(globalsSource).toContain('text-wrap: balance;');
   });
 
   it('keeps the browser motion gate reproducible from a clean checkout', () => {
@@ -833,7 +934,7 @@ describe('music modal product quality gates', () => {
     expect(globalsSource).toContain('@keyframes music-eq-pulse');
     expect(globalsSource).toContain('.music-wave-mark > span');
     expect(providerSource).toContain('dragControls={immersiveDragControls}');
-    expect(providerSource).toContain('style={{ y: immersiveDragY }}');
+    expect(providerSource).toContain('y: immersiveDragY,');
     expect(providerSource).toContain('style={{ opacity: mobileBackdropOpacity }}');
     expect(providerSource).toContain('onClick={closeExpandedPlayer}');
     expect(globalsSource).toContain('.music-mobile-player-sheet');

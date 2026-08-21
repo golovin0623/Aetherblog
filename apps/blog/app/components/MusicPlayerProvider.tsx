@@ -19,7 +19,7 @@ import {
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useIsMobile } from '@aetherblog/hooks';
-import { musicMotion, transition as motionTransition } from '@aetherblog/ui';
+import { musicMotion, spring } from '@aetherblog/ui';
 import {
   AnimatePresence,
   LayoutGroup,
@@ -30,6 +30,7 @@ import {
   useReducedMotion,
   useTransform,
   type PanInfo,
+  type Variants,
 } from 'framer-motion';
 import {
   ChevronDown,
@@ -97,6 +98,76 @@ function meaningfulMusicText(value: string | null | undefined): string {
 // ============================================================
 const MUSIC_SKIN_STORAGE_KEY = 'aetherblog-music-skin';
 const MUSIC_PLAYBACK_STORAGE_KEY = 'aetherblog-music-playback-v1';
+
+/**
+ * 形变窗口 —— data-music-morphing 的存活时长。取 CSS 形变时长再留一档缓冲,
+ * 保证 will-change 与降级高斯半径撤销时形变已经完全落位(提前撤会在最后几帧
+ * 抖一下)。缓冲刻意保持一档 quick,不另立数值。
+ */
+const MUSIC_MORPH_WINDOW_MS = Math.round(
+  (musicMotion.duration.morph + musicMotion.duration.reduced) * 1000,
+);
+
+/**
+ * 浮岛显隐 —— 锚角缩放 variants。
+ *
+ * 之前这里只有 opacity 0↔1:浮岛在原地由透变实,没有任何「从哪来、到哪去」,
+ * 这就是「突然出现 / 突然消失」的字面成因。浮岛的 transform-origin 恒为
+ * left bottom,所以单靠 scale 就等于从屏幕左下角的锚点长出来,既不占用被拖拽
+ * 征用的 y,也不需要额外位移。
+ *
+ * exit 用函数形式读 AnimatePresence 的 custom,于是同一个壳体能分辨两种消失:
+ *   handoff —— 交接给沉浸台,反向微放并快速淡出,像被展开的整屏吸走
+ *   retract —— 真正收起 / 关闭,缩回锚点
+ */
+const musicIslandVariants: Variants = {
+  hidden: (intent: MusicIslandExit) => ({
+    opacity: 0,
+    scale: intent.touch
+      ? musicMotion.island.enterScale.touch
+      : musicMotion.island.enterScale.pointer,
+  }),
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      scale: musicMotion.spring.islandEnter,
+      // 透明度先于弹簧收尾:浮岛在还在落位时就已经是实体,而不是一路半透明
+      opacity: { duration: musicMotion.duration.islandEnter, ease: musicMotion.ease.emphasis },
+    },
+  },
+  exit: (intent: MusicIslandExit) => ({
+    opacity: 0,
+    scale: intent.handoff
+      ? musicMotion.island.handoffScale
+      : intent.touch
+        ? musicMotion.island.exitScale.touch
+        : musicMotion.island.exitScale.pointer,
+    transition: {
+      duration: intent.handoff
+        ? musicMotion.duration.contentOut
+        : musicMotion.duration.islandExit,
+      ease: musicMotion.ease.recede,
+    },
+  }),
+  /** prefers-reduced-motion:只留最短淡入淡出,不做任何位移 / 缩放 */
+  reducedHidden: { opacity: 0 },
+  reducedVisible: {
+    opacity: 1,
+    transition: { duration: musicMotion.duration.reduced },
+  },
+  reducedExit: {
+    opacity: 0,
+    transition: { duration: musicMotion.duration.reduced },
+  },
+};
+
+interface MusicIslandExit {
+  /** 触屏视口:灵动音乐元本体只有 52px,缩放幅度与指针端不同 */
+  touch: boolean;
+  /** 这次消失是交接给沉浸台,而不是收起 */
+  handoff: boolean;
+}
 
 type StoredMusicSkin =
   | { mode: 'preset'; preset: string }
@@ -1810,6 +1881,9 @@ function PersistentMusicDock({
   const [compactFocusWithin, setCompactFocusWithin] = useState(false);
   const [lyricsFollowing, setLyricsFollowing] = useState(true);
   const [artworkDirection, setArtworkDirection] = useState<1 | -1>(1);
+  const [morphing, setMorphing] = useState(false);
+  const [sheetOrigin, setSheetOrigin] = useState<{ x: number; y: number } | null>(null);
+  const previousDensityRef = useRef<'minimized' | 'compact' | 'expanded' | null>(null);
   const previousSessionRef = useRef(false);
   const previousPlaybackErrorRef = useRef<string | null>(null);
   const compactDragControls = useDragControls();
@@ -1865,6 +1939,16 @@ function PersistentMusicDock({
   const openImmersivePlayer = useCallback(() => {
     compactDragY.set(0);
     immersiveDragY.set(0);
+    // 记下浮岛此刻的视口中心,沉浸台就以这个点为 transform-origin 放大。
+    // 少了它,整屏面只能从屏幕正中淡入 —— 与指尖刚点过的左下角毫无空间关系,
+    // 那正是「突然出现」的来源。
+    const islandRect = compactPanelRef.current?.getBoundingClientRect();
+    if (islandRect && islandRect.width > 0) {
+      setSheetOrigin({
+        x: islandRect.left + islandRect.width / 2,
+        y: islandRect.top + islandRect.height / 2,
+      });
+    }
     setCompactPointerInside(false);
     setCompactFocusWithin(false);
     setCompactOpen(false);
@@ -2171,6 +2255,19 @@ function PersistentMusicDock({
     if (surface === 'orb' || surface === 'compact') focusPendingSurface();
   }, [focusPendingSurface, surface]);
 
+  // 形变窗口:只在密度真正切换的这几百毫秒内挂 will-change 并把两层高斯半径砍
+  // 半。常驻 will-change 会让浏览器长期为浮岛保留合成层预算,在低端机上反过来
+  // 拖垮页面滚动 —— 这就是「只在需要时申报」而不是「一直申报」的原因。
+  useEffect(() => {
+    const previousDensity = previousDensityRef.current;
+    previousDensityRef.current = floatingDensity;
+    if (previousDensity === null || previousDensity === floatingDensity) return;
+    if (prefersReducedMotion) return;
+    setMorphing(true);
+    const timer = window.setTimeout(() => setMorphing(false), MUSIC_MORPH_WINDOW_MS);
+    return () => window.clearTimeout(timer);
+  }, [floatingDensity, prefersReducedMotion]);
+
   if (!currentTrack) return null;
   const activeLine = activeLyricIndex >= 0 ? lyrics[activeLyricIndex]?.text : '';
   const playlistName = player?.playlist?.name || '音乐大厅';
@@ -2194,10 +2291,18 @@ function PersistentMusicDock({
     </div>
   );
 
+  // AnimatePresence 的 custom 在「子节点已从树上摘掉」的那一次渲染里求值,所以
+  // 它是唯一能让退场动画分辨「交接给沉浸台」与「真正收起」的通道 —— 组件自身的
+  // props 此时读到的还是上一帧(那时 surface 仍是 compact)。
+  const islandExitIntent: MusicIslandExit = {
+    touch: isMobile,
+    handoff: surface === 'immersive' && isMobile,
+  };
+
   return (
     <LayoutGroup id="persistent-music-player">
       <>
-      <AnimatePresence initial={false} onExitComplete={focusPendingSurface}>
+      <AnimatePresence custom={islandExitIntent} initial={false} onExitComplete={focusPendingSurface}>
         {(surface === 'orb' || surface === 'compact' || (surface === 'immersive' && !isMobile)) && (
           <motion.section
             key="music-floating-shell"
@@ -2216,17 +2321,17 @@ function PersistentMusicDock({
             data-music-skin={skin}
             data-music-floating-root
             data-music-floating-density={floatingDensity}
+            data-music-morphing={morphing ? 'true' : undefined}
             data-music-playing={isPlaying ? 'true' : 'false'}
             data-music-compact-player={surface === 'compact' ? '' : undefined}
             aria-label={floatingDensity === 'expanded' ? '展开的音乐播放器' : floatingDensity === 'compact' ? '迷你播放器' : '灵动音乐元'}
             className="music-floating-player-root pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] z-[70] overflow-visible text-[var(--ink-primary)] max-[360px]:left-[max(0.75rem,env(safe-area-inset-left))] max-[360px]:right-[max(0.75rem,env(safe-area-inset-right))] min-[769px]:bottom-8 min-[769px]:left-8 min-[769px]:right-auto"
             style={{ y: compactDragY, originX: 0, originY: 1 }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={prefersReducedMotion
-              ? motionTransition.instant
-              : { opacity: motionTransition.quick }}
+            custom={islandExitIntent}
+            variants={musicIslandVariants}
+            initial={prefersReducedMotion ? 'reducedHidden' : 'hidden'}
+            animate={prefersReducedMotion ? 'reducedVisible' : 'visible'}
+            exit={prefersReducedMotion ? 'reducedExit' : 'exit'}
             onPointerEnter={() => {
               if (surface === 'compact') setCompactPointerInside(true);
             }}
@@ -2270,6 +2375,9 @@ function PersistentMusicDock({
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.2}
               dragMomentum={false}
+              // 封面是浮岛上最大的命中区,却是唯一没有按压反馈的控件 —— 触屏上
+              // 「按下去有没有响应」全靠这一下。
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.94, transition: spring.precise }}
               onDragStart={() => {
                 compactGestureRef.current = true;
                 registerCompactInteraction();
@@ -2367,13 +2475,26 @@ function PersistentMusicDock({
                   : `展开迷你播放器：${currentPresentation.title}，${compactArtistLabel}`}
               className="music-island-identity pointer-events-auto absolute z-10 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
             >
-              <span className="music-island-eyebrow flex min-w-0 items-center gap-1.5 truncate text-[10px] font-bold uppercase tracking-[0.13em] text-[var(--aurora-1)]">
+              <span className="music-island-eyebrow flex min-w-0 items-center gap-1.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--aurora-1)]">
                 <Disc3 className="h-3 w-3 shrink-0" />
                 <span className="truncate">{playlistName}</span>
               </span>
-              <span className="music-island-title block truncate font-black leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
-              <span className={cn('music-island-meta block truncate leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
-                {playbackError ? playbackError : isBuffering ? '正在载入…' : `${compactArtistLabel} · ${currentIndex + 1}/${tracks.length}`}
+              <span className="music-island-title block truncate font-bold leading-5 text-[var(--ink-primary)]">{currentPresentation.title}</span>
+              {/* 曲序不参与截断:艺人名一长,原先整行一起 truncate 会把「第几首 /
+                  共几首」整个吃掉 —— 而那恰恰是浮岛上最需要一眼看到的定位信息。
+                  拆成 min-w-0 的艺人 + shrink-0 的等宽曲序,长名只压艺人。 */}
+              <span className={cn('music-island-meta flex min-w-0 items-center gap-1.5 leading-4', playbackError ? 'font-semibold text-[var(--signal-danger)]' : 'text-[var(--ink-muted)]')}>
+                {playbackError ? (
+                  <span className="min-w-0 truncate">{playbackError}</span>
+                ) : isBuffering ? (
+                  <span className="min-w-0 truncate">正在载入…</span>
+                ) : (
+                  <>
+                    {isPlaying && <NowPlayingGlyph className="music-island-wave shrink-0" />}
+                    <span className="min-w-0 truncate">{compactArtistLabel}</span>
+                    <span className="music-island-count tnum shrink-0 font-mono">{currentIndex + 1}/{tracks.length}</span>
+                  </>
+                )}
               </span>
             </button>
 
@@ -2530,7 +2651,6 @@ function PersistentMusicDock({
             style={{ opacity: mobileBackdropOpacity }}
           />
           <motion.section
-            layoutId={prefersReducedMotion ? undefined : 'persistent-music-surface'}
             drag={prefersReducedMotion ? false : 'y'}
             dragControls={immersiveDragControls}
             dragListener={false}
@@ -2541,13 +2661,22 @@ function PersistentMusicDock({
               immersiveGestureRef.current = true;
             }}
             onDragEnd={(_, info) => handleImmersiveCollapseGesture(info)}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: musicMotion.island.sheetZoomFrom }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: musicMotion.island.sheetZoomFrom }}
             transition={prefersReducedMotion
               ? { duration: musicMotion.duration.reduced }
-              : { layout: musicMotion.spring.sheet, opacity: { duration: musicMotion.duration.veil }, scale: { duration: musicMotion.duration.zoom } }}
-            style={{ y: immersiveDragY }}
+              : { scale: musicMotion.spring.sheetZoom, opacity: { duration: musicMotion.duration.veil, ease: musicMotion.ease.emphasis } }}
+            style={{
+              y: immersiveDragY,
+              // 沉浸台自浮岛原位放大。transform-origin 是元素自身坐标系,而
+              // sheetOrigin 记的是视口坐标 —— 中间差的正好是台面的左 / 上内缩,
+              // 那两个值恰好就是本元素的 left / top 内联量,于是用 calc() 原样
+              // 减掉即可,不必再测一次台面尺寸。
+              transformOrigin: sheetOrigin
+                ? `calc(${sheetOrigin.x}px - max(0.75rem, env(safe-area-inset-left))) calc(${sheetOrigin.y}px - max(0.5rem, env(safe-area-inset-top)))`
+                : undefined,
+            }}
             className="music-mobile-player-sheet absolute bottom-0 left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_oklch,var(--aurora-1)_10%,var(--bg-raised)),var(--bg-void)_72%)] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           >
             {currentCover && (
@@ -2646,10 +2775,13 @@ function PersistentMusicDock({
                 </AnimatePresence>
               </motion.div>
 
+              {/* 整屏台面上还 truncate 标题是浪费:两行 + balance 让长曲名断在
+                  语义处而不是被砍掉。tracking 从 -0.025em 放宽到 -0.015em ——
+                  前者是给拉丁大标题的收紧量,压在 CJK 上会糊成一片。 */}
               <div data-now-playing-track-info className="min-w-0 text-left">
-                <h2 className="truncate text-[1.35rem] font-bold leading-tight tracking-[-0.025em] text-[var(--ink-primary)]" title={currentPresentation.title}>{currentPresentation.title}</h2>
-                {artistLabel && <p className="mt-1 truncate text-[15px] font-medium text-[var(--ink-secondary)]" title={artistLabel}>{artistLabel}</p>}
-                {activeLine && <p data-now-playing-active-line className="mt-2 line-clamp-1 text-xs text-[var(--ink-muted)]">{activeLine}</p>}
+                <h2 className="music-mobile-player-title line-clamp-2 text-[1.4rem] font-bold leading-[1.28] tracking-[-0.015em] text-[var(--ink-primary)]" title={currentPresentation.title}>{currentPresentation.title}</h2>
+                {artistLabel && <p className="mt-1.5 truncate text-[15px] font-medium text-[var(--ink-secondary)]" title={artistLabel}>{artistLabel}</p>}
+                {activeLine && <p data-now-playing-active-line className="mt-2 line-clamp-1 text-[13px] leading-snug text-[var(--ink-secondary)]">{activeLine}</p>}
               </div>
 
               {playbackError && (

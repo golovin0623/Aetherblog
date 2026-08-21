@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### Changed — 移动端音乐浮岛三态动效重制:锚点浮现 / 编排形变 / 自浮岛放大的沉浸台（2026-08-21, branch claude/music-island-animation-ux-dutupi）
+
+浮岛的三个密度(灵动音乐元 → 迷你播放器 → 沉浸播放台)此前只是「功能上能切换」,四处交接各自缺了动效语法。本轮逐条补齐,全部改动限定在窄屏(`@media (max-width: 768px)`),桌面时序逐字节不变(实测 `--music-morph-dur` 桌面仍为 `520ms` / `--ease-out`,内容延迟 `0ms`)。
+
+- **浮岛不再靠裸 opacity 显隐**(`MusicPlayerProvider.tsx`)。原实现 `initial/animate/exit` 只有 `opacity 0↔1` + 260ms 曲线 —— 浮岛在原地由透变实,没有任何「从哪来、到哪去」,这就是「突然出现 / 突然消失」的字面成因。改为 `musicIslandVariants` 锚角缩放:浮岛的 `transform-origin` 恒为 `left bottom`(它就贴在屏幕左下角),单靠 `scale` 即等于从锚角长出来,既不占用被拖拽征用的 `y`,也不需要额外位移。入场 `spring.islandEnter`(ζ≈0.76,允许一丝过冲),退场更短且不回弹。
+- **退场能分辨「交接」与「收起」**。`exit` 改为读 `custom` 的函数形式,由 `AnimatePresence custom={islandExitIntent}` 下发 —— 只有 AnimatePresence 的 `custom` 在子节点被摘除的那一帧求值,组件自身 props 此刻还是上一帧的(`surface` 仍为 `compact`)。于是同一个壳体交接给沉浸台时反向微放(1.05)像被吸走,真正收起时缩回锚点。
+- **沉浸台自浮岛原位放大**。`layoutId="persistent-music-surface"` 挂在沉浸台上却**没有配对节点**(浮岛侧被 `music-player-product-quality` 门禁明令禁止),共享形变从未发生,整屏面只是从屏幕正中淡入 —— 与指尖刚点过的左下角毫无空间关系。删掉这段死代码,改为展开时记下浮岛的视口中心,以 `calc(<中心> - max(0.75rem, env(safe-area-inset-left)))` 换算成台面自身坐标作 `transform-origin`,配 `spring.sheetZoom`(ζ≈1.0,整屏面不许回弹)从 0.82 放大 / 收回。
+- **三态形变改为编排,而不是六条属性一起冲**(`globals.css`)。窄屏形变曲线从主曲线 `--ease-out`(Expo,前 30% 吃掉 ~85% 位移,用在「盒子长大」上读成先炸开再爬行)换为 `--music-ease-emphasis`,时长 520→440ms;内容(标题带 / 传输键 / 进度带 / 详情面板 / 工具行)的透明度另开一档并吃 `--music-content-delay` —— 该变量按**目标密度**在根上取值,于是同一条声明同时表达两个方向:进入 compact/expanded 等几何走完 ~30% 再淡入(实测 `transition-delay: 0.13s`),回到 minimized 延迟归零、内容先撤壳体后收。内容不再在半成型的空盒子里闪现。
+- **形变期间的栅格化预算**。壳体带 `backdrop-filter: blur(26px)`、氛围层再叠一张 `blur(52px)` 的封面,两者都随盒子尺寸每帧重算,而高斯代价随半径超线性增长 —— 这是窄屏掉帧的真正来源。新增 `data-music-morphing` 标记:形变窗口内把两层半径砍半(实测 26px→14px)并挂 `will-change: width,height`,落位后由同一个定时器摘掉(实测静息态 `will-change: auto`);浮岛根加 `contain: layout`,把每帧重排锁死在浮岛子树内。
+- **窄屏空间回收:标题带 99px → 151px**(iPhone X 375pt 实测,+52%)。原顶栏被切成「封面 52 + 标题 ? + 右上三键 140」,留给曲名的只剩 99px、不到 7 个汉字。三键里的「展开」在触屏上是纯冗余 —— 整张卡片本身就是展开的命中区(而且大得多),chevron 只是把同一个动作又画了一遍;窄屏隐掉它,「最小化」(下滑手势的可见对应物)与「关闭」(破坏性操作)保留。键盘 / 读屏可达性不变:identity 按钮自身就是可聚焦的展开入口。
+- **排印与状态可读性**。歌单眉标改走 `font-mono` + `tracking-[0.2em]` 的工具字级(设计系统硬规则 #3);曲名 900→700 字重 + `-0.011em` 光学收紧(900 压在 15px 中西混排上会糊);曲序拆成 `shrink-0` 的等宽 tabular 元素,长艺人名只压艺人、不再把「第几首」整个吃掉;播放中在 meta 行显示 `NowPlayingGlyph`;暂停时音乐元的进度环由极光色转中性墨色(收成 52px 后进度环是唯一还在传状态的元素,而它此前在放和暂停长得一模一样),且不新增任何看起来可点的控件 —— 音乐元的点击语义是「展开」不是「播放」。沉浸台曲名不再 `truncate`,改两行 + `text-wrap: balance`,`tracking` 由 -0.025em(拉丁大标题的收紧量)放宽到 -0.015em。封面按钮补 `whileTap`(`spring.precise`)—— 它是浮岛最大的命中区,却是唯一没有按压反馈的控件。
+- **令牌层**:`packages/ui/src/motion.ts` 的 `musicMotion` 新增 `ease.emphasis/recede`、`spring.islandEnter/sheetZoom`、`duration.islandEnter/islandExit/morph/contentIn/contentOut/contentDelay`、`island.*` 缩放档;`music-skin.css` 新增 `--music-morph-{dur,ease}` / `--music-content-{dur,out-dur,delay}` / `--music-ease-{emphasis,recede}`,默认值即桌面既有行为。删除随 `layoutId` 一起失效的 `spring.sheet` 与 `duration.zoom`。
+- 验证:`apps/blog` 生产构建通过、`tsc --noEmit` 干净、eslint 干净、`design-system:check` 维持 0 error;`scripts/` 全部门禁 153 passed(基线 150,新增 3 条钉住本轮编排;基线上既有的 2 条 admin 失败未受影响);浮岛几何与时序用 Playwright 在 375×812 实测取证(标题带 99→151px、`--music-content-delay` compact=130ms / minimized=0ms、形变期 backdrop `blur(26px)→blur(14px)`、`will-change` 仅形变窗口存在)。
+
 ### Fixed — 模型中心（AI 配置中心）桌面端上下留白不对称（2026-08-20, branch claude/backend-service-lingxing-debug-7bccc4）
 
 `apps/admin/src/components/intelligence/IntelligenceShell.tsx` 的 `workspace` 模式高度写作 `md:h-[calc(100dvh-4rem)]`，减掉了一个**桌面端并不存在**的 4rem 顶栏 —— AdminLayout 里 `main` 上方只有 `MobileHeader`，而它是 `md:hidden h-14`（3.5rem，仅移动端）。由于同一条 class 上的 `md:-m-6` 已经把 `main` 的 `md:p-6` 上内边距抵消，缺失的 64px 无处可去，全部堆在底部：实测 1249px 视口下上留白 20px、下留白 84px。改为 `md:h-dvh`（桌面端 `main` 就是满屏），移动端分支 `h-[calc(100dvh-3.5rem)]` 本就正确、保持不动。实测修复后桌面端上下各 20px（外壳 `md:p-5`）、移动端上下各 12px（`p-3`）且贴底。影响面仅 `AiConfigPage` —— 它是全仓唯一使用 `mode="workspace"` 的页面，其余消费者走未改动的 `standard` 分支。

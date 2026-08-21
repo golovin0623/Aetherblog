@@ -139,12 +139,23 @@
   width: min(32.5rem, calc(100vw - 2rem));
   height: 8.5rem;
   transform-origin: left bottom;
+  /* 形变每帧都改 width/height,是货真价实的 layout 属性。布局containment 把
+     重排锁死在浮岛子树内,页面其余部分不参与 —— 移动端长文档下这是掉帧与否
+     的分界线。绘制不做 containment,壳体投影仍要溢出到盒外。 */
+  contain: layout;
   transition:
     --music-island-cover-scale var(--dur-flow) var(--ease-out),
     --music-island-cover-size var(--dur-flow) var(--ease-out),
     --music-island-cover-inset var(--dur-flow) var(--ease-out),
     width var(--dur-flow) var(--ease-out),
     height var(--dur-flow) var(--ease-out);
+}
+
+/* 形变窗口内才挂 will-change:常驻会让浏览器长期为浮岛保留合成层与位图预算,
+   在低端机上反而拖垮滚动。JS 在密度切换时打开 data-music-morphing,形变结束
+   由同一个定时器摘掉。 */
+.music-floating-player-root[data-music-morphing='true'] {
+  will-change: width, height;
 }
 
 .music-floating-player-surface {
@@ -235,9 +246,9 @@
 
 .music-floating-artwork-button {
   transition:
-    top var(--dur-flow) var(--ease-out),
-    left var(--dur-flow) var(--ease-out),
-    border-radius var(--dur-flow) var(--ease-out);
+    top var(--music-morph-dur) var(--music-morph-ease),
+    left var(--music-morph-dur) var(--music-morph-ease),
+    border-radius var(--music-morph-dur) var(--music-morph-ease);
 }
 
 .music-island-cover {
@@ -329,12 +340,14 @@
   height: 3.1rem;
   padding: 0.25rem 0.25rem 0.25rem 0;
   border-radius: var(--music-radius-detail);
+  /* 几何跟壳体同一条曲线;透明度另开一档,并吃 --music-content-delay ——
+     该变量按「目标密度」在根上取值,于是入场自动等几何先走、退场自动清零。 */
   transition:
-    top var(--dur-flow) var(--ease-out),
-    right var(--dur-flow) var(--ease-out),
-    left var(--dur-flow) var(--ease-out),
-    height var(--dur-flow) var(--ease-out),
-    opacity var(--dur-quick) var(--ease-out);
+    top var(--music-morph-dur) var(--music-morph-ease),
+    right var(--music-morph-dur) var(--music-morph-ease),
+    left var(--music-morph-dur) var(--music-morph-ease),
+    height var(--music-morph-dur) var(--music-morph-ease),
+    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 /* compact 态只保留 标题+艺人 两行:歌单 eyebrow 留给展开态,减少拥挤 */
@@ -345,6 +358,9 @@
 .music-island-title {
   margin-top: 0.1rem;
   font-size: 0.95rem;
+  /* 900 字重压在 15px 的中西混排上会糊成一团(尤其 light 主题的深色字);
+     700 + 一档光学收紧才是这个字号该有的密度。 */
+  letter-spacing: -0.011em;
 }
 
 .music-island-meta {
@@ -352,14 +368,34 @@
   font-size: 0.7rem;
 }
 
+/* 曲序:等宽 + tabular,换曲时数字不会左右横跳 */
+.music-island-count {
+  font-size: 0.66rem;
+  letter-spacing: 0.01em;
+  opacity: 0.82;
+}
+
+/* 播放指示条按 meta 行的字号缩到 ~11px —— NowPlayingGlyph 的默认 1.45rem
+   是给大厅列表用的,直接塞进浮岛会顶开整行基线。 */
+.music-wave-mark.music-island-wave {
+  width: 0.72rem;
+  height: 0.72rem;
+  gap: 0.08rem;
+}
+
+.music-wave-mark.music-island-wave > span {
+  width: 0.11rem;
+  height: 0.62rem;
+}
+
 .music-island-transport {
   right: 0.75rem;
   bottom: 0.7rem;
   transition:
-    right var(--dur-flow) var(--ease-out),
-    bottom var(--dur-flow) var(--ease-out),
-    transform var(--dur-flow) var(--ease-out),
-    opacity var(--dur-quick) var(--ease-out);
+    right var(--music-morph-dur) var(--music-morph-ease),
+    bottom var(--music-morph-dur) var(--music-morph-ease),
+    transform var(--music-morph-dur) var(--music-morph-ease),
+    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 .music-island-progress {
@@ -367,10 +403,10 @@
   bottom: 0.55rem;
   left: 1rem;
   transition:
-    right var(--dur-flow) var(--ease-out),
-    bottom var(--dur-flow) var(--ease-out),
-    left var(--dur-flow) var(--ease-out),
-    opacity var(--dur-quick) var(--ease-out);
+    right var(--music-morph-dur) var(--music-morph-ease),
+    bottom var(--music-morph-dur) var(--music-morph-ease),
+    left var(--music-morph-dur) var(--music-morph-ease),
+    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 /* 时间标签常显:裸进度线不带刻度会像一根断线(评审反馈) */
@@ -427,13 +463,15 @@
   pointer-events: none;
   visibility: hidden;
   transform: translateY(0.35rem);
+  /* 这条是「退场」侧的声明:详情面板只在 expanded 可见,任何离开 expanded 的
+     过渡都读到这里 —— 所以退场一律零延迟、短促收敛,盒子塌下去之前内容已清空。 */
   transition:
-    top var(--dur-flow) var(--ease-out),
-    right var(--dur-flow) var(--ease-out),
-    bottom var(--dur-flow) var(--ease-out),
-    left var(--dur-flow) var(--ease-out),
-    opacity var(--dur-quick) var(--ease-out),
-    transform var(--dur-flow) var(--ease-out);
+    top var(--music-morph-dur) var(--music-morph-ease),
+    right var(--music-morph-dur) var(--music-morph-ease),
+    bottom var(--music-morph-dur) var(--music-morph-ease),
+    left var(--music-morph-dur) var(--music-morph-ease),
+    opacity var(--music-content-out-dur) var(--music-ease-recede),
+    transform var(--music-content-out-dur) var(--music-ease-recede);
 }
 
 /* 评审第 5 轮:队列不用「半行渐隐」暗示可滚动 —— 整行适配 + 常显细滚动条。
@@ -495,14 +533,17 @@
   visibility: hidden;
   transform: translateY(0.35rem);
   transition:
-    opacity var(--dur-quick) var(--ease-out),
-    transform var(--dur-flow) var(--ease-out);
+    opacity var(--music-content-out-dur) var(--music-ease-recede),
+    transform var(--music-content-out-dur) var(--music-ease-recede);
 }
 
 [data-music-floating-density='expanded'] .music-island-toolbar {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+  transition:
+    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay),
+    transform var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 [data-music-floating-density='minimized'].music-floating-player-root {
@@ -535,6 +576,18 @@
 
 [data-music-floating-density='minimized'] .music-playback-orb[data-playing='true'] .music-island-cover-ring {
   animation: none;
+}
+
+/* 暂停可读性:收成 52px 的音乐元里,进度环是唯一还在传递状态的元素,但它无论
+   放不放都是同一圈极光色 —— 于是「暂停着」和「在放」长得一模一样。暂停时把已
+   走过的弧改为中性墨色:有色=在放、灰=暂停,一眼分得清,且不给音乐元添任何
+   看起来可点的新控件(它的点击语义是「展开」,不是「播放」)。 */
+[data-music-floating-density='minimized'] .music-playback-orb[data-playing='false'] .music-island-cover-ring {
+  background: conic-gradient(
+    from -90deg,
+    color-mix(in oklch, var(--ink-primary) 46%, transparent) 0 var(--music-orb-progress, 0deg),
+    color-mix(in oklch, var(--ink-primary) 14%, transparent) var(--music-orb-progress, 0deg) 1turn
+  );
 }
 
 [data-music-floating-density='minimized'] .music-island-identity,
@@ -629,6 +682,14 @@
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+  /* 入场侧:几何仍走形变曲线,内容整体延后 —— 面板不再在半成型的空盒里闪现 */
+  transition:
+    top var(--music-morph-dur) var(--music-morph-ease),
+    right var(--music-morph-dur) var(--music-morph-ease),
+    bottom var(--music-morph-dur) var(--music-morph-ease),
+    left var(--music-morph-dur) var(--music-morph-ease),
+    opacity var(--music-content-dur) var(--ease-out) var(--music-content-delay),
+    transform var(--music-content-dur) var(--ease-out) var(--music-content-delay);
 }
 
 /* 桌面播放台内的页签瘦身仅限精指针环境(视觉 32px 即可,把高度让给歌词);
@@ -778,6 +839,83 @@
 @media (max-width: 768px) {
   [data-music-floating-density='minimized'] .music-island-actions {
     display: none;
+  }
+
+  /* ---------------------------------------------------------------
+   * 移动端三态编排 —— 触屏专属的形变节拍
+   * ---------------------------------------------------------------
+   * 主曲线 --ease-out 是 Expo,前 30% 就吃掉 ~85% 位移。用在「按钮变色」上
+   * 干脆利落,用在「盒子从 52px 长到 380px」上却读成先炸开再爬行。移动端换成
+   * emphasis:加速段更长、尾段仍长收,容器像被推开。同时 520→440ms,贴近
+   * 灵动岛的手感区间(指尖离屏到形变落定 ≤450ms 才算「跟手」)。
+   * --------------------------------------------------------------- */
+  .music-floating-player-root {
+    --music-morph-dur: 440ms;
+    --music-morph-ease: var(--music-ease-emphasis);
+    --music-content-dur: 280ms;
+    --music-content-out-dur: 120ms;
+    transition:
+      --music-island-cover-scale var(--music-morph-dur) var(--music-morph-ease),
+      --music-island-cover-size var(--music-morph-dur) var(--music-morph-ease),
+      --music-island-cover-inset var(--music-morph-dur) var(--music-morph-ease),
+      width var(--music-morph-dur) var(--music-morph-ease),
+      height var(--music-morph-dur) var(--music-morph-ease);
+  }
+
+  /* 内容延迟按「目标密度」取值,于是同一条声明同时表达了两个方向:
+     进入 compact/expanded → 等几何走完 ~30% 再淡入;
+     回到 minimized      → 延迟归零,内容先撤,壳体后收。 */
+  [data-music-floating-density='compact'].music-floating-player-root,
+  [data-music-floating-density='expanded'].music-floating-player-root {
+    --music-content-delay: 130ms;
+  }
+
+  [data-music-floating-density='minimized'].music-floating-player-root {
+    --music-content-delay: 0ms;
+  }
+
+  .music-floating-player-surface {
+    transition:
+      border-radius var(--music-morph-dur) var(--music-morph-ease),
+      background-color var(--music-content-dur) var(--ease-out),
+      box-shadow var(--music-content-dur) var(--ease-out);
+  }
+
+  /* 形变期间的栅格化预算:壳体带 blur(26px) 背景滤镜,氛围层再叠一张
+     blur(52px) 的封面。两者都随盒子尺寸每帧重算,而高斯代价随半径超线性增长
+     —— 这是移动端掉帧的真正来源。形变窗口内把半径砍半(视觉上 0.44s 内不可
+     辨),落位后由 JS 摘掉 data-music-morphing 自动还原。 */
+  [data-music-morphing='true'] .music-floating-player-surface {
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  [data-music-morphing='true'] .music-floating-ambient > img {
+    filter: blur(26px) saturate(150%);
+  }
+
+  /* ---------------------------------------------------------------
+   * 窄屏空间回收 —— 标题带被窗口控制键挤成了 ~99px
+   * ---------------------------------------------------------------
+   * 375px 视口下 compact 浮岛宽 343px,顶栏被切成:封面 52 + 标题 ? +
+   * 右上三键 140。留给曲名的只剩 99px(实测),不到 7 个汉字 —— 浮岛上最该
+   * 看清的信息反而最先被截断。
+   *
+   * 三键里的「展开」在触屏上是纯冗余:整张卡片本身就是展开的命中区(而且是
+   * 大得多的命中区),chevron 只是把同一个动作又画了一遍。窄屏隐掉它,标题带
+   * 由 99px 回到 151px(+52%,iPhone X 375pt 实测)。键盘 / 读屏不受影响
+   * —— identity 按钮自身就是可聚焦的展开入口,aria-label 已写明
+   * 「打开沉浸播放器」。
+   *
+   * 「最小化」与「关闭」保留:前者是下滑手势的可见对应物,后者是破坏性操作,
+   * 都必须有显式控件。
+   * --------------------------------------------------------------- */
+  [data-music-floating-density='compact'] .music-island-action--expand {
+    display: none;
+  }
+
+  [data-music-floating-density='compact'] .music-island-identity {
+    right: 6.75rem;
   }
 }
 @media (hover: hover) and (pointer: fine) {
@@ -952,6 +1090,11 @@
   min-width: 0;
 }
 
+/* 两行曲名要断在语义处,而不是断在「刚好排满」处 */
+.music-mobile-player-title {
+  text-wrap: balance;
+}
+
 .music-mobile-player-artwork-frame {
   container-type: size;
 }
@@ -992,6 +1135,7 @@
   .music-floating-artwork-button,
   .music-island-cover-image,
   .music-island-cover-pixels,
+  .music-island-cover-ring,
   .music-island-identity,
   .music-island-transport,
   .music-island-progress,

@@ -172,7 +172,7 @@ AetherBlog/
 
 **外加：** Aether Codex 动效预设 `motion`（`ease`、`duration`、`spring`、`transition`、`variants`、`stagger()`、`cssMotion`），从 `@aetherblog/ui` 导入。
 
-**音乐域动效：** `musicMotion`（`ease.glide/fling`、`spring.orbSnap/rebound/reanchor/sheet`、`duration.reduced/pane/veil/dialog/zoom/swap`）—— 播放器浮岛与沉浸台的实机调优物理参数,2026-08-16 从 `MusicPlayerProvider` 收编;音乐播放器组件内禁止再写裸 spring/bezier 数值(见 `.claude/design-system/04-motion.md` §音乐域)。
+**音乐域动效：** `musicMotion`（`ease.glide/fling/emphasis/recede`、`spring.orbSnap/rebound/reanchor/islandEnter/sheetZoom`、`duration.reduced/pane/veil/dialog/swap/islandEnter/islandExit/morph/contentIn/contentOut/contentDelay`、`island.enterScale/exitScale/handoffScale/sheetZoomFrom`）—— 播放器浮岛与沉浸台的实机调优物理参数,2026-08-16 从 `MusicPlayerProvider` 收编,2026-08-21 补齐移动端三态编排(`emphasis`/`recede`/`islandEnter`/`sheetZoom`/`island.*`,同时移除随 `layoutId` 一并失效的 `spring.sheet` 与 `duration.zoom`);音乐播放器组件内禁止再写裸 spring/bezier 数值(见 `.claude/design-system/04-motion.md` §音乐域)。CSS 侧的对应令牌在 `packages/ui/src/styles/music-skin.css`（`--music-morph-{dur,ease}` / `--music-content-{dur,out-dur,delay}` / `--music-ease-{emphasis,recede}`）—— 浮岛三态形变走 CSS 几何过渡,无法从 TS 导入,两侧各存一份并在注释中互指。
 
 ### `@aetherblog/hooks`（16 个 hooks + 1 个组件）
 
